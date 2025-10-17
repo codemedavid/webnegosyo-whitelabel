@@ -1,9 +1,6 @@
 'use client'
 
 import Image from 'next/image'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardFooter, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 
@@ -17,11 +14,12 @@ export function MenuItemCard({ item, onSelect }: MenuItemCardProps) {
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
   return (
-    <Card
-      className="group overflow-hidden transition-all hover:shadow-lg cursor-pointer"
+    <div
+      className="group relative overflow-hidden rounded-2xl bg-white shadow-sm transition-all hover:shadow-xl cursor-pointer"
       onClick={() => onSelect(item)}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      {/* Image Container */}
+      <div className="relative aspect-[4/3] overflow-hidden">
         <Image
           src={item.image_url}
           alt={item.name}
@@ -29,64 +27,69 @@ export function MenuItemCard({ item, onSelect }: MenuItemCardProps) {
           className="object-cover transition-transform group-hover:scale-105"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
+        
+        {/* Overlay Elements */}
         {item.is_featured && (
-          <Badge className="absolute left-2 top-2" variant="secondary">
-            Featured
-          </Badge>
-        )}
-        {hasDiscount && (
-          <Badge className="absolute right-2 top-2" variant="destructive">
-            Sale
-          </Badge>
-        )}
-        {!item.is_available && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-            <Badge variant="outline" className="bg-background/90">
-              Unavailable
-            </Badge>
+          <div className="absolute left-3 top-3">
+            <span className="text-xl">⭐</span>
           </div>
         )}
+        
+        {hasDiscount && (
+          <div className="absolute right-3 top-3">
+            <span className="rounded-full bg-red-500 px-2 py-1 text-xs font-bold text-white">
+              SALE
+            </span>
+          </div>
+        )}
+        
+        {!item.is_available && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">
+              Unavailable
+            </span>
+          </div>
+        )}
+
+        {/* Add to Cart Button */}
+        <button
+          className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:scale-110"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(item)
+          }}
+          disabled={!item.is_available}
+        >
+          <span className="text-lg font-bold">+</span>
+        </button>
       </div>
 
-      <CardContent className="p-4">
-        <CardTitle className="mb-1 line-clamp-1">{item.name}</CardTitle>
-        <CardDescription className="line-clamp-2 text-sm">
-          {item.description}
-        </CardDescription>
-
-        <div className="mt-3 flex items-center gap-2">
+      {/* Content */}
+      <div className="p-4">
+        <h3 className="mb-2 text-lg font-bold text-gray-900 line-clamp-1">
+          {item.name}
+        </h3>
+        
+        <div className="flex items-center gap-2">
           {hasDiscount && (
-            <span className="text-sm text-muted-foreground line-through">
+            <span className="text-sm text-gray-400 line-through">
               {formatPrice(item.price)}
             </span>
           )}
-          <span className="text-lg font-bold text-primary">
-            {formatPrice(displayPrice)}
+          <span className="text-lg font-bold text-orange-600">
+            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
           </span>
         </div>
 
         {item.variations.length > 0 && (
           <div className="mt-2">
-            <Badge variant="outline" className="text-xs">
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
               {item.variations.length} sizes available
-            </Badge>
+            </span>
           </div>
         )}
-      </CardContent>
-
-      <CardFooter className="p-4 pt-0">
-        <Button
-          className="w-full"
-          disabled={!item.is_available}
-          onClick={(e) => {
-            e.stopPropagation()
-            onSelect(item)
-          }}
-        >
-          {item.is_available ? 'Add to Cart' : 'Unavailable'}
-        </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   )
 }
 

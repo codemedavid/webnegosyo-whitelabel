@@ -50,24 +50,26 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-50 border-b bg-background">
-        <div className="container flex h-16 items-center gap-4 px-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+        <div className="container mx-auto flex h-20 items-center gap-4 px-4">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold">Checkout</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+            <p className="text-sm text-gray-500">Complete your order</p>
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
-              <CardDescription>Review your order before checkout</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <div className="mx-auto max-w-2xl space-y-8">
+          <div className="rounded-2xl bg-white p-8 shadow-sm">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Summary</h2>
+            <p className="text-gray-600 mb-6">Review your order before checkout</p>
+            
+            <div className="space-y-4">
               {items.map((item, index) => (
                 <div key={item.id}>
                   {index > 0 && <Separator className="my-4" />}
@@ -103,35 +105,36 @@ export default function CheckoutPage() {
 
               <Separator className="my-4" />
 
-              <div className="flex justify-between text-lg font-bold">
+              <div className="flex justify-between text-xl font-bold pt-4 border-t">
                 <span>Total</span>
-                <span className="text-primary">{formatPrice(total)}</span>
+                <span className="text-orange-600">{formatPrice(total)}</span>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5" />
-                Complete Order via Messenger
-              </CardTitle>
-              <CardDescription>
-                Click the button below to send your order to {tenant.name} via Facebook Messenger.
-                You&apos;ll be redirected to Messenger with your order details pre-filled.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button size="lg" className="w-full" onClick={handleCheckout}>
-                <MessageCircle className="mr-2 h-5 w-5" />
-                Send Order via Messenger
-              </Button>
+          <div className="rounded-2xl bg-white p-8 shadow-sm">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+              <MessageCircle className="h-6 w-6 text-orange-500" />
+              Complete Order via Messenger
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Click the button below to send your order to {tenant.name} via Facebook Messenger.
+              You&apos;ll be redirected to Messenger with your order details pre-filled.
+            </p>
+            
+            <Button 
+              size="lg" 
+              className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full" 
+              onClick={handleCheckout}
+            >
+              <MessageCircle className="mr-3 h-6 w-6" />
+              Send Order via Messenger
+            </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
-                Your order will be sent to the restaurant for confirmation
-              </p>
-            </CardContent>
-          </Card>
+            <p className="text-center text-sm text-gray-500 mt-4">
+              Your order will be sent to the restaurant for confirmation
+            </p>
+          </div>
         </div>
       </main>
     </div>

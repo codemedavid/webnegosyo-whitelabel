@@ -7,10 +7,8 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetFooter,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -29,11 +27,16 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="flex w-full flex-col sm:max-w-lg">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5" />
-            Your Cart ({items.length})
+      <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+          <SheetTitle className="flex items-center gap-3 text-xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500">
+              <ShoppingCart className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <span className="text-gray-900">Your Cart</span>
+              <p className="text-sm font-normal text-gray-500">({items.length} items)</p>
+            </div>
           </SheetTitle>
         </SheetHeader>
 
@@ -48,27 +51,27 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
         ) : (
           <>
             <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-4 py-4">
+              <div className="space-y-3 py-4">
                 {items.map((item) => (
-                  <div key={item.id} className="flex gap-4">
-                    <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md">
+                  <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       <Image
                         src={item.menu_item.image_url}
                         alt={item.menu_item.name}
                         fill
-                        className="object-cover"
-                        sizes="80px"
+                        className="object-cover group-hover:scale-105 transition-transform"
+                        sizes="64px"
                       />
                     </div>
 
-                    <div className="flex flex-1 flex-col">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="font-semibold line-clamp-1">
+                    <div className="flex flex-1 flex-col min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
                             {item.menu_item.name}
                           </h4>
                           {item.selected_variation && (
-                            <Badge variant="outline" className="mt-1 text-xs">
+                            <Badge variant="outline" className="mt-1 text-xs border-orange-200 text-orange-700 bg-orange-50">
                               {item.selected_variation.name}
                             </Badge>
                           )}
@@ -76,49 +79,52 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-destructive"
+                          className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={() => removeItem(item.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
 
-                      {item.selected_addons.length > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Add-ons: {item.selected_addons.map((a) => a.name).join(', ')}
-                        </p>
+                      {(item.selected_addons.length > 0 || item.special_instructions) && (
+                        <div className="text-xs text-gray-500 mb-2">
+                          {item.selected_addons.length > 0 && (
+                            <p className="line-clamp-1">
+                              Add-ons: {item.selected_addons.map((a) => a.name).join(', ')}
+                            </p>
+                          )}
+                          {item.special_instructions && (
+                            <p className="italic line-clamp-1">
+                              Note: {item.special_instructions}
+                            </p>
+                          )}
+                        </div>
                       )}
 
-                      {item.special_instructions && (
-                        <p className="mt-1 text-xs italic text-muted-foreground">
-                          Note: {item.special_instructions}
-                        </p>
-                      )}
-
-                      <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-7 w-7"
+                            className="h-7 w-7 rounded-full hover:bg-orange-50 border-gray-200"
                             onClick={() => updateQuantity(item.id, item.quantity - 1)}
                             disabled={item.quantity <= 1}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
-                          <span className="w-8 text-center text-sm font-medium">
+                          <span className="w-6 text-center text-sm font-bold text-gray-900">
                             {item.quantity}
                           </span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-7 w-7"
+                            className="h-7 w-7 rounded-full hover:bg-orange-50 border-gray-200"
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
                         </div>
-                        <span className="font-semibold">
+                        <span className="font-bold text-orange-600 text-sm">
                           {formatPrice(item.subtotal)}
                         </span>
                       </div>
@@ -128,23 +134,30 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
               </div>
             </ScrollArea>
 
-            <div className="space-y-4">
-              <Separator />
-              <div className="flex items-center justify-between text-lg font-bold">
-                <span>Total</span>
-                <span className="text-primary">{formatPrice(total)}</span>
+            <div className="bg-white/95 backdrop-blur-sm border-t border-orange-200/30 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-bold text-gray-900">Total</span>
+                <span className="text-xl font-bold text-orange-600">{formatPrice(total)}</span>
               </div>
 
-              <SheetFooter className="flex-col gap-2 sm:flex-col">
+              <div className="flex flex-col gap-3">
                 <Link href={`/${tenantSlug}/cart`} className="w-full" onClick={onClose}>
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full h-12 border-2 border-gray-200 hover:bg-orange-50 hover:border-orange-200 rounded-xl font-semibold">
                     Review Cart
                   </Button>
                 </Link>
                 <Link href={`/${tenantSlug}/checkout`} className="w-full" onClick={onClose}>
-                  <Button className="w-full">Proceed to Checkout</Button>
+                  <Button className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg">
+                    Proceed to Checkout
+                  </Button>
                 </Link>
-              </SheetFooter>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-xs text-center text-gray-500">
+                  {items.length} item{items.length !== 1 ? 's' : ''} in cart
+                </p>
+              </div>
             </div>
           </>
         )}

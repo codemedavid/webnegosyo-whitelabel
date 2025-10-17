@@ -16,27 +16,32 @@ export function CategoryTabs({
   onCategoryChange,
 }: CategoryTabsProps) {
   return (
-    <Tabs
-      value={activeCategory || 'all'}
-      onValueChange={(value) => onCategoryChange(value === 'all' ? null : value)}
-      className="w-full"
-    >
-      <TabsList className="grid w-full auto-cols-fr grid-flow-col overflow-x-auto">
-        <TabsTrigger value="all" className="whitespace-nowrap">
-          All Items
-        </TabsTrigger>
-        {categories.map((category) => (
-          <TabsTrigger
-            key={category.id}
-            value={category.id}
-            className="whitespace-nowrap"
-          >
-            <span className="mr-2">{category.icon}</span>
-            {category.name}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    <div className="flex gap-6 overflow-x-auto pb-2">
+      <button
+        className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
+          !activeCategory
+            ? 'bg-orange-100 text-orange-700'
+            : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
+        }`}
+        onClick={() => onCategoryChange(null)}
+      >
+        All Items
+      </button>
+      {categories.map((category) => (
+        <button
+          key={category.id}
+          className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
+            activeCategory === category.id
+              ? 'bg-orange-100 text-orange-700'
+              : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
+          }`}
+          onClick={() => onCategoryChange(category.id)}
+        >
+          <span className="text-lg">{category.icon || '🍽️'}</span>
+          {category.name}
+        </button>
+      ))}
+    </div>
   )
 }
 

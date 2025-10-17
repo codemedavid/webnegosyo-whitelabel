@@ -13,16 +13,18 @@ interface MenuGridProps {
 export function MenuGrid({ items, onItemSelect }: MenuGridProps) {
   if (items.length === 0) {
     return (
-      <EmptyState
-        icon={UtensilsCrossed}
-        title="No items found"
-        description="Try adjusting your search or filters"
-      />
+      <div className="text-center py-16">
+        <EmptyState
+          icon={UtensilsCrossed}
+          title="No items found"
+          description="Try adjusting your search or filters"
+        />
+      </div>
     )
   }
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
         <MenuItemCard key={item.id} item={item} onSelect={onItemSelect} />
       ))}

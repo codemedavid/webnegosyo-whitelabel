@@ -16,7 +16,7 @@ import type { Category, MenuItem } from '@/types/database'
 export default function MenuPage() {
   const params = useParams()
   const tenantSlug = params.tenant as string
-  const { addItem } = useCart()
+  const { addItem, items } = useCart()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
@@ -85,29 +85,90 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Minimal navbar substitute until we wire branding; using slug as name */}
-      <div className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between px-4">
-          <span className="text-xl font-bold">{tenantSlug}</span>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+      {/* Header with ClickEats-style design */}
+      <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+        <div className="container mx-auto px-4">
+          <div className="flex h-20 items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500">
+                <span className="text-lg font-bold text-white">{tenantSlug.charAt(0).toUpperCase()}</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">{tenantSlug.replace(/-/g, ' ')}</h1>
+                <p className="text-xs text-gray-500">Smart Ordering Partner</p>
+              </div>
+            </div>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8 space-y-6">
-          <div>
-            <h1 className="mb-2 text-3xl font-bold">Our Menu</h1>
-            <p className="text-muted-foreground">
-              Browse our delicious selection of items
-            </p>
+            {/* Category Navigation */}
+            <nav className="hidden md:flex items-center gap-8">
+              <button
+                className={`text-sm font-medium transition-colors ${
+                  !activeCategory ? 'text-orange-600' : 'text-gray-600 hover:text-orange-600'
+                }`}
+                onClick={() => setActiveCategory(null)}
+              >
+                All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+                    activeCategory === category.id ? 'text-orange-600' : 'text-gray-600 hover:text-orange-600'
+                  }`}
+                  onClick={() => setActiveCategory(category.id)}
+                >
+                  <span className="text-lg">{category.icon || '🍽️'}</span>
+                  {category.name}
+                </button>
+              ))}
+            </nav>
+
+            {/* Utility Icons */}
+            <div className="flex items-center gap-4">
+              <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
+                <span className="text-lg">📦</span>
+                <span className="hidden sm:inline">Track Order</span>
+              </button>
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="relative p-2 text-gray-600 hover:text-orange-600 transition-colors"
+              >
+                <span className="text-xl">🛒</span>
+                {items.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                    {items.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
+        </div>
+      </header>
 
+      <main className="container mx-auto px-4 py-12">
+        {/* Hero Section */}
+        <div className="text-center mb-16">
+          <h1 className="text-5xl font-serif font-bold text-gray-900 mb-4">
+            Our Menu
+          </h1>
+          <p className="text-lg text-gray-600 font-light">
+            Your Smart Ordering Partner
+          </p>
+        </div>
+
+        {/* Mobile Search */}
+        <div className="mb-8 md:hidden">
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search for dishes..."
           />
+        </div>
 
+        {/* Mobile Category Navigation */}
+        <div className="mb-8 md:hidden">
           <CategoryTabs
             categories={categories}
             activeCategory={activeCategory}

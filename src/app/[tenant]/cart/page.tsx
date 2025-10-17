@@ -5,8 +5,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
@@ -26,20 +24,23 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-50 border-b bg-background">
-        <div className="container flex h-16 items-center gap-4 px-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+        <div className="container mx-auto flex h-20 items-center gap-4 px-4">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold">Your Cart</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Your Cart</h1>
+            <p className="text-sm text-gray-500">Review your delicious selection</p>
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
         {items.length === 0 ? (
-          <Card>
-            <CardContent className="py-12">
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="rounded-3xl bg-white p-16 shadow-lg text-center max-w-md">
               <EmptyState
                 icon={ShoppingBag}
                 title="Your cart is empty"
@@ -47,122 +48,147 @@ export default function CartPage() {
                 actionLabel="Browse Menu"
                 onAction={() => router.push(`/${tenantSlug}/menu`)}
               />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
           <div className="grid gap-8 lg:grid-cols-3">
-            <div className="space-y-4 lg:col-span-2">
+            <div className="space-y-6 lg:col-span-2">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl md:text-2xl font-bold text-gray-900">Cart Items</h2>
+                <span className="text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+              </div>
+              
               {items.map((item) => (
-                <Card key={item.id}>
-                  <CardContent className="p-4">
-                    <div className="flex gap-4">
-                      <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-md">
+                <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+                  <div className="flex gap-4 md:gap-6">
+                      <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
                         <Image
                           src={item.menu_item.image_url}
                           alt={item.menu_item.name}
                           fill
-                          className="object-cover"
-                          sizes="96px"
+                          className="object-cover group-hover:scale-105 transition-transform duration-200"
+                          sizes="112px"
                         />
                       </div>
 
-                      <div className="flex flex-1 flex-col">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h3 className="font-semibold">{item.menu_item.name}</h3>
-                            {item.selected_variation && (
-                              <Badge variant="outline" className="mt-1">
-                                {item.selected_variation.name}
-                              </Badge>
-                            )}
+                      <div className="flex flex-1 flex-col justify-between">
+                        <div>
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
+                                {item.menu_item.name}
+                              </h3>
+                              {item.selected_variation && (
+                                <Badge variant="outline" className="mt-2 border-orange-200 text-orange-700 bg-orange-50">
+                                  {item.selected_variation.name}
+                                </Badge>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => removeItem(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive"
-                            onClick={() => removeItem(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+
+                          {item.selected_addons.length > 0 && (
+                            <p className="text-sm text-gray-600 mb-1">
+                              <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
+                            </p>
+                          )}
+
+                          {item.special_instructions && (
+                            <p className="text-sm italic text-gray-500">
+                              <span className="font-medium">Note:</span> {item.special_instructions}
+                            </p>
+                          )}
                         </div>
 
-                        {item.selected_addons.length > 0 && (
-                          <p className="mt-2 text-sm text-muted-foreground">
-                            Add-ons: {item.selected_addons.map((a) => a.name).join(', ')}
-                          </p>
-                        )}
-
-                        {item.special_instructions && (
-                          <p className="mt-1 text-sm italic text-muted-foreground">
-                            Note: {item.special_instructions}
-                          </p>
-                        )}
-
-                        <div className="mt-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between mt-4">
+                          <div className="flex items-center gap-3">
                             <Button
                               variant="outline"
                               size="icon"
+                              className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
                               onClick={() => updateQuantity(item.id, item.quantity - 1)}
                               disabled={item.quantity <= 1}
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
-                            <span className="w-12 text-center font-medium">
+                            <span className="w-12 text-center font-bold text-lg text-gray-900">
                               {item.quantity}
                             </span>
                             <Button
                               variant="outline"
                               size="icon"
+                              className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
-                          <span className="text-lg font-semibold">
-                            {formatPrice(item.subtotal)}
-                          </span>
+                          <div className="text-right">
+                            <span className="text-xl font-bold text-orange-600">
+                              {formatPrice(item.subtotal)}
+                            </span>
+                            {item.quantity > 1 && (
+                              <p className="text-xs text-gray-500">
+                                {formatPrice(item.subtotal / item.quantity)} each
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
               ))}
             </div>
 
             <div className="lg:col-span-1">
-              <Card className="sticky top-20">
-                <CardHeader>
-                  <CardTitle>Order Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Items ({items.length})</span>
-                      <span>{formatPrice(total)}</span>
+              <div className="sticky top-20 rounded-2xl bg-white p-6 md:p-8 shadow-lg border border-gray-100">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                    <span className="text-orange-600 font-bold">₱</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Order Summary</h3>
+                </div>
+                
+                <div className="space-y-4 mb-8">
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-gray-600">Items ({items.length})</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(total)}</span>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-bold text-gray-900">Total</span>
+                      <span className="text-2xl font-bold text-orange-600">{formatPrice(total)}</span>
                     </div>
                   </div>
+                </div>
 
-                  <Separator />
-
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span className="text-primary">{formatPrice(total)}</span>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex-col gap-2">
+                <div className="space-y-4">
                   <Link href={`/${tenantSlug}/checkout`} className="w-full">
-                    <Button className="w-full" size="lg">
-                      Proceed to Checkout
+                    <Button className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all">
+                      <span className="text-lg">Proceed to Checkout</span>
                     </Button>
                   </Link>
                   <Link href={`/${tenantSlug}/menu`} className="w-full">
-                    <Button variant="outline" className="w-full">
+                    <Button variant="outline" className="w-full h-12 border-2 border-gray-200 hover:bg-orange-50 hover:border-orange-200 rounded-xl font-semibold">
                       Continue Shopping
                     </Button>
                   </Link>
-                </CardFooter>
-              </Card>
+                </div>
+
+                <div className="mt-6 p-4 bg-orange-50 rounded-xl">
+                  <p className="text-sm text-orange-700 text-center">
+                    🚚 Free delivery on orders over ₱500
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}
