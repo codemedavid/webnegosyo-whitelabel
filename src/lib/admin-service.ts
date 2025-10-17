@@ -134,6 +134,7 @@ export async function createCategory(tenantId: string, input: CategoryInput) {
     .insert({
       tenant_id: tenantId,
       ...validated,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
     .single()
@@ -151,6 +152,7 @@ export async function updateCategory(categoryId: string, tenantId: string, input
   const query = supabase
     .from('categories')
     // @ts-expect-error - Supabase type inference issue with update
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update(validated as any)
     .eq('id', categoryId)
     .eq('tenant_id', tenantId)
@@ -187,6 +189,7 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
     supabase
       .from('categories')
       // @ts-expect-error - Supabase type inference issue with update
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ order: index } as any)
       .eq('id', id)
       .eq('tenant_id', tenantId)
@@ -240,8 +243,11 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput) {
     .insert({
       tenant_id: tenantId,
       ...validated,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       variations: validated.variations as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
     .single()
@@ -261,8 +267,11 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
     // @ts-expect-error - Supabase type inference issue with update
     .update({
       ...validated,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       variations: validated.variations as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
@@ -297,6 +306,7 @@ export async function toggleMenuItemAvailability(itemId: string, tenantId: strin
   const query = supabase
     .from('menu_items')
     // @ts-expect-error - Supabase type inference issue with update
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ is_available: isAvailable } as any)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
