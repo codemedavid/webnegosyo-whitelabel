@@ -69,14 +69,17 @@ export async function updateOrderStatus(
   
   const supabase = await createClient()
 
-  // @ts-ignore - Supabase type inference issue
-  const { data, error } = await supabase
+  const query = supabase
     .from('orders')
-    .update({ status })
+    // @ts-expect-error - Supabase type inference issue with update
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ status } as any)
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
     .select()
     .single()
+
+  const { data, error } = await query
 
   if (error) throw error
   return data as Order
@@ -99,6 +102,7 @@ export async function getOrderStats(tenantId: string) {
 
   if (error) throw error
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersData = orders as any[] || []
 
   const stats = {
@@ -139,7 +143,6 @@ export async function createOrder(
   const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
   // Create order
-  // @ts-ignore - Supabase type inference issue
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
@@ -148,12 +151,14 @@ export async function createOrder(
       customer_contact: customerInfo?.contact,
       total,
       status: 'pending',
-    })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
     .select()
     .single()
 
   if (orderError) throw orderError
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderData = order as any
 
   // Create order items
@@ -169,10 +174,10 @@ export async function createOrder(
     special_instructions: item.special_instructions,
   }))
 
-  // @ts-ignore - Supabase type inference issue
   const { error: itemsError } = await supabase
     .from('order_items')
-    .insert(orderItems)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .insert(orderItems as any)
 
   if (itemsError) throw itemsError
 
