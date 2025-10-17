@@ -2,6 +2,7 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getTenantBySlug } from '@/lib/admin-service'
 import { getOrdersByTenant } from '@/lib/orders-service'
 import { OrdersList } from '@/components/admin/orders-list'
+import type { Tenant } from '@/types/database'
 
 export default async function OrdersPage({
   params,
@@ -10,11 +11,13 @@ export default async function OrdersPage({
 }) {
   const { tenant: tenantSlug } = await params
   
-  const tenant = await getTenantBySlug(tenantSlug)
+  const tenantData = await getTenantBySlug(tenantSlug)
 
-  if (!tenant) {
+  if (!tenantData) {
     return <div>Tenant not found</div>
   }
+
+  const tenant: Tenant = tenantData
 
   const orders = await getOrdersByTenant(tenant.id).catch(() => [])
 

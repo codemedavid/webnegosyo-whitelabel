@@ -29,21 +29,24 @@ export async function createTenantAction(input: TenantInput) {
   const insertPayload: TenantsInsert = {
     name: parsed.name,
     slug: parsed.slug,
-    domain: parsed.domain || null,
+    domain: parsed.domain || undefined,
     logo_url: parsed.logo_url || '',
     primary_color: parsed.primary_color,
     secondary_color: parsed.secondary_color,
-    accent_color: parsed.accent_color || null,
+    accent_color: parsed.accent_color || undefined,
     messenger_page_id: parsed.messenger_page_id,
-    messenger_username: parsed.messenger_username || null,
+    messenger_username: parsed.messenger_username || undefined,
     is_active: parsed.is_active,
   }
   
-  const { data, error } = await supabase
+  const query = supabase
     .from('tenants')
-    .insert(insertPayload as never)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .insert(insertPayload as any)
     .select('*')
     .single()
+  
+  const { data, error } = await query
   
   if (error) {
     return { error: error.message }
@@ -53,8 +56,11 @@ export async function createTenantAction(input: TenantInput) {
   revalidatePath('/superadmin')
   revalidatePath('/superadmin/tenants')
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tenant = data as any
+  
   // Redirect to the new tenant's menu
-  redirect(`/${data.slug}/menu`)
+  redirect(`/${tenant.slug}/menu`)
 }
 
 export async function updateTenantAction(id: string, input: TenantInput) {
@@ -78,22 +84,26 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   const updatePayload: TenantsUpdate = {
     name: parsed.name,
     slug: parsed.slug,
-    domain: parsed.domain || null,
+    domain: parsed.domain || undefined,
     logo_url: parsed.logo_url || '',
     primary_color: parsed.primary_color,
     secondary_color: parsed.secondary_color,
-    accent_color: parsed.accent_color || null,
+    accent_color: parsed.accent_color || undefined,
     messenger_page_id: parsed.messenger_page_id,
-    messenger_username: parsed.messenger_username || null,
+    messenger_username: parsed.messenger_username || undefined,
     is_active: parsed.is_active,
   }
   
-  const { data, error } = await supabase
+  const query = supabase
     .from('tenants')
-    .update(updatePayload as never)
+    // @ts-expect-error - Supabase type inference issue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(updatePayload as any)
     .eq('id', id)
     .select('*')
     .single()
+  
+  const { data, error } = await query
   
   if (error) {
     return { error: error.message }
@@ -104,6 +114,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   revalidatePath('/superadmin/tenants')
   revalidatePath(`/superadmin/tenants/${id}`)
   
-  return { success: true, data }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { success: true, data: data as any }
 }
 

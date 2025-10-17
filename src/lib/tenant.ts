@@ -1,7 +1,6 @@
 // Tenant resolver utilities for subdomain-based multi-tenancy
 
 import type { NextRequest } from 'next/server'
-import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 
 // Reserved subdomains that should never be treated as tenant slugs
 const RESERVED_SUBDOMAINS = new Set([

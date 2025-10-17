@@ -30,7 +30,7 @@ export default async function AdminLayout({
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Tenant not found</h1>
-          <p className="text-muted-foreground">The restaurant you're looking for doesn't exist.</p>
+          <p className="text-muted-foreground">The restaurant you&apos;re looking for doesn&apos;t exist.</p>
         </div>
       </div>
     )

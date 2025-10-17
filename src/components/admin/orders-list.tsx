@@ -6,7 +6,6 @@ import { formatDistance } from 'date-fns'
 import { ShoppingBag, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -67,6 +66,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
       orderId,
       tenantId,
       tenantSlug,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newStatus as any
     )
 

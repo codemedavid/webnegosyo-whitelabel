@@ -16,7 +16,7 @@ interface TenantLoginFormProps {
   unauthorized?: boolean
 }
 
-export function TenantLoginForm({ tenantSlug, redirect, unauthorized }: TenantLoginFormProps) {
+export function TenantLoginForm({ redirect, unauthorized }: TenantLoginFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -49,18 +49,20 @@ export function TenantLoginForm({ tenantSlug, redirect, unauthorized }: TenantLo
       }
 
       // Check if user has access
-      const { data: userRole, error: roleError } = await supabase
+      const { data: userRoleData, error: roleError } = await supabase
         .from('app_users')
         .select('role, tenant_id')
         .eq('user_id', data.user.id)
         .maybeSingle()
 
-      if (roleError || !userRole) {
+      if (roleError || !userRoleData) {
         await supabase.auth.signOut()
         setError('You do not have access to this tenant.')
         setIsLoading(false)
         return
       }
+
+      const userRole: { role: string; tenant_id: string | null } = userRoleData
 
       // Verify authorization for this tenant
       const isAuthorized = 
@@ -90,7 +92,7 @@ export function TenantLoginForm({ tenantSlug, redirect, unauthorized }: TenantLo
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            You are not authorized to access this tenant's admin panel.
+            You are not authorized to access this tenant&apos;s admin panel.
           </AlertDescription>
         </Alert>
       )}
