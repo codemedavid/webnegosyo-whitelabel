@@ -47,9 +47,10 @@ export function extractSubdomain(host: string, rootDomain: string | null): strin
         return RESERVED_SUBDOMAINS.has(sub) ? null : sub
     }
 
-    // If no root domain configured, attempt generic extraction (take first label)
-    const generic = hostNoPort.split('.')[0]
-    return RESERVED_SUBDOMAINS.has(generic) ? null : generic
+    // If no root domain configured, don't extract subdomain from Vercel/other domains
+    // This prevents treating "your-app.vercel.app" as a subdomain setup
+    // Only extract subdomains when explicitly configured with PLATFORM_ROOT_DOMAIN
+    return null
 }
 
 export function resolveTenantSlugFromRequest(request: NextRequest): string | null {

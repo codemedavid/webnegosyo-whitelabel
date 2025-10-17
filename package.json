@@ -7,7 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test:superadmin": "node scripts/test-superadmin.mjs"
+    "test:superadmin": "node scripts/test-superadmin.mjs",
+    "db:check": "node scripts/check-database.mjs",
+    "db:create-test-tenant": "node scripts/create-test-tenant.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
