@@ -7,9 +7,10 @@ import { formatPrice } from '@/lib/cart-utils'
 interface MenuItemCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
+  primaryColor?: string
 }
 
-export function MenuItemCard({ item, onSelect }: MenuItemCardProps) {
+export function MenuItemCard({ item, onSelect, primaryColor = '#ff6b35' }: MenuItemCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -53,7 +54,8 @@ export function MenuItemCard({ item, onSelect }: MenuItemCardProps) {
 
         {/* Add to Cart Button */}
         <button
-          className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:scale-110"
+          className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all hover:scale-110 hover:opacity-90"
+          style={{ backgroundColor: primaryColor }}
           onClick={(e) => {
             e.stopPropagation()
             onSelect(item)
@@ -76,7 +78,7 @@ export function MenuItemCard({ item, onSelect }: MenuItemCardProps) {
               {formatPrice(item.price)}
             </span>
           )}
-          <span className="text-lg font-bold text-orange-600">
+          <span className="text-lg font-bold" style={{ color: primaryColor }}>
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
           </span>
         </div>

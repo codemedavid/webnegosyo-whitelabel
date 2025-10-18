@@ -1,15 +1,17 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice, generateMessengerMessage, generateMessengerUrl } from '@/lib/cart-utils'
-import { getTenantBySlug } from '@/lib/mockData'
+import { createClient } from '@/lib/supabase/client'
+import { getTenantBySlugSupabase } from '@/lib/tenants-service'
+import { createOrderAction } from '@/app/actions/orders'
 import { toast } from 'sonner'
+import type { Tenant } from '@/types/database'
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -17,36 +19,108 @@ export default function CheckoutPage() {
   const tenantSlug = params.tenant as string
   const { items, total, clearCart } = useCart()
 
-  const tenant = getTenantBySlug(tenantSlug)
+  const [tenant, setTenant] = useState<Tenant | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isProcessing, setIsProcessing] = useState(false)
 
+  // Load tenant data from Supabase
   useEffect(() => {
-    if (items.length === 0) {
+    const loadTenant = async () => {
+      try {
+        const { data, error } = await getTenantBySlugSupabase(tenantSlug)
+        if (error || !data) {
+          toast.error('Restaurant not found')
+          router.push('/')
+          return
+        }
+        setTenant(data)
+      } catch (error) {
+        toast.error('Failed to load restaurant')
+        router.push('/')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadTenant()
+  }, [tenantSlug, router])
+
+  // Redirect to menu if cart is empty
+  useEffect(() => {
+    if (!isLoading && items.length === 0) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, router, tenantSlug])
+  }, [items.length, router, tenantSlug, isLoading])
 
-  if (!tenant) {
-    return <div>Tenant not found</div>
+  const handleCheckout = async () => {
+    if (!tenant || isProcessing) return
+
+    setIsProcessing(true)
+
+    try {
+      // Create order in database
+      const orderItems = items.map(item => ({
+        menu_item_id: item.menu_item.id,
+        menu_item_name: item.menu_item.name,
+        variation: item.selected_variation?.name,
+        addons: item.selected_addons.map(a => a.name),
+        quantity: item.quantity,
+        price: item.menu_item.price + (item.selected_variation?.price_modifier || 0),
+        subtotal: item.subtotal,
+        special_instructions: item.special_instructions,
+      }))
+
+      const result = await createOrderAction(tenant.id, orderItems)
+
+      if (!result.success) {
+        toast.error('Failed to create order. Please try again.')
+        setIsProcessing(false)
+        return
+      }
+
+      // Generate messenger message and URL
+      const message = generateMessengerMessage(items, tenant.name)
+      const messengerUrl = generateMessengerUrl(
+        tenant.messenger_username || tenant.messenger_page_id,
+        message,
+        !tenant.messenger_username
+      )
+
+      // Clear cart
+      clearCart()
+
+      // Show success message
+      toast.success('Order created! Redirecting to Messenger...')
+
+      // Redirect to Messenger
+      setTimeout(() => {
+        window.location.href = messengerUrl
+      }, 1000)
+    } catch (error) {
+      toast.error('An error occurred. Please try again.')
+      setIsProcessing(false)
+    }
   }
 
-  const handleCheckout = () => {
-    const message = generateMessengerMessage(items, tenant.name)
-    const messengerUrl = generateMessengerUrl(
-      tenant.messenger_username || tenant.messenger_page_id,
-      message,
-      !tenant.messenger_username
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-16 w-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading checkout...</p>
+        </div>
+      </div>
     )
+  }
 
-    // Clear cart
-    clearCart()
-
-    // Show success message
-    toast.success('Redirecting to Messenger...')
-
-    // Redirect to Messenger
-    setTimeout(() => {
-      window.location.href = messengerUrl
-    }, 1000)
+  if (!tenant) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Restaurant not found</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -124,11 +198,21 @@ export default function CheckoutPage() {
             
             <Button 
               size="lg" 
-              className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full" 
+              className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed" 
               onClick={handleCheckout}
+              disabled={isProcessing}
             >
-              <MessageCircle className="mr-3 h-6 w-6" />
-              Send Order via Messenger
+              {isProcessing ? (
+                <>
+                  <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                  Processing Order...
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="mr-3 h-6 w-6" />
+                  Send Order via Messenger
+                </>
+              )}
             </Button>
 
             <p className="text-center text-sm text-gray-500 mt-4">

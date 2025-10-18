@@ -1,0 +1,58 @@
+========================================
+  ADD THESE TO YOUR .env.local FILE
+========================================
+
+Copy and paste these lines into your .env.local file:
+
+# Cloudinary Configuration (NEW - Required for image uploads)
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name_here
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
+
+========================================
+  HOW TO GET THESE VALUES
+========================================
+
+1. NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
+   - Go to https://cloudinary.com/console
+   - Login to your account
+   - Copy the "Cloud name" from your dashboard
+   - Example: "dxyz123abc"
+
+2. NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET:
+   - In Cloudinary dashboard, go to Settings → Upload
+   - Scroll to "Upload presets"
+   - Click "Add upload preset"
+   - Name it: "whitelabel-uploads"
+   - Set Signing Mode to: "Unsigned" ⚠️ IMPORTANT
+   - Click Save
+   - Use this exact name: "whitelabel-uploads"
+
+========================================
+  FULL .env.local EXAMPLE
+========================================
+
+# Supabase (you already have these)
+NEXT_PUBLIC_SUPABASE_URL=https://yourproject.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Platform (you may already have this)
+PLATFORM_ROOT_DOMAIN=yourdomain.com
+
+# Cloudinary (NEW - add these)
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dxyz123abc
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
+
+========================================
+  AFTER ADDING
+========================================
+
+1. Save the .env.local file
+2. Stop your dev server (Ctrl+C)
+3. Restart: npm run dev
+4. Test by going to /superadmin/tenants/new
+5. Click "Upload Image" button
+
+========================================
+
+Need help? See CLOUDINARY_QUICK_START.md for step-by-step instructions!
+

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import Image from 'next/image'
 // import { Navbar } from '@/components/shared/navbar'
 import { CategoryTabs } from '@/components/customer/category-tabs'
 import { SearchBar } from '@/components/customer/search-bar'
@@ -11,7 +12,7 @@ import { CartDrawer } from '@/components/customer/cart-drawer'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { createClient } from '@/lib/supabase/client'
-import type { Category, MenuItem } from '@/types/database'
+import type { Category, MenuItem, Tenant } from '@/types/database'
 
 export default function MenuPage() {
   const params = useParams()
@@ -24,6 +25,7 @@ export default function MenuPage() {
   const [isCartOpen, setIsCartOpen] = useState(false)
 
   // Get tenant and data
+  const [tenant, setTenant] = useState<Tenant | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -39,19 +41,22 @@ export default function MenuPage() {
         setError(null)
         
         const supabase = createClient()
-        const { data: tenant, error: tenantError } = await getTenantBySlugSupabase(tenantSlug)
+        const { data: tenantData, error: tenantError } = await getTenantBySlugSupabase(tenantSlug)
         
         if (isCancelled) return
         
-        if (tenantError || !tenant) {
+        if (tenantError || !tenantData) {
           setError('Restaurant not found')
           setIsLoading(false)
           return
         }
         
+        // Save tenant data for branding
+        setTenant(tenantData)
+        
         const [{ data: cats, error: catsError }, { data: items, error: itemsError }] = await Promise.all([
-          supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('order'),
-          supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).order('order'),
+          supabase.from('categories').select('*').eq('tenant_id', tenantData.id).order('order'),
+          supabase.from('menu_items').select('*').eq('tenant_id', tenantData.id).order('order'),
         ])
         
         if (isCancelled) return
@@ -108,6 +113,10 @@ export default function MenuPage() {
       return a.order - b.order
     })
   }, [allMenuItems, activeCategory, searchQuery])
+
+  // Get branding colors with fallbacks
+  const primaryColor = tenant?.primary_color || '#ff6b35'
+  const secondaryColor = tenant?.secondary_color || '#666666'
 
   // Show loading state
   if (isLoading) {
@@ -180,7 +189,8 @@ export default function MenuPage() {
           </p>
           <button 
             onClick={() => window.location.reload()} 
-            className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-full font-semibold transition-colors"
+            className="text-white px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
+            style={{ backgroundColor: primaryColor }}
           >
             Try Again
           </button>
@@ -190,18 +200,37 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
-      {/* Header with ClickEats-style design */}
-      <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+      {/* Header with dynamic branding */}
+      <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b" style={{ borderColor: `${primaryColor}20` }}>
         <div className="container mx-auto px-4">
           <div className="flex h-20 items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500">
-                <span className="text-lg font-bold text-white">{tenantSlug.charAt(0).toUpperCase()}</span>
-              </div>
+              {tenant?.logo_url ? (
+                <div className="relative h-12 w-12 rounded-full overflow-hidden">
+                  <Image 
+                    src={tenant.logo_url} 
+                    alt={tenant.name} 
+                    fill
+                    className="object-cover"
+                    sizes="48px"
+                  />
+                </div>
+              ) : (
+                <div 
+                  className="flex h-12 w-12 items-center justify-center rounded-full"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <span className="text-lg font-bold text-white">
+                    {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
               <div>
-                <h1 className="text-xl font-bold text-gray-900">{tenantSlug.replace(/-/g, ' ')}</h1>
+                <h1 className="text-xl font-bold text-gray-900">
+                  {tenant?.name || tenantSlug.replace(/-/g, ' ')}
+                </h1>
                 <p className="text-xs text-gray-500">Smart Ordering Partner</p>
               </div>
             </div>
@@ -209,9 +238,12 @@ export default function MenuPage() {
             {/* Category Navigation */}
             <nav className="hidden md:flex items-center gap-8">
               <button
-                className={`text-sm font-medium transition-colors ${
-                  !activeCategory ? 'text-orange-600' : 'text-gray-600 hover:text-orange-600'
-                }`}
+                className="text-sm font-medium transition-colors"
+                style={{ 
+                  color: !activeCategory ? primaryColor : secondaryColor
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
+                onMouseLeave={(e) => e.currentTarget.style.color = !activeCategory ? primaryColor : secondaryColor}
                 onClick={() => setActiveCategory(null)}
               >
                 All
@@ -219,9 +251,12 @@ export default function MenuPage() {
               {categories.map((category) => (
                 <button
                   key={category.id}
-                  className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                    activeCategory === category.id ? 'text-orange-600' : 'text-gray-600 hover:text-orange-600'
-                  }`}
+                  className="flex items-center gap-2 text-sm font-medium transition-colors"
+                  style={{ 
+                    color: activeCategory === category.id ? primaryColor : secondaryColor
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
+                  onMouseLeave={(e) => e.currentTarget.style.color = activeCategory === category.id ? primaryColor : secondaryColor}
                   onClick={() => setActiveCategory(category.id)}
                 >
                   <span className="text-lg">{category.icon || '🍽️'}</span>
@@ -232,17 +267,28 @@ export default function MenuPage() {
 
             {/* Utility Icons */}
             <div className="flex items-center gap-4">
-              <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
+              <button 
+                className="flex items-center gap-2 text-sm transition-colors"
+                style={{ color: secondaryColor }}
+                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
+                onMouseLeave={(e) => e.currentTarget.style.color = secondaryColor}
+              >
                 <span className="text-lg">📦</span>
                 <span className="hidden sm:inline">Track Order</span>
               </button>
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative p-2 text-gray-600 hover:text-orange-600 transition-colors"
+                className="relative p-2 transition-colors"
+                style={{ color: secondaryColor }}
+                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
+                onMouseLeave={(e) => e.currentTarget.style.color = secondaryColor}
               >
                 <span className="text-xl">🛒</span>
                 {items.length > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                  <span 
+                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
                     {items.length}
                   </span>
                 )}
@@ -303,14 +349,19 @@ export default function MenuPage() {
                   setSearchQuery('')
                   setActiveCategory(null)
                 }}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-full font-semibold transition-colors"
+                className="text-white px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
+                style={{ backgroundColor: primaryColor }}
               >
                 Clear Filters
               </button>
             )}
           </div>
         ) : (
-          <MenuGrid items={filteredItems} onItemSelect={setSelectedItem} />
+          <MenuGrid 
+            items={filteredItems} 
+            onItemSelect={setSelectedItem}
+            primaryColor={primaryColor}
+          />
         )}
       </main>
 
@@ -319,12 +370,14 @@ export default function MenuPage() {
         open={!!selectedItem}
         onClose={() => setSelectedItem(null)}
         onAddToCart={addItem}
+        primaryColor={primaryColor}
       />
 
       <CartDrawer
         open={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         tenantSlug={tenantSlug}
+        primaryColor={primaryColor}
       />
     </div>
   )

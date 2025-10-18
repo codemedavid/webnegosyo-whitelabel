@@ -8,9 +8,10 @@ import type { MenuItem } from '@/types/database'
 interface MenuGridProps {
   items: MenuItem[]
   onItemSelect: (item: MenuItem) => void
+  primaryColor?: string
 }
 
-export function MenuGrid({ items, onItemSelect }: MenuGridProps) {
+export function MenuGrid({ items, onItemSelect, primaryColor }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -26,7 +27,12 @@ export function MenuGrid({ items, onItemSelect }: MenuGridProps) {
   return (
     <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
-        <MenuItemCard key={item.id} item={item} onSelect={onItemSelect} />
+        <MenuItemCard 
+          key={item.id} 
+          item={item} 
+          onSelect={onItemSelect} 
+          primaryColor={primaryColor}
+        />
       ))}
     </div>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag } from 'lucide-react'
@@ -9,7 +10,9 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
-import { getTenantBySlug } from '@/lib/mockData'
+import { getTenantBySlugSupabase } from '@/lib/tenants-service'
+import { toast } from 'sonner'
+import type { Tenant } from '@/types/database'
 
 export default function CartPage() {
   const params = useParams()
@@ -17,10 +20,50 @@ export default function CartPage() {
   const tenantSlug = params.tenant as string
   const { items, total, updateQuantity, removeItem } = useCart()
 
-  const tenant = getTenantBySlug(tenantSlug)
+  const [tenant, setTenant] = useState<Tenant | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Load tenant data from Supabase
+  useEffect(() => {
+    const loadTenant = async () => {
+      try {
+        const { data, error } = await getTenantBySlugSupabase(tenantSlug)
+        if (error || !data) {
+          toast.error('Restaurant not found')
+          router.push('/')
+          return
+        }
+        setTenant(data)
+      } catch {
+        toast.error('Failed to load restaurant')
+        router.push('/')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadTenant()
+  }, [tenantSlug, router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-16 w-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading cart...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!tenant) {
-    return <div>Tenant not found</div>
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Restaurant not found</p>
+        </div>
+      </div>
+    )
   }
 
   return (

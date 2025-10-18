@@ -20,17 +20,21 @@ interface CartDrawerProps {
   open: boolean
   onClose: () => void
   tenantSlug: string
+  primaryColor?: string
 }
 
-export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
+export function CartDrawer({ open, onClose, tenantSlug, primaryColor = '#ff6b35' }: CartDrawerProps) {
   const { items, total, updateQuantity, removeItem } = useCart()
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-orange-50/30 to-orange-100/20">
-        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+      <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100">
+        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b" style={{ borderColor: `${primaryColor}20` }}>
           <SheetTitle className="flex items-center gap-3 text-xl">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500">
+            <div 
+              className="flex h-10 w-10 items-center justify-center rounded-full"
+              style={{ backgroundColor: primaryColor }}
+            >
               <ShoppingCart className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -71,7 +75,15 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
                             {item.menu_item.name}
                           </h4>
                           {item.selected_variation && (
-                            <Badge variant="outline" className="mt-1 text-xs border-orange-200 text-orange-700 bg-orange-50">
+                            <Badge 
+                              variant="outline" 
+                              className="mt-1 text-xs"
+                              style={{ 
+                                borderColor: `${primaryColor}40`,
+                                color: primaryColor,
+                                backgroundColor: `${primaryColor}10`
+                              }}
+                            >
                               {item.selected_variation.name}
                             </Badge>
                           )}
@@ -124,7 +136,7 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
                             <Plus className="h-3 w-3" />
                           </Button>
                         </div>
-                        <span className="font-bold text-orange-600 text-sm">
+                        <span className="font-bold text-sm" style={{ color: primaryColor }}>
                           {formatPrice(item.subtotal)}
                         </span>
                       </div>
@@ -134,20 +146,37 @@ export function CartDrawer({ open, onClose, tenantSlug }: CartDrawerProps) {
               </div>
             </ScrollArea>
 
-            <div className="bg-white/95 backdrop-blur-sm border-t border-orange-200/30 p-6 space-y-4">
+            <div className="bg-white/95 backdrop-blur-sm border-t p-6 space-y-4" style={{ borderColor: `${primaryColor}20` }}>
               <div className="flex items-center justify-between">
                 <span className="text-lg font-bold text-gray-900">Total</span>
-                <span className="text-xl font-bold text-orange-600">{formatPrice(total)}</span>
+                <span className="text-xl font-bold" style={{ color: primaryColor }}>{formatPrice(total)}</span>
               </div>
 
               <div className="flex flex-col gap-3">
                 <Link href={`/${tenantSlug}/cart`} className="w-full" onClick={onClose}>
-                  <Button variant="outline" className="w-full h-12 border-2 border-gray-200 hover:bg-orange-50 hover:border-orange-200 rounded-xl font-semibold">
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-12 border-2 border-gray-200 rounded-xl font-semibold transition-colors"
+                    style={{ 
+                      borderColor: `${primaryColor}40`
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = `${primaryColor}10`
+                      e.currentTarget.style.borderColor = `${primaryColor}60`
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                      e.currentTarget.style.borderColor = `${primaryColor}40`
+                    }}
+                  >
                     Review Cart
                   </Button>
                 </Link>
                 <Link href={`/${tenantSlug}/checkout`} className="w-full" onClick={onClose}>
-                  <Button className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg">
+                  <Button 
+                    className="w-full h-12 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: primaryColor }}
+                  >
                     Proceed to Checkout
                   </Button>
                 </Link>

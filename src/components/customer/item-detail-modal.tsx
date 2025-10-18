@@ -30,6 +30,7 @@ interface ItemDetailModalProps {
     quantity: number,
     specialInstructions?: string
   ) => void
+  primaryColor?: string
 }
 
 export function ItemDetailModal({
@@ -37,7 +38,10 @@ export function ItemDetailModal({
   open,
   onClose,
   onAddToCart,
+  primaryColor,
 }: ItemDetailModalProps) {
+  // Silence unused var warning - primaryColor kept for future customization
+  void primaryColor
   const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>()
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([])
   const [quantity, setQuantity] = useState(1)

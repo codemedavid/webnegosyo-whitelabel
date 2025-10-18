@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ImageUpload } from '@/components/shared/image-upload'
 import type { Tenant } from '@/types/database'
 import { useCreateTenant, useUpdateTenant } from '@/lib/queries/tenants'
 import { toast } from 'sonner'
@@ -131,15 +132,14 @@ export function TenantForm({ tenant }: TenantFormProps) {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="logo_url">Logo URL</Label>
-            <Input
-              id="logo_url"
-              value={formData.logo_url}
-              onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-              placeholder="https://..."
-            />
-          </div>
+          <ImageUpload
+            value={formData.logo_url}
+            onChange={(url) => setFormData({ ...formData, logo_url: url })}
+            label="Restaurant Logo"
+            description="Upload your restaurant logo (recommended: square image)"
+            folder="tenants/logos"
+            disabled={createMutation.isPending || updateMutation.isPending}
+          />
 
           <label className="flex items-center gap-2">
             <input

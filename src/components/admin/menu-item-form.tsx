@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ImageUpload } from '@/components/shared/image-upload'
 import type { MenuItem, Category } from '@/types/database'
 import { toast } from 'sonner'
 
@@ -178,16 +179,13 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="image_url">Image URL *</Label>
-            <Input
-              id="image_url"
-              value={formData.image_url}
-              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-              placeholder="https://..."
-              required
-            />
-          </div>
+          <ImageUpload
+            value={formData.image_url}
+            onChange={(url) => setFormData({ ...formData, image_url: url })}
+            label="Dish Image *"
+            description="Upload a photo of your dish (horizontal/landscape recommended)"
+            folder="menu-items"
+          />
 
           <div className="flex gap-4">
             <label className="flex items-center gap-2">
