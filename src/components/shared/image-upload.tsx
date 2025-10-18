@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CldUploadWidget } from 'next-cloudinary'
 import { Upload, X, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,11 @@ export function ImageUpload({
   disabled = false,
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleUploadSuccess = (result: any) => {
@@ -35,6 +40,11 @@ export function ImageUpload({
       onChange(result.info.secure_url)
     }
   }
+
+  // Don't render Cloudinary component until mounted (client-side only)
+  const cloudinaryPreset = typeof window !== 'undefined' 
+    ? process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET 
+    : undefined
 
   const handleRemove = () => {
     if (onRemove) {
@@ -89,38 +99,50 @@ export function ImageUpload({
 
         {/* Upload Widget */}
         <div className="flex-1 space-y-2">
-          <CldUploadWidget
-            uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
-            options={{
-              folder,
-              maxFiles: 1,
-              resourceType: 'image',
-              clientAllowedFormats: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-              maxFileSize: 5000000, // 5MB
-              sources: ['local', 'url', 'camera'],
-              multiple: false,
-              cropping: true,
-              croppingAspectRatio: 1, // Square crop for logos
-              croppingShowDimensions: true,
-              showSkipCropButton: false,
-            }}
-            onSuccess={handleUploadSuccess}
-            onOpen={() => setIsUploading(true)}
-            onClose={() => setIsUploading(false)}
-          >
-            {({ open }) => (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => open()}
-                disabled={disabled || isUploading}
-                className="w-full"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {isUploading ? 'Uploading...' : value ? 'Change Image' : 'Upload Image'}
-              </Button>
-            )}
-          </CldUploadWidget>
+          {isMounted && cloudinaryPreset ? (
+            <CldUploadWidget
+              uploadPreset={cloudinaryPreset}
+              options={{
+                folder,
+                maxFiles: 1,
+                resourceType: 'image',
+                clientAllowedFormats: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+                maxFileSize: 5000000, // 5MB
+                sources: ['local', 'url', 'camera'],
+                multiple: false,
+                cropping: true,
+                croppingAspectRatio: 1, // Square crop for logos
+                croppingShowDimensions: true,
+                showSkipCropButton: false,
+              }}
+              onSuccess={handleUploadSuccess}
+              onOpen={() => setIsUploading(true)}
+              onClose={() => setIsUploading(false)}
+            >
+              {({ open }) => (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => open()}
+                  disabled={disabled || isUploading}
+                  className="w-full"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  {isUploading ? 'Uploading...' : value ? 'Change Image' : 'Upload Image'}
+                </Button>
+              )}
+            </CldUploadWidget>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              disabled
+              className="w-full"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {isMounted ? 'Cloudinary not configured' : 'Loading...'}
+            </Button>
+          )}
 
           {!value && (
             <p className="text-xs text-muted-foreground">

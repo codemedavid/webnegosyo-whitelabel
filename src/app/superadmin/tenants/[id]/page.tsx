@@ -5,6 +5,9 @@ import { TenantFormWrapper } from '@/components/superadmin/tenant-form-wrapper'
 import { getTenant } from '@/lib/queries/tenants-server'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
+// Force dynamic rendering to avoid Cloudinary prerendering issues
+export const dynamic = 'force-dynamic'
+
 async function TenantData({ id }: { id: string }) {
   const tenant = await getTenant(id)
 
