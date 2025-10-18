@@ -28,6 +28,7 @@ export function ImageUpload({
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleUploadSuccess = (result: any) => {
     setIsUploading(false)
     if (result?.info?.secure_url) {

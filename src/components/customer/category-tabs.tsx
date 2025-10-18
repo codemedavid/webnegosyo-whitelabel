@@ -1,7 +1,5 @@
 'use client'
 
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-
 interface CategoryLite { id: string; name: string; icon?: string }
 
 interface CategoryTabsProps {

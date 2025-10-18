@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice, generateMessengerMessage, generateMessengerUrl } from '@/lib/cart-utils'
-import { createClient } from '@/lib/supabase/client'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { createOrderAction } from '@/app/actions/orders'
 import { toast } from 'sonner'
@@ -27,14 +26,14 @@ export default function CheckoutPage() {
   useEffect(() => {
     const loadTenant = async () => {
       try {
-        const { data, error } = await getTenantBySlugSupabase(tenantSlug)
-        if (error || !data) {
+        const { data, error: fetchError } = await getTenantBySlugSupabase(tenantSlug)
+        if (fetchError || !data) {
           toast.error('Restaurant not found')
           router.push('/')
           return
         }
         setTenant(data)
-      } catch (error) {
+      } catch {
         toast.error('Failed to load restaurant')
         router.push('/')
       } finally {
@@ -96,7 +95,7 @@ export default function CheckoutPage() {
       setTimeout(() => {
         window.location.href = messengerUrl
       }, 1000)
-    } catch (error) {
+    } catch {
       toast.error('An error occurred. Please try again.')
       setIsProcessing(false)
     }
