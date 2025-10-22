@@ -68,7 +68,7 @@ export function TenantUsersList({ tenantId, tenantName, users }: TenantUsersList
           {users.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>No admin users assigned to this tenant</p>
-              <p className="text-sm mt-2">Click "Add User" to create the first admin</p>
+              <p className="text-sm mt-2">Click &quot;Add User&quot; to create the first admin</p>
             </div>
           ) : (
             <div className="space-y-3">
