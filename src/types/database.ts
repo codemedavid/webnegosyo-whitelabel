@@ -87,6 +87,14 @@ export interface User {
   updated_at: string;
 }
 
+export interface AppUser {
+  user_id: string;
+  role: 'superadmin' | 'admin';
+  tenant_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OrderItem {
   menu_item_id: string;
   menu_item_name: string;
@@ -133,6 +141,11 @@ export interface Database {
         Row: User;
         Insert: Omit<User, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<User, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      app_users: {
+        Row: AppUser;
+        Insert: Omit<AppUser, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<AppUser, 'user_id' | 'created_at' | 'updated_at'>>;
       };
       orders: {
         Row: Order;

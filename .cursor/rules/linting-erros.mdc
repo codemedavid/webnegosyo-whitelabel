@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Make sure before finishing the task check any linting errors to make sure it's ready to deploy to vercel

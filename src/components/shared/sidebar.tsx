@@ -10,7 +10,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Users,
   Store,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -142,11 +141,6 @@ export const superAdminSidebarItems: SidebarItem[] = [
     label: 'Tenants',
     href: '/superadmin/tenants',
     icon: Store,
-  },
-  {
-    label: 'Users',
-    href: '/superadmin/users',
-    icon: Users,
   },
   {
     label: 'Settings',
