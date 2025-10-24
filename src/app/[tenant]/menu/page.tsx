@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { CategoryTabs } from '@/components/customer/category-tabs'
 import { SearchBar } from '@/components/customer/search-bar'
 import { MenuGrid } from '@/components/customer/menu-grid'
+import { MenuGridGrouped } from '@/components/customer/menu-grid-grouped'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { useCart } from '@/hooks/useCart'
@@ -320,14 +321,16 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* Mobile Category Navigation */}
+        {/* Mobile Category Navigation - Sticky */}
         {!isLoading && categories.length > 0 && (
-          <div className="mb-8 md:hidden">
-            <CategoryTabs
-              categories={categories}
-              activeCategory={activeCategory}
-              onCategoryChange={setActiveCategory}
-            />
+          <div className="sticky top-20 z-40 bg-white/95 backdrop-blur-sm border-b mb-8 md:hidden" style={{ borderColor: `${primaryColor}20` }}>
+            <div className="px-4 py-3">
+              <CategoryTabs
+                categories={categories}
+                activeCategory={activeCategory}
+                onCategoryChange={setActiveCategory}
+              />
+            </div>
           </div>
         )}
 
@@ -357,11 +360,21 @@ export default function MenuPage() {
             )}
           </div>
         ) : (
-          <MenuGrid 
-            items={filteredItems} 
-            onItemSelect={setSelectedItem}
-            primaryColor={primaryColor}
-          />
+          // Show grouped view when no category is selected, regular grid when category is selected
+          activeCategory ? (
+            <MenuGrid 
+              items={filteredItems} 
+              onItemSelect={setSelectedItem}
+              primaryColor={primaryColor}
+            />
+          ) : (
+            <MenuGridGrouped 
+              items={filteredItems} 
+              categories={categories}
+              onItemSelect={setSelectedItem}
+              primaryColor={primaryColor}
+            />
+          )
         )}
       </main>
 
