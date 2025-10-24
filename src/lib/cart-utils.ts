@@ -60,7 +60,8 @@ export function formatPrice(price: number): string {
  */
 export function generateMessengerMessage(
   items: CartItem[],
-  restaurantName: string
+  restaurantName: string,
+  orderCreated: boolean = true
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -90,6 +91,12 @@ export function generateMessengerMessage(
   const total = calculateCartTotal(items)
   lines.push(`💰 Total: ${formatPrice(total)}`)
   lines.push('')
+  
+  if (!orderCreated) {
+    lines.push('⚠️ Note: Order was not saved to system - please create manually in admin panel')
+    lines.push('')
+  }
+  
   lines.push('📍 Please confirm your order!')
 
   return lines.join('\n')
@@ -107,6 +114,6 @@ export function generateMessengerUrl(
   if (usePageId) {
     return `https://m.me/${pageIdOrUsername}?text=${encodedMessage}`
   }
-  return `https://www.messenger.com/t/${pageIdOrUsername}?text=${encodedMessage}`
+  return `https://m.me/${pageIdOrUsername}?text=${encodedMessage}`
 }
 

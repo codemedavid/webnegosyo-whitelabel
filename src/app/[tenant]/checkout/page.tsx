@@ -57,7 +57,8 @@ export default function CheckoutPage() {
     setIsProcessing(true)
 
     try {
-      // Create order in database
+      // Try to create order in database (but don't block on failure)
+      let orderCreated = false
       const orderItems = items.map(item => ({
         menu_item_id: item.menu_item.id,
         menu_item_name: item.menu_item.name,
@@ -69,16 +70,27 @@ export default function CheckoutPage() {
         special_instructions: item.special_instructions,
       }))
 
-      const result = await createOrderAction(tenant.id, orderItems)
+      try {
+        const result = await createOrderAction(tenant.id, orderItems)
+        orderCreated = result.success
 
-      if (!result.success) {
-        toast.error('Failed to create order. Please try again.')
-        setIsProcessing(false)
-        return
+        if (result.success) {
+          toast.success('Order created successfully!')
+        } else {
+          console.warn('Order creation failed:', result.error)
+          console.warn('Order items:', orderItems)
+          console.warn('Tenant ID:', tenant.id)
+          toast.warning('Order creation failed, but proceeding to Messenger...')
+        }
+      } catch (error) {
+        console.warn('Order creation error:', error)
+        console.warn('Order items:', orderItems)
+        console.warn('Tenant ID:', tenant.id)
+        toast.warning('Order creation failed, but proceeding to Messenger...')
       }
 
-      // Generate messenger message and URL
-      const message = generateMessengerMessage(items, tenant.name)
+      // Generate messenger message and URL (always proceed)
+      const message = generateMessengerMessage(items, tenant.name, orderCreated)
       const messengerUrl = generateMessengerUrl(
         tenant.messenger_username || tenant.messenger_page_id,
         message,
@@ -89,13 +101,14 @@ export default function CheckoutPage() {
       clearCart()
 
       // Show success message
-      toast.success('Order created! Redirecting to Messenger...')
+      toast.success('Redirecting to Messenger...')
 
       // Redirect to Messenger
       setTimeout(() => {
         window.location.href = messengerUrl
       }, 1000)
-    } catch {
+    } catch (error) {
+      console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')
       setIsProcessing(false)
     }
