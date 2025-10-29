@@ -1,7 +1,5 @@
-'use client'
-
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { TenantForm } from '@/components/superadmin/tenant-form'
+import { TenantFormWrapper } from '@/components/superadmin/tenant-form-wrapper'
 
 // Force dynamic rendering to avoid Cloudinary prerendering issues
 export const dynamic = 'force-dynamic'
@@ -22,7 +20,7 @@ export default function NewTenantPage() {
         <p className="text-muted-foreground">Create a new restaurant tenant</p>
       </div>
 
-      <TenantForm />
+      <TenantFormWrapper />
     </div>
   )
 }

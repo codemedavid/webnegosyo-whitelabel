@@ -8,6 +8,9 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getTenants } from '@/lib/queries/tenants-server'
 import { TenantSearch } from '@/components/superadmin/tenant-search'
 
+// Cache the tenant list for 60s; mutations already revalidate
+export const revalidate = 60
+
 async function TenantList() {
   const tenants = await getTenants()
 

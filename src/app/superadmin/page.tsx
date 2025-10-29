@@ -5,6 +5,9 @@ import { Store, Users, Activity, TrendingUp } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { getTenants } from '@/lib/queries/tenants-server'
 
+// Cache the dashboard for 60s to avoid repeated DB hits on navigation
+export const revalidate = 60
+
 // Server Component - renders on server, NO client bundle
 async function DashboardStats() {
   const tenants = await getTenants()

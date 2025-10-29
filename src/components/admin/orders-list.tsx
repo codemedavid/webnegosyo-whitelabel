@@ -146,6 +146,12 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
                       <span className="font-medium">{order.customer_contact}</span>
                     </div>
                   )}
+                  {order.order_type && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Order Type:</span>
+                      <span className="font-medium">{order.order_type}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Items:</span>
                     <span className="font-medium">{itemCount}</span>
@@ -185,6 +191,23 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Contact:</span>
                       <span>{selectedOrder.customer_contact}</span>
+                    </div>
+                  )}
+                  {selectedOrder.order_type && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Order Type:</span>
+                      <span>{selectedOrder.order_type}</span>
+                    </div>
+                  )}
+                  {selectedOrder.customer_data && Object.keys(selectedOrder.customer_data).length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="font-medium mb-2">Additional Information:</h4>
+                      {Object.entries(selectedOrder.customer_data).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
+                          <span>{String(value)}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

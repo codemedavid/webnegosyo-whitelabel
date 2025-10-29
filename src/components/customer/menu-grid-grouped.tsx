@@ -4,15 +4,16 @@ import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { UtensilsCrossed } from 'lucide-react'
 import type { MenuItem, Category } from '@/types/database'
+import type { BrandingColors } from '@/lib/branding-utils'
 
 interface MenuGridGroupedProps {
   items: MenuItem[]
   categories: Category[]
   onItemSelect: (item: MenuItem) => void
-  primaryColor?: string
+  branding: BrandingColors
 }
 
-export function MenuGridGrouped({ items, categories, onItemSelect, primaryColor }: MenuGridGroupedProps) {
+export function MenuGridGrouped({ items, categories, onItemSelect, branding }: MenuGridGroupedProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -51,18 +52,21 @@ export function MenuGridGrouped({ items, categories, onItemSelect, primaryColor 
           <div className="flex items-center gap-3">
             <div 
               className="flex h-12 w-12 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${primaryColor}15` }}
+              style={{ backgroundColor: `${branding.primary}15` }}
             >
               <span className="text-2xl">{category.icon || '🍽️'}</span>
             </div>
             <div>
               <h2 
                 className="text-2xl font-bold"
-                style={{ color: primaryColor }}
+                style={{ color: branding.primary }}
               >
                 {category.name}
               </h2>
-              <p className="text-sm text-gray-500">
+              <p 
+                className="text-sm"
+                style={{ color: branding.textMuted }}
+              >
                 {categoryItems.length} {categoryItems.length === 1 ? 'item' : 'items'}
               </p>
             </div>
@@ -75,7 +79,7 @@ export function MenuGridGrouped({ items, categories, onItemSelect, primaryColor 
                 key={item.id} 
                 item={item} 
                 onSelect={onItemSelect} 
-                primaryColor={primaryColor}
+                branding={branding}
               />
             ))}
           </div>

@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Store,
+  ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,11 +28,17 @@ interface SidebarProps {
   basePath: string
   onLogout?: () => void
   tenantName?: string
+  enableOrderManagement?: boolean
 }
 
-export function Sidebar({ items, onLogout, tenantName }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, enableOrderManagement }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Filter out orders item if order management is disabled
+  const filteredItems = enableOrderManagement === false 
+    ? items.filter(item => !item.href.includes('/orders'))
+    : items
 
   return (
     <aside
@@ -62,7 +69,7 @@ export function Sidebar({ items, onLogout, tenantName }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-1 p-2">
-        {items.map((item) => {
+        {filteredItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
 
@@ -120,9 +127,14 @@ export const adminSidebarItems: SidebarItem[] = [
     icon: FolderTree,
   },
   {
+    label: 'Order Types',
+    href: '/admin/order-types',
+    icon: Store,
+  },
+  {
     label: 'Orders',
     href: '/admin/orders',
-    icon: Store,
+    icon: ShoppingBag,
   },
   {
     label: 'Settings',

@@ -136,7 +136,9 @@ export async function createOrder(
   customerInfo?: {
     name?: string
     contact?: string
-  }
+  },
+  orderTypeId?: string,
+  customerData?: Record<string, unknown>
 ) {
   const supabase = await createClient()
 
@@ -147,8 +149,11 @@ export async function createOrder(
     .from('orders')
     .insert({
       tenant_id: tenantId,
+      order_type_id: orderTypeId,
+      order_type: orderTypeId ? await getOrderTypeName(orderTypeId) : null,
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
+      customer_data: customerData || {},
       total,
       status: 'pending',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,5 +187,19 @@ export async function createOrder(
   if (itemsError) throw itemsError
 
   return orderData as Order
+}
+
+// Helper function to get order type name
+async function getOrderTypeName(orderTypeId: string): Promise<string | null> {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('order_types')
+    .select('name')
+    .eq('id', orderTypeId)
+    .single()
+
+  if (error) return null
+  return (data as { name?: string } | null)?.name ?? null
 }
 

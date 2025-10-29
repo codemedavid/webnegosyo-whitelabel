@@ -9,9 +9,35 @@ export interface Tenant {
   primary_color: string;
   secondary_color: string;
   accent_color?: string;
+  // Extended branding colors
+  background_color?: string;
+  header_color?: string;
+  header_font_color?: string;
+  cards_color?: string;
+  cards_border_color?: string;
+  button_primary_color?: string;
+  button_primary_text_color?: string;
+  button_secondary_color?: string;
+  button_secondary_text_color?: string;
+  text_primary_color?: string;
+  text_secondary_color?: string;
+  text_muted_color?: string;
+  border_color?: string;
+  success_color?: string;
+  warning_color?: string;
+  error_color?: string;
+  link_color?: string;
+  shadow_color?: string;
+  // Menu hero customization
+  hero_title?: string;
+  hero_description?: string;
+  hero_title_color?: string;
+  hero_description_color?: string;
   messenger_page_id: string;
   messenger_username?: string;
   is_active: boolean;
+  mapbox_enabled: boolean;
+  enable_order_management: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -106,11 +132,42 @@ export interface OrderItem {
   special_instructions?: string;
 }
 
+export interface OrderType {
+  id: string;
+  tenant_id: string;
+  type: 'dine_in' | 'pickup' | 'delivery';
+  name: string;
+  description?: string;
+  is_enabled: boolean;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerFormField {
+  id: string;
+  tenant_id: string;
+  order_type_id: string;
+  field_name: string;
+  field_label: string;
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number';
+  is_required: boolean;
+  placeholder?: string;
+  validation_rules?: Record<string, unknown>;
+  options?: string[];
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Order {
   id: string;
   tenant_id: string;
+  order_type_id?: string;
+  order_type?: string;
   customer_name?: string;
   customer_contact?: string;
+  customer_data?: Record<string, unknown>;
   items: OrderItem[];
   total: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -136,6 +193,16 @@ export interface Database {
         Row: MenuItem;
         Insert: Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      order_types: {
+        Row: OrderType;
+        Insert: Omit<OrderType, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<OrderType, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      customer_form_fields: {
+        Row: CustomerFormField;
+        Insert: Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>>;
       };
       users: {
         Row: User;

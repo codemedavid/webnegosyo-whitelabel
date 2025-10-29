@@ -10,15 +10,23 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 // Force dynamic rendering to avoid Cloudinary prerendering issues
 export const dynamic = 'force-dynamic'
 
+async function TenantUsersSection({ id, tenantName }: { id: string; tenantName: string }) {
+  const users = await getTenantUsers(id)
+  return (
+    <TenantUsersList
+      tenantId={id}
+      tenantName={tenantName}
+      users={users}
+    />
+  )
+}
+
 async function TenantData({ id }: { id: string }) {
   const tenant = await getTenant(id)
 
   if (!tenant) {
     notFound()
   }
-
-  // Fetch users for this tenant
-  const users = await getTenantUsers(id)
 
   return (
     <>
@@ -27,24 +35,36 @@ async function TenantData({ id }: { id: string }) {
         <p className="text-muted-foreground">Update the details of {tenant.name}</p>
       </div>
 
-      {/* User Management Section */}
-      <TenantUsersList 
-        tenantId={tenant.id} 
-        tenantName={tenant.name}
-        users={users}
-      />
-
-      {/* Tenant Form Section */}
+      {/* Tenant Form Section - show ASAP */}
       <TenantFormWrapper tenant={tenant} />
+
+      {/* User Management Section - stream separately */}
+      <Suspense
+        fallback={
+          <Card>
+            <CardHeader>
+              <div className="h-6 w-32 animate-pulse bg-muted rounded" />
+            </CardHeader>
+            <CardContent>
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="mb-3 h-16 w-full animate-pulse bg-muted rounded" />
+              ))}
+            </CardContent>
+          </Card>
+        }
+      >
+        <TenantUsersSection id={tenant.id} tenantName={tenant.name} />
+      </Suspense>
     </>
   )
 }
 
-export default function EditTenantPage({
+export default async function EditTenantPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -90,7 +110,7 @@ export default function EditTenantPage({
           </div>
         }
       >
-        <TenantData id={params.id} />
+        <TenantData id={id} />
       </Suspense>
     </div>
   )

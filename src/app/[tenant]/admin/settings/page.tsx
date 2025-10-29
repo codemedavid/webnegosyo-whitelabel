@@ -3,6 +3,10 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getTenantBySlug } from '@/lib/admin-service'
 import { Badge } from '@/components/ui/badge'
 import type { Tenant } from '@/types/database'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
 
 export default async function SettingsPage({
   params,
@@ -65,41 +69,220 @@ export default async function SettingsPage({
       <Card>
         <CardHeader>
           <CardTitle>Branding</CardTitle>
-          <CardDescription>Your brand colors and styling</CardDescription>
+          <CardDescription>Update your brand colors and styling</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="h-10 w-10 rounded border"
-              style={{ backgroundColor: tenant.primary_color }}
-            />
-            <div>
-              <p className="text-sm font-medium">Primary Color</p>
-              <p className="text-sm text-muted-foreground">{tenant.primary_color}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className="h-10 w-10 rounded border"
-              style={{ backgroundColor: tenant.secondary_color }}
-            />
-            <div>
-              <p className="text-sm font-medium">Secondary Color</p>
-              <p className="text-sm text-muted-foreground">{tenant.secondary_color}</p>
-            </div>
-          </div>
-          {tenant.accent_color && (
-            <div className="flex items-center gap-3">
-              <div
-                className="h-10 w-10 rounded border"
-                style={{ backgroundColor: tenant.accent_color }}
-              />
+        <CardContent>
+          <form
+            action={async (formData: FormData) => {
+              'use server'
+              const input = {
+                primary_color: String(formData.get('primary_color') || ''),
+                secondary_color: String(formData.get('secondary_color') || ''),
+                accent_color: String(formData.get('accent_color') || ''),
+                background_color: String(formData.get('background_color') || ''),
+                header_color: String(formData.get('header_color') || ''),
+                header_font_color: String(formData.get('header_font_color') || ''),
+                cards_color: String(formData.get('cards_color') || ''),
+                cards_border_color: String(formData.get('cards_border_color') || ''),
+                button_primary_color: String(formData.get('button_primary_color') || ''),
+                button_primary_text_color: String(formData.get('button_primary_text_color') || ''),
+                button_secondary_color: String(formData.get('button_secondary_color') || ''),
+                button_secondary_text_color: String(formData.get('button_secondary_text_color') || ''),
+                text_primary_color: String(formData.get('text_primary_color') || ''),
+                text_secondary_color: String(formData.get('text_secondary_color') || ''),
+                text_muted_color: String(formData.get('text_muted_color') || ''),
+                border_color: String(formData.get('border_color') || ''),
+                success_color: String(formData.get('success_color') || ''),
+                warning_color: String(formData.get('warning_color') || ''),
+                error_color: String(formData.get('error_color') || ''),
+                link_color: String(formData.get('link_color') || ''),
+                shadow_color: String(formData.get('shadow_color') || ''),
+              }
+              await updateTenantBrandingForAdminAction(tenant.id, input)
+            }}
+            className="space-y-8"
+          >
+            <div className="space-y-8">
               <div>
-                <p className="text-sm font-medium">Accent Color</p>
-                <p className="text-sm text-muted-foreground">{tenant.accent_color}</p>
+                <h4 className="text-sm font-medium mb-4">Core</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="primary_color">Primary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="primary_color" name="primary_color" defaultValue={tenant.primary_color} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.primary_color} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="secondary_color">Secondary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="secondary_color" name="secondary_color" defaultValue={tenant.secondary_color} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.secondary_color} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="accent_color">Accent</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="accent_color" name="accent_color" defaultValue={tenant.accent_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.accent_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-4">Layout</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="background_color">Background</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="background_color" name="background_color" defaultValue={tenant.background_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.background_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="header_color">Header</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="header_color" name="header_color" defaultValue={tenant.header_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.header_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="header_font_color">Header Font</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="header_font_color" name="header_font_color" defaultValue={tenant.header_font_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.header_font_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cards_color">Cards</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="cards_color" name="cards_color" defaultValue={tenant.cards_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.cards_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cards_border_color">Cards Border</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="cards_border_color" name="cards_border_color" defaultValue={tenant.cards_border_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.cards_border_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="border_color">Border</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="border_color" name="border_color" defaultValue={tenant.border_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.border_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-4">Buttons</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="button_primary_color">Primary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="button_primary_color" name="button_primary_color" defaultValue={tenant.button_primary_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.button_primary_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="button_primary_text_color">Primary Text</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="button_primary_text_color" name="button_primary_text_color" defaultValue={tenant.button_primary_text_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.button_primary_text_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="button_secondary_color">Secondary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="button_secondary_color" name="button_secondary_color" defaultValue={tenant.button_secondary_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.button_secondary_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="button_secondary_text_color">Secondary Text</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="button_secondary_text_color" name="button_secondary_text_color" defaultValue={tenant.button_secondary_text_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.button_secondary_text_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-4">Text & States</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="text_primary_color">Text Primary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="text_primary_color" name="text_primary_color" defaultValue={tenant.text_primary_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.text_primary_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="text_secondary_color">Text Secondary</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="text_secondary_color" name="text_secondary_color" defaultValue={tenant.text_secondary_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.text_secondary_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="text_muted_color">Text Muted</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="text_muted_color" name="text_muted_color" defaultValue={tenant.text_muted_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.text_muted_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="success_color">Success</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="success_color" name="success_color" defaultValue={tenant.success_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.success_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="warning_color">Warning</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="warning_color" name="warning_color" defaultValue={tenant.warning_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.warning_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="error_color">Error</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="error_color" name="error_color" defaultValue={tenant.error_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.error_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="link_color">Link</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="link_color" name="link_color" defaultValue={tenant.link_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.link_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-4">Shadow</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                    <Label htmlFor="shadow_color">Shadow (rgba allowed)</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="shadow_color" name="shadow_color" defaultValue={tenant.shadow_color || ''} type="text" className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          )}
+            <div className="pt-4">
+              <Button type="submit">Save Branding</Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
 

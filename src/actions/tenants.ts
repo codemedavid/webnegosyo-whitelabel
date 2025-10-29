@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
+import { z } from 'zod'
+import { verifyTenantAdmin } from '@/lib/admin-service'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -34,9 +36,35 @@ export async function createTenantAction(input: TenantInput) {
     primary_color: parsed.primary_color,
     secondary_color: parsed.secondary_color,
     accent_color: parsed.accent_color || undefined,
+    // Extended branding colors
+    background_color: parsed.background_color || undefined,
+    header_color: parsed.header_color || undefined,
+    header_font_color: parsed.header_font_color || undefined,
+    cards_color: parsed.cards_color || undefined,
+    cards_border_color: parsed.cards_border_color || undefined,
+    button_primary_color: parsed.button_primary_color || undefined,
+    button_primary_text_color: parsed.button_primary_text_color || undefined,
+    button_secondary_color: parsed.button_secondary_color || undefined,
+    button_secondary_text_color: parsed.button_secondary_text_color || undefined,
+    text_primary_color: parsed.text_primary_color || undefined,
+    text_secondary_color: parsed.text_secondary_color || undefined,
+    text_muted_color: parsed.text_muted_color || undefined,
+    border_color: parsed.border_color || undefined,
+    success_color: parsed.success_color || undefined,
+    warning_color: parsed.warning_color || undefined,
+    error_color: parsed.error_color || undefined,
+    link_color: parsed.link_color || undefined,
+    shadow_color: parsed.shadow_color || undefined,
+    // Menu hero customization
+    hero_title: parsed.hero_title || undefined,
+    hero_description: parsed.hero_description || undefined,
+    hero_title_color: parsed.hero_title_color || undefined,
+    hero_description_color: parsed.hero_description_color || undefined,
     messenger_page_id: parsed.messenger_page_id,
     messenger_username: parsed.messenger_username || undefined,
     is_active: parsed.is_active,
+    mapbox_enabled: parsed.mapbox_enabled,
+    enable_order_management: parsed.enable_order_management,
   }
   
   const query = supabase
@@ -89,9 +117,35 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     primary_color: parsed.primary_color,
     secondary_color: parsed.secondary_color,
     accent_color: parsed.accent_color || undefined,
+    // Extended branding colors
+    background_color: parsed.background_color || undefined,
+    header_color: parsed.header_color || undefined,
+    header_font_color: parsed.header_font_color || undefined,
+    cards_color: parsed.cards_color || undefined,
+    cards_border_color: parsed.cards_border_color || undefined,
+    button_primary_color: parsed.button_primary_color || undefined,
+    button_primary_text_color: parsed.button_primary_text_color || undefined,
+    button_secondary_color: parsed.button_secondary_color || undefined,
+    button_secondary_text_color: parsed.button_secondary_text_color || undefined,
+    text_primary_color: parsed.text_primary_color || undefined,
+    text_secondary_color: parsed.text_secondary_color || undefined,
+    text_muted_color: parsed.text_muted_color || undefined,
+    border_color: parsed.border_color || undefined,
+    success_color: parsed.success_color || undefined,
+    warning_color: parsed.warning_color || undefined,
+    error_color: parsed.error_color || undefined,
+    link_color: parsed.link_color || undefined,
+    shadow_color: parsed.shadow_color || undefined,
+    // Menu hero customization
+    hero_title: parsed.hero_title || undefined,
+    hero_description: parsed.hero_description || undefined,
+    hero_title_color: parsed.hero_title_color || undefined,
+    hero_description_color: parsed.hero_description_color || undefined,
     messenger_page_id: parsed.messenger_page_id,
     messenger_username: parsed.messenger_username || undefined,
     is_active: parsed.is_active,
+    mapbox_enabled: parsed.mapbox_enabled,
+    enable_order_management: parsed.enable_order_management,
   }
   
   const query = supabase
@@ -116,5 +170,66 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { success: true, data: data as any }
+}
+
+// Allow tenant admins to update only branding-related fields for their own tenant
+const brandingUpdateSchema = z.object({
+  primary_color: z.string().min(1),
+  secondary_color: z.string().min(1),
+  accent_color: z.string().optional().or(z.literal('')).optional(),
+  background_color: z.string().optional().or(z.literal('')).optional(),
+  header_color: z.string().optional().or(z.literal('')).optional(),
+  header_font_color: z.string().optional().or(z.literal('')).optional(),
+  cards_color: z.string().optional().or(z.literal('')).optional(),
+  cards_border_color: z.string().optional().or(z.literal('')).optional(),
+  button_primary_color: z.string().optional().or(z.literal('')).optional(),
+  button_primary_text_color: z.string().optional().or(z.literal('')).optional(),
+  button_secondary_color: z.string().optional().or(z.literal('')).optional(),
+  button_secondary_text_color: z.string().optional().or(z.literal('')).optional(),
+  text_primary_color: z.string().optional().or(z.literal('')).optional(),
+  text_secondary_color: z.string().optional().or(z.literal('')).optional(),
+  text_muted_color: z.string().optional().or(z.literal('')).optional(),
+  border_color: z.string().optional().or(z.literal('')).optional(),
+  success_color: z.string().optional().or(z.literal('')).optional(),
+  warning_color: z.string().optional().or(z.literal('')).optional(),
+  error_color: z.string().optional().or(z.literal('')).optional(),
+  link_color: z.string().optional().or(z.literal('')).optional(),
+  shadow_color: z.string().optional().or(z.literal('')).optional(),
+})
+
+export type BrandingUpdateInput = z.infer<typeof brandingUpdateSchema>
+
+export async function updateTenantBrandingForAdminAction(tenantId: string, input: BrandingUpdateInput) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const parsed = brandingUpdateSchema.parse(input)
+
+  const query = supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update(parsed as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  const { data, error } = await query
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Revalidate relevant paths (settings and public menu for theme)
+  revalidatePath(`/superadmin/tenants/${tenantId}`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+    revalidatePath(`/${updated.slug}/menu`)
+  }
+
+  return { success: true }
 }
 

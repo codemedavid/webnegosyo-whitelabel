@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
 import { ImageUpload } from '@/components/shared/image-upload'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
@@ -444,91 +443,6 @@ function MessengerSection({
   )
 }
 
-// Mapbox Settings Section
-function MapboxSection({ 
-  formData, 
-  setFormData, 
-  isPending 
-}: {
-  formData: TenantFormData
-  setFormData: SetFormData
-  isPending: boolean
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mapbox Settings</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="mapbox_enabled">Enable Mapbox Address Autocomplete</Label>
-            <p className="text-sm text-muted-foreground">
-              Allow customers to use map picker and address autocomplete for delivery addresses
-            </p>
-          </div>
-          <Switch
-            id="mapbox_enabled"
-            checked={formData.mapbox_enabled}
-            onCheckedChange={(checked) => setFormData({ ...formData, mapbox_enabled: checked })}
-            disabled={isPending}
-          />
-        </div>
-        {!formData.mapbox_enabled && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <p className="text-sm text-amber-800">
-              <strong>Note:</strong> When disabled, customers will need to type their address manually without map assistance.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// Order Management Settings Section
-function OrderManagementSection({ 
-  formData, 
-  setFormData, 
-  isPending 
-}: {
-  formData: TenantFormData
-  setFormData: SetFormData
-  isPending: boolean
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Order Management Settings</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="enable_order_management">Enable Order Tracking</Label>
-            <p className="text-sm text-muted-foreground">
-              Allow orders to be saved to the database and managed in the admin panel
-            </p>
-          </div>
-          <Switch
-            id="enable_order_management"
-            checked={formData.enable_order_management}
-            onCheckedChange={(checked) => setFormData({ ...formData, enable_order_management: checked })}
-            disabled={isPending}
-          />
-        </div>
-        {!formData.enable_order_management && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Note:</strong> When disabled, orders will only redirect to Messenger without being saved to the database. 
-              Order management features in the admin panel will not be available.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -563,8 +477,8 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     messenger_page_id: tenant?.messenger_page_id || '',
     messenger_username: tenant?.messenger_username || '',
     is_active: tenant?.is_active ?? true,
-    mapbox_enabled: tenant?.mapbox_enabled ?? true,
-    enable_order_management: tenant?.enable_order_management ?? true,
+    mapbox_enabled: (tenant as Tenant | undefined)?.mapbox_enabled ?? true,
+    enable_order_management: (tenant as Tenant | undefined)?.enable_order_management ?? true,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -646,18 +560,6 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       />
       
       <MessengerSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
-      />
-
-      <MapboxSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
-      />
-
-      <OrderManagementSection 
         formData={formData} 
         setFormData={setFormData} 
         isPending={isPending} 

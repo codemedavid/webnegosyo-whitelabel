@@ -13,6 +13,9 @@ import { CartDrawer } from '@/components/customer/cart-drawer'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { createClient } from '@/lib/supabase/client'
+import { getTenantByIdSupabase } from '@/lib/tenants-service'
+import { getTenantBranding } from '@/lib/branding-utils'
+import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
 import type { Category, MenuItem, Tenant } from '@/types/database'
 
 export default function MenuPage() {
@@ -116,13 +119,57 @@ export default function MenuPage() {
   }, [allMenuItems, activeCategory, searchQuery])
 
   // Get branding colors with fallbacks
-  const primaryColor = tenant?.primary_color || '#ff6b35'
-  const secondaryColor = tenant?.secondary_color || '#666666'
+  const baseBranding = getTenantBranding(tenant)
+  const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
+  const [heroOverride, setHeroOverride] = useState<{ title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null>(null)
+  const branding = useMemo(() => {
+    if (!brandingOverride) return baseBranding
+    return { ...baseBranding, ...brandingOverride }
+  }, [baseBranding, brandingOverride])
+
+  function mapDraftToBranding(draft: Partial<Record<string, string>> | null): Partial<Record<string, string>> | null {
+    if (!draft) return null
+    const mapped: Record<string, string> = {}
+    const setIf = (key: string, value?: string) => { if (value) mapped[key] = value }
+    setIf('primary', draft.primary_color)
+    setIf('secondary', draft.secondary_color)
+    setIf('accent', draft.accent_color)
+    setIf('background', draft.background_color)
+    setIf('header', draft.header_color)
+    setIf('headerFont', draft.header_font_color)
+    setIf('cards', draft.cards_color)
+    setIf('cardsBorder', draft.cards_border_color)
+    setIf('buttonPrimary', draft.button_primary_color)
+    setIf('buttonPrimaryText', draft.button_primary_text_color)
+    setIf('textPrimary', draft.text_primary_color)
+    setIf('textSecondary', draft.text_secondary_color)
+    setIf('textMuted', draft.text_muted_color)
+    setIf('border', draft.border_color)
+    setIf('success', draft.success_color)
+    setIf('warning', draft.warning_color)
+    setIf('error', draft.error_color)
+    setIf('link', draft.link_color)
+    setIf('shadow', draft.shadow_color)
+    return mapped
+  }
+
+  function mapDraftToHero(draft: Partial<Record<string, string>> | null) {
+    if (!draft) return null
+    return {
+      title: draft.hero_title,
+      description: draft.hero_description,
+      heroTitleColor: draft.hero_title_color,
+      heroDescriptionColor: draft.hero_description_color,
+    }
+  }
 
   // Show loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+      <div 
+        className="min-h-screen"
+        style={{ backgroundColor: branding.background }}
+      >
         {/* Header skeleton */}
         <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
           <div className="container mx-auto px-4">
@@ -176,7 +223,10 @@ export default function MenuPage() {
   // Show error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+      <div 
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: branding.background }}
+      >
         <div className="text-center max-w-md mx-auto p-8">
           <div className="h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <span className="text-3xl">😞</span>
@@ -190,8 +240,11 @@ export default function MenuPage() {
           </p>
           <button 
             onClick={() => window.location.reload()} 
-            className="text-white px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
-            style={{ backgroundColor: primaryColor }}
+            className="px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
+            style={{ 
+              backgroundColor: branding.buttonPrimary,
+              color: branding.buttonPrimaryText 
+            }}
           >
             Try Again
           </button>
@@ -201,9 +254,19 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+    <div 
+      className="min-h-screen"
+      style={{ backgroundColor: branding.background }}
+    >
       {/* Header with dynamic branding */}
-      <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b" style={{ borderColor: `${primaryColor}20` }}>
+      <header 
+        className="sticky top-0 z-50 w-full backdrop-blur-sm border-b" 
+        style={{ 
+          backgroundColor: branding.header,
+          color: branding.headerFont,
+          borderColor: branding.border 
+        }}
+      >
         <div className="container mx-auto px-4">
           <div className="flex h-20 items-center justify-between">
             {/* Logo */}
@@ -221,7 +284,7 @@ export default function MenuPage() {
               ) : (
                 <div 
                   className="flex h-12 w-12 items-center justify-center rounded-full"
-                  style={{ backgroundColor: primaryColor }}
+                  style={{ backgroundColor: branding.primary }}
                 >
                   <span className="text-lg font-bold text-white">
                     {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
@@ -229,10 +292,18 @@ export default function MenuPage() {
                 </div>
               )}
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 
+                  className="text-xl font-bold"
+                  style={{ color: branding.textPrimary }}
+                >
                   {tenant?.name || tenantSlug.replace(/-/g, ' ')}
                 </h1>
-                <p className="text-xs text-gray-500">Smart Ordering Partner</p>
+                <p 
+                  className="text-xs"
+                  style={{ color: branding.textMuted }}
+                >
+                  Smart Ordering Partner
+                </p>
               </div>
             </div>
 
@@ -241,10 +312,10 @@ export default function MenuPage() {
               <button
                 className="text-sm font-medium transition-colors"
                 style={{ 
-                  color: !activeCategory ? primaryColor : secondaryColor
+                  color: !activeCategory ? branding.primary : branding.textSecondary
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
-                onMouseLeave={(e) => e.currentTarget.style.color = !activeCategory ? primaryColor : secondaryColor}
+                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
+                onMouseLeave={(e) => e.currentTarget.style.color = !activeCategory ? branding.primary : branding.textSecondary}
                 onClick={() => setActiveCategory(null)}
               >
                 All
@@ -254,10 +325,10 @@ export default function MenuPage() {
                   key={category.id}
                   className="flex items-center gap-2 text-sm font-medium transition-colors"
                   style={{ 
-                    color: activeCategory === category.id ? primaryColor : secondaryColor
+                    color: activeCategory === category.id ? branding.primary : branding.textSecondary
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
-                  onMouseLeave={(e) => e.currentTarget.style.color = activeCategory === category.id ? primaryColor : secondaryColor}
+                  onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = activeCategory === category.id ? branding.primary : branding.textSecondary}
                   onClick={() => setActiveCategory(category.id)}
                 >
                   <span className="text-lg">{category.icon || '🍽️'}</span>
@@ -270,9 +341,9 @@ export default function MenuPage() {
             <div className="flex items-center gap-4">
               <button 
                 className="flex items-center gap-2 text-sm transition-colors"
-                style={{ color: secondaryColor }}
-                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
-                onMouseLeave={(e) => e.currentTarget.style.color = secondaryColor}
+                style={{ color: branding.textSecondary }}
+                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
+                onMouseLeave={(e) => e.currentTarget.style.color = branding.textSecondary}
               >
                 <span className="text-lg">📦</span>
                 <span className="hidden sm:inline">Track Order</span>
@@ -280,15 +351,15 @@ export default function MenuPage() {
               <button
                 onClick={() => setIsCartOpen(true)}
                 className="relative p-2 transition-colors"
-                style={{ color: secondaryColor }}
-                onMouseEnter={(e) => e.currentTarget.style.color = primaryColor}
-                onMouseLeave={(e) => e.currentTarget.style.color = secondaryColor}
+                style={{ color: branding.textSecondary }}
+                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
+                onMouseLeave={(e) => e.currentTarget.style.color = branding.textSecondary}
               >
                 <span className="text-xl">🛒</span>
                 {items.length > 0 && (
                   <span 
                     className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
-                    style={{ backgroundColor: primaryColor }}
+                    style={{ backgroundColor: branding.primary }}
                   >
                     {items.length}
                   </span>
@@ -299,14 +370,40 @@ export default function MenuPage() {
         </div>
       </header>
 
+      {/* Admin overlay for live edit (only renders if allowed) */}
+      {tenant && (
+        <BrandingEditorOverlay
+          tenant={tenant}
+          onPreview={(draft) => {
+            setBrandingOverride(mapDraftToBranding(draft))
+            setHeroOverride(mapDraftToHero(draft))
+          }}
+          onSaved={async () => {
+            if (!tenant?.id) return
+            const { data } = await getTenantByIdSupabase(tenant.id)
+            if (data) {
+              setTenant(data)
+              setBrandingOverride(null)
+              setHeroOverride(null)
+            }
+          }}
+        />
+      )}
+
       <main className="container mx-auto px-4 py-12">
         {/* Hero Section */}
         <div className="text-center mb-16">
-          <h1 className="text-5xl font-serif font-bold text-gray-900 mb-4">
-            Our Menu
+          <h1 
+            className="text-5xl font-serif font-bold mb-4"
+            style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
+          >
+            {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
           </h1>
-          <p className="text-lg text-gray-600 font-light">
-            Your Smart Ordering Partner
+          <p 
+            className="text-lg font-light"
+            style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
+          >
+            {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
           </p>
         </div>
 
@@ -323,7 +420,13 @@ export default function MenuPage() {
 
         {/* Mobile Category Navigation - Sticky */}
         {!isLoading && categories.length > 0 && (
-          <div className="sticky top-20 z-40 bg-white/95 backdrop-blur-sm border-b mb-8 md:hidden" style={{ borderColor: `${primaryColor}20` }}>
+          <div 
+            className="sticky top-20 z-40 backdrop-blur-sm border-b mb-8 md:hidden" 
+            style={{ 
+              backgroundColor: branding.header,
+              borderColor: branding.border 
+            }}
+          >
             <div className="px-4 py-3">
               <CategoryTabs
                 categories={categories}
@@ -336,11 +439,22 @@ export default function MenuPage() {
 
         {filteredItems.length === 0 && !isLoading ? (
           <div className="text-center py-16">
-            <div className="h-20 w-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div 
+              className="h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-6"
+              style={{ backgroundColor: branding.cards }}
+            >
               <span className="text-3xl">🍽️</span>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No items found</h3>
-            <p className="text-gray-600 mb-6">
+            <h3 
+              className="text-xl font-semibold mb-2"
+              style={{ color: branding.textPrimary }}
+            >
+              No items found
+            </h3>
+            <p 
+              className="mb-6"
+              style={{ color: branding.textSecondary }}
+            >
               {searchQuery || activeCategory 
                 ? "Try adjusting your search or category filter"
                 : "This restaurant doesn't have any menu items yet"
@@ -352,8 +466,11 @@ export default function MenuPage() {
                   setSearchQuery('')
                   setActiveCategory(null)
                 }}
-                className="text-white px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
-                style={{ backgroundColor: primaryColor }}
+                className="px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
+                style={{ 
+                  backgroundColor: branding.buttonPrimary,
+                  color: branding.buttonPrimaryText 
+                }}
               >
                 Clear Filters
               </button>
@@ -365,14 +482,14 @@ export default function MenuPage() {
             <MenuGrid 
               items={filteredItems} 
               onItemSelect={setSelectedItem}
-              primaryColor={primaryColor}
+              branding={branding}
             />
           ) : (
             <MenuGridGrouped 
               items={filteredItems} 
               categories={categories}
               onItemSelect={setSelectedItem}
-              primaryColor={primaryColor}
+              branding={branding}
             />
           )
         )}
@@ -383,14 +500,14 @@ export default function MenuPage() {
         open={!!selectedItem}
         onClose={() => setSelectedItem(null)}
         onAddToCart={addItem}
-        primaryColor={primaryColor}
+        branding={branding}
       />
 
       <CartDrawer
         open={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         tenantSlug={tenantSlug}
-        primaryColor={primaryColor}
+        branding={branding}
       />
     </div>
   )

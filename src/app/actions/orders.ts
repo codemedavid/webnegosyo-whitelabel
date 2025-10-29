@@ -67,10 +67,12 @@ export async function createOrderAction(
   customerInfo?: {
     name?: string
     contact?: string
-  }
+  },
+  orderTypeId?: string,
+  customerData?: Record<string, unknown>
 ) {
   try {
-    const order = await createOrder(tenantId, items, customerInfo)
+    const order = await createOrder(tenantId, items, customerInfo, orderTypeId, customerData)
     return { success: true, data: order }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }

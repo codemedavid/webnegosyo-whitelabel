@@ -61,13 +61,43 @@ export function formatPrice(price: number): string {
 export function generateMessengerMessage(
   items: CartItem[],
   restaurantName: string,
-  orderCreated: boolean = true
+  orderCreated: boolean = true,
+  orderType?: { name: string; type: string } | null,
+  customerData?: Record<string, string>
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
     '',
-    '📋 Order Details:',
   ]
+
+  // Add order type information
+  if (orderType) {
+    const orderTypeEmoji = {
+      dine_in: '🍽️',
+      pickup: '📦',
+      delivery: '🚚',
+    }
+    lines.push(`📋 Order Type: ${orderTypeEmoji[orderType.type as keyof typeof orderTypeEmoji] || '📋'} ${orderType.name}`)
+    lines.push('')
+  }
+
+  // Add customer information
+  if (customerData) {
+    const customerInfo = []
+    if (customerData.customer_name) customerInfo.push(`👤 Name: ${customerData.customer_name}`)
+    if (customerData.customer_phone) customerInfo.push(`📞 Phone: ${customerData.customer_phone}`)
+    if (customerData.customer_email) customerInfo.push(`📧 Email: ${customerData.customer_email}`)
+    if (customerData.delivery_address) customerInfo.push(`📍 Address: ${customerData.delivery_address}`)
+    if (customerData.table_number) customerInfo.push(`🪑 Table: ${customerData.table_number}`)
+    
+    if (customerInfo.length > 0) {
+      lines.push('👤 Customer Information:')
+      lines.push(...customerInfo)
+      lines.push('')
+    }
+  }
+
+  lines.push('📋 Order Details:')
 
   items.forEach((item, index) => {
     const variationText = item.selected_variation

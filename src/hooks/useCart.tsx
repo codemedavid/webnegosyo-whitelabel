@@ -10,6 +10,8 @@ import {
 } from '@/lib/cart-utils'
 
 interface CartContextType extends Cart {
+  orderType: string | null
+  setOrderType: (orderType: string | null) => void
   addItem: (
     menuItem: MenuItem,
     variation: Variation | undefined,
@@ -26,6 +28,7 @@ interface CartContextType extends Cart {
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
 const CART_STORAGE_KEY = 'restaurant_cart'
+const ORDER_TYPE_STORAGE_KEY = 'restaurant_order_type'
 
 // Helper functions for localStorage
 function loadCartFromStorage(): CartItem[] {
@@ -42,6 +45,18 @@ function loadCartFromStorage(): CartItem[] {
   return []
 }
 
+function loadOrderTypeFromStorage(): string | null {
+  if (typeof window === 'undefined') return null
+  
+  try {
+    const stored = localStorage.getItem(ORDER_TYPE_STORAGE_KEY)
+    return stored || null
+  } catch (error) {
+    console.error('Failed to load order type from storage:', error)
+  }
+  return null
+}
+
 function saveCartToStorage(items: CartItem[]) {
   if (typeof window === 'undefined') return
   
@@ -52,14 +67,31 @@ function saveCartToStorage(items: CartItem[]) {
   }
 }
 
+function saveOrderTypeToStorage(orderType: string | null) {
+  if (typeof window === 'undefined') return
+  
+  try {
+    if (orderType) {
+      localStorage.setItem(ORDER_TYPE_STORAGE_KEY, orderType)
+    } else {
+      localStorage.removeItem(ORDER_TYPE_STORAGE_KEY)
+    }
+  } catch (error) {
+    console.error('Failed to save order type to storage:', error)
+  }
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [orderType, setOrderTypeState] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Load cart from localStorage on mount
+  // Load cart and order type from localStorage on mount
   useEffect(() => {
     const storedItems = loadCartFromStorage()
+    const storedOrderType = loadOrderTypeFromStorage()
     setItems(storedItems)
+    setOrderTypeState(storedOrderType)
     setIsInitialized(true)
   }, [])
 
@@ -69,6 +101,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
       saveCartToStorage(items)
     }
   }, [items, isInitialized])
+
+  // Save order type to localStorage whenever it changes
+  useEffect(() => {
+    if (isInitialized) {
+      saveOrderTypeToStorage(orderType)
+    }
+  }, [orderType, isInitialized])
+
+  const setOrderType = useCallback((newOrderType: string | null) => {
+    setOrderTypeState(newOrderType)
+  }, [])
 
   const addItem = useCallback(
     (
@@ -165,6 +208,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([])
+    setOrderTypeState(null)
   }, [])
 
   const getItem = useCallback(
@@ -183,6 +227,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         items,
         total,
         item_count,
+        orderType,
+        setOrderType,
         addItem,
         removeItem,
         updateQuantity,

@@ -4,14 +4,15 @@ import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { UtensilsCrossed } from 'lucide-react'
 import type { MenuItem } from '@/types/database'
+import type { BrandingColors } from '@/lib/branding-utils'
 
 interface MenuGridProps {
   items: MenuItem[]
   onItemSelect: (item: MenuItem) => void
-  primaryColor?: string
+  branding: BrandingColors
 }
 
-export function MenuGrid({ items, onItemSelect, primaryColor }: MenuGridProps) {
+export function MenuGrid({ items, onItemSelect, branding }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -31,7 +32,7 @@ export function MenuGrid({ items, onItemSelect, primaryColor }: MenuGridProps) {
           key={item.id} 
           item={item} 
           onSelect={onItemSelect} 
-          primaryColor={primaryColor}
+          branding={branding}
         />
       ))}
     </div>

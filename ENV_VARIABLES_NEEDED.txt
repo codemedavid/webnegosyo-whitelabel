@@ -12,7 +12,15 @@ NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
   HOW TO GET THESE VALUES
 ========================================
 
-1. NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
+1. NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN:
+   - Go to https://account.mapbox.com/
+   - Sign up or log in to your Mapbox account
+   - Go to your Account page (https://account.mapbox.com/access-tokens/)
+   - Copy your Default public token or create a new one
+   - Make sure it has "Geocoding API" scope enabled
+   - Example: "pk.eyJ1IjoieW91cnVzZXJuYW1lIiwiYSI6ImN..."
+
+2. NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
    - Go to https://cloudinary.com/console
    - Login to your account
    - Copy the "Cloud name" from your dashboard
@@ -38,9 +46,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 # Platform (you may already have this)
 PLATFORM_ROOT_DOMAIN=yourdomain.com
 
-# Cloudinary (NEW - add these)
+# Cloudinary (add these)
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dxyz123abc
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
+
+# Mapbox (NEW - for address autocomplete)
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
 
 ========================================
   AFTER ADDING

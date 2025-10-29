@@ -3,20 +3,27 @@
 import Image from 'next/image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
+import type { BrandingColors } from '@/lib/branding-utils'
 
 interface MenuItemCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
-  primaryColor?: string
+  branding: BrandingColors
 }
 
-export function MenuItemCard({ item, onSelect, primaryColor = '#ff6b35' }: MenuItemCardProps) {
+export function MenuItemCard({ item, onSelect, branding }: MenuItemCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl bg-white shadow-sm transition-all hover:shadow-xl cursor-pointer"
+      className="group relative overflow-hidden rounded-2xl shadow-sm transition-all hover:shadow-xl cursor-pointer"
+      style={{ 
+        backgroundColor: branding.cards,
+        borderColor: branding.cardsBorder,
+        borderWidth: '1px',
+        borderStyle: 'solid'
+      }}
       onClick={() => onSelect(item)}
     >
       {/* Image Container */}
@@ -55,7 +62,7 @@ export function MenuItemCard({ item, onSelect, primaryColor = '#ff6b35' }: MenuI
         {/* Add to Cart Button */}
         <button
           className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all hover:scale-110 hover:opacity-90"
-          style={{ backgroundColor: primaryColor }}
+          style={{ backgroundColor: branding.buttonPrimary }}
           onClick={(e) => {
             e.stopPropagation()
             onSelect(item)
@@ -68,24 +75,39 @@ export function MenuItemCard({ item, onSelect, primaryColor = '#ff6b35' }: MenuI
 
       {/* Content */}
       <div className="p-4">
-        <h3 className="mb-2 text-lg font-bold text-gray-900 line-clamp-1">
+        <h3 
+          className="mb-2 text-lg font-bold line-clamp-1"
+          style={{ color: branding.textPrimary }}
+        >
           {item.name}
         </h3>
         
         <div className="flex items-center gap-2">
           {hasDiscount && (
-            <span className="text-sm text-gray-400 line-through">
+            <span 
+              className="text-sm line-through"
+              style={{ color: branding.textMuted }}
+            >
               {formatPrice(item.price)}
             </span>
           )}
-          <span className="text-lg font-bold" style={{ color: primaryColor }}>
+          <span 
+            className="text-lg font-bold" 
+            style={{ color: branding.primary }}
+          >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
           </span>
         </div>
 
         {item.variations.length > 0 && (
           <div className="mt-2">
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+            <span 
+              className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium"
+              style={{ 
+                backgroundColor: branding.buttonSecondary,
+                color: branding.buttonSecondaryText 
+              }}
+            >
               {item.variations.length} sizes available
             </span>
           </div>
