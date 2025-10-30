@@ -44,6 +44,17 @@ export const tenantSchema = z.object({
   is_active: z.boolean().default(true),
   mapbox_enabled: z.boolean().default(true),
   enable_order_management: z.boolean().default(true),
+  // Restaurant address for Lalamove pickup
+  restaurant_address: z.string().optional().or(z.literal('')).optional(),
+  restaurant_latitude: z.number().optional(),
+  restaurant_longitude: z.number().optional(),
+  // Lalamove configuration
+  lalamove_enabled: z.boolean().default(false),
+  lalamove_api_key: z.string().optional().or(z.literal('')).optional(),
+  lalamove_secret_key: z.string().optional().or(z.literal('')).optional(),
+  lalamove_market: z.string().optional().or(z.literal('')).optional(),
+  lalamove_service_type: z.string().optional().or(z.literal('')).optional(),
+  lalamove_sandbox: z.boolean().default(true),
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>
@@ -121,11 +132,27 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     error_color: parsed.error_color ?? undefined,
     link_color: parsed.link_color ?? undefined,
     shadow_color: parsed.shadow_color ?? undefined,
+    // Menu hero customization
+    hero_title: parsed.hero_title ?? undefined,
+    hero_description: parsed.hero_description ?? undefined,
+    hero_title_color: parsed.hero_title_color ?? undefined,
+    hero_description_color: parsed.hero_description_color ?? undefined,
     messenger_page_id: parsed.messenger_page_id,
     messenger_username: parsed.messenger_username ?? undefined,
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Restaurant address
+    restaurant_address: parsed.restaurant_address ?? undefined,
+    restaurant_latitude: parsed.restaurant_latitude ?? undefined,
+    restaurant_longitude: parsed.restaurant_longitude ?? undefined,
+    // Lalamove configuration
+    lalamove_enabled: parsed.lalamove_enabled,
+    lalamove_api_key: parsed.lalamove_api_key ?? undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
+    lalamove_market: parsed.lalamove_market ?? undefined,
+    lalamove_service_type: parsed.lalamove_service_type ?? undefined,
+    lalamove_sandbox: parsed.lalamove_sandbox,
   }
   const { data, error } = await supabase
     .from('tenants')
@@ -171,11 +198,27 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     error_color: parsed.error_color ?? undefined,
     link_color: parsed.link_color ?? undefined,
     shadow_color: parsed.shadow_color ?? undefined,
+    // Menu hero customization
+    hero_title: parsed.hero_title ?? undefined,
+    hero_description: parsed.hero_description ?? undefined,
+    hero_title_color: parsed.hero_title_color ?? undefined,
+    hero_description_color: parsed.hero_description_color ?? undefined,
     messenger_page_id: parsed.messenger_page_id,
     messenger_username: parsed.messenger_username ?? undefined,
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Restaurant address
+    restaurant_address: parsed.restaurant_address ?? undefined,
+    restaurant_latitude: parsed.restaurant_latitude ?? undefined,
+    restaurant_longitude: parsed.restaurant_longitude ?? undefined,
+    // Lalamove configuration
+    lalamove_enabled: parsed.lalamove_enabled,
+    lalamove_api_key: parsed.lalamove_api_key ?? undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
+    lalamove_market: parsed.lalamove_market ?? undefined,
+    lalamove_service_type: parsed.lalamove_service_type ?? undefined,
+    lalamove_sandbox: parsed.lalamove_sandbox,
   }
   const { data, error } = await supabase
     .from('tenants')

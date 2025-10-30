@@ -67,3 +67,25 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
 
 Need help? See CLOUDINARY_QUICK_START.md for step-by-step instructions!
 
+
+# Google Maps Places API (Optional - for better POI search)
+# Get from: https://console.cloud.google.com/apis/credentials
+# Enable "Places API" for your project
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+
+========================================
+  GOOGLE MAPS SETUP
+========================================
+
+1. Go to https://console.cloud.google.com/
+2. Create a new project or select existing
+3. Enable "Places API"
+4. Go to Credentials → Create API Key
+5. Restrict the key to "Places API" for security
+6. Copy your API key
+7. Add to .env.local
+
+Note: Google Places has better coverage of commercial establishments,
+shopping malls, and landmarks in Philippines. Use as fallback when
+Mapbox doesn't find specific places.
+

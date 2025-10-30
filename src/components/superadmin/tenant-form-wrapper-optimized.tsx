@@ -47,6 +47,17 @@ interface TenantFormData {
   is_active: boolean
   mapbox_enabled: boolean
   enable_order_management: boolean
+  // Restaurant address for Lalamove pickup
+  restaurant_address: string
+  restaurant_latitude: string
+  restaurant_longitude: string
+  // Lalamove configuration
+  lalamove_enabled: boolean
+  lalamove_api_key: string
+  lalamove_secret_key: string
+  lalamove_market: string
+  lalamove_service_type: string
+  lalamove_sandbox: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -479,6 +490,17 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     is_active: tenant?.is_active ?? true,
     mapbox_enabled: (tenant as Tenant | undefined)?.mapbox_enabled ?? true,
     enable_order_management: (tenant as Tenant | undefined)?.enable_order_management ?? true,
+    // Restaurant address
+    restaurant_address: (tenant as Tenant | undefined)?.restaurant_address || '',
+    restaurant_latitude: (tenant as Tenant | undefined)?.restaurant_latitude?.toString() || '',
+    restaurant_longitude: (tenant as Tenant | undefined)?.restaurant_longitude?.toString() || '',
+    // Lalamove configuration
+    lalamove_enabled: (tenant as Tenant | undefined)?.lalamove_enabled ?? false,
+    lalamove_api_key: (tenant as Tenant | undefined)?.lalamove_api_key || '',
+    lalamove_secret_key: (tenant as Tenant | undefined)?.lalamove_secret_key || '',
+    lalamove_market: (tenant as Tenant | undefined)?.lalamove_market || 'HK',
+    lalamove_service_type: (tenant as Tenant | undefined)?.lalamove_service_type || 'MOTORCYCLE',
+    lalamove_sandbox: (tenant as Tenant | undefined)?.lalamove_sandbox ?? true,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -516,6 +538,17 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       is_active: formData.is_active,
       mapbox_enabled: formData.mapbox_enabled,
       enable_order_management: formData.enable_order_management,
+      // Restaurant address
+      restaurant_address: formData.restaurant_address || undefined,
+      restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
+      restaurant_longitude: formData.restaurant_longitude ? parseFloat(formData.restaurant_longitude) : undefined,
+      // Lalamove configuration
+      lalamove_enabled: formData.lalamove_enabled,
+      lalamove_api_key: formData.lalamove_api_key || undefined,
+      lalamove_secret_key: formData.lalamove_secret_key || undefined,
+      lalamove_market: formData.lalamove_market || undefined,
+      lalamove_service_type: formData.lalamove_service_type || undefined,
+      lalamove_sandbox: formData.lalamove_sandbox,
     }
 
     startTransition(async () => {

@@ -12,6 +12,7 @@ import { formatPrice, generateMessengerMessage, generateMessengerUrl } from '@/l
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { createOrderAction } from '@/app/actions/orders'
+import { createQuotationAction } from '@/app/actions/lalamove'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import { toast } from 'sonner'
 import type { Tenant, OrderType, CustomerFormField } from '@/types/database'
@@ -28,6 +29,11 @@ export default function CheckoutPage() {
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
+  
+  // Lalamove delivery fee state
+  const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
+  const [quotationId, setQuotationId] = useState<string | null>(null)
+  const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false)
 
   // Load tenant data and order types from Supabase
   useEffect(() => {
@@ -91,6 +97,72 @@ export default function CheckoutPage() {
     }
   }, [items.length, router, tenantSlug, isLoading])
 
+  // Fetch Lalamove delivery quotation when delivery address is entered
+  useEffect(() => {
+    const fetchDeliveryQuote = async () => {
+      // Check if this is a delivery order
+      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      const isDeliveryOrder = selectedOrderType?.type === 'delivery'
+      
+      // Check if Lalamove is enabled and restaurant address is configured
+      const hasRestaurantAddress = tenant?.restaurant_address && 
+                                   tenant?.restaurant_latitude && 
+                                   tenant?.restaurant_longitude
+      
+      // Check if delivery address is provided
+      const deliveryAddress = customerData.delivery_address
+      const deliveryLat = customerData.delivery_lat
+      const deliveryLng = customerData.delivery_lng
+      
+      if (!isDeliveryOrder || !tenant?.lalamove_enabled || !hasRestaurantAddress) {
+        // Reset delivery fee if not applicable
+        setDeliveryFee(null)
+        setQuotationId(null)
+        return
+      }
+      
+      if (!deliveryAddress || !deliveryLat || !deliveryLng) {
+        // Delivery address not yet entered
+        setDeliveryFee(null)
+        setQuotationId(null)
+        return
+      }
+      
+      // Fetch quotation
+      setIsFetchingDeliveryFee(true)
+      try {
+        const result = await createQuotationAction(
+          tenant.id,
+          tenant.restaurant_address!,
+          tenant.restaurant_latitude!,
+          tenant.restaurant_longitude!,
+          deliveryAddress,
+          parseFloat(deliveryLat),
+          parseFloat(deliveryLng)
+        )
+        
+        if (result.success && result.data) {
+          setDeliveryFee(result.data.price)
+          setQuotationId(result.data.quotationId)
+        } else {
+          console.error('Failed to fetch delivery quote:', result.error)
+          toast.error(result.error || 'Failed to get delivery fee')
+          setDeliveryFee(null)
+          setQuotationId(null)
+        }
+      } catch (error) {
+        console.error('Error fetching delivery quote:', error)
+        toast.error('Failed to calculate delivery fee')
+        setDeliveryFee(null)
+        setQuotationId(null)
+      } finally {
+        setIsFetchingDeliveryFee(false)
+      }
+    }
+    
+    fetchDeliveryQuote()
+  }, [tenant, orderTypes, orderType, customerData.delivery_address, customerData.delivery_lat, customerData.delivery_lng])
+
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
 
@@ -131,7 +203,15 @@ export default function CheckoutPage() {
         }
 
         try {
-          const result = await createOrderAction(tenant.id, orderItems, customerInfo, orderType, customerData)
+          const result = await createOrderAction(
+            tenant.id, 
+            orderItems, 
+            customerInfo, 
+            orderType, 
+            customerData,
+            deliveryFee || undefined,
+            quotationId || undefined
+          )
           orderCreated = result.success
 
           if (result.success) {
@@ -355,9 +435,30 @@ export default function CheckoutPage() {
 
               <Separator className="my-4" />
 
+              {/* Delivery Fee */}
+              {deliveryFee !== null && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      Delivery Fee{isFetchingDeliveryFee && ' (calculating...)'}
+                    </span>
+                    <span className="font-semibold">
+                      {isFetchingDeliveryFee ? (
+                        <span className="animate-pulse">...</span>
+                      ) : (
+                        formatPrice(deliveryFee)
+                      )}
+                    </span>
+                  </div>
+                  <Separator className="my-2" />
+                </>
+              )}
+
               <div className="flex justify-between text-xl font-bold pt-4 border-t">
                 <span>Total</span>
-                <span className="text-orange-600">{formatPrice(total)}</span>
+                <span className="text-orange-600">
+                  {formatPrice(total + (deliveryFee || 0))}
+                </span>
               </div>
             </div>
           </div>

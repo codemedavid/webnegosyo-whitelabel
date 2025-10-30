@@ -138,11 +138,14 @@ export async function createOrder(
     contact?: string
   },
   orderTypeId?: string,
-  customerData?: Record<string, unknown>
+  customerData?: Record<string, unknown>,
+  deliveryFee?: number,
+  lalamoveQuotationId?: string
 ) {
   const supabase = await createClient()
 
   const total = items.reduce((sum, item) => sum + item.subtotal, 0)
+  const finalTotal = total + (deliveryFee || 0)
 
   // Create order
   const { data: order, error: orderError } = await supabase
@@ -154,7 +157,9 @@ export async function createOrder(
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
       customer_data: customerData || {},
-      total,
+      total: finalTotal,
+      delivery_fee: deliveryFee || 0,
+      lalamove_quotation_id: lalamoveQuotationId || null,
       status: 'pending',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)

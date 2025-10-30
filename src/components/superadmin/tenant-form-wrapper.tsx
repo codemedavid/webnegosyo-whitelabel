@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
 import { ImageUpload } from '@/components/shared/image-upload'
+import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
 import { toast } from 'sonner'
@@ -48,6 +50,17 @@ interface TenantFormData {
   is_active: boolean
   mapbox_enabled: boolean
   enable_order_management: boolean
+  // Restaurant address for Lalamove pickup
+  restaurant_address: string
+  restaurant_latitude: string
+  restaurant_longitude: string
+  // Lalamove configuration
+  lalamove_enabled: boolean
+  lalamove_api_key: string
+  lalamove_secret_key: string
+  lalamove_market: string
+  lalamove_service_type: string
+  lalamove_sandbox: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -529,6 +542,201 @@ function OrderManagementSection({
   )
 }
 
+// Restaurant Address Section (for Lalamove pickup)
+function RestaurantAddressSection({ 
+  formData, 
+  setFormData, 
+  isPending 
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Restaurant Address</CardTitle>
+        <p className="text-sm text-muted-foreground mt-2">
+          Required for Lalamove delivery pickup location
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="restaurant_address">Address *</Label>
+          <MapboxAddressAutocomplete
+            value={formData.restaurant_address}
+            onChange={(address, coordinates) => {
+              setFormData({
+                ...formData,
+                restaurant_address: address,
+                restaurant_latitude: coordinates?.lat.toString() || '',
+                restaurant_longitude: coordinates?.lng.toString() || '',
+              })
+            }}
+            placeholder="Enter restaurant address"
+            required
+            mapboxEnabled={true}
+          />
+        </div>
+        
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="restaurant_latitude">Latitude *</Label>
+            <Input
+              id="restaurant_latitude"
+              type="number"
+              step="any"
+              value={formData.restaurant_latitude}
+              onChange={(e) => setFormData({ ...formData, restaurant_latitude: e.target.value })}
+              placeholder="22.3193"
+              disabled={isPending}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="restaurant_longitude">Longitude *</Label>
+            <Input
+              id="restaurant_longitude"
+              type="number"
+              step="any"
+              value={formData.restaurant_longitude}
+              onChange={(e) => setFormData({ ...formData, restaurant_longitude: e.target.value })}
+              placeholder="114.1694"
+              disabled={isPending}
+            />
+          </div>
+        </div>
+        
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Tip:</strong> Use the map picker above to automatically fill in coordinates, or use Google Maps to find your restaurant coordinates manually.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Lalamove Delivery Configuration Section
+function LalamoveSection({ 
+  formData, 
+  setFormData, 
+  isPending 
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Lalamove Delivery Integration</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="lalamove_enabled">Enable Lalamove Delivery</Label>
+            <p className="text-sm text-muted-foreground">
+              Integrate Lalamove for automatic delivery management
+            </p>
+          </div>
+          <Switch
+            id="lalamove_enabled"
+            checked={formData.lalamove_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, lalamove_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+
+        {formData.lalamove_enabled && (
+          <>
+            <Separator />
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="lalamove_api_key">API Key *</Label>
+                <Input
+                  id="lalamove_api_key"
+                  type="password"
+                  value={formData.lalamove_api_key}
+                  onChange={(e) => setFormData({ ...formData, lalamove_api_key: e.target.value })}
+                  placeholder="Your Lalamove API key"
+                  disabled={isPending}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lalamove_secret_key">Secret Key *</Label>
+                <Input
+                  id="lalamove_secret_key"
+                  type="password"
+                  value={formData.lalamove_secret_key}
+                  onChange={(e) => setFormData({ ...formData, lalamove_secret_key: e.target.value })}
+                  placeholder="Your Lalamove secret key"
+                  disabled={isPending}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="lalamove_market">Market *</Label>
+                  <Input
+                    id="lalamove_market"
+                    value={formData.lalamove_market}
+                    onChange={(e) => setFormData({ ...formData, lalamove_market: e.target.value.toUpperCase() })}
+                    placeholder="HK, SG, TH, etc."
+                    disabled={isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Country code (e.g., HK for Hong Kong)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lalamove_service_type">Service Type *</Label>
+                  <Input
+                    id="lalamove_service_type"
+                    value={formData.lalamove_service_type}
+                    onChange={(e) => setFormData({ ...formData, lalamove_service_type: e.target.value })}
+                    placeholder="MOTORCYCLE, VAN, CAR"
+                    disabled={isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Vehicle type for delivery
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="lalamove_sandbox">Sandbox Mode</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Use test environment for development
+                  </p>
+                </div>
+                <Switch
+                  id="lalamove_sandbox"
+                  checked={formData.lalamove_sandbox}
+                  onCheckedChange={(checked) => setFormData({ ...formData, lalamove_sandbox: checked })}
+                  disabled={isPending}
+                />
+              </div>
+
+              {formData.lalamove_sandbox && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+                  <p className="text-sm text-amber-800">
+                    <strong>Testing Mode:</strong> Using sandbox environment. No real deliveries will be created.
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -540,31 +748,42 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     logo_url: tenant?.logo_url || '',
     primary_color: tenant?.primary_color || '#c41e3a',
     secondary_color: tenant?.secondary_color || '#009246',
-    accent_color: tenant?.accent_color || '#ffd700',
+    accent_color: tenant?.accent_color || '',
     // Extended branding colors
-    background_color: tenant?.background_color || '#ffffff',
-    header_color: tenant?.header_color || '#ffffff',
-    header_font_color: tenant?.header_font_color || '#000000',
-    cards_color: tenant?.cards_color || '#ffffff',
-    cards_border_color: tenant?.cards_border_color || '#e5e7eb',
-    button_primary_color: tenant?.button_primary_color || tenant?.primary_color || '#c41e3a',
-    button_primary_text_color: tenant?.button_primary_text_color || '#ffffff',
-    button_secondary_color: tenant?.button_secondary_color || '#f3f4f6',
-    button_secondary_text_color: tenant?.button_secondary_text_color || '#111111',
-    text_primary_color: tenant?.text_primary_color || '#111111',
-    text_secondary_color: tenant?.text_secondary_color || '#6b7280',
-    text_muted_color: tenant?.text_muted_color || '#9ca3af',
-    border_color: tenant?.border_color || '#e5e7eb',
-    success_color: tenant?.success_color || '#10b981',
-    warning_color: tenant?.warning_color || '#f59e0b',
-    error_color: tenant?.error_color || '#ef4444',
-    link_color: tenant?.link_color || '#3b82f6',
-    shadow_color: tenant?.shadow_color || 'rgba(0, 0, 0, 0.1)',
+    background_color: tenant?.background_color || '',
+    header_color: tenant?.header_color || '',
+    header_font_color: tenant?.header_font_color || '',
+    cards_color: tenant?.cards_color || '',
+    cards_border_color: tenant?.cards_border_color || '',
+    button_primary_color: tenant?.button_primary_color || '',
+    button_primary_text_color: tenant?.button_primary_text_color || '',
+    button_secondary_color: tenant?.button_secondary_color || '',
+    button_secondary_text_color: tenant?.button_secondary_text_color || '',
+    text_primary_color: tenant?.text_primary_color || '',
+    text_secondary_color: tenant?.text_secondary_color || '',
+    text_muted_color: tenant?.text_muted_color || '',
+    border_color: tenant?.border_color || '',
+    success_color: tenant?.success_color || '',
+    warning_color: tenant?.warning_color || '',
+    error_color: tenant?.error_color || '',
+    link_color: tenant?.link_color || '',
+    shadow_color: tenant?.shadow_color || '',
     messenger_page_id: tenant?.messenger_page_id || '',
     messenger_username: tenant?.messenger_username || '',
     is_active: tenant?.is_active ?? true,
     mapbox_enabled: tenant?.mapbox_enabled ?? true,
     enable_order_management: tenant?.enable_order_management ?? true,
+    // Restaurant address
+    restaurant_address: tenant?.restaurant_address || '',
+    restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
+    restaurant_longitude: tenant?.restaurant_longitude?.toString() || '',
+    // Lalamove configuration
+    lalamove_enabled: tenant?.lalamove_enabled ?? false,
+    lalamove_api_key: tenant?.lalamove_api_key || '',
+    lalamove_secret_key: tenant?.lalamove_secret_key || '',
+    lalamove_market: tenant?.lalamove_market || 'HK',
+    lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
+    lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -602,6 +821,17 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       is_active: formData.is_active,
       mapbox_enabled: formData.mapbox_enabled,
       enable_order_management: formData.enable_order_management,
+      // Restaurant address
+      restaurant_address: formData.restaurant_address || undefined,
+      restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
+      restaurant_longitude: formData.restaurant_longitude ? parseFloat(formData.restaurant_longitude) : undefined,
+      // Lalamove configuration
+      lalamove_enabled: formData.lalamove_enabled,
+      lalamove_api_key: formData.lalamove_api_key || undefined,
+      lalamove_secret_key: formData.lalamove_secret_key || undefined,
+      lalamove_market: formData.lalamove_market || undefined,
+      lalamove_service_type: formData.lalamove_service_type || undefined,
+      lalamove_sandbox: formData.lalamove_sandbox,
     }
 
     startTransition(async () => {
@@ -658,6 +888,18 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       />
 
       <OrderManagementSection 
+        formData={formData} 
+        setFormData={setFormData} 
+        isPending={isPending} 
+      />
+
+      <RestaurantAddressSection 
+        formData={formData} 
+        setFormData={setFormData} 
+        isPending={isPending} 
+      />
+
+      <LalamoveSection 
         formData={formData} 
         setFormData={setFormData} 
         isPending={isPending} 

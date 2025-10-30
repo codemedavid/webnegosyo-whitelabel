@@ -40,6 +40,7 @@ export function MapboxAddressAutocomplete({
   const [isSearching, setIsSearching] = useState(false)
   const [mainSearchResults, setMainSearchResults] = useState<Array<{ place_name: string; coordinates: [number, number] }>>([])
   const [showMainSearchResults, setShowMainSearchResults] = useState(false)
+  const [googlePlacesLoaded, setGooglePlacesLoaded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapSearchInputRef = useRef<HTMLInputElement>(null)
@@ -60,6 +61,20 @@ export function MapboxAddressAutocomplete({
     } else {
       console.warn('Mapbox access token not found')
     }
+
+    // Load Google Places API if key is available
+    const googleKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (googleKey && typeof window !== 'undefined' && !window.google?.maps?.places) {
+      const script = document.createElement('script')
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleKey}&libraries=places`
+      script.async = true
+      script.defer = true
+      script.onload = () => setGooglePlacesLoaded(true)
+      script.onerror = () => console.warn('Failed to load Google Places API')
+      document.head.appendChild(script)
+    } else if (window.google?.maps?.places) {
+      setGooglePlacesLoaded(true)
+    }
   }, [])
 
   useEffect(() => {
@@ -73,26 +88,92 @@ export function MapboxAddressAutocomplete({
 
   // Handle main search box autocomplete
   const handleMainSearch = useCallback(async (query: string) => {
-    if (!accessToken || !query.trim()) {
+    if (!query.trim()) {
       setMainSearchResults([])
       setShowMainSearchResults(false)
       return
     }
 
     try {
-      const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=5&types=address,poi`
-      )
-      const data = await response.json()
-      
-      if (data.features && data.features.length > 0) {
-        setMainSearchResults(
-          data.features.map((feature: { place_name: string; geometry: { coordinates: [number, number] } }) => ({
-            place_name: feature.place_name,
-            coordinates: feature.geometry.coordinates,
-          }))
+      // First, try Mapbox search
+      if (accessToken) {
+        let response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=8&types=address,poi,place,neighborhood,locality`
         )
-        setShowMainSearchResults(true)
+        let data = await response.json()
+        
+        // If no results, try without POI type restriction to get more results
+        if (!data.features || data.features.length === 0) {
+          response = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=10`
+          )
+          data = await response.json()
+        }
+        
+        // If still no results, try without country restriction for broader coverage
+        if (!data.features || data.features.length === 0) {
+          response = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&limit=10`
+          )
+          data = await response.json()
+          
+          // Filter to Philippines results only if we get results without country filter
+          if (data.features && data.features.length > 0) {
+            data.features = data.features.filter((feature: { context?: Array<{ id: string }> }) => {
+              // Check if any context contains Philippines
+              return feature.context?.some(ctx => ctx.id.startsWith('country.') && ctx.id.includes('ph'))
+            })
+          }
+        }
+        
+        if (data.features && data.features.length > 0) {
+          setMainSearchResults(
+            data.features.map((feature: { place_name: string; geometry: { coordinates: [number, number] } }) => ({
+              place_name: feature.place_name,
+              coordinates: feature.geometry.coordinates,
+            }))
+          )
+          setShowMainSearchResults(true)
+          return
+        }
+      }
+
+      // Fallback to Google Places if Mapbox has no results
+      if (googlePlacesLoaded && window.google?.maps?.places) {
+        const service = new google.maps.places.PlacesService(document.createElement('div'))
+        const request = {
+          query: query,
+          fields: ['formatted_address', 'geometry', 'name'],
+        }
+
+        service.textSearch(request, (results, status) => {
+          if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+            // Filter results to Philippines
+            const phResults = results.filter(place => {
+              const hasPh = place.formatted_address?.toLowerCase().includes('philippines')
+              return hasPh
+            })
+
+            if (phResults.length > 0) {
+              setMainSearchResults(
+                phResults.slice(0, 8).map(place => ({
+                  place_name: place.formatted_address || place.name || '',
+                  coordinates: place.geometry?.location ? [
+                    place.geometry.location.lng(),
+                    place.geometry.location.lat()
+                  ] : [0, 0],
+                }))
+              )
+              setShowMainSearchResults(true)
+            } else {
+              setMainSearchResults([])
+              setShowMainSearchResults(false)
+            }
+          } else {
+            setMainSearchResults([])
+            setShowMainSearchResults(false)
+          }
+        })
       } else {
         setMainSearchResults([])
         setShowMainSearchResults(false)
@@ -102,7 +183,7 @@ export function MapboxAddressAutocomplete({
       setMainSearchResults([])
       setShowMainSearchResults(false)
     }
-  }, [accessToken])
+  }, [accessToken, googlePlacesLoaded])
 
   const handleMainSearchResultSelect = useCallback((result: { place_name: string; coordinates: [number, number] }) => {
     const [lng, lat] = result.coordinates
@@ -280,11 +361,41 @@ export function MapboxAddressAutocomplete({
 
       markerRef.current = marker
 
-      // Handle map click
+      // Handle map click with POI snapping
       map.on('click', async (e) => {
         const { lng, lat } = e.lngLat
-        
-        // Reverse geocode using cache
+
+        // Try to snap to a visible POI label first (e.g., 7-Eleven, Phoenix)
+        try {
+          const poiLayers = ['poi-label', 'poi', 'transit-label', 'place-label']
+          const availableLayers = poiLayers.filter((l) => map.getLayer(l)) as string[]
+          const features = map.queryRenderedFeatures(e.point, { layers: availableLayers }) as unknown[]
+
+          if (features && features.length > 0) {
+            const poi = features[0] as {
+              geometry?: { type?: string; coordinates?: [number, number] }
+              text?: string
+              properties?: { name?: string }
+            }
+            const coords: [number, number] = poi.geometry?.type === 'Point' && poi.geometry.coordinates
+              ? poi.geometry.coordinates
+              : [lng, lat]
+            const name = poi.text || poi.properties?.name || 'Selected place'
+
+            // Set marker exactly on the POI
+            marker.setLngLat(coords as [number, number])
+
+            // Derive a nicer address using reverse geocode for the POI coords
+            const snappedAddress = await reverseGeocode(coords[1], coords[0])
+            const display = snappedAddress?.includes('Lat:') ? name : `${name}, ${snappedAddress}`
+            handleAddressSelectRef.current(display, { lat: coords[1], lng: coords[0] })
+            return
+          }
+        } catch (err) {
+          console.warn('POI snap failed, falling back to raw click:', err)
+        }
+
+        // Fallback: use raw click position
         const address = await reverseGeocode(lat, lng)
         handleAddressSelectRef.current(address, { lat, lng })
         marker.setLngLat([lng, lat])
@@ -329,10 +440,35 @@ export function MapboxAddressAutocomplete({
 
     setIsSearching(true)
     try {
-      const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=5`
+      // First, try search with broader types to include addresses, POIs, places, and neighborhoods
+      let response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=8&types=address,poi,place,neighborhood,locality`
       )
-      const data = await response.json()
+      let data = await response.json()
+      
+      // If no results, try without POI type restriction to get more results
+      if (!data.features || data.features.length === 0) {
+        response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=10`
+        )
+        data = await response.json()
+      }
+      
+      // If still no results, try without country restriction for broader coverage
+      if (!data.features || data.features.length === 0) {
+        response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&limit=10`
+        )
+        data = await response.json()
+        
+        // Filter to Philippines results only if we get results without country filter
+        if (data.features && data.features.length > 0) {
+          data.features = data.features.filter((feature: { context?: Array<{ id: string }> }) => {
+            // Check if any context contains Philippines
+            return feature.context?.some(ctx => ctx.id.startsWith('country.') && ctx.id.includes('ph'))
+          })
+        }
+      }
       
       if (data.features && data.features.length > 0) {
         setMapSearchResults(

@@ -91,6 +91,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
     is_active: tenant?.is_active ?? true,
     mapbox_enabled: tenant?.mapbox_enabled ?? true,
     enable_order_management: tenant?.enable_order_management ?? true,
+    lalamove_enabled: tenant?.lalamove_enabled ?? false,
+    lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
   })
 
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
@@ -130,6 +132,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
       is_active: formData.is_active,
       mapbox_enabled: formData.mapbox_enabled,
       enable_order_management: formData.enable_order_management,
+      lalamove_enabled: formData.lalamove_enabled,
+      lalamove_sandbox: formData.lalamove_sandbox,
     }
 
     if (tenant) {
@@ -214,6 +218,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
     is_active: formData.is_active,
     mapbox_enabled: formData.mapbox_enabled,
     enable_order_management: formData.enable_order_management,
+    lalamove_enabled: formData.lalamove_enabled,
+    lalamove_sandbox: formData.lalamove_sandbox,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }

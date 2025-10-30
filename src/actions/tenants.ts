@@ -65,6 +65,17 @@ export async function createTenantAction(input: TenantInput) {
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Restaurant address
+    restaurant_address: parsed.restaurant_address || undefined,
+    restaurant_latitude: parsed.restaurant_latitude || undefined,
+    restaurant_longitude: parsed.restaurant_longitude || undefined,
+    // Lalamove configuration
+    lalamove_enabled: parsed.lalamove_enabled,
+    lalamove_api_key: parsed.lalamove_api_key || undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key || undefined,
+    lalamove_market: parsed.lalamove_market || undefined,
+    lalamove_service_type: parsed.lalamove_service_type || undefined,
+    lalamove_sandbox: parsed.lalamove_sandbox,
   }
   
   const query = supabase
@@ -146,6 +157,17 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Restaurant address
+    restaurant_address: parsed.restaurant_address || undefined,
+    restaurant_latitude: parsed.restaurant_latitude || undefined,
+    restaurant_longitude: parsed.restaurant_longitude || undefined,
+    // Lalamove configuration
+    lalamove_enabled: parsed.lalamove_enabled,
+    lalamove_api_key: parsed.lalamove_api_key || undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key || undefined,
+    lalamove_market: parsed.lalamove_market || undefined,
+    lalamove_service_type: parsed.lalamove_service_type || undefined,
+    lalamove_sandbox: parsed.lalamove_sandbox,
   }
   
   const query = supabase

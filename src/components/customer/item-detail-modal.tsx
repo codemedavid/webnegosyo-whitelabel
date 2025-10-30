@@ -6,6 +6,7 @@ import { Minus, Plus } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -91,6 +92,8 @@ export function ItemDetailModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[calc(100vw-32px)] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] p-0 overflow-hidden rounded-2xl">
+        {/* Hidden title for accessibility */}
+        <DialogTitle className="sr-only">{item.name}</DialogTitle>
         {/* Top grabber */}
         <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-muted" />
 

@@ -38,6 +38,17 @@ export interface Tenant {
   is_active: boolean;
   mapbox_enabled: boolean;
   enable_order_management: boolean;
+  // Lalamove delivery configuration
+  lalamove_enabled?: boolean;
+  lalamove_api_key?: string;
+  lalamove_secret_key?: string;
+  lalamove_market?: string;
+  lalamove_service_type?: string;
+  lalamove_sandbox?: boolean;
+  // Restaurant address for delivery pickup
+  restaurant_address?: string;
+  restaurant_latitude?: number;
+  restaurant_longitude?: number;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +182,15 @@ export interface Order {
   items: OrderItem[];
   total: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+  // Lalamove delivery fields
+  delivery_fee?: number;
+  lalamove_quotation_id?: string;
+  lalamove_order_id?: string;
+  lalamove_status?: string;
+  lalamove_driver_id?: string;
+  lalamove_driver_name?: string;
+  lalamove_driver_phone?: string;
+  lalamove_tracking_url?: string;
   created_at: string;
   updated_at: string;
 }
