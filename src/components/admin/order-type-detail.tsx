@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, EyeOff, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -100,7 +100,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
       } else {
         toast.error(result.error || 'Failed to update order type')
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred')
     } finally {
       setIsSaving(false)
@@ -289,7 +289,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           {formFields.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>No form fields configured yet.</p>
-              <p className="text-sm mt-2">Click "Add Field" to create a form field for this order type.</p>
+              <p className="text-sm mt-2">Click &quot;Add Field&quot; to create a form field for this order type.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -481,7 +481,7 @@ function FieldDialog({
       } else {
         toast.error(result.error || 'Failed to save field')
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred')
     } finally {
       setIsSaving(false)
