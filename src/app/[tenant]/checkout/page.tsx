@@ -380,9 +380,63 @@ export default function CheckoutPage() {
                           <option key={option} value={option}>{option}</option>
                         ))}
                       </select>
+                    ) : field.field_type === 'phone' && (tenant?.lalamove_market || '').toUpperCase() === 'PH' ? (
+                      <div className="relative">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 font-medium pointer-events-none">
+                          +63
+                        </div>
+                        <input
+                          type="tel"
+                          value={(() => {
+                            const value = customerData[field.field_name] || ''
+                            // Remove +63 prefix if present to show only the number part
+                            if (value.startsWith('+63')) {
+                              return value.slice(3).replace(/\D/g, '')
+                            }
+                            // Remove + if present
+                            if (value.startsWith('+')) {
+                              return value.slice(1).replace(/\D/g, '')
+                            }
+                            // Remove leading 0 if present
+                            if (value.startsWith('0')) {
+                              return value.slice(1).replace(/\D/g, '')
+                            }
+                            return value.replace(/\D/g, '')
+                          })()}
+                          onChange={(e) => {
+                            let inputValue = e.target.value.replace(/\D/g, '') // Only digits
+                            
+                            // Prevent 0 as the first digit
+                            if (inputValue.startsWith('0')) {
+                              inputValue = inputValue.slice(1)
+                            }
+                            
+                            // Limit to 10 digits (standard PH mobile number length)
+                            if (inputValue.length > 10) {
+                              inputValue = inputValue.slice(0, 10)
+                            }
+                            
+                            // Store with +63 prefix
+                            setCustomerData(prev => ({
+                              ...prev,
+                              [field.field_name]: inputValue ? `+63${inputValue}` : ''
+                            }))
+                          }}
+                          placeholder="9XXXXXXXXX"
+                          maxLength={10}
+                          className="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
+                          {(() => {
+                            const value = customerData[field.field_name] || ''
+                            const digits = value.replace(/\D/g, '').replace(/^63/, '').replace(/^0/, '')
+                            return `${digits.length}/10`
+                          })()}
+                        </div>
+                      </div>
                     ) : (
                       <input
-                        type={field.field_type === 'email' ? 'email' : field.field_type === 'phone' ? 'tel' : field.field_type === 'number' ? 'number' : 'text'}
+                        type={field.field_type === 'email' ? 'email' : field.field_type === 'number' ? 'number' : 'text'}
                         value={customerData[field.field_name] || ''}
                         onChange={(e) => setCustomerData(prev => ({ ...prev, [field.field_name]: e.target.value }))}
                         placeholder={field.placeholder}

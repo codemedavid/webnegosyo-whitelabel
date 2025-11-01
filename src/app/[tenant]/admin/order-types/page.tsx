@@ -1,6 +1,6 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getTenantBySlug } from '@/lib/admin-service'
-import { getAllOrderTypesWithFormFields } from '@/lib/order-types-service'
+import { getAllOrderTypesWithFormFields, initializeOrderTypesForTenant } from '@/lib/order-types-service'
 import { OrderTypesList } from '@/components/admin/order-types-list'
 import type { Tenant } from '@/types/database'
 
@@ -19,7 +19,21 @@ export default async function OrderTypesPage({
 
   const tenant: Tenant = tenantData
 
-  const orderTypes = await getAllOrderTypesWithFormFields(tenant.id)
+  // Initialize default order types if they don't exist
+  // This ensures new tenants get default order types
+  let orderTypes = await getAllOrderTypesWithFormFields(tenant.id)
+  
+  if (orderTypes.length === 0) {
+    // Try to initialize default order types
+    try {
+      await initializeOrderTypesForTenant(tenant.id)
+      // Refresh the order types after initialization
+      orderTypes = await getAllOrderTypesWithFormFields(tenant.id)
+    } catch (error) {
+      console.error('Failed to initialize order types:', error)
+      // Continue anyway - the database trigger should handle it
+    }
+  }
 
   return (
     <div className="space-y-6">

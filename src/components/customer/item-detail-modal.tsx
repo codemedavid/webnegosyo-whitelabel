@@ -1,18 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Plus, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import type { MenuItem, Variation, Addon } from '@/types/database'
 import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -44,7 +40,6 @@ export function ItemDetailModal({
   const [quantity, setQuantity] = useState(1)
   const [specialInstructions, setSpecialInstructions] = useState('')
 
-  // Reset state when modal opens with new item
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       setSelectedVariation(item?.variations.find((v) => v.is_default))
@@ -55,16 +50,20 @@ export function ItemDetailModal({
     }
   }
 
-  if (!item) return null
+  useEffect(() => {
+    if (item && item.variations.length > 0 && !selectedVariation) {
+      const defaultVar = item.variations.find((v) => v.is_default) || item.variations[0]
+      setSelectedVariation(defaultVar)
+    }
+  }, [item, selectedVariation])
 
-  // Set default variation if not set
-  if (!selectedVariation && item.variations.length > 0) {
-    const defaultVar = item.variations.find((v) => v.is_default) || item.variations[0]
-    setSelectedVariation(defaultVar)
-  }
+  if (!item) return null
 
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const basePrice = hasDiscount ? item.discounted_price! : item.price
+  const hasVariations = item.variations.length > 0
+  const hasAddons = item.addons.length > 0
+  const hasCustomizations = hasVariations || hasAddons
 
   const totalPrice = calculateCartItemSubtotal(
     basePrice,
@@ -89,156 +88,203 @@ export function ItemDetailModal({
     })
   }
 
+  // Compact, minimal modal design - only show what's needed
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[calc(100vw-32px)] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] p-0 overflow-hidden rounded-2xl">
-        {/* Hidden title for accessibility */}
+      <DialogContent 
+        className="!fixed w-full max-w-md sm:max-w-lg h-auto max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !bottom-4 sm:!bottom-auto !left-1/2 !right-auto !top-auto sm:!top-[50%] !-translate-x-1/2 sm:!translate-y-[-50%] !m-0 border shadow-2xl"
+        showCloseButton={false}
+      >
         <DialogTitle className="sr-only">{item.name}</DialogTitle>
-        {/* Top grabber */}
-        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-muted" />
-
-        {/* Scrollable content area */}
-        <div className="max-h-[calc(90vh-92px)] overflow-y-auto">
-          {/* Hero image */}
-          <div className="relative aspect-[16/10] w-full overflow-hidden">
+        
+        {/* Header with Image */}
+        <div className="relative">
+          <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] bg-gray-100">
             <Image
               src={item.image_url}
               alt={item.name}
               fill
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 672px"
+              className="object-cover rounded-t-2xl sm:rounded-t-3xl"
+              sizes="(max-width: 640px) 100vw, 512px"
+              priority
             />
             {hasDiscount && (
-              <Badge className="absolute right-2 top-2" variant="destructive">
+              <div className="absolute top-3 right-3 bg-red-500 text-white px-2.5 py-1 rounded-full text-xs font-semibold">
                 Sale
-              </Badge>
-            )}
-          </div>
-          {/* Content sections */}
-          <div className="px-4 pt-4 pb-2 sm:px-6 sm:pt-6 sm:pb-4 space-y-6">
-            {/* Title + Price row */}
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: branding.textPrimary }}>
-                  {item.name}
-                </h1>
-                {item.description && (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {item.description}
-                  </p>
-                )}
               </div>
-              <div className="text-right">
+            )}
+            <button
+              onClick={() => handleOpenChange(false)}
+              className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-full p-2 hover:bg-white transition-colors shadow-md"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4 text-gray-900" />
+            </button>
+          </div>
+          
+          {/* Title and Price - Compact */}
+          <div className="px-4 pt-4 pb-3 bg-white border-b border-gray-100">
+            <div className="flex items-start justify-between gap-3">
+              <h1 
+                className="text-xl font-bold flex-1 line-clamp-2"
+                style={{ color: branding.textPrimary || '#1a1a1a' }}
+              >
+                {item.name}
+              </h1>
+              <div className="text-right flex-shrink-0">
                 {hasDiscount && (
-                  <div className="text-sm text-muted-foreground line-through">
+                  <div className="text-xs text-gray-400 line-through mb-0.5">
                     {formatPrice(item.price)}
                   </div>
                 )}
-                <div className="text-2xl font-bold" style={{ color: branding.primary }}>
+                <div 
+                  className="text-xl font-bold"
+                  style={{ color: branding.primary }}
+                >
                   {formatPrice(basePrice)}
                 </div>
               </div>
             </div>
-
-            <Separator />
-
-            {/* Variations */}
-            {item.variations.length > 0 && (
-              <section className="space-y-3">
-                <Label className="text-base font-semibold">Choose a size</Label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {item.variations.map((variation) => {
-                    const isSelected = selectedVariation?.id === variation.id
-                    const price = basePrice + variation.price_modifier
-
-                    return (
-                      <button
-                        key={variation.id}
-                        onClick={() => setSelectedVariation(variation)}
-                        data-selected={isSelected}
-                        className="rounded-full border px-4 py-2 text-sm font-medium transition-colors data-[selected=true]:border-primary data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary"
-                      >
-                        <span>{variation.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {variation.price_modifier === 0
-                            ? formatPrice(price)
-                            : `+${formatPrice(variation.price_modifier)}`}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )}
-
-            {/* Add-ons */}
-            {item.addons.length > 0 && (
-              <section className="space-y-3">
-                <Label className="text-base font-semibold">Add-ons</Label>
-                <div className="space-y-2">
-                  {item.addons.map((addon) => {
-                    const isSelected = selectedAddons.some((a) => a.id === addon.id)
-
-                    return (
-                      <button
-                        key={addon.id}
-                        onClick={() => toggleAddon(addon)}
-                        data-selected={isSelected}
-                        className="flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors data-[selected=true]:border-primary data-[selected=true]:bg-primary/5"
-                      >
-                        <span className="font-medium">{addon.name}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {addon.price === 0 ? 'Free' : `+${formatPrice(addon.price)}`}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )}
-
-            {/* Special Instructions */}
-            <section className="space-y-3">
-              <Label htmlFor="instructions" className="text-base font-semibold">
-                Special Instructions
-              </Label>
-              <Textarea
-                id="instructions"
-                placeholder="Any special requests? (e.g., no onions, extra sauce)"
-                value={specialInstructions}
-                onChange={(e) => setSpecialInstructions(e.target.value)}
-                rows={3}
-              />
-            </section>
           </div>
         </div>
 
-        {/* Sticky Action Bar */}
-        <div className="border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 px-4 py-3 sm:px-6 sm:py-4 pb-[max(12px,env(safe-area-inset-bottom))]">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
+        {/* Scrollable Options - Only show if there are customizations */}
+        {hasCustomizations && (
+          <div className="overflow-y-auto bg-white" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+            <div className="p-4 space-y-4">
+              {/* Variations */}
+              {hasVariations && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-2.5 text-gray-700">
+                    Choose Size
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {item.variations.map((variation) => {
+                      const isSelected = selectedVariation?.id === variation.id
+                      const price = basePrice + variation.price_modifier
+
+                      return (
+                        <button
+                          key={variation.id}
+                          onClick={() => setSelectedVariation(variation)}
+                          className={`
+                            px-3 py-2 rounded-lg text-sm font-medium transition-all min-w-[80px]
+                            ${isSelected 
+                              ? 'text-white shadow-sm' 
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }
+                          `}
+                          style={isSelected ? { 
+                            backgroundColor: branding.primary,
+                          } : {}}
+                        >
+                          <div className="text-center">
+                            <div className="font-semibold">{variation.name}</div>
+                            <div className="text-xs opacity-90 mt-0.5">
+                              {variation.price_modifier === 0
+                                ? formatPrice(price)
+                                : `+${formatPrice(variation.price_modifier)}`}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Add-ons */}
+              {hasAddons && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-2.5 text-gray-700">
+                    Add-ons
+                  </h3>
+                  <div className="space-y-2">
+                    {item.addons.map((addon) => {
+                      const isSelected = selectedAddons.some((a) => a.id === addon.id)
+
+                      return (
+                        <button
+                          key={addon.id}
+                          onClick={() => toggleAddon(addon)}
+                          className={`
+                            w-full flex items-center justify-between p-3 rounded-lg border transition-all
+                            ${isSelected 
+                              ? 'border-[currentColor]' 
+                              : 'border-gray-200 hover:border-gray-300'
+                            }
+                          `}
+                          style={isSelected ? { 
+                            color: branding.primary,
+                            borderColor: branding.primary,
+                            backgroundColor: `${branding.primary}08`
+                          } : { backgroundColor: 'white' }}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`
+                              h-4 w-4 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
+                              ${isSelected 
+                                ? 'border-[currentColor] bg-[currentColor]' 
+                                : 'border-gray-300'
+                              }
+                            `}>
+                              {isSelected && (
+                                <svg className="h-2.5 w-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                            <span className={`text-sm font-medium ${isSelected ? '' : 'text-gray-900'}`}>
+                              {addon.name}
+                            </span>
+                          </div>
+                          <span className={`text-sm font-medium ${isSelected ? '' : 'text-gray-600'}`}>
+                            {addon.price === 0 ? 'Free' : `+${formatPrice(addon.price)}`}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Footer - Always visible */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+          <div className="flex items-center gap-2.5">
+            {/* Quantity - Compact */}
+            <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2">
+              <button
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
                 disabled={quantity <= 1}
-                className="h-9 w-9"
+                className="h-9 w-9 rounded-lg flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition-colors"
+                aria-label="Decrease quantity"
               >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="w-10 text-center text-base font-semibold">
+                <Minus className="h-4 w-4 text-gray-700" />
+              </button>
+              <span className="w-7 text-center text-sm font-semibold text-gray-900">
                 {quantity}
               </span>
-              <Button
-                variant="outline"
-                size="icon"
+              <button
                 onClick={() => setQuantity(quantity + 1)}
-                className="h-9 w-9"
+                className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-white transition-colors"
+                aria-label="Increase quantity"
               >
-                <Plus className="h-4 w-4" />
-              </Button>
+                <Plus className="h-4 w-4 text-gray-700" />
+              </button>
             </div>
-            <Button size="lg" className="ml-auto h-11 rounded-full w-full sm:w-auto min-w-[180px]" onClick={handleAddToCart}>
+            
+            {/* Add to Cart - Primary button */}
+            <Button 
+              onClick={handleAddToCart}
+              className="flex-1 h-11 rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all" 
+              style={{ 
+                backgroundColor: branding.primary,
+                color: branding.buttonPrimaryText || '#ffffff'
+              }}
+            >
               Add to Cart • {formatPrice(totalPrice)}
             </Button>
           </div>
@@ -247,4 +293,3 @@ export function ItemDetailModal({
     </Dialog>
   )
 }
-

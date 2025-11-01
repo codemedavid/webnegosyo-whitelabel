@@ -153,6 +153,37 @@ export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: stri
   return data as OrderType
 }
 
+/**
+ * Initialize default order types for a tenant if they don't exist
+ * This can be called manually or automatically
+ */
+export async function initializeOrderTypesForTenant(tenantId: string) {
+  const supabase = await createClient()
+  
+  // Check if order types already exist
+  const { data: existing, error: checkError } = await supabase
+    .from('order_types')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .limit(1)
+
+  if (checkError) throw checkError
+
+  // If order types already exist, skip initialization
+  if (existing && existing.length > 0) {
+    return { initialized: false, message: 'Order types already exist' }
+  }
+
+  // Call the database function to initialize order types
+  const { error } = await supabase.rpc('initialize_order_types_for_tenant', {
+    tenant_uuid: tenantId,
+  })
+
+  if (error) throw error
+
+  return { initialized: true, message: 'Default order types created' }
+}
+
 // ============================================
 // Customer Form Fields Operations
 // ============================================

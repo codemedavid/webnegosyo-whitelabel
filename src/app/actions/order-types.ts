@@ -117,6 +117,41 @@ export async function toggleOrderTypeEnabledAction(
   }
 }
 
+export async function reorderOrderTypesAction(
+  orderTypeIds: string[],
+  tenantId: string,
+  tenantSlug: string
+) {
+  try {
+    const { getOrderTypesByTenant, updateOrderType } = await import('@/lib/order-types-service')
+    
+    // Get all order types to preserve their data
+    const allOrderTypes = await getOrderTypesByTenant(tenantId)
+    const orderTypeMap = new Map(allOrderTypes.map(ot => [ot.id, ot]))
+    
+    // Update order_index for each order type, preserving existing data
+    const updates = orderTypeIds.map((id, index) => {
+      const existing = orderTypeMap.get(id)
+      if (!existing) return Promise.resolve()
+      
+      return updateOrderType(id, tenantId, {
+        type: existing.type,
+        name: existing.name,
+        description: existing.description,
+        is_enabled: existing.is_enabled,
+        order_index: index,
+      })
+    })
+
+    await Promise.all(updates)
+    revalidatePath(`/${tenantSlug}/admin/order-types`)
+    revalidatePath(`/${tenantSlug}/admin`)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder order types' }
+  }
+}
+
 // ============================================
 // Customer Form Fields Actions
 // ============================================

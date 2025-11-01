@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Trash2, Eye, EyeOff, Settings, Users } from 'lucide-react'
+import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,8 +17,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toggleOrderTypeEnabledAction, deleteOrderTypeAction } from '@/app/actions/order-types'
+import { toggleOrderTypeEnabledAction, deleteOrderTypeAction, reorderOrderTypesAction } from '@/app/actions/order-types'
 import { toast } from 'sonner'
+import { useEffect } from 'react'
 import type { OrderType, CustomerFormField } from '@/types/database'
 
 interface OrderTypesListProps {
@@ -44,6 +45,14 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [orderTypeToDelete, setOrderTypeToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [sortedOrderTypes, setSortedOrderTypes] = useState(
+    [...orderTypes].sort((a, b) => a.order_index - b.order_index)
+  )
+
+  // Update sorted order when orderTypes prop changes
+  useEffect(() => {
+    setSortedOrderTypes([...orderTypes].sort((a, b) => a.order_index - b.order_index))
+  }, [orderTypes])
 
   const handleToggleEnabled = async (orderTypeId: string, currentEnabled: boolean) => {
     const result = await toggleOrderTypeEnabledAction(orderTypeId, tenantId, tenantSlug, !currentEnabled)
@@ -73,6 +82,31 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
     setIsDeleting(false)
   }
 
+  const handleMove = async (orderTypeId: string, direction: 'up' | 'down') => {
+    const currentIndex = sortedOrderTypes.findIndex(ot => ot.id === orderTypeId)
+    if (currentIndex === -1) return
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (newIndex < 0 || newIndex >= sortedOrderTypes.length) return
+
+    const newOrder = [...sortedOrderTypes]
+    const [moved] = newOrder.splice(currentIndex, 1)
+    newOrder.splice(newIndex, 0, moved)
+
+    // Update order_index for all order types
+    const orderTypeIds = newOrder.map(ot => ot.id)
+
+    const result = await reorderOrderTypesAction(orderTypeIds, tenantId, tenantSlug)
+
+    if (result.success) {
+      setSortedOrderTypes(newOrder)
+      toast.success('Order type order updated')
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to reorder order types')
+    }
+  }
+
   if (orderTypes.length === 0) {
     return (
       <Card>
@@ -82,7 +116,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
           <p className="text-muted-foreground mb-4">
             Configure your order types to allow customers to choose how they want to receive their orders
           </p>
-          <Button>
+          <Button onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Order Type
           </Button>
@@ -93,8 +127,15 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
 
   return (
     <>
+      <div className="flex items-center justify-end mb-4">
+        <Button onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Order Type
+        </Button>
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {orderTypes.map((orderType) => (
+        {sortedOrderTypes.map((orderType, index) => (
           <Card key={orderType.id} className="overflow-hidden">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
@@ -122,6 +163,26 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleMove(orderType.id, 'up')}
+                    disabled={index === 0}
+                    title="Move up"
+                    className="h-7 w-7"
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleMove(orderType.id, 'down')}
+                    disabled={index === sortedOrderTypes.length - 1}
+                    title="Move down"
+                    className="h-7 w-7"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
                   <Button
                     variant={orderType.is_enabled ? 'default' : 'secondary'}
                     size="sm"

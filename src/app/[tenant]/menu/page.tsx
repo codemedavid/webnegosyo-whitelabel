@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getTenantByIdSupabase } from '@/lib/tenants-service'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
+import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant } from '@/types/database'
 
 export default function MenuPage() {
@@ -427,7 +428,7 @@ export default function MenuPage() {
               borderColor: branding.border 
             }}
           >
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 rounded-lg">
               <CategoryTabs
                 categories={categories}
                 activeCategory={activeCategory}
@@ -481,14 +482,46 @@ export default function MenuPage() {
           activeCategory ? (
             <MenuGrid 
               items={filteredItems} 
-              onItemSelect={setSelectedItem}
+              onItemSelect={(item) => {
+                // If item has no variations or add-ons, add directly to cart
+                const hasCustomizations = item.variations.length > 0 || item.addons.length > 0
+                if (!hasCustomizations) {
+                  addItem(
+                    item,
+                    undefined, // no variation
+                    [], // no addons
+                    1, // default quantity
+                    undefined // no special instructions
+                  )
+                  toast.success(`Added ${item.name} to cart`)
+                } else {
+                  // Open modal for items with customizations
+                  setSelectedItem(item)
+                }
+              }}
               branding={branding}
             />
           ) : (
             <MenuGridGrouped 
               items={filteredItems} 
               categories={categories}
-              onItemSelect={setSelectedItem}
+              onItemSelect={(item) => {
+                // If item has no variations or add-ons, add directly to cart
+                const hasCustomizations = item.variations.length > 0 || item.addons.length > 0
+                if (!hasCustomizations) {
+                  addItem(
+                    item,
+                    undefined, // no variation
+                    [], // no addons
+                    1, // default quantity
+                    undefined // no special instructions
+                  )
+                  toast.success(`Added ${item.name} to cart`)
+                } else {
+                  // Open modal for items with customizations
+                  setSelectedItem(item)
+                }
+              }}
               branding={branding}
             />
           )

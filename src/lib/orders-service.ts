@@ -69,6 +69,14 @@ export async function updateOrderStatus(
   
   const supabase = await createClient()
 
+  // Get order first to check if we need to create Lalamove order
+  const { data: existingOrder } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .single()
+
   const query = supabase
     .from('orders')
     // @ts-expect-error - Supabase type inference issue with update
@@ -82,6 +90,77 @@ export async function updateOrderStatus(
   const { data, error } = await query
 
   if (error) throw error
+
+  // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
+  // trigger Lalamove order creation (async, don't wait)
+  if (status === 'confirmed' && existingOrder && (existingOrder as Order).lalamove_quotation_id && !(existingOrder as Order).lalamove_order_id) {
+    const order = existingOrder as Order
+    
+    // Extract customer info for Lalamove
+    const customerName = order.customer_name || 'Customer'
+    const customerContact = order.customer_contact || ''
+    const customerData = (order.customer_data as Record<string, unknown>) || {}
+    
+    // Get delivery address from customer data
+    const deliveryAddress = customerData.delivery_address as string
+    
+    // Get tenant info for sender details
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('name')
+      .eq('id', tenantId)
+      .single()
+    
+    const tenantName = (tenant as { name?: string } | null)?.name || 'Restaurant'
+    // Use customer contact as sender phone for now (tenant phone should be added to tenant table)
+    const senderPhone = customerContact || ''
+    
+    // Only create if we have the necessary info
+    // Double-check the database to ensure no other process created it while we were processing
+    if (order.lalamove_quotation_id && customerContact && deliveryAddress && senderPhone) {
+      // Check database one more time before creating (race condition prevention)
+      const { data: currentOrder } = await supabase
+        .from('orders')
+        .select('lalamove_order_id')
+        .eq('id', orderId)
+        .single()
+      
+      // If order already has lalamove_order_id, skip creation
+      if (currentOrder && (currentOrder as { lalamove_order_id?: string | null }).lalamove_order_id) {
+        const existingId = (currentOrder as { lalamove_order_id: string }).lalamove_order_id
+        if (existingId && String(existingId).trim() !== '') {
+          console.log('Lalamove order already exists, skipping automatic creation')
+          return data as Order
+        }
+      }
+
+      // Trigger Lalamove order creation asynchronously
+      import('@/app/actions/lalamove')
+        .then(({ createLalamoveOrderAction }) => {
+          return createLalamoveOrderAction(
+            tenantId,
+            orderId,
+            order.lalamove_quotation_id!,
+            tenantName,
+            senderPhone,
+            customerName,
+            customerContact,
+            { orderId, tenantId }
+          )
+        })
+        .then((result) => {
+          if (!result.success) {
+            console.error('Failed to create Lalamove order:', result.error)
+          } else {
+            console.log('Lalamove order created successfully via automatic trigger')
+          }
+        })
+        .catch((error) => {
+          console.error('Error creating Lalamove order:', error)
+        })
+    }
+  }
+
   return data as Order
 }
 
