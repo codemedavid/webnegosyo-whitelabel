@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import {
   getMenuItemsByTenant,
   getMenuItemById,
@@ -36,6 +37,16 @@ export async function createMenuItemAction(tenantId: string, tenantSlug: string,
     revalidatePath(`/${tenantSlug}/menu`)
     return { success: true, data: item }
   } catch (error) {
+    // Handle Zod validation errors
+    if (error instanceof z.ZodError) {
+      return { 
+        success: false, 
+        error: JSON.stringify(error.issues.map(err => ({
+          path: err.path,
+          message: err.message,
+        })))
+      }
+    }
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create menu item' }
   }
 }
@@ -48,6 +59,16 @@ export async function updateMenuItemAction(itemId: string, tenantId: string, ten
     revalidatePath(`/${tenantSlug}/menu`)
     return { success: true, data: item }
   } catch (error) {
+    // Handle Zod validation errors
+    if (error instanceof z.ZodError) {
+      return { 
+        success: false, 
+        error: JSON.stringify(error.issues.map(err => ({
+          path: err.path,
+          message: err.message,
+        })))
+      }
+    }
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update menu item' }
   }
 }
