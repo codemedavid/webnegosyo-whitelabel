@@ -175,6 +175,7 @@ export async function initializeOrderTypesForTenant(tenantId: string) {
   }
 
   // Call the database function to initialize order types
+  // @ts-expect-error - RPC function not in generated types
   const { error } = await supabase.rpc('initialize_order_types_for_tenant', {
     tenant_uuid: tenantId,
   })

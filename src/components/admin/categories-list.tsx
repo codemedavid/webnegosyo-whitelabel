@@ -141,6 +141,12 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
         </Card>
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center justify-end mb-4">
+            <Button onClick={handleAdd}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Category
+            </Button>
+          </div>
           {categories.map((category) => (
             <Card key={category.id}>
               <CardContent className="flex items-center gap-4 p-4">
