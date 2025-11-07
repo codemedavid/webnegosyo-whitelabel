@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Store,
   ShoppingBag,
+  CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -130,6 +131,11 @@ export const adminSidebarItems: SidebarItem[] = [
     label: 'Order Types',
     href: '/admin/order-types',
     icon: Store,
+  },
+  {
+    label: 'Payment Methods',
+    href: '/admin/payment-methods',
+    icon: CreditCard,
   },
   {
     label: 'Orders',

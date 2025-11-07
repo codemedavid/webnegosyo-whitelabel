@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client'
-import { getTenantBySlug } from '@/lib/admin-service'
-import { getCurrentUserRole } from '@/lib/admin-service'
+import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminLayout({ 
@@ -14,7 +13,7 @@ export default async function AdminLayout({
   const { tenant: tenantSlug } = await params
   
   // Check authentication
-  const userRoleData = await getCurrentUserRole()
+  const userRoleData = await getCachedCurrentUserRole()
   
   if (!userRoleData) {
     redirect(`/${tenantSlug}/login?redirect=/${tenantSlug}/admin`)
@@ -23,7 +22,7 @@ export default async function AdminLayout({
   const userRole = userRoleData
 
   // Get tenant
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenantData = await getCachedTenantBySlug(tenantSlug)
   
   if (!tenantData) {
     return (

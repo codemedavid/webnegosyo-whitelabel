@@ -129,13 +129,16 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredItems.map((item) => (
             <Card key={item.id} className="overflow-hidden">
-              <div className="relative aspect-video">
+              <div className="relative aspect-video bg-muted">
                 <Image
                   src={item.image_url}
                   alt={item.name}
                   fill
                   className="object-cover"
                   sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  loading="lazy"
+                  placeholder="blur"
+                  blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
                 />
                 <div className="absolute right-2 top-2 flex gap-1">
                   {item.is_featured && <Badge variant="secondary">Featured</Badge>}

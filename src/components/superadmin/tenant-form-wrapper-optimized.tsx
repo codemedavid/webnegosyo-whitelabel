@@ -169,8 +169,8 @@ function BasicInfoSection({
         </div>
 
         <ImageUpload
-          value={formData.logo_url}
-          onChange={(url) => setFormData({ ...formData, logo_url: url })}
+          currentImageUrl={formData.logo_url}
+          onImageUploaded={(url) => setFormData({ ...formData, logo_url: url })}
           label="Restaurant Logo"
           description="Upload your restaurant logo (recommended: square image)"
           folder="tenants/logos"

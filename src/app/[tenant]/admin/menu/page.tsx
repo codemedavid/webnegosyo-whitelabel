@@ -1,10 +1,29 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug, getMenuItemsByTenant, getCategoriesByTenant } from '@/lib/admin-service'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
+import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { MenuItemsList } from '@/components/admin/menu-items-list'
+import { MenuSkeleton } from '@/components/admin/menu-skeleton'
 import type { Tenant } from '@/types/database'
+
+async function MenuContent({ tenantSlug, tenantId }: { tenantSlug: string; tenantId: string }) {
+  const [menuItems, categories] = await Promise.all([
+    getMenuItemsByTenant(tenantId),
+    getCachedCategoriesByTenant(tenantId),
+  ])
+
+  return (
+    <MenuItemsList
+      items={menuItems}
+      categories={categories}
+      tenantSlug={tenantSlug}
+      tenantId={tenantId}
+    />
+  )
+}
 
 export default async function AdminMenuPage({
   params,
@@ -13,18 +32,13 @@ export default async function AdminMenuPage({
 }) {
   const { tenant: tenantSlug } = await params
   
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenantData = await getCachedTenantBySlug(tenantSlug)
 
   if (!tenantData) {
     return <div>Tenant not found</div>
   }
 
   const tenant: Tenant = tenantData
-
-  const [menuItems, categories] = await Promise.all([
-    getMenuItemsByTenant(tenant.id),
-    getCategoriesByTenant(tenant.id),
-  ])
 
   return (
     <div className="space-y-6">
@@ -48,12 +62,9 @@ export default async function AdminMenuPage({
         </Link>
       </div>
 
-      <MenuItemsList
-        items={menuItems}
-        categories={categories}
-        tenantSlug={tenantSlug}
-        tenantId={tenant.id}
-      />
+      <Suspense fallback={<MenuSkeleton />}>
+        <MenuContent tenantSlug={tenantSlug} tenantId={tenant.id} />
+      </Suspense>
     </div>
   )
 }

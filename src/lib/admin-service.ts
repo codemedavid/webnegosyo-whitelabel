@@ -19,6 +19,24 @@ export const categorySchema = z.object({
   is_active: z.boolean().default(true),
 })
 
+// New variation type schema
+export const variationOptionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Option name is required'),
+  price_modifier: z.number(),
+  image_url: z.string().url('Must be a valid URL').optional().nullable(),
+  is_default: z.boolean().optional(),
+  display_order: z.number().int().min(0),
+})
+
+export const variationTypeSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Type name is required'),
+  is_required: z.boolean(),
+  display_order: z.number().int().min(0),
+  options: z.array(variationOptionSchema).min(1, 'At least one option is required'),
+})
+
 export const menuItemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
@@ -26,12 +44,15 @@ export const menuItemSchema = z.object({
   discounted_price: z.number().positive().optional().nullable(),
   image_url: z.string().url('Must be a valid URL'),
   category_id: z.string().uuid('Must select a category'),
+  // New grouped variation types
+  variation_types: z.array(variationTypeSchema).optional().default([]),
+  // Legacy variations (kept for backward compatibility)
   variations: z.array(z.object({
     id: z.string(),
     name: z.string(),
     price_modifier: z.number(),
     is_default: z.boolean().optional(),
-  })).default([]),
+  })).optional().default([]),
   addons: z.array(z.object({
     id: z.string(),
     name: z.string(),
@@ -202,20 +223,99 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
 // Menu Items Operations
 // ============================================
 
-export async function getMenuItemsByTenant(tenantId: string) {
+export interface MenuItemsPaginationParams {
+  page?: number
+  limit?: number
+  categoryId?: string
+  searchQuery?: string
+  isAvailable?: boolean
+}
+
+export interface PaginatedMenuItemsResult {
+  items: MenuItem[]
+  totalCount: number
+  currentPage: number
+  totalPages: number
+  hasNextPage: boolean
+  hasPreviousPage: boolean
+}
+
+// Function overloads for better type inference
+export async function getMenuItemsByTenant(
+  tenantId: string
+): Promise<MenuItem[]>
+export async function getMenuItemsByTenant(
+  tenantId: string,
+  params: MenuItemsPaginationParams
+): Promise<PaginatedMenuItemsResult>
+export async function getMenuItemsByTenant(
+  tenantId: string,
+  params?: MenuItemsPaginationParams
+): Promise<MenuItem[] | PaginatedMenuItemsResult> {
   const supabase = await createClient()
   
-  const { data, error } = await supabase
+  // If no pagination params provided, return all items (legacy behavior)
+  if (!params) {
+    const { data, error } = await supabase
+      .from('menu_items')
+      .select(`
+        *,
+        category:categories(*)
+      `)
+      .eq('tenant_id', tenantId)
+      .order('order', { ascending: true })
+
+    if (error) throw error
+    return data as MenuItem[]
+  }
+
+  // Pagination logic
+  const page = params.page || 1
+  const limit = params.limit || 24
+  const offset = (page - 1) * limit
+
+  // Build query with filters
+  let query = supabase
     .from('menu_items')
     .select(`
       *,
       category:categories(*)
-    `)
+    `, { count: 'exact' })
     .eq('tenant_id', tenantId)
+
+  // Apply filters
+  if (params.categoryId && params.categoryId !== 'all') {
+    query = query.eq('category_id', params.categoryId)
+  }
+
+  if (params.searchQuery) {
+    query = query.or(`name.ilike.%${params.searchQuery}%,description.ilike.%${params.searchQuery}%`)
+  }
+
+  if (params.isAvailable !== undefined) {
+    query = query.eq('is_available', params.isAvailable)
+  }
+
+  // Apply pagination and ordering
+  query = query
     .order('order', { ascending: true })
+    .range(offset, offset + limit - 1)
+
+  const { data, error, count } = await query
 
   if (error) throw error
-  return data as MenuItem[]
+
+  const totalCount = count || 0
+  const totalPages = Math.ceil(totalCount / limit)
+
+  return {
+    items: data as MenuItem[],
+    totalCount,
+    currentPage: page,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPreviousPage: page > 1,
+  }
 }
 
 export async function getMenuItemById(itemId: string, tenantId: string) {

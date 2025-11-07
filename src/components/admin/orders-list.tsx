@@ -46,6 +46,13 @@ interface OrdersListProps {
   orders: OrderWithItems[]
   tenantSlug: string
   tenantId: string
+  pagination?: {
+    currentPage: number
+    totalPages: number
+    totalCount: number
+    hasNextPage: boolean
+    hasPreviousPage: boolean
+  }
 }
 
 const statusColors = {

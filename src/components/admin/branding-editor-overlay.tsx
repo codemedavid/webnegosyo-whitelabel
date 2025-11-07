@@ -16,6 +16,9 @@ interface BrandingDraft {
   header_font_color?: string
   cards_color?: string
   cards_border_color?: string
+  card_title_color?: string
+  card_price_color?: string
+  card_description_color?: string
   button_primary_color?: string
   button_primary_text_color?: string
   text_primary_color?: string
@@ -48,6 +51,9 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     header_font_color: tenant.header_font_color || '',
     cards_color: tenant.cards_color || '',
     cards_border_color: tenant.cards_border_color || '',
+    card_title_color: tenant.card_title_color || '',
+    card_price_color: tenant.card_price_color || '',
+    card_description_color: tenant.card_description_color || '',
     button_primary_color: tenant.button_primary_color || '',
     button_primary_text_color: tenant.button_primary_text_color || '',
     text_primary_color: tenant.text_primary_color || '',
@@ -163,6 +169,11 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
               <Swatch id="cards_color" label="Cards" value={draft.cards_color || ''} onChange={(v) => updateDraft('cards_color', v)} />
               <Swatch id="cards_border_color" label="Cards Border" value={draft.cards_border_color || ''} onChange={(v) => updateDraft('cards_border_color', v)} />
               <Swatch id="border_color" label="Border" value={draft.border_color || ''} onChange={(v) => updateDraft('border_color', v)} />
+
+              {/* Card Text Colors */}
+              <Swatch id="card_title_color" label="Card Title" value={draft.card_title_color || ''} onChange={(v) => updateDraft('card_title_color', v)} />
+              <Swatch id="card_price_color" label="Card Price" value={draft.card_price_color || ''} onChange={(v) => updateDraft('card_price_color', v)} />
+              <Swatch id="card_description_color" label="Card Description" value={draft.card_description_color || ''} onChange={(v) => updateDraft('card_description_color', v)} />
 
               {/* Buttons */}
               <Swatch id="button_primary_color" label="Btn Primary" value={draft.button_primary_color || ''} onChange={(v) => updateDraft('button_primary_color', v)} />

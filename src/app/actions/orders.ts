@@ -71,13 +71,65 @@ export async function createOrderAction(
   orderTypeId?: string,
   customerData?: Record<string, unknown>,
   deliveryFee?: number,
-  lalamoveQuotationId?: string
+  lalamoveQuotationId?: string,
+  paymentMethodId?: string,
+  paymentMethodName?: string,
+  paymentMethodDetails?: string,
+  paymentMethodQrCodeUrl?: string
 ) {
   try {
-    const order = await createOrder(tenantId, items, customerInfo, orderTypeId, customerData, deliveryFee, lalamoveQuotationId)
+    const order = await createOrder(
+      tenantId, 
+      items, 
+      customerInfo, 
+      orderTypeId, 
+      customerData, 
+      deliveryFee, 
+      lalamoveQuotationId,
+      paymentMethodId,
+      paymentMethodName,
+      paymentMethodDetails,
+      paymentMethodQrCodeUrl
+    )
     return { success: true, data: order }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }
+  }
+}
+
+export async function updatePaymentStatusAction(
+  orderId: string,
+  tenantId: string,
+  tenantSlug: string,
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'verified'
+) {
+  try {
+    const supabase = await (await import('@/lib/supabase/server')).createClient()
+    
+    // Verify admin access
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
+    const query = supabase
+      .from('orders')
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - Database types need regeneration for payment_status field
+      .update({ payment_status: paymentStatus })
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single()
+    
+    const { data, error } = await query
+
+    if (error) throw error
+
+    revalidatePath(`/${tenantSlug}/admin/orders`)
+    revalidatePath(`/${tenantSlug}/admin`)
+    
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update payment status' }
   }
 }
 

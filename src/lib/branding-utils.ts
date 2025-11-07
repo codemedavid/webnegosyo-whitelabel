@@ -13,6 +13,11 @@ export interface BrandingColors {
   cards: string
   cardsBorder: string
   
+  // Card text colors
+  cardTitle: string
+  cardPrice: string
+  cardDescription: string
+  
   // Button colors
   buttonPrimary: string
   buttonPrimaryText: string
@@ -47,6 +52,9 @@ export const DEFAULT_BRANDING: BrandingColors = {
   headerFont: '#000000',
   cards: '#ffffff',
   cardsBorder: '#e5e7eb',
+  cardTitle: '#111111',
+  cardPrice: '#111111',
+  cardDescription: '#6b7280',
   buttonPrimary: '#111111',
   buttonPrimaryText: '#ffffff',
   buttonSecondary: '#f3f4f6',
@@ -79,6 +87,9 @@ export function getTenantBranding(tenant: Tenant | null): BrandingColors {
     headerFont: tenant.header_font_color || DEFAULT_BRANDING.headerFont,
     cards: tenant.cards_color || DEFAULT_BRANDING.cards,
     cardsBorder: tenant.cards_border_color || DEFAULT_BRANDING.cardsBorder,
+    cardTitle: tenant.card_title_color || tenant.text_primary_color || DEFAULT_BRANDING.cardTitle,
+    cardPrice: tenant.card_price_color || tenant.primary_color || DEFAULT_BRANDING.cardPrice,
+    cardDescription: tenant.card_description_color || tenant.text_secondary_color || DEFAULT_BRANDING.cardDescription,
     buttonPrimary: tenant.button_primary_color || tenant.primary_color || DEFAULT_BRANDING.buttonPrimary,
     buttonPrimaryText: tenant.button_primary_text_color || DEFAULT_BRANDING.buttonPrimaryText,
     buttonSecondary: tenant.button_secondary_color || DEFAULT_BRANDING.buttonSecondary,
@@ -108,6 +119,9 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-header-font': branding.headerFont,
     '--brand-cards': branding.cards,
     '--brand-cards-border': branding.cardsBorder,
+    '--brand-card-title': branding.cardTitle,
+    '--brand-card-price': branding.cardPrice,
+    '--brand-card-description': branding.cardDescription,
     '--brand-button-primary': branding.buttonPrimary,
     '--brand-button-primary-text': branding.buttonPrimaryText,
     '--brand-button-secondary': branding.buttonSecondary,
@@ -211,6 +225,9 @@ export function generateBrandingClasses(branding: BrandingColors): string {
     .brand-bg { background-color: ${branding.background} !important; }
     .brand-header { background-color: ${branding.header} !important; color: ${branding.headerFont} !important; }
     .brand-cards { background-color: ${branding.cards} !important; border-color: ${branding.cardsBorder} !important; }
+    .brand-card-title { color: ${branding.cardTitle} !important; }
+    .brand-card-price { color: ${branding.cardPrice} !important; }
+    .brand-card-description { color: ${branding.cardDescription} !important; }
     .brand-button-primary { background-color: ${branding.buttonPrimary} !important; color: ${branding.buttonPrimaryText} !important; }
     .brand-button-secondary { background-color: ${branding.buttonSecondary} !important; color: ${branding.buttonSecondaryText} !important; }
     .brand-text-primary { color: ${branding.textPrimary} !important; }

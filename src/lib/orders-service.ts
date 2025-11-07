@@ -23,22 +23,98 @@ export interface OrderWithItems extends Order {
 // Orders Operations
 // ============================================
 
-export async function getOrdersByTenant(tenantId: string) {
+export interface OrdersPaginationParams {
+  page?: number
+  limit?: number
+  status?: string
+  orderType?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
+export interface PaginatedOrdersResult {
+  orders: OrderWithItems[]
+  totalCount: number
+  currentPage: number
+  totalPages: number
+  hasNextPage: boolean
+  hasPreviousPage: boolean
+}
+
+export async function getOrdersByTenant(
+  tenantId: string,
+  params?: OrdersPaginationParams
+): Promise<OrderWithItems[] | PaginatedOrdersResult> {
   await verifyTenantAdmin(tenantId)
   
   const supabase = await createClient()
   
-  const { data, error } = await supabase
+  // If no pagination params provided, return all orders (legacy behavior)
+  if (!params) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items(*)
+      `)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data as OrderWithItems[]
+  }
+
+  // Pagination logic
+  const page = params.page || 1
+  const limit = params.limit || 20
+  const offset = (page - 1) * limit
+
+  // Build query with filters
+  let query = supabase
     .from('orders')
     .select(`
       *,
       order_items(*)
-    `)
+    `, { count: 'exact' })
     .eq('tenant_id', tenantId)
+
+  // Apply filters
+  if (params.status && params.status !== 'all') {
+    query = query.eq('status', params.status)
+  }
+
+  if (params.orderType && params.orderType !== 'all') {
+    query = query.eq('order_type', params.orderType)
+  }
+
+  if (params.dateFrom) {
+    query = query.gte('created_at', params.dateFrom)
+  }
+
+  if (params.dateTo) {
+    query = query.lte('created_at', params.dateTo)
+  }
+
+  // Apply pagination and ordering
+  query = query
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  const { data, error, count } = await query
 
   if (error) throw error
-  return data as OrderWithItems[]
+
+  const totalCount = count || 0
+  const totalPages = Math.ceil(totalCount / limit)
+
+  return {
+    orders: data as OrderWithItems[],
+    totalCount,
+    currentPage: page,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPreviousPage: page > 1,
+  }
 }
 
 export async function getOrderById(orderId: string, tenantId: string) {
@@ -219,7 +295,11 @@ export async function createOrder(
   orderTypeId?: string,
   customerData?: Record<string, unknown>,
   deliveryFee?: number,
-  lalamoveQuotationId?: string
+  lalamoveQuotationId?: string,
+  paymentMethodId?: string,
+  paymentMethodName?: string,
+  paymentMethodDetails?: string,
+  paymentMethodQrCodeUrl?: string
 ) {
   const supabase = await createClient()
 
@@ -231,7 +311,7 @@ export async function createOrder(
     .from('orders')
     .insert({
       tenant_id: tenantId,
-      order_type_id: orderTypeId,
+      order_type_id: orderTypeId || null,
       order_type: orderTypeId ? await getOrderTypeName(orderTypeId) : null,
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
@@ -239,6 +319,11 @@ export async function createOrder(
       total: finalTotal,
       delivery_fee: deliveryFee || 0,
       lalamove_quotation_id: lalamoveQuotationId || null,
+      payment_method_id: paymentMethodId || null,
+      payment_method_name: paymentMethodName || null,
+      payment_method_details: paymentMethodDetails || null,
+      payment_method_qr_code_url: paymentMethodQrCodeUrl || null,
+      payment_status: 'pending',
       status: 'pending',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)

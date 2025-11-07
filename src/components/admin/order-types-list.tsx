@@ -134,32 +134,29 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
         </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {sortedOrderTypes.map((orderType, index) => (
           <Card key={orderType.id} className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">{orderTypeIcons[orderType.type]}</div>
-                  <div>
-                    <CardTitle className="text-lg">{orderType.name}</CardTitle>
-                    {orderType.description && (
-                      <p className="text-sm text-muted-foreground">{orderType.description}</p>
-                    )}
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="text-lg flex-shrink-0">{orderTypeIcons[orderType.type]}</div>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-sm sm:text-base truncate">{orderType.name}</CardTitle>
                   </div>
                 </div>
-                <Badge className={orderTypeColors[orderType.type]} variant="outline">
+                <Badge className={`${orderTypeColors[orderType.type]} text-[10px] flex-shrink-0`} variant="outline">
                   {orderType.type.replace('_', ' ')}
                 </Badge>
               </div>
             </CardHeader>
             
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 pt-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {orderType.customer_form_fields.length} form field{orderType.customer_form_fields.length !== 1 ? 's' : ''}
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {orderType.customer_form_fields.length} field{orderType.customer_form_fields.length !== 1 ? 's' : ''}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -169,7 +166,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                     onClick={() => handleMove(orderType.id, 'up')}
                     disabled={index === 0}
                     title="Move up"
-                    className="h-7 w-7"
+                    className="h-6 w-6"
                   >
                     <ChevronUp className="h-3 w-3" />
                   </Button>
@@ -179,7 +176,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                     onClick={() => handleMove(orderType.id, 'down')}
                     disabled={index === sortedOrderTypes.length - 1}
                     title="Move down"
-                    className="h-7 w-7"
+                    className="h-6 w-6"
                   >
                     <ChevronDown className="h-3 w-3" />
                   </Button>
@@ -187,60 +184,40 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                     variant={orderType.is_enabled ? 'default' : 'secondary'}
                     size="sm"
                     onClick={() => handleToggleEnabled(orderType.id, orderType.is_enabled)}
+                    className="text-[10px] h-6 px-2"
                   >
                     {orderType.is_enabled ? (
                       <>
-                        <Eye className="mr-1 h-3 w-3" />
-                        Enabled
+                        <Eye className="mr-0.5 h-3 w-3" />
+                        On
                       </>
                     ) : (
                       <>
-                        <EyeOff className="mr-1 h-3 w-3" />
-                        Disabled
+                        <EyeOff className="mr-0.5 h-3 w-3" />
+                        Off
                       </>
                     )}
                   </Button>
                 </div>
               </div>
 
-              {orderType.customer_form_fields.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium">Form Fields:</h4>
-                  <div className="space-y-1">
-                    {orderType.customer_form_fields.slice(0, 3).map((field) => (
-                      <div key={field.id} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">{field.field_label}</span>
-                        {field.is_required && (
-                          <Badge variant="outline" className="text-xs">Required</Badge>
-                        )}
-                      </div>
-                    ))}
-                    {orderType.customer_form_fields.length > 3 && (
-                      <p className="text-xs text-muted-foreground">
-                        +{orderType.customer_form_fields.length - 3} more...
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2">
                 <Link href={`/${tenantSlug}/admin/order-types/${orderType.id}`} className="flex-1">
-                  <Button variant="outline" className="w-full">
-                    <Settings className="mr-2 h-4 w-4" />
+                  <Button variant="outline" className="w-full text-xs h-8">
+                    <Settings className="mr-1 h-3 w-3" />
                     Configure
                   </Button>
                 </Link>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-destructive"
+                  className="text-destructive h-8 w-8"
                   onClick={() => {
                     setOrderTypeToDelete(orderType.id)
                     setDeleteDialogOpen(true)
                   }}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </CardContent>

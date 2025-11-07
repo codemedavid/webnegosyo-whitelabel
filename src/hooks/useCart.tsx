@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
-import type { CartItem, MenuItem, Variation, Addon, Cart } from '@/types/database'
+import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption } from '@/types/database'
 import {
   calculateCartItemSubtotal,
   calculateCartTotal,
@@ -14,7 +14,7 @@ interface CartContextType extends Cart {
   setOrderType: (orderType: string | null) => void
   addItem: (
     menuItem: MenuItem,
-    variation: Variation | undefined,
+    variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
     addons: Addon[],
     quantity: number,
     specialInstructions?: string
@@ -116,23 +116,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (
       menuItem: MenuItem,
-      variation: Variation | undefined,
+      variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
       addons: Addon[],
       quantity: number,
       specialInstructions?: string
     ) => {
       const subtotal = calculateCartItemSubtotal(
         menuItem.price,
-        variation,
+        variationOrVariations,
         addons,
         quantity
       )
 
-      const cartItemId = generateCartItemId(
-        menuItem.id,
-        variation?.id,
-        addons.map((a) => a.id)
-      )
+      // Determine if using new or legacy variation format
+      const isNewFormat = variationOrVariations && typeof variationOrVariations === 'object' && !('price_modifier' in variationOrVariations)
+      
+      // Generate cart item ID based on format
+      const cartItemId = isNewFormat
+        ? generateCartItemId(menuItem.id, variationOrVariations as { [typeId: string]: VariationOption }, addons.map((a) => a.id))
+        : generateCartItemId(menuItem.id, (variationOrVariations as Variation)?.id, addons.map((a) => a.id))
 
       setItems((prevItems) => {
         const existingItemIndex = prevItems.findIndex((item) => item.id === cartItemId)
@@ -144,7 +146,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const newQuantity = existingItem.quantity + quantity
           const newSubtotal = calculateCartItemSubtotal(
             menuItem.price,
-            variation,
+            variationOrVariations,
             addons,
             newQuantity
           )
@@ -159,11 +161,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
           return updatedItems
         }
 
-        // Add new item
+        // Add new item with appropriate format
         const newItem: CartItem = {
           id: cartItemId,
           menu_item: menuItem,
-          selected_variation: variation,
+          // Store variations in appropriate format
+          ...(isNewFormat
+            ? { selected_variations: variationOrVariations as { [typeId: string]: VariationOption } }
+            : { selected_variation: variationOrVariations as Variation | undefined }
+          ),
           selected_addons: addons,
           quantity,
           special_instructions: specialInstructions,
@@ -189,9 +195,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => {
       return prevItems.map((item) => {
         if (item.id === cartItemId) {
+          // Use appropriate variation format for calculation
+          const variations = item.selected_variations || item.selected_variation
           const newSubtotal = calculateCartItemSubtotal(
             item.menu_item.price,
-            item.selected_variation,
+            variations,
             item.selected_addons,
             quantity
           )

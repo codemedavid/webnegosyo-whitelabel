@@ -27,13 +27,16 @@ export function MenuItemCard({ item, onSelect, branding }: MenuItemCardProps) {
       onClick={() => onSelect(item)}
     >
       {/* Image Container */}
-      <div className="relative aspect-[4/3] overflow-hidden">
+      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
         <Image
           src={item.image_url}
           alt={item.name}
           fill
           className="object-cover transition-transform group-hover:scale-105"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          loading="lazy"
+          placeholder="blur"
+          blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
         />
         
         {/* Overlay Elements */}
@@ -77,7 +80,7 @@ export function MenuItemCard({ item, onSelect, branding }: MenuItemCardProps) {
       <div className="p-4">
         <h3 
           className="mb-2 text-lg font-bold line-clamp-1"
-          style={{ color: branding.textPrimary }}
+          style={{ color: branding.cardTitle }}
         >
           {item.name}
         </h3>
@@ -93,7 +96,7 @@ export function MenuItemCard({ item, onSelect, branding }: MenuItemCardProps) {
           )}
           <span 
             className="text-lg font-bold" 
-            style={{ color: branding.primary }}
+            style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
           </span>

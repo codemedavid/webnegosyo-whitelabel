@@ -15,6 +15,9 @@ export interface Tenant {
   header_font_color?: string;
   cards_color?: string;
   cards_border_color?: string;
+  card_title_color?: string;
+  card_price_color?: string;
+  card_description_color?: string;
   button_primary_color?: string;
   button_primary_text_color?: string;
   button_secondary_color?: string;
@@ -65,11 +68,30 @@ export interface Category {
   updated_at: string;
 }
 
+// Legacy variation structure (kept for backward compatibility)
 export interface Variation {
   id: string;
   name: string; // "Small", "Medium", "Large"
   price_modifier: number; // +0, +2, +5
   is_default?: boolean;
+}
+
+// New grouped variation structure
+export interface VariationOption {
+  id: string;
+  name: string; // "Small", "Medium", "Large"
+  price_modifier: number; // +0, +2, +5
+  image_url?: string; // Optional image for this specific option
+  is_default?: boolean;
+  display_order: number;
+}
+
+export interface VariationType {
+  id: string;
+  name: string; // "Size", "Spice Level", "Protein Type"
+  is_required: boolean; // Must customer select from this group?
+  display_order: number;
+  options: VariationOption[];
 }
 
 export interface Addon {
@@ -88,6 +110,9 @@ export interface MenuItem {
   price: number;
   discounted_price?: number;
   image_url: string;
+  // New grouped variation system
+  variation_types?: VariationType[];
+  // Legacy flat variation system (kept for backward compatibility)
   variations: Variation[];
   addons: Addon[];
   is_available: boolean;
@@ -100,6 +125,9 @@ export interface MenuItem {
 export interface CartItem {
   id: string; // Unique ID for cart item
   menu_item: MenuItem;
+  // New grouped variation selections: Map of variation type ID -> selected option
+  selected_variations?: { [variationTypeId: string]: VariationOption };
+  // Legacy single variation (kept for backward compatibility)
   selected_variation?: Variation;
   selected_addons: Addon[];
   quantity: number;
@@ -135,6 +163,9 @@ export interface AppUser {
 export interface OrderItem {
   menu_item_id: string;
   menu_item_name: string;
+  // New: Store multiple variations as a map { "Size": "Large", "Spice": "Hot" }
+  variations?: { [typeName: string]: string };
+  // Legacy: Single variation string (kept for backward compatibility)
   variation?: string;
   addons: string[];
   quantity: number;
@@ -171,6 +202,25 @@ export interface CustomerFormField {
   updated_at: string;
 }
 
+export interface PaymentMethod {
+  id: string;
+  tenant_id: string;
+  name: string;
+  details?: string;
+  qr_code_url?: string;
+  is_active: boolean;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaymentMethodOrderType {
+  id: string;
+  payment_method_id: string;
+  order_type_id: string;
+  created_at: string;
+}
+
 export interface Order {
   id: string;
   tenant_id: string;
@@ -191,6 +241,12 @@ export interface Order {
   lalamove_driver_name?: string;
   lalamove_driver_phone?: string;
   lalamove_tracking_url?: string;
+  // Payment fields
+  payment_method_id?: string;
+  payment_method_name?: string;
+  payment_method_details?: string;
+  payment_method_qr_code_url?: string;
+  payment_status?: 'pending' | 'paid' | 'failed' | 'verified';
   created_at: string;
   updated_at: string;
 }
@@ -223,6 +279,16 @@ export interface Database {
         Row: CustomerFormField;
         Insert: Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      payment_methods: {
+        Row: PaymentMethod;
+        Insert: Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      payment_method_order_types: {
+        Row: PaymentMethodOrderType;
+        Insert: Omit<PaymentMethodOrderType, 'id' | 'created_at'>;
+        Update: Partial<Omit<PaymentMethodOrderType, 'id' | 'created_at'>>;
       };
       users: {
         Row: User;

@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
-import type { MenuItem, Category } from '@/types/database'
+import type { MenuItem, Category, VariationType, VariationOption } from '@/types/database'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -61,9 +61,13 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
   })
 
   const [variations, setVariations] = useState(item?.variations || [])
+  const [variationTypes, setVariationTypes] = useState(item?.variation_types || [])
   const [addons, setAddons] = useState(item?.addons || [])
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [useNewVariations, setUseNewVariations] = useState(
+    (item?.variation_types && item.variation_types.length > 0) || false
+  )
 
   const validateForm = (): boolean => {
     try {
@@ -118,7 +122,9 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
         discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
         image_url: formData.image_url,
         category_id: formData.category_id,
-        variations,
+        // Include both formats for backward compatibility
+        variation_types: useNewVariations ? variationTypes : [],
+        variations: useNewVariations ? [] : variations,
         addons,
         is_available: formData.is_available,
         is_featured: formData.is_featured,
@@ -197,6 +203,62 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
     const updated = [...addons]
     updated[index] = { ...updated[index], [field]: value }
     setAddons(updated)
+  }
+
+  // New Variation Types handlers
+  const addVariationType = () => {
+    const newType: VariationType = {
+      id: `type-temp-${Date.now()}`,
+      name: '',
+      is_required: false,
+      display_order: variationTypes.length,
+      options: []
+    }
+    setVariationTypes([...variationTypes, newType])
+  }
+
+  const removeVariationType = (index: number) => {
+    setVariationTypes(variationTypes.filter((_, i) => i !== index))
+  }
+
+  const updateVariationType = (index: number, field: keyof VariationType, value: string | boolean | number) => {
+    const updated = [...variationTypes]
+    updated[index] = { ...updated[index], [field]: value }
+    setVariationTypes(updated)
+  }
+
+  const addVariationOption = (typeIndex: number) => {
+    const updated = [...variationTypes]
+    const newOption: VariationOption = {
+      id: `opt-temp-${Date.now()}`,
+      name: '',
+      price_modifier: 0,
+      image_url: undefined,
+      is_default: updated[typeIndex].options.length === 0,
+      display_order: updated[typeIndex].options.length
+    }
+    updated[typeIndex].options.push(newOption)
+    setVariationTypes(updated)
+  }
+
+  const removeVariationOption = (typeIndex: number, optionIndex: number) => {
+    const updated = [...variationTypes]
+    updated[typeIndex].options = updated[typeIndex].options.filter((_, i) => i !== optionIndex)
+    setVariationTypes(updated)
+  }
+
+  const updateVariationOption = (
+    typeIndex: number,
+    optionIndex: number,
+    field: keyof VariationOption,
+    value: string | number | boolean | undefined
+  ) => {
+    const updated = [...variationTypes]
+    updated[typeIndex].options[optionIndex] = {
+      ...updated[typeIndex].options[optionIndex],
+      [field]: value
+    }
+    setVariationTypes(updated)
   }
 
   return (
@@ -316,8 +378,8 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
 
           <div className="space-y-2">
             <ImageUpload
-              value={formData.image_url}
-              onChange={(url) => {
+              currentImageUrl={formData.image_url}
+              onImageUploaded={(url) => {
                 setFormData({ ...formData, image_url: url })
                 if (errors.image_url) setErrors({ ...errors, image_url: undefined })
               }}
@@ -353,49 +415,231 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
         </CardContent>
       </Card>
 
+      {/* Variation System Selector */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Variations</CardTitle>
-          <Button type="button" variant="outline" size="sm" onClick={addVariation}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Variation
-          </Button>
+        <CardHeader>
+          <CardTitle>Variation System</CardTitle>
         </CardHeader>
         <CardContent>
-          {variations.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground">
-              No variations. Add sizes like Small, Medium, Large.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {variations.map((variation, index) => (
-                <div key={variation.id} className="flex gap-2">
-                  <Input
-                    placeholder="Name (e.g., Small)"
-                    value={variation.name}
-                    onChange={(e) => updateVariation(index, 'name', e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="Price modifier"
-                    value={variation.price_modifier}
-                    onChange={(e) => updateVariation(index, 'price_modifier', parseFloat(e.target.value))}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeVariation(index)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={!useNewVariations}
+                onChange={() => setUseNewVariations(false)}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">Simple Variations (Legacy)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={useNewVariations}
+                onChange={() => setUseNewVariations(true)}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">Grouped Variations with Images (New)</span>
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {useNewVariations 
+              ? 'Create organized variation groups (Size, Spice Level, etc.) with optional images for each option.'
+              : 'Simple flat list of variations for basic size options.'}
+          </p>
         </CardContent>
       </Card>
+
+      {/* Legacy Variations System */}
+      {!useNewVariations && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Variations</CardTitle>
+            <Button type="button" variant="outline" size="sm" onClick={addVariation}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Variation
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {variations.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground">
+                No variations. Add sizes like Small, Medium, Large.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {variations.map((variation, index) => (
+                  <div key={variation.id} className="flex gap-2">
+                    <Input
+                      placeholder="Name (e.g., Small)"
+                      value={variation.name}
+                      onChange={(e) => updateVariation(index, 'name', e.target.value)}
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Price modifier"
+                      value={variation.price_modifier}
+                      onChange={(e) => updateVariation(index, 'price_modifier', parseFloat(e.target.value))}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeVariation(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* New Grouped Variation Types System */}
+      {useNewVariations && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Variation Types</CardTitle>
+            <Button type="button" variant="outline" size="sm" onClick={addVariationType}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Variation Type
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {variationTypes.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-8">
+                No variation types. Add groups like Size, Spice Level, Protein Type, etc.
+              </p>
+            ) : (
+              <div className="space-y-6">
+                {variationTypes.map((variationType, typeIndex) => (
+                  <div key={variationType.id} className="border rounded-lg p-4 space-y-4">
+                    {/* Variation Type Header */}
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 space-y-3">
+                        <Input
+                          placeholder="Type Name (e.g., Size, Spice Level)"
+                          value={variationType.name}
+                          onChange={(e) => updateVariationType(typeIndex, 'name', e.target.value)}
+                          className="font-medium"
+                        />
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={variationType.is_required}
+                            onChange={(e) => updateVariationType(typeIndex, 'is_required', e.target.checked)}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-sm">Required (customer must select)</span>
+                        </label>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeVariationType(typeIndex)}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Variation Options */}
+                    <div className="ml-4 space-y-3 border-l-2 pl-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-medium text-muted-foreground">Options</h4>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addVariationOption(typeIndex)}
+                        >
+                          <Plus className="mr-1 h-3 w-3" />
+                          Add Option
+                        </Button>
+                      </div>
+
+                      {variationType.options.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No options yet. Add options like Small, Medium, Large.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {variationType.options.map((option, optionIndex) => (
+                            <div key={option.id} className="border rounded-md p-3 space-y-3 bg-gray-50">
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="Option name (e.g., Small)"
+                                  value={option.name}
+                                  onChange={(e) =>
+                                    updateVariationOption(typeIndex, optionIndex, 'name', e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="Price modifier"
+                                  value={option.price_modifier}
+                                  onChange={(e) =>
+                                    updateVariationOption(
+                                      typeIndex,
+                                      optionIndex,
+                                      'price_modifier',
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-32"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeVariationOption(typeIndex, optionIndex)}
+                                  className="text-red-500"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              {/* Image Upload for Option */}
+                              <div className="space-y-2">
+                                <Label className="text-xs">Option Image (Optional)</Label>
+                                <ImageUpload
+                                  currentImageUrl={option.image_url || ''}
+                                  onImageUploaded={(url) =>
+                                    updateVariationOption(typeIndex, optionIndex, 'image_url', url)
+                                  }
+                                  label=""
+                                  description="Upload an image for this option"
+                                  folder={`variation-options`}
+                                />
+                              </div>
+
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={option.is_default || false}
+                                  onChange={(e) =>
+                                    updateVariationOption(typeIndex, optionIndex, 'is_default', e.target.checked)
+                                  }
+                                  className="h-3 w-3"
+                                />
+                                <span className="text-xs">Default option</span>
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

@@ -1,30 +1,19 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { UtensilsCrossed, FolderTree, TrendingUp, DollarSign, ShoppingBag, Clock } from 'lucide-react'
-import { getTenantBySlug, getCategoriesByTenant, getMenuItemsByTenant } from '@/lib/admin-service'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
+import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { getOrderStats } from '@/lib/orders-service'
 import { Button } from '@/components/ui/button'
+import { DashboardSkeleton } from '@/components/admin/dashboard-skeleton'
 import type { Tenant } from '@/types/database'
 
-export default async function AdminDashboard({
-  params,
-}: {
-  params: Promise<{ tenant: string }>
-}) {
-  const { tenant: tenantSlug } = await params
-  
-  const tenantData = await getTenantBySlug(tenantSlug)
-  
-  if (!tenantData) {
-    return <div>Tenant not found</div>
-  }
-
-  const tenant: Tenant = tenantData
-
+async function DashboardContent({ tenantSlug, tenantId }: { tenantSlug: string; tenantId: string }) {
   const [menuItems, categories, orderStats] = await Promise.all([
-    getMenuItemsByTenant(tenant.id),
-    getCategoriesByTenant(tenant.id),
-    getOrderStats(tenant.id).catch(() => ({ 
+    getMenuItemsByTenant(tenantId),
+    getCachedCategoriesByTenant(tenantId),
+    getOrderStats(tenantId).catch(() => ({ 
       todayOrders: 0, 
       todayRevenue: 0, 
       pendingOrders: 0,
@@ -69,11 +58,6 @@ export default async function AdminDashboard({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to {tenant.name} admin panel</p>
-      </div>
-
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon
@@ -157,6 +141,35 @@ export default async function AdminDashboard({
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+export default async function AdminDashboard({
+  params,
+}: {
+  params: Promise<{ tenant: string }>
+}) {
+  const { tenant: tenantSlug } = await params
+  
+  const tenantData = await getCachedTenantBySlug(tenantSlug)
+  
+  if (!tenantData) {
+    return <div>Tenant not found</div>
+  }
+
+  const tenant: Tenant = tenantData
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <p className="text-muted-foreground">Welcome to {tenant.name} admin panel</p>
+      </div>
+
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent tenantSlug={tenantSlug} tenantId={tenant.id} />
+      </Suspense>
     </div>
   )
 }

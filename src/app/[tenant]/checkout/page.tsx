@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck } from 'lucide-react'
+import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,11 +11,12 @@ import { useCart } from '@/hooks/useCart'
 import { formatPrice, generateMessengerMessage, generateMessengerUrl } from '@/lib/cart-utils'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
+import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
 import { createOrderAction } from '@/app/actions/orders'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import { toast } from 'sonner'
-import type { Tenant, OrderType, CustomerFormField } from '@/types/database'
+import type { Tenant, OrderType, CustomerFormField, PaymentMethod } from '@/types/database'
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -34,6 +35,13 @@ export default function CheckoutPage() {
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
   const [quotationId, setQuotationId] = useState<string | null>(null)
   const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false)
+
+  // Payment method state
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
+  const [qrDialogOpen, setQrDialogOpen] = useState(false)
+  const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false)
 
   // Load tenant data and order types from Supabase
   useEffect(() => {
@@ -66,7 +74,7 @@ export default function CheckoutPage() {
     loadData()
   }, [tenantSlug, router, orderType, setOrderType])
 
-  // Load form fields when order type changes
+  // Load form fields and payment methods when order type changes
   useEffect(() => {
     const loadFormFields = async () => {
       if (!tenant || !orderType) return
@@ -81,6 +89,23 @@ export default function CheckoutPage() {
           initialData[field.field_name] = ''
         })
         setCustomerData(initialData)
+
+        // Load payment methods for this order type (optional - may not be configured yet)
+        try {
+          const methods = await getPaymentMethodsByOrderTypeClient(orderType, tenant.id)
+          setPaymentMethods(methods || [])
+          
+          // Auto-select first payment method if only one available
+          if (methods && methods.length === 1) {
+            setSelectedPaymentMethod(methods[0].id)
+          } else {
+            setSelectedPaymentMethod(null)
+          }
+        } catch {
+          // Payment methods not configured yet - this is okay, checkout can proceed without them
+          setPaymentMethods([])
+          setSelectedPaymentMethod(null)
+        }
       } catch (error) {
         console.error('Failed to load form fields:', error)
         toast.error('Failed to load form fields')
@@ -163,9 +188,7 @@ export default function CheckoutPage() {
     fetchDeliveryQuote()
   }, [tenant, orderTypes, orderType, customerData.delivery_address, customerData.delivery_lat, customerData.delivery_lng])
 
-  const handleCheckout = async () => {
-    if (!tenant || isProcessing || !orderType) return
-
+  const handleProceedToPayment = () => {
     // Validate required fields
     const requiredFields = formFields.filter(field => field.is_required)
     const missingFields = requiredFields.filter(field => !customerData[field.field_name]?.trim())
@@ -175,6 +198,30 @@ export default function CheckoutPage() {
       return
     }
 
+    // Validate payment method selection (only if payment methods are configured)
+    if (paymentMethods.length > 0 && !selectedPaymentMethod) {
+      toast.error('Please select a payment method before proceeding')
+      // Scroll to payment methods section
+      const paymentSection = document.querySelector('[data-payment-methods]')
+      if (paymentSection) {
+        paymentSection.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      return
+    }
+
+    // If payment methods are configured, show payment details page
+    if (paymentMethods.length > 0 && selectedPaymentMethod) {
+      setShowPaymentDetails(true)
+      return
+    }
+
+    // Otherwise proceed directly to messenger
+    handleCheckout()
+  }
+
+  const handleCheckout = async () => {
+    if (!tenant || isProcessing || !orderType) return
+
     setIsProcessing(true)
 
     try {
@@ -183,6 +230,9 @@ export default function CheckoutPage() {
       
       // Get selected order type for messenger message
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      
+      // Get selected payment method details for snapshot
+      const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
       
       if (tenant.enable_order_management) {
         // Only save to database if order management is enabled
@@ -210,7 +260,11 @@ export default function CheckoutPage() {
             orderType, 
             customerData,
             deliveryFee || undefined,
-            quotationId || undefined
+            quotationId || undefined,
+            selectedPaymentMethod || undefined,
+            selectedPayment?.name || undefined,
+            selectedPayment?.details || undefined,
+            selectedPayment?.qr_code_url || undefined
           )
           orderCreated = result.success
 
@@ -227,7 +281,8 @@ export default function CheckoutPage() {
       }
 
       // Generate messenger message and URL (always proceed)
-      const message = generateMessengerMessage(items, tenant.name, orderCreated, selectedOrderType, customerData)
+      const paymentMethodInfo = selectedPayment ? { name: selectedPayment.name, details: selectedPayment.details } : null
+      const message = generateMessengerMessage(items, tenant.name, orderCreated, selectedOrderType, customerData, paymentMethodInfo)
       const messengerUrl = generateMessengerUrl(
         tenant.messenger_username || tenant.messenger_page_id,
         message,
@@ -290,11 +345,10 @@ export default function CheckoutPage() {
         <div className="mx-auto max-w-4xl space-y-8">
           {/* Order Type Selection */}
           {orderTypes.length > 0 && (
-            <div className="rounded-2xl bg-white p-8 shadow-sm">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">How would you like to receive your order?</h2>
-              <p className="text-gray-600 mb-6">Choose your preferred order type</p>
+            <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3">How would you like to receive your order?</h2>
               
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {orderTypes.map((ot) => {
                   const isSelected = orderType === ot.id
                   const iconMap = {
@@ -312,14 +366,11 @@ export default function CheckoutPage() {
                       }`}
                       onClick={() => setOrderType(ot.id)}
                     >
-                      <CardContent className="p-6 text-center">
-                        <Icon className={`h-8 w-8 mx-auto mb-3 ${isSelected ? 'text-orange-600' : 'text-gray-600'}`} />
-                        <h3 className="font-semibold text-lg mb-2">{ot.name}</h3>
-                        {ot.description && (
-                          <p className="text-sm text-gray-600">{ot.description}</p>
-                        )}
+                      <CardContent className="p-3 sm:p-4 text-center">
+                        <Icon className={`h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-1.5 sm:mb-2 ${isSelected ? 'text-orange-600' : 'text-gray-600'}`} />
+                        <h3 className="font-semibold text-xs sm:text-sm md:text-base">{ot.name}</h3>
                         {isSelected && (
-                          <Badge className="mt-3 bg-orange-500">Selected</Badge>
+                          <Badge className="mt-1.5 sm:mt-2 bg-orange-500 text-[10px] sm:text-xs px-1.5 py-0">✓</Badge>
                         )}
                       </CardContent>
                     </Card>
@@ -517,26 +568,182 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {/* Payment Method Selection */}
+          {paymentMethods.length > 0 ? (
+            <div className="rounded-2xl bg-white p-8 shadow-sm" data-payment-methods>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+                <CreditCard className="h-6 w-6 text-orange-500" />
+                Select Payment Method
+                <Badge variant="outline" className="ml-auto bg-red-50 text-red-700 border-red-300">
+                  Required
+                </Badge>
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Choose how you would like to pay for your order
+              </p>
+              
+              <div className="space-y-3">
+                {paymentMethods.map((method) => {
+                  const isSelected = selectedPaymentMethod === method.id
+                  
+                  return (
+                    <label 
+                      key={method.id}
+                      className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-orange-300 hover:bg-orange-50/50 ${
+                        isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
+                      }`}
+                      onClick={() => setSelectedPaymentMethod(method.id)}
+                    >
+                      {/* Radio Button */}
+                      <div className="flex items-center h-6 mt-0.5">
+                        <input
+                          type="radio"
+                          checked={isSelected}
+                          onChange={() => setSelectedPaymentMethod(method.id)}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 focus:ring-2"
+                        />
+                      </div>
+                      
+                      {/* QR Code Thumbnail */}
+                      {method.qr_code_url && (
+                        <div 
+                          className="shrink-0 cursor-pointer hover:opacity-80"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (method.qr_code_url) {
+                              setSelectedQrCode(method.qr_code_url)
+                              setQrDialogOpen(true)
+                            }
+                          }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={method.qr_code_url}
+                            alt={`${method.name} QR Code`}
+                            className="w-12 h-12 object-cover rounded border"
+                          />
+                          <div className="text-xs text-gray-500 text-center mt-1 flex items-center justify-center gap-1">
+                            <QrCode className="h-3 w-3" />
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Payment Method Info */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-base mb-1">{method.name}</h3>
+                        {method.details && (
+                          <p className="text-sm text-gray-600 line-clamp-2">
+                            {method.details}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+
+              {/* Selected Payment Method Details */}
+              {selectedPaymentMethod && (
+                <div className="mt-6 p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <CreditCard className="h-5 w-5 text-orange-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-orange-900 mb-2">Selected Payment Method</h3>
+                      <p className="font-medium text-gray-900 mb-2">
+                        {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
+                      </p>
+                      {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
+                        <div className="bg-white p-3 rounded border border-orange-200">
+                          <p className="text-sm font-medium text-gray-700 mb-1">Payment Details:</p>
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                            {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details}
+                          </p>
+                        </div>
+                      )}
+                      {(() => {
+                        const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
+                        if (!qrUrl) return null
+                        
+                        return (
+                          <div className="mt-3 flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={qrUrl}
+                              alt="Payment QR Code"
+                              className="w-32 h-32 object-contain border-2 border-orange-300 rounded-lg bg-white p-2 cursor-pointer hover:opacity-80"
+                              onClick={() => {
+                                setSelectedQrCode(qrUrl)
+                                setQrDialogOpen(true)
+                              }}
+                            />
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-600 mb-2">Scan this QR code to complete payment</p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedQrCode(qrUrl)
+                                  setQrDialogOpen(true)
+                                }}
+                                className="border-orange-300 text-orange-700 hover:bg-orange-100"
+                              >
+                                <QrCode className="h-4 w-4 mr-2" />
+                                View Full Size
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : orderType && tenant ? (
+            <div className="rounded-2xl bg-yellow-50 border-2 border-yellow-200 p-6">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-600 mt-1">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-900 mb-1">No Payment Methods Available</h3>
+                  <p className="text-sm text-yellow-800">
+                    No payment methods have been set up for this order type yet. You can still proceed with your order, and payment details will be discussed via Messenger.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-2xl bg-white p-8 shadow-sm">
             <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
               <MessageCircle className="h-6 w-6 text-orange-500" />
-              Complete Order via Messenger
+              {paymentMethods.length > 0 ? 'Complete Order' : 'Complete Order via Messenger'}
             </h2>
             <p className="text-gray-600 mb-6">
-              Click the button below to send your order to {tenant.name} via Facebook Messenger.
-              You&apos;ll be redirected to Messenger with your order details pre-filled.
+              {paymentMethods.length > 0 
+                ? `After selecting your payment method, click below to complete your order with ${tenant.name}.`
+                : `Click the button below to send your order to ${tenant.name} via Facebook Messenger. You'll be redirected to Messenger with your order details pre-filled.`
+              }
             </p>
             
             <Button 
               size="lg" 
               className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed" 
-              onClick={handleCheckout}
+              onClick={handleProceedToPayment}
               disabled={isProcessing}
             >
               {isProcessing ? (
                 <>
                   <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
                   Processing Order...
+                </>
+              ) : paymentMethods.length > 0 ? (
+                <>
+                  <CreditCard className="mr-3 h-6 w-6" />
+                  Proceed to Payment
                 </>
               ) : (
                 <>
@@ -552,6 +759,171 @@ export default function CheckoutPage() {
           </div>
         </div>
       </main>
+
+      {/* Payment Details Dialog */}
+      {showPaymentDetails && selectedPaymentMethod && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
+                <CreditCard className="h-8 w-8 text-orange-600" />
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Complete Payment</h2>
+              <p className="text-gray-600">
+                Please complete payment using the details below
+              </p>
+            </div>
+
+            {/* Payment Method Details */}
+            <div className="space-y-6">
+              {/* Payment Method Name */}
+              <div className="text-center">
+                <p className="text-sm text-gray-500 mb-1">Payment Method</p>
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
+                </h3>
+              </div>
+
+              {/* QR Code - Centered and Large */}
+              {(() => {
+                const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
+                if (!qrUrl) return null
+                
+                return (
+                  <div className="flex flex-col items-center gap-4 py-4 bg-gray-50 rounded-xl">
+                    <p className="text-sm font-medium text-gray-700">Scan QR Code to Pay</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={qrUrl}
+                      alt="Payment QR Code"
+                      className="w-64 h-64 object-contain border-4 border-white rounded-xl shadow-lg"
+                    />
+                    <p className="text-xs text-gray-500">Scan with your payment app</p>
+                  </div>
+                )
+              })()}
+
+              {/* Payment Details */}
+              {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
+                <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6">
+                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-orange-500 rounded-full"></span>
+                    Payment Instructions
+                  </h4>
+                  <div className="bg-white p-4 rounded-lg border border-orange-200">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Order Summary */}
+              <div className="bg-gray-50 rounded-xl p-6">
+                <h4 className="font-semibold text-gray-900 mb-4">Order Summary</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span className="font-medium">{formatPrice(total)}</span>
+                  </div>
+                  {deliveryFee !== null && deliveryFee > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Delivery Fee</span>
+                      <span className="font-medium">{formatPrice(deliveryFee)}</span>
+                    </div>
+                  )}
+                  <Separator className="my-2" />
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total Amount to Pay</span>
+                    <span className="text-orange-600">{formatPrice(total + (deliveryFee || 0))}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Important Note */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-blue-600 mt-0.5">
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-sm text-blue-800">
+                    <p className="font-medium mb-1">Next Step:</p>
+                    <p>After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setShowPaymentDetails(false)}
+                  disabled={isProcessing}
+                  className="flex-1"
+                >
+                  Go Back
+                </Button>
+                <Button
+                  size="lg"
+                  onClick={handleCheckout}
+                  disabled={isProcessing}
+                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="h-5 w-5 mr-2" />
+                      Send to Restaurant
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Dialog */}
+      {qrDialogOpen && selectedQrCode && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setQrDialogOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Payment QR Code</h3>
+              <button
+                onClick={() => setQrDialogOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <span className="sr-only">Close</span>
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedQrCode}
+              alt="Payment QR Code"
+              className="w-full h-auto object-contain rounded"
+            />
+            <p className="text-sm text-gray-500 text-center mt-4">
+              Scan this QR code with your payment app
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug } from '@/lib/admin-service'
+import { getCachedTenantBySlug } from '@/lib/cache'
 import { Badge } from '@/components/ui/badge'
 import type { Tenant } from '@/types/database'
 import { Input } from '@/components/ui/input'
@@ -15,7 +15,7 @@ export default async function SettingsPage({
 }) {
   const { tenant: tenantSlug } = await params
   
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenantData = await getCachedTenantBySlug(tenantSlug)
 
   if (!tenantData) {
     return <div>Tenant not found</div>
@@ -84,6 +84,9 @@ export default async function SettingsPage({
                 header_font_color: String(formData.get('header_font_color') || ''),
                 cards_color: String(formData.get('cards_color') || ''),
                 cards_border_color: String(formData.get('cards_border_color') || ''),
+                card_title_color: String(formData.get('card_title_color') || ''),
+                card_price_color: String(formData.get('card_price_color') || ''),
+                card_description_color: String(formData.get('card_description_color') || ''),
                 button_primary_color: String(formData.get('button_primary_color') || ''),
                 button_primary_text_color: String(formData.get('button_primary_text_color') || ''),
                 button_secondary_color: String(formData.get('button_secondary_color') || ''),
@@ -173,6 +176,33 @@ export default async function SettingsPage({
                     <div className="flex items-center gap-3">
                       <Input id="border_color" name="border_color" defaultValue={tenant.border_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
                       <Input value={tenant.border_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-4">Card Text Colors</h4>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="card_title_color">Card Title</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="card_title_color" name="card_title_color" defaultValue={tenant.card_title_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.card_title_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="card_price_color">Card Price</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="card_price_color" name="card_price_color" defaultValue={tenant.card_price_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.card_price_color || ''} readOnly className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="card_description_color">Card Description</Label>
+                    <div className="flex items-center gap-3">
+                      <Input id="card_description_color" name="card_description_color" defaultValue={tenant.card_description_color || ''} type="color" className="h-9 w-12 p-0 border rounded-md" />
+                      <Input value={tenant.card_description_color || ''} readOnly className="font-mono text-sm" />
                     </div>
                   </div>
                 </div>

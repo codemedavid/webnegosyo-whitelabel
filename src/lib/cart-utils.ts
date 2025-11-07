@@ -1,15 +1,31 @@
-import type { CartItem, Variation, Addon } from '@/types/database'
+import type { CartItem, Variation, Addon, VariationOption } from '@/types/database'
 
 /**
  * Calculate the subtotal for a cart item including variations and add-ons
+ * Supports both new grouped variations and legacy single variation
  */
 export function calculateCartItemSubtotal(
   basePrice: number,
-  variation: Variation | undefined,
+  variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
   addons: Addon[],
   quantity: number
 ): number {
-  const variationPrice = variation?.price_modifier || 0
+  let variationPrice = 0
+  
+  if (variationOrVariations) {
+    // Check if it's the new grouped variations format
+    if (typeof variationOrVariations === 'object' && !('price_modifier' in variationOrVariations)) {
+      // New format: sum all variation modifiers
+      variationPrice = Object.values(variationOrVariations as { [typeId: string]: VariationOption }).reduce(
+        (sum, option) => sum + option.price_modifier,
+        0
+      )
+    } else {
+      // Legacy format: single variation
+      variationPrice = (variationOrVariations as Variation).price_modifier || 0
+    }
+  }
+  
   const addonsPrice = addons.reduce((sum, addon) => sum + addon.price, 0)
   const itemTotal = basePrice + variationPrice + addonsPrice
   return itemTotal * quantity
@@ -31,14 +47,30 @@ export function getCartItemCount(items: CartItem[]): number {
 
 /**
  * Generate a unique ID for a cart item based on its configuration
+ * Supports both new grouped variations and legacy single variation
  */
 export function generateCartItemId(
   menuItemId: string,
-  variationId?: string,
+  variationOrVariations?: string | { [typeId: string]: VariationOption },
   addonIds?: string[]
 ): string {
   const parts = [menuItemId]
-  if (variationId) parts.push(variationId)
+  
+  if (variationOrVariations) {
+    if (typeof variationOrVariations === 'string') {
+      // Legacy format: single variation ID
+      parts.push(variationOrVariations)
+    } else {
+      // New format: map of type ID -> option
+      // Sort by type ID for consistency
+      const sortedTypeIds = Object.keys(variationOrVariations).sort()
+      sortedTypeIds.forEach(typeId => {
+        const option = variationOrVariations[typeId]
+        parts.push(`${typeId}:${option.id}`)
+      })
+    }
+  }
+  
   if (addonIds && addonIds.length > 0) {
     parts.push(addonIds.sort().join('-'))
   }
@@ -63,7 +95,8 @@ export function generateMessengerMessage(
   restaurantName: string,
   orderCreated: boolean = true,
   orderType?: { name: string; type: string } | null,
-  customerData?: Record<string, string>
+  customerData?: Record<string, string>,
+  paymentMethod?: { name: string; details?: string } | null
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -100,9 +133,19 @@ export function generateMessengerMessage(
   lines.push('📋 Order Details:')
 
   items.forEach((item, index) => {
-    const variationText = item.selected_variation
-      ? ` (${item.selected_variation.name})`
-      : ''
+    // Handle both new and legacy variation formats
+    let variationText = ''
+    if (item.selected_variations) {
+      // New format: multiple variations
+      const variations = Object.entries(item.selected_variations)
+        .map(([, option]) => option.name)
+        .join(', ')
+      variationText = variations ? ` (${variations})` : ''
+    } else if (item.selected_variation) {
+      // Legacy format: single variation
+      variationText = ` (${item.selected_variation.name})`
+    }
+    
     lines.push(`${index + 1}. ${item.menu_item.name}${variationText} x${item.quantity}`)
 
     if (item.selected_addons.length > 0) {
@@ -121,6 +164,16 @@ export function generateMessengerMessage(
   const total = calculateCartTotal(items)
   lines.push(`💰 Total: ${formatPrice(total)}`)
   lines.push('')
+
+  // Add payment method information
+  if (paymentMethod) {
+    lines.push('💳 Payment Method:')
+    lines.push(`   ${paymentMethod.name}`)
+    if (paymentMethod.details) {
+      lines.push(`   ${paymentMethod.details}`)
+    }
+    lines.push('')
+  }
   
   if (!orderCreated) {
     lines.push('⚠️ Note: Order was not saved to system - please create manually in admin panel')

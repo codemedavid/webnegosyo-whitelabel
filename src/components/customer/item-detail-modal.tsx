@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import type { MenuItem, Variation, Addon } from '@/types/database'
+import type { MenuItem, Variation, Addon, VariationOption } from '@/types/database'
 import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { toast } from 'sonner'
@@ -20,7 +20,7 @@ interface ItemDetailModalProps {
   onClose: () => void
   onAddToCart: (
     item: MenuItem,
-    variation: Variation | undefined,
+    variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
     addons: Addon[],
     quantity: number,
     specialInstructions?: string
@@ -35,14 +35,21 @@ export function ItemDetailModal({
   onAddToCart,
   branding,
 }: ItemDetailModalProps) {
+  // Legacy single variation
   const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>()
+  // New grouped variations: map of type ID -> selected option
+  const [selectedVariations, setSelectedVariations] = useState<{ [typeId: string]: VariationOption }>({})
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([])
   const [quantity, setQuantity] = useState(1)
   const [specialInstructions, setSpecialInstructions] = useState('')
 
+  // Determine if using new or legacy variation system
+  const useNewVariations = item?.variation_types && item.variation_types.length > 0
+
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       setSelectedVariation(item?.variations.find((v) => v.is_default))
+      setSelectedVariations({})
       setSelectedAddons([])
       setQuantity(1)
       setSpecialInstructions('')
@@ -50,10 +57,26 @@ export function ItemDetailModal({
     }
   }
 
+  // Initialize default selections
   useEffect(() => {
-    if (item && item.variations.length > 0 && !selectedVariation) {
+    if (!item) return
+
+    // Legacy variations
+    if (item.variations.length > 0 && !selectedVariation) {
       const defaultVar = item.variations.find((v) => v.is_default) || item.variations[0]
       setSelectedVariation(defaultVar)
+    }
+
+    // New variation types
+    if (item.variation_types && item.variation_types.length > 0) {
+      const defaults: { [typeId: string]: VariationOption } = {}
+      item.variation_types.forEach(type => {
+        if (type.options.length > 0) {
+          const defaultOption = type.options.find(opt => opt.is_default) || type.options[0]
+          defaults[type.id] = defaultOption
+        }
+      })
+      setSelectedVariations(defaults)
     }
   }, [item, selectedVariation])
 
@@ -62,18 +85,30 @@ export function ItemDetailModal({
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const basePrice = hasDiscount ? item.discounted_price! : item.price
   const hasVariations = item.variations.length > 0
+  const hasVariationTypes = item.variation_types && item.variation_types.length > 0
   const hasAddons = item.addons.length > 0
-  const hasCustomizations = hasVariations || hasAddons
+  const hasCustomizations = hasVariations || hasVariationTypes || hasAddons
 
-  const totalPrice = calculateCartItemSubtotal(
-    basePrice,
-    selectedVariation,
-    selectedAddons,
-    quantity
-  )
+  // Calculate total price based on which variation system is used
+  const totalPrice = useNewVariations
+    ? calculateCartItemSubtotal(basePrice, selectedVariations, selectedAddons, quantity)
+    : calculateCartItemSubtotal(basePrice, selectedVariation, selectedAddons, quantity)
 
   const handleAddToCart = () => {
-    onAddToCart(item, selectedVariation, selectedAddons, quantity, specialInstructions)
+    // Check if required variation types have selections
+    if (useNewVariations && item.variation_types) {
+      const missingRequired = item.variation_types.find(
+        type => type.is_required && !selectedVariations[type.id]
+      )
+      if (missingRequired) {
+        toast.error(`Please select ${missingRequired.name}`)
+        return
+      }
+    }
+
+    // Pass the appropriate variation format
+    const variationData = useNewVariations ? selectedVariations : selectedVariation
+    onAddToCart(item, variationData, selectedAddons, quantity, specialInstructions)
     toast.success(`Added ${item.name} to cart`)
     handleOpenChange(false)
   }
@@ -152,8 +187,116 @@ export function ItemDetailModal({
         {hasCustomizations && (
           <div className="overflow-y-auto bg-white" style={{ maxHeight: 'calc(90vh - 200px)' }}>
             <div className="p-4 space-y-4">
-              {/* Variations */}
-              {hasVariations && (
+              {/* New Grouped Variation Types */}
+              {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
+                const selectedOption = selectedVariations[variationType.id]
+                
+                return (
+                  <div key={variationType.id}>
+                    <h3 className="text-sm font-semibold mb-2.5 text-gray-700">
+                      {variationType.name}
+                      {variationType.is_required && <span className="text-red-500 ml-1">*</span>}
+                    </h3>
+                    
+                    {/* Show as image grid if any option has an image */}
+                    {variationType.options.some(opt => opt.image_url) ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {variationType.options.map((option) => {
+                          const isSelected = selectedOption?.id === option.id
+                          const price = basePrice + option.price_modifier
+
+                          return (
+                            <button
+                              key={option.id}
+                              onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
+                              className={`
+                                relative rounded-lg overflow-hidden transition-all border-2
+                                ${isSelected 
+                                  ? 'shadow-md' 
+                                  : 'border-gray-200 hover:border-gray-300'
+                                }
+                              `}
+                              style={isSelected ? { 
+                                borderColor: branding.primary,
+                              } : {}}
+                            >
+                              {/* Option Image */}
+                              {option.image_url && (
+                                <div className="relative w-full aspect-square bg-gray-100">
+                                  <Image
+                                    src={option.image_url}
+                                    alt={option.name}
+                                    fill
+                                    className="object-cover"
+                                    sizes="(max-width: 640px) 50vw, 33vw"
+                                  />
+                                  {isSelected && (
+                                    <div 
+                                      className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                                      style={{ backgroundColor: branding.primary }}
+                                    >
+                                      <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {/* Option Details */}
+                              <div className={`p-2 text-center ${isSelected ? 'text-white' : 'bg-white'}`}
+                                style={isSelected ? { backgroundColor: branding.primary } : {}}>
+                                <div className="font-semibold text-sm">{option.name}</div>
+                                <div className="text-xs opacity-90 mt-0.5">
+                                  {option.price_modifier === 0
+                                    ? formatPrice(price)
+                                    : `+${formatPrice(option.price_modifier)}`}
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      /* Text-only buttons for options without images */
+                      <div className="flex flex-wrap gap-2">
+                        {variationType.options.map((option) => {
+                          const isSelected = selectedOption?.id === option.id
+                          const price = basePrice + option.price_modifier
+
+                          return (
+                            <button
+                              key={option.id}
+                              onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
+                              className={`
+                                px-3 py-2 rounded-lg text-sm font-medium transition-all min-w-[80px]
+                                ${isSelected 
+                                  ? 'text-white shadow-sm' 
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }
+                              `}
+                              style={isSelected ? { 
+                                backgroundColor: branding.primary,
+                              } : {}}
+                            >
+                              <div className="text-center">
+                                <div className="font-semibold">{option.name}</div>
+                                <div className="text-xs opacity-90 mt-0.5">
+                                  {option.price_modifier === 0
+                                    ? formatPrice(price)
+                                    : `+${formatPrice(option.price_modifier)}`}
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Legacy Variations (fallback for old items) */}
+              {!useNewVariations && hasVariations && (
                 <div>
                   <h3 className="text-sm font-semibold mb-2.5 text-gray-700">
                     Choose Size
