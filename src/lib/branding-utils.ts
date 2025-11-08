@@ -18,6 +18,12 @@ export interface BrandingColors {
   cardPrice: string
   cardDescription: string
   
+  // Modal colors
+  modalBackground: string
+  modalTitle: string
+  modalPrice: string
+  modalDescription: string
+  
   // Button colors
   buttonPrimary: string
   buttonPrimaryText: string
@@ -55,6 +61,10 @@ export const DEFAULT_BRANDING: BrandingColors = {
   cardTitle: '#111111',
   cardPrice: '#111111',
   cardDescription: '#6b7280',
+  modalBackground: '#ffffff',
+  modalTitle: '#111111',
+  modalPrice: '#111111',
+  modalDescription: '#6b7280',
   buttonPrimary: '#111111',
   buttonPrimaryText: '#ffffff',
   buttonSecondary: '#f3f4f6',
@@ -90,6 +100,10 @@ export function getTenantBranding(tenant: Tenant | null): BrandingColors {
     cardTitle: tenant.card_title_color || tenant.text_primary_color || DEFAULT_BRANDING.cardTitle,
     cardPrice: tenant.card_price_color || tenant.primary_color || DEFAULT_BRANDING.cardPrice,
     cardDescription: tenant.card_description_color || tenant.text_secondary_color || DEFAULT_BRANDING.cardDescription,
+    modalBackground: tenant.modal_background_color || tenant.cards_color || DEFAULT_BRANDING.modalBackground,
+    modalTitle: tenant.modal_title_color || tenant.text_primary_color || DEFAULT_BRANDING.modalTitle,
+    modalPrice: tenant.modal_price_color || tenant.primary_color || DEFAULT_BRANDING.modalPrice,
+    modalDescription: tenant.modal_description_color || tenant.text_secondary_color || DEFAULT_BRANDING.modalDescription,
     buttonPrimary: tenant.button_primary_color || tenant.primary_color || DEFAULT_BRANDING.buttonPrimary,
     buttonPrimaryText: tenant.button_primary_text_color || DEFAULT_BRANDING.buttonPrimaryText,
     buttonSecondary: tenant.button_secondary_color || DEFAULT_BRANDING.buttonSecondary,
@@ -122,6 +136,10 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-card-title': branding.cardTitle,
     '--brand-card-price': branding.cardPrice,
     '--brand-card-description': branding.cardDescription,
+    '--brand-modal-background': branding.modalBackground,
+    '--brand-modal-title': branding.modalTitle,
+    '--brand-modal-price': branding.modalPrice,
+    '--brand-modal-description': branding.modalDescription,
     '--brand-button-primary': branding.buttonPrimary,
     '--brand-button-primary-text': branding.buttonPrimaryText,
     '--brand-button-secondary': branding.buttonSecondary,

@@ -75,6 +75,8 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                           <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
                             {item.menu_item.name}
                           </h4>
+                          
+                          {/* Legacy single variation */}
                           {item.selected_variation && (
                             <Badge 
                               variant="outline" 
@@ -88,6 +90,26 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                               {item.selected_variation.name}
                             </Badge>
                           )}
+                          
+                          {/* New grouped variations */}
+                          {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {Object.values(item.selected_variations).map((option, idx) => (
+                                <Badge 
+                                  key={idx}
+                                  variant="outline" 
+                                  className="text-xs"
+                                  style={{ 
+                                    borderColor: `${branding.primary}40`,
+                                    color: branding.primary,
+                                    backgroundColor: `${branding.primary}10`
+                                  }}
+                                >
+                                  {option.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Button
                           variant="ghost"
@@ -100,15 +122,15 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                       </div>
 
                       {(item.selected_addons.length > 0 || item.special_instructions) && (
-                        <div className="text-xs text-gray-500 mb-2">
+                        <div className="text-xs text-gray-500 mb-2 space-y-0.5">
                           {item.selected_addons.length > 0 && (
-                            <p className="line-clamp-1">
-                              Add-ons: {item.selected_addons.map((a) => a.name).join(', ')}
+                            <p className="line-clamp-2">
+                              <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
                             </p>
                           )}
                           {item.special_instructions && (
                             <p className="italic line-clamp-1">
-                              Note: {item.special_instructions}
+                              <span className="font-medium">Note:</span> {item.special_instructions}
                             </p>
                           )}
                         </div>

@@ -236,16 +236,45 @@ export default function CheckoutPage() {
       
       if (tenant.enable_order_management) {
         // Only save to database if order management is enabled
-        const orderItems = items.map(item => ({
-          menu_item_id: item.menu_item.id,
-          menu_item_name: item.menu_item.name,
-          variation: item.selected_variation?.name,
-          addons: item.selected_addons.map(a => a.name),
-          quantity: item.quantity,
-          price: item.menu_item.price + (item.selected_variation?.price_modifier || 0),
-          subtotal: item.subtotal,
-          special_instructions: item.special_instructions,
-        }))
+        const orderItems = items.map(item => {
+          // Calculate price including variations
+          let itemPrice = item.menu_item.price
+          
+          // Handle legacy single variation
+          if (item.selected_variation) {
+            itemPrice += item.selected_variation.price_modifier
+          }
+          
+          // Handle new grouped variations
+          if (item.selected_variations) {
+            const modifierSum = Object.values(item.selected_variations).reduce(
+              (sum, option) => sum + option.price_modifier, 
+              0
+            )
+            itemPrice += modifierSum
+          }
+          
+          // Format variation text
+          let variationText = ''
+          if (item.selected_variation) {
+            variationText = item.selected_variation.name
+          } else if (item.selected_variations) {
+            variationText = Object.values(item.selected_variations)
+              .map(opt => opt.name)
+              .join(', ')
+          }
+          
+          return {
+            menu_item_id: item.menu_item.id,
+            menu_item_name: item.menu_item.name,
+            variation: variationText || undefined,
+            addons: item.selected_addons.map(a => a.name),
+            quantity: item.quantity,
+            price: itemPrice,
+            subtotal: item.subtotal,
+            special_instructions: item.special_instructions,
+          }
+        })
 
         const customerInfo = {
           name: customerData.customer_name || undefined,
@@ -510,17 +539,28 @@ export default function CheckoutPage() {
                   {index > 0 && <Separator className="my-4" />}
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <div>
+                      <div className="flex-1 mr-4">
                         <span className="font-medium">{item.menu_item.name}</span>
+                        
+                        {/* Legacy single variation */}
                         {item.selected_variation && (
                           <span className="text-sm text-muted-foreground">
                             {' '}
                             ({item.selected_variation.name})
                           </span>
                         )}
+                        
+                        {/* New grouped variations */}
+                        {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            {' '}
+                            ({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
+                          </span>
+                        )}
+                        
                         <span className="text-sm text-muted-foreground"> x{item.quantity}</span>
                       </div>
-                      <span className="font-semibold">{formatPrice(item.subtotal)}</span>
+                      <span className="font-semibold flex-shrink-0">{formatPrice(item.subtotal)}</span>
                     </div>
 
                     {item.selected_addons.length > 0 && (

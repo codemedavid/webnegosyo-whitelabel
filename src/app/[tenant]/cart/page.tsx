@@ -121,10 +121,27 @@ export default function CartPage() {
                               <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
                                 {item.menu_item.name}
                               </h3>
+                              
+                              {/* Legacy single variation */}
                               {item.selected_variation && (
                                 <Badge variant="outline" className="mt-2 border-orange-200 text-orange-700 bg-orange-50">
                                   {item.selected_variation.name}
                                 </Badge>
+                              )}
+                              
+                              {/* New grouped variations */}
+                              {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {Object.values(item.selected_variations).map((option, idx) => (
+                                    <Badge 
+                                      key={idx}
+                                      variant="outline" 
+                                      className="border-orange-200 text-orange-700 bg-orange-50"
+                                    >
+                                      {option.name}
+                                    </Badge>
+                                  ))}
+                                </div>
                               )}
                             </div>
                             <Button

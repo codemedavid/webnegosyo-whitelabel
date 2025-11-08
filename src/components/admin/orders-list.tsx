@@ -424,19 +424,23 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-xs sm:text-sm truncate">{item.menu_item_name}</p>
                           {item.variation && (
-                            <p className="text-xs sm:text-sm text-muted-foreground">Size: {item.variation}</p>
+                            <p className="text-xs sm:text-sm text-muted-foreground break-words">
+                              <span className="font-medium">Variations:</span> {item.variation}
+                            </p>
                           )}
                           {item.addons.length > 0 && (
                             <p className="text-xs sm:text-sm text-muted-foreground break-words">
-                              Add-ons: {item.addons.join(', ')}
+                              <span className="font-medium">Add-ons:</span> {item.addons.join(', ')}
                             </p>
                           )}
                           {item.special_instructions && (
                             <p className="text-xs sm:text-sm text-muted-foreground italic break-words">
-                              Note: {item.special_instructions}
+                              <span className="font-medium">Note:</span> {item.special_instructions}
                             </p>
                           )}
-                          <p className="text-xs sm:text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                            <span className="font-medium">Qty:</span> {item.quantity}
+                          </p>
                         </div>
                         <p className="font-semibold text-xs sm:text-sm flex-shrink-0">{formatPrice(Number(item.subtotal))}</p>
                       </div>

@@ -18,6 +18,10 @@ export interface Tenant {
   card_title_color?: string;
   card_price_color?: string;
   card_description_color?: string;
+  modal_background_color?: string;
+  modal_title_color?: string;
+  modal_price_color?: string;
+  modal_description_color?: string;
   button_primary_color?: string;
   button_primary_text_color?: string;
   button_secondary_color?: string;
