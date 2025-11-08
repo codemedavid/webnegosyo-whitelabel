@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ImageUpload } from '@/components/shared/image-upload'
+import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { OrderType } from '@/types/database'
 import { toast } from 'sonner'
@@ -241,24 +241,14 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
 
           {/* QR Code Upload */}
           <div className="space-y-2">
-            <Label htmlFor="qr_code">QR Code (Optional)</Label>
-            <ImageUpload
+            <SimpleImageUpload
               currentImageUrl={formData.qr_code_url}
               onImageUploaded={(url) => setFormData({ ...formData, qr_code_url: url })}
               folder="payment-qr-codes"
+              label="QR Code (Optional)"
+              description="Upload a QR code image for this payment method"
             />
             {errors.qr_code_url && <p className="text-sm text-red-500">{errors.qr_code_url}</p>}
-            {formData.qr_code_url && (
-              <div className="mt-4">
-                <p className="text-sm font-medium mb-2">Preview:</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={formData.qr_code_url}
-                  alt="QR Code Preview"
-                  className="w-48 h-48 object-contain border rounded-lg"
-                />
-              </div>
-            )}
           </div>
 
           {/* Active Status */}
