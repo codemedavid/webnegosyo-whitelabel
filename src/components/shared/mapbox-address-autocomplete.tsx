@@ -40,7 +40,6 @@ export function MapboxAddressAutocomplete({
   const [isSearching, setIsSearching] = useState(false)
   const [mainSearchResults, setMainSearchResults] = useState<Array<{ place_name: string; coordinates: [number, number] }>>([])
   const [showMainSearchResults, setShowMainSearchResults] = useState(false)
-  const [googlePlacesLoaded, setGooglePlacesLoaded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapSearchInputRef = useRef<HTMLInputElement>(null)
@@ -48,6 +47,8 @@ export function MapboxAddressAutocomplete({
   const mapRef = useRef<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markerRef = useRef<any>(null)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mapSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Cache for reverse geocoding results to avoid redundant API calls
   // Key: "lat_lng" (rounded to 4 decimal places), Value: address string
@@ -61,129 +62,81 @@ export function MapboxAddressAutocomplete({
     } else {
       console.warn('Mapbox access token not found')
     }
-
-    // Load Google Places API if key is available
-    const googleKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-    if (googleKey && typeof window !== 'undefined' && !window.google?.maps?.places) {
-      const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleKey}&libraries=places`
-      script.async = true
-      script.defer = true
-      script.onload = () => setGooglePlacesLoaded(true)
-      script.onerror = () => console.warn('Failed to load Google Places API')
-      document.head.appendChild(script)
-    } else if (window.google?.maps?.places) {
-      setGooglePlacesLoaded(true)
-    }
   }, [])
 
   useEffect(() => {
     setLocalValue(value)
   }, [value])
 
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+      if (mapSearchDebounceRef.current) {
+        clearTimeout(mapSearchDebounceRef.current)
+      }
+    }
+  }, [])
+
   const handleAddressSelect = useCallback((address: string, coordinates?: { lat: number; lng: number }) => {
     setLocalValue(address)
     onChange(address, coordinates)
   }, [onChange])
 
-  // Handle main search box autocomplete
-  const handleMainSearch = useCallback(async (query: string) => {
+  // Handle main search box autocomplete using Nominatim (OpenStreetMap)
+  // With debouncing to respect Nominatim's 1 req/sec rate limit
+  const handleMainSearch = useCallback((query: string) => {
+    // Clear any pending search
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+    }
+
     if (!query.trim()) {
       setMainSearchResults([])
       setShowMainSearchResults(false)
       return
     }
 
-    try {
-      // First, try Mapbox search
-      if (accessToken) {
-        let response = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=8&types=address,poi,place,neighborhood,locality`
-        )
-        let data = await response.json()
-        
-        // If no results, try without POI type restriction to get more results
-        if (!data.features || data.features.length === 0) {
-          response = await fetch(
-            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=10`
-          )
-          data = await response.json()
-        }
-        
-        // If still no results, try without country restriction for broader coverage
-        if (!data.features || data.features.length === 0) {
-          response = await fetch(
-            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&limit=10`
-          )
-          data = await response.json()
-          
-          // Filter to Philippines results only if we get results without country filter
-          if (data.features && data.features.length > 0) {
-            data.features = data.features.filter((feature: { context?: Array<{ id: string }> }) => {
-              // Check if any context contains Philippines
-              return feature.context?.some(ctx => ctx.id.startsWith('country.') && ctx.id.includes('ph'))
-            })
-          }
-        }
-        
-        if (data.features && data.features.length > 0) {
-          setMainSearchResults(
-            data.features.map((feature: { place_name: string; geometry: { coordinates: [number, number] } }) => ({
-              place_name: feature.place_name,
-              coordinates: feature.geometry.coordinates,
-            }))
-          )
-          setShowMainSearchResults(true)
-          return
-        }
-      }
-
-      // Fallback to Google Places if Mapbox has no results
-      if (googlePlacesLoaded && window.google?.maps?.places) {
-        const service = new google.maps.places.PlacesService(document.createElement('div'))
-        const request = {
-          query: query,
-          fields: ['formatted_address', 'geometry', 'name'],
-        }
-
-        service.textSearch(request, (results, status) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-            // Filter results to Philippines
-            const phResults = results.filter(place => {
-              const hasPh = place.formatted_address?.toLowerCase().includes('philippines')
-              return hasPh
-            })
-
-            if (phResults.length > 0) {
-              setMainSearchResults(
-                phResults.slice(0, 8).map(place => ({
-                  place_name: place.formatted_address || place.name || '',
-                  coordinates: place.geometry?.location ? [
-                    place.geometry.location.lng(),
-                    place.geometry.location.lat()
-                  ] : [0, 0],
-                }))
-              )
-              setShowMainSearchResults(true)
-            } else {
-              setMainSearchResults([])
-              setShowMainSearchResults(false)
+    // Debounce: Wait 500ms after user stops typing
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        // Use Nominatim (OpenStreetMap) - Better Philippine POI coverage
+        const nominatimResponse = await fetch(
+          `https://nominatim.openstreetmap.org/search?` +
+          `q=${encodeURIComponent(query)}&` +
+          `countrycodes=ph&` +
+          `format=json&` +
+          `limit=10&` +
+          `addressdetails=1`,
+          {
+            headers: {
+              'User-Agent': 'WhitelabelDeliveryApp/1.0'
             }
-          } else {
-            setMainSearchResults([])
-            setShowMainSearchResults(false)
           }
-        })
-      } else {
+        )
+        const nominatimData = await nominatimResponse.json()
+        
+        if (Array.isArray(nominatimData) && nominatimData.length > 0) {
+          const results = nominatimData.map((place) => ({
+            place_name: place.display_name,
+            coordinates: [parseFloat(place.lon), parseFloat(place.lat)] as [number, number],
+          }))
+          
+          setMainSearchResults(results)
+          setShowMainSearchResults(true)
+        } else {
+          setMainSearchResults([])
+          setShowMainSearchResults(false)
+        }
+      } catch (error) {
+        console.error('Search error:', error)
         setMainSearchResults([])
         setShowMainSearchResults(false)
       }
-    } catch (error) {
-      console.error('Main search error:', error)
-      setMainSearchResults([])
-      setShowMainSearchResults(false)
-    }
-  }, [accessToken, googlePlacesLoaded])
+    }, 500) // 500ms delay to respect Nominatim rate limits
+  }, [])
 
   const handleMainSearchResultSelect = useCallback((result: { place_name: string; coordinates: [number, number] }) => {
     const [lng, lat] = result.coordinates
@@ -203,7 +156,7 @@ export function MapboxAddressAutocomplete({
     return `${lat.toFixed(4)}_${lng.toFixed(4)}`
   }, [])
 
-  // Cached reverse geocoding function
+  // Cached reverse geocoding function using Nominatim
   const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<string> => {
     // Check cache first
     const cacheKey = getCacheKey(lat, lng)
@@ -213,22 +166,25 @@ export function MapboxAddressAutocomplete({
       return cached
     }
 
-    // If not in cache, make API call
-    if (!accessToken) {
-      const fallback = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
-      geocodeCacheRef.current[cacheKey] = fallback
-      return fallback
-    }
-
+    // Use Nominatim for reverse geocoding
     try {
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${accessToken}&limit=1`
+        `https://nominatim.openstreetmap.org/reverse?` +
+        `lat=${lat}&` +
+        `lon=${lng}&` +
+        `format=json&` +
+        `addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'WhitelabelDeliveryApp/1.0'
+          }
+        }
       )
       const data = await response.json()
       
       let address: string
-      if (data.features && data.features.length > 0) {
-        address = data.features[0].place_name || data.features[0].text
+      if (data && data.display_name) {
+        address = data.display_name
       } else {
         address = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
       }
@@ -245,7 +201,7 @@ export function MapboxAddressAutocomplete({
       geocodeCacheRef.current[cacheKey] = fallback
       return fallback
     }
-  }, [accessToken, getCacheKey])
+  }, [getCacheKey])
 
   const handleUseCurrentLocation = useCallback(async (centerMap = false) => {
     if (!navigator.geolocation) {
@@ -432,61 +388,57 @@ export function MapboxAddressAutocomplete({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]) // localValue and handleAddressSelect intentionally excluded to prevent re-initialization
 
-  const handleMapSearch = useCallback(async (query: string) => {
-    if (!accessToken || !query.trim()) {
+  const handleMapSearch = useCallback((query: string) => {
+    // Clear any pending search
+    if (mapSearchDebounceRef.current) {
+      clearTimeout(mapSearchDebounceRef.current)
+    }
+
+    if (!query.trim()) {
       setMapSearchResults([])
+      setIsSearching(false)
       return
     }
 
     setIsSearching(true)
-    try {
-      // First, try search with broader types to include addresses, POIs, places, and neighborhoods
-      let response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=8&types=address,poi,place,neighborhood,locality`
-      )
-      let data = await response.json()
-      
-      // If no results, try without POI type restriction to get more results
-      if (!data.features || data.features.length === 0) {
-        response = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&country=PH&limit=10`
+
+    // Debounce: Wait 500ms after user stops typing
+    mapSearchDebounceRef.current = setTimeout(async () => {
+      try {
+        // Use Nominatim (OpenStreetMap) - Better Philippine POI coverage
+        const nominatimResponse = await fetch(
+          `https://nominatim.openstreetmap.org/search?` +
+          `q=${encodeURIComponent(query)}&` +
+          `countrycodes=ph&` +
+          `format=json&` +
+          `limit=10&` +
+          `addressdetails=1`,
+          {
+            headers: {
+              'User-Agent': 'WhitelabelDeliveryApp/1.0'
+            }
+          }
         )
-        data = await response.json()
-      }
-      
-      // If still no results, try without country restriction for broader coverage
-      if (!data.features || data.features.length === 0) {
-        response = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${accessToken}&limit=10`
-        )
-        data = await response.json()
+        const nominatimData = await nominatimResponse.json()
         
-        // Filter to Philippines results only if we get results without country filter
-        if (data.features && data.features.length > 0) {
-          data.features = data.features.filter((feature: { context?: Array<{ id: string }> }) => {
-            // Check if any context contains Philippines
-            return feature.context?.some(ctx => ctx.id.startsWith('country.') && ctx.id.includes('ph'))
-          })
-        }
-      }
-      
-      if (data.features && data.features.length > 0) {
-        setMapSearchResults(
-          data.features.map((feature: { place_name: string; geometry: { coordinates: [number, number] } }) => ({
-            place_name: feature.place_name,
-            coordinates: feature.geometry.coordinates,
+        if (Array.isArray(nominatimData) && nominatimData.length > 0) {
+          const results = nominatimData.map((place) => ({
+            place_name: place.display_name,
+            coordinates: [parseFloat(place.lon), parseFloat(place.lat)] as [number, number],
           }))
-        )
-      } else {
+          
+          setMapSearchResults(results)
+        } else {
+          setMapSearchResults([])
+        }
+      } catch (error) {
+        console.error('Map search error:', error)
         setMapSearchResults([])
+      } finally {
+        setIsSearching(false)
       }
-    } catch (error) {
-      console.error('Map search error:', error)
-      setMapSearchResults([])
-    } finally {
-      setIsSearching(false)
-    }
-  }, [accessToken])
+    }, 500) // 500ms delay to respect Nominatim rate limits
+  }, [])
 
   const handleSearchResultSelect = useCallback(async (result: { place_name: string; coordinates: [number, number] }) => {
     const [lng, lat] = result.coordinates

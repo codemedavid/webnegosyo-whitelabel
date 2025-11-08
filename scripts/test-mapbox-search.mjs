@@ -31,30 +31,56 @@ async function testSearch(query) {
   console.log(`\n🔍 Searching for: "${query}"\n`)
   
   try {
-    // Try with broad types
-    let response = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=PH&limit=10&types=address,poi,place,neighborhood,locality`
-    )
-    let data = await response.json()
+    const proximityCenter = '120.9842,14.5995' // Manila coordinates
     
-    if (!data.features || data.features.length === 0) {
-      console.log('No results with types filter. Trying without filter...')
-      response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=PH&limit=10`
-      )
-      data = await response.json()
+    // Try multiple search strategies (same as the component)
+    const searchStrategies = [
+      {
+        name: 'POI-focused with proximity',
+        url: `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=PH&types=poi&proximity=${proximityCenter}&limit=5`
+      },
+      {
+        name: 'Broader search (POI, place, address)',
+        url: `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=PH&types=poi,place,address,locality&proximity=${proximityCenter}&limit=5`
+      },
+      {
+        name: 'Fuzzy matching',
+        url: `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=PH&fuzzyMatch=true&proximity=${proximityCenter}&limit=5`
+      }
+    ]
+    
+    const allFeatures = []
+    const seenPlaces = new Set()
+    
+    for (const strategy of searchStrategies) {
+      console.log(`\n📍 Strategy: ${strategy.name}`)
+      const response = await fetch(strategy.url)
+      const data = await response.json()
+      
+      if (data.features && data.features.length > 0) {
+        console.log(`   Found ${data.features.length} results`)
+        for (const feature of data.features) {
+          const coordKey = `${feature.geometry.coordinates[0].toFixed(4)},${feature.geometry.coordinates[1].toFixed(4)}`
+          if (!seenPlaces.has(coordKey)) {
+            seenPlaces.add(coordKey)
+            allFeatures.push(feature)
+          }
+        }
+      } else {
+        console.log('   No results')
+      }
     }
     
-    if (data.features && data.features.length > 0) {
-      console.log(`✅ Found ${data.features.length} results:\n`)
-      data.features.forEach((feature, idx) => {
+    if (allFeatures.length > 0) {
+      console.log(`\n✅ Total unique results: ${allFeatures.length}\n`)
+      allFeatures.forEach((feature, idx) => {
         console.log(`${idx + 1}. ${feature.place_name}`)
         console.log(`   Type: ${feature.place_type.join(', ')}`)
         console.log(`   Location: ${feature.geometry.coordinates[1]}, ${feature.geometry.coordinates[0]}`)
         console.log('')
       })
     } else {
-      console.log('❌ No results found')
+      console.log('\n❌ No results found')
     }
   } catch (error) {
     console.error('Error:', error.message)

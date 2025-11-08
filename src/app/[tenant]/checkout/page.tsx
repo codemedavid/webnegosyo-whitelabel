@@ -35,6 +35,7 @@ export default function CheckoutPage() {
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
   const [quotationId, setQuotationId] = useState<string | null>(null)
   const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false)
+  const [deliveryFeeAddress, setDeliveryFeeAddress] = useState<string>('') // Track which address the fee is for
 
   // Payment method state
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -124,6 +125,8 @@ export default function CheckoutPage() {
 
   // Fetch Lalamove delivery quotation when delivery address is entered
   useEffect(() => {
+    let isCancelled = false // Prevent race conditions
+    
     const fetchDeliveryQuote = async () => {
       // Check if this is a delivery order
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
@@ -143,6 +146,8 @@ export default function CheckoutPage() {
         // Reset delivery fee if not applicable
         setDeliveryFee(null)
         setQuotationId(null)
+        setDeliveryFeeAddress('')
+        setIsFetchingDeliveryFee(false)
         return
       }
       
@@ -150,11 +155,18 @@ export default function CheckoutPage() {
         // Delivery address not yet entered
         setDeliveryFee(null)
         setQuotationId(null)
+        setDeliveryFeeAddress('')
+        setIsFetchingDeliveryFee(false)
         return
       }
       
-      // Fetch quotation
+      // IMMEDIATELY clear old delivery fee to prevent showing stale data
+      setDeliveryFee(null)
+      setQuotationId(null)
+      setDeliveryFeeAddress('')
       setIsFetchingDeliveryFee(true)
+      
+      // Fetch quotation
       try {
         const result = await createQuotationAction(
           tenant.id,
@@ -166,26 +178,43 @@ export default function CheckoutPage() {
           parseFloat(deliveryLng)
         )
         
+        // Only update state if this request hasn't been cancelled
+        if (isCancelled) return
+        
         if (result.success && result.data) {
-          setDeliveryFee(result.data.price)
-          setQuotationId(result.data.quotationId)
+          // Only set fee if the address still matches
+          if (deliveryAddress === customerData.delivery_address) {
+            setDeliveryFee(result.data.price)
+            setQuotationId(result.data.quotationId)
+            setDeliveryFeeAddress(deliveryAddress)
+          }
         } else {
           console.error('Failed to fetch delivery quote:', result.error)
           toast.error(result.error || 'Failed to get delivery fee')
           setDeliveryFee(null)
           setQuotationId(null)
+          setDeliveryFeeAddress('')
         }
       } catch (error) {
+        if (isCancelled) return
         console.error('Error fetching delivery quote:', error)
         toast.error('Failed to calculate delivery fee')
         setDeliveryFee(null)
         setQuotationId(null)
+        setDeliveryFeeAddress('')
       } finally {
-        setIsFetchingDeliveryFee(false)
+        if (!isCancelled) {
+          setIsFetchingDeliveryFee(false)
+        }
       }
     }
     
     fetchDeliveryQuote()
+    
+    // Cleanup function to cancel pending requests
+    return () => {
+      isCancelled = true
+    }
   }, [tenant, orderTypes, orderType, customerData.delivery_address, customerData.delivery_lat, customerData.delivery_lng])
 
   const handleProceedToPayment = () => {
@@ -282,14 +311,18 @@ export default function CheckoutPage() {
         }
 
         try {
+          // Only use delivery fee if it matches the current address
+          const validDeliveryFee = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
+          const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
+          
           const result = await createOrderAction(
             tenant.id, 
             orderItems, 
             customerInfo, 
             orderType, 
             customerData,
-            deliveryFee || undefined,
-            quotationId || undefined,
+            validDeliveryFee,
+            validQuotationId,
             selectedPaymentMethod || undefined,
             selectedPayment?.name || undefined,
             selectedPayment?.details || undefined,
@@ -581,17 +614,19 @@ export default function CheckoutPage() {
               <Separator className="my-4" />
 
               {/* Delivery Fee */}
-              {deliveryFee !== null && (
+              {(deliveryFee !== null || isFetchingDeliveryFee) && (
                 <>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">
-                      Delivery Fee{isFetchingDeliveryFee && ' (calculating...)'}
+                      Delivery Fee
                     </span>
                     <span className="font-semibold">
                       {isFetchingDeliveryFee ? (
-                        <span className="animate-pulse">...</span>
-                      ) : (
+                        <span className="text-orange-500 animate-pulse">Calculating...</span>
+                      ) : (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? (
                         formatPrice(deliveryFee)
+                      ) : (
+                        <span className="text-gray-400">—</span>
                       )}
                     </span>
                   </div>
@@ -602,7 +637,11 @@ export default function CheckoutPage() {
               <div className="flex justify-between text-xl font-bold pt-4 border-t">
                 <span>Total</span>
                 <span className="text-orange-600">
-                  {formatPrice(total + (deliveryFee || 0))}
+                  {isFetchingDeliveryFee ? (
+                    <span className="animate-pulse">Calculating...</span>
+                  ) : (
+                    formatPrice(total + ((deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : 0))
+                  )}
                 </span>
               </div>
             </div>
