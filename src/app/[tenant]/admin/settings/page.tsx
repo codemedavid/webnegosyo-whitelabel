@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
 import { Separator } from '@/components/ui/separator'
+import { ResetButton } from '@/components/admin/reset-button'
 
 export default async function SettingsPage({
   params,
@@ -378,9 +379,7 @@ export default async function SettingsPage({
               <Button type="submit" size="lg">
                 💾 Save All Branding
               </Button>
-              <Button type="button" variant="outline" size="lg" onClick={() => window.location.reload()}>
-                Reset
-              </Button>
+              <ResetButton />
             </div>
           </form>
         </CardContent>
