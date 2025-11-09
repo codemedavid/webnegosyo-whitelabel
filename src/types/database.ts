@@ -40,6 +40,8 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
+  // Card template selection
+  card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
   messenger_page_id: string;
   messenger_username?: string;
   is_active: boolean;

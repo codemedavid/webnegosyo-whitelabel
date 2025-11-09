@@ -6,6 +6,8 @@ import type { Tenant } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { CARD_TEMPLATES, type CardTemplate } from '@/lib/card-templates'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface BrandingDraft {
   primary_color: string
@@ -33,6 +35,7 @@ interface BrandingDraft {
   hero_description?: string
   hero_title_color?: string
   hero_description_color?: string
+  card_template?: string
 }
 
 interface BrandingEditorOverlayProps {
@@ -71,6 +74,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     hero_description: tenant.hero_description || '',
     hero_title_color: tenant.hero_title_color || '',
     hero_description_color: tenant.hero_description_color || '',
+    card_template: tenant.card_template || 'classic',
   })
 
   // Check role client-side (RLS still protects the update)
@@ -154,8 +158,21 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
             </div>
           </div>
           
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Tabs for Colors and Card Templates */}
+          <Tabs defaultValue="colors" className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="mx-4 mt-4">
+              <TabsTrigger value="colors" className="flex-1">
+                <span className="mr-1.5">🎨</span>
+                Colors
+              </TabsTrigger>
+              <TabsTrigger value="cards" className="flex-1">
+                <span className="mr-1.5">🃏</span>
+                Card Templates
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Colors Tab */}
+            <TabsContent value="colors" className="flex-1 overflow-y-auto p-4 space-y-6 mt-0">
             {/* Hero Section */}
             <Section title="Hero Section" emoji="🏠">
               <div className="space-y-3">
@@ -229,7 +246,82 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                 <Swatch id="text_secondary_color" label="Secondary" value={draft.text_secondary_color || ''} onChange={(v) => updateDraft('text_secondary_color', v)} compact />
               </div>
             </Section>
-          </div>
+            </TabsContent>
+            
+            {/* Card Templates Tab */}
+            <TabsContent value="cards" className="flex-1 overflow-y-auto p-4 mt-0">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-900">Choose Your Card Design</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Select a card template that best represents your brand. All templates use your custom colors.
+                  </p>
+                </div>
+                
+                <div className="grid gap-4">
+                  {CARD_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                      style={{
+                        borderColor: draft.card_template === template.id ? draft.primary_color : '#e5e7eb',
+                        backgroundColor: draft.card_template === template.id ? `${draft.primary_color}10` : '#ffffff'
+                      }}
+                      onClick={() => updateDraft('card_template', template.id)}
+                    >
+                      {draft.card_template === template.id && (
+                        <div 
+                          className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                          style={{ backgroundColor: draft.primary_color }}
+                        >
+                          ✓
+                        </div>
+                      )}
+                      
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 text-3xl">{template.preview}</div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
+                          <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {template.features.map((feature, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                style={{
+                                  backgroundColor: draft.card_template === template.id 
+                                    ? draft.primary_color 
+                                    : '#f3f4f6',
+                                  color: draft.card_template === template.id 
+                                    ? '#ffffff' 
+                                    : '#6b7280'
+                                }}
+                              >
+                                {feature}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm">💡</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-blue-900">Preview Your Selection</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        Changes are shown in real-time on your menu page. Don&apos;t forget to save!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </>

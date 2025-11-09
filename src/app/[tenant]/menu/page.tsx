@@ -18,6 +18,7 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant } from '@/types/database'
+import type { CardTemplate } from '@/lib/card-templates'
 
 export default function MenuPage() {
   const params = useParams()
@@ -123,6 +124,7 @@ export default function MenuPage() {
   const baseBranding = getTenantBranding(tenant)
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
   const [heroOverride, setHeroOverride] = useState<{ title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null>(null)
+  const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
@@ -385,6 +387,7 @@ export default function MenuPage() {
           onPreview={(draft) => {
             setBrandingOverride(mapDraftToBranding(draft))
             setHeroOverride(mapDraftToHero(draft))
+            setCardTemplateOverride(draft?.card_template || null)
           }}
           onSaved={async () => {
             if (!tenant?.id) return
@@ -393,6 +396,8 @@ export default function MenuPage() {
               setTenant(data)
               setBrandingOverride(null)
               setHeroOverride(null)
+              setCardTemplateOverride(null)
+              toast.success('Branding updated!')
             }
           }}
         />
@@ -488,7 +493,8 @@ export default function MenuPage() {
           // Show grouped view when no category is selected, regular grid when category is selected
           activeCategory ? (
             <MenuGrid 
-              items={filteredItems} 
+              items={filteredItems}
+              template={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
               onItemSelect={(item) => {
                 // If item has no variations or add-ons, add directly to cart
                 const hasCustomizations = item.variations.length > 0 || item.addons.length > 0
@@ -512,6 +518,7 @@ export default function MenuPage() {
             <MenuGridGrouped 
               items={filteredItems} 
               categories={categories}
+              template={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
               onItemSelect={(item) => {
                 // If item has no variations or add-ons, add directly to cart
                 const hasCustomizations = item.variations.length > 0 || item.addons.length > 0

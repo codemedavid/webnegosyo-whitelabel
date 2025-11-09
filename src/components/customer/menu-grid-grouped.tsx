@@ -5,15 +5,17 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { UtensilsCrossed } from 'lucide-react'
 import type { MenuItem, Category } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
+import type { CardTemplate } from '@/lib/card-templates'
 
 interface MenuGridGroupedProps {
   items: MenuItem[]
   categories: Category[]
   onItemSelect: (item: MenuItem) => void
   branding: BrandingColors
+  template?: CardTemplate
 }
 
-export function MenuGridGrouped({ items, categories, onItemSelect, branding }: MenuGridGroupedProps) {
+export function MenuGridGrouped({ items, categories, onItemSelect, branding, template = 'classic' }: MenuGridGroupedProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -73,13 +75,17 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding }: M
           </div>
 
           {/* Menu Items Grid */}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className={template === 'compact' 
+            ? "grid gap-4 sm:grid-cols-1 lg:grid-cols-2" 
+            : "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          }>
             {categoryItems.map((item) => (
               <MenuItemCard 
                 key={item.id} 
                 item={item} 
                 onSelect={onItemSelect} 
                 branding={branding}
+                template={template}
               />
             ))}
           </div>
