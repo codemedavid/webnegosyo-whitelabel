@@ -205,7 +205,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                 </Link>
               </div>
 
-              <p className="text-xs text-center text-gray-500 pt-2">
+              <p className="text-xs text-center text-gray-500 pt-2 pb-10">
                 {items.length} item{items.length !== 1 ? 's' : ''} in cart
               </p>
             </div>
