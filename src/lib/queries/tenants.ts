@@ -5,6 +5,7 @@ import {
   getTenantBySlugSupabase,
   createTenantSupabase,
   updateTenantSupabase,
+  deleteTenantSupabase,
   type TenantInput 
 } from '@/lib/tenants-service'
 import type { Tenant } from '@/types/database'
@@ -114,6 +115,24 @@ export function useUpdateTenant() {
       queryClient.setQueryData(tenantKeys.detail(id), updatedTenant)
       
       // Invalidate list to reflect changes
+      queryClient.invalidateQueries({ queryKey: tenantKeys.lists() })
+    },
+  })
+}
+
+// Hook to delete tenant
+export function useDeleteTenant() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await deleteTenantSupabase(id)
+    },
+    onSuccess: (_, id) => {
+      // Remove from cache
+      queryClient.removeQueries({ queryKey: tenantKeys.detail(id) })
+      
+      // Invalidate list to reflect deletion
       queryClient.invalidateQueries({ queryKey: tenantKeys.lists() })
     },
   })

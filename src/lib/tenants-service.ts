@@ -252,4 +252,15 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
   return data as TenantRow
 }
 
+export async function deleteTenantSupabase(id: string): Promise<void> {
+  const supabase = createBrowserSupabase()
+  
+  const { error } = await supabase
+    .from('tenants')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}
+
 

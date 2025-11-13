@@ -129,4 +129,14 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  
+  /* Safe area support for mobile devices with notches/home indicators */
+  @supports (padding: max(0px)) {
+    .safe-area-bottom {
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+    .safe-area-top {
+      padding-top: max(0.75rem, env(safe-area-inset-top));
+    }
+  }
 }
