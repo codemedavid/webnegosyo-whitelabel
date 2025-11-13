@@ -29,8 +29,8 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0">
-        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${branding.primary}20` }}>
+      <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full">
+        <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${branding.primary}20` }}>
           <SheetTitle className="flex items-center gap-2 text-base">
             <div 
               className="flex h-8 w-8 items-center justify-center rounded-full flex-shrink-0"
@@ -55,8 +55,8 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 px-4">
-              <div className="space-y-3 pt-3 pb-40">
+            <ScrollArea className="flex-1 overflow-y-auto px-4">
+              <div className="space-y-3 pt-3 pb-4">
                 {items.map((item) => (
                   <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
@@ -169,7 +169,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
               </div>
             </ScrollArea>
 
-            <div className="bg-white/95 backdrop-blur-sm border-t px-4 py-5 space-y-4" style={{ borderColor: `${branding.primary}20` }}>
+            <div className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${branding.primary}20` }}>
               <div className="flex items-center justify-between">
                 <span className="text-base font-bold text-gray-900">Total</span>
                 <span className="text-lg font-bold" style={{ color: branding.primary }}>{formatPrice(total)}</span>
@@ -195,7 +195,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                     Review Cart
                   </Button>
                 </Link>
-                <Link href={`/${tenantSlug}/checkout`} className="w-full mb-5" onClick={onClose}>
+                <Link href={`/${tenantSlug}/checkout`} className="w-full" onClick={onClose}>
                   <Button 
                     className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
                     style={{ backgroundColor: branding.primary }}
@@ -205,11 +205,9 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                 </Link>
               </div>
 
-              <div className="pt-1 pb-10">
-                <p className="text-xs text-center text-gray-500">
-                  {items.length} item{items.length !== 1 ? 's' : ''} in cart
-                </p>
-              </div>
+              <p className="text-xs text-center text-gray-500 pt-2">
+                {items.length} item{items.length !== 1 ? 's' : ''} in cart
+              </p>
             </div>
           </>
         )}
