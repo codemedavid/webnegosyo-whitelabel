@@ -195,7 +195,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                     Review Cart
                   </Button>
                 </Link>
-                <Link href={`/${tenantSlug}/checkout`} className="w-full" onClick={onClose}>
+                <Link href={`/${tenantSlug}/checkout`} className="w-full mb-5" onClick={onClose}>
                   <Button 
                     className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
                     style={{ backgroundColor: branding.primary }}

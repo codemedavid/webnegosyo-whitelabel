@@ -127,7 +127,7 @@ export function ItemDetailModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent 
-        className="!fixed w-[calc(100%-2rem)] max-w-md sm:max-w-lg flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !left-1/2 !-translate-x-1/2 !m-0 border shadow-2xl !bottom-4 sm:!top-1/2 sm:!bottom-auto sm:!-translate-y-1/2 h-[90vh] sm:h-auto sm:max-h-[85vh]"
+        className="!fixed w-[calc(100%-2rem)] max-w-md sm:max-w-lg flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !left-1/2 !-translate-x-1/2 !m-0 border shadow-2xl !bottom-4 sm:!top-1/2 sm:!bottom-auto sm:!-translate-y-1/2 h-[72vh] sm:h-auto sm:max-h-[68vh]"
         showCloseButton={false}
         style={{ backgroundColor: branding.modalBackground }}
       >
