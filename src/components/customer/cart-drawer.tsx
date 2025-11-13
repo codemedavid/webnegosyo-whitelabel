@@ -30,17 +30,17 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
   return (
     <Sheet open={open} onOpenChange={onClose}>
       <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0">
-        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b px-4 py-3" style={{ borderColor: `${branding.primary}20` }}>
-          <SheetTitle className="flex items-center gap-2.5 text-lg">
+        <SheetHeader className="bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${branding.primary}20` }}>
+          <SheetTitle className="flex items-center gap-2 text-base">
             <div 
-              className="flex h-9 w-9 items-center justify-center rounded-full flex-shrink-0"
+              className="flex h-8 w-8 items-center justify-center rounded-full flex-shrink-0"
               style={{ backgroundColor: branding.primary }}
             >
               <ShoppingCart className="h-4 w-4 text-white" />
             </div>
             <div>
               <span className="text-gray-900">Your Cart</span>
-              <p className="text-xs font-normal text-gray-500">({items.length} items)</p>
+              <p className="text-[11px] font-normal text-gray-500 leading-tight">({items.length} items)</p>
             </div>
           </SheetTitle>
         </SheetHeader>
@@ -56,9 +56,9 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
         ) : (
           <>
             <ScrollArea className="flex-1 px-4">
-              <div className="space-y-2.5 py-3">
+              <div className="space-y-3 pt-3 pb-40">
                 {items.map((item) => (
-                  <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-3 shadow-sm border border-gray-100">
+                  <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       <Image
                         src={item.menu_item.image_url}
@@ -169,13 +169,13 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
               </div>
             </ScrollArea>
 
-            <div className="bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${branding.primary}20` }}>
+            <div className="bg-white/95 backdrop-blur-sm border-t px-4 py-5 space-y-4" style={{ borderColor: `${branding.primary}20` }}>
               <div className="flex items-center justify-between">
                 <span className="text-base font-bold text-gray-900">Total</span>
                 <span className="text-lg font-bold" style={{ color: branding.primary }}>{formatPrice(total)}</span>
               </div>
 
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-3">
                 <Link href={`/${tenantSlug}/cart`} className="w-full" onClick={onClose}>
                   <Button 
                     variant="outline" 
