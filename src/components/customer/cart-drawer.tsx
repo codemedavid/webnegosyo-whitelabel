@@ -176,7 +176,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
               </div>
 
               <div className="flex flex-col gap-3">
-                <Link href={`/${tenantSlug}/cart`} className="w-full" onClick={onClose}>
+                <Link href={`/${tenantSlug}/cart`} className="w-full hidden md:block" onClick={onClose}>
                   <Button 
                     variant="outline" 
                     className="w-full h-11 border-2 border-gray-200 rounded-xl font-semibold transition-colors"

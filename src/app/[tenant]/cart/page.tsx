@@ -242,12 +242,6 @@ export default function CartPage() {
                     </Button>
                   </Link>
                 </div>
-
-                <div className="mt-6 p-4 bg-orange-50 rounded-xl">
-                  <p className="text-sm text-orange-700 text-center">
-                    🚚 Free delivery on orders over ₱500
-                  </p>
-                </div>
               </div>
             </div>
           </div>
