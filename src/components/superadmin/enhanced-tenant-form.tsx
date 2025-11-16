@@ -103,7 +103,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     const input = {
       name: formData.name,
       slug: formData.slug,
-      domain: formData.domain || undefined,
+      domain: formData.domain || null,
       logo_url: formData.logo_url || undefined,
       primary_color: formData.primary_color,
       secondary_color: formData.secondary_color,

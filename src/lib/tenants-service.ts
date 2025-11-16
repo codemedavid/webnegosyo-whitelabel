@@ -2,15 +2,34 @@ import { z } from 'zod'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import type { PostgrestError } from '@supabase/supabase-js'
 import type { Tenant as TenantRow, Database } from '@/types/database'
+import { normalizeDomain, clearDomainCache } from '@/lib/tenant'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
+
+// Domain validation: must be a valid domain format (not necessarily a URL)
+const domainSchema = z
+  .string()
+  .optional()
+  .or(z.literal(''))
+  .transform((val) => {
+    if (!val || val === '') return null
+    return normalizeDomain(val)
+  })
+  .refine(
+    (val) => {
+      if (!val) return true // Empty is valid
+      // Basic domain validation: must contain at least one dot and valid characters
+      return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,}$/i.test(val)
+    },
+    { message: 'Invalid domain format' }
+  )
 
 export const tenantSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2),
   slug: z.string().min(2).regex(/^[a-z0-9\-]+$/),
-  domain: z.string().url().optional().or(z.literal('')).optional(),
+  domain: domainSchema,
   logo_url: z.string().url().optional().or(z.literal('')).optional(),
   primary_color: z.string().min(1),
   secondary_color: z.string().min(1),
@@ -106,11 +125,28 @@ export async function isSlugTaken(slug: string, excludeId?: string) {
   return (data || []).length > 0
 }
 
+export async function isDomainTaken(domain: string | null, excludeId?: string): Promise<boolean> {
+  if (!domain) return false // Empty domain is always available
+  
+  const normalized = normalizeDomain(domain)
+  if (!normalized) return false // Invalid domain is considered available (validation will catch it)
+  
+  const supabase = createBrowserSupabase()
+  let query = supabase.from('tenants').select('id').eq('domain', normalized)
+  if (excludeId) query = query.neq('id', excludeId)
+  const { data, error } = await query
+  if (error) return true // On error, assume taken to be safe
+  return (data || []).length > 0
+}
+
 export async function createTenantSupabase(input: TenantInput): Promise<TenantRow> {
   const supabase = createBrowserSupabase()
   const parsed = tenantSchema.parse(input)
   if (await isSlugTaken(parsed.slug)) {
     throw new Error('Slug is already taken')
+  }
+  if (parsed.domain && (await isDomainTaken(parsed.domain))) {
+    throw new Error('Domain is already taken')
   }
   const insertPayload: TenantsInsert = {
     name: parsed.name,
@@ -181,9 +217,27 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
 
 export async function updateTenantSupabase(id: string, input: TenantInput): Promise<TenantRow> {
   const supabase = createBrowserSupabase()
+  
+  // Get old tenant to clear old domain from cache
+  const { data: oldTenantData } = await supabase
+    .from('tenants')
+    .select('domain')
+    .eq('id', id)
+    .maybeSingle()
+  
+  const oldTenant = oldTenantData as { domain: string | null } | null
+  
   const parsed = tenantSchema.parse({ ...input, id })
   if (await isSlugTaken(parsed.slug, id)) {
     throw new Error('Slug is already taken')
+  }
+  if (parsed.domain && (await isDomainTaken(parsed.domain, id))) {
+    throw new Error('Domain is already taken')
+  }
+  
+  // Clear old domain from cache
+  if (oldTenant?.domain) {
+    clearDomainCache(oldTenant.domain)
   }
   const updatePayload: TenantsUpdate = {
     name: parsed.name,
@@ -249,11 +303,26 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('Failed to update tenant')
+  
+  // Clear new domain from cache (will be refreshed on next request)
+  if (parsed.domain) {
+    clearDomainCache(parsed.domain)
+  }
+  
   return data as TenantRow
 }
 
 export async function deleteTenantSupabase(id: string): Promise<void> {
   const supabase = createBrowserSupabase()
+  
+  // Get tenant domain before deleting to clear cache
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('domain')
+    .eq('id', id)
+    .maybeSingle()
+  
+  const tenant = tenantData as { domain: string | null } | null
   
   const { error } = await supabase
     .from('tenants')
@@ -261,6 +330,11 @@ export async function deleteTenantSupabase(id: string): Promise<void> {
     .eq('id', id)
   
   if (error) throw error
+  
+  // Clear domain from cache
+  if (tenant?.domain) {
+    clearDomainCache(tenant.domain)
+  }
 }
 
 

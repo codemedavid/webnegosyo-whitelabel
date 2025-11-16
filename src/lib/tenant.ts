@@ -1,6 +1,7 @@
 // Tenant resolver utilities for subdomain-based multi-tenancy
 
 import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
 // Reserved subdomains that should never be treated as tenant slugs
 const RESERVED_SUBDOMAINS = new Set([
@@ -9,6 +10,40 @@ const RESERVED_SUBDOMAINS = new Set([
 	'app',
 	'admin',
 ])
+
+// In-memory cache for domain-to-tenant slug mappings
+// Map<domain, { slug: string, expires: number }>
+const domainCache = new Map<string, { slug: string; expires: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Normalize domain to consistent format
+ * - Remove protocol (http://, https://)
+ * - Remove www. prefix
+ * - Remove trailing slashes
+ * - Convert to lowercase
+ * Example: "https://www.Retiro.com/" → "retiro.com"
+ */
+export function normalizeDomain(domain: string | null | undefined): string | null {
+	if (!domain) return null
+	
+	// Remove protocol
+	let normalized = domain.replace(/^https?:\/\//i, '')
+	
+	// Remove www. prefix
+	normalized = normalized.replace(/^www\./i, '')
+	
+	// Remove trailing slashes and whitespace
+	normalized = normalized.replace(/\/+$/, '').trim()
+	
+	// Convert to lowercase
+	normalized = normalized.toLowerCase()
+	
+	// Basic validation: must contain at least one dot
+	if (!normalized.includes('.')) return null
+	
+	return normalized || null
+}
 
 function getHost(request: NextRequest): string {
 	return (
@@ -53,12 +88,121 @@ export function extractSubdomain(host: string, rootDomain: string | null): strin
     return null
 }
 
-export function resolveTenantSlugFromRequest(request: NextRequest): string | null {
+/**
+ * Resolve tenant slug by custom domain from database
+ * Uses in-memory cache to avoid database queries on every request
+ */
+async function resolveTenantByCustomDomain(host: string): Promise<string | null> {
+	// Normalize host (remove port, then normalize domain format)
+	const hostNoPort = host.split(':')[0]
+	const normalizedHost = normalizeDomain(hostNoPort)
+	if (!normalizedHost) return null
+	
+	// Check cache first
+	const cached = domainCache.get(normalizedHost)
+	if (cached && cached.expires > Date.now()) {
+		return cached.slug
+	}
+	
+	// Also check www variant (normalized)
+	const wwwVariant = normalizedHost.startsWith('www.') 
+		? normalizedHost.replace(/^www\./, '')
+		: `www.${normalizedHost}`
+	
+	const cachedWww = domainCache.get(wwwVariant)
+	if (cachedWww && cachedWww.expires > Date.now()) {
+		return cachedWww.slug
+	}
+	
+	// Query database for custom domain
+	try {
+		const supabase = createServerClient(
+			process.env.NEXT_PUBLIC_SUPABASE_URL!,
+			process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+			{
+				cookies: {
+					getAll() {
+						return []
+					},
+					setAll() {
+						// No-op for middleware
+					},
+				},
+			}
+		)
+		
+		// Query for exact match or www variant
+		// Try exact match first (using normalized domain)
+		let { data, error } = await supabase
+			.from('tenants')
+			.select('slug, domain')
+			.eq('is_active', true)
+			.eq('domain', normalizedHost)
+			.maybeSingle()
+		
+		// If not found, try www variant
+		if (!data && !error) {
+			const wwwResult = await supabase
+				.from('tenants')
+				.select('slug, domain')
+				.eq('is_active', true)
+				.eq('domain', wwwVariant)
+				.maybeSingle()
+			data = wwwResult.data
+			error = wwwResult.error
+		}
+		
+		if (error || !data || !data.domain) {
+			return null
+		}
+		
+		// Cache the result (cache both normalized and www variant)
+		const expires = Date.now() + CACHE_TTL
+		domainCache.set(normalizedHost, { slug: data.slug, expires })
+		if (data.domain !== normalizedHost) {
+			domainCache.set(wwwVariant, { slug: data.slug, expires })
+		}
+		
+		return data.slug
+	} catch (error) {
+		// If database query fails, don't block request
+		console.error('Error resolving tenant by custom domain:', error)
+		return null
+	}
+}
+
+/**
+ * Clear domain cache entry (useful when tenant is updated/deleted)
+ */
+export function clearDomainCache(domain: string | null): void {
+	if (!domain) return
+	const normalized = normalizeDomain(domain)
+	if (normalized) {
+		domainCache.delete(normalized)
+		// Also clear www variant
+		const wwwVariant = normalized.startsWith('www.') 
+			? normalized.replace(/^www\./, '')
+			: `www.${normalized}`
+		domainCache.delete(wwwVariant)
+	}
+}
+
+export async function resolveTenantSlugFromRequest(request: NextRequest): Promise<string | null> {
 	const host = getHost(request)
+	
+	// Priority 1: Check custom domain first
+	const customDomainSlug = await resolveTenantByCustomDomain(host)
+	if (customDomainSlug) {
+		return customDomainSlug
+	}
+	
+	// Priority 2: Fall back to subdomain extraction
 	const rootDomain = getRootDomain()
 	const sub = extractSubdomain(host, rootDomain)
-  if (!sub) return null
-
-  // Do not block on DB during middleware hot path; accept the slug and let the page load handle 404
-  return sub
+	if (sub) {
+		return sub
+	}
+	
+	// No tenant found
+	return null
 }

@@ -125,8 +125,77 @@
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Hero Section Animations */
+.hero-marquee {
+  animation: marquee 60s linear infinite;
+  will-change: transform;
+}
+
+.hero-marquee:hover {
+  animation-play-state: paused;
+}
+
+.hero-carousel {
+  animation: scroll 40s linear infinite;
+  will-change: transform;
+}
+
+.hero-carousel:hover {
+  animation-play-state: paused;
+}
+
+.hero-logo-hover {
+  filter: grayscale(100%);
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+
+.hero-logo-hover:hover {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+.hero-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hero-card-hover:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+  border-color: #D1D5DB;
+}
+
+.hero-button-hover {
+  transition: all 0.2s ease-in-out;
+}
+
+.hero-button-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 59, 48, 0.35);
 }

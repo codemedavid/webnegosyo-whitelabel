@@ -161,7 +161,7 @@ function BasicInfoSection({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="domain">Custom Domain</Label>
+          <Label htmlFor="domain">Custom Domain (Optional)</Label>
           <Input
             id="domain"
             value={formData.domain}
@@ -169,6 +169,11 @@ function BasicInfoSection({
             placeholder="bellaitalia.com"
             disabled={isPending}
           />
+          <p className="text-xs text-muted-foreground">
+            Enter your custom domain (e.g., bellaitalia.com). The system will automatically handle www and non-www variants.
+            <br />
+            <span className="font-medium">Important:</span> After adding the domain here, you must configure DNS to point to your Vercel deployment.
+          </p>
         </div>
 
         <ImageUpload
@@ -792,7 +797,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     const input = {
       name: formData.name,
       slug: formData.slug,
-      domain: formData.domain || undefined,
+      domain: formData.domain || null,
       logo_url: formData.logo_url || undefined,
       primary_color: formData.primary_color,
       secondary_color: formData.secondary_color,

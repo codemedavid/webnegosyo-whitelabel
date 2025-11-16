@@ -6,7 +6,7 @@ import type { Tenant } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { CARD_TEMPLATES, type CardTemplate } from '@/lib/card-templates'
+import { CARD_TEMPLATES } from '@/lib/card-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface BrandingDraft {

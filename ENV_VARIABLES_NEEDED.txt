@@ -53,6 +53,11 @@ NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
 # Mapbox (NEW - for address autocomplete)
 NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
 
+# Facebook Messenger Bot (NEW - for Messenger bot)
+FACEBOOK_PAGE_ACCESS_TOKEN=your_page_access_token_here
+FACEBOOK_VERIFY_TOKEN=your_custom_verify_token_here
+FACEBOOK_APP_SECRET=your_app_secret_here
+
 ========================================
   AFTER ADDING
 ========================================
@@ -68,10 +73,55 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
 Need help? See CLOUDINARY_QUICK_START.md for step-by-step instructions!
 
 
+# Facebook Messenger Bot (NEW - Required for Messenger bot integration)
+FACEBOOK_PAGE_ACCESS_TOKEN=your_page_access_token_here
+FACEBOOK_VERIFY_TOKEN=your_custom_verify_token_here
+FACEBOOK_APP_SECRET=your_app_secret_here
+
 # Google Maps Places API (Optional - for better POI search)
 # Get from: https://console.cloud.google.com/apis/credentials
 # Enable "Places API" for your project
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+
+========================================
+  FACEBOOK MESSENGER BOT SETUP
+========================================
+
+1. FACEBOOK_PAGE_ACCESS_TOKEN:
+   - Go to https://developers.facebook.com/
+   - Create a new app or use existing
+   - Add "Messenger" product to your app
+   - Go to Messenger → Settings → Access Tokens
+   - Select your Facebook Page
+   - Click "Generate Token"
+   - Copy the Page Access Token
+   - Example: "EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+2. FACEBOOK_VERIFY_TOKEN:
+   - This is a custom token you create (any string)
+   - Used for webhook verification
+   - Should be a random, secure string
+   - Example: "my_secure_verify_token_12345"
+   - Keep it secret!
+
+3. FACEBOOK_APP_SECRET:
+   - Go to your Facebook App → Settings → Basic
+   - Find "App Secret"
+   - Click "Show" and copy it
+   - Used for webhook signature verification
+   - Example: "abc123def456ghi789..."
+
+4. Set up Webhook:
+   - In Facebook App → Messenger → Settings → Webhooks
+   - Callback URL: https://your-domain.com/api/messenger/webhook
+   - Verify Token: Use the same value as FACEBOOK_VERIFY_TOKEN
+   - Subscribe to: messages, messaging_postbacks
+   - Save
+
+5. Subscribe Page to Webhook:
+   - In Webhooks section, click your webhook
+   - Click "Subscribe" next to your Page
+   - Now your bot will receive messages!
 
 ========================================
   GOOGLE MAPS SETUP

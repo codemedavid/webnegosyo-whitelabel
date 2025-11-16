@@ -1,0 +1,418 @@
+{
+    "designSystem": {
+      "name": "Flomotive Design Language",
+      "version": "1.0",
+      "description": "Modern, conversion-focused design system with bold typography, strategic color accents, and clean layouts"
+    },
+    
+    "colorPalette": {
+      "primary": {
+        "brand": "#FF3B30",
+        "brandName": "Vibrant Red",
+        "usage": "CTAs, highlights, key UI elements, underlines for emphasis"
+      },
+      "neutral": {
+        "background": "#FFFFFF",
+        "surface": "#F5F5F5",
+        "text": {
+          "primary": "#000000",
+          "secondary": "#333333",
+          "tertiary": "#666666"
+        }
+      },
+      "accent": {
+        "dark": "#000000",
+        "darkSurface": "#1A1A1A"
+      },
+      "semantic": {
+        "success": "#FF3B30",
+        "info": "#000000"
+      }
+    },
+  
+    "typography": {
+      "philosophy": "Bold, impactful headlines with strategic keyword highlighting",
+      "fontFamilies": {
+        "primary": "Sans-serif, likely Inter or similar geometric sans",
+        "weights": ["Regular (400)", "Medium (500)", "Semibold (600)", "Bold (700)", "Extrabold (800)"]
+      },
+      "hierarchy": {
+        "hero": {
+          "size": "48-72px",
+          "weight": "Bold to Extrabold",
+          "lineHeight": "1.1-1.2",
+          "letterSpacing": "-0.02em",
+          "specialFeature": "Mixed color highlighting - key words in brand red"
+        },
+        "h1": {
+          "size": "40-56px",
+          "weight": "Bold",
+          "lineHeight": "1.2"
+        },
+        "h2": {
+          "size": "32-40px",
+          "weight": "Bold to Semibold",
+          "lineHeight": "1.25"
+        },
+        "h3": {
+          "size": "24-28px",
+          "weight": "Semibold",
+          "lineHeight": "1.3"
+        },
+        "body": {
+          "size": "16-18px",
+          "weight": "Regular",
+          "lineHeight": "1.6"
+        },
+        "small": {
+          "size": "14px",
+          "weight": "Regular to Medium",
+          "lineHeight": "1.5"
+        }
+      },
+      "textHighlighting": {
+        "technique": "Inline color changes within headlines",
+        "examples": ["Convert" in red, "Design Partner" with emoji, "Built Around You", "Transparent", "Real Clients, Real Results"],
+        "purpose": "Draw attention to key value propositions and brand personality"
+      }
+    },
+  
+    "spacing": {
+      "system": "8px base grid",
+      "scale": [8, 16, 24, 32, 40, 48, 64, 80, 96, 128],
+      "sectionSpacing": {
+        "small": "48-64px",
+        "medium": "80-96px",
+        "large": "128-160px"
+      },
+      "componentSpacing": {
+        "tight": "8-16px",
+        "normal": "24-32px",
+        "relaxed": "40-48px"
+      }
+    },
+  
+    "layoutPatterns": {
+      "structure": {
+        "maxWidth": "1200-1400px",
+        "containerPadding": "24-48px",
+        "responsive": "Mobile-first, fluid scaling"
+      },
+      "grids": {
+        "heroSection": {
+          "columns": "1 column centered text + visual elements",
+          "alignment": "Center-aligned"
+        },
+        "contentSections": {
+          "columns": "2-3 column grids",
+          "gap": "24-40px"
+        },
+        "cardGrids": {
+          "columns": "3 columns desktop, 1-2 mobile",
+          "gap": "24-32px"
+        },
+        "testimonials": {
+          "columns": "3 columns with equal height cards",
+          "gap": "24px"
+        }
+      },
+      "sectionTypes": [
+        "Hero: Full-width, centered, high-impact headline",
+        "Feature Grid: 2-3 columns with icon/image + text",
+        "Process Timeline: Numbered steps with descriptions",
+        "Social Proof: Logo grids and testimonial cards",
+        "Pricing: Side-by-side comparison cards",
+        "FAQ: Expandable accordion layout",
+        "CTA: Dark background with centered messaging"
+      ]
+    },
+  
+    "components": {
+      "buttons": {
+        "primary": {
+          "background": "#FF3B30",
+          "color": "#FFFFFF",
+          "padding": "14px 32px",
+          "borderRadius": "6-8px",
+          "fontSize": "16px",
+          "fontWeight": "600",
+          "icon": "Right arrow (→) often included",
+          "hoverState": "Slight scale or brightness change"
+        },
+        "secondary": {
+          "background": "#000000",
+          "color": "#FFFFFF",
+          "style": "Same padding and radius as primary"
+        },
+        "ghost": {
+          "background": "transparent",
+          "border": "2px solid current color",
+          "usage": "Less emphasized actions"
+        }
+      },
+      
+      "cards": {
+        "standard": {
+          "background": "#FFFFFF",
+          "border": "1px solid #E5E5E5",
+          "borderRadius": "12-16px",
+          "padding": "24-32px",
+          "shadow": "Subtle, 0px 2px 8px rgba(0,0,0,0.04)"
+        },
+        "elevated": {
+          "background": "#FFFFFF",
+          "border": "None",
+          "borderRadius": "16-20px",
+          "padding": "32-40px",
+          "shadow": "Medium, 0px 4px 16px rgba(0,0,0,0.08)"
+        },
+        "dark": {
+          "background": "#1A1A1A to #000000",
+          "color": "#FFFFFF",
+          "accentColor": "#FF3B30",
+          "usage": "Contrast sections, pricing, CTAs"
+        }
+      },
+  
+      "iconography": {
+        "style": "Minimal, outline or solid based on context",
+        "size": "20-32px for feature icons, 16-20px for UI icons",
+        "usage": "Feature cards, stat counters, navigation"
+      },
+  
+      "images": {
+        "treatment": {
+          "style": "Clean mockups, browser windows, device frames",
+          "borderRadius": "8-12px for screenshots",
+          "shadow": "Realistic shadows on mockups",
+          "backgrounds": "Often removed or minimal gradient"
+        },
+        "placement": "Integrated within cards, hero sections, or as background elements"
+      },
+  
+      "badges": {
+        "style": "Small pills or tags",
+        "background": "#F0F0F0 or brand red with low opacity",
+        "padding": "4px 12px",
+        "borderRadius": "12px",
+        "fontSize": "12-14px",
+        "usage": "Labels, categories, status indicators"
+      },
+  
+      "dividers": {
+        "style": "Thin horizontal lines, 1px",
+        "color": "#E5E5E5",
+        "usage": "Section separators, list items"
+      },
+  
+      "testimonialCards": {
+        "structure": "Quote + author info + photo",
+        "background": "#FFFFFF",
+        "border": "1px solid #E5E5E5",
+        "borderRadius": "12px",
+        "padding": "24-32px",
+        "authorImage": "32-40px circular avatar",
+        "quoteMarks": "Optional, subtle"
+      },
+  
+      "accordion": {
+        "itemSpacing": "16-24px",
+        "border": "Bottom border on each item",
+        "iconPosition": "Right-aligned",
+        "expandIcon": "Plus/minus or chevron",
+        "padding": "16-20px vertical"
+      }
+    },
+  
+    "designPatterns": {
+      "visualHierarchy": {
+        "principle": "Clear focal points through size, color, and spacing",
+        "techniques": [
+          "Oversized headlines with selective color highlighting",
+          "Strategic white space around key elements",
+          "Contrast through dark sections against light backgrounds",
+          "Directional cues via arrows and visual flow"
+        ]
+      },
+  
+      "contentStructure": {
+        "headlines": {
+          "pattern": "Action-oriented, benefit-focused",
+          "length": "5-8 words typically",
+          "technique": "Highlight 1-2 key words in brand red",
+          "emoji": "Occasional strategic use in headlines"
+        },
+        "subheadings": {
+          "placement": "Below main headline",
+          "style": "Lighter weight, smaller size, secondary color",
+          "purpose": "Expand on headline promise"
+        },
+        "bodyCopy": {
+          "length": "Concise, 2-3 sentences typically",
+          "style": "Easy to scan, benefit-focused",
+          "lineLength": "60-80 characters optimal"
+        }
+      },
+  
+      "socialProof": {
+        "logoGrids": {
+          "layout": "Horizontal scrolling or multi-row grid",
+          "styling": "Grayscale or subtle color",
+          "size": "Uniform height, varying widths",
+          "spacing": "Generous padding between logos"
+        },
+        "testimonials": {
+          "format": "Card-based grid layout",
+          "elements": "Quote + name + role/company + photo",
+          "styling": "Clean, minimal, easy to scan"
+        },
+        "metrics": {
+          "display": "Large numbers with descriptive labels",
+          "emphasis": "Bold weight for numbers",
+          "icons": "Supporting visual elements"
+        }
+      },
+  
+      "callToAction": {
+        "placement": "Top of hero, between sections, end of page",
+        "contrast": "Often on dark backgrounds",
+        "hierarchy": "Primary CTA very prominent",
+        "urgency": "Action verbs, clear value proposition",
+        "supporting": "Brief subtext explaining benefit"
+      },
+  
+      "responsiveStrategy": {
+        "breakpoints": [
+          "Mobile: 320-767px",
+          "Tablet: 768-1023px",
+          "Desktop: 1024px+"
+        ],
+        "approach": "Stack on mobile, side-by-side on desktop",
+        "typography": "Scale down proportionally, maintain hierarchy",
+        "spacing": "Reduce generously on smaller screens"
+      }
+    },
+  
+    "interactionDesign": {
+      "microInteractions": {
+        "buttons": "Hover scale (1.02-1.05) or brightness shift",
+        "cards": "Subtle lift on hover, shadow increase",
+        "links": "Underline appears or color change",
+        "accordion": "Smooth expand/collapse animation"
+      },
+      "transitions": {
+        "duration": "200-300ms",
+        "easing": "ease-in-out or cubic-bezier for smoothness",
+        "properties": "Transform, opacity, color"
+      },
+      "scrollBehavior": {
+        "style": "Smooth scroll for anchor links",
+        "reveals": "Fade in or slide up on scroll into view"
+      }
+    },
+  
+    "sectionTemplates": {
+      "hero": {
+        "structure": [
+          "Eyebrow text (optional, small label)",
+          "Main headline (large, mixed colors)",
+          "Subheading (supporting message)",
+          "CTA button(s)",
+          "Supporting visual or social proof"
+        ],
+        "alignment": "Center",
+        "background": "Light or gradient"
+      },
+  
+      "featureGrid": {
+        "structure": [
+          "Section headline",
+          "Optional description",
+          "3-column grid of feature cards",
+          "Each card: icon/image + headline + description"
+        ],
+        "cardStyle": "Minimal borders or elevated with shadow"
+      },
+  
+      "process": {
+        "structure": [
+          "Section headline with color emphasis",
+          "Numbered or lettered steps",
+          "Each step: number + headline + description",
+          "Optional supporting visual"
+        ],
+        "layout": "Vertical timeline or horizontal cards",
+        "numbers": "Large, bold, often circled or highlighted"
+      },
+  
+      "pricing": {
+        "structure": [
+          "Section headline",
+          "2-3 pricing tiers side by side",
+          "Each tier: plan name + price + feature list + CTA",
+          "Highlight recommended plan"
+        ],
+        "cardStyle": "Elevated, one darker for emphasis",
+        "checkmarks": "Red checks for included features"
+      },
+  
+      "faq": {
+        "structure": [
+          "Section headline with personality",
+          "Accordion items",
+          "Each item: question + expandable answer"
+        ],
+        "styling": "Clean, minimal, easy to scan"
+      },
+  
+      "footer": {
+        "structure": [
+          "Final CTA (dark background)",
+          "Navigation links",
+          "Company info/social"
+        ],
+        "background": "Dark (#000000 or #1A1A1A)",
+        "text": "White or light gray"
+      }
+    },
+  
+    "brandPersonality": {
+      "tone": "Bold, confident, modern, slightly playful",
+      "voice": "Direct, action-oriented, results-focused",
+      "visualIdentity": "Clean, high-contrast, energetic",
+      "differentiators": [
+        "Electric red as signature color",
+        "Bold typography with mixed-color headlines",
+        "High contrast black/white with red accents",
+        "Generous white space",
+        "Modern, minimal aesthetic"
+      ]
+    },
+  
+    "implementationGuidelines": {
+      "priorities": [
+        "1. Establish typographic hierarchy with bold headlines",
+        "2. Implement color highlighting system for keywords",
+        "3. Create generous spacing between sections",
+        "4. Design high-contrast CTA buttons",
+        "5. Build reusable card components",
+        "6. Implement responsive grid system"
+      ],
+      "keyPrinciples": [
+        "Clarity over complexity",
+        "Bold statements with visual proof",
+        "Strategic use of brand color for emphasis",
+        "Mobile-first responsive approach",
+        "Fast-loading, performance-optimized",
+        "Conversion-focused layout decisions"
+      ],
+      "accessibility": [
+        "Ensure 4.5:1 contrast ratio for body text",
+        "Use semantic HTML for structure",
+        "Include alt text for all images",
+        "Keyboard navigation support",
+        "Focus states for interactive elements",
+        "Readable font sizes (16px minimum for body)"
+      ]
+    }
+  }

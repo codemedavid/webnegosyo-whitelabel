@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
 import { Separator } from '@/components/ui/separator'
 import { ResetButton } from '@/components/admin/reset-button'
+import { MessengerTokenForm } from '@/components/admin/messenger-token-form'
 
 export default async function SettingsPage({
   params,
@@ -386,24 +387,7 @@ export default async function SettingsPage({
       </Card>
 
       {/* Messenger Integration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Messenger Integration</CardTitle>
-          <CardDescription>Facebook Messenger integration details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-sm font-medium">Page ID</p>
-            <p className="text-sm text-muted-foreground">{tenant.messenger_page_id}</p>
-          </div>
-          {tenant.messenger_username && (
-            <div>
-              <p className="text-sm font-medium">Username</p>
-              <p className="text-sm text-muted-foreground">@{tenant.messenger_username}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <MessengerTokenForm tenant={tenant} />
 
       {/* Account */}
       <Card>

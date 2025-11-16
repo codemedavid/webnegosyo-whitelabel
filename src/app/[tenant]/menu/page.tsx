@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Image from 'next/image'
 // import { Navbar } from '@/components/shared/navbar'
 import { CategoryTabs } from '@/components/customer/category-tabs'
+import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { SearchBar } from '@/components/customer/search-bar'
 import { MenuGrid } from '@/components/customer/menu-grid'
 import { MenuGridGrouped } from '@/components/customer/menu-grid-grouped'
@@ -317,35 +318,6 @@ export default function MenuPage() {
               </div>
             </div>
 
-            {/* Category Navigation */}
-            <nav className="hidden md:flex items-center gap-8">
-              <button
-                className="text-sm font-medium transition-colors"
-                style={{ 
-                  color: !activeCategory ? branding.primary : branding.textSecondary
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
-                onMouseLeave={(e) => e.currentTarget.style.color = !activeCategory ? branding.primary : branding.textSecondary}
-                onClick={() => setActiveCategory(null)}
-              >
-                All
-              </button>
-              {categories.map((category) => (
-                <button
-                  key={category.id}
-                  className="flex items-center gap-2 text-sm font-medium transition-colors"
-                  style={{ 
-                    color: activeCategory === category.id ? branding.primary : branding.textSecondary
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
-                  onMouseLeave={(e) => e.currentTarget.style.color = activeCategory === category.id ? branding.primary : branding.textSecondary}
-                  onClick={() => setActiveCategory(category.id)}
-                >
-                  <span className="text-lg">{category.icon || '🍽️'}</span>
-                  {category.name}
-                </button>
-              ))}
-            </nav>
 
             {/* Utility Icons */}
             <div className="flex items-center gap-4">
@@ -379,6 +351,16 @@ export default function MenuPage() {
           </div>
         </div>
       </header>
+
+      {/* Desktop Category Submenu */}
+      {!isLoading && categories.length > 0 && (
+        <CategorySubmenu
+          categories={categories}
+          activeCategory={activeCategory}
+          onCategoryChange={setActiveCategory}
+          branding={branding}
+        />
+      )}
 
       {/* Admin overlay for live edit (only renders if allowed) */}
       {tenant && (
@@ -440,11 +422,12 @@ export default function MenuPage() {
               borderColor: branding.border 
             }}
           >
-            <div className="px-4 py-3 rounded-lg">
+            <div className="px-4 py-3">
               <CategoryTabs
                 categories={categories}
                 activeCategory={activeCategory}
                 onCategoryChange={setActiveCategory}
+                branding={branding}
               />
             </div>
           </div>
