@@ -9,9 +9,11 @@ type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
 
 // Domain validation: must be a valid domain format (not necessarily a URL)
 const domainSchema = z
-  .string()
-  .optional()
-  .or(z.literal(''))
+  .union([
+    z.string(),
+    z.null(),
+    z.undefined(),
+  ])
   .transform((val) => {
     if (!val || val === '') return null
     return normalizeDomain(val)

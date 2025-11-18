@@ -797,7 +797,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     const input = {
       name: formData.name,
       slug: formData.slug,
-      domain: formData.domain || null,
+      domain: formData.domain || '',
       logo_url: formData.logo_url || undefined,
       primary_color: formData.primary_color,
       secondary_color: formData.secondary_color,
@@ -850,10 +850,20 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
           toast.success('Tenant updated!')
           router.push('/superadmin/tenants')
         } else {
-          // createTenantAction redirects on success
-          await createTenantAction(input)
+          // createTenantAction returns error or redirects on success
+          const result = await createTenantAction(input)
+          if (result?.error) {
+            toast.error(result.error)
+            return
+          }
+          // If no error, redirect happened (redirect() throws NEXT_REDIRECT)
         }
       } catch (err) {
+        // Check if it's a redirect error (expected behavior)
+        if (err && typeof err === 'object' && 'digest' in err) {
+          // This is likely a NEXT_REDIRECT error, which is expected
+          return
+        }
         const message = err instanceof Error ? err.message : 'Failed to save tenant'
         toast.error(message)
       }

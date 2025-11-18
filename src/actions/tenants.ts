@@ -12,21 +12,34 @@ type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
 
 export async function createTenantAction(input: TenantInput) {
-  const supabase = await createClient()
-  
-  // Validate input
-  const parsed = tenantSchema.parse(input)
-  
-  // Check if slug is taken
-  const { data: existing } = await supabase
-    .from('tenants')
-    .select('id')
-    .eq('slug', parsed.slug)
-    .maybeSingle()
-  
-  if (existing) {
-    return { error: 'Slug is already taken' }
-  }
+  try {
+    const supabase = await createClient()
+    
+    // Validate input
+    let parsed
+    try {
+      parsed = tenantSchema.parse(input)
+    } catch (error) {
+      if (error instanceof Error) {
+        return { error: `Validation error: ${error.message}` }
+      }
+      return { error: 'Invalid input data' }
+    }
+    
+    // Check if slug is taken
+    const { data: existing, error: checkError } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('slug', parsed.slug)
+      .maybeSingle()
+    
+    if (checkError) {
+      return { error: `Database error: ${checkError.message}` }
+    }
+    
+    if (existing) {
+      return { error: 'Slug is already taken' }
+    }
   
   const insertPayload: TenantsInsert = {
     name: parsed.name,
@@ -92,21 +105,38 @@ export async function createTenantAction(input: TenantInput) {
     .select('*')
     .single()
   
-  const { data, error } = await query
-  
-  if (error) {
-    return { error: error.message }
+    const { data, error } = await query
+    
+    if (error) {
+      return { error: error.message }
+    }
+    
+    if (!data) {
+      return { error: 'Failed to create tenant: No data returned' }
+    }
+    
+    // Revalidate cached data
+    revalidatePath('/superadmin')
+    revalidatePath('/superadmin/tenants')
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenant = data as any
+    
+    // Redirect to the new tenant's menu
+    // Note: redirect() throws a NEXT_REDIRECT error that Next.js handles
+    redirect(`/${tenant.slug}/menu`)
+  } catch (error) {
+    // Check if this is a redirect error - if so, re-throw it
+    if (error && typeof error === 'object' && 'digest' in error) {
+      // This is a NEXT_REDIRECT error - let it propagate
+      throw error
+    }
+    
+    console.error('Error creating tenant:', error)
+    return { 
+      error: error instanceof Error ? error.message : 'An unexpected error occurred while creating the tenant' 
+    }
   }
-  
-  // Revalidate cached data
-  revalidatePath('/superadmin')
-  revalidatePath('/superadmin/tenants')
-  
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tenant = data as any
-  
-  // Redirect to the new tenant's menu
-  redirect(`/${tenant.slug}/menu`)
 }
 
 export async function updateTenantAction(id: string, input: TenantInput) {

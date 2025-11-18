@@ -5,6 +5,14 @@ import { TenantFormWrapper } from '@/components/superadmin/tenant-form-wrapper'
 export const dynamic = 'force-dynamic'
 
 export default function NewTenantPage() {
+  // Validate environment variables
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+  }
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
