@@ -9,11 +9,6 @@ export async function middleware(request: NextRequest) {
 
   const { pathname, search } = request.nextUrl
 
-  // Skip all middleware processing for webhook routes (Facebook webhooks don't need auth/tenant resolution)
-  if (pathname.startsWith('/api/messenger/webhook')) {
-    return supabaseResponse
-  }
-
   // Skip tenant resolution for superadmin routes
   const isSuperAdminRoute = pathname.startsWith('/superadmin')
 

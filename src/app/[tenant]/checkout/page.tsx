@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, generateMessengerMessage, generateMessengerUrl } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerMessage, generateMessengerUrl, shareToMessenger } from '@/lib/cart-utils'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
@@ -342,25 +342,66 @@ export default function CheckoutPage() {
         }
       }
 
+      // Validate messenger configuration
+      const messengerIdentifier = tenant.messenger_username || tenant.messenger_page_id
+      if (!messengerIdentifier || messengerIdentifier.trim() === '') {
+        toast.error('Messenger is not configured for this restaurant. Please contact support.')
+        setIsProcessing(false)
+        return
+      }
+
       // Generate messenger message and URL (always proceed)
       const paymentMethodInfo = selectedPayment ? { name: selectedPayment.name, details: selectedPayment.details } : null
       const message = generateMessengerMessage(items, tenant.name, orderCreated, selectedOrderType, customerData, paymentMethodInfo)
-      const messengerUrl = generateMessengerUrl(
-        tenant.messenger_username || tenant.messenger_page_id,
-        message,
-        !tenant.messenger_username
-      )
+      const messengerUrl = generateMessengerUrl(messengerIdentifier, message)
+
+      // Validate URL generation
+      if (!messengerUrl) {
+        toast.error('Failed to generate Messenger link. Please try again or contact support.')
+        setIsProcessing(false)
+        return
+      }
 
       // Clear cart
       clearCart()
 
       // Show success message
-      toast.success('Redirecting to Messenger...')
+      toast.success('Opening Messenger...')
 
-      // Redirect to Messenger
-      setTimeout(() => {
-        window.location.href = messengerUrl
-      }, 1000)
+      // Share to Messenger using Web Share API (mobile) or URL redirect (desktop)
+      try {
+        // Small delay to ensure cart is cleared and UI updates
+        setTimeout(async () => {
+          try {
+            await shareToMessenger(messengerIdentifier, message, messengerUrl)
+          } catch (shareError) {
+            // Check if user cancelled (AbortError)
+            if ((shareError as Error).name === 'AbortError') {
+              // User cancelled share - don't show error, just reset processing state
+              setIsProcessing(false)
+              return
+            }
+
+            // Other error - show fallback
+            console.error('Share error:', shareError)
+            toast.error(
+              'Unable to open Messenger automatically. Please copy this link: ' + messengerUrl,
+              { duration: 10000 }
+            )
+            // Copy to clipboard if possible
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(messengerUrl).catch(() => {
+                // Ignore clipboard errors
+              })
+            }
+            setIsProcessing(false)
+          }
+        }, 500)
+      } catch (error) {
+        console.error('Error setting up share:', error)
+        toast.error('Failed to open Messenger. Please try again.')
+        setIsProcessing(false)
+      }
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')

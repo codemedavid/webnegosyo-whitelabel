@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { MessageCircle, CreditCard } from 'lucide-react'
 import { z } from 'zod'
+import { generateMessengerUrl, shareToMessenger } from '@/lib/cart-utils'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -137,29 +138,62 @@ Please let me know the next steps to complete my purchase. Thank you!`
     setIsSubmitting(true)
 
     try {
+      // Validate Facebook page username
+      if (!FACEBOOK_PAGE_USERNAME || FACEBOOK_PAGE_USERNAME.trim() === '') {
+        toast.error('Messenger is not configured. Please contact support.')
+        setIsSubmitting(false)
+        return
+      }
+
       const message = formatMessage(formData)
-      const encodedMessage = encodeURIComponent(message)
-      const messengerUrl = `https://m.me/${FACEBOOK_PAGE_USERNAME}?text=${encodedMessage}`
+      const messengerUrl = generateMessengerUrl(FACEBOOK_PAGE_USERNAME, message)
 
-      // Open Messenger in new tab
-      window.open(messengerUrl, '_blank')
+      // Validate URL generation
+      if (!messengerUrl) {
+        toast.error('Failed to generate Messenger link. Please try again or contact support.')
+        setIsSubmitting(false)
+        return
+      }
 
-      // Show success message
-      toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
+      // Share to Messenger using Web Share API (mobile) or open in new tab (desktop)
+      try {
+        await shareToMessenger(FACEBOOK_PAGE_USERNAME, message, messengerUrl)
+        
+        // Show success message
+        toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
 
-      // Reset form after a delay
-      setTimeout(() => {
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          businessName: '',
-          plan: 'starter',
-          paymentMethod: 'gcash',
-          notes: '',
-        })
-        setErrors({})
-      }, 2000)
+        // Reset form after a delay
+        setTimeout(() => {
+          setFormData({
+            name: '',
+            email: '',
+            phone: '',
+            businessName: '',
+            plan: 'starter',
+            paymentMethod: 'gcash',
+            notes: '',
+          })
+          setErrors({})
+        }, 2000)
+      } catch (shareError) {
+        // Check if user cancelled (AbortError)
+        if ((shareError as Error).name === 'AbortError') {
+          // User cancelled share - don't show error, just reset
+          setIsSubmitting(false)
+          return
+        }
+
+        // Other error - show fallback
+        console.error('Error sharing to Messenger:', shareError)
+        toast.error('Unable to open Messenger. Please copy this link: ' + messengerUrl, { duration: 10000 })
+        // Copy to clipboard if possible
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(messengerUrl).catch(() => {
+            // Ignore clipboard errors
+          })
+        }
+        setIsSubmitting(false)
+      }
     } catch (error) {
       console.error('Error submitting form:', error)
       toast.error('Something went wrong. Please try again.')

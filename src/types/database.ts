@@ -44,7 +44,6 @@ export interface Tenant {
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
   messenger_page_id: string;
   messenger_username?: string;
-  messenger_page_access_token?: string;  // Per-tenant Facebook Page Access Token
   is_active: boolean;
   mapbox_enabled: boolean;
   enable_order_management: boolean;
@@ -311,38 +310,6 @@ export interface Database {
         Row: Order;
         Insert: Omit<Order, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Order, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      messenger_sessions: {
-        Row: {
-          id: string;
-          psid: string;
-          tenant_id: string;
-          cart_data: unknown;
-          checkout_state: unknown;
-          state: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          psid: string;
-          tenant_id: string;
-          cart_data?: unknown;
-          checkout_state?: unknown;
-          state?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          psid?: string;
-          tenant_id?: string;
-          cart_data?: unknown;
-          checkout_state?: unknown;
-          state?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
       };
     };
   };

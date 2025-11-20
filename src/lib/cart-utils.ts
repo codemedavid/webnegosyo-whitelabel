@@ -187,16 +187,102 @@ export function generateMessengerMessage(
 
 /**
  * Generate messenger URL with prefilled message
+ * 
+ * Facebook Messenger URLs have a practical limit of ~2000 characters total.
+ * The base URL is ~20 chars, so message should be limited to ~1900 chars before encoding.
+ * After encoding, special characters take 3 chars (e.g., %20 for space).
+ * 
+ * @param pageIdOrUsername - Facebook Page ID or username
+ * @param message - Message to pre-fill (will be truncated if too long)
+ * @returns Messenger URL with encoded message, or null if pageIdOrUsername is invalid
  */
 export function generateMessengerUrl(
-  pageIdOrUsername: string,
-  message: string,
-  usePageId = false
-): string {
-  const encodedMessage = encodeURIComponent(message)
-  if (usePageId) {
-    return `https://m.me/${pageIdOrUsername}?text=${encodedMessage}`
+  pageIdOrUsername: string | null | undefined,
+  message: string
+): string | null {
+  // Validate input
+  if (!pageIdOrUsername || pageIdOrUsername.trim() === '') {
+    return null
   }
-  return `https://m.me/${pageIdOrUsername}?text=${encodedMessage}`
+
+  // Facebook Messenger URL limit is approximately 2000 characters
+  // Base URL: ~20 chars, leaving ~1900 for encoded message
+  // Account for encoding overhead (worst case: 3 chars per character)
+  const MAX_MESSAGE_LENGTH = 600 // Conservative limit to ensure URL stays under 2000 chars
+  
+  // Truncate message if too long
+  let truncatedMessage = message
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    truncatedMessage = message.substring(0, MAX_MESSAGE_LENGTH - 3) + '...'
+  }
+
+  const encodedMessage = encodeURIComponent(truncatedMessage)
+  // Use ?text= parameter for pre-filled message
+  // Note: This works on desktop browsers and some mobile browsers
+  const url = `https://m.me/${pageIdOrUsername.trim()}?text=${encodedMessage}`
+  
+  // Debug: Log URL length to ensure it's within limits
+  if (url.length > 2000) {
+    console.warn(`Messenger URL is ${url.length} characters, may exceed limits`)
+  }
+  
+  return url
+}
+
+/**
+ * Share message to Messenger using Web Share API
+ * 
+ * Uses Web Share API to share text - when user selects Messenger from share sheet,
+ * the text will be pre-filled in their message box.
+ * 
+ * Falls back to URL redirect only if Web Share API is not available.
+ * 
+ * @param pageIdOrUsername - Facebook Page ID or username
+ * @param message - Message to pre-fill
+ * @param messengerUrl - Pre-generated Messenger URL (for fallback only)
+ * @returns Promise that resolves when share is initiated
+ */
+export async function shareToMessenger(
+  pageIdOrUsername: string | null | undefined,
+  message: string,
+  messengerUrl: string | null
+): Promise<void> {
+  // Validate inputs
+  if (!messengerUrl) {
+    throw new Error('Messenger URL is required')
+  }
+
+  // Primary method: Use Web Share API (works on mobile and some desktop browsers)
+  // When user selects Messenger from share sheet, the text will be pre-filled
+  if (navigator.share) {
+    try {
+      // Get base page URL to include in message so user knows where to send
+      const basePageUrl = messengerUrl.split('?')[0]
+      const messageWithLink = `${message}\n\n${basePageUrl}`
+      
+      // Share the message text - this will be pre-filled when Messenger is selected
+      await navigator.share({
+        text: messageWithLink,
+      })
+      // Success - Web Share API handled it
+      return
+    } catch (error) {
+      // User cancelled share - don't redirect, just return
+      if ((error as Error).name === 'AbortError') {
+        throw error
+      }
+      // Other error - log and fall through to URL redirect
+      console.warn('Web Share API error, falling back to URL redirect:', error)
+    }
+  }
+
+  // Fallback: Direct URL redirect (only if Web Share API not available)
+  // Note: ?text= parameter may not work reliably due to Facebook policies
+  try {
+    window.location.href = messengerUrl
+  } catch (redirectError) {
+    console.error('Redirect error:', redirectError)
+    throw new Error('Unable to open Messenger. Please try again.')
+  }
 }
 

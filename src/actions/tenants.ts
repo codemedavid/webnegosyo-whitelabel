@@ -268,7 +268,6 @@ const brandingUpdateSchema = z.object({
   error_color: z.string().optional().or(z.literal('')).optional(),
   link_color: z.string().optional().or(z.literal('')).optional(),
   shadow_color: z.string().optional().or(z.literal('')).optional(),
-  messenger_page_access_token: z.string().optional().or(z.literal('')).optional(),
 })
 
 export type BrandingUpdateInput = z.infer<typeof brandingUpdateSchema>
