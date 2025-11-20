@@ -44,6 +44,7 @@ export interface Tenant {
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
   messenger_page_id: string;
   messenger_username?: string;
+  facebook_page_id?: string; // Reference to facebook_pages table
   is_active: boolean;
   mapbox_enabled: boolean;
   enable_order_management: boolean;
@@ -227,6 +228,18 @@ export interface PaymentMethodOrderType {
   created_at: string;
 }
 
+export interface FacebookPage {
+  id: string;
+  tenant_id: string;
+  page_id: string;
+  page_name: string;
+  page_access_token: string;
+  user_access_token?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Order {
   id: string;
   tenant_id: string;
@@ -310,6 +323,11 @@ export interface Database {
         Row: Order;
         Insert: Omit<Order, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Order, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      facebook_pages: {
+        Row: FacebookPage;
+        Insert: Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>>;
       };
     };
   };

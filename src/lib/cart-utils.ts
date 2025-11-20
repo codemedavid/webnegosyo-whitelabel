@@ -217,72 +217,38 @@ export function generateMessengerUrl(
   }
 
   const encodedMessage = encodeURIComponent(truncatedMessage)
-  // Use ?text= parameter for pre-filled message
-  // Note: This works on desktop browsers and some mobile browsers
-  const url = `https://m.me/${pageIdOrUsername.trim()}?text=${encodedMessage}`
-  
-  // Debug: Log URL length to ensure it's within limits
-  if (url.length > 2000) {
-    console.warn(`Messenger URL is ${url.length} characters, may exceed limits`)
+  return `https://m.me/${pageIdOrUsername.trim()}?text=${encodedMessage}`
   }
-  
-  return url
-}
 
 /**
- * Share message to Messenger using Web Share API
+ * Generate messenger URL with ref parameter for order tracking
+ * Used for ref-based integration where webhook sends order message
  * 
- * Uses Web Share API to share text - when user selects Messenger from share sheet,
- * the text will be pre-filled in their message box.
- * 
- * Falls back to URL redirect only if Web Share API is not available.
- * 
- * @param pageIdOrUsername - Facebook Page ID or username
- * @param message - Message to pre-fill
- * @param messengerUrl - Pre-generated Messenger URL (for fallback only)
- * @returns Promise that resolves when share is initiated
+ * @param pageId - Facebook Page ID
+ * @param orderId - Order ID (will be prefixed with ORDER_)
+ * @returns Messenger URL with ref parameter, or null if pageId is invalid
  */
-export async function shareToMessenger(
-  pageIdOrUsername: string | null | undefined,
-  message: string,
-  messengerUrl: string | null
-): Promise<void> {
-  // Validate inputs
-  if (!messengerUrl) {
-    throw new Error('Messenger URL is required')
+export function generateMessengerRefUrl(
+  pageId: string | null | undefined,
+  orderId: string
+): string | null {
+  // Validate input
+  if (!pageId || pageId.trim() === '') {
+    return null
   }
 
-  // Primary method: Use Web Share API (works on mobile and some desktop browsers)
-  // When user selects Messenger from share sheet, the text will be pre-filled
-  if (navigator.share) {
-    try {
-      // Get base page URL to include in message so user knows where to send
-      const basePageUrl = messengerUrl.split('?')[0]
-      const messageWithLink = `${message}\n\n${basePageUrl}`
-      
-      // Share the message text - this will be pre-filled when Messenger is selected
-      await navigator.share({
-        text: messageWithLink,
-      })
-      // Success - Web Share API handled it
-      return
-    } catch (error) {
-      // User cancelled share - don't redirect, just return
-      if ((error as Error).name === 'AbortError') {
-        throw error
-      }
-      // Other error - log and fall through to URL redirect
-      console.warn('Web Share API error, falling back to URL redirect:', error)
-    }
+  if (!orderId || orderId.trim() === '') {
+    return null
   }
 
-  // Fallback: Direct URL redirect (only if Web Share API not available)
-  // Note: ?text= parameter may not work reliably due to Facebook policies
-  try {
-    window.location.href = messengerUrl
-  } catch (redirectError) {
-    console.error('Redirect error:', redirectError)
-    throw new Error('Unable to open Messenger. Please try again.')
-  }
+  const ref = `ORDER_${orderId}`
+  // Use m.me format - Facebook will redirect to messenger.com/t/ but ref should be preserved
+  // The ref parameter triggers a referral event when user clicks the link
+  // This is considered "user interaction" by Facebook, so we can send the message immediately
+  // Adding timestamp to make ref unique each time (helps trigger referral events even for existing conversations)
+  // Adding source=SHORTLINK helps ensure referral events fire
+  const timestamp = Date.now()
+  const uniqueRef = `${ref}_${timestamp}`
+  return `https://m.me/${pageId.trim()}?ref=${encodeURIComponent(uniqueRef)}&source=SHORTLINK`
 }
 

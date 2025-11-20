@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, generateMessengerMessage, generateMessengerUrl, shareToMessenger } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerRefUrl, generateMessengerUrl, generateMessengerMessage } from '@/lib/cart-utils'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
@@ -256,9 +256,10 @@ export default function CheckoutPage() {
     try {
       // Check if order management is enabled for this tenant
       let orderCreated = false
+      let orderResult: { success: boolean; data?: { id: string } } | null = null
       
-      // Get selected order type for messenger message
-      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      // Get selected order type (for potential future use)
+      // const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       
       // Get selected payment method details for snapshot
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
@@ -329,9 +330,10 @@ export default function CheckoutPage() {
             selectedPayment?.qr_code_url || undefined
           )
           orderCreated = result.success
+          orderResult = result
 
           if (result.success) {
-            toast.success('Order created successfully!')
+            // Order created successfully
           } else {
             console.warn('Order creation failed:', result.error)
             toast.warning('Order creation failed, but proceeding to Messenger...')
@@ -342,18 +344,107 @@ export default function CheckoutPage() {
         }
       }
 
-      // Validate messenger configuration
-      const messengerIdentifier = tenant.messenger_username || tenant.messenger_page_id
-      if (!messengerIdentifier || messengerIdentifier.trim() === '') {
+      // Get Facebook page ID for redirect
+      // First try to get from connected Facebook page, fallback to legacy messenger_page_id
+      let pageId: string | null = null
+
+      if (tenant.facebook_page_id) {
+        // Fetch connected Facebook page
+        try {
+          const { createClient } = await import('@/lib/supabase/client')
+          const supabase = createClient()
+          const { data: facebookPage, error: pageError } = await supabase
+            .from('facebook_pages')
+            .select('page_id')
+            .eq('id', tenant.facebook_page_id)
+            .eq('is_active', true)
+            .single()
+
+          if (!pageError && facebookPage) {
+            const page = facebookPage as { page_id: string }
+            if (page.page_id) {
+              pageId = page.page_id
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching Facebook page:', error)
+        }
+      }
+
+      // Fallback to legacy messenger_page_id or messenger_username
+      if (!pageId) {
+        pageId = tenant.messenger_username || tenant.messenger_page_id || null
+      }
+
+      if (!pageId || pageId.trim() === '') {
         toast.error('Messenger is not configured for this restaurant. Please contact support.')
         setIsProcessing(false)
         return
       }
 
-      // Generate messenger message and URL (always proceed)
-      const paymentMethodInfo = selectedPayment ? { name: selectedPayment.name, details: selectedPayment.details } : null
-      const message = generateMessengerMessage(items, tenant.name, orderCreated, selectedOrderType, customerData, paymentMethodInfo)
-      const messengerUrl = generateMessengerUrl(messengerIdentifier, message)
+      // Determine if Facebook page is connected (for ref-based messaging)
+      // If connected, use ref-based URL (webhook sends message)
+      // If not connected, use text-based URL (pre-filled message)
+      // A page is "connected" if we got pageId from facebook_pages table (not from legacy fields)
+      const isFacebookPageConnected = tenant.facebook_page_id !== null && 
+        tenant.facebook_page_id !== undefined &&
+        pageId !== null &&
+        // Verify pageId came from facebook_pages table, not legacy fields
+        (pageId !== tenant.messenger_username && pageId !== tenant.messenger_page_id)
+      
+      let messengerUrl: string | null = null
+
+      if (isFacebookPageConnected) {
+        // Use ref-based system (requires webhook)
+        const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
+        
+        if (!orderId) {
+          // If order wasn't created, fallback to text-based
+          console.warn('Order ID not available, falling back to text-based Messenger URL')
+        } else {
+          messengerUrl = generateMessengerRefUrl(pageId, orderId)
+        }
+      }
+
+      // Fallback to text-based URL if:
+      // 1. Facebook page not connected, OR
+      // 2. Ref-based URL generation failed
+      if (!messengerUrl) {
+        // Generate message for text-based URL
+        const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+        const orderTypeInfo = selectedOrderType ? {
+          name: selectedOrderType.name,
+          type: selectedOrderType.type,
+        } : null
+
+        // Prepare customer data for message
+        const customerDataForMessage: Record<string, string> = {}
+        if (customerData.name) customerDataForMessage.customer_name = customerData.name
+        if (customerData.phone) customerDataForMessage.customer_phone = customerData.phone
+        if (customerData.email) customerDataForMessage.customer_email = customerData.email
+        if (customerData.delivery_address) customerDataForMessage.delivery_address = customerData.delivery_address
+        if (customerData.table_number) customerDataForMessage.table_number = customerData.table_number
+
+        // Get payment method info
+        const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
+        const paymentMethodInfo = selectedPayment ? {
+          name: selectedPayment.name,
+          details: selectedPayment.details || undefined,
+        } : null
+
+        // Generate message
+        const message = generateMessengerMessage(
+          items,
+          tenant.name,
+          orderCreated,
+          orderTypeInfo,
+          customerDataForMessage,
+          paymentMethodInfo
+        )
+
+        // Generate text-based URL
+        messengerUrl = generateMessengerUrl(pageId, message)
+      }
 
       // Validate URL generation
       if (!messengerUrl) {
@@ -362,30 +453,60 @@ export default function CheckoutPage() {
         return
       }
 
+      // Attempt proactive message sending (only for ref-based URLs with order ID)
+      // This sends the message immediately without requiring user interaction
+      // Only works if Facebook page is connected and order was created
+      if (isFacebookPageConnected && orderCreated && orderResult?.data?.id) {
+        try {
+          const response = await fetch('/api/messenger/send-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: orderResult.data.id,
+              tenantId: tenant.id,
+            }),
+          })
+          
+          const result = await response.json()
+          if (result.success) {
+            console.log('[Checkout] Order message sent proactively')
+            // Message sent! User will see it when they open Messenger
+          } else {
+            console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
+            // This is normal for first-time users - webhook will handle it
+          }
+        } catch (error) {
+          console.error('[Checkout] Error attempting proactive send:', error)
+          // Continue anyway - webhook will handle it
+        }
+      }
+
       // Clear cart
+      // Note: Order message delivery depends on Facebook page connection:
+      // 
+      // If Facebook page IS connected (ref-based):
+      // 1. Proactive send (if user has PSID stored and within 24-hour window) - sends immediately
+      // 2. Webhook referral event (when user clicks link in new conversation) - sends immediately
+      // 3. Webhook fallback (when user sends message in existing conversation) - checks for recent orders
+      //
+      // If Facebook page NOT connected (text-based):
+      // - Message is pre-filled in URL, user sees it when they open Messenger
+      // - No webhook needed, works for all restaurants without Facebook integration
       clearCart()
 
       // Show success message
-      toast.success('Opening Messenger...')
+      toast.success('Redirecting to Messenger...')
 
-      // Share to Messenger using Web Share API (mobile) or URL redirect (desktop)
+      // Redirect to Messenger with error handling
       try {
-        // Small delay to ensure cart is cleared and UI updates
-        setTimeout(async () => {
+      setTimeout(() => {
           try {
-            await shareToMessenger(messengerIdentifier, message, messengerUrl)
-          } catch (shareError) {
-            // Check if user cancelled (AbortError)
-            if ((shareError as Error).name === 'AbortError') {
-              // User cancelled share - don't show error, just reset processing state
-              setIsProcessing(false)
-              return
-            }
-
-            // Other error - show fallback
-            console.error('Share error:', shareError)
+        window.location.href = messengerUrl
+          } catch (redirectError) {
+            console.error('Redirect error:', redirectError)
+            // Fallback: show URL for manual copy
             toast.error(
-              'Unable to open Messenger automatically. Please copy this link: ' + messengerUrl,
+              'Unable to redirect automatically. Please copy this link: ' + messengerUrl,
               { duration: 10000 }
             )
             // Copy to clipboard if possible
@@ -396,10 +517,10 @@ export default function CheckoutPage() {
             }
             setIsProcessing(false)
           }
-        }, 500)
+      }, 1000)
       } catch (error) {
-        console.error('Error setting up share:', error)
-        toast.error('Failed to open Messenger. Please try again.')
+        console.error('Error setting up redirect:', error)
+        toast.error('Failed to redirect to Messenger. Please try again.')
         setIsProcessing(false)
       }
     } catch (error) {

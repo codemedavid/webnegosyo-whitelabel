@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { MessageCircle, CreditCard } from 'lucide-react'
 import { z } from 'zod'
-import { generateMessengerUrl, shareToMessenger } from '@/lib/cart-utils'
+import { generateMessengerUrl } from '@/lib/cart-utils'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -155,36 +155,44 @@ Please let me know the next steps to complete my purchase. Thank you!`
         return
       }
 
-      // Share to Messenger using Web Share API (mobile) or open in new tab (desktop)
+      // Open Messenger in new tab with error handling
       try {
-        await shareToMessenger(FACEBOOK_PAGE_USERNAME, message, messengerUrl)
+        const newWindow = window.open(messengerUrl, '_blank')
         
-        // Show success message
-        toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
-
-        // Reset form after a delay
-        setTimeout(() => {
-          setFormData({
-            name: '',
-            email: '',
-            phone: '',
-            businessName: '',
-            plan: 'starter',
-            paymentMethod: 'gcash',
-            notes: '',
-          })
-          setErrors({})
-        }, 2000)
-      } catch (shareError) {
-        // Check if user cancelled (AbortError)
-        if ((shareError as Error).name === 'AbortError') {
-          // User cancelled share - don't show error, just reset
+        if (!newWindow) {
+          // Popup blocked - show fallback
+          toast.error(
+            'Popup blocked. Please copy this link: ' + messengerUrl,
+            { duration: 10000 }
+          )
+          // Copy to clipboard if possible
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(messengerUrl).catch(() => {
+              // Ignore clipboard errors
+            })
+          }
           setIsSubmitting(false)
           return
         }
 
-        // Other error - show fallback
-        console.error('Error sharing to Messenger:', shareError)
+      // Show success message
+      toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
+
+      // Reset form after a delay
+      setTimeout(() => {
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          businessName: '',
+          plan: 'starter',
+          paymentMethod: 'gcash',
+          notes: '',
+        })
+        setErrors({})
+      }, 2000)
+      } catch (openError) {
+        console.error('Error opening Messenger:', openError)
         toast.error('Unable to open Messenger. Please copy this link: ' + messengerUrl, { duration: 10000 })
         // Copy to clipboard if possible
         if (navigator.clipboard) {
@@ -192,7 +200,6 @@ Please let me know the next steps to complete my purchase. Thank you!`
             // Ignore clipboard errors
           })
         }
-        setIsSubmitting(false)
       }
     } catch (error) {
       console.error('Error submitting form:', error)

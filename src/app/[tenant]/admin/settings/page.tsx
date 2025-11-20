@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
 import { Separator } from '@/components/ui/separator'
 import { ResetButton } from '@/components/admin/reset-button'
+import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
 
 export default async function SettingsPage({
   params,
@@ -384,6 +385,9 @@ export default async function SettingsPage({
           </form>
         </CardContent>
       </Card>
+
+      {/* Facebook Messenger Integration */}
+      <FacebookConnectionCard tenant={tenant} />
 
       {/* Account */}
       <Card>
