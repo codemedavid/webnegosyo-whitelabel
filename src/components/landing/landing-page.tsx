@@ -6,13 +6,12 @@ import {
   MessageCircle, 
   Zap, 
   Check,
+  ArrowRight,
   Menu,
   Coffee,
   Store,
   Phone,
   TrendingUp,
-  Box,
-  User,
   Building2,
   Plus
 } from 'lucide-react'
@@ -63,73 +62,188 @@ export function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-6 md:px-12 max-w-[1400px] py-16 md:py-24">
-        <div className="max-w-5xl mx-auto">
-          {/* Main Headline with Red Highlighting */}
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-black mb-6 leading-tight tracking-tight">
-            Smart Menus That <span style={{ color: BRAND_RED }}>Convert</span>. Orders That Come to <span style={{ color: BRAND_RED }}>Messenger</span>.
-          </h1>
-          
-          {/* Subheading */}
-          <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-3xl leading-relaxed">
-            Online menus and ordering systems for restaurants, coffee shops, and food businesses, with all orders delivered directly to your Messenger.
-          </p>
-
-          {/* Key Metrics */}
-          <div className="flex gap-8 mb-12">
-            <div>
-              <div className="text-3xl font-bold text-black">+100</div>
-              <div className="text-sm text-gray-600">Restaurants</div>
+      <section className="w-full bg-white py-20 md:py-24">
+        <div className="container mx-auto px-6 md:px-12 lg:px-16 max-w-[1400px]">
+          <div className="max-w-5xl mx-auto">
+            {/* Social Proof Badges */}
+            <div className="flex justify-center items-center gap-4 mb-6 flex-wrap">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-50">
+                <span className="text-base">🍕</span>
+                <span className="text-sm font-medium text-gray-600">100+ Restaurants</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-50">
+                <span className="text-base">📱</span>
+                <span className="text-sm font-medium text-gray-600">10K+ Orders Delivered</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-50">
+                <span className="text-base">⚡</span>
+                <span className="text-sm font-medium text-gray-600">Works on Messenger & WhatsApp</span>
+              </div>
             </div>
-            <div>
-              <div className="text-3xl font-bold text-black">5+</div>
-              <div className="text-sm text-gray-600">Years Experience</div>
+
+            {/* Main Headline with Red Highlighting */}
+            <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-black mb-6 leading-[1.1] tracking-tight text-center max-w-[900px] mx-auto">
+              Smart Menus That <span style={{ color: BRAND_RED }}>Convert</span>. Orders That Come to <span style={{ color: BRAND_RED }}>Messenger</span>.
+            </h1>
+            
+            {/* Description */}
+            <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-[600px] mx-auto text-center leading-relaxed">
+              Digital menus for restaurants and food businesses that take orders directly through Messenger, WhatsApp, and social platforms.
+            </p>
+
+            {/* CTA Button */}
+            <div className="flex justify-center mb-16">
+              <Link href="/checkout?plan=pro">
+                <Button 
+                  size="lg" 
+                  className="text-white font-semibold text-base md:text-lg px-9 py-4 rounded-lg inline-flex items-center gap-2 transition-all duration-200 hover:-translate-y-0.5"
+                  style={{ 
+                    backgroundColor: BRAND_RED,
+                    boxShadow: '0 2px 8px rgba(255, 59, 48, 0.2)'
+                  }}
+                >
+                  Create Your Menu
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              </Link>
             </div>
-          </div>
 
-          {/* CTA Button */}
-          <div className="mb-16">
-            <Link href="/checkout?plan=pro">
-              <Button 
-                size="lg" 
-                className="text-white font-semibold text-lg px-8 py-6 rounded-lg"
-                style={{ backgroundColor: BRAND_RED }}
-              >
-                Book a 15-min Call
-                <Phone className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
+            {/* Logo Strip */}
+            <div className="mt-16 mb-16 pt-8 border-t border-gray-200">
+              <div className="text-center mb-6">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  TRUSTED BY RESTAURANTS NATIONWIDE
+                </p>
+              </div>
+              <div className="flex justify-center items-center flex-wrap gap-8 md:gap-12 max-w-[1100px] mx-auto">
+                {/* Placeholder logos - replace with actual logo images */}
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+                <div className="h-8 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+                  <span className="text-sm font-semibold text-gray-400">RESTAURANT LOGO</span>
+                </div>
+              </div>
+            </div>
 
-          {/* Value Proposition Cards */}
-          <div className="grid md:grid-cols-3 gap-6 mb-16">
-            <Card className="border border-gray-200 shadow-sm bg-white">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <TrendingUp className="h-5 w-5" style={{ color: BRAND_RED }} />
-                  <span className="font-semibold text-black">Conversion Focused</span>
+            {/* Portfolio Showcase Grid */}
+            <div className="max-w-[1200px] mx-auto px-6 mb-16">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+                {/* Portfolio Card 1 */}
+                <Card className="border border-gray-200 bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-300">
+                  <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                    <div className="text-center p-8">
+                      <Menu className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                      <p className="text-sm text-gray-500">Menu Preview</p>
+                    </div>
+                  </div>
+                  <CardContent className="p-5 md:p-6">
+                    <div className="mb-2">
+                      <Badge className="text-xs font-semibold px-2 py-1 bg-black text-white">
+                        Restaurant
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-lg md:text-xl font-semibold text-black mb-2">
+                      Pizza Place Menu with Live Orders
+                    </CardTitle>
+                    <CardDescription className="text-sm md:text-base text-gray-600 leading-relaxed">
+                      Interactive menu with real-time ordering to Messenger
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+
+                {/* Portfolio Card 2 */}
+                <Card className="border border-gray-200 bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-300">
+                  <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                    <div className="text-center p-8">
+                      <Coffee className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                      <p className="text-sm text-gray-500">Menu Preview</p>
+                    </div>
+                  </div>
+                  <CardContent className="p-5 md:p-6">
+                    <div className="mb-2">
+                      <Badge className="text-xs font-semibold px-2 py-1 bg-black text-white">
+                        Café
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-lg md:text-xl font-semibold text-black mb-2">
+                      Coffee Shop Quick Order System
+                    </CardTitle>
+                    <CardDescription className="text-sm md:text-base text-gray-600 leading-relaxed">
+                      Browse menu and order ahead via WhatsApp
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+
+                {/* Portfolio Card 3 */}
+                <Card className="border border-gray-200 bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-300">
+                  <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                    <div className="text-center p-8">
+                      <Store className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                      <p className="text-sm text-gray-500">Menu Preview</p>
+                    </div>
+                  </div>
+                  <CardContent className="p-5 md:p-6">
+                    <div className="mb-2">
+                      <Badge className="text-xs font-semibold px-2 py-1 bg-black text-white">
+                        Food Truck
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-lg md:text-xl font-semibold text-black mb-2">
+                      Food Truck Daily Specials Board
+                    </CardTitle>
+                    <CardDescription className="text-sm md:text-base text-gray-600 leading-relaxed">
+                      Dynamic menu with location-based ordering
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Stats Bar */}
+            <div className="max-w-[900px] mx-auto mt-16 mb-0 px-6 py-10 bg-gray-50 rounded-2xl">
+              <div className="flex justify-around items-center flex-wrap gap-8">
+                <div className="flex flex-col items-center text-center min-w-[150px]">
+                  <MessageCircle className="h-12 w-12 mb-3 text-black" />
+                  <div className="text-base font-semibold text-black mb-1">
+                    Messenger Integration
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Orders direct to chat
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">Orders come directly to Messenger</p>
-              </CardContent>
-            </Card>
-            <Card className="border border-gray-200 shadow-sm bg-white">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <Box className="h-5 w-5" style={{ color: BRAND_RED }} />
-                  <span className="font-semibold text-black">100+ Restaurants</span>
+                <div className="flex flex-col items-center text-center min-w-[150px]">
+                  <TrendingUp className="h-12 w-12 mb-3 text-black" />
+                  <div className="text-base font-semibold text-black mb-1">
+                    3x More Orders
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Average conversion increase
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">Trusted by Filipino businesses</p>
-              </CardContent>
-            </Card>
-            <Card className="border border-gray-200 shadow-sm bg-white">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <User className="h-5 w-5" style={{ color: BRAND_RED }} />
-                  <span className="font-semibold text-black">Simple Setup</span>
+                <div className="flex flex-col items-center text-center min-w-[150px]">
+                  <Zap className="h-12 w-12 mb-3 text-black" />
+                  <div className="text-base font-semibold text-black mb-1">
+                    Setup in Minutes
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    No coding required
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">Get started in minutes</p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </section>
