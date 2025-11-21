@@ -10,15 +10,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { MessageCircle, CreditCard } from 'lucide-react'
 import { z } from 'zod'
-import { generateMessengerUrl } from '@/lib/cart-utils'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().min(10, 'Phone number must be at least 10 digits').regex(/^[0-9]+$/, 'Phone number must contain only digits'),
   businessName: z.string().min(2, 'Business name must be at least 2 characters'),
-  plan: z.enum(['starter', 'pro']),
-  paymentMethod: z.enum(['gcash', 'bpi']),
+  plan: z.enum(['starter', 'pro'], {
+    required_error: 'Please select a plan',
+  }),
+  paymentMethod: z.enum(['gcash', 'bpi'], {
+    required_error: 'Please select a payment method',
+  }),
   notes: z.string().optional(),
 })
 
@@ -138,42 +141,12 @@ Please let me know the next steps to complete my purchase. Thank you!`
     setIsSubmitting(true)
 
     try {
-      // Validate Facebook page username
-      if (!FACEBOOK_PAGE_USERNAME || FACEBOOK_PAGE_USERNAME.trim() === '') {
-        toast.error('Messenger is not configured. Please contact support.')
-        setIsSubmitting(false)
-        return
-      }
-
       const message = formatMessage(formData)
-      const messengerUrl = generateMessengerUrl(FACEBOOK_PAGE_USERNAME, message)
+      const encodedMessage = encodeURIComponent(message)
+      const messengerUrl = `https://m.me/${FACEBOOK_PAGE_USERNAME}?text=${encodedMessage}`
 
-      // Validate URL generation
-      if (!messengerUrl) {
-        toast.error('Failed to generate Messenger link. Please try again or contact support.')
-        setIsSubmitting(false)
-        return
-      }
-
-      // Open Messenger in new tab with error handling
-      try {
-        const newWindow = window.open(messengerUrl, '_blank')
-        
-        if (!newWindow) {
-          // Popup blocked - show fallback
-          toast.error(
-            'Popup blocked. Please copy this link: ' + messengerUrl,
-            { duration: 10000 }
-          )
-          // Copy to clipboard if possible
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(messengerUrl).catch(() => {
-              // Ignore clipboard errors
-            })
-          }
-          setIsSubmitting(false)
-          return
-        }
+      // Open Messenger in new tab
+      window.open(messengerUrl, '_blank')
 
       // Show success message
       toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
@@ -191,16 +164,6 @@ Please let me know the next steps to complete my purchase. Thank you!`
         })
         setErrors({})
       }, 2000)
-      } catch (openError) {
-        console.error('Error opening Messenger:', openError)
-        toast.error('Unable to open Messenger. Please copy this link: ' + messengerUrl, { duration: 10000 })
-        // Copy to clipboard if possible
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(messengerUrl).catch(() => {
-            // Ignore clipboard errors
-          })
-        }
-      }
     } catch (error) {
       console.error('Error submitting form:', error)
       toast.error('Something went wrong. Please try again.')
