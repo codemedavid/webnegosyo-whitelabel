@@ -54,14 +54,14 @@ export async function connectFacebookPageAction(
     const supabase = await createClient()
 
     // Check if page is already connected
-    const { data: existingPage } = await ((supabase
+    const { data: existingPageData } = await supabase
       .from('facebook_pages')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('page_id', pageId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .maybeSingle()) as any) as { data: { id: string } | null; error: unknown }
+      .maybeSingle()
 
+    const existingPage = existingPageData as { id: string } | null
     if (existingPage) {
       // Update existing connection
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,19 +80,19 @@ export async function connectFacebookPageAction(
       }
 
       // Update tenant's facebook_page_id if not set
-      const { data: tenant } = await ((supabase
+      const { data: tenantData } = await supabase
         .from('tenants')
         .select('facebook_page_id')
         .eq('id', tenantId)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .single()) as any) as { data: { facebook_page_id: string | null } | null }
+        .single()
 
+      const tenant = tenantData as { facebook_page_id: string | null } | null
       if (tenant && !tenant.facebook_page_id) {
-        await ((supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
           .from('tenants')
           .update({ facebook_page_id: existingPage.id })
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .eq('id', tenantId)) as any)
+          .eq('id', tenantId)
       }
 
       // Delete temporary record
@@ -105,7 +105,8 @@ export async function connectFacebookPageAction(
     }
 
     // Create new connection
-    const { data: newPage, error: insertError } = await ((supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: newPageData, error: insertError } = await (supabase as any)
       .from('facebook_pages')
       .insert({
         tenant_id: tenantId,
@@ -116,22 +117,24 @@ export async function connectFacebookPageAction(
         is_active: true,
       } as FacebookPagesInsert)
       .select()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: FacebookPagesRow | null; error: unknown }
+      .single()
 
-    if (insertError) {
-      return { success: false, error: insertError.message }
+    const newPage = newPageData as FacebookPagesRow | null
+    if (insertError || !newPage) {
+      return { success: false, error: insertError?.message || 'Failed to create Facebook page connection' }
     }
 
     // Update tenant's facebook_page_id if not set
-    const { data: tenant } = await supabase
+    const { data: tenantData } = await supabase
       .from('tenants')
       .select('facebook_page_id')
       .eq('id', tenantId)
       .single()
 
+    const tenant = tenantData as { facebook_page_id: string | null } | null
     if (tenant && !tenant.facebook_page_id) {
-      await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
         .from('tenants')
         .update({ facebook_page_id: newPage.id })
         .eq('id', tenantId)
@@ -162,44 +165,43 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
     const supabase = await createClient()
 
     // Get page record
-    const { data: page } = await ((supabase
+    const { data: pageData } = await supabase
       .from('facebook_pages')
       .select('id, page_access_token')
       .eq('tenant_id', tenantId)
       .eq('page_id', pageId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: { id: string; page_access_token: string } | null }
+      .single()
 
+    const page = pageData as { id: string; page_access_token: string } | null
     if (!page) {
       return { success: false, error: 'Page connection not found' }
     }
 
     // Remove connection
-    const { error: deleteError } = await ((supabase
+    const { error: deleteError } = await supabase
       .from('facebook_pages')
       .delete()
       .eq('tenant_id', tenantId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .eq('page_id', pageId)) as any)
+      .eq('page_id', pageId)
 
     if (deleteError) {
       return { success: false, error: deleteError.message }
     }
 
     // Clear tenant's facebook_page_id if it was this page
-    const { data: tenant } = await ((supabase
+    const { data: tenantData } = await supabase
       .from('tenants')
       .select('facebook_page_id')
       .eq('id', tenantId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: { facebook_page_id: string | null } | null }
+      .single()
 
+    const tenant = tenantData as { facebook_page_id: string | null } | null
     if (tenant && tenant.facebook_page_id === page.id) {
-      await ((supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await ((supabase as any)
         .from('tenants')
         .update({ facebook_page_id: null })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .eq('id', tenantId)) as any)
+        .eq('id', tenantId))
     }
 
     return { success: true }
@@ -220,14 +222,14 @@ export async function getTempUserTokenAction(tenantId: string, tempId: string) {
     await verifyTenantAdmin(tenantId)
 
     const supabase = await createClient()
-    const { data: tempRecord } = await ((supabase
+    const { data: tempRecordData } = await supabase
       .from('facebook_pages')
       .select('user_access_token')
       .eq('id', tempId)
       .eq('tenant_id', tenantId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: { user_access_token: string | null } | null }
+      .single()
 
+    const tempRecord = tempRecordData as { user_access_token: string | null } | null
     if (!tempRecord || !tempRecord.user_access_token) {
       return { success: false, error: 'Temporary record not found or expired' }
     }
@@ -252,15 +254,15 @@ export async function subscribePageToWebhookAction(
     await verifyTenantAdmin(tenantId)
 
     const supabase = await createClient()
-    const { data: page } = await ((supabase
+    const { data: pageData } = await supabase
       .from('facebook_pages')
       .select('page_id, page_access_token')
       .eq('tenant_id', tenantId)
       .eq('id', pageId)
       .eq('is_active', true)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: { page_id: string; page_access_token: string } | null }
+      .single()
 
+    const page = pageData as { page_id: string; page_access_token: string } | null
     if (!page) {
       return { success: false, error: 'Page connection not found' }
     }
@@ -295,15 +297,15 @@ export async function verifyWebhookSubscriptionAction(
     await verifyTenantAdmin(tenantId)
 
     const supabase = await createClient()
-    const { data: page } = await ((supabase
+    const { data: pageData } = await supabase
       .from('facebook_pages')
       .select('page_id, page_access_token')
       .eq('tenant_id', tenantId)
       .eq('id', pageId)
       .eq('is_active', true)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .single()) as any) as { data: { page_id: string; page_access_token: string } | null }
+      .single()
 
+    const page = pageData as { page_id: string; page_access_token: string } | null
     if (!page) {
       return { success: false, error: 'Page connection not found' }
     }

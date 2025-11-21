@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserPages } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
+
+type AppUser = Database['public']['Tables']['app_users']['Row']
+type FacebookPage = Database['public']['Tables']['facebook_pages']['Row']
 
 /**
  * GET /api/facebook/pages
@@ -36,7 +40,8 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!appUser || (appUser.role !== 'superadmin' && appUser.tenant_id !== tenantId)) {
+    const typedAppUser = appUser as Pick<AppUser, 'role' | 'tenant_id'> | null
+    if (!typedAppUser || (typedAppUser.role !== 'superadmin' && typedAppUser.tenant_id !== tenantId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -48,7 +53,8 @@ export async function GET(request: NextRequest) {
       .eq('tenant_id', tenantId)
       .single()
 
-    if (!tempRecord || !tempRecord.user_access_token) {
+    const typedTempRecord = tempRecord as Pick<FacebookPage, 'user_access_token'> | null
+    if (!typedTempRecord || !typedTempRecord.user_access_token) {
       return NextResponse.json(
         { error: 'Temporary record not found or expired' },
         { status: 404 }
@@ -56,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch user's pages
-    const pages = await getUserPages(tempRecord.user_access_token)
+    const pages = await getUserPages(typedTempRecord.user_access_token)
 
     return NextResponse.json({ success: true, data: pages })
   } catch (error) {

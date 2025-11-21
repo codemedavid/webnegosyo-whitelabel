@@ -46,12 +46,14 @@ export async function GET(request: NextRequest) {
   }
 
   // Check if user is admin of this tenant
-  const { data: appUser } = await supabase
+  const { data: appUserData } = await supabase
     .from('app_users')
     .select('role, tenant_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
+  type AppUser = { role: string; tenant_id: string | null }
+  const appUser = appUserData as AppUser | null
   if (!appUser || (appUser.role !== 'superadmin' && appUser.tenant_id !== tenantId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

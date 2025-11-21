@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unsubscribePageFromWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
+
+type AppUser = Database['public']['Tables']['app_users']['Row']
 
 /**
  * POST /api/auth/facebook/disconnect
@@ -30,24 +33,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is admin of this tenant
-    const { data: appUser } = await supabase
+    const { data: appUserData } = await supabase
       .from('app_users')
       .select('role, tenant_id')
       .eq('user_id', user.id)
       .maybeSingle()
 
+    const appUser = appUserData as Pick<AppUser, 'role' | 'tenant_id'> | null
     if (!appUser || (appUser.role !== 'superadmin' && appUser.tenant_id !== tenant_id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Get page record
-    const { data: pageRecord } = await supabase
+    const { data: pageRecordData } = await supabase
       .from('facebook_pages')
       .select('page_access_token')
       .eq('tenant_id', tenant_id)
       .eq('page_id', page_id)
       .single()
 
+    const pageRecord = pageRecordData as { page_access_token: string } | null
     if (!pageRecord) {
       return NextResponse.json(
         { error: 'Page connection not found' },
@@ -59,12 +64,14 @@ export async function POST(request: NextRequest) {
     await unsubscribePageFromWebhook(page_id, pageRecord.page_access_token)
 
     // Get page database ID
-    const { data: page } = await supabase
+    const { data: pageData } = await supabase
       .from('facebook_pages')
       .select('id')
       .eq('tenant_id', tenant_id)
       .eq('page_id', page_id)
       .single()
+
+    const page = pageData as { id: string } | null
 
     // Remove connection
     const { error: deleteError } = await supabase
@@ -79,14 +86,16 @@ export async function POST(request: NextRequest) {
 
     // Clear tenant's facebook_page_id if it was this page
     if (page) {
-      const { data: tenant } = await supabase
+      const { data: tenantData } = await supabase
         .from('tenants')
         .select('facebook_page_id')
         .eq('id', tenant_id)
         .single()
 
+      const tenant = tenantData as { facebook_page_id: string | null } | null
       if (tenant && tenant.facebook_page_id === page.id) {
-        await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
           .from('tenants')
           .update({ facebook_page_id: null })
           .eq('id', tenant_id)
