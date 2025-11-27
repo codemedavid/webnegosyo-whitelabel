@@ -249,6 +249,66 @@ export function generateMessengerRefUrl(
   // Adding source=SHORTLINK helps ensure referral events fire
   const timestamp = Date.now()
   const uniqueRef = `${ref}_${timestamp}`
-  return `https://m.me/${pageId.trim()}?ref=${encodeURIComponent(uniqueRef)}&source=SHORTLINK`
+  return `https://m.me/${pageId.trim()}?ref=${encodeURIComponent(uniqueRef)}`
+}
+
+/**
+ * Generate messenger URL with both ref and text parameters
+ * Combines ref-based tracking (for webhook) with pre-filled message (for new users)
+ * 
+ * This ensures:
+ * - Existing users (with PSID): Webhook can send message via ref, user also sees pre-filled text
+ * - New users (no PSID): User sees pre-filled text message, ref helps track when they first message
+ * 
+ * Facebook Messenger supports both parameters simultaneously:
+ * https://m.me/{pageId}?ref={orderId}&text={message}
+ * 
+ * @param pageId - Facebook Page ID
+ * @param orderId - Order ID (will be prefixed with ORDER_)
+ * @param message - Message to pre-fill (will be truncated if too long)
+ * @returns Messenger URL with both ref and text parameters, or null if inputs are invalid
+ */
+export function generateMessengerCombinedUrl(
+  pageId: string | null | undefined,
+  orderId: string,
+  message: string
+): string | null {
+  // Validate input
+  if (!pageId || pageId.trim() === '') {
+    return null
+  }
+
+  if (!orderId || orderId.trim() === '') {
+    return null
+  }
+
+  // Generate ref parameter (same as generateMessengerRefUrl)
+  const ref = `ORDER_${orderId}`
+  const timestamp = Date.now()
+  const uniqueRef = `${ref}_${timestamp}`
+  const encodedRef = encodeURIComponent(uniqueRef)
+
+  // Calculate available space for message
+  // Base URL: ~20 chars (https://m.me/{pageId}?)
+  // Ref parameter: ~50-100 chars (ref={encodedRef}&source=SHORTLINK&)
+  // Total limit: ~2000 chars
+  // Reserve space for ref and other params, leaving room for text
+  const BASE_URL_LENGTH = 20
+  const REF_PARAM_LENGTH = encodedRef.length + 20 // ref=...&source=SHORTLINK&
+  const SAFETY_MARGIN = 50 // Buffer for URL encoding overhead
+  const MAX_TEXT_LENGTH = 2000 - BASE_URL_LENGTH - REF_PARAM_LENGTH - SAFETY_MARGIN - pageId.trim().length
+  
+  // Truncate message if too long (conservative limit)
+  const MAX_MESSAGE_LENGTH = Math.max(400, MAX_TEXT_LENGTH - 100) // Ensure we have room
+  let truncatedMessage = message
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    truncatedMessage = message.substring(0, MAX_MESSAGE_LENGTH - 3) + '...'
+  }
+
+  const encodedMessage = encodeURIComponent(truncatedMessage)
+
+  // Combine both parameters
+  // Format: https://m.me/{pageId}?ref={ref}&source=SHORTLINK&text={message}
+  return `https://m.me/${pageId.trim()}?ref=${encodedRef}&text=${encodedMessage}`
 }
 

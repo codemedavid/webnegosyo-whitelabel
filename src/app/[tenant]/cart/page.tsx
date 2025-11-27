@@ -22,6 +22,7 @@ export default function CartPage() {
 
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isNavigating, setIsNavigating] = useState(false)
 
   // Load tenant data from Supabase
   useEffect(() => {
@@ -231,11 +232,24 @@ export default function CartPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <Link href={`/${tenantSlug}/checkout`} className="w-full">
-                    <Button className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all">
+                  <Button 
+                    className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      if (isNavigating) return
+                      setIsNavigating(true)
+                      router.push(`/${tenantSlug}/checkout`)
+                    }}
+                    disabled={isNavigating}
+                  >
+                    {isNavigating ? (
+                      <>
+                        <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                        <span className="text-lg">Loading...</span>
+                      </>
+                    ) : (
                       <span className="text-lg">Proceed to Checkout</span>
-                    </Button>
-                  </Link>
+                    )}
+                  </Button>
                   <Link href={`/${tenantSlug}/menu`} className="w-full">
                     <Button variant="outline" className="w-full h-12 border-2 border-gray-200 hover:bg-orange-50 hover:border-orange-200 rounded-xl font-semibold">
                       Continue Shopping

@@ -31,17 +31,42 @@ export async function middleware(request: NextRequest) {
   // Priority: 1) Custom domain, 2) Subdomain, 3) Path-based routing
   // This keeps app routes unified under /[tenant] while supporting both custom domains and subdomains
   if (!isSuperAdminRoute) {
-    const tenantSlug = await resolveTenantSlugFromRequest(request)
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'unknown'
+    
+    try {
+      const tenantSlug = await resolveTenantSlugFromRequest(request)
 
-    // If tenant detected (custom domain or subdomain) and current path isn't already /[tenant]/...
-    if (tenantSlug && !pathname.startsWith(`/${tenantSlug}/`) && pathname !== '/_next/image') {
-      const rewrittenUrl = request.nextUrl.clone()
-      // Redirect tenant root to tenant menu
-      const targetPath = pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`
-      rewrittenUrl.pathname = targetPath
-      // Maintain query string
-      rewrittenUrl.search = search
-      supabaseResponse = NextResponse.rewrite(rewrittenUrl)
+      // If tenant detected (custom domain or subdomain) and current path isn't already /[tenant]/...
+      if (tenantSlug && !pathname.startsWith(`/${tenantSlug}/`) && pathname !== '/_next/image') {
+        const rewrittenUrl = request.nextUrl.clone()
+        // Redirect tenant root to tenant menu
+        const targetPath = pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`
+        rewrittenUrl.pathname = targetPath
+        // Maintain query string
+        rewrittenUrl.search = search
+        
+        // Log successful rewrite in debug mode
+        if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
+          console.log(`[Middleware] Rewriting ${host}${pathname} to ${targetPath}`, { tenantSlug, host })
+        }
+        
+        supabaseResponse = NextResponse.rewrite(rewrittenUrl)
+      } else if (!tenantSlug && pathname === '/') {
+        // Log when tenant resolution fails for root path (this is when landing page shows)
+        if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
+          console.log(`[Middleware] No tenant resolved for ${host}${pathname}, showing landing page`, { host, pathname })
+        }
+      }
+    } catch (error) {
+      // Log errors but don't block the request
+      console.error('[Middleware] Error resolving tenant:', error)
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
+        console.error('[Middleware] Tenant resolution error details:', { 
+          host, 
+          pathname, 
+          error: error instanceof Error ? error.message : String(error) 
+        })
+      }
     }
   }
 

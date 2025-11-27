@@ -1,14 +1,14 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, generateMessengerRefUrl, generateMessengerUrl, generateMessengerMessage } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerCombinedUrl } from '@/lib/cart-utils'
 import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
@@ -44,11 +44,25 @@ export default function CheckoutPage() {
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
 
+  // Ref to track loading state and prevent duplicate fetches
+  const isLoadingRef = useRef(false)
+  // Ref to track if we've initialized the default order type
+  const hasInitializedOrderType = useRef(false)
+
   // Load tenant data and order types from Supabase
   useEffect(() => {
+    // Prevent duplicate fetches
+    if (isLoadingRef.current) return
+    isLoadingRef.current = true
+
     const loadData = async () => {
       try {
-        const { data, error: fetchError } = await getTenantBySlugSupabase(tenantSlug)
+        // Parallelize tenant and order types fetching
+        // We need tenant first to get tenant.id, but we can optimize by fetching order types
+        // for common tenant slugs or fetch them in parallel if we have tenant slug pattern
+        const tenantPromise = getTenantBySlugSupabase(tenantSlug)
+        
+        const { data, error: fetchError } = await tenantPromise
         if (fetchError || !data) {
           toast.error('Restaurant not found')
           router.push('/')
@@ -56,72 +70,110 @@ export default function CheckoutPage() {
         }
         setTenant(data)
 
-        // Load enabled order types
+        // Now fetch order types in parallel with any other operations
+        // Since we need tenant.id, we fetch after tenant, but this is still faster
+        // than the previous sequential approach
         const enabledOrderTypes = await getEnabledOrderTypesByTenantClient(data.id)
         setOrderTypes(enabledOrderTypes)
 
-        // Set default order type if none selected
-        if (!orderType && enabledOrderTypes.length > 0) {
-          setOrderType(enabledOrderTypes[0].id)
+        // Set default order type if none selected (only set once on initial load)
+        if (!hasInitializedOrderType.current && enabledOrderTypes.length > 0) {
+          // Check current orderType value without including it in dependencies
+          // This only runs once on mount
+          if (!orderType) {
+            setOrderType(enabledOrderTypes[0].id)
+          }
+          hasInitializedOrderType.current = true
         }
       } catch {
         toast.error('Failed to load restaurant')
         router.push('/')
       } finally {
         setIsLoading(false)
+        isLoadingRef.current = false
       }
     }
 
     loadData()
-  }, [tenantSlug, router, orderType, setOrderType])
+
+    // Cleanup function to reset loading ref on unmount
+    return () => {
+      isLoadingRef.current = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantSlug, router, setOrderType])
 
   // Load form fields and payment methods when order type changes
   useEffect(() => {
+    let isCancelled = false
+
     const loadFormFields = async () => {
       if (!tenant || !orderType) return
 
       try {
-        const fields = await getCustomerFormFieldsByOrderTypeClient(orderType, tenant.id)
-        setFormFields(fields)
-        
-        // Initialize customer data with empty values
-        const initialData: Record<string, string> = {}
-        fields.forEach(field => {
-          initialData[field.field_name] = ''
-        })
-        setCustomerData(initialData)
+        // Load form fields and payment methods in parallel
+        const [fieldsResult, methodsResult] = await Promise.allSettled([
+          getCustomerFormFieldsByOrderTypeClient(orderType, tenant.id),
+          getPaymentMethodsByOrderTypeClient(orderType, tenant.id)
+        ])
 
-        // Load payment methods for this order type (optional - may not be configured yet)
-        try {
-          const methods = await getPaymentMethodsByOrderTypeClient(orderType, tenant.id)
-          setPaymentMethods(methods || [])
+        // Check if component was unmounted or order type changed
+        if (isCancelled) return
+
+        // Handle form fields
+        if (fieldsResult.status === 'fulfilled') {
+          const fields = fieldsResult.value
+          setFormFields(fields)
+          
+          // Initialize customer data with empty values
+          const initialData: Record<string, string> = {}
+          fields.forEach(field => {
+            initialData[field.field_name] = ''
+          })
+          setCustomerData(initialData)
+        } else {
+          console.error('Failed to load form fields:', fieldsResult.reason)
+          toast.error('Failed to load form fields')
+        }
+
+        // Handle payment methods (optional - may not be configured yet)
+        if (methodsResult.status === 'fulfilled') {
+          const methods = methodsResult.value || []
+          setPaymentMethods(methods)
           
           // Auto-select first payment method if only one available
-          if (methods && methods.length === 1) {
+          if (methods.length === 1) {
             setSelectedPaymentMethod(methods[0].id)
           } else {
             setSelectedPaymentMethod(null)
           }
-        } catch {
+        } else {
           // Payment methods not configured yet - this is okay, checkout can proceed without them
           setPaymentMethods([])
           setSelectedPaymentMethod(null)
         }
       } catch (error) {
+        if (isCancelled) return
         console.error('Failed to load form fields:', error)
         toast.error('Failed to load form fields')
       }
     }
 
     loadFormFields()
+
+    // Cleanup function to cancel pending operations
+    return () => {
+      isCancelled = true
+    }
   }, [tenant, orderType])
 
   // Redirect to menu if cart is empty
+  // Don't redirect if checkout is in progress (prevents race condition with Messenger redirect)
   useEffect(() => {
-    if (!isLoading && items.length === 0) {
+    if (!isLoading && !isProcessing && items.length === 0) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, router, tenantSlug, isLoading])
+  }, [items.length, router, tenantSlug, isLoading, isProcessing])
 
   // Fetch Lalamove delivery quotation when delivery address is entered
   useEffect(() => {
@@ -382,9 +434,41 @@ export default function CheckoutPage() {
         return
       }
 
+      // Always generate message first (needed for both ref+text combined URL and text-only fallback)
+      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      const orderTypeInfo = selectedOrderType ? {
+        name: selectedOrderType.name,
+        type: selectedOrderType.type,
+      } : null
+
+      // Prepare customer data for message
+      const customerDataForMessage: Record<string, string> = {}
+      if (customerData.name) customerDataForMessage.customer_name = customerData.name
+      if (customerData.phone) customerDataForMessage.customer_phone = customerData.phone
+      if (customerData.email) customerDataForMessage.customer_email = customerData.email
+      if (customerData.delivery_address) customerDataForMessage.delivery_address = customerData.delivery_address
+      if (customerData.table_number) customerDataForMessage.table_number = customerData.table_number
+
+      // Get payment method info for message
+      const selectedPaymentForMessage = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
+      const paymentMethodInfo = selectedPaymentForMessage ? {
+        name: selectedPaymentForMessage.name,
+        details: selectedPaymentForMessage.details || undefined,
+      } : null
+
+      // Generate message (always needed, even for ref-based URLs)
+      const message = generateMessengerMessage(
+        items,
+        tenant.name,
+        orderCreated,
+        orderTypeInfo,
+        customerDataForMessage,
+        paymentMethodInfo
+      )
+
       // Determine if Facebook page is connected (for ref-based messaging)
-      // If connected, use ref-based URL (webhook sends message)
-      // If not connected, use text-based URL (pre-filled message)
+      // If connected, use combined URL with both ref and text (webhook + pre-filled message)
+      // If not connected, use text-based URL (pre-filled message only)
       // A page is "connected" if we got pageId from facebook_pages table (not from legacy fields)
       const isFacebookPageConnected = tenant.facebook_page_id !== null && 
         tenant.facebook_page_id !== undefined &&
@@ -395,90 +479,71 @@ export default function CheckoutPage() {
       let messengerUrl: string | null = null
 
       if (isFacebookPageConnected) {
-        // Use ref-based system (requires webhook)
+        // Use combined URL with both ref and text parameters
+        // This ensures:
+        // - Existing users (with PSID): Webhook can send message via ref, user also sees pre-filled text
+        // - New users (no PSID): User sees pre-filled text message, ref helps track when they first message
         const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
         
-        if (!orderId) {
-          // If order wasn't created, fallback to text-based
-          console.warn('Order ID not available, falling back to text-based Messenger URL')
+        if (orderId) {
+          // Use combined URL with both ref and text
+          messengerUrl = generateMessengerCombinedUrl(pageId, orderId, message)
         } else {
-          messengerUrl = generateMessengerRefUrl(pageId, orderId)
+          // If order wasn't created, fallback to text-only
+          console.warn('Order ID not available, falling back to text-only Messenger URL')
+          messengerUrl = generateMessengerUrl(pageId, message)
         }
-      }
-
-      // Fallback to text-based URL if:
-      // 1. Facebook page not connected, OR
-      // 2. Ref-based URL generation failed
-      if (!messengerUrl) {
-        // Generate message for text-based URL
-        const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-        const orderTypeInfo = selectedOrderType ? {
-          name: selectedOrderType.name,
-          type: selectedOrderType.type,
-        } : null
-
-        // Prepare customer data for message
-        const customerDataForMessage: Record<string, string> = {}
-        if (customerData.name) customerDataForMessage.customer_name = customerData.name
-        if (customerData.phone) customerDataForMessage.customer_phone = customerData.phone
-        if (customerData.email) customerDataForMessage.customer_email = customerData.email
-        if (customerData.delivery_address) customerDataForMessage.delivery_address = customerData.delivery_address
-        if (customerData.table_number) customerDataForMessage.table_number = customerData.table_number
-
-        // Get payment method info
-        const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-        const paymentMethodInfo = selectedPayment ? {
-          name: selectedPayment.name,
-          details: selectedPayment.details || undefined,
-        } : null
-
-        // Generate message
-        const message = generateMessengerMessage(
-          items,
-          tenant.name,
-          orderCreated,
-          orderTypeInfo,
-          customerDataForMessage,
-          paymentMethodInfo
-        )
-
-        // Generate text-based URL
+      } else {
+        // Facebook page not connected, use text-only URL
         messengerUrl = generateMessengerUrl(pageId, message)
       }
 
       // Validate URL generation
-      if (!messengerUrl) {
+      if (!messengerUrl || messengerUrl.trim() === '') {
+        console.error('[Checkout] Failed to generate Messenger URL')
         toast.error('Failed to generate Messenger link. Please try again or contact support.')
         setIsProcessing(false)
         return
       }
 
+      console.log('[Checkout] Generated Messenger URL:', messengerUrl.substring(0, 100) + '...')
+
       // Attempt proactive message sending (only for ref-based URLs with order ID)
       // This sends the message immediately without requiring user interaction
       // Only works if Facebook page is connected and order was created
+      // Note: This is optional - if it fails, the webhook will handle it when user clicks the link
       if (isFacebookPageConnected && orderCreated && orderResult?.data?.id) {
-        try {
-          const response = await fetch('/api/messenger/send-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              orderId: orderResult.data.id,
-              tenantId: tenant.id,
-            }),
-          })
-          
-          const result = await response.json()
-          if (result.success) {
-            console.log('[Checkout] Order message sent proactively')
-            // Message sent! User will see it when they open Messenger
+        // Use a fire-and-forget approach - don't await, just start the request
+        // This ensures redirect happens immediately regardless of API response
+        fetch('/api/messenger/send-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: orderResult.data.id,
+            tenantId: tenant.id,
+          }),
+        })
+        .then(async (response) => {
+          if (response.ok) {
+            try {
+              const result = await response.json()
+              if (result.success) {
+                console.log('[Checkout] Order message sent proactively')
+              } else {
+                console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
+              }
+            } catch (jsonError) {
+              console.warn('[Checkout] Failed to parse response JSON:', jsonError)
+            }
           } else {
-            console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
-            // This is normal for first-time users - webhook will handle it
+            console.warn(`[Checkout] Proactive send API returned ${response.status}, will use webhook fallback`)
           }
-        } catch (error) {
-          console.error('[Checkout] Error attempting proactive send:', error)
-          // Continue anyway - webhook will handle it
-        }
+        })
+        .catch((error) => {
+          // Network error or other fetch error - log but don't block
+          console.warn('[Checkout] Error attempting proactive send (non-blocking):', error)
+        })
+        // Don't await - let it run in background while we redirect
       }
 
       // Clear cart
@@ -498,31 +563,34 @@ export default function CheckoutPage() {
       toast.success('Redirecting to Messenger...')
 
       // Redirect to Messenger with error handling
-      try {
+      // Use a small delay to ensure toast is visible
       setTimeout(() => {
-          try {
-        window.location.href = messengerUrl
-          } catch (redirectError) {
-            console.error('Redirect error:', redirectError)
-            // Fallback: show URL for manual copy
-            toast.error(
-              'Unable to redirect automatically. Please copy this link: ' + messengerUrl,
-              { duration: 10000 }
-            )
-            // Copy to clipboard if possible
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(messengerUrl).catch(() => {
-                // Ignore clipboard errors
-              })
-            }
+        try {
+          if (!messengerUrl || messengerUrl.trim() === '') {
+            console.error('[Checkout] Messenger URL is empty, cannot redirect')
+            toast.error('Failed to redirect to Messenger. Please try again.')
             setIsProcessing(false)
+            return
           }
+          
+          console.log('[Checkout] Redirecting to Messenger:', messengerUrl)
+          window.location.href = messengerUrl
+        } catch (redirectError) {
+          console.error('[Checkout] Redirect error:', redirectError)
+          // Fallback: show URL for manual copy
+          toast.error(
+            'Unable to redirect automatically. Please copy this link: ' + messengerUrl,
+            { duration: 10000 }
+          )
+          // Copy to clipboard if possible
+          if (navigator.clipboard && messengerUrl) {
+            navigator.clipboard.writeText(messengerUrl).catch(() => {
+              // Ignore clipboard errors
+            })
+          }
+          setIsProcessing(false)
+        }
       }, 1000)
-      } catch (error) {
-        console.error('Error setting up redirect:', error)
-        toast.error('Failed to redirect to Messenger. Please try again.')
-        setIsProcessing(false)
-      }
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')
@@ -1152,7 +1220,7 @@ export default function CheckoutPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-            </div          >
+            </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selectedQrCode}
