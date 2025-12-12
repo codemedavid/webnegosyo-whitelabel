@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { TenantFormWrapper } from '@/components/superadmin/tenant-form-wrapper'
 import { TenantUsersList } from '@/components/superadmin/tenant-users-list'
+import { BulkMenuImport } from '@/components/superadmin/bulk-menu-import'
 import { getTenant } from '@/lib/queries/tenants-server'
 import { getTenantUsers } from '@/actions/users'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -55,6 +56,9 @@ async function TenantData({ id }: { id: string }) {
       >
         <TenantUsersSection id={tenant.id} tenantName={tenant.name} />
       </Suspense>
+
+      {/* Bulk Menu Import Section */}
+      <BulkMenuImport tenantId={tenant.id} tenantName={tenant.name} />
     </>
   )
 }

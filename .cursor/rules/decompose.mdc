@@ -1,0 +1,15 @@
+---
+alwaysApply: true
+---
+# MDAP / MAKER Rules
+
+1. Always decompose tasks into the smallest possible subtasks.
+2. Each AI request must handle only ONE microtask.
+3. AI must keep solutions under 50 lines unless explicitly allowed.
+4. No extra features or assumptions outside the current subtask.
+5. Generate 3 candidate solutions for each microtask upon request.
+6. If code is long, rambling, or poorly formatted, discard it.
+7. Code must pass tests before being accepted.
+8. Never modify other modules without explicit instruction.
+9. Always expose clear input/output for microtasks.
+10. Prefer simple, deterministic solutions.

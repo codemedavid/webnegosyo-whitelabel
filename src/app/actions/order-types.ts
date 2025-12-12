@@ -91,12 +91,24 @@ export async function updateOrderTypeAction(
 }
 
 export async function deleteOrderTypeAction(orderTypeId: string, tenantId: string, tenantSlug: string) {
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'order-types.ts:93',message:'deleteOrderTypeAction entry',data:{orderTypeId,tenantId,tenantSlug},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   try {
     await deleteOrderType(orderTypeId, tenantId)
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'order-types.ts:96',message:'deleteOrderType completed successfully',data:{orderTypeId,tenantId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     revalidatePath(`/${tenantSlug}/admin/order-types`)
     revalidatePath(`/${tenantSlug}/admin`)
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'order-types.ts:99',message:'deleteOrderTypeAction returning success',data:{orderTypeId,tenantId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     return { success: true }
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'order-types.ts:100',message:'deleteOrderTypeAction caught error',data:{orderTypeId,tenantId,error:error instanceof Error ? error.message : String(error),errorStack:error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete order type' }
   }
 }

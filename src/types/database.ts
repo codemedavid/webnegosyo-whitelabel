@@ -59,8 +59,23 @@ export interface Tenant {
   restaurant_address?: string;
   restaurant_latitude?: number;
   restaurant_longitude?: number;
+  // Banners
+  announcement_text?: string;
+  announcement_bg_color?: string;
+  announcement_text_color?: string;
+  is_announcement_visible?: boolean;
+  promotion_image_url?: string;
+  is_promotion_visible?: boolean;
+  promotion_banners?: PromotionBanner[];
   created_at: string;
   updated_at: string;
+}
+
+export interface PromotionBanner {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  description?: string;
 }
 
 export interface Category {

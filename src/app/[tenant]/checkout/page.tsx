@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
-import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode } from 'lucide-react'
+import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
@@ -30,7 +30,7 @@ export default function CheckoutPage() {
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
-  
+
   // Lalamove delivery fee state
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
   const [quotationId, setQuotationId] = useState<string | null>(null)
@@ -43,6 +43,20 @@ export default function CheckoutPage() {
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
+  const [copiedText, setCopiedText] = useState<string | null>(null)
+
+  // Copy to clipboard helper function
+  const handleCopyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedText(text)
+      toast.success(`${label} copied to clipboard`)
+      // Reset copied state after 2 seconds
+      setTimeout(() => setCopiedText(null), 2000)
+    } catch {
+      toast.error('Failed to copy to clipboard')
+    }
+  }
 
   // Ref to track loading state and prevent duplicate fetches
   const isLoadingRef = useRef(false)
@@ -61,7 +75,7 @@ export default function CheckoutPage() {
         // We need tenant first to get tenant.id, but we can optimize by fetching order types
         // for common tenant slugs or fetch them in parallel if we have tenant slug pattern
         const tenantPromise = getTenantBySlugSupabase(tenantSlug)
-        
+
         const { data, error: fetchError } = await tenantPromise
         if (fetchError || !data) {
           toast.error('Restaurant not found')
@@ -124,7 +138,7 @@ export default function CheckoutPage() {
         if (fieldsResult.status === 'fulfilled') {
           const fields = fieldsResult.value
           setFormFields(fields)
-          
+
           // Initialize customer data with empty values
           const initialData: Record<string, string> = {}
           fields.forEach(field => {
@@ -140,7 +154,7 @@ export default function CheckoutPage() {
         if (methodsResult.status === 'fulfilled') {
           const methods = methodsResult.value || []
           setPaymentMethods(methods)
-          
+
           // Auto-select first payment method if only one available
           if (methods.length === 1) {
             setSelectedPaymentMethod(methods[0].id)
@@ -178,22 +192,22 @@ export default function CheckoutPage() {
   // Fetch Lalamove delivery quotation when delivery address is entered
   useEffect(() => {
     let isCancelled = false // Prevent race conditions
-    
+
     const fetchDeliveryQuote = async () => {
       // Check if this is a delivery order
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const isDeliveryOrder = selectedOrderType?.type === 'delivery'
-      
+
       // Check if Lalamove is enabled and restaurant address is configured
-      const hasRestaurantAddress = tenant?.restaurant_address && 
-                                   tenant?.restaurant_latitude && 
-                                   tenant?.restaurant_longitude
-      
+      const hasRestaurantAddress = tenant?.restaurant_address &&
+        tenant?.restaurant_latitude &&
+        tenant?.restaurant_longitude
+
       // Check if delivery address is provided
       const deliveryAddress = customerData.delivery_address
       const deliveryLat = customerData.delivery_lat
       const deliveryLng = customerData.delivery_lng
-      
+
       if (!isDeliveryOrder || !tenant?.lalamove_enabled || !hasRestaurantAddress) {
         // Reset delivery fee if not applicable
         setDeliveryFee(null)
@@ -202,7 +216,7 @@ export default function CheckoutPage() {
         setIsFetchingDeliveryFee(false)
         return
       }
-      
+
       if (!deliveryAddress || !deliveryLat || !deliveryLng) {
         // Delivery address not yet entered
         setDeliveryFee(null)
@@ -211,13 +225,13 @@ export default function CheckoutPage() {
         setIsFetchingDeliveryFee(false)
         return
       }
-      
+
       // IMMEDIATELY clear old delivery fee to prevent showing stale data
       setDeliveryFee(null)
       setQuotationId(null)
       setDeliveryFeeAddress('')
       setIsFetchingDeliveryFee(true)
-      
+
       // Fetch quotation
       try {
         const result = await createQuotationAction(
@@ -229,10 +243,10 @@ export default function CheckoutPage() {
           parseFloat(deliveryLat),
           parseFloat(deliveryLng)
         )
-        
+
         // Only update state if this request hasn't been cancelled
         if (isCancelled) return
-        
+
         if (result.success && result.data) {
           // Only set fee if the address still matches
           if (deliveryAddress === customerData.delivery_address) {
@@ -260,9 +274,9 @@ export default function CheckoutPage() {
         }
       }
     }
-    
+
     fetchDeliveryQuote()
-    
+
     // Cleanup function to cancel pending requests
     return () => {
       isCancelled = true
@@ -273,7 +287,7 @@ export default function CheckoutPage() {
     // Validate required fields
     const requiredFields = formFields.filter(field => field.is_required)
     const missingFields = requiredFields.filter(field => !customerData[field.field_name]?.trim())
-    
+
     if (missingFields.length > 0) {
       toast.error(`Please fill in required fields: ${missingFields.map(f => f.field_label).join(', ')}`)
       return
@@ -309,33 +323,33 @@ export default function CheckoutPage() {
       // Check if order management is enabled for this tenant
       let orderCreated = false
       let orderResult: { success: boolean; data?: { id: string } } | null = null
-      
+
       // Get selected order type (for potential future use)
       // const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-      
+
       // Get selected payment method details for snapshot
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-      
+
       if (tenant.enable_order_management) {
         // Only save to database if order management is enabled
         const orderItems = items.map(item => {
           // Calculate price including variations
           let itemPrice = item.menu_item.price
-          
+
           // Handle legacy single variation
           if (item.selected_variation) {
             itemPrice += item.selected_variation.price_modifier
           }
-          
+
           // Handle new grouped variations
           if (item.selected_variations) {
             const modifierSum = Object.values(item.selected_variations).reduce(
-              (sum, option) => sum + option.price_modifier, 
+              (sum, option) => sum + option.price_modifier,
               0
             )
             itemPrice += modifierSum
           }
-          
+
           // Format variation text
           let variationText = ''
           if (item.selected_variation) {
@@ -345,7 +359,7 @@ export default function CheckoutPage() {
               .map(opt => opt.name)
               .join(', ')
           }
-          
+
           return {
             menu_item_id: item.menu_item.id,
             menu_item_name: item.menu_item.name,
@@ -367,12 +381,12 @@ export default function CheckoutPage() {
           // Only use delivery fee if it matches the current address
           const validDeliveryFee = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
           const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
-          
+
           const result = await createOrderAction(
-            tenant.id, 
-            orderItems, 
-            customerInfo, 
-            orderType, 
+            tenant.id,
+            orderItems,
+            customerInfo,
+            orderType,
             customerData,
             validDeliveryFee,
             validQuotationId,
@@ -470,12 +484,12 @@ export default function CheckoutPage() {
       // If connected, use combined URL with both ref and text (webhook + pre-filled message)
       // If not connected, use text-based URL (pre-filled message only)
       // A page is "connected" if we got pageId from facebook_pages table (not from legacy fields)
-      const isFacebookPageConnected = tenant.facebook_page_id !== null && 
+      const isFacebookPageConnected = tenant.facebook_page_id !== null &&
         tenant.facebook_page_id !== undefined &&
         pageId !== null &&
         // Verify pageId came from facebook_pages table, not legacy fields
         (pageId !== tenant.messenger_username && pageId !== tenant.messenger_page_id)
-      
+
       let messengerUrl: string | null = null
 
       if (isFacebookPageConnected) {
@@ -484,7 +498,7 @@ export default function CheckoutPage() {
         // - Existing users (with PSID): Webhook can send message via ref, user also sees pre-filled text
         // - New users (no PSID): User sees pre-filled text message, ref helps track when they first message
         const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
-        
+
         if (orderId) {
           // Use combined URL with both ref and text
           messengerUrl = generateMessengerCombinedUrl(pageId, orderId, message)
@@ -523,26 +537,26 @@ export default function CheckoutPage() {
             tenantId: tenant.id,
           }),
         })
-        .then(async (response) => {
-          if (response.ok) {
-            try {
-              const result = await response.json()
-              if (result.success) {
-                console.log('[Checkout] Order message sent proactively')
-              } else {
-                console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
+          .then(async (response) => {
+            if (response.ok) {
+              try {
+                const result = await response.json()
+                if (result.success) {
+                  console.log('[Checkout] Order message sent proactively')
+                } else {
+                  console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
+                }
+              } catch (jsonError) {
+                console.warn('[Checkout] Failed to parse response JSON:', jsonError)
               }
-            } catch (jsonError) {
-              console.warn('[Checkout] Failed to parse response JSON:', jsonError)
+            } else {
+              console.warn(`[Checkout] Proactive send API returned ${response.status}, will use webhook fallback`)
             }
-          } else {
-            console.warn(`[Checkout] Proactive send API returned ${response.status}, will use webhook fallback`)
-          }
-        })
-        .catch((error) => {
-          // Network error or other fetch error - log but don't block
-          console.warn('[Checkout] Error attempting proactive send (non-blocking):', error)
-        })
+          })
+          .catch((error) => {
+            // Network error or other fetch error - log but don't block
+            console.warn('[Checkout] Error attempting proactive send (non-blocking):', error)
+          })
         // Don't await - let it run in background while we redirect
       }
 
@@ -572,7 +586,7 @@ export default function CheckoutPage() {
             setIsProcessing(false)
             return
           }
-          
+
           console.log('[Checkout] Redirecting to Messenger:', messengerUrl)
           window.location.href = messengerUrl
         } catch (redirectError) {
@@ -639,7 +653,7 @@ export default function CheckoutPage() {
           {orderTypes.length > 0 && (
             <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3">How would you like to receive your order?</h2>
-              
+
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {orderTypes.map((ot) => {
                   const isSelected = orderType === ot.id
@@ -649,13 +663,12 @@ export default function CheckoutPage() {
                     delivery: Truck,
                   }
                   const Icon = iconMap[ot.type]
-                  
+
                   return (
-                    <Card 
-                      key={ot.id} 
-                      className={`cursor-pointer transition-all hover:shadow-md ${
-                        isSelected ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-gray-50'
-                      }`}
+                    <Card
+                      key={ot.id}
+                      className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-gray-50'
+                        }`}
                       onClick={() => setOrderType(ot.id)}
                     >
                       <CardContent className="p-3 sm:p-4 text-center">
@@ -677,7 +690,7 @@ export default function CheckoutPage() {
             <div className="rounded-2xl bg-white p-8 shadow-sm">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Customer Information</h2>
               <p className="text-gray-600 mb-6">Please provide the following details</p>
-              
+
               <div className="grid gap-4 md:grid-cols-2">
                 {formFields.map((field) => (
                   <div key={field.id} className={field.field_type === 'textarea' || field.field_name === 'delivery_address' ? 'md:col-span-2' : ''}>
@@ -685,7 +698,7 @@ export default function CheckoutPage() {
                       {field.field_label}
                       {field.is_required && <span className="text-red-500 ml-1">*</span>}
                     </label>
-                    
+
                     {/* Special handling for delivery address with Mapbox Autocomplete */}
                     {field.field_name === 'delivery_address' ? (
                       <MapboxAddressAutocomplete
@@ -748,17 +761,17 @@ export default function CheckoutPage() {
                           })()}
                           onChange={(e) => {
                             let inputValue = e.target.value.replace(/\D/g, '') // Only digits
-                            
+
                             // Prevent 0 as the first digit
                             if (inputValue.startsWith('0')) {
                               inputValue = inputValue.slice(1)
                             }
-                            
+
                             // Limit to 10 digits (standard PH mobile number length)
                             if (inputValue.length > 10) {
                               inputValue = inputValue.slice(0, 10)
                             }
-                            
+
                             // Store with +63 prefix
                             setCustomerData(prev => ({
                               ...prev,
@@ -795,7 +808,7 @@ export default function CheckoutPage() {
           <div className="rounded-2xl bg-white p-8 shadow-sm">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Summary</h2>
             <p className="text-gray-600 mb-6">Review your order before checkout</p>
-            
+
             <div className="space-y-4">
               {items.map((item, index) => (
                 <div key={item.id}>
@@ -804,7 +817,7 @@ export default function CheckoutPage() {
                     <div className="flex justify-between">
                       <div className="flex-1 mr-4">
                         <span className="font-medium">{item.menu_item.name}</span>
-                        
+
                         {/* Legacy single variation */}
                         {item.selected_variation && (
                           <span className="text-sm text-muted-foreground">
@@ -812,7 +825,7 @@ export default function CheckoutPage() {
                             ({item.selected_variation.name})
                           </span>
                         )}
-                        
+
                         {/* New grouped variations */}
                         {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
                           <span className="text-sm text-muted-foreground">
@@ -820,7 +833,7 @@ export default function CheckoutPage() {
                             ({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
                           </span>
                         )}
-                        
+
                         <span className="text-sm text-muted-foreground"> x{item.quantity}</span>
                       </div>
                       <span className="font-semibold flex-shrink-0">{formatPrice(item.subtotal)}</span>
@@ -890,17 +903,16 @@ export default function CheckoutPage() {
               <p className="text-gray-600 mb-6">
                 Choose how you would like to pay for your order
               </p>
-              
+
               <div className="space-y-3">
                 {paymentMethods.map((method) => {
                   const isSelected = selectedPaymentMethod === method.id
-                  
+
                   return (
-                    <label 
+                    <label
                       key={method.id}
-                      className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-orange-300 hover:bg-orange-50/50 ${
-                        isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
-                      }`}
+                      className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-orange-300 hover:bg-orange-50/50 ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
+                        }`}
                       onClick={() => setSelectedPaymentMethod(method.id)}
                     >
                       {/* Radio Button */}
@@ -912,10 +924,10 @@ export default function CheckoutPage() {
                           className="w-4 h-4 text-orange-600 focus:ring-orange-500 focus:ring-2"
                         />
                       </div>
-                      
+
                       {/* QR Code Thumbnail */}
                       {method.qr_code_url && (
-                        <div 
+                        <div
                           className="shrink-0 cursor-pointer hover:opacity-80"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -936,7 +948,7 @@ export default function CheckoutPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Payment Method Info */}
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-base mb-1">{method.name}</h3>
@@ -963,16 +975,37 @@ export default function CheckoutPage() {
                       </p>
                       {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
                         <div className="bg-white p-3 rounded border border-orange-200">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Payment Details:</p>
-                          <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                            {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details}
+                          <p className="text-sm font-medium text-gray-700 mb-2">Payment Details:</p>
+                          <div className="space-y-2">
+                            {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
+                              const trimmedLine = line.trim()
+                              if (!trimmedLine) return null
+                              return (
+                                <button
+                                  key={index}
+                                  type="button"
+                                  onClick={() => handleCopyText(trimmedLine, 'Details')}
+                                  className="w-full flex items-center justify-between gap-2 p-2 rounded-md bg-gray-50 hover:bg-orange-100 transition-colors text-left group"
+                                >
+                                  <span className="text-sm text-gray-700 break-all">{trimmedLine}</span>
+                                  {copiedText === trimmedLine ? (
+                                    <Check className="h-4 w-4 text-green-500 shrink-0" />
+                                  ) : (
+                                    <Copy className="h-4 w-4 text-gray-400 group-hover:text-orange-500 shrink-0" />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                            <Copy className="h-3 w-3" /> Tap on any line to copy
                           </p>
                         </div>
                       )}
                       {(() => {
                         const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
                         if (!qrUrl) return null
-                        
+
                         return (
                           <div className="mt-3 flex items-center gap-3">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1032,15 +1065,15 @@ export default function CheckoutPage() {
               {paymentMethods.length > 0 ? 'Complete Order' : 'Complete Order via Messenger'}
             </h2>
             <p className="text-gray-600 mb-6">
-              {paymentMethods.length > 0 
+              {paymentMethods.length > 0
                 ? `After selecting your payment method, click below to complete your order with ${tenant.name}.`
                 : `Click the button below to send your order to ${tenant.name} via Facebook Messenger. You'll be redirected to Messenger with your order details pre-filled.`
               }
             </p>
-            
-            <Button 
-              size="lg" 
-              className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed" 
+
+            <Button
+              size="lg"
+              className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleProceedToPayment}
               disabled={isProcessing}
             >
@@ -1097,7 +1130,7 @@ export default function CheckoutPage() {
               {(() => {
                 const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
                 if (!qrUrl) return null
-                
+
                 return (
                   <div className="flex flex-col items-center gap-4 py-4 bg-gray-50 rounded-xl">
                     <p className="text-sm font-medium text-gray-700">Scan QR Code to Pay</p>
@@ -1120,8 +1153,29 @@ export default function CheckoutPage() {
                     Payment Instructions
                   </h4>
                   <div className="bg-white p-4 rounded-lg border border-orange-200">
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                      {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details}
+                    <div className="space-y-2">
+                      {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
+                        const trimmedLine = line.trim()
+                        if (!trimmedLine) return null
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => handleCopyText(trimmedLine, 'Details')}
+                            className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 hover:bg-orange-100 transition-colors text-left group"
+                          >
+                            <span className="text-sm text-gray-700 break-all leading-relaxed">{trimmedLine}</span>
+                            {copiedText === trimmedLine ? (
+                              <Check className="h-5 w-5 text-green-500 shrink-0" />
+                            ) : (
+                              <Copy className="h-5 w-5 text-gray-400 group-hover:text-orange-500 shrink-0" />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-3 flex items-center justify-center gap-1 pt-2 border-t border-gray-100">
+                      <Copy className="h-3 w-3" /> Tap on any line to copy
                     </p>
                   </div>
                 </div>
@@ -1201,11 +1255,11 @@ export default function CheckoutPage() {
 
       {/* QR Code Dialog */}
       {qrDialogOpen && selectedQrCode && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
           onClick={() => setQrDialogOpen(false)}
         >
-          <div 
+          <div
             className="bg-white rounded-lg p-6 max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
           >

@@ -18,7 +18,7 @@ import { getTenantByIdSupabase } from '@/lib/tenants-service'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
 import { toast } from 'sonner'
-import type { Category, MenuItem, Tenant } from '@/types/database'
+import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 
 export default function MenuPage() {
@@ -41,39 +41,39 @@ export default function MenuPage() {
   // Load tenant + categories + menu_items from Supabase
   useEffect(() => {
     let isCancelled = false
-    
+
     const loadData = async () => {
       try {
         setIsLoading(true)
         setError(null)
-        
+
         const supabase = createClient()
         const { data: tenantData, error: tenantError } = await getTenantBySlugSupabase(tenantSlug)
-        
+
         if (isCancelled) return
-        
+
         if (tenantError || !tenantData) {
           setError('Restaurant not found')
           setIsLoading(false)
           return
         }
-        
+
         // Save tenant data for branding
         setTenant(tenantData)
-        
+
         const [{ data: cats, error: catsError }, { data: items, error: itemsError }] = await Promise.all([
           supabase.from('categories').select('*').eq('tenant_id', tenantData.id).order('order'),
           supabase.from('menu_items').select('*').eq('tenant_id', tenantData.id).order('order'),
         ])
-        
+
         if (isCancelled) return
-        
+
         if (catsError || itemsError) {
           setError('Failed to load menu data')
           setIsLoading(false)
           return
         }
-        
+
         setCategories((cats as Category[]) || [])
         setAllMenuItems((items as MenuItem[]) || [])
       } catch {
@@ -86,9 +86,9 @@ export default function MenuPage() {
         }
       }
     }
-    
+
     loadData()
-    
+
     return () => {
       isCancelled = true
     }
@@ -125,16 +125,26 @@ export default function MenuPage() {
   const baseBranding = getTenantBranding(tenant)
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
   const [heroOverride, setHeroOverride] = useState<{ title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null>(null)
+  const [bannerOverride, setBannerOverride] = useState<{
+    announcementText?: string;
+    announcementBgColor?: string;
+    announcementTextColor?: string;
+    isAnnouncementVisible?: boolean;
+    promotionImageUrl?: string;
+    isPromotionVisible?: boolean;
+    promotionBanners?: PromotionBanner[];
+  } | null>(null)
+  const [currentSlide, setCurrentSlide] = useState(0)
   const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
   }, [baseBranding, brandingOverride])
 
-  function mapDraftToBranding(draft: Partial<Record<string, string>> | null): Partial<Record<string, string>> | null {
+  function mapDraftToBranding(draft: Partial<Record<string, unknown>> | null): Partial<Record<string, string>> | null {
     if (!draft) return null
     const mapped: Record<string, string> = {}
-    const setIf = (key: string, value?: string) => { if (value) mapped[key] = value }
+    const setIf = (key: string, value: unknown) => { if (typeof value === 'string') mapped[key] = value }
     setIf('primary', draft.primary_color)
     setIf('secondary', draft.secondary_color)
     setIf('accent', draft.accent_color)
@@ -164,20 +174,54 @@ export default function MenuPage() {
     return mapped
   }
 
-  function mapDraftToHero(draft: Partial<Record<string, string>> | null) {
+  function mapDraftToHero(draft: Partial<Record<string, unknown>> | null): { title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null {
     if (!draft) return null
     return {
-      title: draft.hero_title,
-      description: draft.hero_description,
-      heroTitleColor: draft.hero_title_color,
-      heroDescriptionColor: draft.hero_description_color,
+      title: typeof draft.hero_title === 'string' ? draft.hero_title : undefined,
+      description: typeof draft.hero_description === 'string' ? draft.hero_description : undefined,
+      heroTitleColor: typeof draft.hero_title_color === 'string' ? draft.hero_title_color : undefined,
+      heroDescriptionColor: typeof draft.hero_description_color === 'string' ? draft.hero_description_color : undefined,
     }
   }
+
+  function mapDraftToBanners(draft: Partial<Record<string, unknown>> | null): {
+    announcementText?: string;
+    announcementBgColor?: string;
+    announcementTextColor?: string;
+    isAnnouncementVisible?: boolean;
+    promotionImageUrl?: string;
+    isPromotionVisible?: boolean;
+    promotionBanners?: PromotionBanner[];
+  } | null {
+    if (!draft) return null
+    return {
+      announcementText: typeof draft.announcement_text === 'string' ? draft.announcement_text : undefined,
+      announcementBgColor: typeof draft.announcement_bg_color === 'string' ? draft.announcement_bg_color : undefined,
+      announcementTextColor: typeof draft.announcement_text_color === 'string' ? draft.announcement_text_color : undefined,
+      isAnnouncementVisible: typeof draft.is_announcement_visible === 'boolean' ? draft.is_announcement_visible : undefined,
+      promotionImageUrl: typeof draft.promotion_image_url === 'string' ? draft.promotion_image_url : undefined,
+      isPromotionVisible: typeof draft.is_promotion_visible === 'boolean' ? draft.is_promotion_visible : undefined,
+      promotionBanners: Array.isArray(draft.promotion_banners) ? draft.promotion_banners as PromotionBanner[] : undefined,
+    }
+  }
+
+  // Get banners to display (from override or tenant)
+  const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
+  const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
+
+  // Auto-slide effect
+  useEffect(() => {
+    if (!showPromotionBanners || displayBanners.length <= 1) return
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % displayBanners.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [showPromotionBanners, displayBanners.length])
 
   // Show loading state
   if (isLoading) {
     return (
-      <div 
+      <div
         className="min-h-screen"
         style={{ backgroundColor: branding.background }}
       >
@@ -234,7 +278,7 @@ export default function MenuPage() {
   // Show error state
   if (error) {
     return (
-      <div 
+      <div
         className="min-h-screen flex items-center justify-center"
         style={{ backgroundColor: branding.background }}
       >
@@ -244,17 +288,17 @@ export default function MenuPage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{error}</h1>
           <p className="text-gray-600 mb-6">
-            {error === 'Restaurant not found' 
+            {error === 'Restaurant not found'
               ? "The restaurant you're looking for doesn't exist or may have been removed."
               : "We're having trouble loading the menu. Please try again later."
             }
           </p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
-            style={{ 
+            style={{
               backgroundColor: branding.buttonPrimary,
-              color: branding.buttonPrimaryText 
+              color: branding.buttonPrimaryText
             }}
           >
             Try Again
@@ -265,17 +309,29 @@ export default function MenuPage() {
   }
 
   return (
-    <div 
+    <div
       className="min-h-screen"
       style={{ backgroundColor: branding.background }}
     >
+      {/* Announcement Banner */}
+      {(bannerOverride?.isAnnouncementVisible ?? tenant?.is_announcement_visible) && (
+        <div
+          className="w-full text-center py-2 px-4 text-sm font-medium relative z-[51]"
+          style={{
+            backgroundColor: bannerOverride?.announcementBgColor || tenant?.announcement_bg_color || '#FFF4E5',
+            color: bannerOverride?.announcementTextColor || tenant?.announcement_text_color || '#663C00'
+          }}
+        >
+          {bannerOverride?.announcementText || tenant?.announcement_text || 'Welcome!'}
+        </div>
+      )}
       {/* Header with dynamic branding */}
-      <header 
-        className="sticky top-0 z-50 w-full backdrop-blur-sm border-b" 
-        style={{ 
+      <header
+        className="sticky top-0 z-50 w-full backdrop-blur-sm border-b"
+        style={{
           backgroundColor: branding.header,
           color: branding.headerFont,
-          borderColor: branding.border 
+          borderColor: branding.border
         }}
       >
         <div className="container mx-auto px-4">
@@ -284,16 +340,16 @@ export default function MenuPage() {
             <div className="flex items-center gap-3">
               {tenant?.logo_url ? (
                 <div className="relative h-12 w-12 rounded-full overflow-hidden">
-                  <Image 
-                    src={tenant.logo_url} 
-                    alt={tenant.name} 
+                  <Image
+                    src={tenant.logo_url}
+                    alt={tenant.name}
                     fill
                     className="object-cover"
                     sizes="48px"
                   />
                 </div>
               ) : (
-                <div 
+                <div
                   className="flex h-12 w-12 items-center justify-center rounded-full"
                   style={{ backgroundColor: branding.primary }}
                 >
@@ -303,13 +359,13 @@ export default function MenuPage() {
                 </div>
               )}
               <div>
-                <h1 
+                <h1
                   className="text-xl font-bold"
                   style={{ color: branding.textPrimary }}
                 >
                   {tenant?.name || tenantSlug.replace(/-/g, ' ')}
                 </h1>
-                <p 
+                <p
                   className="text-xs"
                   style={{ color: branding.textMuted }}
                 >
@@ -321,7 +377,7 @@ export default function MenuPage() {
 
             {/* Utility Icons */}
             <div className="flex items-center gap-4">
-              <button 
+              <button
                 className="flex items-center gap-2 text-sm transition-colors"
                 style={{ color: branding.textSecondary }}
                 onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
@@ -339,7 +395,7 @@ export default function MenuPage() {
               >
                 <span className="text-xl">🛒</span>
                 {items.length > 0 && (
-                  <span 
+                  <span
                     className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
                     style={{ backgroundColor: branding.primary }}
                   >
@@ -368,8 +424,9 @@ export default function MenuPage() {
           tenant={tenant}
           onPreview={(draft) => {
             setBrandingOverride(mapDraftToBranding(draft))
-            setHeroOverride(mapDraftToHero(draft))
-            setCardTemplateOverride(draft?.card_template || null)
+            setHeroOverride(mapDraftToHero(draft as Partial<Record<string, unknown>> | null))
+            setBannerOverride(mapDraftToBanners(draft as Partial<Record<string, unknown>> | null))
+            setCardTemplateOverride(draft?.card_template as string || null)
           }}
           onSaved={async () => {
             if (!tenant?.id) return
@@ -378,6 +435,7 @@ export default function MenuPage() {
               setTenant(data)
               setBrandingOverride(null)
               setHeroOverride(null)
+              setBannerOverride(null)
               setCardTemplateOverride(null)
               toast.success('Branding updated!')
             }
@@ -388,19 +446,72 @@ export default function MenuPage() {
       <main className="container mx-auto px-4 py-12">
         {/* Hero Section */}
         <div className="text-center mb-16">
-          <h1 
+          <h1
             className="text-5xl font-serif font-bold mb-4"
             style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
           >
             {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
           </h1>
-          <p 
+          <p
             className="text-lg font-light"
             style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
           >
             {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
           </p>
         </div>
+
+        {/* Promotion Banners Carousel */}
+        {showPromotionBanners && (
+          <div className="mb-12 rounded-2xl overflow-hidden relative w-full aspect-[21/9] shadow-md">
+            {displayBanners.map((banner, index) => (
+              <div
+                key={banner.id}
+                className={`absolute inset-0 transition-opacity duration-500 ${index === currentSlide ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+              >
+                {banner.imageUrl && (
+                  <Image
+                    src={banner.imageUrl}
+                    alt={banner.title || `Promotion ${index + 1}`}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1200px"
+                    priority={index === 0}
+                  />
+                )}
+                {/* Text Overlay with Backdrop (only if title or description exists) */}
+                {(banner.title || banner.description) && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent flex flex-col justify-end p-6 md:p-10">
+                    {banner.title && (
+                      <h2 className="text-white text-2xl md:text-4xl font-bold mb-2 drop-shadow-lg">
+                        {banner.title}
+                      </h2>
+                    )}
+                    {banner.description && (
+                      <p className="text-white/90 text-base md:text-lg max-w-2xl drop-shadow-md">
+                        {banner.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            {/* Slide Indicators */}
+            {displayBanners.length > 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+                {displayBanners.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentSlide(index)}
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${index === currentSlide ? 'bg-white' : 'bg-white/50 hover:bg-white/75'
+                      }`}
+                    aria-label={`Go to slide ${index + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mobile Search */}
         {!isLoading && (
@@ -415,11 +526,11 @@ export default function MenuPage() {
 
         {/* Mobile Category Navigation - Sticky */}
         {!isLoading && categories.length > 0 && (
-          <div 
-            className="sticky top-20 z-40 backdrop-blur-sm border-b mb-8 md:hidden" 
-            style={{ 
+          <div
+            className="sticky top-20 z-40 backdrop-blur-sm border-b mb-8 md:hidden rounded-[20px]"
+            style={{
               backgroundColor: branding.header,
-              borderColor: branding.border 
+              borderColor: branding.border
             }}
           >
             <div className="px-4 py-3">
@@ -435,23 +546,23 @@ export default function MenuPage() {
 
         {filteredItems.length === 0 && !isLoading ? (
           <div className="text-center py-16">
-            <div 
+            <div
               className="h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-6"
               style={{ backgroundColor: branding.cards }}
             >
               <span className="text-3xl">🍽️</span>
             </div>
-            <h3 
+            <h3
               className="text-xl font-semibold mb-2"
               style={{ color: branding.textPrimary }}
             >
               No items found
             </h3>
-            <p 
+            <p
               className="mb-6"
               style={{ color: branding.textSecondary }}
             >
-              {searchQuery || activeCategory 
+              {searchQuery || activeCategory
                 ? "Try adjusting your search or category filter"
                 : "This restaurant doesn't have any menu items yet"
               }
@@ -463,9 +574,9 @@ export default function MenuPage() {
                   setActiveCategory(null)
                 }}
                 className="px-6 py-3 rounded-full font-semibold transition-opacity hover:opacity-90"
-                style={{ 
+                style={{
                   backgroundColor: branding.buttonPrimary,
-                  color: branding.buttonPrimaryText 
+                  color: branding.buttonPrimaryText
                 }}
               >
                 Clear Filters
@@ -475,7 +586,7 @@ export default function MenuPage() {
         ) : (
           // Show grouped view when no category is selected, regular grid when category is selected
           activeCategory ? (
-            <MenuGrid 
+            <MenuGrid
               items={filteredItems}
               template={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
               onItemSelect={(item) => {
@@ -498,8 +609,8 @@ export default function MenuPage() {
               branding={branding}
             />
           ) : (
-            <MenuGridGrouped 
-              items={filteredItems} 
+            <MenuGridGrouped
+              items={filteredItems}
               categories={categories}
               template={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
               onItemSelect={(item) => {
