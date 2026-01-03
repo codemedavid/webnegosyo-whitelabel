@@ -11,7 +11,7 @@ export function calculateCartItemSubtotal(
   quantity: number
 ): number {
   let variationPrice = 0
-  
+
   if (variationOrVariations) {
     // Check if it's the new grouped variations format
     if (typeof variationOrVariations === 'object' && !('price_modifier' in variationOrVariations)) {
@@ -25,7 +25,7 @@ export function calculateCartItemSubtotal(
       variationPrice = (variationOrVariations as Variation).price_modifier || 0
     }
   }
-  
+
   const addonsPrice = addons.reduce((sum, addon) => sum + addon.price, 0)
   const itemTotal = basePrice + variationPrice + addonsPrice
   return itemTotal * quantity
@@ -55,7 +55,7 @@ export function generateCartItemId(
   addonIds?: string[]
 ): string {
   const parts = [menuItemId]
-  
+
   if (variationOrVariations) {
     if (typeof variationOrVariations === 'string') {
       // Legacy format: single variation ID
@@ -70,7 +70,7 @@ export function generateCartItemId(
       })
     }
   }
-  
+
   if (addonIds && addonIds.length > 0) {
     parts.push(addonIds.sort().join('-'))
   }
@@ -122,7 +122,7 @@ export function generateMessengerMessage(
     if (customerData.customer_email) customerInfo.push(`📧 Email: ${customerData.customer_email}`)
     if (customerData.delivery_address) customerInfo.push(`📍 Address: ${customerData.delivery_address}`)
     if (customerData.table_number) customerInfo.push(`🪑 Table: ${customerData.table_number}`)
-    
+
     if (customerInfo.length > 0) {
       lines.push('👤 Customer Information:')
       lines.push(...customerInfo)
@@ -145,7 +145,7 @@ export function generateMessengerMessage(
       // Legacy format: single variation
       variationText = ` (${item.selected_variation.name})`
     }
-    
+
     lines.push(`${index + 1}. ${item.menu_item.name}${variationText} x${item.quantity}`)
 
     if (item.selected_addons.length > 0) {
@@ -174,12 +174,7 @@ export function generateMessengerMessage(
     }
     lines.push('')
   }
-  
-  if (!orderCreated) {
-    lines.push('⚠️ Note: Order was not saved to system - please create manually in admin panel')
-    lines.push('')
-  }
-  
+
   lines.push('📍 Please confirm your order!')
 
   return lines.join('\n')
@@ -209,7 +204,7 @@ export function generateMessengerUrl(
   // Base URL: ~20 chars, leaving ~1900 for encoded message
   // Account for encoding overhead (worst case: 3 chars per character)
   const MAX_MESSAGE_LENGTH = 600 // Conservative limit to ensure URL stays under 2000 chars
-  
+
   // Truncate message if too long
   let truncatedMessage = message
   if (message.length > MAX_MESSAGE_LENGTH) {
@@ -218,7 +213,7 @@ export function generateMessengerUrl(
 
   const encodedMessage = encodeURIComponent(truncatedMessage)
   return `https://m.me/${pageIdOrUsername.trim()}?text=${encodedMessage}`
-  }
+}
 
 /**
  * Generate messenger URL with ref parameter for order tracking
@@ -297,7 +292,7 @@ export function generateMessengerCombinedUrl(
   const REF_PARAM_LENGTH = encodedRef.length + 20 // ref=...&source=SHORTLINK&
   const SAFETY_MARGIN = 50 // Buffer for URL encoding overhead
   const MAX_TEXT_LENGTH = 2000 - BASE_URL_LENGTH - REF_PARAM_LENGTH - SAFETY_MARGIN - pageId.trim().length
-  
+
   // Truncate message if too long (conservative limit)
   const MAX_MESSAGE_LENGTH = Math.max(400, MAX_TEXT_LENGTH - 100) // Ensure we have room
   let truncatedMessage = message

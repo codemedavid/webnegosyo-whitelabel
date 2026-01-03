@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Menu - Restaurant',
+  title: 'Menu',
   description: 'Browse our menu and order your favorite dishes',
 }
 

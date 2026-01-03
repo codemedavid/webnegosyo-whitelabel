@@ -1243,7 +1243,7 @@ export default function CheckoutPage() {
                   ) : (
                     <>
                       <MessageCircle className="h-5 w-5 mr-2" />
-                      Send to Restaurant
+                      Order Now
                     </>
                   )}
                 </Button>
