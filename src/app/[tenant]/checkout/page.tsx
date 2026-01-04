@@ -456,10 +456,11 @@ export default function CheckoutPage() {
       } : null
 
       // Prepare customer data for message
+      // Form fields use names like 'customer_name', 'customer_phone', 'table_number' directly
       const customerDataForMessage: Record<string, string> = {}
-      if (customerData.name) customerDataForMessage.customer_name = customerData.name
-      if (customerData.phone) customerDataForMessage.customer_phone = customerData.phone
-      if (customerData.email) customerDataForMessage.customer_email = customerData.email
+      if (customerData.customer_name) customerDataForMessage.customer_name = customerData.customer_name
+      if (customerData.customer_phone) customerDataForMessage.customer_phone = customerData.customer_phone
+      if (customerData.customer_email) customerDataForMessage.customer_email = customerData.customer_email
       if (customerData.delivery_address) customerDataForMessage.delivery_address = customerData.delivery_address
       if (customerData.table_number) customerDataForMessage.table_number = customerData.table_number
 
