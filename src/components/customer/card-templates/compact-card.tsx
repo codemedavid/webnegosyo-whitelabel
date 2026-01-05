@@ -22,7 +22,7 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
   return (
     <div
       className="group relative overflow-hidden rounded-xl transition-all hover:shadow-lg cursor-pointer"
-      style={{ 
+      style={{
         backgroundColor: branding.cards,
         borderColor: branding.cardsBorder,
         borderWidth: '1px',
@@ -33,27 +33,35 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
       <div className="flex items-stretch">
         {/* Image - Left side */}
         <div className="relative w-28 sm:w-32 flex-shrink-0 overflow-hidden bg-muted">
-          <Image
-            src={item.image_url}
-            alt={item.name}
-            fill
-            className="object-cover transition-transform group-hover:scale-110"
-            sizes="128px"
-            loading="lazy"
-            placeholder="blur"
-            blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
-          />
-          
+          {typeof item.image_url === 'string' && item.image_url ? (
+            <Image
+              src={item.image_url}
+              alt={item.name}
+              fill
+              className="object-cover transition-transform group-hover:scale-110"
+              sizes="128px"
+              loading="lazy"
+              placeholder="blur"
+              blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>
+              <svg className="h-10 w-10 opacity-40" fill="currentColor" viewBox="0 0 24 24" style={{ color: branding.textMuted }}>
+                <path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z" />
+              </svg>
+            </div>
+          )}
+
           {/* Badges overlay */}
           {item.is_featured && (
             <div className="absolute left-1 top-1">
               <span className="text-sm">⭐</span>
             </div>
           )}
-          
+
           {hasDiscount && (
             <div className="absolute right-1 top-1">
-              <span 
+              <span
                 className="rounded px-1 py-0.5 text-[10px] font-bold text-white"
                 style={{ backgroundColor: branding.error }}
               >
@@ -61,7 +69,7 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
               </span>
             </div>
           )}
-          
+
           {!item.is_available && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
               <span className="rounded bg-white px-2 py-1 text-[10px] font-medium text-gray-900">
@@ -74,24 +82,24 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
         {/* Content - Right side */}
         <div className="flex flex-1 flex-col justify-between p-3">
           <div>
-            <h3 
+            <h3
               className="text-sm font-bold line-clamp-1 mb-1"
               style={{ color: branding.cardTitle }}
             >
               {item.name}
             </h3>
-            
+
             {item.description && (
-              <p 
+              <p
                 className="text-[11px] line-clamp-2 mb-1"
                 style={{ color: branding.cardDescription }}
               >
                 {item.description}
               </p>
             )}
-            
+
             {item.variations.length > 0 && (
-              <p 
+              <p
                 className="text-[11px]"
                 style={{ color: branding.textSecondary }}
               >
@@ -99,20 +107,20 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
               </p>
             )}
           </div>
-          
+
           {/* Price and button row */}
           <div className="flex items-end justify-between mt-2">
             <div>
               {hasDiscount && (
-                <div 
+                <div
                   className="text-[11px] line-through"
                   style={{ color: branding.textMuted }}
                 >
                   {formatPrice(item.price)}
                 </div>
               )}
-              <div 
-                className="text-base font-bold" 
+              <div
+                className="text-base font-bold"
                 style={{ color: branding.cardPrice }}
               >
                 {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
@@ -122,7 +130,7 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
             {/* Compact add button */}
             <button
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:scale-110"
-              style={{ 
+              style={{
                 backgroundColor: branding.buttonPrimary,
                 color: branding.buttonPrimaryText
               }}
@@ -132,17 +140,17 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
               }}
               disabled={!item.is_available}
             >
-              <svg 
-                className="h-4 w-4" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2.5} 
-                  d="M12 4v16m8-8H4" 
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M12 4v16m8-8H4"
                 />
               </svg>
             </button>

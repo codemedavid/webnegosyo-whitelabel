@@ -61,7 +61,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Unsubscribe page from webhook
-    await unsubscribePageFromWebhook(page_id, pageRecord.page_access_token)
+    try {
+      await unsubscribePageFromWebhook(page_id, pageRecord.page_access_token)
+    } catch (unsubscribeError) {
+      console.error('[Facebook Disconnect] Failed to unsubscribe page from webhook:', {
+        page_id,
+        tenant_id,
+        error: unsubscribeError instanceof Error ? unsubscribeError.message : String(unsubscribeError),
+        stack: unsubscribeError instanceof Error ? unsubscribeError.stack : undefined,
+      })
+      return NextResponse.json(
+        {
+          error: 'Failed to unsubscribe page from webhook',
+          details: unsubscribeError instanceof Error ? unsubscribeError.message : 'Unknown error',
+          page_id,
+        },
+        { status: 500 }
+      )
+    }
 
     // Get page database ID
     const { data: pageData } = await supabase

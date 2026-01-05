@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
-import { getTenantBySlugSupabase } from '@/lib/tenants-service'
+import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
 
@@ -28,7 +28,7 @@ export default function CartPage() {
   useEffect(() => {
     const loadTenant = async () => {
       try {
-        const { data, error } = await getTenantBySlugSupabase(tenantSlug)
+        const { data, error } = await getTenantBySlugClient(tenantSlug)
         if (error || !data) {
           toast.error('Restaurant not found')
           router.push('/')
@@ -101,110 +101,110 @@ export default function CartPage() {
                 <h2 className="text-xl md:text-2xl font-bold text-gray-900">Cart Items</h2>
                 <span className="text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</span>
               </div>
-              
+
               {items.map((item) => (
                 <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
                   <div className="flex gap-4 md:gap-6">
-                      <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
-                        <Image
-                          src={item.menu_item.image_url}
-                          alt={item.menu_item.name}
-                          fill
-                          className="object-cover group-hover:scale-105 transition-transform duration-200"
-                          sizes="112px"
-                        />
-                      </div>
+                    <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                      <Image
+                        src={item.menu_item.image_url}
+                        alt={item.menu_item.name}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-200"
+                        sizes="112px"
+                      />
+                    </div>
 
-                      <div className="flex flex-1 flex-col justify-between">
-                        <div>
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div className="flex-1">
-                              <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
-                                {item.menu_item.name}
-                              </h3>
-                              
-                              {/* Legacy single variation */}
-                              {item.selected_variation && (
-                                <Badge variant="outline" className="mt-2 border-orange-200 text-orange-700 bg-orange-50">
-                                  {item.selected_variation.name}
-                                </Badge>
-                              )}
-                              
-                              {/* New grouped variations */}
-                              {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                  {Object.values(item.selected_variations).map((option, idx) => (
-                                    <Badge 
-                                      key={idx}
-                                      variant="outline" 
-                                      className="border-orange-200 text-orange-700 bg-orange-50"
-                                    >
-                                      {option.name}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => removeItem(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                    <div className="flex flex-1 flex-col justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
+                              {item.menu_item.name}
+                            </h3>
 
-                          {item.selected_addons.length > 0 && (
-                            <p className="text-sm text-gray-600 mb-1">
-                              <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
-                            </p>
-                          )}
+                            {/* Legacy single variation */}
+                            {item.selected_variation && (
+                              <Badge variant="outline" className="mt-2 border-orange-200 text-orange-700 bg-orange-50">
+                                {item.selected_variation.name}
+                              </Badge>
+                            )}
 
-                          {item.special_instructions && (
-                            <p className="text-sm italic text-gray-500">
-                              <span className="font-medium">Note:</span> {item.special_instructions}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between mt-4">
-                          <div className="flex items-center gap-3">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              disabled={item.quantity <= 1}
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="w-12 text-center font-bold text-lg text-gray-900">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xl font-bold text-orange-600">
-                              {formatPrice(item.subtotal)}
-                            </span>
-                            {item.quantity > 1 && (
-                              <p className="text-xs text-gray-500">
-                                {formatPrice(item.subtotal / item.quantity)} each
-                              </p>
+                            {/* New grouped variations */}
+                            {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {Object.values(item.selected_variations).map((option, idx) => (
+                                  <Badge
+                                    key={idx}
+                                    variant="outline"
+                                    className="border-orange-200 text-orange-700 bg-orange-50"
+                                  >
+                                    {option.name}
+                                  </Badge>
+                                ))}
+                              </div>
                             )}
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => removeItem(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {item.selected_addons.length > 0 && (
+                          <p className="text-sm text-gray-600 mb-1">
+                            <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
+                          </p>
+                        )}
+
+                        {item.special_instructions && (
+                          <p className="text-sm italic text-gray-500">
+                            <span className="font-medium">Note:</span> {item.special_instructions}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex items-center gap-3">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
+                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            disabled={item.quantity <= 1}
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="w-12 text-center font-bold text-lg text-gray-900">
+                            {item.quantity}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300"
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xl font-bold text-orange-600">
+                            {formatPrice(item.subtotal)}
+                          </span>
+                          {item.quantity > 1 && (
+                            <p className="text-xs text-gray-500">
+                              {formatPrice(item.subtotal / item.quantity)} each
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
+                </div>
               ))}
             </div>
 
@@ -216,7 +216,7 @@ export default function CartPage() {
                   </div>
                   <h3 className="text-xl font-bold text-gray-900">Order Summary</h3>
                 </div>
-                
+
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between items-center py-2">
                     <span className="text-gray-600">Items ({items.length})</span>
@@ -232,12 +232,24 @@ export default function CartPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <Button 
+                  <Button
                     className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => {
+                    onClick={async () => {
                       if (isNavigating) return
                       setIsNavigating(true)
-                      router.push(`/${tenantSlug}/checkout`)
+                      // Safety timeout to prevent UI from being stuck indefinitely
+                      const safetyTimeout = setTimeout(() => {
+                        setIsNavigating(false)
+                      }, 5000)
+                      try {
+                        await router.push(`/${tenantSlug}/checkout`)
+                      } catch (error) {
+                        console.error('Navigation to checkout failed:', error)
+                        toast.error('Failed to navigate to checkout')
+                      } finally {
+                        clearTimeout(safetyTimeout)
+                        setIsNavigating(false)
+                      }
                     }}
                     disabled={isNavigating}
                   >

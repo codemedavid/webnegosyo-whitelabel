@@ -48,15 +48,25 @@ export async function POST(request: NextRequest) {
 
     console.log('[Webhook] Received webhook POST request')
     console.log('[Webhook] Body length:', bodyText.length)
-    console.log('[Webhook] Body preview (first 1000 chars):', bodyText.substring(0, 1000))
+    // Note: Raw body preview removed to prevent PII exposure in production logs
 
-    // Verify webhook signature
+    // Verify webhook signature - fail-closed: reject if secret or signature is missing
+    const appSecret = process.env.FACEBOOK_APP_SECRET
     const signature = request.headers.get('x-hub-signature-256')
-    if (signature && process.env.FACEBOOK_APP_SECRET) {
-      if (!verifyWebhookSignature(bodyText, signature)) {
-        console.error('[Webhook] Invalid signature')
-        return new NextResponse('Invalid signature', { status: 403 })
-      }
+
+    if (!appSecret) {
+      console.error('[Webhook] FACEBOOK_APP_SECRET not configured - rejecting request')
+      return new NextResponse('Server configuration error', { status: 500 })
+    }
+
+    if (!signature) {
+      console.error('[Webhook] Missing x-hub-signature-256 header - rejecting request')
+      return new NextResponse('Missing signature', { status: 403 })
+    }
+
+    if (!verifyWebhookSignature(bodyText, signature)) {
+      console.error('[Webhook] Invalid signature - rejecting request')
+      return new NextResponse('Invalid signature', { status: 403 })
     }
 
     const body = JSON.parse(bodyText) as {
@@ -146,12 +156,12 @@ export async function POST(request: NextRequest) {
         // 2. They can appear in different places: event.referral, event.message.referral, or event.postback.referral
         // 3. Sometimes they're nested deeper in the structure
         const eventAny = event as unknown as Record<string, unknown>
-        const referralRef = 
-          event.referral?.ref || 
-          event.message?.referral?.ref || 
+        const referralRef =
+          event.referral?.ref ||
+          event.message?.referral?.ref ||
           event.postback?.referral?.ref ||
           (eventAny.referral as { ref?: string } | undefined)?.ref // Try direct access too
-        
+
         if (referralRef) {
           const ref = referralRef
           console.log(`[Webhook] Received referral event with ref: ${ref}`, {
@@ -172,7 +182,7 @@ export async function POST(request: NextRequest) {
             try {
               // Load order from database
               const supabase = await createClient()
-              
+
               // First get the order
               const { data: orderData, error: orderError } = await supabase
                 .from('orders')
@@ -236,7 +246,7 @@ export async function POST(request: NextRequest) {
 
               // Get Facebook page if connected
               let facebookPage: { page_id: string; page_access_token: string } | null = null
-              
+
               if (tenant.facebook_page_id) {
                 const { data: pageData } = await supabase
                   .from('facebook_pages')
@@ -292,7 +302,7 @@ export async function POST(request: NextRequest) {
 
               if (sent) {
                 console.log(`[Webhook] ✅ Order message sent successfully for order: ${orderId} to sender: ${senderId}`)
-                
+
                 // Store PSID for future proactive messaging
                 // This allows us to send messages proactively for returning customers (within 24-hour window)
                 try {
@@ -308,7 +318,7 @@ export async function POST(request: NextRequest) {
                       },
                     } as unknown as never)
                     .eq('id', orderId)
-                  
+
                   // Also store PSID in customer_data for future orders from same customer
                   // This enables proactive messaging for returning customers
                   console.log(`[Webhook] Stored PSID ${senderId} for future proactive messaging`)
@@ -344,24 +354,23 @@ export async function POST(request: NextRequest) {
           console.log(`[Webhook] ⚠️ NOTE: Referral events only fire when opening a NEW conversation.`)
           console.log(`[Webhook] ⚠️ If conversation already exists, Facebook may not send referral event.`)
           console.log(`[Webhook] ⚠️ This is a known Facebook limitation. Fallback will attempt to match recent orders.`)
-          
-          // DISABLED FALLBACK: We only send orders when we have the ref parameter from referral events
-          // This prevents sending orders to the wrong people
-          // If referral events don't fire, the user needs to send a message with the order ID
-          // or we need to ensure referral events fire properly
-          
-          // Note: The fallback was causing orders to be sent to wrong users
-          // We now ONLY send orders when:
-          // 1. Referral event fires with ORDER_{id} ref parameter (primary method)
-          // 2. User explicitly requests their order (future enhancement)
-          
+
+          // ACTIVE FALLBACK: When referral event doesn't fire (common for existing conversations),
+          // attempt to match with very recent orders. This is SAFE because:
+          // - Only orders created within last 1 minute are considered
+          // - There must be EXACTLY ONE unsent order (no ambiguity)
+          // - Order must not have messenger_message_sent_at set
+          // - Only the FIRST person who messages gets the order
+          // If multiple unsent orders exist, we skip to prevent wrong delivery.
+          // See feature flag: N/A (always active with strict safety rules)
+
           if (event.message && !event.message.is_echo) {
             const messageText = event.message.text || ''
             console.log(`[Webhook] Received message from ${senderId}`, {
               hasText: !!messageText,
               textLength: messageText.length,
             })
-            
+
             // SAFE FALLBACK: If referral event didn't fire (common for existing conversations),
             // check for very recent orders that haven't been sent yet
             // STRICT RULES to prevent wrong deliveries:
@@ -373,7 +382,7 @@ export async function POST(request: NextRequest) {
             try {
               const supabase = await createClient()
               const pageId = entry.id
-              
+
               // Find tenant by page ID
               const { data: pageData } = await supabase
                 .from('facebook_pages')
@@ -381,7 +390,7 @@ export async function POST(request: NextRequest) {
                 .eq('page_id', pageId)
                 .eq('is_active', true)
                 .single()
-              
+
               const page = pageData as { tenant_id: string; page_access_token: string } | null
               if (page) {
                 // Look for very recent orders (within last 1 minute only - very strict)
@@ -394,14 +403,14 @@ export async function POST(request: NextRequest) {
                   .gte('created_at', oneMinuteAgo)
                   .order('created_at', { ascending: false })
                   .limit(10) // Check up to 10 to find unsent ones
-                
+
                 const orders = recentOrders as Array<{
                   id: string
                   tenant_id: string
                   created_at: string
                   customer_data?: unknown
                 }> | null
-                
+
                 if (orders && orders.length > 0) {
                   // CRITICAL: Filter to only unsent orders
                   const unsentOrders = orders.filter((order) => {
@@ -409,26 +418,26 @@ export async function POST(request: NextRequest) {
                     const messageSentAt = customerData?.messenger_message_sent_at as string | undefined
                     return !messageSentAt // Only orders that haven't been sent
                   })
-                  
+
                   console.log(`[Webhook] Fallback: Found ${orders.length} recent orders, ${unsentOrders.length} unsent`)
-                  
+
                   // STRICT RULE: Only send if there's EXACTLY ONE unsent order
                   // This prevents ambiguity - if multiple orders exist, we can't safely determine which one
                   if (unsentOrders.length === 1) {
                     const order = unsentOrders[0]
                     console.log(`[Webhook] Fallback: ✅ Exactly one unsent order found: ${order.id} (created ${order.created_at}), processing...`)
-                    
+
                     // Process this order (reuse referral handler logic)
                     const { data: orderData, error: orderError } = await supabase
                       .from('orders')
                       .select('*')
                       .eq('id', order.id)
                       .single()
-                    
+
                     if (orderError || !orderData) {
                       console.error(`[Webhook] Fallback: Order not found: ${order.id}`, orderError)
                     } else {
-                      
+
                       const fullOrder = orderData as Record<string, unknown> & {
                         id: string
                         tenant_id: string
@@ -444,13 +453,13 @@ export async function POST(request: NextRequest) {
                         created_at?: string
                         updated_at?: string
                       }
-                      
+
                       // Get order items
                       const { data: orderItemsData } = await supabase
                         .from('order_items')
                         .select('*')
                         .eq('order_id', order.id)
-                      
+
                       const orderItems = (orderItemsData || []) as Array<{
                         menu_item_name: string
                         variation?: string
@@ -459,19 +468,19 @@ export async function POST(request: NextRequest) {
                         subtotal: number
                         special_instructions?: string
                       }>
-                      
+
                       // Get tenant
                       const { data: tenantData } = await supabase
                         .from('tenants')
                         .select('*')
                         .eq('id', page.tenant_id)
                         .single()
-                      
+
                       if (!tenantData) {
                         console.error(`[Webhook] Fallback: Tenant not found for order: ${order.id}`)
                         continue
                       }
-                      
+
                       // Format order with items
                       const orderDataRecord = orderData as Record<string, unknown>
                       const orderWithItems = {
@@ -487,22 +496,22 @@ export async function POST(request: NextRequest) {
                         created_at: (orderDataRecord.created_at as string) || new Date().toISOString(),
                         updated_at: (orderDataRecord.updated_at as string) || new Date().toISOString(),
                       }
-                      
+
                       // Format and send message
                       const message = formatOrderMessage(
                         orderWithItems as unknown as Parameters<typeof formatOrderMessage>[0],
                         tenantData as unknown as Parameters<typeof formatOrderMessage>[1]
                       )
-                      
+
                       const sent = await sendMessage(
                         senderId,
                         page.page_access_token,
                         message
                       )
-                      
+
                       if (sent) {
                         console.log(`[Webhook] Fallback: ✅ Order message sent successfully for order: ${order.id} to sender: ${senderId}`)
-                        
+
                         // Mark as sent to prevent duplicate sends
                         try {
                           await supabase

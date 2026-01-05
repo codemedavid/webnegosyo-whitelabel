@@ -58,7 +58,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
   const router = useRouter()
   const createMutation = useCreateTenant()
   const updateMutation = useUpdateTenant()
-  
+
   const [formData, setFormData] = useState({
     name: tenant?.name || '',
     slug: tenant?.slug || '',
@@ -99,7 +99,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const input = {
       name: formData.name,
       slug: formData.slug,
@@ -152,9 +152,10 @@ export function TenantForm({ tenant }: TenantFormProps) {
       )
     } else {
       createMutation.mutate(input, {
-        onSuccess: (created) => {
+        onSuccess: () => {
+          // The server action redirects on success, so this may not be reached
+          // If it is reached (no redirect), just show success message
           toast.success('Tenant created!')
-          router.push(`/${created.slug}/menu`)
         },
         onError: (err) => {
           const message = err instanceof Error ? err.message : 'Failed to create tenant'
@@ -539,16 +540,16 @@ export function TenantForm({ tenant }: TenantFormProps) {
                 </div>
               </CardHeader>
               <CardContent>
-                <div 
+                <div
                   className={`border rounded-lg overflow-hidden ${previewMode === 'mobile' ? 'max-w-sm mx-auto' : 'w-full'}`}
                   style={generateBrandingCSS(branding)}
                 >
                   {/* Header Preview */}
-                  <div 
+                  <div
                     className="p-4 flex items-center justify-between"
-                    style={{ 
+                    style={{
                       backgroundColor: branding.header,
-                      color: branding.headerFont 
+                      color: branding.headerFont
                     }}
                   >
                     <div className="flex items-center gap-3">
@@ -557,7 +558,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
                           <span className="text-xs">Logo</span>
                         </div>
                       ) : (
-                        <div 
+                        <div
                           className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
                           style={{ backgroundColor: branding.primary }}
                         >
@@ -576,11 +577,11 @@ export function TenantForm({ tenant }: TenantFormProps) {
                     <h3 style={{ color: branding.textPrimary, marginBottom: '12px' }}>
                       Our Menu
                     </h3>
-                    
+
                     {/* Card Preview */}
-                    <div 
+                    <div
                       className="rounded-lg p-4 mb-4"
-                      style={{ 
+                      style={{
                         backgroundColor: branding.cards,
                         borderColor: branding.cardsBorder,
                         borderWidth: '1px',
@@ -594,20 +595,20 @@ export function TenantForm({ tenant }: TenantFormProps) {
                         Delicious description of the menu item
                       </p>
                       <div className="flex gap-2">
-                        <button 
+                        <button
                           className="px-4 py-2 rounded font-medium"
-                          style={{ 
+                          style={{
                             backgroundColor: branding.buttonPrimary,
-                            color: branding.buttonPrimaryText 
+                            color: branding.buttonPrimaryText
                           }}
                         >
                           Add to Cart
                         </button>
-                        <button 
+                        <button
                           className="px-4 py-2 rounded font-medium"
-                          style={{ 
+                          style={{
                             backgroundColor: branding.buttonSecondary,
-                            color: branding.buttonSecondaryText 
+                            color: branding.buttonSecondaryText
                           }}
                         >
                           View Details
@@ -637,15 +638,15 @@ export function TenantForm({ tenant }: TenantFormProps) {
           >
             Cancel
           </Button>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={createMutation.isPending || updateMutation.isPending}
           >
             {createMutation.isPending || updateMutation.isPending
               ? 'Saving...'
-              : tenant 
-              ? 'Update Tenant' 
-              : 'Create Tenant'}
+              : tenant
+                ? 'Update Tenant'
+                : 'Create Tenant'}
           </Button>
         </div>
       </form>

@@ -40,10 +40,10 @@ export async function exchangeCodeForToken(
 
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/oauth/access_token?` +
-      `client_id=${appId}` +
-      `&client_secret=${appSecret}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&code=${code}`,
+    `client_id=${appId}` +
+    `&client_secret=${appSecret}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&code=${code}`,
     { method: 'GET' }
   )
 
@@ -72,10 +72,10 @@ export async function getLongLivedToken(shortLivedToken: string): Promise<{
 
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/oauth/access_token?` +
-      `grant_type=fb_exchange_token` +
-      `&client_id=${appId}` +
-      `&client_secret=${appSecret}` +
-      `&fb_exchange_token=${shortLivedToken}`,
+    `grant_type=fb_exchange_token` +
+    `&client_id=${appId}` +
+    `&client_secret=${appSecret}` +
+    `&fb_exchange_token=${shortLivedToken}`,
     { method: 'GET' }
   )
 
@@ -142,7 +142,7 @@ export async function subscribePageToWebhook(
     }
 
     const data = (await response.json()) as { success: boolean }
-    
+
     if (data.success) {
       console.log(`[Facebook API] ✅ Successfully subscribed page ${pageId} to webhook`)
       console.log(`[Facebook API] Subscribed fields: ${subscribedFields}`)
@@ -151,7 +151,7 @@ export async function subscribePageToWebhook(
       console.warn(`[Facebook API] ⚠️ Subscription response for page ${pageId} was not successful`)
       console.warn(`[Facebook API] Response data:`, JSON.stringify(data, null, 2))
     }
-    
+
     return { success: data.success === true }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -192,17 +192,17 @@ export async function verifyPageWebhookSubscription(
     }
 
     const subscription = data.data?.find((sub) => sub.id === appId)
-    
+
     if (subscription) {
       const requiredFields = ['messages', 'messaging_postbacks', 'messaging_referrals']
       const hasAllFields = requiredFields.every((field) =>
         subscription.subscribed_fields.includes(field)
       )
-      
+
       const missingFields = requiredFields.filter(
         (field) => !subscription.subscribed_fields.includes(field)
       )
-      
+
       if (missingFields.length > 0) {
         console.warn(`[Facebook API] Page ${pageId} missing required webhook fields:`, missingFields)
         console.warn(`[Facebook API] Current subscribed fields:`, subscription.subscribed_fields)
@@ -212,7 +212,7 @@ export async function verifyPageWebhookSubscription(
       } else {
         console.log(`[Facebook API] ✅ Page ${pageId} has all required webhook fields subscribed`)
       }
-      
+
       return {
         subscribed: hasAllFields,
         subscribedFields: subscription.subscribed_fields,
@@ -235,7 +235,7 @@ export async function unsubscribePageFromWebhook(
 ): Promise<boolean> {
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/${pageId}/subscribed_apps?` +
-      `access_token=${pageAccessToken}`,
+    `access_token=${pageAccessToken}`,
     { method: 'DELETE' }
   )
 
@@ -289,15 +289,24 @@ export function verifyWebhookSignature(
   signature: string
 ): boolean {
   const appSecret = process.env.FACEBOOK_APP_SECRET
+  const isDevelopment = process.env.NODE_ENV === 'development'
 
   if (!appSecret) {
-    console.warn('[Webhook] FACEBOOK_APP_SECRET not configured - skipping signature verification')
-    return true // Skip verification if secret not set (for development)
+    if (isDevelopment) {
+      console.warn('[Webhook] FACEBOOK_APP_SECRET not configured - allowing in development mode only')
+      return true
+    }
+    console.error('[Webhook] FACEBOOK_APP_SECRET not configured - rejecting request in production')
+    return false
   }
 
   if (!signature) {
-    console.warn('[Webhook] No signature header present - skipping verification')
-    return true // Skip if no signature (for development/testing)
+    if (isDevelopment) {
+      console.warn('[Webhook] No signature header present - allowing in development mode only')
+      return true
+    }
+    console.error('[Webhook] No signature header present - rejecting request in production')
+    return false
   }
 
   try {
@@ -306,7 +315,18 @@ export function verifyWebhookSignature(
       .digest('hex')
 
     const expectedSignatureWithPrefix = `sha256=${expectedSignature}`
-    return signature === expectedSignatureWithPrefix
+
+    // Use timing-safe comparison to prevent timing attacks
+    if (signature.length !== expectedSignatureWithPrefix.length) {
+      return false
+    }
+
+    // Simple timing-safe compare (constant time)
+    let result = 0
+    for (let i = 0; i < signature.length; i++) {
+      result |= signature.charCodeAt(i) ^ expectedSignatureWithPrefix.charCodeAt(i)
+    }
+    return result === 0
   } catch (error) {
     console.error('[Webhook] Error verifying signature:', error)
     return false

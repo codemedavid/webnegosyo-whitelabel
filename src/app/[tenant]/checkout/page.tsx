@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerCombinedUrl } from '@/lib/cart-utils'
-import { getTenantBySlugSupabase } from '@/lib/tenants-service'
+import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
 import { createOrderAction } from '@/app/actions/orders'
@@ -74,7 +74,7 @@ export default function CheckoutPage() {
         // Parallelize tenant and order types fetching
         // We need tenant first to get tenant.id, but we can optimize by fetching order types
         // for common tenant slugs or fetch them in parallel if we have tenant slug pattern
-        const tenantPromise = getTenantBySlugSupabase(tenantSlug)
+        const tenantPromise = getTenantBySlugClient(tenantSlug)
 
         const { data, error: fetchError } = await tenantPromise
         if (fetchError || !data) {

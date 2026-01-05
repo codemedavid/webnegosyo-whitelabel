@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { 
-  listTenantsSupabase, 
-  getTenantByIdSupabase, 
-  getTenantBySlugSupabase,
-  createTenantSupabase,
-  updateTenantSupabase,
-  deleteTenantSupabase,
-  type TenantInput 
-} from '@/lib/tenants-service'
+import {
+  listTenantsClient,
+  getTenantByIdClient,
+  getTenantBySlugClient,
+} from '@/lib/tenants-client'
+import {
+  createTenantAction,
+  updateTenantAction,
+} from '@/actions/tenants'
+import type { TenantInput } from '@/lib/tenants-service'
 import type { Tenant } from '@/types/database'
 
 // Query keys for cache management
@@ -25,7 +26,7 @@ export function useTenants() {
   return useQuery({
     queryKey: tenantKeys.lists(),
     queryFn: async () => {
-      const { data, error } = await listTenantsSupabase()
+      const { data, error } = await listTenantsClient()
       if (error) throw error
       return data
     },
@@ -38,7 +39,7 @@ export function useTenant(id: string) {
   return useQuery({
     queryKey: tenantKeys.detail(id),
     queryFn: async () => {
-      const { data, error } = await getTenantByIdSupabase(id)
+      const { data, error } = await getTenantByIdClient(id)
       if (error) throw error
       return data
     },
@@ -52,7 +53,7 @@ export function useTenantBySlug(slug: string) {
   return useQuery({
     queryKey: tenantKeys.bySlug(slug),
     queryFn: async () => {
-      const { data, error } = await getTenantBySlugSupabase(slug)
+      const { data, error } = await getTenantBySlugClient(slug)
       if (error) throw error
       return data
     },
@@ -62,19 +63,22 @@ export function useTenantBySlug(slug: string) {
 }
 
 // Hook to create tenant with optimistic updates
+// Note: createTenantAction redirects on success, so this mutation won't return data
 export function useCreateTenant() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (input: TenantInput) => {
-      return await createTenantSupabase(input)
+      const result = await createTenantAction(input)
+      // The action returns { error: string } on failure, or redirects on success
+      if (result?.error) {
+        throw new Error(result.error)
+      }
+      // If no error and no redirect, invalidate cache
     },
-    onSuccess: (newTenant) => {
+    onSuccess: () => {
       // Invalidate and refetch tenant list
       queryClient.invalidateQueries({ queryKey: tenantKeys.lists() })
-      
-      // Set the new tenant in cache
-      queryClient.setQueryData(tenantKeys.detail(newTenant.id), newTenant)
     },
   })
 }
@@ -85,7 +89,16 @@ export function useUpdateTenant() {
 
   return useMutation({
     mutationFn: async ({ id, input }: { id: string; input: TenantInput }) => {
-      return await updateTenantSupabase(id, input)
+      const result = await updateTenantAction(id, input)
+      // Handle error case
+      if ('error' in result && result.error) {
+        throw new Error(result.error)
+      }
+      // Handle success case
+      if ('data' in result && result.data) {
+        return result.data as Tenant
+      }
+      throw new Error('Unexpected response from server')
     },
     onMutate: async ({ id, input }) => {
       // Cancel outgoing refetches
@@ -113,7 +126,7 @@ export function useUpdateTenant() {
     onSuccess: (updatedTenant, { id }) => {
       // Update cache with server response
       queryClient.setQueryData(tenantKeys.detail(id), updatedTenant)
-      
+
       // Invalidate list to reflect changes
       queryClient.invalidateQueries({ queryKey: tenantKeys.lists() })
     },
@@ -121,17 +134,26 @@ export function useUpdateTenant() {
 }
 
 // Hook to delete tenant
+// Note: This calls the API directly since there's no server action for delete
 export function useDeleteTenant() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (id: string) => {
-      await deleteTenantSupabase(id)
+      // For now, we need to call the delete endpoint directly via fetch
+      // since there's no deleteTenantAction server action
+      const response = await fetch(`/api/tenants/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || 'Failed to delete tenant')
+      }
     },
     onSuccess: (_, id) => {
       // Remove from cache
       queryClient.removeQueries({ queryKey: tenantKeys.detail(id) })
-      
+
       // Invalidate list to reflect deletion
       queryClient.invalidateQueries({ queryKey: tenantKeys.lists() })
     },
@@ -146,7 +168,7 @@ export function usePrefetchTenant() {
     queryClient.prefetchQuery({
       queryKey: tenantKeys.detail(id),
       queryFn: async () => {
-        const { data, error } = await getTenantByIdSupabase(id)
+        const { data, error } = await getTenantByIdClient(id)
         if (error) throw error
         return data
       },

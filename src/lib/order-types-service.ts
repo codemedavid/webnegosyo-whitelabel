@@ -122,73 +122,45 @@ export async function updateOrderType(orderTypeId: string, tenantId: string, inp
 }
 
 export async function deleteOrderType(orderTypeId: string, tenantId: string) {
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:123', message: 'deleteOrderType entry', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
-
-  // #region agent log
-  try {
-    await verifyTenantAdmin(tenantId);
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:125', message: 'verifyTenantAdmin success', data: { tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-  } catch (verifyError) {
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:125', message: 'verifyTenantAdmin failed', data: { tenantId, error: verifyError instanceof Error ? verifyError.message : String(verifyError) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-    throw verifyError;
-  }
-  // #endregion
+  await verifyTenantAdmin(tenantId)
 
   // Use admin client to bypass RLS for updating orders
-  // This ensures we can update ALL orders referencing this order type,
-  // not just those visible through RLS policies
   const adminClient = createAdminClient()
 
-  // First, set order_type_id to null for ANY orders that reference this order type
-  // We update ALL orders (not just from this tenant) because:
-  // 1. We've already verified admin access to this tenant's order type
-  // 2. The foreign key constraint doesn't care about tenant boundaries
-  // 3. This ensures we clear ALL references before deletion
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:144', message: 'before orders update (all tenants)', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
+  // Set order_type_id to null for orders that reference this order type
+  // IMPORTANT: Scoped to the current tenant to prevent cross-tenant data modification
   const { error: updateError } = await adminClient
     .from('orders')
     // @ts-expect-error - Supabase client types unavailable
     .update({ order_type_id: null } as Record<string, unknown>)
     .eq('order_type_id', orderTypeId)
+    .eq('tenant_id', tenantId)
 
-  // #region agent log
   if (updateError) {
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:156', message: 'orders update error', data: { orderTypeId, tenantId, error: updateError.message, code: updateError.code, details: updateError.details, hint: updateError.hint }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'A' }) }).catch(() => { });
-  } else {
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:156', message: 'orders update success', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'A' }) }).catch(() => { });
+    console.error('[deleteOrderType] Failed to clear order_type_id on orders:', {
+      orderTypeId,
+      tenantId,
+      error: updateError.message,
+    })
+    throw updateError
   }
-  // #endregion
-
-  if (updateError) throw updateError
 
   // Now delete the order type (customer_form_fields and payment_method_order_types cascade automatically)
   // Use admin client to bypass RLS for deletion
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:168', message: 'before order_types delete', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'B' }) }).catch(() => { });
-  // #endregion
   const { error } = await adminClient
     .from('order_types')
     .delete()
     .eq('id', orderTypeId)
     .eq('tenant_id', tenantId)
 
-  // #region agent log
   if (error) {
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:174', message: 'order_types delete error', data: { orderTypeId, tenantId, error: error.message, code: error.code, details: error.details, hint: error.hint }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'B' }) }).catch(() => { });
-  } else {
-    fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:174', message: 'order_types delete success', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix-v2', hypothesisId: 'B' }) }).catch(() => { });
+    console.error('[deleteOrderType] Failed to delete order type:', {
+      orderTypeId,
+      tenantId,
+      error: error.message,
+    })
+    throw error
   }
-  // #endregion
-
-  if (error) throw error
-
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/2df35b8c-2700-48d4-95e9-dfb1a632d209', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'order-types-service.ts:147', message: 'deleteOrderType exit success', data: { orderTypeId, tenantId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
 }
 
 export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: string, enabled: boolean) {

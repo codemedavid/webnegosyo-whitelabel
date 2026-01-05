@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exchangeCodeForToken, getLongLivedToken } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import crypto from 'crypto'
 
 /**
  * GET /api/auth/facebook/callback
@@ -29,13 +30,65 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Decode state to get tenant_id
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
-    const tenantId = stateData.tenant_id
-
-    if (!tenantId) {
+    // Verify state secret is configured
+    const stateSecret = process.env.FACEBOOK_STATE_SECRET
+    if (!stateSecret) {
       return NextResponse.redirect(
-        new URL('/error?message=Invalid state parameter', request.url)
+        new URL('/error?message=Server configuration error', request.url)
+      )
+    }
+
+    // Parse state: payload.signature format
+    const stateParts = state.split('.')
+    if (stateParts.length !== 2) {
+      return NextResponse.redirect(
+        new URL('/error?message=Invalid state format', request.url)
+      )
+    }
+
+    const [payloadBase64, receivedSignature] = stateParts
+
+    // Verify HMAC-SHA256 signature
+    const expectedSignature = crypto
+      .createHmac('sha256', stateSecret)
+      .update(payloadBase64)
+      .digest('base64url')
+
+    // Use timing-safe comparison to prevent timing attacks
+    if (
+      receivedSignature.length !== expectedSignature.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(receivedSignature),
+        Buffer.from(expectedSignature)
+      )
+    ) {
+      console.error('[Facebook OAuth] Invalid state signature')
+      return NextResponse.redirect(
+        new URL('/error?message=Invalid state signature', request.url)
+      )
+    }
+
+    // Decode and parse payload
+    const stateData = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString())
+    const { tenant_id: tenantId, timestamp, nonce } = stateData
+
+    if (!tenantId || !timestamp || !nonce) {
+      return NextResponse.redirect(
+        new URL('/error?message=Invalid state payload', request.url)
+      )
+    }
+
+    // Verify timestamp is within allowed window (10 minutes)
+    const STATE_MAX_AGE_MS = 10 * 60 * 1000 // 10 minutes
+    const now = Date.now()
+    if (now - timestamp > STATE_MAX_AGE_MS) {
+      console.error('[Facebook OAuth] State token expired', {
+        timestamp,
+        now,
+        age: now - timestamp,
+      })
+      return NextResponse.redirect(
+        new URL('/error?message=OAuth session expired, please try again', request.url)
       )
     }
 
@@ -72,7 +125,7 @@ export async function GET(request: NextRequest) {
     const redirectUri = process.env.FACEBOOK_REDIRECT_URI || `${protocol}://${host}/api/auth/facebook/callback`
 
     const shortLivedToken = await exchangeCodeForToken(code, redirectUri)
-    
+
     // Build base URL for redirects (use same protocol/host logic)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
 

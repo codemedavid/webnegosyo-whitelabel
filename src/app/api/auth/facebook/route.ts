@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import crypto from 'crypto'
 
 /**
  * GET /api/auth/facebook
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   if (!appId) {
     return NextResponse.json(
-      { 
+      {
         error: 'Facebook OAuth not configured',
         message: 'FACEBOOK_APP_ID environment variable is missing. Please configure it in your .env.local file.'
       },
@@ -58,9 +59,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Generate state parameter (include tenant_id for security)
-  // In production, you should sign/encrypt this
-  const state = Buffer.from(JSON.stringify({ tenant_id: tenantId })).toString('base64')
+  // Generate tamper-proof CSRF state token with HMAC-SHA256 signature
+  const stateSecret = process.env.FACEBOOK_STATE_SECRET
+  if (!stateSecret) {
+    return NextResponse.json(
+      {
+        error: 'Facebook OAuth not configured',
+        message: 'FACEBOOK_STATE_SECRET environment variable is missing. Please configure it in your .env.local file.',
+      },
+      { status: 500 }
+    )
+  }
+
+  // Generate cryptographically random nonce
+  const nonce = crypto.randomBytes(16).toString('hex')
+  const timestamp = Date.now()
+
+  // Create state payload with tenant_id, nonce, and timestamp
+  const statePayload = {
+    tenant_id: tenantId,
+    nonce,
+    timestamp,
+  }
+
+  // Encode payload to base64
+  const payloadBase64 = Buffer.from(JSON.stringify(statePayload)).toString('base64url')
+
+  // Compute HMAC-SHA256 signature over the payload
+  const signature = crypto
+    .createHmac('sha256', stateSecret)
+    .update(payloadBase64)
+    .digest('base64url')
+
+  // Combine payload and signature: payload.signature
+  const state = `${payloadBase64}.${signature}`
 
   // Required scopes for page management and messaging
   const scopes = [

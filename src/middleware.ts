@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   // This keeps app routes unified under /[tenant] while supporting both custom domains and subdomains
   if (!isSuperAdminRoute) {
     const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'unknown'
-    
+
     try {
       const tenantSlug = await resolveTenantSlugFromRequest(request)
 
@@ -44,12 +44,12 @@ export async function middleware(request: NextRequest) {
         rewrittenUrl.pathname = targetPath
         // Maintain query string
         rewrittenUrl.search = search
-        
+
         // Log successful rewrite in debug mode
         if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
           console.log(`[Middleware] Rewriting ${host}${pathname} to ${targetPath}`, { tenantSlug, host })
         }
-        
+
         supabaseResponse = NextResponse.rewrite(rewrittenUrl)
       } else if (!tenantSlug && pathname === '/') {
         // Log when tenant resolution fails for root path (this is when landing page shows)
@@ -61,10 +61,10 @@ export async function middleware(request: NextRequest) {
       // Log errors but don't block the request
       console.error('[Middleware] Error resolving tenant:', error)
       if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
-        console.error('[Middleware] Tenant resolution error details:', { 
-          host, 
-          pathname, 
-          error: error instanceof Error ? error.message : String(error) 
+        console.error('[Middleware] Tenant resolution error details:', {
+          host,
+          pathname,
+          error: error instanceof Error ? error.message : String(error)
         })
       }
     }
@@ -126,21 +126,55 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Protect tenant admin routes (basic auth check only for now)
-  if (
-    !user &&
-    !isPublicRoute &&
-    pathname.includes('/admin')
-  ) {
-    // Extract tenant slug from pathname like /tenant-name/admin/...
-    const tenantMatch = pathname.match(/^\/([^/]+)\/admin/)
-    if (tenantMatch) {
-      const tenantSlug = tenantMatch[1]
-      const url = request.nextUrl.clone()
+  // Protect tenant admin routes - verify tenant ownership
+  const tenantAdminMatch = pathname.match(/^\/([^/]+)\/admin/)
+  if (tenantAdminMatch && !isPublicRoute) {
+    const tenantSlug = tenantAdminMatch[1]
+    const url = request.nextUrl.clone()
+
+    // If not authenticated, redirect to tenant login
+    if (!user) {
       url.pathname = `/${tenantSlug}/login`
       url.searchParams.set('redirect', pathname)
       return NextResponse.redirect(url)
     }
+
+    // Verify user is admin of this specific tenant or superadmin
+    const { data: appUser } = await supabase
+      .from('app_users')
+      .select('role, tenant_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    // Cast for TypeScript
+    const userRole = appUser as { role: string; tenant_id: string | null } | null
+
+    // If superadmin, allow access to any tenant admin
+    if (userRole?.role === 'superadmin') {
+      return supabaseResponse
+    }
+
+    // For tenant admin, verify they own this tenant
+    if (userRole?.role === 'admin') {
+      // Get tenant by slug to compare IDs
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', tenantSlug)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      const tenantData = tenant as { id: string } | null
+
+      if (tenantData && userRole.tenant_id === tenantData.id) {
+        return supabaseResponse
+      }
+    }
+
+    // Unauthorized - not admin of this tenant
+    url.pathname = `/${tenantSlug}/login`
+    url.searchParams.set('unauthorized', '1')
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse
@@ -148,7 +182,15 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization - IMPORTANT: prevents 431 errors from large cookies)
+     * - favicon.ico (favicon file)
+     * - Common image formats
+     * - API routes for images
+     */
+    '/((?!_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
 

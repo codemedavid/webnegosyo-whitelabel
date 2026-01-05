@@ -15,11 +15,38 @@ const RESERVED_SUBDOMAINS = new Set([
 // Map<domain, { slug: string, expires: number }>
 const domainCache = new Map<string, { slug: string; expires: number }>()
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const MAX_CACHE_SIZE = 1000 // Maximum entries per cache to prevent memory leaks
 
 // In-memory cache for tenant existence validation
 // Map<slug, { exists: boolean, expires: number }>
 const tenantExistenceCache = new Map<string, { exists: boolean; expires: number }>()
 const TENANT_EXISTENCE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Cleanup expired entries from a cache and enforce size limit
+ * Should be called after adding new entries to prevent unbounded growth
+ */
+function cleanupCache<T extends { expires: number }>(cache: Map<string, T>, maxSize: number = MAX_CACHE_SIZE): void {
+	const now = Date.now()
+
+	// First pass: remove expired entries
+	for (const [key, value] of cache.entries()) {
+		if (value.expires < now) {
+			cache.delete(key)
+		}
+	}
+
+	// Second pass: if still over limit, remove oldest entries (FIFO)
+	if (cache.size > maxSize) {
+		const entriesToRemove = cache.size - maxSize
+		let removed = 0
+		for (const key of cache.keys()) {
+			if (removed >= entriesToRemove) break
+			cache.delete(key)
+			removed++
+		}
+	}
+}
 
 /**
  * Debug logging helper - only logs in development or when DEBUG_TENANT_RESOLUTION is set
@@ -45,22 +72,22 @@ function debugLog(message: string, data?: Record<string, unknown>): void {
  */
 export function normalizeDomain(domain: string | null | undefined): string | null {
 	if (!domain) return null
-	
+
 	// Remove protocol
 	let normalized = domain.replace(/^https?:\/\//i, '')
-	
+
 	// Remove www. prefix
 	normalized = normalized.replace(/^www\./i, '')
-	
+
 	// Remove trailing slashes and whitespace
 	normalized = normalized.replace(/\/+$/, '').trim()
-	
+
 	// Convert to lowercase
 	normalized = normalized.toLowerCase()
-	
+
 	// Basic validation: must contain at least one dot
 	if (!normalized.includes('.')) return null
-	
+
 	return normalized || null
 }
 
@@ -72,22 +99,22 @@ function getHost(request: NextRequest): string {
 	// Try x-forwarded-host first (for proxies/CDNs), then fall back to host
 	const forwardedHost = request.headers.get('x-forwarded-host')
 	const host = request.headers.get('host')
-	
+
 	const rawHost = forwardedHost || host || ''
-	
+
 	// Normalize: lowercase, trim whitespace, remove any trailing slashes or paths
 	let normalized = rawHost.toLowerCase().trim()
-	
+
 	// Remove port if present (e.g., localhost:3000, example.com:443)
 	normalized = normalized.split(':')[0]
-	
+
 	// Remove any path or query that might have been included
 	normalized = normalized.split('/')[0]
 	normalized = normalized.split('?')[0]
-	
+
 	// Remove any trailing dots or special characters
 	normalized = normalized.replace(/[.\s]+$/, '')
-	
+
 	return normalized
 }
 
@@ -102,51 +129,51 @@ export function getRootDomain(): string | null {
  * Handles case-insensitive matching, port variations, and edge cases
  */
 export function extractSubdomain(host: string, rootDomain: string | null): string | null {
-    if (!host) return null
+	if (!host) return null
 
-    // Host should already be normalized by getHost(), but ensure it's clean
-    const hostClean = host.toLowerCase().trim()
-    if (!hostClean) return null
+	// Host should already be normalized by getHost(), but ensure it's clean
+	const hostClean = host.toLowerCase().trim()
+	if (!hostClean) return null
 
-    // Local dev support: <tenant>.localhost
-    if (hostClean.endsWith('.localhost')) {
-        const parts = hostClean.split('.')
-        if (parts.length >= 2) {
-            const sub = parts[0].toLowerCase()
-            if (sub && !RESERVED_SUBDOMAINS.has(sub)) {
-                return sub
-            }
-        }
-        return null
-    }
+	// Local dev support: <tenant>.localhost
+	if (hostClean.endsWith('.localhost')) {
+		const parts = hostClean.split('.')
+		if (parts.length >= 2) {
+			const sub = parts[0].toLowerCase()
+			if (sub && !RESERVED_SUBDOMAINS.has(sub)) {
+				return sub
+			}
+		}
+		return null
+	}
 
-    // Production: <tenant>.<rootDomain>
-    if (rootDomain) {
-        const rootDomainLower = rootDomain.toLowerCase().trim()
-        const suffix = '.' + rootDomainLower
-        
-        // Case-insensitive matching: check if host ends with .rootDomain
-        if (hostClean.endsWith(suffix)) {
-            // Extract subdomain: everything before the last occurrence of .rootDomain
-            const subdomainPart = hostClean.slice(0, -suffix.length)
-            
-            // Get the last part (handles multi-level subdomains like a.b.example.com)
-            const parts = subdomainPart.split('.')
-            const sub = parts[parts.length - 1]?.toLowerCase() || null
-            
-            if (!sub) return null
-            
-            // Check if it's a reserved subdomain
-            if (RESERVED_SUBDOMAINS.has(sub)) return null
-            
-            return sub
-        }
-    }
+	// Production: <tenant>.<rootDomain>
+	if (rootDomain) {
+		const rootDomainLower = rootDomain.toLowerCase().trim()
+		const suffix = '.' + rootDomainLower
 
-    // If no root domain configured, don't extract subdomain from Vercel/other domains
-    // This prevents treating "your-app.vercel.app" as a subdomain setup
-    // Only extract subdomains when explicitly configured with PLATFORM_ROOT_DOMAIN
-    return null
+		// Case-insensitive matching: check if host ends with .rootDomain
+		if (hostClean.endsWith(suffix)) {
+			// Extract subdomain: everything before the last occurrence of .rootDomain
+			const subdomainPart = hostClean.slice(0, -suffix.length)
+
+			// Get the last part (handles multi-level subdomains like a.b.example.com)
+			const parts = subdomainPart.split('.')
+			const sub = parts[parts.length - 1]?.toLowerCase() || null
+
+			if (!sub) return null
+
+			// Check if it's a reserved subdomain
+			if (RESERVED_SUBDOMAINS.has(sub)) return null
+
+			return sub
+		}
+	}
+
+	// If no root domain configured, don't extract subdomain from Vercel/other domains
+	// This prevents treating "your-app.vercel.app" as a subdomain setup
+	// Only extract subdomains when explicitly configured with PLATFORM_ROOT_DOMAIN
+	return null
 }
 
 /**
@@ -161,26 +188,26 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 		debugLog('Custom domain normalization failed', { host })
 		return null
 	}
-	
+
 	debugLog('Checking custom domain', { host, normalizedHost })
-	
+
 	// Check cache first
 	const cached = domainCache.get(normalizedHost)
 	if (cached && cached.expires > Date.now()) {
 		debugLog('Custom domain cache hit', { host, normalizedHost, slug: cached.slug })
 		return cached.slug
 	}
-	
+
 	// Also check www variant (normalized)
-	const wwwVariant = normalizedHost.startsWith('www.') 
+	const wwwVariant = normalizedHost.startsWith('www.')
 		? normalizedHost.replace(/^www\./, '')
 		: `www.${normalizedHost}`
-	
+
 	const cachedWww = domainCache.get(wwwVariant)
 	if (cachedWww && cachedWww.expires > Date.now()) {
 		return cachedWww.slug
 	}
-	
+
 	// Query database for custom domain
 	try {
 		const supabase = createServerClient(
@@ -197,7 +224,7 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 				},
 			}
 		)
-		
+
 		// Query for exact match or www variant
 		// Try exact match first (using normalized domain)
 		let { data, error } = await supabase
@@ -206,7 +233,7 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 			.eq('is_active', true)
 			.eq('domain', normalizedHost)
 			.maybeSingle()
-		
+
 		// If not found, try www variant
 		if (!data && !error) {
 			const wwwResult = await supabase
@@ -218,19 +245,21 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 			data = wwwResult.data
 			error = wwwResult.error
 		}
-		
+
 		if (error || !data || !data.domain) {
 			debugLog('Custom domain not found in database', { host, normalizedHost, error: error?.message })
 			return null
 		}
-		
+
 		// Cache the result (cache both normalized and www variant)
 		const expires = Date.now() + CACHE_TTL
 		domainCache.set(normalizedHost, { slug: data.slug, expires })
 		if (data.domain !== normalizedHost) {
 			domainCache.set(wwwVariant, { slug: data.slug, expires })
 		}
-		
+		// Cleanup expired entries to prevent memory leaks
+		cleanupCache(domainCache)
+
 		debugLog('Custom domain resolved successfully', { host, normalizedHost, slug: data.slug })
 		return data.slug
 	} catch (error) {
@@ -246,14 +275,14 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
  */
 export async function validateTenantExists(slug: string): Promise<boolean> {
 	if (!slug) return false
-	
+
 	// Check cache first
 	const cached = tenantExistenceCache.get(slug)
 	if (cached && cached.expires > Date.now()) {
 		debugLog(`Tenant existence cache hit for slug: ${slug}`, { exists: cached.exists })
 		return cached.exists
 	}
-	
+
 	// Query database
 	try {
 		const supabase = createServerClient(
@@ -270,27 +299,29 @@ export async function validateTenantExists(slug: string): Promise<boolean> {
 				},
 			}
 		)
-		
+
 		const { data, error } = await supabase
 			.from('tenants')
 			.select('id, slug, is_active')
 			.eq('slug', slug)
 			.eq('is_active', true)
 			.maybeSingle()
-		
+
 		if (error) {
 			debugLog(`Error validating tenant existence for slug: ${slug}`, { error: error.message })
 			return false
 		}
-		
+
 		const exists = !!data && data.is_active
-		
+
 		// Cache the result
 		const expires = Date.now() + TENANT_EXISTENCE_CACHE_TTL
 		tenantExistenceCache.set(slug, { exists, expires })
-		
+		// Cleanup expired entries to prevent memory leaks
+		cleanupCache(tenantExistenceCache)
+
 		debugLog(`Tenant validation result for slug: ${slug}`, { exists })
-		
+
 		return exists
 	} catch (error) {
 		debugLog(`Exception validating tenant existence for slug: ${slug}`, { error: error instanceof Error ? error.message : String(error) })
@@ -307,7 +338,7 @@ export function clearDomainCache(domain: string | null): void {
 	if (normalized) {
 		domainCache.delete(normalized)
 		// Also clear www variant
-		const wwwVariant = normalized.startsWith('www.') 
+		const wwwVariant = normalized.startsWith('www.')
 			? normalized.replace(/^www\./, '')
 			: `www.${normalized}`
 		domainCache.delete(wwwVariant)
@@ -325,21 +356,21 @@ export function clearTenantExistenceCache(slug: string | null): void {
 export async function resolveTenantSlugFromRequest(request: NextRequest): Promise<string | null> {
 	const host = getHost(request)
 	const rootDomain = getRootDomain()
-	
+
 	debugLog('Starting tenant resolution', { host, rootDomain: rootDomain || 'not configured' })
-	
+
 	// Priority 1: Check custom domain first
 	const customDomainSlug = await resolveTenantByCustomDomain(host)
 	if (customDomainSlug) {
 		debugLog('Tenant resolved via custom domain', { host, slug: customDomainSlug })
 		return customDomainSlug
 	}
-	
+
 	// Priority 2: Fall back to subdomain extraction
 	const sub = extractSubdomain(host, rootDomain)
 	if (sub) {
 		debugLog('Subdomain extracted', { host, rootDomain, subdomain: sub })
-		
+
 		// Validate tenant exists before returning
 		const exists = await validateTenantExists(sub)
 		if (exists) {
@@ -350,7 +381,7 @@ export async function resolveTenantSlugFromRequest(request: NextRequest): Promis
 			return null
 		}
 	}
-	
+
 	debugLog('No tenant found', { host, rootDomain: rootDomain || 'not configured' })
 	return null
 }
@@ -364,27 +395,32 @@ export async function getTenantSlugFromHeaders(): Promise<string | null> {
 	// We need to import headers dynamically to avoid issues
 	const { headers } = await import('next/headers')
 	const headersList = await headers()
-	
+
 	const host = (
 		headersList.get('x-forwarded-host') ||
 		headersList.get('host') ||
 		''
 	).toLowerCase()
-	
+
 	if (!host) return null
-	
+
+	// Priority 1: Check custom domain first (matching resolveTenantSlugFromRequest order)
+	const customDomainSlug = await resolveTenantByCustomDomain(host)
+	if (customDomainSlug) {
+		return customDomainSlug
+	}
+
+	// Priority 2: Fall back to subdomain extraction
 	const rootDomain = getRootDomain()
 	const sub = extractSubdomain(host, rootDomain)
-	
+
 	if (sub) {
-		// Validate tenant exists
+		// Validate tenant exists before returning
 		const exists = await validateTenantExists(sub)
 		if (exists) {
 			return sub
 		}
 	}
-	
-	// Also check custom domain
-	const customDomainSlug = await resolveTenantByCustomDomain(host)
-	return customDomainSlug
+
+	return null
 }

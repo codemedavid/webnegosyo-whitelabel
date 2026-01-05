@@ -12,9 +12,7 @@ import { MenuGridGrouped } from '@/components/customer/menu-grid-grouped'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { useCart } from '@/hooks/useCart'
-import { getTenantBySlugSupabase } from '@/lib/tenants-service'
 import { createClient } from '@/lib/supabase/client'
-import { getTenantByIdSupabase } from '@/lib/tenants-service'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
 import { toast } from 'sonner'
@@ -48,7 +46,11 @@ export default function MenuPage() {
         setError(null)
 
         const supabase = createClient()
-        const { data: tenantData, error: tenantError } = await getTenantBySlugSupabase(tenantSlug)
+        const { data: tenantData, error: tenantError } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('slug', tenantSlug)
+          .maybeSingle()
 
         if (isCancelled) return
 
@@ -58,12 +60,13 @@ export default function MenuPage() {
           return
         }
 
-        // Save tenant data for branding
-        setTenant(tenantData)
+        // Cast and save tenant data for branding
+        const tenant = tenantData as Tenant
+        setTenant(tenant)
 
         const [{ data: cats, error: catsError }, { data: items, error: itemsError }] = await Promise.all([
-          supabase.from('categories').select('*').eq('tenant_id', tenantData.id).order('order'),
-          supabase.from('menu_items').select('*').eq('tenant_id', tenantData.id).order('order'),
+          supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('order'),
+          supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).order('order'),
         ])
 
         if (isCancelled) return
@@ -430,9 +433,14 @@ export default function MenuPage() {
           }}
           onSaved={async () => {
             if (!tenant?.id) return
-            const { data } = await getTenantByIdSupabase(tenant.id)
+            const supabase = createClient()
+            const { data } = await supabase
+              .from('tenants')
+              .select('*')
+              .eq('id', tenant.id)
+              .maybeSingle()
             if (data) {
-              setTenant(data)
+              setTenant(data as Tenant)
               setBrandingOverride(null)
               setHeroOverride(null)
               setBannerOverride(null)
@@ -503,7 +511,7 @@ export default function MenuPage() {
                   <button
                     key={index}
                     onClick={() => setCurrentSlide(index)}
-                    className={`w-2.5 h-2.5 rounded-full transition-colors ${index === currentSlide ? 'bg-white' : 'bg-white/50 hover:bg-white/75'
+                    className={`w-2.5 h-2.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/50 ${index === currentSlide ? 'bg-white' : 'bg-white/50 hover:bg-white/75'
                       }`}
                     aria-label={`Go to slide ${index + 1}`}
                   />

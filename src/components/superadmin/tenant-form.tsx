@@ -19,7 +19,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
   const router = useRouter()
   const createMutation = useCreateTenant()
   const updateMutation = useUpdateTenant()
-  
+
   const [formData, setFormData] = useState({
     name: tenant?.name || '',
     slug: tenant?.slug || '',
@@ -28,7 +28,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     primary_color: tenant?.primary_color || '#c41e3a',
     secondary_color: tenant?.secondary_color || '#009246',
     accent_color: tenant?.accent_color || '#ffd700',
-      // Extended branding colors
+    // Extended branding colors
     background_color: tenant?.background_color || '#ffffff',
     header_color: tenant?.header_color || '#ffffff',
     header_font_color: tenant?.header_font_color || '#000000',
@@ -67,7 +67,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const input = {
       name: formData.name,
       slug: formData.slug,
@@ -129,9 +129,10 @@ export function TenantForm({ tenant }: TenantFormProps) {
       )
     } else {
       createMutation.mutate(input, {
-        onSuccess: (created) => {
+        onSuccess: () => {
+          // The server action redirects on success, so this may not be reached
+          // If it is reached (no redirect), just show success message
           toast.success('Tenant created!')
-          router.push(`/${created.slug}/menu`)
         },
         onError: (err) => {
           const message = err instanceof Error ? err.message : 'Failed to create tenant'
@@ -472,15 +473,15 @@ export function TenantForm({ tenant }: TenantFormProps) {
         >
           Cancel
         </Button>
-        <Button 
-          type="submit" 
+        <Button
+          type="submit"
           disabled={createMutation.isPending || updateMutation.isPending}
         >
           {createMutation.isPending || updateMutation.isPending
             ? 'Saving...'
-            : tenant 
-            ? 'Update Tenant' 
-            : 'Create Tenant'}
+            : tenant
+              ? 'Update Tenant'
+              : 'Create Tenant'}
         </Button>
       </div>
     </form>

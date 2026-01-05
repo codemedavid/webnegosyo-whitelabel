@@ -12,6 +12,19 @@ import { formatOrderMessage } from '@/lib/messenger-message-formatter'
  */
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+
+    // Authentication: Verify user session
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      console.error('[Send Order] Authentication failed:', authError?.message || 'No user session')
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { orderId, tenantId } = body
 
@@ -22,7 +35,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    // Authorization: Verify user has access to this tenant
+    const { data: tenantMembership, error: membershipError } = await supabase
+      .from('tenant_users')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    if (membershipError || !tenantMembership) {
+      console.error('[Send Order] Authorization failed: User not authorized for tenant', {
+        userId: user.id,
+        tenantId,
+        error: membershipError?.message,
+      })
+      return NextResponse.json(
+        { error: 'Forbidden: Not authorized for this tenant' },
+        { status: 403 }
+      )
+    }
 
     // Get order details
     const { data: orderData, error: orderError } = await supabase
