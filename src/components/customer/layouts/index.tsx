@@ -36,6 +36,7 @@ interface MenuLayoutProps {
     } | null
     currentSlide: number
     setCurrentSlide: (slide: number) => void
+    mobileGridColumns?: number
 }
 
 import { useEffect } from 'react'

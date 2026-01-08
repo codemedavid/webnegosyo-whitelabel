@@ -138,6 +138,7 @@ export default function MenuPage() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
   const [pageLayoutOverride, setPageLayoutOverride] = useState<string | null>(null)
+  const [mobileGridColumnsOverride, setMobileGridColumnsOverride] = useState<number | null>(null)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
@@ -428,6 +429,7 @@ export default function MenuPage() {
             setBannerOverride(mapDraftToBanners(draft as Partial<Record<string, unknown>> | null))
             setCardTemplateOverride(draft?.card_template as string || null)
             setPageLayoutOverride(draft?.page_layout as string || null)
+            setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
           }}
           onSaved={async () => {
             if (!tenant?.id) return
@@ -444,6 +446,7 @@ export default function MenuPage() {
               setBannerOverride(null)
               setCardTemplateOverride(null)
               setPageLayoutOverride(null)
+              setMobileGridColumnsOverride(null)
               toast.success('Branding updated!')
             }
           }}
@@ -487,6 +490,7 @@ export default function MenuPage() {
           }}
           currentSlide={currentSlide}
           setCurrentSlide={setCurrentSlide}
+          mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
         />
       </main>
 

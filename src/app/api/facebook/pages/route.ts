@@ -3,6 +3,8 @@ import { getUserPages } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
 
+export const dynamic = 'force-dynamic'
+
 type AppUser = Database['public']['Tables']['app_users']['Row']
 type FacebookPage = Database['public']['Tables']['facebook_pages']['Row']
 

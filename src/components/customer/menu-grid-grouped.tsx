@@ -13,9 +13,10 @@ interface MenuGridGroupedProps {
   onItemSelect: (item: MenuItem) => void
   branding: BrandingColors
   template?: CardTemplate
+  mobileGridColumns?: number
 }
 
-export function MenuGridGrouped({ items, categories, onItemSelect, branding, template = 'classic' }: MenuGridGroupedProps) {
+export function MenuGridGrouped({ items, categories, onItemSelect, branding, template = 'classic', mobileGridColumns = 2 }: MenuGridGroupedProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -79,10 +80,7 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
           </div>
 
           {/* Menu Items Grid */}
-          <div className={template === 'compact'
-            ? "grid gap-3 grid-cols-2 md:gap-4 lg:grid-cols-2"
-            : "grid gap-3 grid-cols-2 md:gap-6 md:grid-cols-2 lg:grid-cols-3"
-          }>
+          <div className={`grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
             {categoryItems.map((item) => (
               <MenuItemCard
                 key={item.id}

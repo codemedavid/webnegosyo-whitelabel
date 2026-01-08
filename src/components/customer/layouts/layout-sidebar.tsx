@@ -35,6 +35,7 @@ interface LayoutSidebarProps {
     } | null
     currentSlide: number
     setCurrentSlide: (slide: number) => void
+    mobileGridColumns?: number
 }
 
 import { useEffect, useState, useRef } from 'react'
@@ -55,6 +56,7 @@ export function LayoutSidebar({
     bannerOverride,
     currentSlide,
     setCurrentSlide,
+    mobileGridColumns = 1,
 }: LayoutSidebarProps) {
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
@@ -266,6 +268,7 @@ export function LayoutSidebar({
                         template={cardTemplate}
                         onItemSelect={onItemSelect}
                         branding={branding}
+                        mobileGridColumns={mobileGridColumns}
                     />
                 )}
             </div>

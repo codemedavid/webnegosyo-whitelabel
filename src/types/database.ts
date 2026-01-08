@@ -42,6 +42,7 @@ export interface Tenant {
   hero_description_color?: string;
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
   page_layout?: string; // 'default' | 'sidebar'
+  mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   messenger_page_id: string;
   messenger_username?: string;
   facebook_page_id?: string; // Reference to facebook_pages table

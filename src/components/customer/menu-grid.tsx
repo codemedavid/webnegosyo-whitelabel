@@ -12,9 +12,10 @@ interface MenuGridProps {
   onItemSelect: (item: MenuItem) => void
   branding: BrandingColors
   template?: CardTemplate
+  mobileGridColumns?: number
 }
 
-export function MenuGrid({ items, onItemSelect, branding, template = 'classic' }: MenuGridProps) {
+export function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2 }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -27,10 +28,8 @@ export function MenuGrid({ items, onItemSelect, branding, template = 'classic' }
     )
   }
 
-  // Adjust grid layout for compact template
-  const gridClass = template === 'compact'
-    ? "grid gap-3 grid-cols-2 md:gap-4 lg:grid-cols-2"
-    : "grid gap-3 grid-cols-2 md:gap-6 md:grid-cols-2 lg:grid-cols-3"
+  // Adjust grid layout based on mobile columns setting
+  const gridClass = `grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`
 
   return (
     <div className={gridClass}>

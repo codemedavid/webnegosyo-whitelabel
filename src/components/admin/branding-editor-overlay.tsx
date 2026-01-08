@@ -39,6 +39,7 @@ interface BrandingDraft {
   hero_description_color?: string
   card_template?: string
   page_layout?: string
+  mobile_grid_columns?: number
   // Banners
   announcement_text?: string
   announcement_bg_color?: string
@@ -87,6 +88,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     hero_description_color: tenant.hero_description_color || '',
     card_template: tenant.card_template || 'classic',
     page_layout: tenant.page_layout || 'default',
+    mobile_grid_columns: tenant.mobile_grid_columns || 1,
     announcement_text: tenant.announcement_text || '',
     announcement_bg_color: tenant.announcement_bg_color || '#FFF4E5',
     announcement_text_color: tenant.announcement_text_color || '#663C00',
@@ -344,6 +346,51 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                         The layout changes are shown in real-time. Don&apos;t forget to save!
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Mobile Grid Columns */}
+                <div className="pt-4 border-t space-y-3">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-gray-900">Mobile Grid Layout</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Choose how many cards to show per row on mobile devices.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateDraft('mobile_grid_columns', 1)}
+                      className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all"
+                      style={{
+                        borderColor: draft.mobile_grid_columns === 1 ? draft.primary_color : '#e5e7eb',
+                        backgroundColor: draft.mobile_grid_columns === 1 ? `${draft.primary_color}10` : '#ffffff'
+                      }}
+                    >
+                      <div className="w-full flex justify-center">
+                        <div className="w-12 h-16 rounded bg-gray-200" />
+                      </div>
+                      <span className="text-xs font-medium">1 Card</span>
+                      <span className="text-[10px] text-muted-foreground">Full width</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => updateDraft('mobile_grid_columns', 2)}
+                      className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all"
+                      style={{
+                        borderColor: draft.mobile_grid_columns === 2 ? draft.primary_color : '#e5e7eb',
+                        backgroundColor: draft.mobile_grid_columns === 2 ? `${draft.primary_color}10` : '#ffffff'
+                      }}
+                    >
+                      <div className="w-full flex justify-center gap-1">
+                        <div className="w-6 h-16 rounded bg-gray-200" />
+                        <div className="w-6 h-16 rounded bg-gray-200" />
+                      </div>
+                      <span className="text-xs font-medium">2 Cards</span>
+                      <span className="text-[10px] text-muted-foreground">Side by side</span>
+                    </button>
                   </div>
                 </div>
               </div>

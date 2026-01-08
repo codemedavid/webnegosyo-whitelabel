@@ -38,6 +38,7 @@ interface LayoutDefaultProps {
     } | null
     currentSlide: number
     setCurrentSlide: (slide: number) => void
+    mobileGridColumns?: number
 }
 
 export function LayoutDefault({
@@ -57,6 +58,7 @@ export function LayoutDefault({
     bannerOverride,
     currentSlide,
     setCurrentSlide,
+    mobileGridColumns = 1,
 }: LayoutDefaultProps) {
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
@@ -209,6 +211,7 @@ export function LayoutDefault({
                         template={cardTemplate}
                         onItemSelect={onItemSelect}
                         branding={branding}
+                        mobileGridColumns={mobileGridColumns}
                     />
                 ) : (
                     <MenuGridGrouped
@@ -217,6 +220,7 @@ export function LayoutDefault({
                         template={cardTemplate}
                         onItemSelect={onItemSelect}
                         branding={branding}
+                        mobileGridColumns={mobileGridColumns}
                     />
                 )
             )}
