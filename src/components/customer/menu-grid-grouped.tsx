@@ -49,23 +49,27 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
   return (
     <div className="space-y-12">
       {groupedItems.map(({ category, items: categoryItems }) => (
-        <section key={category.id} className="space-y-6">
+        <section
+          key={category.id}
+          id={`category-${category.id}`}
+          className="scroll-mt-24 space-y-6"
+        >
           {/* Category Header */}
           <div className="flex items-center gap-3">
-            <div 
+            <div
               className="flex h-12 w-12 items-center justify-center rounded-full"
               style={{ backgroundColor: `${branding.primary}15` }}
             >
               <span className="text-2xl">{category.icon || '🍽️'}</span>
             </div>
             <div>
-              <h2 
+              <h2
                 className="text-2xl font-bold"
                 style={{ color: branding.primary }}
               >
                 {category.name}
               </h2>
-              <p 
+              <p
                 className="text-sm"
                 style={{ color: branding.textMuted }}
               >
@@ -75,15 +79,15 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
           </div>
 
           {/* Menu Items Grid */}
-          <div className={template === 'compact' 
-            ? "grid gap-4 sm:grid-cols-1 lg:grid-cols-2" 
-            : "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          <div className={template === 'compact'
+            ? "grid gap-3 grid-cols-2 md:gap-4 lg:grid-cols-2"
+            : "grid gap-3 grid-cols-2 md:gap-6 md:grid-cols-2 lg:grid-cols-3"
           }>
             {categoryItems.map((item) => (
-              <MenuItemCard 
-                key={item.id} 
-                item={item} 
-                onSelect={onItemSelect} 
+              <MenuItemCard
+                key={item.id}
+                item={item}
+                onSelect={onItemSelect}
                 branding={branding}
                 template={template}
               />

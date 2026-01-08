@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CARD_TEMPLATES } from '@/lib/card-templates'
+import { PAGE_LAYOUTS } from '@/lib/page-layouts'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 
@@ -37,6 +38,7 @@ interface BrandingDraft {
   hero_title_color?: string
   hero_description_color?: string
   card_template?: string
+  page_layout?: string
   // Banners
   announcement_text?: string
   announcement_bg_color?: string
@@ -84,6 +86,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     hero_title_color: tenant.hero_title_color || '',
     hero_description_color: tenant.hero_description_color || '',
     card_template: tenant.card_template || 'classic',
+    page_layout: tenant.page_layout || 'default',
     announcement_text: tenant.announcement_text || '',
     announcement_bg_color: tenant.announcement_bg_color || '#FFF4E5',
     announcement_text_color: tenant.announcement_text_color || '#663C00',
@@ -181,9 +184,13 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                 <span className="mr-1.5">🎨</span>
                 Colors
               </TabsTrigger>
+              <TabsTrigger value="layouts" className="flex-1">
+                <span className="mr-1.5">📐</span>
+                Layouts
+              </TabsTrigger>
               <TabsTrigger value="cards" className="flex-1">
                 <span className="mr-1.5">🃏</span>
-                Card Templates
+                Cards
               </TabsTrigger>
               <TabsTrigger value="banners" className="flex-1">
                 <span className="mr-1.5">📢</span>
@@ -266,6 +273,80 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                   <Swatch id="text_secondary_color" label="Secondary" value={draft.text_secondary_color || ''} onChange={(v) => updateDraft('text_secondary_color', v)} compact />
                 </div>
               </Section>
+            </TabsContent>
+
+            {/* Layouts Tab */}
+            <TabsContent value="layouts" className="flex-1 overflow-y-auto p-4 mt-0">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-900">Choose Your Page Layout</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Select how your menu page is structured. This controls the navigation and grid arrangement.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  {PAGE_LAYOUTS.map((layout) => (
+                    <button
+                      key={layout.id}
+                      type="button"
+                      className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                      style={{
+                        borderColor: draft.page_layout === layout.id ? draft.primary_color : '#e5e7eb',
+                        backgroundColor: draft.page_layout === layout.id ? `${draft.primary_color}10` : '#ffffff'
+                      }}
+                      onClick={() => updateDraft('page_layout', layout.id)}
+                    >
+                      {draft.page_layout === layout.id && (
+                        <div
+                          className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                          style={{ backgroundColor: draft.primary_color }}
+                        >
+                          ✓
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 text-3xl">{layout.preview}</div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm mb-1">{layout.name}</h4>
+                          <p className="text-xs text-muted-foreground mb-2">{layout.description}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {layout.features.map((feature, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                style={{
+                                  backgroundColor: draft.page_layout === layout.id
+                                    ? draft.primary_color
+                                    : '#f3f4f6',
+                                  color: draft.page_layout === layout.id
+                                    ? '#ffffff'
+                                    : '#6b7280'
+                                }}
+                              >
+                                {feature}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm">💡</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-blue-900">Preview Your Selection</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        The layout changes are shown in real-time. Don&apos;t forget to save!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </TabsContent>
 
             {/* Card Templates Tab */}

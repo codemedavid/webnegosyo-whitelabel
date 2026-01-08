@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Store,
+  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,11 @@ const sidebarItems: SidebarItem[] = [
     label: 'Tenants',
     href: '/superadmin/tenants',
     icon: Store,
+  },
+  {
+    label: 'Analytics',
+    href: '/superadmin/analytics',
+    icon: BarChart3,
   },
   {
     label: 'Settings',
@@ -75,8 +81,8 @@ export function SuperAdminSidebar() {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
 
           return (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
               prefetch={true} // Enable prefetching for faster navigation
             >

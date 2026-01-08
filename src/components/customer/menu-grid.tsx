@@ -28,17 +28,17 @@ export function MenuGrid({ items, onItemSelect, branding, template = 'classic' }
   }
 
   // Adjust grid layout for compact template
-  const gridClass = template === 'compact' 
-    ? "grid gap-4 sm:grid-cols-1 lg:grid-cols-2" 
-    : "grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
+  const gridClass = template === 'compact'
+    ? "grid gap-3 grid-cols-2 md:gap-4 lg:grid-cols-2"
+    : "grid gap-3 grid-cols-2 md:gap-6 md:grid-cols-2 lg:grid-cols-3"
 
   return (
     <div className={gridClass}>
       {items.map((item) => (
-        <MenuItemCard 
-          key={item.id} 
-          item={item} 
-          onSelect={onItemSelect} 
+        <MenuItemCard
+          key={item.id}
+          item={item}
+          onSelect={onItemSelect}
           branding={branding}
           template={template}
         />

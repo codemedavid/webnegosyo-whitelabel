@@ -111,8 +111,10 @@ export async function POST(request: NextRequest) {
           .eq('id', tenant_id)
       }
 
-      // Delete temporary record
-      await supabase.from('facebook_pages').delete().eq('id', temp_id)
+      // Delete temporary record only if it's different from the existing page
+      if (temp_id !== existingPageData.id) {
+        await supabase.from('facebook_pages').delete().eq('id', temp_id)
+      }
 
       return NextResponse.json({ success: true, page_id: existingPageData.id })
     }

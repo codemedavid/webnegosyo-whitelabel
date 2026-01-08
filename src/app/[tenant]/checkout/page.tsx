@@ -30,6 +30,7 @@ export default function CheckoutPage() {
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [checkoutComplete, setCheckoutComplete] = useState(false)
 
   // Lalamove delivery fee state
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
@@ -182,12 +183,12 @@ export default function CheckoutPage() {
   }, [tenant, orderType])
 
   // Redirect to menu if cart is empty
-  // Don't redirect if checkout is in progress (prevents race condition with Messenger redirect)
+  // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
   useEffect(() => {
-    if (!isLoading && !isProcessing && items.length === 0) {
+    if (!isLoading && !isProcessing && !checkoutComplete && items.length === 0) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, router, tenantSlug, isLoading, isProcessing])
+  }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
   // Fetch Lalamove delivery quotation when delivery address is entered
   useEffect(() => {
@@ -209,7 +210,7 @@ export default function CheckoutPage() {
       const deliveryLng = customerData.delivery_lng
 
       if (!isDeliveryOrder || !tenant?.lalamove_enabled || !hasRestaurantAddress) {
-        // Reset delivery fee if not applicable
+        // Reset delivery fee if not applicable 
         setDeliveryFee(null)
         setQuotationId(null)
         setDeliveryFeeAddress('')
@@ -577,7 +578,7 @@ export default function CheckoutPage() {
       // Show success message
       toast.success('Redirecting to Messenger...')
 
-      // Redirect to Messenger with error handling
+      // Open Messenger in new tab with error handling
       // Use a small delay to ensure toast is visible
       setTimeout(() => {
         try {
@@ -588,22 +589,39 @@ export default function CheckoutPage() {
             return
           }
 
-          console.log('[Checkout] Redirecting to Messenger:', messengerUrl)
-          window.location.href = messengerUrl
+          console.log('[Checkout] Opening Messenger:', messengerUrl)
+          const newWindow = window.open(messengerUrl, '_blank', 'noopener,noreferrer')
+
+          // Check if popup was blocked
+          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            console.warn('[Checkout] Popup may have been blocked, falling back to redirect')
+            // Fallback to direct navigation if popup is blocked
+            window.location.href = messengerUrl
+          } else {
+            // Popup succeeded - mark checkout as complete to prevent empty cart redirect
+            setCheckoutComplete(true)
+            setIsProcessing(false)
+            toast.success('Messenger opened in a new tab!')
+          }
         } catch (redirectError) {
           console.error('[Checkout] Redirect error:', redirectError)
-          // Fallback: show URL for manual copy
-          toast.error(
-            'Unable to redirect automatically. Please copy this link: ' + messengerUrl,
-            { duration: 10000 }
-          )
-          // Copy to clipboard if possible
-          if (navigator.clipboard && messengerUrl) {
-            navigator.clipboard.writeText(messengerUrl).catch(() => {
-              // Ignore clipboard errors
-            })
+          // Fallback: try direct navigation
+          try {
+            window.location.href = messengerUrl
+          } catch {
+            // Last resort: show URL for manual copy
+            toast.error(
+              'Unable to open Messenger. Please copy this link: ' + messengerUrl,
+              { duration: 10000 }
+            )
+            // Copy to clipboard if possible
+            if (navigator.clipboard && messengerUrl) {
+              navigator.clipboard.writeText(messengerUrl).catch(() => {
+                // Ignore clipboard errors
+              })
+            }
+            setIsProcessing(false)
           }
-          setIsProcessing(false)
         }
       }, 1000)
     } catch (error) {

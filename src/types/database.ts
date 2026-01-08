@@ -40,8 +40,8 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
-  // Card template selection
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
+  page_layout?: string; // 'default' | 'sidebar'
   messenger_page_id: string;
   messenger_username?: string;
   facebook_page_id?: string; // Reference to facebook_pages table

@@ -180,8 +180,8 @@ export async function POST(request: NextRequest) {
     )
 
     if (sent) {
-      // Mark as sent
-      await supabase
+      // Mark as sent - must verify this succeeds to prevent duplicate sends
+      const { error: updateError } = await supabase
         .from('orders')
         .update({
           customer_data: {
@@ -192,6 +192,24 @@ export async function POST(request: NextRequest) {
           },
         } as unknown as never)
         .eq('id', orderId)
+
+      if (updateError) {
+        // Message was sent but we failed to mark it - this is a critical error
+        // that could lead to duplicate sends on retry
+        console.error(`[Send Order] ❌ Failed to mark order as sent after successful message delivery`, {
+          orderId,
+          storedPsid,
+          error: updateError.message,
+        })
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Message sent but failed to update order status. Manual verification required.',
+            partialSuccess: true,
+          },
+          { status: 500 }
+        )
+      }
 
       console.log(`[Send Order] ✅ Proactively sent order message for order: ${orderId} to PSID: ${storedPsid}`)
       return NextResponse.json({ success: true, message: 'Order message sent proactively' })
