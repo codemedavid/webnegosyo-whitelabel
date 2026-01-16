@@ -17,7 +17,6 @@ async function TenantList() {
   if (tenants.length === 0) {
     return (
       <EmptyState
-        icon={Plus}
         title="No tenants found"
         description="Get started by adding your first restaurant tenant"
       />
