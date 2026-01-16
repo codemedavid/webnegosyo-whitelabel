@@ -121,55 +121,58 @@ async function checkDomainResolution() {
         } else {
             console.log('❌ No www variant match found')
         }
-
-        // List ALL tenants with domains
-        console.log('\n📋 All tenants with custom domains configured:')
-        const { data: allWithDomains, error: allError } = await supabase
-            .from('tenants')
-            .select('id, slug, name, domain, is_active')
-            .not('domain', 'is', null)
-            .order('name')
-
-        if (allError) {
-            console.error('❌ Database error:', allError.message)
-        } else if (allWithDomains && allWithDomains.length > 0) {
-            console.log('')
-            allWithDomains.forEach(t => {
-                const status = t.is_active ? '✅' : '❌'
-                console.log(`   ${status} ${t.name} (${t.slug})`)
-                console.log(`      Domain: "${t.domain}"`)
-            })
-        } else {
-            console.log('   No tenants have custom domains configured')
-        }
-
-        // Check if domain contains unexpected characters
-        console.log('\n📋 Domain stored value analysis:')
-        if (exactMatch?.domain) {
-            const storedDomain = exactMatch.domain
-            console.log(`   Length: ${storedDomain.length} characters`)
-            console.log(`   Has leading/trailing spaces: ${storedDomain !== storedDomain.trim()}`)
-            console.log(`   Has protocol (http/https): ${/^https?:\/\//i.test(storedDomain)}`)
-            console.log(`   Has www prefix: ${/^www\./i.test(storedDomain)}`)
-            console.log(`   Is lowercase: ${storedDomain === storedDomain.toLowerCase()}`)
-
-            // Char by char analysis for hidden characters
-            const hiddenChars = []
-            for (let i = 0; i < storedDomain.length; i++) {
-                const code = storedDomain.charCodeAt(i)
-                if (code < 32 || code > 126) {
-                    hiddenChars.push({ pos: i, char: storedDomain[i], code })
-                }
-            }
-            if (hiddenChars.length > 0) {
-                console.log(`   ⚠️ Hidden/non-printable characters found:`, hiddenChars)
-            } else {
-                console.log(`   No hidden characters detected`)
-            }
-        }
-
-        console.log('\n================================')
-        console.log('Diagnostic complete!\n')
+    } else {
+        console.log('\n⚠️ Skipping www variant check - normalizedDomain is null')
     }
 
-    checkDomainResolution().catch(console.error)
+    // List ALL tenants with domains
+    console.log('\n📋 All tenants with custom domains configured:')
+    const { data: allWithDomains, error: allError } = await supabase
+        .from('tenants')
+        .select('id, slug, name, domain, is_active')
+        .not('domain', 'is', null)
+        .order('name')
+
+    if (allError) {
+        console.error('❌ Database error:', allError.message)
+    } else if (allWithDomains && allWithDomains.length > 0) {
+        console.log('')
+        allWithDomains.forEach(t => {
+            const status = t.is_active ? '✅' : '❌'
+            console.log(`   ${status} ${t.name} (${t.slug})`)
+            console.log(`      Domain: "${t.domain}"`)
+        })
+    } else {
+        console.log('   No tenants have custom domains configured')
+    }
+
+    // Check if domain contains unexpected characters
+    console.log('\n📋 Domain stored value analysis:')
+    if (exactMatch?.domain) {
+        const storedDomain = exactMatch.domain
+        console.log(`   Length: ${storedDomain.length} characters`)
+        console.log(`   Has leading/trailing spaces: ${storedDomain !== storedDomain.trim()}`)
+        console.log(`   Has protocol (http/https): ${/^https?:\/\//i.test(storedDomain)}`)
+        console.log(`   Has www prefix: ${/^www\./i.test(storedDomain)}`)
+        console.log(`   Is lowercase: ${storedDomain === storedDomain.toLowerCase()}`)
+
+        // Char by char analysis for hidden characters
+        const hiddenChars = []
+        for (let i = 0; i < storedDomain.length; i++) {
+            const code = storedDomain.charCodeAt(i)
+            if (code < 32 || code > 126) {
+                hiddenChars.push({ pos: i, char: storedDomain[i], code })
+            }
+        }
+        if (hiddenChars.length > 0) {
+            console.log(`   ⚠️ Hidden/non-printable characters found:`, hiddenChars)
+        } else {
+            console.log(`   No hidden characters detected`)
+        }
+    }
+
+    console.log('\n================================')
+    console.log('Diagnostic complete!\n')
+}
+
+checkDomainResolution().catch(console.error)

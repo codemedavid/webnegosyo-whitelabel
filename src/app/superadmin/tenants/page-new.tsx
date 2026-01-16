@@ -17,8 +17,6 @@ async function TenantList() {
         icon={Plus}
         title="No tenants found"
         description="Get started by adding your first restaurant tenant"
-        actionLabel="Add Tenant"
-        onAction={() => {}}
       />
     )
   }

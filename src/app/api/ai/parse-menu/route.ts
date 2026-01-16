@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
             }, { status: 500 })
         }
 
-        // Call NVIDIA GPT-OSS 120B API
+        // Call NVIDIA GPT-OSS 120B API with streaming to avoid timeout
         const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
                 temperature: 0.3, // Lower temperature for more consistent structured output
                 top_p: 0.9,
                 max_tokens: 8192,
-                stream: false,
+                stream: true, // Enable streaming to avoid timeout
             }),
         })
 
@@ -157,8 +157,45 @@ export async function POST(request: NextRequest) {
             }, { status: 500 })
         }
 
-        const data = await response.json()
-        const aiContent = data.choices?.[0]?.message?.content
+        // Process the streaming response
+        const reader = response.body?.getReader()
+        if (!reader) {
+            return NextResponse.json({
+                error: 'Failed to read streaming response'
+            }, { status: 500 })
+        }
+
+        const decoder = new TextDecoder()
+        let aiContent = ''
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                const chunk = decoder.decode(value, { stream: true })
+                const lines = chunk.split('\n').filter(line => line.trim() !== '')
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6)
+                        if (data === '[DONE]') continue
+
+                        try {
+                            const parsed = JSON.parse(data)
+                            const content = parsed.choices?.[0]?.delta?.content
+                            if (content) {
+                                aiContent += content
+                            }
+                        } catch {
+                            // Skip malformed JSON chunks
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock()
+        }
 
         if (!aiContent) {
             return NextResponse.json({
