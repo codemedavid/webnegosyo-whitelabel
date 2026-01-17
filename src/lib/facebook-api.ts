@@ -325,9 +325,9 @@ export async function sendMenuCard(
           template_type: 'generic',
           elements: [
             {
-              title: tenant.name,
+              title: `📍 ${tenant.name}`,
               image_url: imageUrl,
-              subtitle: 'Browse our full menu and place your order online! 🍽️',
+              subtitle: '👇 Tap below to view items and order now!',
               default_action: {
                 type: 'web_url',
                 url: websiteUrl,
@@ -338,7 +338,7 @@ export async function sendMenuCard(
                 {
                   type: 'web_url',
                   url: websiteUrl,
-                  title: 'View Menu 🛒',
+                  title: '🛒 View Items Now',
                   messenger_extensions: false,
                   webview_height_ratio: 'tall',
                 },
@@ -405,6 +405,17 @@ export async function sendMenuCard(
         // Mask PSID in production: show only last 4 characters
         const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
         console.log(`[Facebook API] ✅ Menu card sent successfully to ${maskedPsid}`)
+      }
+      // Send a fallback text message with the link in case they don't tap the card
+      try {
+        await sendMessage(
+          psid,
+          pageAccessToken,
+          `👆 Tap the card above to browse our menu!\n\nOr use this link: ${websiteUrl}`
+        )
+      } catch (fallbackError) {
+        // Non-critical, log but don't fail the overall operation
+        console.warn('[Facebook API] Failed to send fallback link message:', fallbackError)
       }
       return true
     } else {
