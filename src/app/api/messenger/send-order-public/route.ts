@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 import { verifyOrderToken } from '@/lib/order-token'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+
+/**
+ * Hash an IP address for privacy-preserving logging
+ */
+function hashIP(ip: string): string {
+    return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 12)
+}
 
 /**
  * POST /api/messenger/send-order-public
@@ -23,7 +31,8 @@ export async function POST(request: NextRequest) {
         const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
 
         if (!rateLimit.allowed) {
-            console.warn(`[Send Order Public] Rate limit exceeded for IP: ${clientIP}`)
+            const hashedIP = hashIP(clientIP)
+            console.warn(`[Send Order Public] Rate limit exceeded for IP hash: ${hashedIP}`)
             return NextResponse.json(
                 { error: 'Too many requests. Please try again later.' },
                 {
@@ -35,18 +44,37 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const body = await request.json()
-        const { orderId, tenantId, orderToken } = body
+        // Parse JSON body with explicit error handling for malformed JSON
+        let body: Record<string, unknown>
+        try {
+            body = await request.json()
+        } catch (parseError) {
+            const isSyntaxError = parseError instanceof SyntaxError ||
+                (parseError && typeof parseError === 'object' && 'name' in parseError && parseError.name === 'SyntaxError')
+            if (isSyntaxError) {
+                return NextResponse.json(
+                    { error: 'Invalid JSON in request body' },
+                    { status: 400 }
+                )
+            }
+            throw parseError // Re-throw non-JSON errors for outer catch
+        }
 
-        if (!orderId || !tenantId) {
+        const { orderId, tenantId, orderToken } = body as {
+            orderId?: string
+            tenantId?: string
+            orderToken?: string
+        }
+
+        if (!orderId || typeof orderId !== 'string' || !tenantId || typeof tenantId !== 'string') {
             return NextResponse.json(
-                { error: 'Missing orderId or tenantId' },
+                { error: 'Missing or invalid orderId or tenantId' },
                 { status: 400 }
             )
         }
 
         // Verify order token if provided (required for secure verification)
-        if (!orderToken) {
+        if (!orderToken || typeof orderToken !== 'string') {
             console.warn(`[Send Order Public] No order token provided for order: ${orderId}`)
             return NextResponse.json(
                 { error: 'Missing order token' },
@@ -198,8 +226,8 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            // Mark as sent
-            await supabase
+            // Mark as sent - check for errors to prevent duplicate sends
+            const { error: updateError } = await supabase
                 .from('orders')
                 .update({
                     customer_data: {
@@ -211,6 +239,19 @@ export async function POST(request: NextRequest) {
                     },
                 } as unknown as never)
                 .eq('id', orderId)
+
+            if (updateError) {
+                const maskedPsid = `****${storedPsid.slice(-4)}`
+                console.error(`[Send Order Public] ❌ Failed to update order ${orderId} (PSID: ${maskedPsid}) after sending message:`, updateError.message)
+                return NextResponse.json(
+                    {
+                        success: true,
+                        message: 'Message sent but failed to update order record',
+                        warning: 'Order may not be marked as sent; potential duplicate on retry'
+                    },
+                    { status: 207 } // Multi-Status: partial success
+                )
+            }
 
             // Log success without exposing PSID
             console.log(`[Send Order Public] ✅ Order message sent for order: ${orderId}`)

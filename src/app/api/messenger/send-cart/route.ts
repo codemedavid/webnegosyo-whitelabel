@@ -51,10 +51,14 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Validate tenantSlug
-        if (!tenantSlug || typeof tenantSlug !== 'string' || tenantSlug.trim() === '') {
+        // Validate tenantSlug with strict slug pattern
+        // Trim and validate against regex to prevent malicious URL construction
+        const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
+        const sanitizedTenantSlug = typeof tenantSlug === 'string' ? tenantSlug.trim() : ''
+
+        if (!sanitizedTenantSlug || !slugRegex.test(sanitizedTenantSlug)) {
             return NextResponse.json(
-                { error: 'Invalid tenantSlug: must be a non-empty string' },
+                { error: 'Invalid tenantSlug: must contain only alphanumeric characters and hyphens' },
                 { status: 400 }
             )
         }
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
         const page = pageData as { page_access_token: string }
 
         // Format cart summary message
-        const message = formatCartSummary(items, tenant.name, tenantSlug || tenant.slug)
+        const message = formatCartSummary(items, tenant.name, sanitizedTenantSlug || tenant.slug)
 
         const sent = await sendMessage(
             psid,
@@ -140,7 +144,8 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${psid}`)
+            const maskedPsid = `****${psid.slice(-4)}`
+            console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
             return NextResponse.json({ success: true })
         } else {
             console.error(`[Send Cart] ❌ Failed to send cart summary`)

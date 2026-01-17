@@ -26,12 +26,16 @@ export async function createOrderToken(orderId: string): Promise<string> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
 
     // Update order with token and check for errors
+    // Use count: 'exact' to get the number of affected rows for validation
     const { error, count } = await supabase
         .from('orders')
-        .update({
-            order_token_hash: tokenHash,
-            order_token_expires_at: expiresAt,
-        } as never)
+        .update(
+            {
+                order_token_hash: tokenHash,
+                order_token_expires_at: expiresAt,
+            } as never,
+            { count: 'exact' }
+        )
         .eq('id', orderId)
 
     // Check if update failed or no rows were affected
