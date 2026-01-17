@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { CartProvider } from "@/hooks/useCart";
 import { QueryProvider } from "@/providers/query-provider";
+import { MessengerPsidCapture } from "@/components/shared/messenger-psid-capture";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -39,6 +41,9 @@ export default function RootLayout({
       >
         <QueryProvider>
           <CartProvider>
+            <Suspense fallback={null}>
+              <MessengerPsidCapture />
+            </Suspense>
             {children}
             <Toaster />
           </CartProvider>

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyWebhookSignature, sendMessage } from '@/lib/facebook-api'
+import { verifyWebhookSignature, sendMessage, sendMenuCard } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
+
+// Keywords that trigger menu card auto-reply
+const MENU_KEYWORDS = [
+  'menu', 'product', 'products', 'order', 'item', 'items',
+  'food', 'catalog', 'price', 'prices', 'what do you have',
+  'what do you sell', 'available', 'offer', 'offerings'
+]
 
 /**
  * GET /api/webhook
@@ -370,6 +377,60 @@ export async function POST(request: NextRequest) {
               hasText: !!messageText,
               textLength: messageText.length,
             })
+
+            // AUTO-REPLY: Check if message contains menu-related keywords
+            const lowerMessage = messageText.toLowerCase()
+            const hasMenuKeyword = MENU_KEYWORDS.some(keyword => lowerMessage.includes(keyword))
+
+            if (hasMenuKeyword) {
+              console.log(`[Webhook] 🍽️ Menu keyword detected in message (length: ${messageText.length})`)
+
+              try {
+                const supabase = await createClient()
+                const pageId = entry.id
+
+                // Find tenant by page ID
+                const { data: pageData } = await supabase
+                  .from('facebook_pages')
+                  .select('tenant_id, page_access_token')
+                  .eq('page_id', pageId)
+                  .eq('is_active', true)
+                  .single()
+
+                const page = pageData as { tenant_id: string; page_access_token: string } | null
+
+                if (page) {
+                  // Get tenant details for the menu card
+                  const { data: tenantData } = await supabase
+                    .from('tenants')
+                    .select('id, name, slug, logo_url, domain')
+                    .eq('id', page.tenant_id)
+                    .single()
+
+                  const tenant = tenantData as { id: string; name: string; slug: string; logo_url?: string | null; domain?: string | null } | null
+
+                  if (tenant) {
+                    console.log(`[Webhook] Sending menu card for tenant: ${tenant.name}`)
+                    const sent = await sendMenuCard(senderId, page.page_access_token, tenant)
+
+                    if (sent) {
+                      console.log(`[Webhook] ✅ Menu card sent successfully to ${senderId}`)
+                      // Don't continue to fallback order matching since we handled the message
+                      continue
+                    } else {
+                      console.error(`[Webhook] ❌ Failed to send menu card to ${senderId}`)
+                    }
+                  } else {
+                    console.warn(`[Webhook] Tenant not found for page: ${pageId}`)
+                  }
+                } else {
+                  console.warn(`[Webhook] No active Facebook page found for page ID: ${pageId}`)
+                }
+              } catch (error) {
+                console.error(`[Webhook] Error in menu auto-reply:`, error)
+                // Continue to fallback logic even if menu card fails
+              }
+            }
 
             // SAFE FALLBACK: If referral event didn't fire (common for existing conversations),
             // check for very recent orders that haven't been sent yet

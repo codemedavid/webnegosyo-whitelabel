@@ -22,7 +22,7 @@ export default function CheckoutPage() {
   const params = useParams()
   const router = useRouter()
   const tenantSlug = params.tenant as string
-  const { items, total, clearCart, orderType, setOrderType } = useCart()
+  const { items, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
 
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
@@ -388,7 +388,10 @@ export default function CheckoutPage() {
             orderItems,
             customerInfo,
             orderType,
-            customerData,
+            // Include messenger_psid in customer data for tracking
+            messengerPsid
+              ? { ...customerData, messenger_psid: messengerPsid }
+              : customerData,
             validDeliveryFee,
             validQuotationId,
             selectedPaymentMethod || undefined,

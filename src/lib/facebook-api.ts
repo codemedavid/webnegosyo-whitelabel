@@ -282,6 +282,96 @@ export async function sendMessage(
 }
 
 /**
+ * Send a menu card via Messenger using Generic Template
+ * Used for auto-reply when customers ask about menu/products
+ */
+export async function sendMenuCard(
+  psid: string,
+  pageAccessToken: string,
+  tenant: {
+    name: string
+    logo_url?: string | null
+    domain?: string | null
+    slug: string
+  }
+): Promise<boolean> {
+  // Construct the tenant's website URL with PSID for tracking
+  const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
+  let baseUrl: string
+
+  if (tenant.domain) {
+    // Use custom domain if set
+    baseUrl = tenant.domain.startsWith('http') ? tenant.domain : `https://${tenant.domain}`
+  } else {
+    // Use subdomain format
+    baseUrl = `https://${tenant.slug}.${rootDomain}`
+  }
+
+  // Append PSID to URL for customer tracking
+  const websiteUrl = `${baseUrl}?psid=${encodeURIComponent(psid)}`
+
+  // Use a default image if no logo is set
+  const imageUrl = tenant.logo_url || `https://${rootDomain}/default-menu-card.png`
+
+  const payload = {
+    recipient: { id: psid },
+    message: {
+      attachment: {
+        type: 'template',
+        payload: {
+          template_type: 'generic',
+          elements: [
+            {
+              title: tenant.name,
+              image_url: imageUrl,
+              subtitle: 'Browse our full menu and place your order online! 🍽️',
+              default_action: {
+                type: 'web_url',
+                url: websiteUrl,
+                webview_height_ratio: 'tall',
+              },
+              buttons: [
+                {
+                  type: 'web_url',
+                  url: websiteUrl,
+                  title: 'View Menu',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  }
+
+  try {
+    const response = await fetch(
+      `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error(`[Facebook API] Failed to send menu card: ${error}`)
+      return false
+    }
+
+    const data = (await response.json()) as { recipient_id?: string; message_id?: string }
+    console.log(`[Facebook API] ✅ Menu card sent successfully to ${psid}`)
+    return !!data.message_id
+  } catch (error) {
+    console.error(`[Facebook API] Exception sending menu card:`, error)
+    return false
+  }
+}
+
+/**
  * Verify webhook signature
  */
 export function verifyWebhookSignature(

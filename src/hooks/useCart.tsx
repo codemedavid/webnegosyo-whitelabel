@@ -12,6 +12,8 @@ import {
 interface CartContextType extends Cart {
   orderType: string | null
   setOrderType: (orderType: string | null) => void
+  messengerPsid: string | null
+  setMessengerPsid: (psid: string | null) => void
   addItem: (
     menuItem: MenuItem,
     variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
@@ -29,11 +31,12 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 
 const CART_STORAGE_KEY = 'restaurant_cart'
 const ORDER_TYPE_STORAGE_KEY = 'restaurant_order_type'
+const MESSENGER_PSID_KEY = 'messenger_psid'
 
 // Helper functions for localStorage
 function loadCartFromStorage(): CartItem[] {
   if (typeof window === 'undefined') return []
-  
+
   try {
     const stored = localStorage.getItem(CART_STORAGE_KEY)
     if (stored) {
@@ -47,7 +50,7 @@ function loadCartFromStorage(): CartItem[] {
 
 function loadOrderTypeFromStorage(): string | null {
   if (typeof window === 'undefined') return null
-  
+
   try {
     const stored = localStorage.getItem(ORDER_TYPE_STORAGE_KEY)
     return stored || null
@@ -59,7 +62,7 @@ function loadOrderTypeFromStorage(): string | null {
 
 function saveCartToStorage(items: CartItem[]) {
   if (typeof window === 'undefined') return
-  
+
   try {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
   } catch (error) {
@@ -69,7 +72,7 @@ function saveCartToStorage(items: CartItem[]) {
 
 function saveOrderTypeToStorage(orderType: string | null) {
   if (typeof window === 'undefined') return
-  
+
   try {
     if (orderType) {
       localStorage.setItem(ORDER_TYPE_STORAGE_KEY, orderType)
@@ -81,17 +84,45 @@ function saveOrderTypeToStorage(orderType: string | null) {
   }
 }
 
+function loadMessengerPsidFromStorage(): string | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    return localStorage.getItem(MESSENGER_PSID_KEY)
+  } catch (error) {
+    console.error('Failed to load messenger PSID from storage:', error)
+  }
+  return null
+}
+
+function saveMessengerPsidToStorage(psid: string | null) {
+  if (typeof window === 'undefined') return
+
+  try {
+    if (psid) {
+      localStorage.setItem(MESSENGER_PSID_KEY, psid)
+    } else {
+      localStorage.removeItem(MESSENGER_PSID_KEY)
+    }
+  } catch (error) {
+    console.error('Failed to save messenger PSID to storage:', error)
+  }
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [orderType, setOrderTypeState] = useState<string | null>(null)
+  const [messengerPsid, setMessengerPsidState] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Load cart and order type from localStorage on mount
+  // Load cart, order type, and PSID from localStorage on mount
   useEffect(() => {
     const storedItems = loadCartFromStorage()
     const storedOrderType = loadOrderTypeFromStorage()
+    const storedPsid = loadMessengerPsidFromStorage()
     setItems(storedItems)
     setOrderTypeState(storedOrderType)
+    setMessengerPsidState(storedPsid)
     setIsInitialized(true)
   }, [])
 
@@ -109,8 +140,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [orderType, isInitialized])
 
+  // Save PSID to localStorage whenever it changes
+  useEffect(() => {
+    if (isInitialized) {
+      saveMessengerPsidToStorage(messengerPsid)
+    }
+  }, [messengerPsid, isInitialized])
+
   const setOrderType = useCallback((newOrderType: string | null) => {
     setOrderTypeState(newOrderType)
+  }, [])
+
+  const setMessengerPsid = useCallback((psid: string | null) => {
+    setMessengerPsidState(psid)
   }, [])
 
   const addItem = useCallback(
@@ -130,7 +172,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       // Determine if using new or legacy variation format
       const isNewFormat = variationOrVariations && typeof variationOrVariations === 'object' && !('price_modifier' in variationOrVariations)
-      
+
       // Generate cart item ID based on format
       const cartItemId = isNewFormat
         ? generateCartItemId(menuItem.id, variationOrVariations as { [typeId: string]: VariationOption }, addons.map((a) => a.id))
@@ -237,6 +279,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         item_count,
         orderType,
         setOrderType,
+        messengerPsid,
+        setMessengerPsid,
         addItem,
         removeItem,
         updateQuantity,
