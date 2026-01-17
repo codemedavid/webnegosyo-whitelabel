@@ -20,7 +20,7 @@ import type { PageLayout } from '@/lib/page-layouts'
 export default function MenuPage() {
   const params = useParams()
   const tenantSlug = params.tenant as string
-  const { addItem, items } = useCart()
+  const { addItem, items, setTenantContext } = useCart()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
@@ -62,6 +62,9 @@ export default function MenuPage() {
         const tenant = tenantData as Tenant
         setTenant(tenant)
 
+        // Set tenant context for cart Messenger sync
+        setTenantContext(tenant.id, tenant.slug)
+
         const [{ data: cats, error: catsError }, { data: items, error: itemsError }] = await Promise.all([
           supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('order'),
           supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).order('order'),
@@ -93,7 +96,7 @@ export default function MenuPage() {
     return () => {
       isCancelled = true
     }
-  }, [tenantSlug])
+  }, [tenantSlug, setTenantContext])
 
   // Filter items based on search and category
   const filteredItems = useMemo(() => {

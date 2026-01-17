@@ -46,9 +46,9 @@ export async function getOrdersByTenant(
   params?: OrdersPaginationParams
 ): Promise<OrderWithItems[] | PaginatedOrdersResult> {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
-  
+
   // If no pagination params provided, return all orders (legacy behavior)
   if (!params) {
     const { data, error } = await supabase
@@ -119,9 +119,9 @@ export async function getOrdersByTenant(
 
 export async function getOrderById(orderId: string, tenantId: string) {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('orders')
     .select(`
@@ -137,12 +137,12 @@ export async function getOrderById(orderId: string, tenantId: string) {
 }
 
 export async function updateOrderStatus(
-  orderId: string, 
-  tenantId: string, 
+  orderId: string,
+  tenantId: string,
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 ) {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
 
   // Get order first to check if we need to create Lalamove order
@@ -171,26 +171,26 @@ export async function updateOrderStatus(
   // trigger Lalamove order creation (async, don't wait)
   if (status === 'confirmed' && existingOrder && (existingOrder as Order).lalamove_quotation_id && !(existingOrder as Order).lalamove_order_id) {
     const order = existingOrder as Order
-    
+
     // Extract customer info for Lalamove
     const customerName = order.customer_name || 'Customer'
     const customerContact = order.customer_contact || ''
     const customerData = (order.customer_data as Record<string, unknown>) || {}
-    
+
     // Get delivery address from customer data
     const deliveryAddress = customerData.delivery_address as string
-    
+
     // Get tenant info for sender details
     const { data: tenant } = await supabase
       .from('tenants')
       .select('name')
       .eq('id', tenantId)
       .single()
-    
+
     const tenantName = (tenant as { name?: string } | null)?.name || 'Restaurant'
     // Use customer contact as sender phone for now (tenant phone should be added to tenant table)
     const senderPhone = customerContact || ''
-    
+
     // Only create if we have the necessary info
     // Double-check the database to ensure no other process created it while we were processing
     if (order.lalamove_quotation_id && customerContact && deliveryAddress && senderPhone) {
@@ -200,7 +200,7 @@ export async function updateOrderStatus(
         .select('lalamove_order_id')
         .eq('id', orderId)
         .single()
-      
+
       // If order already has lalamove_order_id, skip creation
       if (currentOrder && (currentOrder as { lalamove_order_id?: string | null }).lalamove_order_id) {
         const existingId = (currentOrder as { lalamove_order_id: string }).lalamove_order_id
@@ -242,13 +242,13 @@ export async function updateOrderStatus(
 
 export async function getOrderStats(tenantId: string) {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
-  
+
   // Get today's orders
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  
+
   const { data: orders, error } = await supabase
     .from('orders')
     .select('status, total, created_at')
@@ -355,13 +355,17 @@ export async function createOrder(
 
   if (itemsError) throw itemsError
 
-  return orderData as Order
+  // Generate a short-lived order token for secure public endpoint access
+  const { createOrderToken } = await import('@/lib/order-token')
+  const orderToken = await createOrderToken(orderData.id)
+
+  return { order: orderData as Order, orderToken }
 }
 
 // Helper function to get order type name
 async function getOrderTypeName(orderTypeId: string): Promise<string | null> {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('order_types')
     .select('name')

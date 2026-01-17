@@ -23,7 +23,10 @@ export function MessengerPsidCapture() {
         if (psidFromUrl) {
             // Store the PSID
             setMessengerPsid(psidFromUrl)
-            console.log('[Messenger] Captured PSID from URL:', psidFromUrl)
+            // Only log PSID in development to prevent exposing user identifiers in production
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[Messenger] Captured PSID from URL:', psidFromUrl)
+            }
 
             // Clean up URL by removing psid parameter
             const newParams = new URLSearchParams(searchParams.toString())

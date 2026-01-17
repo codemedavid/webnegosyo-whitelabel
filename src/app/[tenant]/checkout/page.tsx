@@ -323,7 +323,7 @@ export default function CheckoutPage() {
     try {
       // Check if order management is enabled for this tenant
       let orderCreated = false
-      let orderResult: { success: boolean; data?: { id: string } } | null = null
+      let orderResult: { success: boolean; data?: { id: string }; orderToken?: string } | null = null
 
       // Get selected order type (for potential future use)
       // const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
@@ -531,15 +531,17 @@ export default function CheckoutPage() {
       // This sends the message immediately without requiring user interaction
       // Only works if Facebook page is connected and order was created
       // Note: This is optional - if it fails, the webhook will handle it when user clicks the link
-      if (isFacebookPageConnected && orderCreated && orderResult?.data?.id) {
+      if (isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
         // Use a fire-and-forget approach - don't await, just start the request
         // This ensures redirect happens immediately regardless of API response
-        fetch('/api/messenger/send-order', {
+        // Use public endpoint that doesn't require auth - secured by order token
+        fetch('/api/messenger/send-order-public', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             orderId: orderResult.data.id,
             tenantId: tenant.id,
+            orderToken: orderResult.orderToken, // Cryptographic token for secure verification
           }),
         })
           .then(async (response) => {

@@ -78,20 +78,21 @@ export async function createOrderAction(
   paymentMethodQrCodeUrl?: string
 ) {
   try {
-    const order = await createOrder(
-      tenantId, 
-      items, 
-      customerInfo, 
-      orderTypeId, 
-      customerData, 
-      deliveryFee, 
+    const result = await createOrder(
+      tenantId,
+      items,
+      customerInfo,
+      orderTypeId,
+      customerData,
+      deliveryFee,
       lalamoveQuotationId,
       paymentMethodId,
       paymentMethodName,
       paymentMethodDetails,
       paymentMethodQrCodeUrl
     )
-    return { success: true, data: order }
+    // Return both order and token for secure public API access
+    return { success: true, data: result.order, orderToken: result.orderToken }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }
   }
@@ -105,7 +106,7 @@ export async function updatePaymentStatusAction(
 ) {
   try {
     const supabase = await (await import('@/lib/supabase/server')).createClient()
-    
+
     // Verify admin access
     const { verifyTenantAdmin } = await import('@/lib/admin-service')
     await verifyTenantAdmin(tenantId)
@@ -119,14 +120,14 @@ export async function updatePaymentStatusAction(
       .eq('tenant_id', tenantId)
       .select()
       .single()
-    
+
     const { data, error } = await query
 
     if (error) throw error
 
     revalidatePath(`/${tenantSlug}/admin/orders`)
     revalidatePath(`/${tenantSlug}/admin`)
-    
+
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update payment status' }

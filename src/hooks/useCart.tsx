@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption } from '@/types/database'
 import {
   calculateCartItemSubtotal,
@@ -14,6 +14,9 @@ interface CartContextType extends Cart {
   setOrderType: (orderType: string | null) => void
   messengerPsid: string | null
   setMessengerPsid: (psid: string | null) => void
+  tenantId: string | null
+  tenantSlug: string | null
+  setTenantContext: (tenantId: string, tenantSlug: string) => void
   addItem: (
     menuItem: MenuItem,
     variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
@@ -32,6 +35,8 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 const CART_STORAGE_KEY = 'restaurant_cart'
 const ORDER_TYPE_STORAGE_KEY = 'restaurant_order_type'
 const MESSENGER_PSID_KEY = 'messenger_psid'
+const TENANT_CONTEXT_KEY = 'tenant_context'
+const CART_SYNC_DEBOUNCE_MS = 3000 // 3 seconds debounce for Messenger sync
 
 // Helper functions for localStorage
 function loadCartFromStorage(): CartItem[] {
@@ -113,9 +118,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [orderType, setOrderTypeState] = useState<string | null>(null)
   const [messengerPsid, setMessengerPsidState] = useState<string | null>(null)
+  const [tenantId, setTenantId] = useState<string | null>(null)
+  const [tenantSlug, setTenantSlug] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Load cart, order type, and PSID from localStorage on mount
+  // Ref for debounced sync timeout
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Track if we've already synced the current cart state
+  const lastSyncedCart = useRef<string>('')
+
+  // Load cart, order type, PSID, and tenant context from localStorage on mount
   useEffect(() => {
     const storedItems = loadCartFromStorage()
     const storedOrderType = loadOrderTypeFromStorage()
@@ -123,6 +135,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(storedItems)
     setOrderTypeState(storedOrderType)
     setMessengerPsidState(storedPsid)
+
+    // Load tenant context from localStorage
+    try {
+      const storedContext = localStorage.getItem(TENANT_CONTEXT_KEY)
+      if (storedContext) {
+        const { tenantId: tid, tenantSlug: ts } = JSON.parse(storedContext)
+        setTenantId(tid)
+        setTenantSlug(ts)
+      }
+    } catch (error) {
+      console.error('Failed to load tenant context:', error)
+    }
+
     setIsInitialized(true)
   }, [])
 
@@ -154,6 +179,84 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const setMessengerPsid = useCallback((psid: string | null) => {
     setMessengerPsidState(psid)
   }, [])
+
+  const setTenantContext = useCallback((tid: string, ts: string) => {
+    setTenantId(tid)
+    setTenantSlug(ts)
+    // Persist to localStorage
+    try {
+      localStorage.setItem(TENANT_CONTEXT_KEY, JSON.stringify({ tenantId: tid, tenantSlug: ts }))
+    } catch (error) {
+      console.error('Failed to save tenant context:', error)
+    }
+  }, [])
+
+  // Debounced sync to Messenger when cart changes
+  useEffect(() => {
+    if (!isInitialized || !messengerPsid || !tenantId || !tenantSlug) {
+      return
+    }
+
+    // Create a hash of current cart state
+    const cartHash = JSON.stringify(items.map(i => ({ id: i.id, qty: i.quantity })))
+
+    // Don't sync if cart hasn't changed
+    if (cartHash === lastSyncedCart.current) {
+      return
+    }
+
+    // Clear existing timeout
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current)
+    }
+
+    // Set new timeout for debounced sync
+    syncTimeoutRef.current = setTimeout(() => {
+      // Format items for API
+      const cartItems = items.map(item => {
+        let variation = ''
+        if (item.selected_variation) {
+          variation = item.selected_variation.name
+        } else if (item.selected_variations) {
+          variation = Object.values(item.selected_variations).map(v => v.name).join(', ')
+        }
+        return {
+          name: item.menu_item.name,
+          quantity: item.quantity,
+          subtotal: item.subtotal,
+          variation: variation || undefined,
+        }
+      })
+
+      // Send to Messenger (fire-and-forget)
+      fetch('/api/messenger/send-cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          tenantSlug,
+          psid: messengerPsid,
+          items: cartItems,
+        }),
+      })
+        .then(response => {
+          if (response.ok) {
+            console.log('[Cart] Synced cart to Messenger')
+            lastSyncedCart.current = cartHash
+          }
+        })
+        .catch(error => {
+          console.error('[Cart] Failed to sync cart to Messenger:', error)
+        })
+    }, CART_SYNC_DEBOUNCE_MS)
+
+    // Cleanup timeout on unmount or re-run
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current)
+      }
+    }
+  }, [items, isInitialized, messengerPsid, tenantId, tenantSlug])
 
   const addItem = useCallback(
     (
@@ -281,6 +384,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setOrderType,
         messengerPsid,
         setMessengerPsid,
+        tenantId,
+        tenantSlug,
+        setTenantContext,
         addItem,
         removeItem,
         updateQuantity,
