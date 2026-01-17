@@ -4,6 +4,37 @@ import { sendMessage } from '@/lib/facebook-api'
 import { formatPrice } from '@/lib/cart-utils'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
 
+// CORS headers for cross-origin requests from tenant subdomains
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
+/**
+ * OPTIONS /api/messenger/send-cart
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS() {
+    return new NextResponse(null, {
+        status: 204,
+        headers: corsHeaders,
+    })
+}
+
+/**
+ * Helper to return JSON response with CORS headers
+ */
+function corsJson(data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
+    return NextResponse.json(data, {
+        ...init,
+        headers: {
+            ...corsHeaders,
+            ...init?.headers,
+        },
+    })
+}
+
 interface CartItemForSync {
     name: string
     quantity: number
@@ -54,7 +85,7 @@ export async function POST(request: NextRequest) {
         // Rate limiting - 20 requests per minute per IP
         const clientIP = getClientIP(request)
         if (!clientIP) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Unable to verify client IP address' },
                 { status: 400 }
             )
@@ -62,7 +93,7 @@ export async function POST(request: NextRequest) {
         const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
 
         if (!rateLimit.allowed) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Too many requests. Please try again later.' },
                 {
                     status: 429,
@@ -83,7 +114,7 @@ export async function POST(request: NextRequest) {
 
         // Validate required fields
         if (!tenantId || !psid) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Missing tenantId or psid' },
                 { status: 400 }
             )
@@ -95,7 +126,7 @@ export async function POST(request: NextRequest) {
         const sanitizedTenantSlug = typeof tenantSlug === 'string' ? tenantSlug.trim() : ''
 
         if (!sanitizedTenantSlug || !slugRegex.test(sanitizedTenantSlug)) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Invalid tenantSlug: must contain only alphanumeric characters and hyphens' },
                 { status: 400 }
             )
@@ -103,7 +134,7 @@ export async function POST(request: NextRequest) {
 
         // Validate items array
         if (!items || !Array.isArray(items)) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Invalid items: must be an array' },
                 { status: 400 }
             )
@@ -117,7 +148,7 @@ export async function POST(request: NextRequest) {
                 typeof item.quantity !== 'number' ||
                 typeof item.subtotal !== 'number'
             ) {
-                return NextResponse.json(
+                return corsJson(
                     { error: `Invalid item at index ${i}: must have name (string), quantity (number), and subtotal (number)` },
                     { status: 400 }
                 )
@@ -134,7 +165,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (!tenantData) {
-            return NextResponse.json(
+            return corsJson(
                 { error: 'Tenant not found' },
                 { status: 404 }
             )
@@ -149,7 +180,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!tenant.facebook_page_id) {
-            return NextResponse.json({
+            return corsJson({
                 success: false,
                 message: 'No Facebook page connected',
             })
@@ -164,7 +195,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (!pageData) {
-            return NextResponse.json({
+            return corsJson({
                 success: false,
                 message: 'Facebook page not found or inactive',
             })
@@ -177,7 +208,7 @@ export async function POST(request: NextRequest) {
         if (!isPSIDValid) {
             const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
             console.warn(`[Send Cart] ⚠️ PSID ${maskedPsid} not associated with tenant ${tenantId}`)
-            return NextResponse.json(
+            return corsJson(
                 { error: 'PSID not associated with tenant page' },
                 { status: 403 }
             )
@@ -195,17 +226,17 @@ export async function POST(request: NextRequest) {
         if (sent) {
             const maskedPsid = `****${psid.slice(-4)}`
             console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
-            return NextResponse.json({ success: true })
+            return corsJson({ success: true })
         } else {
             console.error(`[Send Cart] ❌ Failed to send cart summary`)
-            return NextResponse.json({
+            return corsJson({
                 success: false,
                 error: 'Failed to send message',
             })
         }
     } catch (error) {
         console.error('[Send Cart] ❌ Error:', error)
-        return NextResponse.json(
+        return corsJson(
             { error: 'Internal server error' },
             { status: 500 }
         )
