@@ -195,10 +195,10 @@ export async function POST(request: NextRequest) {
         }
 
         if (!tenant.facebook_page_id) {
-            return corsJson({
-                success: false,
-                message: 'No Facebook page connected',
-            })
+            return corsJson(
+                { success: false, message: 'No Facebook page connected' },
+                { status: 400 }
+            )
         }
 
         // Get Facebook page access token
@@ -210,10 +210,10 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (!pageData) {
-            return corsJson({
-                success: false,
-                message: 'Facebook page not found or inactive',
-            })
+            return corsJson(
+                { success: false, message: 'Facebook page not found or inactive' },
+                { status: 404 }
+            )
         }
 
         const page = pageData as { page_access_token: string }

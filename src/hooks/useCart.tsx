@@ -260,9 +260,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
 
       // Send to Messenger (fire-and-forget)
-      // Use main domain to avoid subdomain routing issues with webhooks
-      const rootDomain = process.env.NEXT_PUBLIC_APP_URL || 'https://webnegosyo.com'
-      fetch(`${rootDomain}/api/messenger/send-cart`, {
+      // Use relative URL to avoid CORS issues with www/non-www redirects and subdomain routing
+      fetch('/api/messenger/send-cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
