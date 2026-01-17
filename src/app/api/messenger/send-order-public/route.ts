@@ -28,6 +28,12 @@ export async function POST(request: NextRequest) {
     try {
         // Rate limiting check
         const clientIP = getClientIP(request)
+        if (!clientIP) {
+            return NextResponse.json(
+                { error: 'Unable to verify client IP address' },
+                { status: 400 }
+            )
+        }
         const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
 
         if (!rateLimit.allowed) {
@@ -241,7 +247,10 @@ export async function POST(request: NextRequest) {
                 .eq('id', orderId)
 
             if (updateError) {
-                const maskedPsid = `****${storedPsid.slice(-4)}`
+                // Safe masking: only reveal last 4 chars if PSID is longer than 4, otherwise use fixed mask
+                const maskedPsid = storedPsid.length > 4
+                    ? `****${storedPsid.slice(-4)}`
+                    : '********'
                 console.error(`[Send Order Public] ❌ Failed to update order ${orderId} (PSID: ${maskedPsid}) after sending message:`, updateError.message)
                 return NextResponse.json(
                     {

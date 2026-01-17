@@ -3,12 +3,53 @@ import { verifyWebhookSignature, sendMessage, sendMenuCard } from '@/lib/faceboo
 import { createClient } from '@/lib/supabase/server'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 
+// Keywords related to order status/tracking - these BLOCK menu auto-reply
+const ORDER_STATUS_KEYWORDS = [
+  'where is my order', 'order status', 'track order', 'my order',
+  'tracking', 'where is order', 'order update', 'delivery status',
+  'when will my order', 'order location', 'check order'
+]
+
 // Keywords that trigger menu card auto-reply
+// Note: 'order' removed to prevent false positives with order-status queries
 const MENU_KEYWORDS = [
-  'menu', 'product', 'products', 'order', 'item', 'items',
-  'food', 'catalog', 'price', 'prices', 'what do you have',
+  'menu', 'product', 'products', 'i want to order', 'place order', 'new order',
+  'item', 'items', 'food', 'catalog', 'price', 'prices', 'what do you have',
   'what do you sell', 'available', 'offer', 'offerings'
 ]
+
+/**
+ * Create or update a messenger session for PSID-tenant association.
+ * This enables PSID validation for subsequent API calls (e.g., cart sync).
+ */
+async function ensureMessengerSession(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  psid: string,
+  tenantId: string
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('messenger_sessions')
+      .upsert({
+        psid,
+        tenant_id: tenantId,
+        state: 'menu',
+        updated_at: new Date().toISOString(),
+      } as unknown as never, {
+        onConflict: 'psid',
+      })
+
+    if (error) {
+      console.error('[Webhook] Failed to upsert messenger session:', error)
+    } else {
+      const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
+      console.log(`[Webhook] ✅ Messenger session ensured for PSID ${maskedPsid}`)
+    }
+  } catch (error) {
+    console.error('[Webhook] Exception creating messenger session:', error)
+    // Non-critical, continue processing
+  }
+}
 
 /**
  * GET /api/webhook
@@ -310,6 +351,9 @@ export async function POST(request: NextRequest) {
               if (sent) {
                 console.log(`[Webhook] ✅ Order message sent successfully for order: ${orderId} to sender: ${senderId}`)
 
+                // Ensure messenger session exists for PSID-tenant validation
+                await ensureMessengerSession(supabase, senderId, tenant.id)
+
                 // Store PSID for future proactive messaging
                 // This allows us to send messages proactively for returning customers (within 24-hour window)
                 try {
@@ -379,10 +423,12 @@ export async function POST(request: NextRequest) {
             })
 
             // AUTO-REPLY: Check if message contains menu-related keywords
+            // BUT FIRST - check if this is an order status query to prevent false positives
             const lowerMessage = messageText.toLowerCase()
+            const isOrderStatusQuery = ORDER_STATUS_KEYWORDS.some(keyword => lowerMessage.includes(keyword))
             const hasMenuKeyword = MENU_KEYWORDS.some(keyword => lowerMessage.includes(keyword))
 
-            if (hasMenuKeyword) {
+            if (hasMenuKeyword && !isOrderStatusQuery) {
               console.log(`[Webhook] 🍽️ Menu keyword detected in message (length: ${messageText.length})`)
 
               try {
@@ -415,6 +461,8 @@ export async function POST(request: NextRequest) {
 
                     if (sent) {
                       console.log(`[Webhook] ✅ Menu card sent successfully to ${senderId}`)
+                      // Ensure messenger session exists for PSID-tenant validation
+                      await ensureMessengerSession(supabase, senderId, tenant.id)
                       // Don't continue to fallback order matching since we handled the message
                       continue
                     } else {
@@ -572,6 +620,9 @@ export async function POST(request: NextRequest) {
 
                       if (sent) {
                         console.log(`[Webhook] Fallback: ✅ Order message sent successfully for order: ${order.id} to sender: ${senderId}`)
+
+                        // Ensure messenger session exists for PSID-tenant validation
+                        await ensureMessengerSession(supabase, senderId, page.tenant_id)
 
                         // Mark as sent to prevent duplicate sends
                         try {

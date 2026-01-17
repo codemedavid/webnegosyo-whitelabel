@@ -137,15 +137,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setMessengerPsidState(storedPsid)
 
     // Load tenant context from localStorage
-    try {
-      const storedContext = localStorage.getItem(TENANT_CONTEXT_KEY)
-      if (storedContext) {
-        const { tenantId: tid, tenantSlug: ts } = JSON.parse(storedContext)
-        setTenantId(tid)
-        setTenantSlug(ts)
+    if (typeof window !== 'undefined') {
+      try {
+        const storedContext = localStorage.getItem(TENANT_CONTEXT_KEY)
+        if (storedContext) {
+          const { tenantId: tid, tenantSlug: ts } = JSON.parse(storedContext)
+          setTenantId(tid)
+          setTenantSlug(ts)
+        }
+      } catch (error) {
+        console.error('Failed to load tenant context:', error)
       }
-    } catch (error) {
-      console.error('Failed to load tenant context:', error)
     }
 
     setIsInitialized(true)
@@ -183,17 +185,38 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const setTenantContext = useCallback((tid: string, ts: string) => {
     setTenantId(tid)
     setTenantSlug(ts)
-    // Persist to localStorage
-    try {
-      localStorage.setItem(TENANT_CONTEXT_KEY, JSON.stringify({ tenantId: tid, tenantSlug: ts }))
-    } catch (error) {
-      console.error('Failed to save tenant context:', error)
+    // Persist to localStorage (only in browser)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TENANT_CONTEXT_KEY, JSON.stringify({ tenantId: tid, tenantSlug: ts }))
+      } catch (error) {
+        console.error('Failed to save tenant context:', error)
+      }
     }
   }, [])
 
   // Debounced sync to Messenger when cart changes
   useEffect(() => {
+    // Debug log to help diagnose sync issues
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Cart Sync] Checking conditions:', {
+        isInitialized,
+        hasPsid: !!messengerPsid,
+        hasTenantId: !!tenantId,
+        hasTenantSlug: !!tenantSlug,
+        itemCount: items.length,
+      })
+    }
+
     if (!isInitialized || !messengerPsid || !tenantId || !tenantSlug) {
+      if (process.env.NODE_ENV === 'development' && items.length > 0) {
+        console.log('[Cart Sync] ⏭️ Skipping - missing requirements:', {
+          isInitialized,
+          messengerPsid: messengerPsid ? '***' + messengerPsid.slice(-4) : null,
+          tenantId: tenantId || null,
+          tenantSlug: tenantSlug || null,
+        })
+      }
       return
     }
 
@@ -210,8 +233,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearTimeout(syncTimeoutRef.current)
     }
 
+    // Log that we're scheduling a sync
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Cart Sync] 📤 Scheduling Messenger sync in', CART_SYNC_DEBOUNCE_MS, 'ms')
+    }
+
     // Set new timeout for debounced sync
     syncTimeoutRef.current = setTimeout(() => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Cart Sync] 🚀 Sending cart to Messenger...')
+      }
       // Format items for API
       const cartItems = items.map(item => {
         let variation = ''
@@ -239,14 +270,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
           items: cartItems,
         }),
       })
-        .then(response => {
-          if (response.ok) {
-            console.log('[Cart] Synced cart to Messenger')
+        .then(async response => {
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error('[Cart] ❌ Messenger sync failed with status:', response.status, errorText)
+            return
+          }
+
+          const data = await response.json()
+          if (data.success) {
+            console.log('[Cart] ✅ Synced cart to Messenger')
             lastSyncedCart.current = cartHash
+          } else {
+            // API returned 200 but operation failed
+            console.warn('[Cart] ⚠️ Messenger sync returned success=false:', data.message || data.error)
+            // Still update lastSyncedCart to prevent repeated failed attempts
+            // but only if it's a configuration issue, not a transient error
+            if (data.message === 'No Facebook page connected') {
+              lastSyncedCart.current = cartHash
+            }
           }
         })
         .catch(error => {
-          console.error('[Cart] Failed to sync cart to Messenger:', error)
+          console.error('[Cart] ❌ Failed to sync cart to Messenger:', error)
         })
     }, CART_SYNC_DEBOUNCE_MS)
 

@@ -356,8 +356,20 @@ export async function createOrder(
   if (itemsError) throw itemsError
 
   // Generate a short-lived order token for secure public endpoint access
-  const { createOrderToken } = await import('@/lib/order-token')
-  const orderToken = await createOrderToken(orderData.id)
+  // Wrapped in try-catch to prevent token generation failures from affecting the already-saved order
+  let orderToken: string | undefined
+  try {
+    const { createOrderToken } = await import('@/lib/order-token')
+    orderToken = await createOrderToken(orderData.id)
+  } catch (tokenError) {
+    console.error(
+      'Failed to generate order token after order creation:',
+      tokenError instanceof Error ? { message: tokenError.message, stack: tokenError.stack } : tokenError,
+      { orderId: orderData.id, tenantId }
+    )
+    // Order is already saved, so we continue with undefined token
+    // The caller should handle the case where orderToken is undefined
+  }
 
   return { order: orderData as Order, orderToken }
 }

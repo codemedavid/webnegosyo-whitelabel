@@ -82,27 +82,45 @@ export function checkRateLimit(
 
 /**
  * Get client IP from Next.js request
- * Handles various proxy headers
+ * Handles various proxy headers with priority for trusted providers
+ * 
+ * Priority order:
+ * 1. Vercel-specific header (x-vercel-forwarded-for) - most trusted in Vercel environment
+ * 2. Cloudflare header (cf-connecting-ip) - trusted when behind Cloudflare
+ * 3. x-real-ip - commonly set by trusted reverse proxies
+ * 4. x-forwarded-for - generic header, use first IP (client IP)
+ * 
+ * @returns The client IP address, or null if no IP could be determined
  */
-export function getClientIP(request: Request): string {
-    // Try various headers that might contain the real IP
-    const forwardedFor = request.headers.get('x-forwarded-for')
-    if (forwardedFor) {
-        // x-forwarded-for can contain multiple IPs, take the first one
-        return forwardedFor.split(',')[0].trim()
-    }
-
-    const realIP = request.headers.get('x-real-ip')
-    if (realIP) {
-        return realIP
-    }
-
-    // Vercel-specific header
+export function getClientIP(request: Request): string | null {
+    // 1. Vercel-specific header (most trusted in Vercel deployments)
     const vercelIP = request.headers.get('x-vercel-forwarded-for')
     if (vercelIP) {
-        return vercelIP.split(',')[0].trim()
+        const ip = vercelIP.split(',')[0].trim()
+        if (ip) return ip
     }
 
-    // Fallback to a default identifier if no IP found
-    return 'unknown'
+    // 2. Cloudflare header (trusted when using Cloudflare)
+    const cfConnectingIP = request.headers.get('cf-connecting-ip')
+    if (cfConnectingIP) {
+        const ip = cfConnectingIP.trim()
+        if (ip) return ip
+    }
+
+    // 3. x-real-ip (commonly set by nginx and other proxies)
+    const realIP = request.headers.get('x-real-ip')
+    if (realIP) {
+        const ip = realIP.trim()
+        if (ip) return ip
+    }
+
+    // 4. Generic x-forwarded-for (last resort, first IP is client)
+    const forwardedFor = request.headers.get('x-forwarded-for')
+    if (forwardedFor) {
+        const ip = forwardedFor.split(',')[0].trim()
+        if (ip) return ip
+    }
+
+    // No IP could be determined - return null so callers can handle appropriately
+    return null
 }

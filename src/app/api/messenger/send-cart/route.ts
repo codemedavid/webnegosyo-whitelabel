@@ -12,6 +12,38 @@ interface CartItemForSync {
 }
 
 /**
+ * Verify that a PSID is associated with a tenant by checking the messenger_sessions table.
+ * This ensures we only send messages to users who have an existing session with the tenant.
+ * 
+ * @param supabase - Supabase client instance
+ * @param psid - The Page-Scoped ID of the user
+ * @param tenantId - The tenant ID to verify against
+ * @returns true if the PSID has an existing session with the tenant, false otherwise
+ */
+async function verifyPSIDForTenant(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    psid: string,
+    tenantId: string
+): Promise<boolean> {
+    try {
+        const { data, error } = await supabase
+            .from('messenger_sessions')
+            .select('id')
+            .eq('psid', psid)
+            .eq('tenant_id', tenantId)
+            .single()
+
+        if (error || !data) {
+            return false
+        }
+
+        return true
+    } catch {
+        return false
+    }
+}
+
+/**
  * POST /api/messenger/send-cart
  * 
  * Public endpoint for sending cart summary to Messenger
@@ -21,6 +53,12 @@ export async function POST(request: NextRequest) {
     try {
         // Rate limiting - 20 requests per minute per IP
         const clientIP = getClientIP(request)
+        if (!clientIP) {
+            return NextResponse.json(
+                { error: 'Unable to verify client IP address' },
+                { status: 400 }
+            )
+        }
         const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
 
         if (!rateLimit.allowed) {
@@ -133,6 +171,17 @@ export async function POST(request: NextRequest) {
         }
 
         const page = pageData as { page_access_token: string }
+
+        // Verify PSID is associated with this tenant before sending message
+        const isPSIDValid = await verifyPSIDForTenant(supabase, psid, tenantId)
+        if (!isPSIDValid) {
+            const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
+            console.warn(`[Send Cart] ⚠️ PSID ${maskedPsid} not associated with tenant ${tenantId}`)
+            return NextResponse.json(
+                { error: 'PSID not associated with tenant page' },
+                { status: 403 }
+            )
+        }
 
         // Format cart summary message
         const message = formatCartSummary(items, tenant.name, sanitizedTenantSlug || tenant.slug)
