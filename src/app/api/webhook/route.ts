@@ -192,9 +192,68 @@ export async function POST(request: NextRequest) {
           postbackReferralRef: event.postback?.referral?.ref,
         })
 
-        // Skip echo messages (sent by our bot)
+        // Handle echo messages (messages sent by admin/bot)
+        // When admin types menu keywords, send menu card to the customer
         if (event.message?.is_echo) {
-          console.log(`[Webhook] Skipping echo message from sender: ${senderId}`)
+          const echoText = event.message.text || ''
+          const lowerEchoText = echoText.toLowerCase()
+
+          // Check for menu keywords (both natural keywords and command format like /menu or !menu)
+          const hasMenuKeyword = MENU_KEYWORDS.some(keyword => lowerEchoText.includes(keyword))
+          const hasMenuCommand = /^[\/!](menu|products?|catalog|order)/.test(lowerEchoText.trim())
+
+          if (hasMenuKeyword || hasMenuCommand) {
+            console.log(`[Webhook] 🍽️ Admin triggered menu card via echo (keyword: ${hasMenuKeyword}, command: ${hasMenuCommand})`)
+
+            try {
+              const supabase = await createClient()
+              const pageId = entry.id
+              // In echo messages, recipient.id is the customer's PSID
+              const customerPsid = event.recipient.id
+
+              // Find tenant by page ID
+              const { data: pageData } = await supabase
+                .from('facebook_pages')
+                .select('tenant_id, page_access_token')
+                .eq('page_id', pageId)
+                .eq('is_active', true)
+                .single()
+
+              const page = pageData as { tenant_id: string; page_access_token: string } | null
+
+              if (page) {
+                // Get tenant details for the menu card
+                const { data: tenantData } = await supabase
+                  .from('tenants')
+                  .select('id, name, slug, logo_url, domain')
+                  .eq('id', page.tenant_id)
+                  .single()
+
+                const tenant = tenantData as { id: string; name: string; slug: string; logo_url?: string | null; domain?: string | null } | null
+
+                if (tenant) {
+                  console.log(`[Webhook] Sending menu card to customer ${customerPsid} for tenant: ${tenant.name}`)
+                  const sent = await sendMenuCard(customerPsid, page.page_access_token, tenant)
+
+                  if (sent) {
+                    console.log(`[Webhook] ✅ Admin-triggered menu card sent successfully to ${customerPsid}`)
+                  } else {
+                    console.error(`[Webhook] ❌ Failed to send admin-triggered menu card to ${customerPsid}`)
+                  }
+                } else {
+                  console.warn(`[Webhook] Tenant not found for page: ${pageId}`)
+                }
+              } else {
+                console.warn(`[Webhook] No active Facebook page found for page ID: ${pageId}`)
+              }
+            } catch (error) {
+              console.error(`[Webhook] Error in admin menu trigger:`, error)
+            }
+          } else {
+            console.log(`[Webhook] Skipping non-menu echo message from sender: ${senderId}`)
+          }
+
+          // Always continue after processing echo - don't fall through to customer message handling
           continue
         }
 
