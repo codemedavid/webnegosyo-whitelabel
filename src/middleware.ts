@@ -24,6 +24,11 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
+  // Skip all middleware processing for Messenger API routes (CORS preflight requests)
+  if (pathname.startsWith('/api/messenger')) {
+    return supabaseResponse
+  }
+
   // Skip tenant resolution for superadmin routes
   const isSuperAdminRoute = pathname.startsWith('/superadmin')
 

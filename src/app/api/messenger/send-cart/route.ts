@@ -104,7 +104,22 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const body = await request.json()
+        // Parse JSON body with explicit error handling for malformed JSON
+        let body: Record<string, unknown>
+        try {
+            body = await request.json()
+        } catch (parseError) {
+            const isSyntaxError = parseError instanceof SyntaxError ||
+                (parseError && typeof parseError === 'object' && 'name' in parseError && parseError.name === 'SyntaxError')
+            if (isSyntaxError) {
+                return corsJson(
+                    { error: 'Invalid JSON in request body' },
+                    { status: 400 }
+                )
+            }
+            throw parseError // Re-throw non-JSON errors for outer catch
+        }
+
         const { tenantId, psid, items, tenantSlug } = body as {
             tenantId: string
             psid: string
@@ -224,7 +239,7 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            const maskedPsid = `****${psid.slice(-4)}`
+            const maskedPsid = psid.length > 4 ? `****${psid.slice(-4)}` : '********'
             console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
             return corsJson({ success: true })
         } else {
