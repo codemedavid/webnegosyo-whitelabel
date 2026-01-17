@@ -120,10 +120,12 @@ export async function subscribePageToWebhook(
   try {
     // Explicitly subscribe to all required webhook fields
     // messaging_referrals is CRITICAL for receiving ref parameter events
+    // message_echoes enables admin-triggered menu cards
     const subscribedFields = [
       'messages',              // Regular messages from users
       'messaging_postbacks',   // Button clicks, quick replies
       'messaging_referrals',   // Referral events (when user clicks link with ref parameter)
+      'message_echoes',        // Echo events (when admin/page sends a message)
     ].join(',')
 
     const url = `${FACEBOOK_GRAPH_API}/${pageId}/subscribed_apps?` +
@@ -194,7 +196,7 @@ export async function verifyPageWebhookSubscription(
     const subscription = data.data?.find((sub) => sub.id === appId)
 
     if (subscription) {
-      const requiredFields = ['messages', 'messaging_postbacks', 'messaging_referrals']
+      const requiredFields = ['messages', 'messaging_postbacks', 'messaging_referrals', 'message_echoes']
       const hasAllFields = requiredFields.every((field) =>
         subscription.subscribed_fields.includes(field)
       )
