@@ -141,12 +141,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
       try {
         const storedContext = localStorage.getItem(TENANT_CONTEXT_KEY)
         if (storedContext) {
-          const { tenantId: tid, tenantSlug: ts } = JSON.parse(storedContext)
-          setTenantId(tid)
-          setTenantSlug(ts)
+          const parsed = JSON.parse(storedContext)
+          // Validate parsed values are non-empty strings before setting state
+          const tid = parsed?.tenantId
+          const ts = parsed?.tenantSlug
+          if (typeof tid === 'string' && tid.trim() !== '' &&
+            typeof ts === 'string' && ts.trim() !== '') {
+            setTenantId(tid)
+            setTenantSlug(ts)
+          } else {
+            // Invalid or corrupted data - clear the key and log warning
+            console.warn('[useCart] Invalid tenant context in localStorage, clearing:', { tenantId: tid, tenantSlug: ts })
+            localStorage.removeItem(TENANT_CONTEXT_KEY)
+          }
         }
       } catch (error) {
         console.error('Failed to load tenant context:', error)
+        // Clear potentially corrupted data
+        try {
+          localStorage.removeItem(TENANT_CONTEXT_KEY)
+        } catch {
+          // Ignore removal errors
+        }
       }
     }
 
