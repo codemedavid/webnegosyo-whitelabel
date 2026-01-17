@@ -313,7 +313,8 @@ export async function sendMenuCard(
   const websiteUrl = `${baseUrl}?psid=${encodeURIComponent(psid)}`
 
   // Use a default image if no logo is set
-  const imageUrl = tenant.logo_url || `https://${rootDomain}/default-menu-card.png`
+  // Fallback to a reliable placeholder image (Facebook requires a valid, accessible image URL)
+  const imageUrl = tenant.logo_url || 'https://placehold.co/600x400/3b82f6/white?text=View+Menu'
 
   const payload = {
     recipient: { id: psid },
@@ -330,13 +331,16 @@ export async function sendMenuCard(
               default_action: {
                 type: 'web_url',
                 url: websiteUrl,
+                messenger_extensions: false,
                 webview_height_ratio: 'tall',
               },
               buttons: [
                 {
                   type: 'web_url',
                   url: websiteUrl,
-                  title: 'View Menu',
+                  title: 'View Menu 🛒',
+                  messenger_extensions: false,
+                  webview_height_ratio: 'tall',
                 },
               ],
             },
@@ -347,6 +351,14 @@ export async function sendMenuCard(
   }
 
   try {
+    // Log payload structure for debugging (without sensitive data)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Facebook API] Sending menu card payload:', JSON.stringify({
+        recipient: { id: '***' },
+        message: payload.message,
+      }, null, 2))
+    }
+
     const response = await fetch(
       `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
       {
@@ -358,15 +370,47 @@ export async function sendMenuCard(
       }
     )
 
+    const responseText = await response.text()
+
     if (!response.ok) {
-      const error = await response.text()
-      console.error(`[Facebook API] Failed to send menu card: ${error}`)
+      console.error(`[Facebook API] Failed to send menu card (HTTP ${response.status}): ${responseText}`)
+      // Try to parse error for more details
+      try {
+        const errorData = JSON.parse(responseText)
+        console.error(`[Facebook API] Error details:`, {
+          code: errorData.error?.code,
+          type: errorData.error?.type,
+          message: errorData.error?.message,
+          fbtrace_id: errorData.error?.fbtrace_id,
+        })
+      } catch {
+        // Response wasn't JSON, already logged above
+      }
       return false
     }
 
-    const data = (await response.json()) as { recipient_id?: string; message_id?: string }
-    console.log(`[Facebook API] ✅ Menu card sent successfully to ${psid}`)
-    return !!data.message_id
+    // Parse successful response
+    let data: { recipient_id?: string; message_id?: string }
+    try {
+      data = JSON.parse(responseText)
+    } catch {
+      console.error('[Facebook API] Failed to parse success response:', responseText)
+      return false
+    }
+
+    if (data.message_id) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Facebook API] ✅ Menu card sent successfully to ${psid}, message_id: ${data.message_id}`)
+      } else {
+        // Mask PSID in production: show only last 4 characters
+        const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
+        console.log(`[Facebook API] ✅ Menu card sent successfully to ${maskedPsid}`)
+      }
+      return true
+    } else {
+      console.warn(`[Facebook API] ⚠️ Menu card API returned OK but no message_id:`, data)
+      return false
+    }
   } catch (error) {
     console.error(`[Facebook API] Exception sending menu card:`, error)
     return false
