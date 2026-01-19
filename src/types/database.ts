@@ -45,6 +45,7 @@ export interface Tenant {
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   messenger_page_id: string;
   messenger_username?: string;
+  messenger_redirect_mode?: 'webhook' | 'direct'; // 'webhook' = m.me with ref+text, 'direct' = messenger.com/t/
   facebook_page_id?: string; // Reference to facebook_pages table
   is_active: boolean;
   mapbox_enabled: boolean;

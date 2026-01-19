@@ -47,6 +47,7 @@ interface TenantFormData {
   shadow_color: string
   messenger_page_id: string
   messenger_username: string
+  messenger_redirect_mode: 'webhook' | 'direct'
   is_active: boolean
   mapbox_enabled: boolean
   enable_order_management: boolean
@@ -66,13 +67,13 @@ interface TenantFormData {
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
 
 // Memoized color input component to prevent unnecessary re-renders
-function ColorInput({ 
-  id, 
-  label, 
-  value, 
-  onChange, 
-  placeholder, 
-  disabled 
+function ColorInput({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled
 }: {
   id: string
   label: string
@@ -105,10 +106,10 @@ function ColorInput({
 }
 
 // Basic information form section
-function BasicInfoSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function BasicInfoSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -201,10 +202,10 @@ function BasicInfoSection({
 }
 
 // Branding form section
-function BrandingSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function BrandingSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -248,10 +249,10 @@ function BrandingSection({
 }
 
 // Extended branding form section
-function ExtendedBrandingSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function ExtendedBrandingSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -417,10 +418,10 @@ function ExtendedBrandingSection({
 }
 
 // Messenger integration form section
-function MessengerSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function MessengerSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -462,11 +463,65 @@ function MessengerSection({
   )
 }
 
+// Messenger Redirect Mode Section
+function MessengerModeSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Messenger Redirect Mode</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="messenger_redirect_mode">Choose how customers are redirected to Messenger:</Label>
+          <select
+            id="messenger_redirect_mode"
+            value={formData.messenger_redirect_mode}
+            onChange={(e) => setFormData({
+              ...formData,
+              messenger_redirect_mode: e.target.value as 'webhook' | 'direct'
+            })}
+            disabled={isPending}
+            className="w-full h-10 px-3 rounded-md border border-input bg-background"
+          >
+            <option value="webhook">Webhook Mode (Recommended)</option>
+            <option value="direct">Direct Mode</option>
+          </select>
+        </div>
+
+        {formData.messenger_redirect_mode === 'webhook' ? (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Webhook Mode:</strong> Uses m.me links with ref parameter for tracking.
+              Orders are automatically sent to the customer&apos;s Messenger via webhook.
+              Requires Facebook page connection for best results.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+            <p className="text-sm text-amber-800">
+              <strong>Direct Mode:</strong> Opens Messenger directly (messenger.com/t/).
+              Simpler but no webhook tracking - message is pre-filled for customer to send manually.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Mapbox Settings Section
-function MapboxSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function MapboxSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -505,10 +560,10 @@ function MapboxSection({
 }
 
 // Order Management Settings Section
-function OrderManagementSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function OrderManagementSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -537,7 +592,7 @@ function OrderManagementSection({
         {!formData.enable_order_management && (
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> When disabled, orders will only redirect to Messenger without being saved to the database. 
+              <strong>Note:</strong> When disabled, orders will only redirect to Messenger without being saved to the database.
               Order management features in the admin panel will not be available.
             </p>
           </div>
@@ -548,10 +603,10 @@ function OrderManagementSection({
 }
 
 // Restaurant Address Section (for Lalamove pickup)
-function RestaurantAddressSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function RestaurantAddressSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -583,7 +638,7 @@ function RestaurantAddressSection({
             mapboxEnabled={true}
           />
         </div>
-        
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="restaurant_latitude">Latitude *</Label>
@@ -597,7 +652,7 @@ function RestaurantAddressSection({
               disabled={isPending}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="restaurant_longitude">Longitude *</Label>
             <Input
@@ -611,7 +666,7 @@ function RestaurantAddressSection({
             />
           </div>
         </div>
-        
+
         <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
           <p className="text-sm text-blue-800">
             <strong>Tip:</strong> Use the map picker above to automatically fill in coordinates, or use Google Maps to find your restaurant coordinates manually.
@@ -623,10 +678,10 @@ function RestaurantAddressSection({
 }
 
 // Lalamove Delivery Configuration Section
-function LalamoveSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function LalamoveSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -656,7 +711,7 @@ function LalamoveSection({
         {formData.lalamove_enabled && (
           <>
             <Separator />
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="lalamove_api_key">API Key *</Label>
@@ -745,7 +800,7 @@ function LalamoveSection({
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  
+
   const [formData, setFormData] = useState<TenantFormData>({
     name: tenant?.name || '',
     slug: tenant?.slug || '',
@@ -775,6 +830,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     shadow_color: tenant?.shadow_color || '',
     messenger_page_id: tenant?.messenger_page_id || '',
     messenger_username: tenant?.messenger_username || '',
+    messenger_redirect_mode: tenant?.messenger_redirect_mode || 'webhook',
     is_active: tenant?.is_active ?? true,
     mapbox_enabled: tenant?.mapbox_enabled ?? true,
     enable_order_management: tenant?.enable_order_management ?? true,
@@ -793,7 +849,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const input = {
       name: formData.name,
       slug: formData.slug,
@@ -823,6 +879,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       shadow_color: formData.shadow_color || undefined,
       messenger_page_id: formData.messenger_page_id,
       messenger_username: formData.messenger_username || undefined,
+      messenger_redirect_mode: formData.messenger_redirect_mode,
       is_active: formData.is_active,
       mapbox_enabled: formData.mapbox_enabled,
       enable_order_management: formData.enable_order_management,
@@ -872,52 +929,58 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <BasicInfoSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
-      />
-      
-      <BrandingSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
-      />
-      
-      <ExtendedBrandingSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
-      />
-      
-      <MessengerSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <BasicInfoSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
-      <MapboxSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <BrandingSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
-      <OrderManagementSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <ExtendedBrandingSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
-      <RestaurantAddressSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <MessengerSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
-      <LalamoveSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <MessengerModeSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <MapboxSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <OrderManagementSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <RestaurantAddressSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <LalamoveSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
       <div className="flex justify-end gap-2">

@@ -36,7 +36,7 @@ const CART_STORAGE_KEY = 'restaurant_cart'
 const ORDER_TYPE_STORAGE_KEY = 'restaurant_order_type'
 const MESSENGER_PSID_KEY = 'messenger_psid'
 const TENANT_CONTEXT_KEY = 'tenant_context'
-const CART_SYNC_DEBOUNCE_MS = 3000 // 3 seconds debounce for Messenger sync
+const CART_SYNC_DEBOUNCE_MS = 5000 // 5 seconds debounce for Messenger sync after last change
 
 // Helper functions for localStorage
 function loadCartFromStorage(): CartItem[] {

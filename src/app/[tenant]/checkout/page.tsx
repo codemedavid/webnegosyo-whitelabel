@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerCombinedUrl } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerCombinedUrl, generateMessengerDirectUrl } from '@/lib/cart-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
@@ -497,8 +497,16 @@ export default function CheckoutPage() {
 
       let messengerUrl: string | null = null
 
-      if (isFacebookPageConnected) {
-        // Use combined URL with both ref and text parameters
+      // Check if admin has explicitly set direct mode
+      const useDirectMode = tenant.messenger_redirect_mode === 'direct'
+
+      if (useDirectMode) {
+        // Direct mode: use messenger.com/t/ URL with pre-filled message
+        // This opens Messenger directly without webhook/ref tracking
+        console.log('[Checkout] Using direct mode (messenger.com/t/)')
+        messengerUrl = generateMessengerDirectUrl(pageId, message)
+      } else if (isFacebookPageConnected) {
+        // Webhook mode with Facebook page: use combined ref+text URL
         // This ensures:
         // - Existing users (with PSID): Webhook can send message via ref, user also sees pre-filled text
         // - New users (no PSID): User sees pre-filled text message, ref helps track when they first message
@@ -513,7 +521,7 @@ export default function CheckoutPage() {
           messengerUrl = generateMessengerUrl(pageId, message)
         }
       } else {
-        // Facebook page not connected, use text-only URL
+        // Webhook mode without Facebook page connected: use text-only URL
         messengerUrl = generateMessengerUrl(pageId, message)
       }
 
@@ -527,11 +535,12 @@ export default function CheckoutPage() {
 
       console.log('[Checkout] Generated Messenger URL:', messengerUrl.substring(0, 100) + '...')
 
-      // Attempt proactive message sending (only for ref-based URLs with order ID)
+      // Attempt proactive message sending (only for webhook mode with ref-based URLs and order ID)
       // This sends the message immediately without requiring user interaction
       // Only works if Facebook page is connected and order was created
       // Note: This is optional - if it fails, the webhook will handle it when user clicks the link
-      if (isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
+      // Skip this entirely in direct mode since webhook won't be triggered
+      if (!useDirectMode && isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
         // Use a fire-and-forget approach - don't await, just start the request
         // This ensures redirect happens immediately regardless of API response
         // Use public endpoint that doesn't require auth - secured by order token
