@@ -504,7 +504,7 @@ export default function CheckoutPage() {
         // Direct mode: use messenger.com/t/ URL with pre-filled message
         // This opens Messenger directly without webhook/ref tracking
         console.log('[Checkout] Using direct mode (messenger.com/t/)')
-        messengerUrl = generateMessengerDirectUrl(pageId, message)
+        messengerUrl = generateMessengerDirectUrl(pageId)
       } else if (isFacebookPageConnected) {
         // Webhook mode with Facebook page: use combined ref+text URL
         // This ensures:

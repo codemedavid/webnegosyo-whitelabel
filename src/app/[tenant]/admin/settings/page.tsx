@@ -10,6 +10,7 @@ import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
 import { Separator } from '@/components/ui/separator'
 import { ResetButton } from '@/components/admin/reset-button'
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
+import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 
 export default async function SettingsPage({
   params,
@@ -17,7 +18,7 @@ export default async function SettingsPage({
   params: Promise<{ tenant: string }>
 }) {
   const { tenant: tenantSlug } = await params
-  
+
   const tenantData = await getTenantBySlug(tenantSlug)
 
   if (!tenantData) {
@@ -122,21 +123,21 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="primary_color" 
-                  label="Primary Color" 
+                <ColorPicker
+                  id="primary_color"
+                  label="Primary Color"
                   value={tenant.primary_color}
                   description="Main brand color"
                 />
-                <ColorPicker 
-                  id="secondary_color" 
-                  label="Secondary Color" 
+                <ColorPicker
+                  id="secondary_color"
+                  label="Secondary Color"
                   value={tenant.secondary_color}
                   description="Secondary brand color"
                 />
-                <ColorPicker 
-                  id="accent_color" 
-                  label="Accent Color" 
+                <ColorPicker
+                  id="accent_color"
+                  label="Accent Color"
                   value={tenant.accent_color || ''}
                   description="Highlight color"
                 />
@@ -151,27 +152,27 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="background_color" 
-                  label="Page Background" 
+                <ColorPicker
+                  id="background_color"
+                  label="Page Background"
                   value={tenant.background_color || ''}
                   description="Main page background"
                 />
-                <ColorPicker 
-                  id="header_color" 
-                  label="Header Background" 
+                <ColorPicker
+                  id="header_color"
+                  label="Header Background"
                   value={tenant.header_color || ''}
                   description="Top navigation bar"
                 />
-                <ColorPicker 
-                  id="header_font_color" 
-                  label="Header Text" 
+                <ColorPicker
+                  id="header_font_color"
+                  label="Header Text"
                   value={tenant.header_font_color || ''}
                   description="Text in header"
                 />
-                <ColorPicker 
-                  id="border_color" 
-                  label="Borders" 
+                <ColorPicker
+                  id="border_color"
+                  label="Borders"
                   value={tenant.border_color || ''}
                   description="General borders"
                 />
@@ -186,33 +187,33 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="cards_color" 
-                  label="Card Background" 
+                <ColorPicker
+                  id="cards_color"
+                  label="Card Background"
                   value={tenant.cards_color || ''}
                   description="Card background color"
                 />
-                <ColorPicker 
-                  id="cards_border_color" 
-                  label="Card Border" 
+                <ColorPicker
+                  id="cards_border_color"
+                  label="Card Border"
                   value={tenant.cards_border_color || ''}
                   description="Card outline color"
                 />
-                <ColorPicker 
-                  id="card_title_color" 
-                  label="Card Title" 
+                <ColorPicker
+                  id="card_title_color"
+                  label="Card Title"
                   value={tenant.card_title_color || ''}
                   description="Item name on cards"
                 />
-                <ColorPicker 
-                  id="card_price_color" 
-                  label="Card Price" 
+                <ColorPicker
+                  id="card_price_color"
+                  label="Card Price"
                   value={tenant.card_price_color || ''}
                   description="Price on cards"
                 />
-                <ColorPicker 
-                  id="card_description_color" 
-                  label="Card Description" 
+                <ColorPicker
+                  id="card_description_color"
+                  label="Card Description"
                   value={tenant.card_description_color || ''}
                   description="Description text"
                 />
@@ -227,27 +228,27 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="modal_background_color" 
-                  label="Modal Background" 
+                <ColorPicker
+                  id="modal_background_color"
+                  label="Modal Background"
                   value={tenant.modal_background_color || ''}
                   description="Modal popup background"
                 />
-                <ColorPicker 
-                  id="modal_title_color" 
-                  label="Modal Title" 
+                <ColorPicker
+                  id="modal_title_color"
+                  label="Modal Title"
                   value={tenant.modal_title_color || ''}
                   description="Item name in modal"
                 />
-                <ColorPicker 
-                  id="modal_price_color" 
-                  label="Modal Price" 
+                <ColorPicker
+                  id="modal_price_color"
+                  label="Modal Price"
                   value={tenant.modal_price_color || ''}
                   description="Price in modal"
                 />
-                <ColorPicker 
-                  id="modal_description_color" 
-                  label="Modal Description" 
+                <ColorPicker
+                  id="modal_description_color"
+                  label="Modal Description"
                   value={tenant.modal_description_color || ''}
                   description="Description in modal"
                 />
@@ -262,27 +263,27 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="button_primary_color" 
-                  label="Primary Button" 
+                <ColorPicker
+                  id="button_primary_color"
+                  label="Primary Button"
                   value={tenant.button_primary_color || ''}
                   description="Main action buttons"
                 />
-                <ColorPicker 
-                  id="button_primary_text_color" 
-                  label="Primary Button Text" 
+                <ColorPicker
+                  id="button_primary_text_color"
+                  label="Primary Button Text"
                   value={tenant.button_primary_text_color || ''}
                   description="Text on primary buttons"
                 />
-                <ColorPicker 
-                  id="button_secondary_color" 
-                  label="Secondary Button" 
+                <ColorPicker
+                  id="button_secondary_color"
+                  label="Secondary Button"
                   value={tenant.button_secondary_color || ''}
                   description="Secondary actions"
                 />
-                <ColorPicker 
-                  id="button_secondary_text_color" 
-                  label="Secondary Button Text" 
+                <ColorPicker
+                  id="button_secondary_text_color"
+                  label="Secondary Button Text"
                   value={tenant.button_secondary_text_color || ''}
                   description="Text on secondary buttons"
                 />
@@ -297,21 +298,21 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="text_primary_color" 
-                  label="Primary Text" 
+                <ColorPicker
+                  id="text_primary_color"
+                  label="Primary Text"
                   value={tenant.text_primary_color || ''}
                   description="Main content text"
                 />
-                <ColorPicker 
-                  id="text_secondary_color" 
-                  label="Secondary Text" 
+                <ColorPicker
+                  id="text_secondary_color"
+                  label="Secondary Text"
                   value={tenant.text_secondary_color || ''}
                   description="Less prominent text"
                 />
-                <ColorPicker 
-                  id="text_muted_color" 
-                  label="Muted Text" 
+                <ColorPicker
+                  id="text_muted_color"
+                  label="Muted Text"
                   value={tenant.text_muted_color || ''}
                   description="Subtle, disabled text"
                 />
@@ -326,27 +327,27 @@ export default async function SettingsPage({
               </div>
               <Separator />
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker 
-                  id="success_color" 
-                  label="Success" 
+                <ColorPicker
+                  id="success_color"
+                  label="Success"
                   value={tenant.success_color || ''}
                   description="Success messages"
                 />
-                <ColorPicker 
-                  id="warning_color" 
-                  label="Warning" 
+                <ColorPicker
+                  id="warning_color"
+                  label="Warning"
                   value={tenant.warning_color || ''}
                   description="Warning messages"
                 />
-                <ColorPicker 
-                  id="error_color" 
-                  label="Error" 
+                <ColorPicker
+                  id="error_color"
+                  label="Error"
                   value={tenant.error_color || ''}
                   description="Error messages"
                 />
-                <ColorPicker 
-                  id="link_color" 
-                  label="Links" 
+                <ColorPicker
+                  id="link_color"
+                  label="Links"
                   value={tenant.link_color || ''}
                   description="Clickable links"
                 />
@@ -363,12 +364,12 @@ export default async function SettingsPage({
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2 lg:col-span-3">
                   <Label htmlFor="shadow_color">Shadow Color (rgba format allowed)</Label>
-                  <Input 
-                    id="shadow_color" 
-                    name="shadow_color" 
-                    defaultValue={tenant.shadow_color || ''} 
-                    type="text" 
-                    className="font-mono text-sm" 
+                  <Input
+                    id="shadow_color"
+                    name="shadow_color"
+                    defaultValue={tenant.shadow_color || ''}
+                    type="text"
+                    className="font-mono text-sm"
                     placeholder="rgba(0, 0, 0, 0.1)"
                   />
                   <p className="text-xs text-muted-foreground">Example: rgba(0, 0, 0, 0.1)</p>
@@ -389,6 +390,12 @@ export default async function SettingsPage({
       {/* Facebook Messenger Integration */}
       <FacebookConnectionCard tenant={tenant} />
 
+      {/* Messenger Redirect Mode */}
+      <MessengerModeCard
+        tenantId={tenant.id}
+        currentMode={tenant.messenger_redirect_mode || 'webhook'}
+      />
+
       {/* Account */}
       <Card>
         <CardHeader>
@@ -406,12 +413,12 @@ export default async function SettingsPage({
 }
 
 // Reusable ColorPicker component
-function ColorPicker({ 
-  id, 
-  label, 
-  value, 
-  description 
-}: { 
+function ColorPicker({
+  id,
+  label,
+  value,
+  description
+}: {
   id: string
   label: string
   value: string
@@ -421,18 +428,18 @@ function ColorPicker({
     <div className="space-y-2">
       <Label htmlFor={id} className="font-medium">{label}</Label>
       <div className="flex items-center gap-3">
-        <Input 
-          id={id} 
-          name={id} 
-          defaultValue={value} 
-          type="color" 
-          className="h-11 w-14 p-1 border rounded-md cursor-pointer" 
+        <Input
+          id={id}
+          name={id}
+          defaultValue={value}
+          type="color"
+          className="h-11 w-14 p-1 border rounded-md cursor-pointer"
         />
         <div className="flex-1">
-          <Input 
-            value={value} 
-            readOnly 
-            className="font-mono text-sm bg-muted/50" 
+          <Input
+            value={value}
+            readOnly
+            className="font-mono text-sm bg-muted/50"
           />
         </div>
       </div>

@@ -332,7 +332,6 @@ export async function sendMenuCard(
                 type: 'web_url',
                 url: websiteUrl,
                 messenger_extensions: false,
-                webview_height_ratio: 'tall',
               },
               buttons: [
                 {
@@ -340,7 +339,6 @@ export async function sendMenuCard(
                   url: websiteUrl,
                   title: '🛒 View Items Now',
                   messenger_extensions: false,
-                  webview_height_ratio: 'tall',
                 },
               ],
             },

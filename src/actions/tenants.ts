@@ -335,3 +335,42 @@ export async function updateTenantBrandingForAdminAction(tenantId: string, input
   return { success: true }
 }
 
+/**
+ * Allow tenant admins to update messenger redirect mode for their own tenant
+ */
+export async function updateTenantMessengerModeAction(
+  tenantId: string,
+  mode: 'webhook' | 'direct'
+) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  // Validate mode
+  if (mode !== 'webhook' && mode !== 'direct') {
+    return { error: 'Invalid mode. Must be "webhook" or "direct".' }
+  }
+
+  const { data, error } = await supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update({ messenger_redirect_mode: mode } as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Revalidate relevant paths
+  revalidatePath(`/superadmin/tenants/${tenantId}`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+  }
+
+  return { success: true, mode }
+}

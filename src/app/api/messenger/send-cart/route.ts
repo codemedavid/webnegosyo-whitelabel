@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            const maskedPsid = psid.length > 4 ? `****${psid.slice(-4)}` : '********'
+            const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
             console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
             return corsJson({ success: true })
         } else {

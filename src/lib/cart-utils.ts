@@ -308,41 +308,24 @@ export function generateMessengerCombinedUrl(
 }
 
 /**
- * Generate a direct messenger URL (messenger.com/t/{pageId}?text=...)
+ * Generate a direct messenger conversation URL (messenger.com/t/{pageId})
  * Used when admin prefers simple redirect without webhook/ref tracking
  * 
  * This opens Messenger directly without triggering webhook events.
- * The message is pre-filled for the customer to send manually.
+ * Note: messenger.com/t links do NOT support pre-filled messages via ?text parameter.
+ * If message pre-fill is needed, consider using m.me links or displaying the message
+ * on the webpage for users to copy, or use webhook-based integration with ?ref parameter.
  * 
  * @param pageIdOrUsername - Facebook Page ID or username
- * @param message - Optional message to pre-fill (will be truncated if too long)
- * @returns Messenger URL with optional text parameter, or null if pageIdOrUsername is invalid
+ * @returns Direct messenger conversation URL, or null if pageIdOrUsername is invalid
  */
 export function generateMessengerDirectUrl(
-  pageIdOrUsername: string | null | undefined,
-  message?: string
+  pageIdOrUsername: string | null | undefined
 ): string | null {
   // Validate input
   if (!pageIdOrUsername || pageIdOrUsername.trim() === '') {
     return null
   }
 
-  const baseUrl = `https://www.messenger.com/t/${pageIdOrUsername.trim()}`
-
-  if (message) {
-    // Facebook Messenger URL limit is approximately 2000 characters
-    // Base URL: ~35 chars, leaving ~1900 for encoded message
-    const MAX_MESSAGE_LENGTH = 600 // Conservative limit
-
-    // Truncate message if too long
-    let truncatedMessage = message
-    if (message.length > MAX_MESSAGE_LENGTH) {
-      truncatedMessage = message.substring(0, MAX_MESSAGE_LENGTH - 3) + '...'
-    }
-
-    const encodedMessage = encodeURIComponent(truncatedMessage)
-    return `${baseUrl}?text=${encodedMessage}`
-  }
-
-  return baseUrl
+  return `https://www.messenger.com/t/${pageIdOrUsername.trim()}`
 }
