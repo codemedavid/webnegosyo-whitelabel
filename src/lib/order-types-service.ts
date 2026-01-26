@@ -16,6 +16,7 @@ export const orderTypeSchema = z.object({
   type: z.enum(['dine_in', 'pickup', 'delivery']),
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
+  note: z.string().optional(),
   is_enabled: z.boolean(),
   order_index: z.number().int().min(0),
 })

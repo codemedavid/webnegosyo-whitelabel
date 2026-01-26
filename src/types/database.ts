@@ -204,6 +204,7 @@ export interface OrderType {
   type: 'dine_in' | 'pickup' | 'delivery';
   name: string;
   description?: string;
+  note?: string;
   is_enabled: boolean;
   order_index: number;
   created_at: string;

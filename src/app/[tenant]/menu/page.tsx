@@ -469,7 +469,10 @@ export default function MenuPage() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onItemSelect={(item: MenuItem) => {
-            const hasCustomizations = item.variations.length > 0 || item.addons.length > 0
+            const hasCustomizations =
+              item.variations.length > 0 ||
+              (item.variation_types && item.variation_types.length > 0) ||
+              item.addons.length > 0
             if (!hasCustomizations) {
               addItem(
                 item,

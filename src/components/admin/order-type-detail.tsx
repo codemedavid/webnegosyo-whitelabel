@@ -71,6 +71,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
   const [formData, setFormData] = useState({
     name: orderType.name,
     description: orderType.description || '',
+    note: orderType.note || '',
     is_enabled: orderType.is_enabled,
   })
 
@@ -89,6 +90,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           type: orderType.type,
           name: formData.name,
           description: formData.description || undefined,
+          note: formData.note || undefined,
           is_enabled: formData.is_enabled,
           order_index: orderType.order_index,
         }
@@ -208,8 +210,22 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Brief description shown to customers"
-                rows={3}
+                rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="note">Note <span className="text-xs text-muted-foreground font-normal">(optional)</span></Label>
+              <Textarea
+                id="note"
+                value={formData.note}
+                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                placeholder="e.g., Additional ₱30 box charge applies"
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">
+                Policy note shown to customers (e.g., extra charges, special instructions)
+              </p>
             </div>
 
             <div className="flex items-center justify-between">

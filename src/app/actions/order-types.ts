@@ -46,6 +46,7 @@ export async function createOrderTypeAction(
     type: 'dine_in' | 'pickup' | 'delivery'
     name: string
     description?: string
+    note?: string
     is_enabled?: boolean
     order_index?: number
   }
@@ -72,6 +73,7 @@ export async function updateOrderTypeAction(
     type: 'dine_in' | 'pickup' | 'delivery'
     name: string
     description?: string
+    note?: string
     is_enabled?: boolean
     order_index?: number
   }
@@ -143,6 +145,7 @@ export async function reorderOrderTypesAction(
         type: existing.type,
         name: existing.name,
         description: existing.description,
+        note: existing.note,
         is_enabled: existing.is_enabled,
         order_index: index,
       })
