@@ -29,14 +29,22 @@ export function ModernCard({ item, onSelect, branding }: ModernCardProps) {
     >
       {/* Image Container with gradient overlay */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <OptimizedImage
-          src={item.image_url}
-          alt={item.name}
-          fill
-          className="object-cover transition-transform group-hover:scale-110"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          loading="lazy"
-        />
+        {typeof item.image_url === 'string' && item.image_url ? (
+          <OptimizedImage
+            src={item.image_url}
+            alt={item.name}
+            fill
+            className="object-cover transition-transform group-hover:scale-110"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            loading="lazy"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>
+            <svg className="h-12 w-12 opacity-40" fill="currentColor" viewBox="0 0 24 24" style={{ color: branding.textMuted }}>
+              <path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z" />
+            </svg>
+          </div>
+        )}
 
         {/* Gradient overlay for text readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
