@@ -4,32 +4,48 @@ import { sendMessage } from '@/lib/facebook-api'
 import { formatPrice } from '@/lib/cart-utils'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
 
-// CORS headers for cross-origin requests from tenant subdomains
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+/**
+ * Get CORS headers with origin validation against platform root domain.
+ * Only allows origins matching the tenant subdomain pattern.
+ */
+function getCorsHeaders(request: NextRequest): Record<string, string> {
+    const origin = request.headers.get('origin') || ''
+    const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
+
+    // Escape dots in domain for regex and build pattern
+    // Matches: https://tenant.webnegosyo.app or https://webnegosyo.app
+    const escapedDomain = rootDomain.replace(/\./g, '\\.')
+    const originPattern = new RegExp(`^https?://([a-z0-9-]+\\.)?${escapedDomain}$`, 'i')
+
+    const allowedOrigin = originPattern.test(origin) ? origin : ''
+
+    return {
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        ...(allowedOrigin ? { 'Vary': 'Origin' } : {}),
+    }
 }
 
 /**
  * OPTIONS /api/messenger/send-cart
  * Handle CORS preflight requests
  */
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
     return new NextResponse(null, {
         status: 204,
-        headers: corsHeaders,
+        headers: getCorsHeaders(request),
     })
 }
 
 /**
  * Helper to return JSON response with CORS headers
  */
-function corsJson(data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
+function corsJson(request: NextRequest, data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
     return NextResponse.json(data, {
         ...init,
         headers: {
-            ...corsHeaders,
+            ...getCorsHeaders(request),
             ...init?.headers,
         },
     })
@@ -85,7 +101,7 @@ export async function POST(request: NextRequest) {
         // Rate limiting - 20 requests per minute per IP
         const clientIP = getClientIP(request)
         if (!clientIP) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Unable to verify client IP address' },
                 { status: 400 }
             )
@@ -93,7 +109,7 @@ export async function POST(request: NextRequest) {
         const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
 
         if (!rateLimit.allowed) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Too many requests. Please try again later.' },
                 {
                     status: 429,
@@ -112,7 +128,7 @@ export async function POST(request: NextRequest) {
             const isSyntaxError = parseError instanceof SyntaxError ||
                 (parseError && typeof parseError === 'object' && 'name' in parseError && parseError.name === 'SyntaxError')
             if (isSyntaxError) {
-                return corsJson(
+                return corsJson(request,
                     { error: 'Invalid JSON in request body' },
                     { status: 400 }
                 )
@@ -129,7 +145,7 @@ export async function POST(request: NextRequest) {
 
         // Validate required fields
         if (!tenantId || !psid) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Missing tenantId or psid' },
                 { status: 400 }
             )
@@ -141,7 +157,7 @@ export async function POST(request: NextRequest) {
         const sanitizedTenantSlug = typeof tenantSlug === 'string' ? tenantSlug.trim() : ''
 
         if (!sanitizedTenantSlug || !slugRegex.test(sanitizedTenantSlug)) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Invalid tenantSlug: must contain only alphanumeric characters and hyphens' },
                 { status: 400 }
             )
@@ -149,7 +165,7 @@ export async function POST(request: NextRequest) {
 
         // Validate items array
         if (!items || !Array.isArray(items)) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Invalid items: must be an array' },
                 { status: 400 }
             )
@@ -163,7 +179,7 @@ export async function POST(request: NextRequest) {
                 typeof item.quantity !== 'number' ||
                 typeof item.subtotal !== 'number'
             ) {
-                return corsJson(
+                return corsJson(request,
                     { error: `Invalid item at index ${i}: must have name (string), quantity (number), and subtotal (number)` },
                     { status: 400 }
                 )
@@ -180,7 +196,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (!tenantData) {
-            return corsJson(
+            return corsJson(request,
                 { error: 'Tenant not found' },
                 { status: 404 }
             )
@@ -195,7 +211,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!tenant.facebook_page_id) {
-            return corsJson(
+            return corsJson(request,
                 { success: false, message: 'No Facebook page connected' },
                 { status: 400 }
             )
@@ -210,7 +226,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (!pageData) {
-            return corsJson(
+            return corsJson(request,
                 { success: false, message: 'Facebook page not found or inactive' },
                 { status: 404 }
             )
@@ -223,7 +239,7 @@ export async function POST(request: NextRequest) {
         if (!isPSIDValid) {
             const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
             console.warn(`[Send Cart] ⚠️ PSID ${maskedPsid} not associated with tenant ${tenantId}`)
-            return corsJson(
+            return corsJson(request,
                 { error: 'PSID not associated with tenant page' },
                 { status: 403 }
             )
@@ -241,17 +257,17 @@ export async function POST(request: NextRequest) {
         if (sent) {
             const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
             console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
-            return corsJson({ success: true })
+            return corsJson(request, { success: true })
         } else {
             console.error(`[Send Cart] ❌ Failed to send cart summary`)
-            return corsJson({
+            return corsJson(request, {
                 success: false,
                 error: 'Failed to send message',
             })
         }
     } catch (error) {
         console.error('[Send Cart] ❌ Error:', error)
-        return corsJson(
+        return corsJson(request,
             { error: 'Internal server error' },
             { status: 500 }
         )

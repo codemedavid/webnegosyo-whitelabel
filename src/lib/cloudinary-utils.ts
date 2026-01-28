@@ -71,9 +71,6 @@ export function transformCloudinaryUrl(
 
     if (options.quality) {
         transforms.push(`q_${options.quality}`)
-    } else {
-        // Default to auto quality for best compression
-        transforms.push('q_auto')
     }
 
     if (options.crop) {
@@ -89,13 +86,22 @@ export function transformCloudinaryUrl(
 
     if (options.format) {
         transforms.push(`f_${options.format}`)
-    } else {
-        // Default to auto format for best browser support
-        transforms.push('f_auto')
     }
 
     if (options.dpr) {
         transforms.push(`dpr_${options.dpr}`)
+    }
+
+    // Only add defaults if there are other user-requested transforms
+    if (transforms.length > 0) {
+        // Add auto quality if not explicitly set
+        if (!options.quality) {
+            transforms.push('q_auto')
+        }
+        // Add auto format if not explicitly set
+        if (!options.format) {
+            transforms.push('f_auto')
+        }
     }
 
     // If no transforms, return original URL
@@ -115,8 +121,9 @@ export function transformCloudinaryUrl(
     }
 
     // Check if there are already transformations
+    // Recognize chained transforms: segments starting with letters/underscore, possibly separated by ',' or '/'
     const afterUpload = url.substring(uploadIndex + 8) // Skip "/upload/"
-    const hasExistingTransforms = afterUpload.match(/^[a-z]_/)
+    const hasExistingTransforms = /^[a-z]+_[^/]+(?:[\/,][^/]+)*/.test(afterUpload)
 
     if (hasExistingTransforms) {
         // Replace existing transformations
@@ -128,6 +135,22 @@ export function transformCloudinaryUrl(
             // There are existing transforms before the version
             pathParts.splice(0, versionIndex, transformString)
             return url.substring(0, uploadIndex + 8) + pathParts.join('/')
+        } else {
+            // No version segment found, replace the initial transform segment(s)
+            // Find the first non-transform segment (doesn't match transform pattern)
+            const firstNonTransformIndex = pathParts.findIndex(part => !/^[a-z]+_/.test(part))
+            if (firstNonTransformIndex > 0) {
+                // Replace all transform segments with our new transforms
+                pathParts.splice(0, firstNonTransformIndex, transformString)
+                return url.substring(0, uploadIndex + 8) + pathParts.join('/')
+            } else if (firstNonTransformIndex === 0) {
+                // First segment is not a transform (e.g., public_id), just prepend
+                return url.substring(0, uploadIndex + 8) + transformString + '/' + afterUpload
+            } else {
+                // All segments look like transforms, replace first one
+                pathParts[0] = transformString
+                return url.substring(0, uploadIndex + 8) + pathParts.join('/')
+            }
         }
     }
 

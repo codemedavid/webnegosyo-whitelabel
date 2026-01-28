@@ -224,6 +224,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
     }
 
+    // Clear any pending timeout when prerequisites change
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current)
+      syncTimeoutRef.current = null
+    }
+
     if (!isInitialized || !messengerPsid || !tenantId || !tenantSlug) {
       if (process.env.NODE_ENV === 'development' && items.length > 0) {
         console.log('[Cart Sync] ⏭️ Skipping - missing requirements:', {
@@ -244,23 +250,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Clear existing timeout
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current)
-    }
-
     // Log that we're scheduling a sync
     if (process.env.NODE_ENV === 'development') {
       console.log('[Cart Sync] 📤 Scheduling Messenger sync in', CART_SYNC_DEBOUNCE_MS, 'ms')
     }
 
+    // Capture current values for use in timeout callback
+    const currentPsid = messengerPsid
+    const currentTenantId = tenantId
+    const currentTenantSlug = tenantSlug
+    const currentItems = items
+
     // Set new timeout for debounced sync
     syncTimeoutRef.current = setTimeout(() => {
+      // Verify prerequisites are still valid before proceeding
+      // This guards against race conditions where state changed during debounce
+      if (!currentPsid || !currentTenantId || !currentTenantSlug) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Cart Sync] ⏭️ Timeout fired but prerequisites no longer valid')
+        }
+        return
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         console.log('[Cart Sync] 🚀 Sending cart to Messenger...')
       }
       // Format items for API
-      const cartItems = items.map(item => {
+      const cartItems = currentItems.map(item => {
         let variation = ''
         if (item.selected_variation) {
           variation = item.selected_variation.name
@@ -281,9 +297,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantId,
-          tenantSlug,
-          psid: messengerPsid,
+          tenantId: currentTenantId,
+          tenantSlug: currentTenantSlug,
+          psid: currentPsid,
           items: cartItems,
         }),
       })
@@ -317,6 +333,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current)
+        syncTimeoutRef.current = null
       }
     }
   }, [items, isInitialized, messengerPsid, tenantId, tenantSlug])
