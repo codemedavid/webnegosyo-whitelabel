@@ -15,7 +15,17 @@ function getCorsHeaders(request: NextRequest): Record<string, string> {
     // Escape dots in domain for regex and build pattern
     // Matches: https://tenant.webnegosyo.app or https://webnegosyo.app
     const escapedDomain = rootDomain.replace(/\./g, '\\.')
-    const originPattern = new RegExp(`^https?://([a-z0-9-]+\\.)?${escapedDomain}$`, 'i')
+    const originPattern = new RegExp(`^https://([a-z0-9-]+\\.)?${escapedDomain}import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { sendMessage } from '@/lib/facebook-api'
+import { formatPrice } from '@/lib/cart-utils'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+
+/**
+ * Get CORS headers with origin validation against platform root domain.
+ * Only allows origins matching the tenant subdomain pattern.
+ */
+, 'i')
 
     const allowedOrigin = originPattern.test(origin) ? origin : ''
 
@@ -180,7 +190,7 @@ export async function POST(request: NextRequest) {
                 typeof item.subtotal !== 'number'
             ) {
                 return corsJson(request,
-                    { error: `Invalid item at index ${i}: must have name (string), quantity (number), and subtotal (number)` },
+                    { error: `Invalid item at index ${ i }: must have name(string), quantity(number), and subtotal(number)` },
                     { status: 400 }
                 )
             }
@@ -237,8 +247,8 @@ export async function POST(request: NextRequest) {
         // Verify PSID is associated with this tenant before sending message
         const isPSIDValid = await verifyPSIDForTenant(supabase, psid, tenantId)
         if (!isPSIDValid) {
-            const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
-            console.warn(`[Send Cart] ⚠️ PSID ${maskedPsid} not associated with tenant ${tenantId}`)
+            const maskedPsid = psid.length >= 4 ? `**** ${ psid.slice(-4) }` : '****'
+            console.warn(`[Send Cart] ⚠️ PSID ${ maskedPsid } not associated with tenant ${ tenantId } `)
             return corsJson(request,
                 { error: 'PSID not associated with tenant page' },
                 { status: 403 }
@@ -255,8 +265,8 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
-            console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${maskedPsid}`)
+            const maskedPsid = psid.length >= 4 ? `**** ${ psid.slice(-4) } ` : '****'
+            console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${ maskedPsid } `)
             return corsJson(request, { success: true })
         } else {
             console.error(`[Send Cart] ❌ Failed to send cart summary`)
@@ -280,24 +290,24 @@ function formatCartSummary(
     tenantSlug: string
 ): string {
     if (items.length === 0) {
-        return `🛒 Your cart at ${tenantName} is empty.\n\nBrowse our menu and add some items!`
+        return `🛒 Your cart at ${ tenantName } is empty.\n\nBrowse our menu and add some items!`
     }
 
     const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
     const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
-    let message = `🛒 Your Cart at ${tenantName}\n`
-    message += `${itemCount} item${itemCount !== 1 ? 's' : ''}\n`
+    let message = `🛒 Your Cart at ${ tenantName } \n`
+    message += `${ itemCount } item${ itemCount !== 1 ? 's' : '' } \n`
     message += `─────────────────\n\n`
 
     for (const item of items) {
-        const variation = item.variation ? ` (${item.variation})` : ''
-        message += `${item.quantity}x ${item.name}${variation}\n`
-        message += `   ${formatPrice(item.subtotal)}\n\n`
+        const variation = item.variation ? ` (${ item.variation })` : ''
+        message += `${ item.quantity }x ${ item.name }${ variation } \n`
+        message += `   ${ formatPrice(item.subtotal) } \n\n`
     }
 
     message += `─────────────────\n`
-    message += `💰 Total: ${formatPrice(total)}\n\n`
+    message += `💰 Total: ${ formatPrice(total) } \n\n`
 
     // Build checkout URL
     const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'

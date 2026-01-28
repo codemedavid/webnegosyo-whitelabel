@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // Skip all middleware processing for Messenger API routes (CORS preflight requests)
+  // Skip all middleware processing for Messenger API routes (these endpoints handle their own auth)
   if (pathname.startsWith('/api/messenger')) {
     return supabaseResponse
   }
