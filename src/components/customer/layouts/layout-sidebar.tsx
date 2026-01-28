@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuGrid } from '../menu-grid'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
@@ -200,7 +200,7 @@ export function LayoutSidebar({
                                     }`}
                             >
                                 {banner.imageUrl && (
-                                    <Image
+                                    <OptimizedImage
                                         src={banner.imageUrl}
                                         alt={banner.title || `Promotion ${index + 1}`}
                                         fill

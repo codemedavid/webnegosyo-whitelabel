@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -22,7 +22,7 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
   return (
     <div
       className="group relative overflow-hidden rounded-2xl shadow-sm transition-all hover:shadow-xl cursor-pointer"
-      style={{ 
+      style={{
         backgroundColor: branding.cards,
         borderColor: branding.cardsBorder,
         borderWidth: '1px',
@@ -32,24 +32,22 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
     >
       {/* Image Container */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <Image
+        <OptimizedImage
           src={item.image_url}
           alt={item.name}
           fill
           className="object-cover transition-transform group-hover:scale-105"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           loading="lazy"
-          placeholder="blur"
-          blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
         />
-        
+
         {/* Overlay Elements */}
         {item.is_featured && (
           <div className="absolute left-3 top-3">
             <span className="text-xl">⭐</span>
           </div>
         )}
-        
+
         {hasDiscount && (
           <div className="absolute right-3 top-3">
             <span className="rounded-full bg-red-500 px-2 py-1 text-xs font-bold text-white">
@@ -57,7 +55,7 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
             </span>
           </div>
         )}
-        
+
         {!item.is_available && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">
@@ -82,33 +80,33 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
 
       {/* Content */}
       <div className="p-4">
-        <h3 
+        <h3
           className="mb-1 text-lg font-bold line-clamp-1"
           style={{ color: branding.cardTitle }}
         >
           {item.name}
         </h3>
-        
+
         {item.description && (
-          <p 
+          <p
             className="mb-2 text-sm line-clamp-2"
             style={{ color: branding.cardDescription }}
           >
             {item.description}
           </p>
         )}
-        
+
         <div className="flex items-center gap-2">
           {hasDiscount && (
-            <span 
+            <span
               className="text-sm line-through"
               style={{ color: branding.textMuted }}
             >
               {formatPrice(item.price)}
             </span>
           )}
-          <span 
-            className="text-lg font-bold" 
+          <span
+            className="text-lg font-bold"
             style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
@@ -117,11 +115,11 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
 
         {item.variations.length > 0 && (
           <div className="mt-2">
-            <span 
+            <span
               className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium"
-              style={{ 
+              style={{
                 backgroundColor: branding.buttonSecondary,
-                color: branding.buttonSecondaryText 
+                color: branding.buttonSecondaryText
               }}
             >
               {item.variations.length} sizes available

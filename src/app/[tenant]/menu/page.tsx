@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 // import { Navbar } from '@/components/shared/navbar'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
@@ -344,7 +344,7 @@ export default function MenuPage() {
             <div className="flex items-center gap-3">
               {tenant?.logo_url ? (
                 <div className="relative h-12 w-12 rounded-full overflow-hidden">
-                  <Image
+                  <OptimizedImage
                     src={tenant.logo_url}
                     alt={tenant.name}
                     fill

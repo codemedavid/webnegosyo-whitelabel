@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import { ShoppingCart } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ export function Navbar({ tenant, onCartClick }: NavbarProps) {
         <Link href={`/${tenant.slug}/menu`} className="flex items-center space-x-3">
           {tenant.logo_url && (
             <div className="relative h-10 w-10">
-              <Image
+              <OptimizedImage
                 src={tenant.logo_url}
                 alt={tenant.name}
                 fill

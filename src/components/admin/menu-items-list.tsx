@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -113,7 +113,7 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
             <Plus className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">No menu items found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchQuery || categoryFilter !== 'all' 
+              {searchQuery || categoryFilter !== 'all'
                 ? 'Try adjusting your filters'
                 : 'Get started by adding your first menu item'}
             </p>
@@ -130,15 +130,13 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
           {filteredItems.map((item) => (
             <Card key={item.id} className="overflow-hidden">
               <div className="relative aspect-video bg-muted">
-                <Image
+                <OptimizedImage
                   src={item.image_url}
                   alt={item.name}
                   fill
                   className="object-cover"
                   sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   loading="lazy"
-                  placeholder="blur"
-                  blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
                 />
                 <div className="absolute right-2 top-2 flex gap-1">
                   {item.is_featured && <Badge variant="secondary">Featured</Badge>}

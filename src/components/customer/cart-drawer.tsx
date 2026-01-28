@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ShoppingCart, Minus, Plus, Trash2 } from 'lucide-react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
   Sheet,
   SheetContent,
@@ -94,7 +94,7 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                   {items.map((item) => (
                     <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                        <Image
+                        <OptimizedImage
                           src={item.menu_item.image_url}
                           alt={item.menu_item.name}
                           fill

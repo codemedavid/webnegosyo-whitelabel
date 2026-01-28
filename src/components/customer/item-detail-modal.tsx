@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, X } from 'lucide-react'
 import {
   Dialog,
@@ -126,13 +126,13 @@ export function ItemDetailModal({
   // Compact, minimal modal design - only show what's needed
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="!fixed w-[calc(100%-2rem)] max-w-md sm:max-w-lg flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !left-1/2 !-translate-x-1/2 !m-0 border shadow-2xl !bottom-4 sm:!top-1/2 sm:!bottom-auto sm:!-translate-y-1/2 h-[72vh] sm:h-auto sm:max-h-[68vh]"
         showCloseButton={false}
         style={{ backgroundColor: branding.modalBackground }}
       >
         <DialogTitle className="sr-only">{item.name}</DialogTitle>
-        
+
         {/* Scrollable Container - Includes everything except footer */}
         <div className="flex-1 overflow-y-auto overscroll-contain" style={{ minHeight: 0 }}>
           {/* Compact Header - Image Left, Info Right */}
@@ -145,11 +145,11 @@ export function ItemDetailModal({
               >
                 <X className="h-4 w-4 text-gray-900" />
               </button>
-              
+
               <div className="flex gap-4 p-4 sm:p-6 border-b border-gray-100">
                 {/* Image - Left Side */}
                 <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100">
-                  <Image
+                  <OptimizedImage
                     src={item.image_url}
                     alt={item.name}
                     fill
@@ -168,7 +168,7 @@ export function ItemDetailModal({
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                   {/* Top: Title */}
                   <div>
-                    <h1 
+                    <h1
                       className="text-lg sm:text-xl font-bold line-clamp-2 mb-1.5"
                       style={{ color: branding.modalTitle }}
                     >
@@ -182,7 +182,7 @@ export function ItemDetailModal({
                       </p>
                     )}
                   </div>
-                  
+
                   {/* Bottom: Price */}
                   <div className="mt-2">
                     {hasDiscount && (
@@ -190,7 +190,7 @@ export function ItemDetailModal({
                         {formatPrice(item.price)}
                       </div>
                     )}
-                    <div 
+                    <div
                       className="text-xl sm:text-2xl font-bold"
                       style={{ color: branding.modalPrice }}
                     >
@@ -206,217 +206,217 @@ export function ItemDetailModal({
           {hasCustomizations && (
             <div className="bg-white">
               <div className="p-4 sm:p-6 space-y-5 pb-6">
-              {/* New Grouped Variation Types */}
-              {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
-                const selectedOption = selectedVariations[variationType.id]
-                
-                return (
-                  <div key={variationType.id} className="scroll-mt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900">
-                        {variationType.name}
-                      </h3>
-                      {variationType.is_required && (
-                        <span className="text-red-500 text-xs font-medium bg-red-50 px-2 py-0.5 rounded">
-                          Required
-                        </span>
-                      )}
-                    </div>
-                    
-                    {/* Show as image grid if any option has an image */}
-                    {variationType.options.some(opt => opt.image_url) ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                        {variationType.options.map((option) => {
-                          const isSelected = selectedOption?.id === option.id
+                {/* New Grouped Variation Types */}
+                {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
+                  const selectedOption = selectedVariations[variationType.id]
 
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
-                              className={`
+                  return (
+                    <div key={variationType.id} className="scroll-mt-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="text-sm sm:text-base font-semibold text-gray-900">
+                          {variationType.name}
+                        </h3>
+                        {variationType.is_required && (
+                          <span className="text-red-500 text-xs font-medium bg-red-50 px-2 py-0.5 rounded">
+                            Required
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Show as image grid if any option has an image */}
+                      {variationType.options.some(opt => opt.image_url) ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                          {variationType.options.map((option) => {
+                            const isSelected = selectedOption?.id === option.id
+
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
+                                className={`
                                 relative rounded-xl overflow-hidden transition-all border-2 active:scale-95
-                                ${isSelected 
-                                  ? 'shadow-md ring-2 ring-offset-2' 
-                                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                                }
+                                ${isSelected
+                                    ? 'shadow-md ring-2 ring-offset-2'
+                                    : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                                  }
                               `}
-                              style={isSelected ? { 
-                                borderColor: branding.primary,
-                                ['--tw-ring-color' as string]: `${branding.primary}30`
-                              } : {}}
-                            >
-                              {/* Option Image */}
-                              {option.image_url && (
-                                <div className="relative w-full aspect-square bg-gray-100">
-                                  <Image
-                                    src={option.image_url}
-                                    alt={option.name}
-                                    fill
-                                    className="object-cover"
-                                    sizes="(max-width: 640px) 50vw, 33vw"
-                                  />
-                                  {isSelected && (
-                                    <div 
-                                      className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-lg"
-                                      style={{ backgroundColor: branding.primary }}
-                                    >
-                                      <svg className="h-3.5 w-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                      </svg>
+                                style={isSelected ? {
+                                  borderColor: branding.primary,
+                                  ['--tw-ring-color' as string]: `${branding.primary}30`
+                                } : {}}
+                              >
+                                {/* Option Image */}
+                                {option.image_url && (
+                                  <div className="relative w-full aspect-square bg-gray-100">
+                                    <OptimizedImage
+                                      src={option.image_url}
+                                      alt={option.name}
+                                      fill
+                                      className="object-cover"
+                                      sizes="(max-width: 640px) 50vw, 33vw"
+                                    />
+                                    {isSelected && (
+                                      <div
+                                        className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-lg"
+                                        style={{ backgroundColor: branding.primary }}
+                                      >
+                                        <svg className="h-3.5 w-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {/* Option Details */}
+                                <div className={`p-2.5 text-center ${isSelected ? 'text-white' : 'bg-white'}`}
+                                  style={isSelected ? { backgroundColor: branding.primary } : {}}>
+                                  <div className="font-semibold text-xs sm:text-sm line-clamp-1">{option.name}</div>
+                                  {option.price_modifier !== 0 && (
+                                    <div className="text-xs opacity-90 mt-0.5">
+                                      +{formatPrice(option.price_modifier)}
                                     </div>
                                   )}
                                 </div>
-                              )}
-                              {/* Option Details */}
-                              <div className={`p-2.5 text-center ${isSelected ? 'text-white' : 'bg-white'}`}
-                                style={isSelected ? { backgroundColor: branding.primary } : {}}>
-                                <div className="font-semibold text-xs sm:text-sm line-clamp-1">{option.name}</div>
-                                {option.price_modifier !== 0 && (
-                                  <div className="text-xs opacity-90 mt-0.5">
-                                    +{formatPrice(option.price_modifier)}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      /* Text-only buttons for options without images */
-                      <div className="flex flex-wrap gap-2">
-                        {variationType.options.map((option) => {
-                          const isSelected = selectedOption?.id === option.id
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        /* Text-only buttons for options without images */
+                        <div className="flex flex-wrap gap-2">
+                          {variationType.options.map((option) => {
+                            const isSelected = selectedOption?.id === option.id
 
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
-                              className={`
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setSelectedVariations(prev => ({ ...prev, [variationType.id]: option }))}
+                                className={`
                                 px-4 py-2.5 rounded-lg text-sm font-medium transition-all min-w-[90px] active:scale-95
-                                ${isSelected 
-                                  ? 'text-white shadow-md' 
-                                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
-                                }
+                                ${isSelected
+                                    ? 'text-white shadow-md'
+                                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                  }
                               `}
-                              style={isSelected ? { 
-                                backgroundColor: branding.primary,
-                              } : {}}
-                            >
-                              <div className="text-center">
-                                <div className="font-semibold">{option.name}</div>
-                                {option.price_modifier !== 0 && (
-                                  <div className="text-xs opacity-90 mt-0.5">
-                                    +{formatPrice(option.price_modifier)}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                                style={isSelected ? {
+                                  backgroundColor: branding.primary,
+                                } : {}}
+                              >
+                                <div className="text-center">
+                                  <div className="font-semibold">{option.name}</div>
+                                  {option.price_modifier !== 0 && (
+                                    <div className="text-xs opacity-90 mt-0.5">
+                                      +{formatPrice(option.price_modifier)}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
 
-              {/* Legacy Variations (fallback for old items) */}
-              {!useNewVariations && hasVariations && (
-                <div className="scroll-mt-4">
-                  <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
-                    Choose Size
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {item.variations.map((variation) => {
-                      const isSelected = selectedVariation?.id === variation.id
+                {/* Legacy Variations (fallback for old items) */}
+                {!useNewVariations && hasVariations && (
+                  <div className="scroll-mt-4">
+                    <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
+                      Choose Size
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {item.variations.map((variation) => {
+                        const isSelected = selectedVariation?.id === variation.id
 
-                      return (
-                        <button
-                          key={variation.id}
-                          type="button"
-                          onClick={() => setSelectedVariation(variation)}
-                          className={`
+                        return (
+                          <button
+                            key={variation.id}
+                            type="button"
+                            onClick={() => setSelectedVariation(variation)}
+                            className={`
                             px-4 py-2.5 rounded-lg text-sm font-medium transition-all min-w-[90px] active:scale-95
-                            ${isSelected 
-                              ? 'text-white shadow-md' 
-                              : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
-                            }
-                          `}
-                          style={isSelected ? { 
-                            backgroundColor: branding.primary,
-                          } : {}}
-                        >
-                          <div className="text-center">
-                            <div className="font-semibold">{variation.name}</div>
-                            {variation.price_modifier !== 0 && (
-                              <div className="text-xs opacity-90 mt-0.5">
-                                +{formatPrice(variation.price_modifier)}
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Add-ons */}
-              {hasAddons && (
-                <div className="scroll-mt-4">
-                  <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
-                    Add-ons <span className="text-xs font-normal text-gray-500">(Optional)</span>
-                  </h3>
-                  <div className="space-y-2">
-                    {item.addons.map((addon) => {
-                      const isSelected = selectedAddons.some((a) => a.id === addon.id)
-
-                      return (
-                        <button
-                          key={addon.id}
-                          type="button"
-                          onClick={() => toggleAddon(addon)}
-                          className={`
-                            w-full flex items-center justify-between p-3 sm:p-3.5 rounded-lg border-2 transition-all active:scale-[0.98]
-                            ${isSelected 
-                              ? 'border-[currentColor] shadow-sm' 
-                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                            }
-                          `}
-                          style={isSelected ? { 
-                            color: branding.primary,
-                            borderColor: branding.primary,
-                            backgroundColor: `${branding.primary}08`
-                          } : { backgroundColor: 'white' }}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`
-                              h-5 w-5 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
-                              ${isSelected 
-                                ? 'border-[currentColor] bg-[currentColor]' 
-                                : 'border-gray-300'
+                            ${isSelected
+                                ? 'text-white shadow-md'
+                                : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
                               }
-                            `}>
-                              {isSelected && (
-                                <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
+                          `}
+                            style={isSelected ? {
+                              backgroundColor: branding.primary,
+                            } : {}}
+                          >
+                            <div className="text-center">
+                              <div className="font-semibold">{variation.name}</div>
+                              {variation.price_modifier !== 0 && (
+                                <div className="text-xs opacity-90 mt-0.5">
+                                  +{formatPrice(variation.price_modifier)}
+                                </div>
                               )}
                             </div>
-                            <span className={`text-sm font-medium truncate ${isSelected ? '' : 'text-gray-900'}`}>
-                              {addon.name}
-                            </span>
-                          </div>
-                          <span className={`text-sm font-semibold flex-shrink-0 ml-2 ${isSelected ? '' : 'text-gray-700'}`}>
-                            {addon.price === 0 ? 'Free' : `+${formatPrice(addon.price)}`}
-                          </span>
-                        </button>
-                      )
-                    })}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Add-ons */}
+                {hasAddons && (
+                  <div className="scroll-mt-4">
+                    <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
+                      Add-ons <span className="text-xs font-normal text-gray-500">(Optional)</span>
+                    </h3>
+                    <div className="space-y-2">
+                      {item.addons.map((addon) => {
+                        const isSelected = selectedAddons.some((a) => a.id === addon.id)
+
+                        return (
+                          <button
+                            key={addon.id}
+                            type="button"
+                            onClick={() => toggleAddon(addon)}
+                            className={`
+                            w-full flex items-center justify-between p-3 sm:p-3.5 rounded-lg border-2 transition-all active:scale-[0.98]
+                            ${isSelected
+                                ? 'border-[currentColor] shadow-sm'
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                              }
+                          `}
+                            style={isSelected ? {
+                              color: branding.primary,
+                              borderColor: branding.primary,
+                              backgroundColor: `${branding.primary}08`
+                            } : { backgroundColor: 'white' }}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`
+                              h-5 w-5 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
+                              ${isSelected
+                                  ? 'border-[currentColor] bg-[currentColor]'
+                                  : 'border-gray-300'
+                                }
+                            `}>
+                                {isSelected && (
+                                  <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                              <span className={`text-sm font-medium truncate ${isSelected ? '' : 'text-gray-900'}`}>
+                                {addon.name}
+                              </span>
+                            </div>
+                            <span className={`text-sm font-semibold flex-shrink-0 ml-2 ${isSelected ? '' : 'text-gray-700'}`}>
+                              {addon.price === 0 ? 'Free' : `+${formatPrice(addon.price)}`}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -448,13 +448,13 @@ export function ItemDetailModal({
                 <Plus className="h-4 w-4 text-gray-700" />
               </button>
             </div>
-            
+
             {/* Add to Cart - Primary button */}
-            <Button 
+            <Button
               type="button"
               onClick={handleAddToCart}
-              className="flex-1 h-12 rounded-xl font-semibold text-sm sm:text-base shadow-md hover:shadow-lg active:scale-[0.98] transition-all touch-manipulation" 
-              style={{ 
+              className="flex-1 h-12 rounded-xl font-semibold text-sm sm:text-base shadow-md hover:shadow-lg active:scale-[0.98] transition-all touch-manipulation"
+              style={{
                 backgroundColor: branding.buttonPrimary,
                 color: branding.buttonPrimaryText
               }}

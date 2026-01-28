@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -34,15 +34,13 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
         {/* Image - Left side */}
         <div className="relative w-28 sm:w-32 flex-shrink-0 overflow-hidden bg-muted">
           {typeof item.image_url === 'string' && item.image_url ? (
-            <Image
+            <OptimizedImage
               src={item.image_url}
               alt={item.name}
               fill
               className="object-cover transition-transform group-hover:scale-110"
               sizes="128px"
               loading="lazy"
-              placeholder="blur"
-              blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg=="
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>
