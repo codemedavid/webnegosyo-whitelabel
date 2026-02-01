@@ -5,7 +5,7 @@ import { MenuGrid } from '../menu-grid'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
-import { CategorySubmenu } from '../category-submenu'
+// CategorySubmenu not currently used in this layout
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'

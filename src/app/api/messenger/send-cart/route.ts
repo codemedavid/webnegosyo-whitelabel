@@ -15,17 +15,7 @@ function getCorsHeaders(request: NextRequest): Record<string, string> {
     // Escape dots in domain for regex and build pattern
     // Matches: https://tenant.webnegosyo.app or https://webnegosyo.app
     const escapedDomain = rootDomain.replace(/\./g, '\\.')
-    const originPattern = new RegExp(`^https://([a-z0-9-]+\\.)?${escapedDomain}import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { sendMessage } from '@/lib/facebook-api'
-import { formatPrice } from '@/lib/cart-utils'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
-
-/**
- * Get CORS headers with origin validation against platform root domain.
- * Only allows origins matching the tenant subdomain pattern.
- */
-, 'i')
+    const originPattern = new RegExp(`^https://([a-z0-9-]+\\.)?${escapedDomain}`, 'i')
 
     const allowedOrigin = originPattern.test(origin) ? origin : ''
 

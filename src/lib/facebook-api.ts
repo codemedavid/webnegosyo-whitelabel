@@ -313,8 +313,9 @@ export async function sendMenuCard(
   const websiteUrl = `${baseUrl}?psid=${encodeURIComponent(psid)}`
 
   // Use a default image if no logo is set
-  // Fallback to a reliable placeholder image (Facebook requires a valid, accessible image URL)
-  const imageUrl = tenant.logo_url || 'https://placehold.co/600x400/3b82f6/white?text=View+Menu'
+  // Fallback to a configurable internal/CDN-backed image (avoids external service reliability issues)
+  const fallbackImageUrl = process.env.FALLBACK_IMAGE_URL || '/images/default-menu-card.png'
+  const imageUrl = tenant.logo_url || fallbackImageUrl
 
   const payload = {
     recipient: { id: psid },
@@ -404,16 +405,20 @@ export async function sendMenuCard(
         const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
         console.log(`[Facebook API] ✅ Menu card sent successfully to ${maskedPsid}`)
       }
-      // Send a fallback text message with the link in case they don't tap the card
-      try {
-        await sendMessage(
-          psid,
-          pageAccessToken,
-          `👆 Tap the card above to browse our menu!\n\nOr use this link: ${websiteUrl}`
-        )
-      } catch (fallbackError) {
-        // Non-critical, log but don't fail the overall operation
-        console.warn('[Facebook API] Failed to send fallback link message:', fallbackError)
+      // Optionally send a fallback text message with the link
+      // Only sent when ENABLE_FALLBACK_LINK is explicitly enabled to avoid duplicate/noisy messages
+      const enableFallbackLink = process.env.ENABLE_FALLBACK_LINK === 'true'
+      if (enableFallbackLink) {
+        try {
+          await sendMessage(
+            psid,
+            pageAccessToken,
+            `👆 Tap the card above to browse our menu!\n\nOr use this link: ${websiteUrl}`
+          )
+        } catch (fallbackError) {
+          // Non-critical, log but don't fail the overall operation
+          console.warn('[Facebook API] Failed to send fallback link message:', fallbackError)
+        }
       }
       return true
     } else {

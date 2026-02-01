@@ -32,14 +32,16 @@ export function MinimalCard({ item, onSelect, branding }: MinimalCardProps) {
     >
       {/* Image Container */}
       <div className="relative aspect-square overflow-hidden bg-muted">
-        <OptimizedImage
-          src={item.image_url}
-          alt={item.name}
-          fill
-          className="object-cover transition-opacity group-hover:opacity-90"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          loading="lazy"
-        />
+        {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+          <OptimizedImage
+            src={item.image_url}
+            alt={item.name}
+            fill
+            className="object-cover transition-opacity group-hover:opacity-90"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            loading="lazy"
+          />
+        )}
 
         {/* Badges - Minimal style */}
         {item.is_featured && (

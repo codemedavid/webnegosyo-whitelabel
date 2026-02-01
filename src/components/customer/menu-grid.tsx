@@ -1,6 +1,6 @@
 'use client'
 
-import { MenuItemCard } from './menu-item-card'
+import { PrefetchingCard } from './prefetching-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { UtensilsCrossed } from 'lucide-react'
 import type { MenuItem } from '@/types/database'
@@ -34,7 +34,7 @@ export function MenuGrid({ items, onItemSelect, branding, template = 'classic', 
   return (
     <div className={gridClass}>
       {items.map((item) => (
-        <MenuItemCard
+        <PrefetchingCard
           key={item.id}
           item={item}
           onSelect={onItemSelect}

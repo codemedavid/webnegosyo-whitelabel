@@ -3,7 +3,7 @@
  * Provides fallback colors and utility functions for consistent branding
  */
 
-import type { Tenant } from '@/types/database'
+// Tenant type was removed - function accepts generic Record<string, unknown> instead
 
 export interface BrandingColors {
   // Layout colors
@@ -12,29 +12,29 @@ export interface BrandingColors {
   headerFont: string
   cards: string
   cardsBorder: string
-  
+
   // Card text colors
   cardTitle: string
   cardPrice: string
   cardDescription: string
-  
+
   // Modal colors
   modalBackground: string
   modalTitle: string
   modalPrice: string
   modalDescription: string
-  
+
   // Button colors
   buttonPrimary: string
   buttonPrimaryText: string
   buttonSecondary: string
   buttonSecondaryText: string
-  
+
   // Text colors
   textPrimary: string
   textSecondary: string
   textMuted: string
-  
+
   // UI colors
   border: string
   success: string
@@ -42,7 +42,7 @@ export interface BrandingColors {
   error: string
   link: string
   shadow: string
-  
+
   // Legacy colors (for backward compatibility)
   primary: string
   secondary: string
@@ -86,40 +86,46 @@ export const DEFAULT_BRANDING: BrandingColors = {
 /**
  * Extract branding colors from tenant with fallbacks
  */
-export function getTenantBranding(tenant: Tenant | null): BrandingColors {
+export function getTenantBranding(tenant: Record<string, unknown> | null): BrandingColors {
   if (!tenant) {
     return DEFAULT_BRANDING
   }
 
+  // Helper to safely get string properties with fallback
+  const get = (key: string, fallback: string): string => {
+    const value = tenant[key]
+    return typeof value === 'string' ? value : fallback
+  }
+
   return {
-    background: tenant.background_color || DEFAULT_BRANDING.background,
-    header: tenant.header_color || DEFAULT_BRANDING.header,
-    headerFont: tenant.header_font_color || DEFAULT_BRANDING.headerFont,
-    cards: tenant.cards_color || DEFAULT_BRANDING.cards,
-    cardsBorder: tenant.cards_border_color || DEFAULT_BRANDING.cardsBorder,
-    cardTitle: tenant.card_title_color || tenant.text_primary_color || DEFAULT_BRANDING.cardTitle,
-    cardPrice: tenant.card_price_color || tenant.primary_color || DEFAULT_BRANDING.cardPrice,
-    cardDescription: tenant.card_description_color || tenant.text_secondary_color || DEFAULT_BRANDING.cardDescription,
-    modalBackground: tenant.modal_background_color || tenant.cards_color || DEFAULT_BRANDING.modalBackground,
-    modalTitle: tenant.modal_title_color || tenant.text_primary_color || DEFAULT_BRANDING.modalTitle,
-    modalPrice: tenant.modal_price_color || tenant.primary_color || DEFAULT_BRANDING.modalPrice,
-    modalDescription: tenant.modal_description_color || tenant.text_secondary_color || DEFAULT_BRANDING.modalDescription,
-    buttonPrimary: tenant.button_primary_color || tenant.primary_color || DEFAULT_BRANDING.buttonPrimary,
-    buttonPrimaryText: tenant.button_primary_text_color || DEFAULT_BRANDING.buttonPrimaryText,
-    buttonSecondary: tenant.button_secondary_color || DEFAULT_BRANDING.buttonSecondary,
-    buttonSecondaryText: tenant.button_secondary_text_color || DEFAULT_BRANDING.buttonSecondaryText,
-    textPrimary: tenant.text_primary_color || DEFAULT_BRANDING.textPrimary,
-    textSecondary: tenant.text_secondary_color || DEFAULT_BRANDING.textSecondary,
-    textMuted: tenant.text_muted_color || DEFAULT_BRANDING.textMuted,
-    border: tenant.border_color || DEFAULT_BRANDING.border,
-    success: tenant.success_color || DEFAULT_BRANDING.success,
-    warning: tenant.warning_color || DEFAULT_BRANDING.warning,
-    error: tenant.error_color || DEFAULT_BRANDING.error,
-    link: tenant.link_color || DEFAULT_BRANDING.link,
-    shadow: tenant.shadow_color || DEFAULT_BRANDING.shadow,
-    primary: tenant.primary_color || DEFAULT_BRANDING.primary,
-    secondary: tenant.secondary_color || DEFAULT_BRANDING.secondary,
-    accent: tenant.accent_color || DEFAULT_BRANDING.accent
+    background: get('background_color', DEFAULT_BRANDING.background),
+    header: get('header_color', DEFAULT_BRANDING.header),
+    headerFont: get('header_font_color', DEFAULT_BRANDING.headerFont),
+    cards: get('cards_color', DEFAULT_BRANDING.cards),
+    cardsBorder: get('cards_border_color', DEFAULT_BRANDING.cardsBorder),
+    cardTitle: get('card_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.cardTitle),
+    cardPrice: get('card_price_color', '') || get('primary_color', DEFAULT_BRANDING.cardPrice),
+    cardDescription: get('card_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.cardDescription),
+    modalBackground: get('modal_background_color', '') || get('cards_color', DEFAULT_BRANDING.modalBackground),
+    modalTitle: get('modal_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.modalTitle),
+    modalPrice: get('modal_price_color', '') || get('primary_color', DEFAULT_BRANDING.modalPrice),
+    modalDescription: get('modal_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.modalDescription),
+    buttonPrimary: get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
+    buttonPrimaryText: get('button_primary_text_color', DEFAULT_BRANDING.buttonPrimaryText),
+    buttonSecondary: get('button_secondary_color', DEFAULT_BRANDING.buttonSecondary),
+    buttonSecondaryText: get('button_secondary_text_color', DEFAULT_BRANDING.buttonSecondaryText),
+    textPrimary: get('text_primary_color', DEFAULT_BRANDING.textPrimary),
+    textSecondary: get('text_secondary_color', DEFAULT_BRANDING.textSecondary),
+    textMuted: get('text_muted_color', DEFAULT_BRANDING.textMuted),
+    border: get('border_color', DEFAULT_BRANDING.border),
+    success: get('success_color', DEFAULT_BRANDING.success),
+    warning: get('warning_color', DEFAULT_BRANDING.warning),
+    error: get('error_color', DEFAULT_BRANDING.error),
+    link: get('link_color', DEFAULT_BRANDING.link),
+    shadow: get('shadow_color', DEFAULT_BRANDING.shadow),
+    primary: get('primary_color', DEFAULT_BRANDING.primary),
+    secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
+    accent: get('accent_color', DEFAULT_BRANDING.accent || '')
   }
 }
 
@@ -165,15 +171,15 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
 export function getContrastColor(backgroundColor: string): string {
   // Remove # if present
   const hex = backgroundColor.replace('#', '')
-  
+
   // Convert to RGB
   const r = parseInt(hex.substr(0, 2), 16)
   const g = parseInt(hex.substr(2, 2), 16)
   const b = parseInt(hex.substr(4, 2), 16)
-  
+
   // Calculate luminance
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  
+
   return luminance > 0.5 ? '#000000' : '#ffffff'
 }
 
@@ -185,11 +191,11 @@ export function lightenColor(color: string, amount: number = 0.1): string {
   const r = parseInt(hex.substr(0, 2), 16)
   const g = parseInt(hex.substr(2, 2), 16)
   const b = parseInt(hex.substr(4, 2), 16)
-  
+
   const newR = Math.min(255, Math.floor(r + (255 - r) * amount))
   const newG = Math.min(255, Math.floor(g + (255 - g) * amount))
   const newB = Math.min(255, Math.floor(b + (255 - b) * amount))
-  
+
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
 }
 
@@ -201,11 +207,11 @@ export function darkenColor(color: string, amount: number = 0.1): string {
   const r = parseInt(hex.substr(0, 2), 16)
   const g = parseInt(hex.substr(2, 2), 16)
   const b = parseInt(hex.substr(4, 2), 16)
-  
+
   const newR = Math.max(0, Math.floor(r * (1 - amount)))
   const newG = Math.max(0, Math.floor(g * (1 - amount)))
   const newB = Math.max(0, Math.floor(b * (1 - amount)))
-  
+
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
 }
 
@@ -233,6 +239,76 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } | nul
  */
 export function rgbToHex(r: number, g: number, b: number): string {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
+}
+
+/**
+ * Set the alpha (opacity) of a color string.
+ * Handles hex (#RGB, #RRGGBB, #RRGGBBAA), rgb(a), and hsl(a) formats.
+ * Returns rgba() or hsla() string with the specified alpha.
+ * 
+ * @param color - The color string to modify
+ * @param alpha - Alpha value between 0 and 1
+ * @returns Color string with alpha applied, or fallback if parsing fails
+ */
+export function setAlpha(color: string, alpha: number): string {
+  const clampedAlpha = Math.max(0, Math.min(1, alpha))
+  const trimmed = color.trim()
+
+  // Handle hex colors (#RGB, #RRGGBB, #RRGGBBAA)
+  const hexMatch = /^#([A-Fa-f0-9]{3,8})$/.exec(trimmed)
+  if (hexMatch) {
+    const hex = hexMatch[1]
+    let r: number, g: number, b: number
+
+    if (hex.length === 3) {
+      // #RGB -> #RRGGBB
+      r = parseInt(hex[0] + hex[0], 16)
+      g = parseInt(hex[1] + hex[1], 16)
+      b = parseInt(hex[2] + hex[2], 16)
+    } else if (hex.length === 4) {
+      // #RGBA -> ignore existing alpha
+      r = parseInt(hex[0] + hex[0], 16)
+      g = parseInt(hex[1] + hex[1], 16)
+      b = parseInt(hex[2] + hex[2], 16)
+    } else if (hex.length === 6) {
+      // #RRGGBB
+      r = parseInt(hex.substring(0, 2), 16)
+      g = parseInt(hex.substring(2, 4), 16)
+      b = parseInt(hex.substring(4, 6), 16)
+    } else if (hex.length === 8) {
+      // #RRGGBBAA -> ignore existing alpha
+      r = parseInt(hex.substring(0, 2), 16)
+      g = parseInt(hex.substring(2, 4), 16)
+      b = parseInt(hex.substring(4, 6), 16)
+    } else {
+      // Invalid hex length, return fallback
+      return `rgba(0, 0, 0, ${clampedAlpha})`
+    }
+
+    return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
+  }
+
+  // Handle rgb() and rgba()
+  const rgbMatch = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1], 10)
+    const g = parseInt(rgbMatch[2], 10)
+    const b = parseInt(rgbMatch[3], 10)
+    return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
+  }
+
+  // Handle hsl() and hsla()
+  const hslMatch = /^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
+  if (hslMatch) {
+    const h = parseFloat(hslMatch[1])
+    const s = parseFloat(hslMatch[2])
+    const l = parseFloat(hslMatch[3])
+    return `hsla(${h}, ${s}%, ${l}%, ${clampedAlpha})`
+  }
+
+  // Fallback: if color format is unrecognized, return a transparent black with the alpha
+  // This prevents runtime errors while being visually noticeable for debugging
+  return `rgba(0, 0, 0, ${clampedAlpha})`
 }
 
 /**

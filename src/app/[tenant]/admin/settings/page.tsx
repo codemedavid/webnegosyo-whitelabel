@@ -393,7 +393,11 @@ export default async function SettingsPage({
       {/* Messenger Redirect Mode */}
       <MessengerModeCard
         tenantId={tenant.id}
-        currentMode={tenant.messenger_redirect_mode || 'webhook'}
+        currentMode={tenant.messenger_redirect_mode || (
+          // Default to 'direct' when no Facebook page is connected (only username configured)
+          // This enables pre-filled message mode by default for simpler setups
+          tenant.facebook_page_id ? 'webhook' : 'direct'
+        )}
       />
 
       {/* Account */}
@@ -435,13 +439,11 @@ function ColorPicker({
           type="color"
           className="h-11 w-14 p-1 border rounded-md cursor-pointer"
         />
-        <div className="flex-1">
-          <Input
-            value={value}
-            readOnly
-            className="font-mono text-sm bg-muted/50"
-          />
-        </div>
+        <div
+          className="h-11 w-14 rounded-md border border-gray-300 shadow-sm"
+          style={{ backgroundColor: value }}
+          aria-hidden="true"
+        />
       </div>
       {description && (
         <p className="text-xs text-muted-foreground">{description}</p>

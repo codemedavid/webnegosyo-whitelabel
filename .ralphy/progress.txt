@@ -1,0 +1,4 @@
+# Ralphy Progress Log
+
+- [✓] 2026-01-29 14:30 - Implement ISR for Menu Page
+- [✓] 2026-01-29 14:58 - Reduce Menu Item Columns for List View

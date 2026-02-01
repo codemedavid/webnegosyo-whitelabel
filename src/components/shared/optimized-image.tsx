@@ -17,6 +17,12 @@ interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
      * @default 'auto'
      */
     cloudinaryQuality?: number | 'auto'
+    /**
+     * If true, lazy load the image using native browser lazy loading.
+     * This is ignored if `priority` is set to true.
+     * @default true
+     */
+    lazy?: boolean
 }
 
 /**
@@ -34,21 +40,29 @@ interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
  * 
  * // With fill layout
  * <OptimizedImage src={imageUrl} alt="Banner" fill className="object-cover" />
+ * 
+ * // Eager loading for above-fold images
+ * <OptimizedImage src={hero} alt="Hero" fill priority />
  */
 export function OptimizedImage({
     src,
     alt,
     useCloudinaryTransform = true,
     cloudinaryQuality = 'auto',
+    lazy = true,
     width,
     height,
     fill,
+    priority,
     ...props
 }: OptimizedImageProps) {
     // Handle null/undefined src
     if (!src) {
         return null
     }
+
+    // Determine loading strategy: priority overrides lazy
+    const loadingProp = priority ? undefined : (lazy ? 'lazy' : 'eager')
 
     // If it's a Cloudinary URL and we should use Cloudinary transforms
     if (useCloudinaryTransform && isCloudinaryUrl(src)) {
@@ -72,6 +86,8 @@ export function OptimizedImage({
                 width={width}
                 height={height}
                 fill={fill}
+                priority={priority}
+                loading={loadingProp}
                 unoptimized
                 {...props}
             />
@@ -86,6 +102,8 @@ export function OptimizedImage({
             width={width}
             height={height}
             fill={fill}
+            priority={priority}
+            loading={loadingProp}
             {...props}
         />
     )

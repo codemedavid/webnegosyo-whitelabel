@@ -42,12 +42,13 @@ interface MenuLayoutProps {
 import { useEffect } from 'react'
 
 export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
+    const { activeCategory, setActiveCategory } = props
     // Reset active category when switching to sidebar layout (to show all items)
     useEffect(() => {
-        if (layout === 'sidebar' && props.activeCategory) {
-            props.setActiveCategory(null)
+        if (layout === 'sidebar' && activeCategory) {
+            setActiveCategory(null)
         }
-    }, [layout, props.activeCategory, props.setActiveCategory])
+    }, [layout, activeCategory, setActiveCategory])
 
     switch (layout) {
         case 'sidebar':

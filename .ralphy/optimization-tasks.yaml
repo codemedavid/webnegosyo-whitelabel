@@ -1,0 +1,497 @@
+tasks:
+  - id: P1-01
+    priority: 1
+    title: Implement ISR for Menu Page
+    description: >
+      Convert the menu page from Client-Side Rendering to Server-Side Rendering
+      with 
+
+      Incremental Static Regeneration (ISR). This will pre-render the menu on
+      the server 
+
+      and cache it for 5 minutes.
+
+
+      Current Implementation (CSR):
+
+      - File: src/app/[tenant]/menu/page.tsx
+
+      - Uses 'use client' directive
+
+      - Fetches ALL data via useEffect on component mount
+
+
+      Target Implementation:
+
+      - Remove 'use client' directive
+
+      - Add export const dynamic = 'force-static'
+
+      - Add export const revalidate = 300
+
+      - Fetch data server-side using createClient from '@/lib/supabase/server'
+
+      - Create separate Server Component for data fetching
+
+      - Keep interactivity in Client Component (separate file)
+    files:
+      - src/app/[tenant]/menu/page.tsx
+      - src/lib/menu-data.ts
+    dependencies: []
+    completed: true
+  - id: P1-02
+    priority: 1
+    title: Reduce Menu Item Columns for List View
+    description: >
+      Create separate data fetching functions for list view vs detail view.
+
+      List view should only fetch essential columns, excluding large JSONB
+      fields.
+
+
+      CreategetCachedMenuItemsList(tenantId) that only fetches:
+
+      - id, tenant_id, category_id, name, description
+
+      - price, discounted_price, image_url, is_available
+
+      - is_featured, order, created_at
+
+
+      NOT fetch: variations, variation_types, addons (JSONB columns)
+
+
+      This reduces payload from ~200KB to ~30KB for 100 items (85% reduction).
+    files:
+      - src/lib/menu-data.ts
+    dependencies:
+      - P1-01
+    completed: true
+  - id: P1-03
+    priority: 1
+    title: Add Upstash Redis Caching Layer
+    description: >
+      Implement Redis caching using Upstash for cross-request data persistence.
+
+      Cache database query results and serve them without hitting the database.
+
+
+      Create src/lib/redis-cache.ts with:
+
+      - getCachedOrFetch<T>(key, fetcher, ttl) function
+
+      - invalidateCache(pattern) function
+
+      - CACHE_TTL constants: TENANT (1800s), CATEGORIES (600s), MENU_ITEMS
+      (300s)
+
+
+      Integration:
+
+      - Integrate redis caching into src/lib/menu-data.ts functions
+
+      - Install @upstash/redis package
+
+
+      Environment variables:
+
+      - UPSTASH_REDIS_URL
+
+      - UPSTASH_REDIS_TOKEN
+
+
+      Note: Use free tier, cache hit rate should be >60%.
+    files:
+      - src/lib/redis-cache.ts
+      - src/lib/menu-data.ts
+      - .env.example
+      - package.json
+    dependencies:
+      - P1-02
+  - id: P1-04
+    priority: 2
+    title: Optimize Cache-Control Headers
+    description: >
+      Set appropriate Cache-Control headers for static assets, images, and API
+      responses.
+
+
+      Update next.config.ts to add headers configuration:
+
+      - /:tenant/menu: s-maxage=300, stale-while-revalidate=600
+
+      - /:tenant/menu/item/:itemId: s-maxage=300, stale-while-revalidate=600
+
+      - Static assets (*.jpg, *.png, etc): max-age=31536000, immutable
+    files:
+      - next.config.ts
+    dependencies: []
+  - id: P2-01
+    priority: 1
+    title: Split Menu Page into Server + Client Components
+    description: >
+      Separate the menu page into a Server Component (fetches data) and 
+
+      a Client Component (handles interactivity).
+
+
+      Server Component (src/app/[tenant]/menu/page.tsx):
+
+      - No 'use client' directive
+
+      - Fetch data server-side using getCachedTenantBySlug,
+      getCachedMenuItemsList, getCachedCategories
+
+      - Pass data as props to MenuContent Client Component
+
+
+      Client Component (src/components/customer/menu-content.tsx - NEW):
+
+      - Has 'use client' directive
+
+      - Receives tenant, categories, menuItems as props
+
+      - Handles search, category filtering, item selection
+
+      - Manages cart, modal states
+
+
+      This enables SSR while maintaining interactive features and improves SEO.
+    files:
+      - src/app/[tenant]/menu/page.tsx
+      - src/components/customer/menu-content.tsx
+    dependencies:
+      - P1-01
+  - id: P2-02
+    priority: 1
+    title: Implement On-Demand Item Detail Fetching
+    description: >
+      Load full menu item data (variations, addons) only when user clicks on an
+      item,
+
+      not for the list view. This reduces initial payload and enables lazy
+      loading.
+
+
+      Update PrefetchingCard component:
+
+      - Only fetch item detail on hover if item has variations/addons
+
+      - Use getMenuItemDetail function (not just prefetch)
+
+
+      Update Product Detail Page:
+
+      - Ensure it uses getMenuItemDetail for full data fetching
+
+
+      Result: Prefetching only for items with customizations, smoother UX.
+    files:
+      - src/components/customer/prefetching-card.tsx
+      - src/app/[tenant]/menu/item/[itemId]/page.tsx
+    dependencies:
+      - P1-02
+      - P1-01
+  - id: P2-03
+    priority: 2
+    title: Add Pagination for Large Menus
+    description: >
+      Implement server-side pagination for menus with >50 items.
+
+
+      Create getMenuItemsPaginated(tenantId, page, pageSize) that returns:
+
+      - items: array of menu items
+
+      - total: total count
+
+      - page: current page number
+
+      - pageSize: items per page
+
+      - hasMore: boolean
+
+
+      Create Pagination component (src/components/customer/pagination.tsx -
+      NEW):
+
+      - Shows Previous/Next buttons
+
+      - Displays current page and total pages
+
+      - Handles onPageChange callback
+
+
+      Integrate into MenuContent:
+
+      - Add page state
+
+      - Update URL with ?page=2
+
+      - Fetch paginated data
+
+
+      Default pageSize: 20 items
+    files:
+      - src/lib/menu-data.ts
+      - src/components/customer/pagination.tsx
+      - src/components/customer/menu-content.tsx
+      - src/app/[tenant]/menu/page.tsx
+    dependencies:
+      - P2-01
+      - P1-02
+  - id: P2-04
+    priority: 3
+    title: Add Skeleton UI for Menu Grid
+    description: >
+      Create skeleton UI component that shows the structure of menu items while
+      data loads.
+
+
+      Create MenuSkeleton component (src/components/customer/menu-skeleton.tsx -
+      NEW):
+
+      - Displays placeholder cards matching grid layout
+
+      - Uses animate-pulse class for animation
+
+      - Shows image placeholder, title line(s), price placeholder
+
+
+      Usage in MenuContent:
+
+      - Show skeleton during initial load
+
+      - Use appropriate count of skeleton cards (e.g., 6 or 12)
+
+      - Fade in actual content when loaded
+
+
+      This provides better perceived performance and smoother loading
+      experience.
+    files:
+      - src/components/customer/menu-skeleton.tsx
+      - src/components/customer/menu-content.tsx
+    dependencies: []
+  - id: P2-05
+    priority: 2
+    title: Integrate SWR for Client Data Management
+    description: >
+      Use SWR for client-side data management to enable automatic revalidation,
+
+      optimistic updates, and better caching.
+
+
+      Install: npm install swr
+
+
+      Create src/lib/swr-fetcher.ts - NEW:
+
+      - fetcher<T>(url) function
+
+      - Error handling
+
+
+      Integrate into MenuContent:
+
+      - useSWR hook for data fetching
+
+      - Use fallbackData with initialItems from server
+
+      - Optimistic updates for cart operations
+
+      - Automatic revalidation on reconnect/focus
+
+
+      Config:
+
+      - revalidateOnFocus: false (don't refocus too much)
+
+      - revalidateOnReconnect: true (refresh on reconnect)
+
+
+      Result: Automatic revalidation, optimistic UI updates, better offline
+      support.
+    files:
+      - src/lib/swr-fetcher.ts
+      - src/components/customer/menu-content.tsx
+      - package.json
+    dependencies:
+      - P2-01
+  - id: P3-01
+    priority: 2
+    title: Implement Webhook-Based Cache Invalidation
+    description: |
+      Create webhook endpoint that automatically invalidates caches when menu 
+      items are updated via the admin panel.
+
+      Create src/app/api/webhooks/invalidate-menu/route.ts - NEW:
+      - POST endpoint accepting { tenantSlug, tenantId, type }
+      - Revalidate appropriate paths using revalidatePath()
+      - Support types: menu_items, categories, tenant
+
+      Update admin actions (src/app/actions/menu-items.ts):
+      - After updateMenuItemAction, call webhook
+      - After createMenuItemAction, call webhook
+      - After deleteMenuItemAction, call webhook
+
+      Webhook call structure:
+      - POST to /api/webhooks/invalidate-menu
+      - JSON body with tenantSlug, tenantId, type
+
+      Result: Fresh data immediately after admin updates, no stale cache.
+    files:
+      - src/app/api/webhooks/invalidate-menu/route.ts
+      - src/app/actions/menu-items.ts
+      - src/lib/menu-data.ts
+    dependencies:
+      - P1-01
+      - P1-03
+  - id: P3-02
+    priority: 3
+    title: Generate Category Pages ISR
+    description: >
+      Pre-generate static pages for each category to enable deep linking and
+      SEO.
+
+
+      Create src/app/[tenant]/menu/category/[categoryId]/page.tsx - NEW:
+
+      - Server Component with ISR (revalidate=600, 10 minutes)
+
+      - Fetch tenant, category, and filtered menu items
+
+      - Generate appropriate SEO metadata
+
+
+      Update src/lib/menu-data.ts:
+
+      - Modify getCachedMenuItemsList to accept optional categoryId parameter
+
+      - Filter items by category_id if categoryId provided
+
+
+      Result: SEO-indexable category pages, better deep linking, longer cache
+      times.
+    files:
+      - src/app/[tenant]/menu/category/[categoryId]/page.tsx
+      - src/lib/menu-data.ts
+    dependencies:
+      - P1-01
+      - P1-02
+  - id: P3-03
+    priority: 3
+    title: Implement Service Worker (PWA)
+    description: >
+      Add service worker to enable offline capability for Progressive Web App.
+
+
+      Install: npm install next-pwa
+
+
+      Update next.config.ts:
+
+      - Import withPWA from 'next-pwa'
+
+      - Wrap config with withPWA({ dest: 'public', disable: process.env.NODE_ENV
+      === 'development' })
+
+
+      Create public/manifest.json:
+
+      - name: "Restaurant Menu"
+
+      - short_name: "Menu"
+
+      - icons: 192x192 and 512x512
+
+      - display: "standalone"
+
+      - theme_color, background_color
+
+
+      Update src/app/layout.tsx:
+
+      - Add <link rel="manifest" href="/manifest.json" />
+
+
+      Result: Offline access to viewed menus, add to home screen, better mobile
+      experience.
+    files:
+      - next.config.ts
+      - public/manifest.json
+      - src/app/layout.tsx
+      - package.json
+    dependencies: []
+  - id: P3-04
+    priority: 4
+    title: Add Database Indexes
+    description: |
+      Create database indexes to optimize query performance.
+
+      Run these SQL commands in Supabase SQL Editor:
+
+      1. Index for tenant by slug:
+         CREATE INDEX idx_tenants_slug ON tenants(slug) WHERE is_active = true;
+
+      2. Composite index for menu items:
+         CREATE INDEX idx_menu_items_tenant_order 
+         ON menu_items(tenant_id, "order", is_available) 
+         WHERE is_available = true;
+
+      3. Index for category lookup:
+         CREATE INDEX idx_menu_items_category 
+         ON menu_items(category_id, tenant_id) 
+         WHERE is_available = true;
+
+      4. Index for categories:
+         CREATE INDEX idx_categories_tenant 
+         ON categories(tenant_id, "order") 
+         WHERE is_active = true;
+
+      5. Index for product detail settings:
+         CREATE INDEX idx_product_detail_settings_tenant 
+         ON product_detail_settings(tenant_id);
+
+      Note: Non-blocking operations, can be rolled back.
+    files: []
+    dependencies: []
+  - id: P3-05
+    priority: 3
+    title: Implement Virtual Scrolling for Large Lists
+    description: >
+      Add virtual scrolling for menus with 100+ items to render only visible
+      items.
+
+
+      Install: npm install @tanstack/react-virtual
+
+
+      Create src/components/customer/virtual-menu-grid.tsx - NEW:
+
+      - Use useVirtualizer hook from @tanstack/react-virtual
+
+      - Render only visible items in viewport
+
+      - Estimate item height: 300px
+
+      - Overscan: 5 extra items
+
+
+      Integrate into MenuContent:
+
+      - Check if items.length > 100
+
+      - If > 100, use VirtualMenuGrid
+
+      - Otherwise, use regular MenuGrid
+
+
+      Result: Constant performance regardless of item count, reduced memory
+      usage.
+    files:
+      - src/components/customer/virtual-menu-grid.tsx
+      - src/components/customer/menu-content.tsx
+      - package.json
+    dependencies:
+      - P1-02
