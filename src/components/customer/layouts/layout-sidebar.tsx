@@ -1,7 +1,6 @@
 'use client'
 
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { MenuGrid } from '../menu-grid'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
@@ -44,20 +43,16 @@ export function LayoutSidebar({
     tenant,
     categories,
     filteredItems,
-    allMenuItems,
-    activeCategory: _propActiveCategory, // Ignore prop for highlighting, use local state
-    setActiveCategory, // We won't use this to filter, only to clear if needed
     searchQuery,
     setSearchQuery,
     onItemSelect,
     branding,
     cardTemplate,
-    heroOverride,
     bannerOverride,
     currentSlide,
     setCurrentSlide,
     mobileGridColumns = 1,
-}: LayoutSidebarProps) {
+}: Omit<LayoutSidebarProps, 'allMenuItems' | 'activeCategory' | 'setActiveCategory' | 'heroOverride'>) {
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)

@@ -348,7 +348,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         // Reset addons and quantity when product changes
         setSelectedAddons([])
         setQuantity(1)
-    }, [item.id])
+    }, [item.id, item.variations, item.variation_types])
 
     // Memoized boolean flags and computed values
     const hasDiscount = useMemo(() =>

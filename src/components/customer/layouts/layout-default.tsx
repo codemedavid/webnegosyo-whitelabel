@@ -45,7 +45,6 @@ export function LayoutDefault({
     tenant,
     categories,
     filteredItems,
-    allMenuItems,
     activeCategory,
     setActiveCategory,
     searchQuery,
@@ -59,7 +58,7 @@ export function LayoutDefault({
     currentSlide,
     setCurrentSlide,
     mobileGridColumns = 1,
-}: LayoutDefaultProps) {
+}: Omit<LayoutDefaultProps, 'allMenuItems'>) {
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0

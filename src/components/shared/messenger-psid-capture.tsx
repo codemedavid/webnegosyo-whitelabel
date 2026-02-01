@@ -15,7 +15,7 @@ export function MessengerPsidCapture() {
     const searchParams = useSearchParams()
     const pathname = usePathname()
     const router = useRouter()
-    const { setMessengerPsid, messengerPsid } = useCart()
+    const { setMessengerPsid } = useCart()
 
     useEffect(() => {
         const psidFromUrl = searchParams.get('psid')

@@ -479,7 +479,6 @@ export default function CheckoutPage() {
       const message = generateMessengerMessage(
         items,
         tenant.name,
-        orderCreated,
         orderTypeInfo,
         customerDataForMessage,
         paymentMethodInfo

@@ -93,7 +93,6 @@ export function formatPrice(price: number): string {
 export function generateMessengerMessage(
   items: CartItem[],
   restaurantName: string,
-  orderCreated: boolean = true,
   orderType?: { name: string; type: string } | null,
   customerData?: Record<string, string>,
   paymentMethod?: { name: string; details?: string } | null

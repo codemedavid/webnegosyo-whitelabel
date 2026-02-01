@@ -17,7 +17,7 @@ import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
 import { X } from 'lucide-react'
 
 interface ProductDetailCustomizerProps {
-    tenant: Tenant
+    tenant: Pick<Tenant, 'id' | 'slug'>
     onPreview: (draft: Partial<ProductDetailSettings> | null) => void
     onSaved?: () => void
 }
@@ -61,15 +61,15 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved }: ProductD
         }
 
         let isCancelled = false
-        
+
         async function loadCurrentSettings() {
             setIsLoading(true)
             try {
                 const { getProductDetailSettings } = await import('@/app/actions/product-detail-settings')
                 const result = await getProductDetailSettings(tenant.id)
-                
+
                 if (isCancelled) return
-                
+
                 if (result.success && result.data) {
                     // Populate both current settings and draft with saved values
                     setCurrentSettings(result.data)
@@ -92,7 +92,7 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved }: ProductD
         }
 
         loadCurrentSettings()
-        
+
         return () => { isCancelled = true }
     }, [isOpen, tenant.id, onPreview])
 
@@ -162,11 +162,11 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved }: ProductD
             {isOpen && (
                 <>
                     {/* Semi-transparent backdrop - click to close but doesn't block scroll */}
-                    <div 
+                    <div
                         className="fixed inset-0 bg-black/20 z-[55]"
                         onClick={() => setIsOpen(false)}
                     />
-                    
+
                     {/* Sidebar Panel */}
                     <div className="fixed right-0 top-0 h-full w-full sm:w-[500px] bg-white shadow-2xl z-[56] overflow-hidden flex flex-col">
                         {/* Header */}

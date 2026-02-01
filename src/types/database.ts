@@ -71,6 +71,8 @@ export interface Tenant {
   promotion_banners?: PromotionBanner[];
   created_at: string;
   updated_at: string;
+  // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
+  [key: string]: unknown;
 }
 
 export interface PromotionBanner {

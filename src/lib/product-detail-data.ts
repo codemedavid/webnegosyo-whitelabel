@@ -26,6 +26,8 @@ export interface SelectedTenant {
     header_color: string | null
     cards_color: string | null
     is_active: boolean
+    // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
+    [key: string]: unknown
 }
 
 // ============================================================================
