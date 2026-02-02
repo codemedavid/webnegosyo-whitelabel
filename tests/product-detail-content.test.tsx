@@ -59,6 +59,23 @@ jest.mock('framer-motion', () => ({
     AnimatePresence: ({ children }: any) => <>{children}</>
 }))
 
+// Mock lazy-loaded components to render synchronously in tests
+jest.mock('@/components/customer/product-detail-lazy', () => ({
+    LazyImageModal: ({ isOpen, onOpenChange, imageUrl, itemName }: any) =>
+        isOpen ? <div data-testid="image-modal">{itemName}</div> : null,
+    LazyProductDetailCustomizer: () => null,
+    LazyRelatedItemsSection: ({ relatedItems, tenantSlug }: any) => (
+        <div>
+            <h3>You might also like</h3>
+            <div>
+                {relatedItems.map((item: any) => (
+                    <div key={item.id}>{item.name}</div>
+                ))}
+            </div>
+        </div>
+    )
+}))
+
 describe('ProductDetailContent', () => {
     const mockTenant: SelectedTenant = {
         id: 'tenant-1',

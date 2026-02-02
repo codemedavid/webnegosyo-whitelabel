@@ -5,7 +5,69 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
-import { setAlpha, type BrandingColors } from '@/lib/branding-utils'
+import type { BrandingColors } from '@/lib/branding-utils'
+
+/**
+ * Set the alpha (opacity) of a color string.
+ * Local copy to avoid circular dependency/build issues.
+ */
+function setAlpha(color: string, alpha: number): string {
+    const clampedAlpha = Math.max(0, Math.min(1, alpha))
+    const trimmed = color.trim()
+
+    // Handle hex colors (#RGB, #RRGGBB, #RRGGBBAA)
+    const hexMatch = /^#([A-Fa-f0-9]{3,8})$/.exec(trimmed)
+    if (hexMatch) {
+        const hex = hexMatch[1]
+        let r: number, g: number, b: number
+
+        if (hex.length === 3) {
+            // #RGB -> #RRGGBB
+            r = parseInt(hex[0] + hex[0], 16)
+            g = parseInt(hex[1] + hex[1], 16)
+            b = parseInt(hex[2] + hex[2], 16)
+        } else if (hex.length === 4) {
+            // #RGBA -> ignore existing alpha
+            r = parseInt(hex[0] + hex[0], 16)
+            g = parseInt(hex[1] + hex[1], 16)
+            b = parseInt(hex[2] + hex[2], 16)
+        } else if (hex.length === 6) {
+            // #RRGGBB
+            r = parseInt(hex.substring(0, 2), 16)
+            g = parseInt(hex.substring(2, 4), 16)
+            b = parseInt(hex.substring(4, 6), 16)
+        } else if (hex.length === 8) {
+            // #RRGGBBAA -> ignore existing alpha
+            r = parseInt(hex.substring(0, 2), 16)
+            g = parseInt(hex.substring(2, 4), 16)
+            b = parseInt(hex.substring(4, 6), 16)
+        } else {
+            return `rgba(0, 0, 0, ${clampedAlpha})`
+        }
+
+        return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
+    }
+
+    // Handle rgb() and rgba()
+    const rgbMatch = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
+    if (rgbMatch) {
+        const r = parseInt(rgbMatch[1], 10)
+        const g = parseInt(rgbMatch[2], 10)
+        const b = parseInt(rgbMatch[3], 10)
+        return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
+    }
+
+    // Handle hsl() and hsla()
+    const hslMatch = /^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
+    if (hslMatch) {
+        const h = parseFloat(hslMatch[1])
+        const s = parseFloat(hslMatch[2])
+        const l = parseFloat(hslMatch[3])
+        return `hsla(${h}, ${s}%, ${l}%, ${clampedAlpha})`
+    }
+
+    return `rgba(0, 0, 0, ${clampedAlpha})`
+}
 
 export interface ProductDetailSettings {
     id?: string

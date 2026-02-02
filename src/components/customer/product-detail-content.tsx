@@ -3,11 +3,9 @@
 import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { ChevronLeft, Minus, Plus, Share2, X, UtensilsCrossed, Flame, Leaf, WheatOff, Heart } from 'lucide-react'
+import { ChevronLeft, Minus, Plus, Share2, UtensilsCrossed, Flame, Leaf, WheatOff, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogClose, DialogTitle } from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
 import { toast } from 'sonner'
@@ -16,9 +14,8 @@ import type { SelectedTenant } from '@/lib/product-detail-data'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
-import { ProductDetailCustomizer } from '@/components/admin/product-detail-customizer'
+import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
 import { motion, AnimatePresence } from 'framer-motion'
-import Image from 'next/image'
 
 interface ProductDetailContentProps {
     tenant: SelectedTenant
@@ -186,71 +183,7 @@ const AddonButton = memo(function AddonButton({
     )
 })
 
-// Memoized Related Item Card Component
-interface RelatedItemCardProps {
-    relatedItem: MenuItem
-    onClick: () => void
-    index: number
-}
 
-const RelatedItemCard = memo(function RelatedItemCard({
-    relatedItem,
-    onClick,
-    index
-}: RelatedItemCardProps) {
-    return (
-        <motion.button
-            key={relatedItem.id}
-            onClick={onClick}
-            className="flex-shrink-0 w-32 text-left group"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: index * 0.1 }}
-            whileHover={{ y: -4 }}
-            whileTap={{ scale: 0.95 }}
-        >
-            <div
-                className="relative w-32 h-32 overflow-hidden mb-2"
-                style={{
-                    backgroundColor: 'var(--pd-related-item-bg)',
-                    borderRadius: 'var(--pd-card-radius)'
-                }}
-            >
-                {relatedItem.image_url ? (
-                    <OptimizedImage
-                        src={relatedItem.image_url}
-                        alt={relatedItem.name}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
-                        sizes="128px"
-                    />
-                ) : (
-                    <div
-                        className="w-full h-full flex items-center justify-center"
-                        style={{ backgroundColor: 'var(--pd-related-item-bg)' }}
-                    >
-                        <UtensilsCrossed className="h-8 w-8" style={{ color: 'var(--pd-image-placeholder)' }} />
-                    </div>
-                )}
-            </div>
-            <h4
-                className="text-sm font-semibold truncate group-hover:opacity-80 transition-colors"
-                style={{ color: 'var(--pd-related-item-name)' }}
-            >
-                {relatedItem.name}
-            </h4>
-            <p
-                className="text-sm font-medium"
-                style={{ color: 'var(--pd-related-item-price)' }}
-            >
-                {relatedItem.discounted_price && relatedItem.discounted_price < relatedItem.price
-                    ? formatPrice(relatedItem.discounted_price)
-                    : formatPrice(relatedItem.price)
-                }
-            </p>
-        </motion.button>
-    )
-})
 
 export const ProductDetailContent = memo(function ProductDetailContent({
     tenant,
@@ -264,7 +197,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const { addItem, setTenantContext } = useCart()
 
     const [isImageModalOpen, setIsImageModalOpen] = useState(false)
-    const [isImageLoaded, setIsImageLoaded] = useState(false)
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     // Legacy single variation
@@ -428,9 +360,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         setIsImageModalOpen(open)
     }, [])
 
-    const handleImageLoad = useCallback(() => {
-        setIsImageLoaded(true)
-    }, [])
+
 
     // Generate selected summary text - memoized
     const getSelectedSummary = useMemo(() => {
@@ -507,9 +437,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
     }, [])
 
-    const handleRelatedItemClick = useCallback((relatedItem: MenuItem) => {
-        router.push(`/${tenant.slug}/menu/item/${relatedItem.id}`)
-    }, [router, tenant.slug])
+
 
     const handleVariationTypeSelect = useCallback((typeId: string, option: VariationOption) => {
         setSelectedVariations(prev => ({ ...prev, [typeId]: option }))
@@ -803,75 +731,21 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
-                        <motion.div
-                            className="mt-8 pt-6 border-t"
-                            style={{ borderColor: 'var(--pd-border)' }}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.4, delay: 0.2 }}
-                        >
-                            <h3
-                                className="text-lg font-bold mb-4"
-                                style={{
-                                    color: 'var(--pd-related-title)',
-                                    fontSize: 'var(--pd-related-title-font-size)'
-                                }}
-                            >
-                                You might also like
-                            </h3>
-                            <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
-                                {relatedItems.map((relatedItem, index) => (
-                                    <RelatedItemCard
-                                        key={relatedItem.id}
-                                        relatedItem={relatedItem}
-                                        onClick={() => handleRelatedItemClick(relatedItem)}
-                                        index={index}
-                                    />
-                                ))}
-                            </div>
-                        </motion.div>
+                        <LazyRelatedItemsSection
+                            relatedItems={relatedItems}
+                            tenantSlug={tenant.slug}
+                        />
                     )}
                 </div>
             </main>
 
             {/* Image Modal / Lightbox */}
-            <Dialog open={isImageModalOpen} onOpenChange={handleCloseImageModal}>
-                <DialogContent
-                    className="max-w-4xl w-[95vw] h-[90vh] p-0 border-none overflow-hidden"
-                    style={{ backgroundColor: 'var(--pd-modal-bg)' }}
-                >
-                    {/* Hidden title for accessibility */}
-                    <DialogTitle className="sr-only">{item.name} - Image Preview</DialogTitle>
-                    <DialogClose className="absolute top-4 right-4 z-50">
-                        <div
-                            className="rounded-full p-2 transition-colors cursor-pointer"
-                            style={{ backgroundColor: 'var(--pd-modal-close-bg)' }}
-                            aria-label="Close"
-                        >
-                            <X className="h-6 w-6" style={{ color: 'var(--pd-modal-close)' }} />
-                        </div>
-                    </DialogClose>
-                    <div className="w-full h-full flex items-center justify-center p-4">
-                        {!isImageLoaded && (
-                            <Skeleton
-                                className="absolute w-[80vw] h-[80vh]"
-                                style={{ backgroundColor: 'var(--pd-image-placeholder)' }}
-                            />
-                        )}
-                        {hasImage && (
-                            <Image
-                                src={item.image_url!}
-                                alt={item.name}
-                                width={1200}
-                                height={1200}
-                                className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${isImageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                                onLoad={handleImageLoad}
-                                priority
-                            />
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <LazyImageModal
+                isOpen={isImageModalOpen}
+                onOpenChange={handleCloseImageModal}
+                imageUrl={item.image_url}
+                itemName={item.name}
+            />
 
             {/* Sticky Footer */}
             <footer
@@ -960,7 +834,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
             </footer>
 
-            <ProductDetailCustomizer
+            <LazyProductDetailCustomizer
                 tenant={tenant}
                 onPreview={setCustomizationDraft}
                 onSaved={() => window.location.reload()}
