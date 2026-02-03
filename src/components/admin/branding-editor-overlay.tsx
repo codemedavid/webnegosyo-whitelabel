@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { saveBrandingAction } from '@/app/actions/branding'
 import type { Tenant, PromotionBanner } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -134,14 +135,12 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
 
   function handleSave() {
     startSaving(async () => {
-      const { error } = await supabase
-        .from('tenants')
-        // Cast through unknown to satisfy strict generic constraints if local types differ
-        .update(draft as unknown as never)
-        .eq('id', tenant.id)
-      if (!error) {
+      const result = await saveBrandingAction(tenant.id, tenant.slug, draft)
+      if (result.success) {
         setIsOpen(false)
         onSaved?.()
+      } else {
+        console.error('[BrandingEditor] Save failed:', result.error)
       }
     })
   }

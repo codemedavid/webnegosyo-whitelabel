@@ -837,7 +837,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             <LazyProductDetailCustomizer
                 tenant={tenant}
                 onPreview={setCustomizationDraft}
-                onSaved={() => window.location.reload()}
+                onSaved={() => {
+                    // No reload needed - server action revalidates cached pages automatically
+                }}
             />
         </div>
     )

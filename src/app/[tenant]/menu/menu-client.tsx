@@ -51,7 +51,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
       items = items.filter(
         (item) =>
           item.name.toLowerCase().includes(query) ||
-          item.description.toLowerCase().includes(query)
+          (item.description ?? '').toLowerCase().includes(query)
       )
     }
 
@@ -330,18 +330,9 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
             setPageLayoutOverride(draft?.page_layout as string || null)
             setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
           }}
-          onSaved={async () => {
-            if (!tenant?.id) return
-            const supabase = createClient()
-            const { data } = await supabase
-              .from('tenants')
-              .select('*')
-              .eq('id', tenant.id)
-              .maybeSingle()
-            if (data) {
-              window.location.reload()
-              toast.success('Branding updated!')
-            }
+          onSaved={() => {
+            toast.success('Branding updated!')
+            // No reload needed - server action revalidates cached pages automatically
           }}
         />
       )}
