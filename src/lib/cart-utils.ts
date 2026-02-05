@@ -88,6 +88,14 @@ export function formatPrice(price: number): string {
 }
 
 /**
+ * Form field metadata for message generation
+ */
+export interface FormFieldMeta {
+  field_name: string
+  field_label: string
+}
+
+/**
  * Generate messenger message from cart
  */
 export function generateMessengerMessage(
@@ -95,7 +103,8 @@ export function generateMessengerMessage(
   restaurantName: string,
   orderType?: { name: string; type: string } | null,
   customerData?: Record<string, string>,
-  paymentMethod?: { name: string; details?: string } | null
+  paymentMethod?: { name: string; details?: string } | null,
+  formFields?: FormFieldMeta[]
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -113,14 +122,45 @@ export function generateMessengerMessage(
     lines.push('')
   }
 
-  // Add customer information
+  // Add customer information (including all custom form fields)
   if (customerData) {
-    const customerInfo = []
-    if (customerData.customer_name) customerInfo.push(`👤 Name: ${customerData.customer_name}`)
-    if (customerData.customer_phone) customerInfo.push(`📞 Phone: ${customerData.customer_phone}`)
-    if (customerData.customer_email) customerInfo.push(`📧 Email: ${customerData.customer_email}`)
-    if (customerData.delivery_address) customerInfo.push(`📍 Address: ${customerData.delivery_address}`)
-    if (customerData.table_number) customerInfo.push(`🪑 Table: ${customerData.table_number}`)
+    const customerInfo: string[] = []
+
+    // Known fields with specific emojis
+    const knownFieldEmojis: Record<string, string> = {
+      customer_name: '👤',
+      customer_phone: '📞',
+      customer_email: '📧',
+      delivery_address: '📍',
+      table_number: '🪑',
+    }
+
+    // Fields to skip (internal use only, like coordinates)
+    const skipFields = ['delivery_lat', 'delivery_lng', 'messenger_psid']
+
+    // If we have form field metadata, use it to maintain order and get proper labels
+    if (formFields && formFields.length > 0) {
+      formFields.forEach(field => {
+        const value = customerData[field.field_name]
+        if (value && value.trim()) {
+          const emoji = knownFieldEmojis[field.field_name] || '📝'
+          customerInfo.push(`${emoji} ${field.field_label}: ${value}`)
+        }
+      })
+    } else {
+      // Fallback: iterate through customerData directly
+      Object.entries(customerData).forEach(([fieldName, value]) => {
+        if (skipFields.includes(fieldName) || !value || !value.trim()) return
+
+        const emoji = knownFieldEmojis[fieldName] || '📝'
+        // Format field name as label (e.g., 'customer_name' -> 'Name')
+        const label = fieldName
+          .replace(/^customer_/, '')
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+        customerInfo.push(`${emoji} ${label}: ${value}`)
+      })
+    }
 
     if (customerInfo.length > 0) {
       lines.push('👤 Customer Information:')

@@ -459,15 +459,6 @@ export default function CheckoutPage() {
         type: selectedOrderType.type,
       } : null
 
-      // Prepare customer data for message
-      // Form fields use names like 'customer_name', 'customer_phone', 'table_number' directly
-      const customerDataForMessage: Record<string, string> = {}
-      if (customerData.customer_name) customerDataForMessage.customer_name = customerData.customer_name
-      if (customerData.customer_phone) customerDataForMessage.customer_phone = customerData.customer_phone
-      if (customerData.customer_email) customerDataForMessage.customer_email = customerData.customer_email
-      if (customerData.delivery_address) customerDataForMessage.delivery_address = customerData.delivery_address
-      if (customerData.table_number) customerDataForMessage.table_number = customerData.table_number
-
       // Get payment method info for message
       const selectedPaymentForMessage = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
       const paymentMethodInfo = selectedPaymentForMessage ? {
@@ -475,13 +466,21 @@ export default function CheckoutPage() {
         details: selectedPaymentForMessage.details || undefined,
       } : null
 
+      // Prepare form fields metadata for message (to display proper labels)
+      const formFieldsMeta = formFields.map(field => ({
+        field_name: field.field_name,
+        field_label: field.field_label,
+      }))
+
       // Generate message (always needed, even for ref-based URLs)
+      // Pass all customerData and formFields so all custom fields appear with proper labels
       const message = generateMessengerMessage(
         items,
         tenant.name,
         orderTypeInfo,
-        customerDataForMessage,
-        paymentMethodInfo
+        customerData, // Pass all customer data, not just hardcoded fields
+        paymentMethodInfo,
+        formFieldsMeta // Include field metadata for proper labels
       )
 
       // Determine if Facebook page is connected (for ref-based messaging)
