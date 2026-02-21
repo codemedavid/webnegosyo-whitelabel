@@ -49,6 +49,7 @@ interface LayoutDefaultProps {
 
 export function LayoutDefault({
     tenant,
+    tenantSlug,
     categories,
     filteredItems,
     activeCategory,
@@ -219,6 +220,7 @@ export function LayoutDefault({
                 activeCategory ? (
                     <MenuGrid
                         items={filteredItems}
+                        tenantSlug={tenantSlug}
                         template={cardTemplate}
                         onItemSelect={onItemSelect}
                         branding={branding}

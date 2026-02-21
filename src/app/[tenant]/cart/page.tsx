@@ -141,7 +141,7 @@ export default function CartPage() {
                   <span className="text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</span>
                 </div>
 
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
                     <div className="flex gap-4 md:gap-6">
                       <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
@@ -151,6 +151,8 @@ export default function CartPage() {
                           fill
                           className="object-cover group-hover:scale-105 transition-transform duration-200"
                           sizes="112px"
+                          lazy={index > 5}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
                         />
                       </div>
 

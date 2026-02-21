@@ -1,12 +1,13 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Pencil, UtensilsCrossed } from 'lucide-react'
 import type { MenuItem, Category } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
+import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 
 interface MenuGridGroupedProps {
   items: MenuItem[]
@@ -33,6 +34,16 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
   isBrandAdmin = false,
   onEditCategoryHeader,
 }: MenuGridGroupedProps) {
+  const groupedItems = useMemo(
+    () =>
+      groupMenuItemsByCategory({
+        items,
+        categories,
+        uncategorizedCategory: { id: 'uncategorized', name: 'Other Items', icon: '🍽️' },
+      }),
+    [items, categories]
+  )
+
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -43,24 +54,6 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
         />
       </div>
     )
-  }
-
-  // Group items by category
-  const groupedItems = categories.reduce((acc, category) => {
-    const categoryItems = items.filter(item => item.category_id === category.id)
-    if (categoryItems.length > 0) {
-      acc.push({ category, items: categoryItems })
-    }
-    return acc
-  }, [] as Array<{ category: Category; items: MenuItem[] }>)
-
-  // Add items without category at the end
-  const uncategorizedItems = items.filter(item => !item.category_id)
-  if (uncategorizedItems.length > 0) {
-    groupedItems.push({
-      category: { id: 'uncategorized', name: 'Other Items', icon: '🍽️' } as Category,
-      items: uncategorizedItems
-    })
   }
 
   return (

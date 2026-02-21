@@ -14,7 +14,7 @@ interface CloudinaryTransformOptions {
     /** Quality (1-100, default: auto) */
     quality?: number | 'auto'
     /** Crop mode */
-    crop?: 'fill' | 'fit' | 'scale' | 'thumb' | 'crop' | 'pad'
+    crop?: 'fill' | 'fit' | 'scale' | 'thumb' | 'crop' | 'pad' | 'limit'
     /** Gravity/focus point for cropping */
     gravity?: 'auto' | 'face' | 'center' | 'north' | 'south' | 'east' | 'west'
     /** Format to convert to */

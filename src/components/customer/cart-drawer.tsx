@@ -130,7 +130,7 @@ export function CartDrawer({
             <>
               <ScrollArea className="flex-1 overflow-y-auto px-4">
                 <div className="space-y-3 pt-3 pb-4">
-                  {items.map((item) => (
+                  {items.map((item, index) => (
                     <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         <OptimizedImage
@@ -139,6 +139,8 @@ export function CartDrawer({
                           fill
                           className="object-cover group-hover:scale-105 transition-transform"
                           sizes="64px"
+                          lazy={index > 3}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
                         />
                       </div>
 

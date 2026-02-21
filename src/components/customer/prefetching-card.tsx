@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useCallback, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { CardTemplateRenderer } from './card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -10,6 +10,7 @@ import type { CardTemplate } from '@/lib/card-templates'
 interface PrefetchingCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
+  tenantSlug: string
   branding: BrandingColors
   template?: CardTemplate
   menuEngineeringEnabled?: boolean
@@ -17,20 +18,17 @@ interface PrefetchingCardProps {
 }
 
 /**
- * Card wrapper that prefetches the product detail route on hover/touch only.
+ * Card wrapper that prefetches the product detail route on hover-capable devices.
  * Memoized to prevent re-renders from parent state changes (e.g. carousel slide).
  */
-export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
-  const params = useParams()
+export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, tenantSlug, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
   const router = useRouter()
   const hasPrefetched = useRef(false)
 
-  const tenantParam = params.tenant
-  const tenantSlug = typeof tenantParam === 'string' ? tenantParam : null
-
-  // Lightweight prefetch on hover/touch only – no data queries, just route prefetch
+  // Prefetch only for hover-capable pointers to avoid touch-scroll prefetch storms on mobile.
   const handleInteraction = useCallback(() => {
-    if (!tenantSlug || hasPrefetched.current) return
+    if (hasPrefetched.current) return
+    if (typeof window !== 'undefined' && !window.matchMedia('(hover: hover)').matches) return
     router.prefetch(`/${tenantSlug}/menu/item/${item.id}`)
     hasPrefetched.current = true
   }, [tenantSlug, item.id, router])
@@ -38,7 +36,7 @@ export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, b
   return (
     <div
       onMouseEnter={handleInteraction}
-      onTouchStart={handleInteraction}
+      style={{ contentVisibility: 'auto' }}
     >
       <CardTemplateRenderer
         template={template}

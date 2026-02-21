@@ -17,13 +17,15 @@ interface MenuItemCardProps {
 
 export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: MenuItemCardProps) {
   return (
-    <CardTemplateRenderer
-      template={template}
-      item={item}
-      onSelect={onSelect}
-      branding={branding}
-      menuEngineeringEnabled={menuEngineeringEnabled}
-      hideCurrencySymbol={hideCurrencySymbol}
-    />
+    <div style={{ contentVisibility: 'auto' }}>
+      <CardTemplateRenderer
+        template={template}
+        item={item}
+        onSelect={onSelect}
+        branding={branding}
+        menuEngineeringEnabled={menuEngineeringEnabled}
+        hideCurrencySymbol={hideCurrencySymbol}
+      />
+    </div>
   )
 })

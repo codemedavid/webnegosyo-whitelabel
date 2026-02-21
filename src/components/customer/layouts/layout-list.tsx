@@ -1,11 +1,13 @@
 'use client'
 
+import { useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { SearchBar } from '../search-bar'
 import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
+import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 
 interface LayoutListProps {
     tenant: Tenant | null
@@ -60,22 +62,15 @@ export function LayoutList({
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
 
-    // Group items by category
-    const groupedItems = categories.reduce((acc, category) => {
-        const categoryItems = filteredItems.filter(item => item.category_id === category.id)
-        if (categoryItems.length > 0) {
-            acc.push({ category, items: categoryItems })
-        }
-        return acc
-    }, [] as Array<{ category: Category; items: MenuItem[] }>)
-
-    const uncategorizedItems = filteredItems.filter(item => !item.category_id)
-    if (uncategorizedItems.length > 0) {
-        groupedItems.push({
-            category: { id: 'uncategorized', name: 'Other', icon: '🍽️' } as Category,
-            items: uncategorizedItems
-        })
-    }
+    const groupedItems = useMemo(
+        () =>
+            groupMenuItemsByCategory({
+                items: filteredItems,
+                categories,
+                uncategorizedCategory: { id: 'uncategorized', name: 'Other', icon: '🍽️' },
+            }),
+        [filteredItems, categories]
+    )
 
     const formatPrice = (price: number) => hideCurrencySymbol ? price.toFixed(2) : `₱${price.toFixed(2)}`
 

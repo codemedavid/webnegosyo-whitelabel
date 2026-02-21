@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
@@ -7,6 +8,7 @@ import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
+import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 
 interface LayoutGridFocusProps {
     tenant: Tenant | null
@@ -66,6 +68,14 @@ export function LayoutGridFocus({
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
     const activeColor = branding.menuCategoryActive || branding.primary
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
+    const groupedItems = useMemo(
+        () =>
+            groupMenuItemsByCategory({
+                items: filteredItems,
+                categories,
+            }),
+        [filteredItems, categories]
+    )
 
     return (
         <div>
@@ -198,13 +208,7 @@ export function LayoutGridFocus({
                 </div>
             ) : (
                 <div className="space-y-8">
-                    {categories.reduce((acc, category) => {
-                        const categoryItems = filteredItems.filter(item => item.category_id === category.id)
-                        if (categoryItems.length > 0) {
-                            acc.push({ category, items: categoryItems })
-                        }
-                        return acc
-                    }, [] as Array<{ category: Category; items: MenuItem[] }>).map(({ category, items }) => (
+                    {groupedItems.map(({ category, items }) => (
                         <section key={category.id} id={`category-${category.id}`} className="scroll-mt-28">
                             <div className="mb-3 flex items-center justify-between gap-2">
                                 <h2

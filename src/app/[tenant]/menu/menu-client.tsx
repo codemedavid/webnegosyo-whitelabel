@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -10,7 +11,6 @@ import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { createClient } from '@/lib/supabase/client'
 import { getTenantBranding } from '@/lib/branding-utils'
-import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
@@ -33,6 +33,11 @@ interface AdminEditPencilProps {
   label: string
   className?: string
 }
+
+const BrandingEditorOverlay = dynamic(
+  () => import('@/components/admin/branding-editor-overlay').then(mod => ({ default: mod.BrandingEditorOverlay })),
+  { ssr: false }
+)
 
 function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencilProps) {
   if (!visible) return null
@@ -127,22 +132,23 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
   }, [flashScreenEnabled, tenant?.flash_screen_duration_ms, tenant?.id, tenantSlug])
 
   const filteredItems = useMemo(() => {
-    let items = allMenuItems
+    const query = searchQuery.trim().toLowerCase()
+    const items = allMenuItems.filter((item) => {
+      if (activeCategory && item.category_id !== activeCategory) {
+        return false
+      }
 
-    if (activeCategory) {
-      items = items.filter((item) => item.category_id === activeCategory)
-    }
+      if (!query) {
+        return true
+      }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      items = items.filter(
-        (item) =>
-          item.name.toLowerCase().includes(query) ||
-          (item.description ?? '').toLowerCase().includes(query)
+      return (
+        item.name.toLowerCase().includes(query) ||
+        (item.description ?? '').toLowerCase().includes(query)
       )
-    }
+    })
 
-    return items.sort((a, b) => {
+    return [...items].sort((a, b) => {
       if (a.is_featured && !b.is_featured) return -1
       if (!a.is_featured && b.is_featured) return 1
       if (tenant?.menu_engineering_enabled) {
@@ -155,7 +161,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
     })
   }, [allMenuItems, activeCategory, searchQuery, tenant?.menu_engineering_enabled])
 
-  const baseBranding = getTenantBranding(tenant)
+  const baseBranding = useMemo(() => getTenantBranding(tenant), [tenant])
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
   const [heroOverride, setHeroOverride] = useState<{ title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null>(null)
   const [bannerOverride, setBannerOverride] = useState<{
@@ -492,7 +498,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
         />
       )}
 
-      {tenant && (
+      {tenant && isBrandAdmin && (
         <BrandingEditorOverlay
           tenant={tenant}
           onPreview={(draft) => {
@@ -559,7 +565,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
       />
 
       {/* Checkout Interstitial Preview (admin only, z-[61] above branding editor z-[60]) */}
-      {tenant && (
+      {tenant && isBrandAdmin && (
         <CheckoutUpsellModal
           open={isCheckoutPreviewOpen}
           onContinue={() => setIsCheckoutPreviewOpen(false)}

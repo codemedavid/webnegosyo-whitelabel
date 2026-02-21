@@ -11,6 +11,7 @@ import type { CardTemplate } from '@/lib/card-templates'
 interface MenuGridProps {
   items: MenuItem[]
   onItemSelect: (item: MenuItem) => void
+  tenantSlug: string
   branding: BrandingColors
   template?: CardTemplate
   mobileGridColumns?: number
@@ -18,7 +19,7 @@ interface MenuGridProps {
   hideCurrencySymbol?: boolean
 }
 
-export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2, menuEngineeringEnabled, hideCurrencySymbol }: MenuGridProps) {
+export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, tenantSlug, branding, template = 'classic', mobileGridColumns = 2, menuEngineeringEnabled, hideCurrencySymbol }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -41,6 +42,7 @@ export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, branding, 
           key={item.id}
           item={item}
           onSelect={onItemSelect}
+          tenantSlug={tenantSlug}
           branding={branding}
           template={template}
           menuEngineeringEnabled={menuEngineeringEnabled}

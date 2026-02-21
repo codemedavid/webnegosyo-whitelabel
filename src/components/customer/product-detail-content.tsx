@@ -965,67 +965,71 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 />
             )}
 
-            {/* Popup Preview Modal (admin only - renders above sidebar z-[56]) */}
-            <UpsellSuggestionModal
-                open={isPopupPreviewOpen}
-                onClose={() => setIsPopupPreviewOpen(false)}
-                onAddItem={() => { }}
-                suggestions={[{
-                    id: 'preview-1',
-                    tenant_id: tenant.id,
-                    name: 'Sample Item',
-                    description: 'A sample menu item for preview',
-                    price: 199,
-                    image_url: item.image_url || '',
-                    category_id: item.category_id || '',
-                    is_available: true,
-                    order: 0,
-                    variations: [],
-                    addons: [],
-                    variation_types: [],
-                    created_at: '',
-                    updated_at: '',
-                } as MenuItem]}
-                triggerItemName={item.name}
-                zIndexClass="z-[58]"
-            />
+            {isBrandAdmin && (
+                <>
+                    {/* Popup Preview Modal (admin only - renders above sidebar z-[56]) */}
+                    <UpsellSuggestionModal
+                        open={isPopupPreviewOpen}
+                        onClose={() => setIsPopupPreviewOpen(false)}
+                        onAddItem={() => { }}
+                        suggestions={[{
+                            id: 'preview-1',
+                            tenant_id: tenant.id,
+                            name: 'Sample Item',
+                            description: 'A sample menu item for preview',
+                            price: 199,
+                            image_url: item.image_url || '',
+                            category_id: item.category_id || '',
+                            is_available: true,
+                            order: 0,
+                            variations: [],
+                            addons: [],
+                            variation_types: [],
+                            created_at: '',
+                            updated_at: '',
+                        } as MenuItem]}
+                        triggerItemName={item.name}
+                        zIndexClass="z-[58]"
+                    />
 
-            {/* Checkout Preview Modal (admin only - renders above sidebar z-[56]) */}
-            <CheckoutUpsellModal
-                open={isCheckoutPreviewOpen}
-                onContinue={() => setIsCheckoutPreviewOpen(false)}
-                tenantId={tenant.id}
-                branding={branding}
-                title="Before you go..."
-                subtitle="You might also enjoy these items"
-                maxItems={4}
-                previewSuggestions={[{
-                    id: 'checkout-preview-1',
-                    tenant_id: tenant.id,
-                    name: 'Sample Item',
-                    description: 'A sample menu item for preview',
-                    price: 199,
-                    image_url: item.image_url || '',
-                    category_id: item.category_id || '',
-                    is_available: true,
-                    order: 0,
-                    variations: [],
-                    addons: [],
-                    variation_types: [],
-                    created_at: '',
-                    updated_at: '',
-                } as MenuItem]}
-                previewColors={{
-                    background: customizationDraft?.checkout_modal_background_color || '#ffffff',
-                    title: customizationDraft?.checkout_modal_title_color || '#111111',
-                    description: customizationDraft?.checkout_modal_description_color || '#6b7280',
-                    price: customizationDraft?.checkout_modal_price_color || '#111111',
-                    button: customizationDraft?.checkout_modal_button_color || '#3b82f6',
-                    buttonText: customizationDraft?.checkout_modal_button_text_color || '#ffffff',
-                    border: customizationDraft?.checkout_modal_border_color || '#e5e7eb',
-                }}
-                zIndexClass="z-[58]"
-            />
+                    {/* Checkout Preview Modal (admin only - renders above sidebar z-[56]) */}
+                    <CheckoutUpsellModal
+                        open={isCheckoutPreviewOpen}
+                        onContinue={() => setIsCheckoutPreviewOpen(false)}
+                        tenantId={tenant.id}
+                        branding={branding}
+                        title="Before you go..."
+                        subtitle="You might also enjoy these items"
+                        maxItems={4}
+                        previewSuggestions={[{
+                            id: 'checkout-preview-1',
+                            tenant_id: tenant.id,
+                            name: 'Sample Item',
+                            description: 'A sample menu item for preview',
+                            price: 199,
+                            image_url: item.image_url || '',
+                            category_id: item.category_id || '',
+                            is_available: true,
+                            order: 0,
+                            variations: [],
+                            addons: [],
+                            variation_types: [],
+                            created_at: '',
+                            updated_at: '',
+                        } as MenuItem]}
+                        previewColors={{
+                            background: customizationDraft?.checkout_modal_background_color || '#ffffff',
+                            title: customizationDraft?.checkout_modal_title_color || '#111111',
+                            description: customizationDraft?.checkout_modal_description_color || '#6b7280',
+                            price: customizationDraft?.checkout_modal_price_color || '#111111',
+                            button: customizationDraft?.checkout_modal_button_color || '#3b82f6',
+                            buttonText: customizationDraft?.checkout_modal_button_text_color || '#ffffff',
+                            border: customizationDraft?.checkout_modal_border_color || '#e5e7eb',
+                        }}
+                        zIndexClass="z-[58]"
+                    />
+                </>
+            )}
 
             {/* Sticky Footer */}
             <footer
@@ -1126,15 +1130,17 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
             </footer>
 
-            <LazyProductDetailCustomizer
-                tenant={tenant}
-                onPreview={setCustomizationDraft}
-                onSaved={() => {
-                    // No reload needed - server action revalidates cached pages automatically
-                }}
-                onTogglePopupPreview={handleTogglePopupPreview}
-                onToggleCheckoutPreview={handleToggleCheckoutPreview}
-            />
+            {isBrandAdmin && (
+                <LazyProductDetailCustomizer
+                    tenant={tenant}
+                    onPreview={setCustomizationDraft}
+                    onSaved={() => {
+                        // No reload needed - server action revalidates cached pages automatically
+                    }}
+                    onTogglePopupPreview={handleTogglePopupPreview}
+                    onToggleCheckoutPreview={handleToggleCheckoutPreview}
+                />
+            )}
         </div>
     )
 })

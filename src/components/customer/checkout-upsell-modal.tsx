@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, memo, useCallback } from 'react'
+import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ShoppingBag, Check, Sparkles } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -132,12 +132,15 @@ function UpsellItemCard({
   item,
   onAdd,
   colors,
+  eagerImage = false,
 }: {
   item: MenuItem
   onAdd: () => void
   colors: CheckoutModalColors
+  eagerImage?: boolean
 }) {
   const [isAdded, setIsAdded] = useState(false)
+  const addResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -145,8 +148,25 @@ function UpsellItemCard({
     if (isAdded) return
     onAdd()
     setIsAdded(true)
-    setTimeout(() => setIsAdded(false), 1200)
+
+    if (addResetTimeoutRef.current) {
+      clearTimeout(addResetTimeoutRef.current)
+    }
+
+    addResetTimeoutRef.current = setTimeout(() => {
+      setIsAdded(false)
+      addResetTimeoutRef.current = null
+    }, 1200)
   }
+
+  useEffect(() => {
+    return () => {
+      if (addResetTimeoutRef.current) {
+        clearTimeout(addResetTimeoutRef.current)
+        addResetTimeoutRef.current = null
+      }
+    }
+  }, [isAdded])
 
   return (
     <motion.div
@@ -168,7 +188,9 @@ function UpsellItemCard({
             alt={item.name}
             fill
             className="object-cover transition-transform duration-300 hover:scale-105"
-            sizes="(max-width: 640px) 45vw, 220px"
+            sizes="(max-width: 640px) 44vw, 180px"
+            lazy={!eagerImage}
+            fetchPriority={eagerImage ? 'high' : 'auto'}
           />
         ) : (
           <div
@@ -376,12 +398,13 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         initial="hidden"
         animate="visible"
       >
-        {suggestions.map((item) => (
+        {suggestions.map((item, index) => (
           <UpsellItemCard
             key={item.id}
             item={item}
             onAdd={() => handleAddItem(item)}
             colors={colors}
+            eagerImage={suggestions.length <= 2 || index < 2}
           />
         ))}
       </motion.div>
@@ -392,7 +415,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     <motion.button
       whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
-      className="flex w-full items-center justify-center h-13 rounded-xl text-base font-semibold tracking-wide"
+      className="flex w-full items-center justify-center rounded-xl text-base font-semibold tracking-wide"
       style={{
         backgroundColor: colors.button,
         color: colors.buttonText,

@@ -25,6 +25,55 @@ interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
     lazy?: boolean
 }
 
+function parseSizeTokenToPx(sizeToken: string, viewportWidth: number): number | null {
+    const pxMatch = sizeToken.match(/^(\d+(?:\.\d+)?)px$/)
+    if (pxMatch) {
+        return Number(pxMatch[1])
+    }
+
+    const vwMatch = sizeToken.match(/^(\d+(?:\.\d+)?)vw$/)
+    if (vwMatch) {
+        return Math.round((Number(vwMatch[1]) / 100) * viewportWidth)
+    }
+
+    return null
+}
+
+/**
+ * Estimate the largest rendered width from a `sizes` string.
+ * Handles common patterns like:
+ * `(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw`
+ */
+function estimateRenderedWidthFromSizes(sizes?: string): number | null {
+    if (!sizes) return null
+
+    const entries = sizes.split(',').map((part) => part.trim()).filter(Boolean)
+    if (entries.length === 0) return null
+
+    let maxWidth = 0
+
+    for (const entry of entries) {
+        const mediaMatch = entry.match(/^\((?:max|min)-width:\s*(\d+)px\)\s+(.+)$/)
+        if (mediaMatch) {
+            const viewport = Number(mediaMatch[1])
+            const sizeToken = mediaMatch[2].trim()
+            const width = parseSizeTokenToPx(sizeToken, viewport)
+            if (width && width > maxWidth) {
+                maxWidth = width
+            }
+            continue
+        }
+
+        // Last fallback entry without media condition
+        const width = parseSizeTokenToPx(entry, 1440)
+        if (width && width > maxWidth) {
+            maxWidth = width
+        }
+    }
+
+    return maxWidth > 0 ? maxWidth : null
+}
+
 /**
  * An optimized image component that uses Cloudinary's native transformations
  * instead of Next.js Image Optimization for Cloudinary URLs.
@@ -53,6 +102,7 @@ export function OptimizedImage({
     width,
     height,
     fill,
+    sizes,
     priority,
     ...props
 }: OptimizedImageProps) {
@@ -66,16 +116,30 @@ export function OptimizedImage({
 
     // If it's a Cloudinary URL and we should use Cloudinary transforms
     if (useCloudinaryTransform && isCloudinaryUrl(src)) {
-        // Calculate dimensions for transformation
-        const transformWidth = fill ? undefined : (typeof width === 'number' ? width : undefined)
-        const transformHeight = fill ? undefined : (typeof height === 'number' ? height : undefined)
+        // Calculate dimensions for transformation.
+        // For fill images, estimate a practical max width from `sizes` to avoid loading originals.
+        const estimatedFillWidth = fill ? estimateRenderedWidthFromSizes(sizes) : null
+        const requestedWidth = typeof width === 'number'
+            ? width
+            : fill
+                ? (estimatedFillWidth || 1200)
+                : undefined
+        const requestedHeight = typeof height === 'number' ? height : undefined
+        const transformWidth = typeof requestedWidth === 'number'
+            ? Math.min(2000, Math.round(requestedWidth * 2))
+            : undefined
+        const transformHeight = typeof requestedHeight === 'number'
+            ? Math.min(2000, Math.round(requestedHeight * 2))
+            : undefined
+        const cropMode = transformWidth && transformHeight ? 'fill' : 'limit'
 
         // Apply Cloudinary transformations
         const transformedUrl = transformCloudinaryUrl(src, {
-            width: transformWidth ? transformWidth * 2 : undefined, // 2x for retina
-            height: transformHeight ? transformHeight * 2 : undefined,
+            width: transformWidth,
+            height: transformHeight,
             quality: cloudinaryQuality,
-            crop: 'fill',
+            crop: cropMode,
+            dpr: 'auto',
         }) || src
 
         // Use unoptimized prop to bypass Next.js optimization
@@ -86,6 +150,7 @@ export function OptimizedImage({
                 width={width}
                 height={height}
                 fill={fill}
+                sizes={sizes}
                 priority={priority}
                 loading={loadingProp}
                 decoding="async"
@@ -103,6 +168,7 @@ export function OptimizedImage({
             width={width}
             height={height}
             fill={fill}
+            sizes={sizes}
             priority={priority}
             loading={loadingProp}
             decoding="async"
