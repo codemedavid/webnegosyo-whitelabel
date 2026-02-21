@@ -19,8 +19,12 @@ interface CacheEntry<T> {
 // In-memory cache for client-side
 const clientCache = new Map<string, CacheEntry<unknown>>()
 
+// In-flight request deduplication — prevents duplicate concurrent fetches for the same key
+const inFlightRequests = new Map<string, Promise<unknown>>()
+
 /**
- * Get cached data or fetch fresh data
+ * Get cached data or fetch fresh data.
+ * Deduplicates concurrent requests for the same key.
  */
 export async function getCachedOrFetch<T>(
     key: string,
@@ -35,13 +39,24 @@ export async function getCachedOrFetch<T>(
         return cached.data
     }
 
-    // Fetch fresh data
-    const data = await fetcher()
+    // If there's already an in-flight request for this key, reuse it
+    const existing = inFlightRequests.get(key)
+    if (existing) {
+        return existing as Promise<T>
+    }
 
-    // Cache the result
-    clientCache.set(key, { data, timestamp: now })
+    // Fetch fresh data with deduplication
+    const promise = fetcher()
+        .then((data) => {
+            clientCache.set(key, { data, timestamp: Date.now() })
+            return data
+        })
+        .finally(() => {
+            inFlightRequests.delete(key)
+        })
 
-    return data
+    inFlightRequests.set(key, promise)
+    return promise
 }
 
 /**

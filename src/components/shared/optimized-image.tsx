@@ -88,6 +88,7 @@ export function OptimizedImage({
                 fill={fill}
                 priority={priority}
                 loading={loadingProp}
+                decoding="async"
                 unoptimized
                 {...props}
             />
@@ -104,6 +105,7 @@ export function OptimizedImage({
             fill={fill}
             priority={priority}
             loading={loadingProp}
+            decoding="async"
             {...props}
         />
     )

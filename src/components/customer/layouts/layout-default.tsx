@@ -148,7 +148,7 @@ export function LayoutDefault({
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
-                        placeholder="Search for dishes..."
+                        placeholder="Search....."
                     />
                 </div>
             )}

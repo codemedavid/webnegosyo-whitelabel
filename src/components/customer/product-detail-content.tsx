@@ -106,17 +106,11 @@ const VariationOptionButton = memo(function VariationOptionButton({
 }: VariationOptionButtonProps) {
     const upgradeAmount = option.price_modifier - currentPriceModifier
     return (
-        <motion.button
-            key={option.id}
+        <button
             type="button"
             onClick={onSelect}
-            className="px-4 py-2.5 text-sm font-medium transition-all border"
+            className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
-            layout
-            whileTap={{ scale: 0.95 }}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
         >
             <span className="font-semibold">{option.name}</span>
             {option.price_modifier !== 0 && (
@@ -136,7 +130,7 @@ const VariationOptionButton = memo(function VariationOptionButton({
                     Upgrade +{formatPrice(upgradeAmount)}
                 </span>
             )}
-        </motion.button>
+        </button>
     )
 })
 
@@ -155,17 +149,11 @@ const LegacyVariationButton = memo(function LegacyVariationButton({
     dynamicStyles
 }: LegacyVariationButtonProps) {
     return (
-        <motion.button
-            key={variation.id}
+        <button
             type="button"
             onClick={onSelect}
-            className="px-4 py-2.5 text-sm font-medium transition-all border"
+            className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
-            layout
-            whileTap={{ scale: 0.95 }}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
         >
             <span className="font-semibold">{variation.name}</span>
             {variation.price_modifier !== 0 && (
@@ -173,7 +161,7 @@ const LegacyVariationButton = memo(function LegacyVariationButton({
                     (+{formatPrice(variation.price_modifier)})
                 </span>
             )}
-        </motion.button>
+        </button>
     )
 })
 
@@ -194,17 +182,11 @@ const AddonButton = memo(function AddonButton({
     freeText,
 }: AddonButtonProps) {
     return (
-        <motion.button
-            key={addon.id}
+        <button
             type="button"
             onClick={onToggle}
-            className="w-full flex items-center justify-between p-3.5 border-2 transition-all"
+            className="w-full flex items-center justify-between p-3.5 border-2 transition-all duration-150 active:scale-[0.98]"
             style={isSelected ? dynamicStyles?.addonButtonSelected : dynamicStyles?.addonButton}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            whileTap={{ scale: 0.98 }}
-            layout
         >
             <div className="flex items-center gap-3">
                 <div
@@ -235,7 +217,7 @@ const AddonButton = memo(function AddonButton({
             >
                 {addon.price === 0 ? freeText : `+${formatPrice(addon.price)}`}
             </span>
-        </motion.button>
+        </button>
     )
 })
 
@@ -987,7 +969,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             <UpsellSuggestionModal
                 open={isPopupPreviewOpen}
                 onClose={() => setIsPopupPreviewOpen(false)}
-                onAddItem={() => {}}
+                onAddItem={() => { }}
                 suggestions={[{
                     id: 'preview-1',
                     tenant_id: tenant.id,

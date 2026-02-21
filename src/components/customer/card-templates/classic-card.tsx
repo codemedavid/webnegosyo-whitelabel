@@ -40,7 +40,7 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
             alt={item.name}
             fill
             className="object-cover transition-transform group-hover:scale-105"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
             loading="lazy"
           />
         )}
