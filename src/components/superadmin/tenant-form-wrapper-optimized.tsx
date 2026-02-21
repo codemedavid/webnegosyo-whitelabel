@@ -58,18 +58,20 @@ interface TenantFormData {
   lalamove_market: string
   lalamove_service_type: string
   lalamove_sandbox: boolean
+  menu_engineering_enabled: boolean
+  hide_currency_symbol: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
 
 // Memoized color input component to prevent unnecessary re-renders
-function ColorInput({ 
-  id, 
-  label, 
-  value, 
-  onChange, 
-  placeholder, 
-  disabled 
+function ColorInput({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled
 }: {
   id: string
   label: string
@@ -102,10 +104,10 @@ function ColorInput({
 }
 
 // Basic information form section
-function BasicInfoSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function BasicInfoSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -193,10 +195,10 @@ function BasicInfoSection({
 }
 
 // Branding form section
-function BrandingSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function BrandingSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -240,10 +242,10 @@ function BrandingSection({
 }
 
 // Extended branding form section
-function ExtendedBrandingSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function ExtendedBrandingSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -409,10 +411,10 @@ function ExtendedBrandingSection({
 }
 
 // Messenger integration form section
-function MessengerSection({ 
-  formData, 
-  setFormData, 
-  isPending 
+function MessengerSection({
+  formData,
+  setFormData,
+  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
@@ -457,7 +459,7 @@ function MessengerSection({
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  
+
   const [formData, setFormData] = useState<TenantFormData>({
     name: tenant?.name || '',
     slug: tenant?.slug || '',
@@ -501,11 +503,13 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     lalamove_market: (tenant as Tenant | undefined)?.lalamove_market || 'HK',
     lalamove_service_type: (tenant as Tenant | undefined)?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: (tenant as Tenant | undefined)?.lalamove_sandbox ?? true,
+    menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const input = {
       name: formData.name,
       slug: formData.slug,
@@ -549,6 +553,8 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      menu_engineering_enabled: formData.menu_engineering_enabled,
+      hide_currency_symbol: formData.hide_currency_symbol,
     }
 
     startTransition(async () => {
@@ -574,28 +580,28 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <BasicInfoSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+      <BasicInfoSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
-      
-      <BrandingSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+
+      <BrandingSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
-      
-      <ExtendedBrandingSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+
+      <ExtendedBrandingSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
-      
-      <MessengerSection 
-        formData={formData} 
-        setFormData={setFormData} 
-        isPending={isPending} 
+
+      <MessengerSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
       />
 
       <div className="flex justify-end gap-2">

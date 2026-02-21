@@ -9,13 +9,15 @@ interface BoldCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Bold Card Template
  * High contrast design with prominent CTA
  */
-export function BoldCard({ item, onSelect, branding }: BoldCardProps) {
+export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -46,9 +48,21 @@ export function BoldCard({ item, onSelect, branding }: BoldCardProps) {
         {/* Strong dark gradient for text contrast */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
+        {/* Custom Badge */}
+        {menuEngineeringEnabled && item.badge_text && (
+          <div className="absolute top-3 left-3 z-10">
+            <span
+              className="rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wide"
+              style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+            >
+              {item.badge_text}
+            </span>
+          </div>
+        )}
+
         {/* Badges - Bold style */}
         <div className="absolute top-3 left-3 right-3 flex justify-between items-start gap-2">
-          {item.is_featured && (
+          {item.is_featured && !item.badge_text && (
             <div
               className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide"
               style={{
@@ -113,13 +127,13 @@ export function BoldCard({ item, onSelect, branding }: BoldCardProps) {
               <span
                 className="text-sm font-bold line-through text-white/60"
               >
-                {formatPrice(item.price)}
+                {formatPrice(item.price, { hideCurrencySymbol })}
               </span>
             )}
             <span
               className="text-3xl font-black text-white"
             >
-              {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice)}
+              {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
           </div>
         </div>

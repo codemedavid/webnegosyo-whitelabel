@@ -1,15 +1,14 @@
 import { getMenuData } from './menu-server'
 import { MenuClient } from './menu-client'
 
-export const dynamic = 'force-static'
-export const revalidate = 300
+export const revalidate = 300 // ISR: revalidate every 5 minutes
 
 export default async function MenuPage({
   params
 }: {
-  params: { tenant: string }
+  params: Promise<{ tenant: string }>
 }) {
-  const tenantSlug = params.tenant
+  const { tenant: tenantSlug } = await params
 
   const data = await getMenuData(tenantSlug)
   const { tenant, categories, menuItems, error } = data

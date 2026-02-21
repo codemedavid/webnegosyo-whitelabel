@@ -49,6 +49,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
         onLogout={handleLogout}
         tenantName={tenant.name}
         enableOrderManagement={tenant.enable_order_management}
+        menuEngineeringEnabled={tenant.menu_engineering_enabled}
       />
       <main className="flex-1 overflow-y-auto">
         <div className="container mx-auto p-6">{children}</div>

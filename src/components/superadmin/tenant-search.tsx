@@ -2,7 +2,7 @@
 
 import { useState, useMemo, memo } from 'react'
 import Link from 'next/link'
-import { Edit, Eye, MoreVertical, Trash2 } from 'lucide-react'
+import { Edit, Eye, MoreVertical, Trash2, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -51,6 +51,12 @@ const TenantCard = memo(({ tenant, onDelete }: TenantCardProps) => (
           <Badge variant={tenant.is_active ? 'default' : 'secondary'}>
             {tenant.is_active ? 'Active' : 'Inactive'}
           </Badge>
+          {tenant.menu_engineering_enabled && (
+            <Badge variant="secondary" className="gap-1">
+              <TrendingUp className="h-3 w-3" />
+              Menu Eng.
+            </Badge>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">

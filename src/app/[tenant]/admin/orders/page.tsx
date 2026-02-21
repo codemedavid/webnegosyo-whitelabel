@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrdersByTenant } from '@/lib/orders-service'
-import { OrdersList } from '@/components/admin/orders-list'
+import { RealtimeOrdersWrapper } from '@/components/admin/realtime-orders-wrapper'
 import { OrdersSkeleton } from '@/components/admin/orders-skeleton'
 import type { Tenant } from '@/types/database'
 import type { PaginatedOrdersResult } from '@/lib/orders-service'
@@ -39,8 +39,8 @@ async function OrdersContent({
   const paginatedResult = result as PaginatedOrdersResult
 
   return (
-    <OrdersList
-      orders={paginatedResult.orders}
+    <RealtimeOrdersWrapper
+      initialOrders={paginatedResult.orders}
       tenantSlug={tenantSlug}
       tenantId={tenantId}
       pagination={{

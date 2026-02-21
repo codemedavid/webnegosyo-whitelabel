@@ -13,9 +13,11 @@ interface MenuGridProps {
   branding: BrandingColors
   template?: CardTemplate
   mobileGridColumns?: number
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
-export function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2 }: MenuGridProps) {
+export function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2, menuEngineeringEnabled, hideCurrencySymbol }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -40,6 +42,8 @@ export function MenuGrid({ items, onItemSelect, branding, template = 'classic', 
           onSelect={onItemSelect}
           branding={branding}
           template={template}
+          menuEngineeringEnabled={menuEngineeringEnabled}
+          hideCurrencySymbol={hideCurrencySymbol}
         />
       ))}
     </div>

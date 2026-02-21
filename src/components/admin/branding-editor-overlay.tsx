@@ -12,6 +12,13 @@ import { PAGE_LAYOUTS } from '@/lib/page-layouts'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 
+type BrandingEditorTab = 'colors' | 'layouts' | 'cards' | 'banners'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+
+interface MenuBrandingEditorOpenDetail {
+  section?: MenuBrandingSection
+}
+
 interface BrandingDraft {
   primary_color: string
   secondary_color: string
@@ -28,10 +35,25 @@ interface BrandingDraft {
   modal_title_color?: string
   modal_price_color?: string
   modal_description_color?: string
+  // Checkout interstitial modal colors
+  checkout_modal_background_color?: string
+  checkout_modal_title_color?: string
+  checkout_modal_description_color?: string
+  checkout_modal_price_color?: string
+  checkout_modal_button_color?: string
+  checkout_modal_button_text_color?: string
+  checkout_modal_border_color?: string
   button_primary_color?: string
   button_primary_text_color?: string
   text_primary_color?: string
   text_secondary_color?: string
+  menu_main_header_text_color?: string
+  menu_main_header_subtitle_color?: string
+  menu_category_header_color?: string
+  menu_category_active_color?: string
+  menu_category_inactive_color?: string
+  menu_cart_badge_background_color?: string
+  menu_cart_badge_text_color?: string
   border_color?: string
   // Hero customization
   hero_title?: string
@@ -55,12 +77,15 @@ interface BrandingEditorOverlayProps {
   tenant: Tenant
   onPreview: (draft: Partial<BrandingDraft> | null) => void
   onSaved?: () => void
+  onToggleCheckoutPreview?: () => void
 }
 
-export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEditorOverlayProps) {
+export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleCheckoutPreview }: BrandingEditorOverlayProps) {
   const supabase = useMemo(() => createClient(), [])
   const [isAllowed, setIsAllowed] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<BrandingEditorTab>('colors')
+  const [focusedMenuSection, setFocusedMenuSection] = useState<MenuBrandingSection | null>(null)
   const [isSaving, startSaving] = useTransition()
   const [draft, setDraft] = useState<BrandingDraft>({
     primary_color: tenant.primary_color,
@@ -78,10 +103,24 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     modal_title_color: tenant.modal_title_color || '',
     modal_price_color: tenant.modal_price_color || '',
     modal_description_color: tenant.modal_description_color || '',
+    checkout_modal_background_color: tenant.checkout_modal_background_color || '',
+    checkout_modal_title_color: tenant.checkout_modal_title_color || '',
+    checkout_modal_description_color: tenant.checkout_modal_description_color || '',
+    checkout_modal_price_color: tenant.checkout_modal_price_color || '',
+    checkout_modal_button_color: tenant.checkout_modal_button_color || '',
+    checkout_modal_button_text_color: tenant.checkout_modal_button_text_color || '',
+    checkout_modal_border_color: tenant.checkout_modal_border_color || '',
     button_primary_color: tenant.button_primary_color || '',
     button_primary_text_color: tenant.button_primary_text_color || '',
     text_primary_color: tenant.text_primary_color || '',
     text_secondary_color: tenant.text_secondary_color || '',
+    menu_main_header_text_color: tenant.menu_main_header_text_color || '',
+    menu_main_header_subtitle_color: tenant.menu_main_header_subtitle_color || '',
+    menu_category_header_color: tenant.menu_category_header_color || '',
+    menu_category_active_color: tenant.menu_category_active_color || '',
+    menu_category_inactive_color: tenant.menu_category_inactive_color || '',
+    menu_cart_badge_background_color: tenant.menu_cart_badge_background_color || '',
+    menu_cart_badge_text_color: tenant.menu_cart_badge_text_color || '',
     border_color: tenant.border_color || '',
     hero_title: tenant.hero_title || '',
     hero_description: tenant.hero_description || '',
@@ -120,6 +159,21 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
     return () => { isCancelled = true }
   }, [supabase, tenant.id])
 
+  useEffect(() => {
+    const handleOpenCustomizer = (event: Event) => {
+      if (!isAllowed) return
+      const detail = (event as CustomEvent<MenuBrandingEditorOpenDetail>).detail
+      setActiveTab('colors')
+      setFocusedMenuSection(detail?.section ?? null)
+      setIsOpen(true)
+    }
+
+    window.addEventListener('menu-branding-editor:open', handleOpenCustomizer as EventListener)
+    return () => {
+      window.removeEventListener('menu-branding-editor:open', handleOpenCustomizer as EventListener)
+    }
+  }, [isAllowed])
+
   // Live preview hook
   useEffect(() => {
     if (isOpen) onPreview(draft)
@@ -138,11 +192,62 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
       const result = await saveBrandingAction(tenant.id, tenant.slug, draft)
       if (result.success) {
         setIsOpen(false)
+        setFocusedMenuSection(null)
         onSaved?.()
       } else {
         console.error('[BrandingEditor] Save failed:', result.error)
       }
     })
+  }
+
+  const menuSectionLabels: Record<MenuBrandingSection, string> = {
+    main_header: 'Main Header',
+    category_navigation: 'Category Navigation',
+    category_header: 'Category Headers',
+    cart_badge: 'Cart Badge',
+  }
+
+  function renderMenuBrandingSection(section: MenuBrandingSection) {
+    if (section === 'main_header') {
+      return (
+        <Section key={section} title="Main Header" emoji="🏷️">
+          <div className="grid gap-3 grid-cols-2">
+            <Swatch id="menu_main_header_text_color" label="Title" value={draft.menu_main_header_text_color || ''} onChange={(v) => updateDraft('menu_main_header_text_color', v)} compact />
+            <Swatch id="menu_main_header_subtitle_color" label="Subtitle" value={draft.menu_main_header_subtitle_color || ''} onChange={(v) => updateDraft('menu_main_header_subtitle_color', v)} compact />
+          </div>
+        </Section>
+      )
+    }
+
+    if (section === 'category_navigation') {
+      return (
+        <Section key={section} title="Category Navigation" emoji="🧭">
+          <div className="grid gap-3 grid-cols-2">
+            <Swatch id="menu_category_active_color" label="Active" value={draft.menu_category_active_color || ''} onChange={(v) => updateDraft('menu_category_active_color', v)} compact />
+            <Swatch id="menu_category_inactive_color" label="Inactive" value={draft.menu_category_inactive_color || ''} onChange={(v) => updateDraft('menu_category_inactive_color', v)} compact />
+          </div>
+        </Section>
+      )
+    }
+
+    if (section === 'category_header') {
+      return (
+        <Section key={section} title="Category Headers" emoji="📚">
+          <div className="grid gap-3 grid-cols-2">
+            <Swatch id="menu_category_header_color" label="Header Text" value={draft.menu_category_header_color || ''} onChange={(v) => updateDraft('menu_category_header_color', v)} compact />
+          </div>
+        </Section>
+      )
+    }
+
+    return (
+      <Section key={section} title="Cart Badge" emoji="🛒">
+        <div className="grid gap-3 grid-cols-2">
+          <Swatch id="menu_cart_badge_background_color" label="Badge" value={draft.menu_cart_badge_background_color || ''} onChange={(v) => updateDraft('menu_cart_badge_background_color', v)} compact />
+          <Swatch id="menu_cart_badge_text_color" label="Number" value={draft.menu_cart_badge_text_color || ''} onChange={(v) => updateDraft('menu_cart_badge_text_color', v)} compact />
+        </div>
+      </Section>
+    )
   }
 
   return (
@@ -152,7 +257,10 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
         type="button"
         aria-label="Edit branding"
         className="fixed right-4 bottom-6 z-[60] h-12 w-12 rounded-lg border bg-white shadow-lg flex items-center justify-center hover:bg-gray-50"
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={() => {
+          setFocusedMenuSection(null)
+          setIsOpen((v) => !v)
+        }}
         title={isOpen ? 'Close editor' : 'Edit branding'}
       >
         <span className="text-xl">🎨</span>
@@ -171,7 +279,10 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>Close</Button>
+              <Button variant="ghost" size="sm" onClick={() => {
+                setIsOpen(false)
+                setFocusedMenuSection(null)
+              }}>Close</Button>
               <Button size="sm" disabled={isSaving} onClick={handleSave}>
                 {isSaving ? 'Saving…' : '💾 Save'}
               </Button>
@@ -179,7 +290,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
           </div>
 
           {/* Tabs for Colors and Card Templates */}
-          <Tabs defaultValue="colors" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as BrandingEditorTab)} className="flex-1 flex flex-col overflow-hidden">
             <TabsList className="mx-4 mt-4">
               <TabsTrigger value="colors" className="flex-1">
                 <span className="mr-1.5">🎨</span>
@@ -201,6 +312,31 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
 
             {/* Colors Tab */}
             <TabsContent value="colors" className="flex-1 overflow-y-auto p-4 space-y-6 mt-0">
+              {focusedMenuSection ? (
+                <>
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-blue-900">
+                        Editing: <span className="font-semibold">{menuSectionLabels[focusedMenuSection]}</span>
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-blue-900"
+                        onClick={() => setFocusedMenuSection(null)}
+                      >
+                        Show all
+                      </Button>
+                    </div>
+                  </div>
+                  {renderMenuBrandingSection(focusedMenuSection)}
+                </>
+              ) : (
+                <>
+              {(
+                ['main_header', 'category_navigation', 'category_header', 'cart_badge'] as MenuBrandingSection[]
+              ).map((section) => renderMenuBrandingSection(section))}
               {/* Hero Section */}
               <Section title="Hero Section" emoji="🏠">
                 <div className="space-y-3">
@@ -259,6 +395,30 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                 </div>
               </Section>
 
+              {/* Checkout Interstitial */}
+              <Section title="Checkout Interstitial" emoji="🛒">
+                <div className="grid gap-3 grid-cols-2">
+                  <Swatch id="checkout_modal_background_color" label="Background" value={draft.checkout_modal_background_color || ''} onChange={(v) => updateDraft('checkout_modal_background_color', v)} compact />
+                  <Swatch id="checkout_modal_title_color" label="Title" value={draft.checkout_modal_title_color || ''} onChange={(v) => updateDraft('checkout_modal_title_color', v)} compact />
+                  <Swatch id="checkout_modal_description_color" label="Description" value={draft.checkout_modal_description_color || ''} onChange={(v) => updateDraft('checkout_modal_description_color', v)} compact />
+                  <Swatch id="checkout_modal_price_color" label="Price" value={draft.checkout_modal_price_color || ''} onChange={(v) => updateDraft('checkout_modal_price_color', v)} compact />
+                  <Swatch id="checkout_modal_button_color" label="Button" value={draft.checkout_modal_button_color || ''} onChange={(v) => updateDraft('checkout_modal_button_color', v)} compact />
+                  <Swatch id="checkout_modal_button_text_color" label="Button Text" value={draft.checkout_modal_button_text_color || ''} onChange={(v) => updateDraft('checkout_modal_button_text_color', v)} compact />
+                  <Swatch id="checkout_modal_border_color" label="Border" value={draft.checkout_modal_border_color || ''} onChange={(v) => updateDraft('checkout_modal_border_color', v)} compact />
+                </div>
+                {onToggleCheckoutPreview && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3 text-sm"
+                    onClick={onToggleCheckoutPreview}
+                  >
+                    Preview Checkout Modal
+                  </Button>
+                )}
+              </Section>
+
               {/* Buttons */}
               <Section title="Buttons" emoji="🔘">
                 <div className="grid gap-3 grid-cols-2">
@@ -274,6 +434,8 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved }: BrandingEd
                   <Swatch id="text_secondary_color" label="Secondary" value={draft.text_secondary_color || ''} onChange={(v) => updateDraft('text_secondary_color', v)} compact />
                 </div>
               </Section>
+                </>
+              )}
             </TabsContent>
 
             {/* Layouts Tab */}
@@ -665,5 +827,3 @@ function Swatch({
     </div>
   )
 }
-
-

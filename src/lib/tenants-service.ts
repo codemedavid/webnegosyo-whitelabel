@@ -73,6 +73,18 @@ export const tenantSchema = z.object({
   is_active: z.boolean().default(true),
   mapbox_enabled: z.boolean().default(true),
   enable_order_management: z.boolean().default(true),
+  // Menu engineering
+  menu_engineering_enabled: z.boolean().default(false),
+  hide_currency_symbol: z.boolean().default(false),
+  // Flash screen
+  flash_screen_feature_enabled: z.boolean().optional(),
+  flash_screen_is_active: z.boolean().optional(),
+  flash_screen_title: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_subtitle: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_image_url: z.string().url().optional().or(z.literal('')).optional(),
+  flash_screen_background_color: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_text_color: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_duration_ms: z.number().int().min(500).max(15000).optional(),
   // Restaurant address for Lalamove pickup
   restaurant_address: z.string().optional().or(z.literal('')).optional(),
   restaurant_latitude: z.number().optional(),
@@ -196,6 +208,18 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Menu engineering
+    menu_engineering_enabled: parsed.menu_engineering_enabled,
+    hide_currency_symbol: parsed.hide_currency_symbol,
+    // Flash screen
+    flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
+    flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
+    flash_screen_title: parsed.flash_screen_title ?? undefined,
+    flash_screen_subtitle: parsed.flash_screen_subtitle ?? undefined,
+    flash_screen_image_url: parsed.flash_screen_image_url ?? undefined,
+    flash_screen_background_color: parsed.flash_screen_background_color ?? undefined,
+    flash_screen_text_color: parsed.flash_screen_text_color ?? undefined,
+    flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
     // Restaurant address
     restaurant_address: parsed.restaurant_address ?? undefined,
     restaurant_latitude: parsed.restaurant_latitude ?? undefined,
@@ -288,6 +312,18 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Menu engineering
+    menu_engineering_enabled: parsed.menu_engineering_enabled,
+    hide_currency_symbol: parsed.hide_currency_symbol,
+    // Flash screen
+    flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
+    flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
+    flash_screen_title: parsed.flash_screen_title ?? undefined,
+    flash_screen_subtitle: parsed.flash_screen_subtitle ?? undefined,
+    flash_screen_image_url: parsed.flash_screen_image_url ?? undefined,
+    flash_screen_background_color: parsed.flash_screen_background_color ?? undefined,
+    flash_screen_text_color: parsed.flash_screen_text_color ?? undefined,
+    flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
     // Restaurant address
     restaurant_address: parsed.restaurant_address ?? undefined,
     restaurant_latitude: parsed.restaurant_latitude ?? undefined,
@@ -341,5 +377,3 @@ export async function deleteTenantSupabase(id: string): Promise<void> {
     clearDomainCache(tenant.domain)
   }
 }
-
-

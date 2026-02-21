@@ -2,7 +2,7 @@
 
 import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
-import { UtensilsCrossed } from 'lucide-react'
+import { Pencil, UtensilsCrossed } from 'lucide-react'
 import type { MenuItem, Category } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -14,9 +14,24 @@ interface MenuGridGroupedProps {
   branding: BrandingColors
   template?: CardTemplate
   mobileGridColumns?: number
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
+  isBrandAdmin?: boolean
+  onEditCategoryHeader?: () => void
 }
 
-export function MenuGridGrouped({ items, categories, onItemSelect, branding, template = 'classic', mobileGridColumns = 2 }: MenuGridGroupedProps) {
+export function MenuGridGrouped({
+  items,
+  categories,
+  onItemSelect,
+  branding,
+  template = 'classic',
+  mobileGridColumns = 2,
+  menuEngineeringEnabled,
+  hideCurrencySymbol,
+  isBrandAdmin = false,
+  onEditCategoryHeader,
+}: MenuGridGroupedProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -66,7 +81,7 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
             <div>
               <h2
                 className="text-2xl font-bold"
-                style={{ color: branding.primary }}
+                style={{ color: branding.menuCategoryHeader }}
               >
                 {category.name}
               </h2>
@@ -77,6 +92,17 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
                 {categoryItems.length} {categoryItems.length === 1 ? 'item' : 'items'}
               </p>
             </div>
+            {isBrandAdmin && onEditCategoryHeader && (
+              <button
+                type="button"
+                onClick={onEditCategoryHeader}
+                title="Edit category header colors"
+                aria-label="Edit category header colors"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Menu Items Grid */}
@@ -88,6 +114,8 @@ export function MenuGridGrouped({ items, categories, onItemSelect, branding, tem
                 onSelect={onItemSelect}
                 branding={branding}
                 template={template}
+                menuEngineeringEnabled={menuEngineeringEnabled}
+                hideCurrencySymbol={hideCurrencySymbol}
               />
             ))}
           </div>

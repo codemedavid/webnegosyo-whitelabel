@@ -7,9 +7,10 @@ import {
     getCachedMenuItemById,
     getCachedCategoryById,
     getCachedRelatedItems,
-    getCachedProductDetailSettings
+    getCachedProductDetailSettings,
+    getCachedUpsellsForItem
 } from '@/lib/product-detail-data'
-import type { MenuItem, Category } from '@/types/database'
+import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 
 interface Props {
@@ -91,6 +92,8 @@ export default async function ProductDetailPage({ params }: Props) {
         let category: Category | null = null
         let relatedItems: MenuItem[] = []
         let customization: ProductDetailSettings | null = null
+        let complementaryUpsells: MenuItem[] = []
+        let upgradeUpsells: UpgradeUpsell[] = []
 
         try {
             const results = await Promise.allSettled([
@@ -105,18 +108,25 @@ export default async function ProductDetailPage({ params }: Props) {
                     : Promise.resolve([]),
 
                 // Product detail settings
-                getCachedProductDetailSettings(tenant.id)
+                getCachedProductDetailSettings(tenant.id),
+
+                // Upsell suggestions (only when menu engineering enabled)
+                tenant.menu_engineering_enabled
+                    ? getCachedUpsellsForItem(item.id, tenant.id)
+                    : Promise.resolve({ complementary: [], upgrades: [] }),
             ])
 
             // Extract values from results, using defaults for failures
             category = results[0].status === 'fulfilled' ? results[0].value : null
             relatedItems = results[1].status === 'fulfilled' ? results[1].value : []
             customization = results[2].status === 'fulfilled' ? results[2].value : null
+            complementaryUpsells = results[3].status === 'fulfilled' ? results[3].value.complementary : []
+            upgradeUpsells = results[3].status === 'fulfilled' ? results[3].value.upgrades : []
 
             // Log any failures for debugging
             results.forEach((result, index) => {
                 if (result.status === 'rejected') {
-                    const labels = ['category', 'relatedItems', 'customization']
+                    const labels = ['category', 'relatedItems', 'customization', 'upsells']
                     console.warn(`Failed to fetch ${labels[index]}:`, result.reason)
                 }
             })
@@ -133,6 +143,10 @@ export default async function ProductDetailPage({ params }: Props) {
                 category={category}
                 relatedItems={relatedItems}
                 customization={customization}
+                complementaryUpsells={complementaryUpsells}
+                upgradeUpsells={upgradeUpsells}
+                menuEngineeringEnabled={tenant.menu_engineering_enabled}
+                hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
             />
         )
     } catch (error) {

@@ -9,13 +9,15 @@ interface MinimalCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Minimal Card Template
  * Ultra-clean design with subtle borders and minimal decoration
  */
-export function MinimalCard({ item, onSelect, branding }: MinimalCardProps) {
+export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -44,7 +46,18 @@ export function MinimalCard({ item, onSelect, branding }: MinimalCardProps) {
         )}
 
         {/* Badges - Minimal style */}
-        {item.is_featured && (
+        {menuEngineeringEnabled && item.badge_text && (
+          <div className="absolute left-2 top-2 z-10">
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+            >
+              {item.badge_text}
+            </span>
+          </div>
+        )}
+
+        {item.is_featured && !item.badge_text && (
           <div className="absolute left-2 top-2">
             <div
               className="h-2 w-2 rounded-full"
@@ -103,14 +116,14 @@ export function MinimalCard({ item, onSelect, branding }: MinimalCardProps) {
               className="text-xs line-through"
               style={{ color: branding.textMuted }}
             >
-              {formatPrice(item.price)}
+              {formatPrice(item.price, { hideCurrencySymbol })}
             </span>
           )}
           <span
             className="text-base font-bold"
             style={{ color: branding.cardPrice }}
           >
-            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
+            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
           </span>
         </div>
 

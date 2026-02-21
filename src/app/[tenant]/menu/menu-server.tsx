@@ -17,8 +17,8 @@ export async function getMenuData(tenantSlug: string) {
   const tenant = tenantData as Tenant
 
   const [{ data: cats, error: catsError }, { data: items, error: itemsError }] = await Promise.all([
-    supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('order'),
-    supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).order('order'),
+    supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
+    supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
   ])
 
   if (catsError || itemsError) {

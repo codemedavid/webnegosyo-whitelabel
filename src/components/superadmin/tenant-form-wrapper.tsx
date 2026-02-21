@@ -51,6 +51,11 @@ interface TenantFormData {
   is_active: boolean
   mapbox_enabled: boolean
   enable_order_management: boolean
+  // Menu engineering
+  menu_engineering_enabled: boolean
+  hide_currency_symbol: boolean
+  // Flash screen
+  flash_screen_feature_enabled: boolean
   // Restaurant address for Lalamove pickup
   restaurant_address: string
   restaurant_latitude: string
@@ -602,6 +607,121 @@ function OrderManagementSection({
   )
 }
 
+// Menu Engineering Feature Toggle Section
+function MenuEngineeringSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Menu Engineering</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Enable BCG classification, upsell pairs, badges, and checkout interstitials for this tenant
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="menu_engineering_enabled">Enable Menu Engineering</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the tenant admin can classify menu items, configure upsell pairs, set item badges, and use checkout interstitial modals
+            </p>
+          </div>
+          <Switch
+            id="menu_engineering_enabled"
+            checked={formData.menu_engineering_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, menu_engineering_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.menu_engineering_enabled ? (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+            <p className="text-sm text-amber-800">
+              <strong>Disabled:</strong> Menu engineering features are off. The tenant admin will not see the Menu Engineering sidebar item, and customers will not see upsell suggestions, badges, or checkout interstitials.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+              <p className="text-sm text-green-800">
+                <strong>Enabled:</strong> The tenant admin can access BCG classification, upsell pair management, and checkout interstitial settings from their admin dashboard.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="hide_currency_symbol">Hide Currency Symbol</Label>
+                <p className="text-sm text-muted-foreground">
+                  Remove the peso sign from prices on the menu and product pages (menu psychology technique)
+                </p>
+              </div>
+              <Switch
+                id="hide_currency_symbol"
+                checked={formData.hide_currency_symbol}
+                onCheckedChange={(checked) => setFormData({ ...formData, hide_currency_symbol: checked })}
+                disabled={isPending}
+              />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Flash screen feature toggle section
+function FlashScreenFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Flash Screen</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Control whether this tenant admin can configure a startup flash screen for customers.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="flash_screen_feature_enabled">Enable Flash Screen Feature</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, tenant admins can manage flash screen content from Admin Settings.
+            </p>
+          </div>
+          <Switch
+            id="flash_screen_feature_enabled"
+            checked={formData.flash_screen_feature_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, flash_screen_feature_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.flash_screen_feature_enabled && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Disabled:</strong> Tenant admins will not see flash screen controls in their settings.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Restaurant Address Section (for Lalamove pickup)
 function RestaurantAddressSection({
   formData,
@@ -834,6 +954,11 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     is_active: tenant?.is_active ?? true,
     mapbox_enabled: tenant?.mapbox_enabled ?? true,
     enable_order_management: tenant?.enable_order_management ?? true,
+    // Menu engineering
+    menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
+    // Flash screen
+    flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Restaurant address
     restaurant_address: tenant?.restaurant_address || '',
     restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
@@ -883,6 +1008,11 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       is_active: formData.is_active,
       mapbox_enabled: formData.mapbox_enabled,
       enable_order_management: formData.enable_order_management,
+      // Menu engineering
+      menu_engineering_enabled: formData.menu_engineering_enabled,
+      hide_currency_symbol: formData.hide_currency_symbol,
+      // Flash screen
+      flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Restaurant address
       restaurant_address: formData.restaurant_address || undefined,
       restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
@@ -966,6 +1096,18 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       />
 
       <OrderManagementSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <MenuEngineeringSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <FlashScreenFeatureSection
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}

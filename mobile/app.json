@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Walsikopi",
+    "slug": "webnegosyo-walsikopi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/generated/walsikopi/icon.png",
+    "scheme": "webnegosyo-walsikopi",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/generated/walsikopi/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111111"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.webnegosyo.walsikopi",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "fb-messenger"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.webnegosyo.walsikopi",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/generated/walsikopi/adaptive-icon.png",
+        "backgroundColor": "#111111"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/generated/walsikopi/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "tenantSlug": "walsikopi",
+      "tenantId": "",
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
+      "googleScriptUrl": "",
+      "eas": {
+        "projectId": "20ee5e4b-5227-4adb-b9fe-6afe36a71aee"
+      }
+    },
+    "owner": "itscodemedavid"
+  }
+}

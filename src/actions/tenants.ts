@@ -113,6 +113,18 @@ export async function createTenantAction(input: TenantInput) {
       is_active: parsed.is_active,
       mapbox_enabled: parsed.mapbox_enabled,
       enable_order_management: parsed.enable_order_management,
+      // Menu engineering
+      menu_engineering_enabled: parsed.menu_engineering_enabled,
+      hide_currency_symbol: parsed.hide_currency_symbol,
+      // Flash screen
+      flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
+      flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
+      flash_screen_title: parsed.flash_screen_title || undefined,
+      flash_screen_subtitle: parsed.flash_screen_subtitle || undefined,
+      flash_screen_image_url: parsed.flash_screen_image_url || undefined,
+      flash_screen_background_color: parsed.flash_screen_background_color || undefined,
+      flash_screen_text_color: parsed.flash_screen_text_color || undefined,
+      flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
       // Restaurant address
       restaurant_address: parsed.restaurant_address || undefined,
       restaurant_latitude: parsed.restaurant_latitude || undefined,
@@ -230,6 +242,18 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     is_active: parsed.is_active,
     mapbox_enabled: parsed.mapbox_enabled,
     enable_order_management: parsed.enable_order_management,
+    // Menu engineering
+    menu_engineering_enabled: parsed.menu_engineering_enabled,
+    hide_currency_symbol: parsed.hide_currency_symbol,
+    // Flash screen
+    flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
+    flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
+    flash_screen_title: parsed.flash_screen_title || undefined,
+    flash_screen_subtitle: parsed.flash_screen_subtitle || undefined,
+    flash_screen_image_url: parsed.flash_screen_image_url || undefined,
+    flash_screen_background_color: parsed.flash_screen_background_color || undefined,
+    flash_screen_text_color: parsed.flash_screen_text_color || undefined,
+    flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
     // Restaurant address
     restaurant_address: parsed.restaurant_address || undefined,
     restaurant_latitude: parsed.restaurant_latitude || undefined,
@@ -330,6 +354,76 @@ export async function updateTenantBrandingForAdminAction(tenantId: string, input
   if (updated?.slug) {
     revalidatePath(`/${updated.slug}/admin/settings`)
     revalidatePath(`/${updated.slug}/menu`)
+  }
+
+  return { success: true }
+}
+
+const flashScreenUpdateSchema = z.object({
+  flash_screen_is_active: z.boolean().default(false),
+  flash_screen_title: z.string().max(120).optional().or(z.literal('')).optional(),
+  flash_screen_subtitle: z.string().max(240).optional().or(z.literal('')).optional(),
+  flash_screen_image_url: z.string().url().optional().or(z.literal('')).optional(),
+  flash_screen_background_color: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_text_color: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_duration_ms: z.number().int().min(500).max(15000),
+})
+
+export type FlashScreenUpdateInput = z.infer<typeof flashScreenUpdateSchema>
+
+/**
+ * Allow tenant admins to manage their flash screen settings when feature is enabled by superadmin.
+ */
+export async function updateTenantFlashScreenForAdminAction(
+  tenantId: string,
+  input: FlashScreenUpdateInput
+) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const { data: tenantData, error: tenantError } = await supabase
+    .from('tenants')
+    .select('id, slug, flash_screen_feature_enabled')
+    .eq('id', tenantId)
+    .single()
+
+  if (tenantError || !tenantData) {
+    return { error: tenantError?.message || 'Tenant not found' }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tenant = tenantData as any
+  if (!tenant.flash_screen_feature_enabled) {
+    return { error: 'Flash screen feature is not enabled for this tenant.' }
+  }
+
+  const parsed = flashScreenUpdateSchema.parse(input)
+
+  const { error } = await supabase
+    .from('tenants')
+    .update({
+      flash_screen_is_active: parsed.flash_screen_is_active,
+      flash_screen_title: parsed.flash_screen_title || null,
+      flash_screen_subtitle: parsed.flash_screen_subtitle || null,
+      flash_screen_image_url: parsed.flash_screen_image_url || null,
+      flash_screen_background_color: parsed.flash_screen_background_color || null,
+      flash_screen_text_color: parsed.flash_screen_text_color || null,
+      flash_screen_duration_ms: parsed.flash_screen_duration_ms,
+      // Cast through unknown to satisfy strict generic constraints if local types differ
+    } as unknown as never)
+    .eq('id', tenantId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Revalidate relevant paths
+  revalidatePath(`/superadmin/tenants/${tenantId}`)
+  if (tenant.slug) {
+    revalidatePath(`/${tenant.slug}/admin/settings`)
+    revalidatePath(`/${tenant.slug}/menu`)
   }
 
   return { success: true }

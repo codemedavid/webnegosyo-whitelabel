@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { ResetButton } from '@/components/admin/reset-button'
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
 import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
+import { FlashScreenCard } from '@/components/admin/flash-screen-card'
 
 export default async function SettingsPage({
   params,
@@ -399,6 +400,21 @@ export default async function SettingsPage({
           tenant.facebook_page_id ? 'webhook' : 'direct'
         )}
       />
+
+      {tenant.flash_screen_feature_enabled && (
+        <FlashScreenCard
+          tenantId={tenant.id}
+          initialSettings={{
+            isActive: tenant.flash_screen_is_active ?? false,
+            title: tenant.flash_screen_title || 'Loading menu...',
+            subtitle: tenant.flash_screen_subtitle || '',
+            imageUrl: tenant.flash_screen_image_url || '',
+            backgroundColor: tenant.flash_screen_background_color || '#111111',
+            textColor: tenant.flash_screen_text_color || '#ffffff',
+            durationMs: tenant.flash_screen_duration_ms || 2000,
+          }}
+        />
+      )}
 
       {/* Account */}
       <Card>

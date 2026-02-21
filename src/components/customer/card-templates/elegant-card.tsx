@@ -9,13 +9,15 @@ interface ElegantCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Elegant Card Template
  * Sophisticated design with soft shadows and refined spacing
  */
-export function ElegantCard({ item, onSelect, branding }: ElegantCardProps) {
+export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -52,8 +54,24 @@ export function ElegantCard({ item, onSelect, branding }: ElegantCardProps) {
         {/* Subtle vignette */}
         <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/10" />
 
+        {/* Custom Badge */}
+        {menuEngineeringEnabled && item.badge_text && (
+          <div className="absolute left-4 top-4 z-10">
+            <div
+              className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
+              style={{
+                backgroundColor: branding.primary,
+                color: branding.buttonPrimaryText || '#ffffff',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+              }}
+            >
+              {item.badge_text}
+            </div>
+          </div>
+        )}
+
         {/* Badges - Elegant styling */}
-        {item.is_featured && (
+        {item.is_featured && !item.badge_text && (
           <div className="absolute left-4 top-4">
             <div
               className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
@@ -136,14 +154,14 @@ export function ElegantCard({ item, onSelect, branding }: ElegantCardProps) {
                 className="text-sm line-through"
                 style={{ color: branding.textMuted }}
               >
-                {formatPrice(item.price)}
+                {formatPrice(item.price, { hideCurrencySymbol })}
               </span>
             )}
             <span
               className="text-2xl font-bold"
               style={{ color: branding.cardPrice }}
             >
-              {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
+              {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
           </div>
 

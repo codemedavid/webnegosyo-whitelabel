@@ -9,13 +9,15 @@ interface ClassicCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Classic Card Template
  * Traditional layout with image on top, content below
  */
-export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
+export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -44,7 +46,18 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
         )}
 
         {/* Overlay Elements */}
-        {item.is_featured && (
+        {menuEngineeringEnabled && item.badge_text && (
+          <div className="absolute left-3 top-3 z-10">
+            <span
+              className="rounded-full px-2.5 py-1 text-xs font-bold shadow-sm"
+              style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+            >
+              {item.badge_text}
+            </span>
+          </div>
+        )}
+
+        {item.is_featured && !item.badge_text && (
           <div className="absolute left-3 top-3">
             <span className="text-xl">⭐</span>
           </div>
@@ -104,14 +117,14 @@ export function ClassicCard({ item, onSelect, branding }: ClassicCardProps) {
               className="text-sm line-through"
               style={{ color: branding.textMuted }}
             >
-              {formatPrice(item.price)}
+              {formatPrice(item.price, { hideCurrencySymbol })}
             </span>
           )}
           <span
             className="text-lg font-bold"
             style={{ color: branding.cardPrice }}
           >
-            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
+            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
           </span>
         </div>
 

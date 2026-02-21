@@ -93,6 +93,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
     enable_order_management: tenant?.enable_order_management ?? true,
     lalamove_enabled: tenant?.lalamove_enabled ?? false,
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
   })
 
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
@@ -134,6 +136,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
       enable_order_management: formData.enable_order_management,
       lalamove_enabled: formData.lalamove_enabled,
       lalamove_sandbox: formData.lalamove_sandbox,
+      menu_engineering_enabled: formData.menu_engineering_enabled,
+      hide_currency_symbol: formData.hide_currency_symbol,
     }
 
     if (tenant) {

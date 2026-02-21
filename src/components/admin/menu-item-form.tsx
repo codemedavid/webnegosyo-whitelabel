@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
-import type { MenuItem, Category, VariationType, VariationOption } from '@/types/database'
+import type { MenuItem, Category, VariationType, VariationOption, BcgClassification } from '@/types/database'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -19,6 +19,7 @@ interface MenuItemFormProps {
   categories: Category[]
   tenantId: string
   tenantSlug: string
+  menuEngineeringEnabled?: boolean
 }
 
 // Client-side validation schema (matches server-side schema)
@@ -47,7 +48,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: item?.name || '',
@@ -58,6 +59,9 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
     category_id: item?.category_id || categories[0]?.id || '',
     is_available: item?.is_available ?? true,
     is_featured: item?.is_featured ?? false,
+    show_in_checkout_upsell: item?.show_in_checkout_upsell ?? false,
+    bcg_classification: (item?.bcg_classification || 'unclassified') as BcgClassification,
+    badge_text: item?.badge_text || '',
   })
 
   const [variations, setVariations] = useState(item?.variations || [])
@@ -128,7 +132,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
         addons,
         is_available: formData.is_available,
         is_featured: formData.is_featured,
+        show_in_checkout_upsell: formData.show_in_checkout_upsell,
         order: item?.order || 0,
+        ...(menuEngineeringEnabled ? {
+          bcg_classification: formData.bcg_classification,
+          badge_text: formData.badge_text || null,
+        } : {}),
       }
 
       const result = item
@@ -392,7 +401,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
             )}
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -411,7 +420,56 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug }: MenuIte
               />
               <span className="text-sm font-medium">Featured</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="Show this item in the checkout upsell interstitial">
+              <input
+                type="checkbox"
+                checked={formData.show_in_checkout_upsell}
+                onChange={(e) => setFormData({ ...formData, show_in_checkout_upsell: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">Show in Checkout Upsell</span>
+            </label>
           </div>
+
+          {menuEngineeringEnabled && (
+            <div className="grid gap-4 sm:grid-cols-2 border-t pt-4 mt-2">
+              <div className="space-y-2">
+                <Label htmlFor="bcg_classification">BCG Classification</Label>
+                <Select
+                  value={formData.bcg_classification}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, bcg_classification: value as BcgClassification })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select classification" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unclassified">Unclassified</SelectItem>
+                    <SelectItem value="star">Star</SelectItem>
+                    <SelectItem value="plowhorse">Plowhorse</SelectItem>
+                    <SelectItem value="puzzle">Puzzle</SelectItem>
+                    <SelectItem value="dog">Dog</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Classify this item based on popularity and profitability
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="badge_text">Badge Text</Label>
+                <Input
+                  id="badge_text"
+                  value={formData.badge_text}
+                  onChange={(e) => setFormData({ ...formData, badge_text: e.target.value })}
+                  placeholder="e.g., Best Seller, New"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional badge shown on the customer menu card
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

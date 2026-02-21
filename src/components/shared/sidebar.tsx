@@ -13,6 +13,7 @@ import {
   Store,
   ShoppingBag,
   CreditCard,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,16 +31,21 @@ interface SidebarProps {
   onLogout?: () => void
   tenantName?: string
   enableOrderManagement?: boolean
+  menuEngineeringEnabled?: boolean
 }
 
-export function Sidebar({ items, onLogout, tenantName, enableOrderManagement }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
-  // Filter out orders item if order management is disabled
-  const filteredItems = enableOrderManagement === false 
+  // Filter out items based on feature flags
+  let filteredItems = enableOrderManagement === false
     ? items.filter(item => !item.href.includes('/orders'))
     : items
+
+  if (menuEngineeringEnabled === false || menuEngineeringEnabled === undefined) {
+    filteredItems = filteredItems.filter(item => !item.href.includes('/menu-engineering'))
+  }
 
   return (
     <aside
@@ -136,6 +142,11 @@ export const adminSidebarItems: SidebarItem[] = [
     label: 'Payment Methods',
     href: '/admin/payment-methods',
     icon: CreditCard,
+  },
+  {
+    label: 'Menu Engineering',
+    href: '/admin/menu-engineering',
+    icon: TrendingUp,
   },
   {
     label: 'Orders',

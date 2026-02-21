@@ -61,6 +61,7 @@ export default async function EditMenuItemPage({
         categories={categories}
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
+        menuEngineeringEnabled={tenant.menu_engineering_enabled}
       />
     </div>
   )

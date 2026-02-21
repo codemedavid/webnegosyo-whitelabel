@@ -6,7 +6,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import type { MenuItem, Category, Variation, VariationType, Addon } from '@/types/database'
+import type { MenuItem, Category, Variation, VariationType, Addon, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 
 /**
@@ -22,10 +22,36 @@ export interface SelectedTenant {
     background_color: string | null
     text_primary_color: string | null
     text_secondary_color: string | null
+    text_muted_color: string | null
     border_color: string | null
     header_color: string | null
+    header_font_color: string | null
     cards_color: string | null
+    cards_border_color: string | null
+    card_title_color: string | null
+    card_price_color: string | null
+    card_description_color: string | null
+    modal_background_color: string | null
+    modal_title_color: string | null
+    modal_price_color: string | null
+    modal_description_color: string | null
+    button_primary_color: string | null
+    button_primary_text_color: string | null
+    button_secondary_color: string | null
+    button_secondary_text_color: string | null
+    link_color: string | null
+    shadow_color: string | null
+    success_color: string | null
+    warning_color: string | null
+    error_color: string | null
+    accent_color: string | null
     is_active: boolean
+    menu_engineering_enabled?: boolean
+    hide_currency_symbol?: boolean
+    checkout_upsell_enabled?: boolean
+    checkout_upsell_title?: string | null
+    checkout_upsell_subtitle?: string | null
+    checkout_upsell_max_items?: number | null
     // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
     [key: string]: unknown
 }
@@ -44,19 +70,45 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
         const { data, error } = await supabase
             .from('tenants')
             .select(`
-                id, 
-                slug, 
+                id,
+                slug,
                 name,
-                logo_url, 
-                primary_color, 
-                secondary_color, 
-                background_color, 
-                text_primary_color, 
-                text_secondary_color, 
-                border_color, 
-                header_color, 
+                logo_url,
+                primary_color,
+                secondary_color,
+                background_color,
+                text_primary_color,
+                text_secondary_color,
+                text_muted_color,
+                border_color,
+                header_color,
+                header_font_color,
                 cards_color,
-                is_active
+                cards_border_color,
+                card_title_color,
+                card_price_color,
+                card_description_color,
+                modal_background_color,
+                modal_title_color,
+                modal_price_color,
+                modal_description_color,
+                button_primary_color,
+                button_primary_text_color,
+                button_secondary_color,
+                button_secondary_text_color,
+                link_color,
+                shadow_color,
+                success_color,
+                warning_color,
+                error_color,
+                accent_color,
+                is_active,
+                menu_engineering_enabled,
+                hide_currency_symbol,
+                checkout_upsell_enabled,
+                checkout_upsell_title,
+                checkout_upsell_subtitle,
+                checkout_upsell_max_items
             `)
             .eq('slug', slug)
             .eq('is_active', true)
@@ -148,7 +200,7 @@ export const getCachedCategoryById = cache(async (categoryId: string, tenantId: 
 
         const { data, error } = await supabase
             .from('categories')
-            .select('id, tenant_id, name, description, icon, order, is_active, created_at, updated_at')
+            .select('id, tenant_id, name, description, icon, order, is_active, default_addons, created_at, updated_at')
             .eq('id', categoryId)
             .eq('tenant_id', tenantId)
             .maybeSingle()
@@ -207,6 +259,95 @@ export const getCachedRelatedItems = cache(async (categoryId: string, tenantId: 
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedRelatedItems:', errMsg)
         return []
+    }
+})
+
+/**
+ * Fetch upsell items for a given menu item (cached per request)
+ * Returns complementary and upgrade suggestions separately
+ */
+export const getCachedUpsellsForItem = cache(async (
+    itemId: string,
+    tenantId: string
+): Promise<{ complementary: MenuItem[]; upgrades: UpgradeUpsell[] }> => {
+    try {
+        const supabase = await createClient()
+
+        // Fetch both types in parallel
+        const [complementaryResult, upgradesResult] = await Promise.all([
+            supabase
+                .from('upsell_pairs')
+                .select(`
+                    target_item:menu_items!upsell_pairs_target_item_id_fkey(
+                        id, tenant_id, category_id, name, description, price, discounted_price,
+                        image_url, is_available, is_featured, variations, variation_types, addons
+                    )
+                `)
+                .eq('source_item_id', itemId)
+                .eq('tenant_id', tenantId)
+                .eq('pair_type', 'complementary')
+                .eq('is_active', true)
+                .order('display_order', { ascending: true }),
+            supabase
+                .from('upsell_pairs')
+                .select(`
+                    source_label,
+                    target_label,
+                    upgrade_header,
+                    target_item:menu_items!upsell_pairs_target_item_id_fkey(
+                        id, tenant_id, category_id, name, description, price, discounted_price,
+                        image_url, is_available, is_featured, variations, variation_types, addons
+                    )
+                `)
+                .eq('source_item_id', itemId)
+                .eq('tenant_id', tenantId)
+                .eq('pair_type', 'upgrade')
+                .eq('is_active', true)
+                .order('display_order', { ascending: true }),
+        ])
+
+        if (complementaryResult.error) {
+            console.error('Error fetching complementary upsells:', complementaryResult.error)
+        }
+        if (upgradesResult.error) {
+            console.error('Error fetching upgrade upsells:', upgradesResult.error)
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapItems = (rows: any[]): MenuItem[] =>
+            rows
+                .filter((row) => row.target_item?.is_available === true)
+                .map((row) => ({
+                    ...row.target_item,
+                    variations: row.target_item.variations || [],
+                    variation_types: row.target_item.variation_types || [],
+                    addons: row.target_item.addons || [],
+                })) as MenuItem[]
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapUpgrades = (rows: any[]): UpgradeUpsell[] =>
+            rows
+                .filter((row) => row.target_item?.is_available === true)
+                .map((row) => ({
+                    targetItem: {
+                        ...row.target_item,
+                        variations: row.target_item.variations || [],
+                        variation_types: row.target_item.variation_types || [],
+                        addons: row.target_item.addons || [],
+                    } as MenuItem,
+                    sourceLabel: row.source_label ?? null,
+                    targetLabel: row.target_label ?? null,
+                    upgradeHeader: row.upgrade_header ?? null,
+                }))
+
+        return {
+            complementary: mapItems(complementaryResult.data || []),
+            upgrades: mapUpgrades(upgradesResult.data || []),
+        }
+    } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error)
+        console.error('Error in getCachedUpsellsForItem:', errMsg)
+        return { complementary: [], upgrades: [] }
     }
 })
 

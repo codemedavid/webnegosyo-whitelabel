@@ -17,6 +17,11 @@ export const categorySchema = z.object({
   icon: z.string().optional(),
   order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
+  default_addons: z.array(z.object({
+    id: z.string(),
+    name: z.string().min(1, 'Add-on name is required'),
+    price: z.number().min(0, 'Price must be non-negative'),
+  })).optional().default([]),
 })
 
 // New variation type schema
@@ -26,6 +31,7 @@ export const variationOptionSchema = z.object({
   price_modifier: z.number(),
   image_url: z.string().url('Must be a valid URL').optional().nullable(),
   is_default: z.boolean().optional(),
+  is_upgrade_target: z.boolean().optional(),
   display_order: z.number().int().min(0),
 })
 
@@ -60,11 +66,14 @@ export const menuItemSchema = z.object({
   })).default([]),
   is_available: z.boolean().default(true),
   is_featured: z.boolean().default(false),
+  bcg_classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']).optional().default('unclassified'),
+  badge_text: z.string().nullable().optional(),
+  show_in_checkout_upsell: z.boolean().default(false),
   order: z.number().int().min(0).default(0),
 })
 
 export type CategoryInput = z.infer<typeof categorySchema>
-export type MenuItemInput = z.infer<typeof menuItemSchema>
+export type MenuItemInput = z.input<typeof menuItemSchema>
 
 // ============================================
 // Authentication & Authorization

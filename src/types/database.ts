@@ -1,5 +1,7 @@
 // Database Types for Smart Restaurant Menu System
 
+export type BcgClassification = 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified';
+
 export interface Tenant {
   id: string;
   name: string;
@@ -29,6 +31,13 @@ export interface Tenant {
   text_primary_color?: string;
   text_secondary_color?: string;
   text_muted_color?: string;
+  menu_main_header_text_color?: string;
+  menu_main_header_subtitle_color?: string;
+  menu_category_header_color?: string;
+  menu_category_active_color?: string;
+  menu_category_inactive_color?: string;
+  menu_cart_badge_background_color?: string;
+  menu_cart_badge_text_color?: string;
   border_color?: string;
   success_color?: string;
   warning_color?: string;
@@ -40,8 +49,8 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
-  card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold'
-  page_layout?: string; // 'default' | 'sidebar'
+  card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon'
+  page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   messenger_page_id: string;
   messenger_username?: string;
@@ -69,6 +78,30 @@ export interface Tenant {
   promotion_image_url?: string;
   is_promotion_visible?: boolean;
   promotion_banners?: PromotionBanner[];
+  // Checkout interstitial modal branding
+  checkout_modal_background_color?: string;
+  checkout_modal_title_color?: string;
+  checkout_modal_description_color?: string;
+  checkout_modal_price_color?: string;
+  checkout_modal_button_color?: string;
+  checkout_modal_button_text_color?: string;
+  checkout_modal_border_color?: string;
+  // Menu engineering
+  menu_engineering_enabled?: boolean;
+  hide_currency_symbol?: boolean;
+  checkout_upsell_enabled?: boolean;
+  checkout_upsell_title?: string;
+  checkout_upsell_subtitle?: string;
+  checkout_upsell_max_items?: number;
+  // Flash screen
+  flash_screen_feature_enabled?: boolean;
+  flash_screen_is_active?: boolean;
+  flash_screen_title?: string;
+  flash_screen_subtitle?: string;
+  flash_screen_image_url?: string;
+  flash_screen_background_color?: string;
+  flash_screen_text_color?: string;
+  flash_screen_duration_ms?: number;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
@@ -90,6 +123,7 @@ export interface Category {
   icon?: string;
   order: number;
   is_active: boolean;
+  default_addons?: Addon[];
   created_at: string;
   updated_at: string;
 }
@@ -109,6 +143,7 @@ export interface VariationOption {
   price_modifier: number; // +0, +2, +5
   image_url?: string; // Optional image for this specific option
   is_default?: boolean;
+  is_upgrade_target?: boolean; // Show "Upgrade for +X" nudge on customer side
   display_order: number;
 }
 
@@ -143,6 +178,9 @@ export interface MenuItem {
   addons: Addon[];
   is_available: boolean;
   is_featured?: boolean;
+  bcg_classification?: BcgClassification;
+  badge_text?: string;
+  show_in_checkout_upsell?: boolean;
   order: number;
   created_at: string;
   updated_at: string;
@@ -290,6 +328,34 @@ export interface Order {
   updated_at: string;
 }
 
+export interface UpsellPair {
+  id: string;
+  tenant_id: string;
+  source_item_id: string;
+  target_item_id: string;
+  pair_type: 'complementary' | 'upgrade';
+  display_order: number;
+  is_active: boolean;
+  source_label: string | null;
+  target_label: string | null;
+  upgrade_header: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Upgrade upsell with target item and customizable labels */
+export interface UpgradeUpsell {
+  targetItem: MenuItem;
+  sourceLabel: string | null;
+  targetLabel: string | null;
+  upgradeHeader: string | null;
+}
+
+export interface UpsellPairWithItems extends UpsellPair {
+  source_item: MenuItem;
+  target_item: MenuItem;
+}
+
 // Database schema definition (for Supabase)
 export interface Database {
   public: {
@@ -349,7 +415,11 @@ export interface Database {
         Insert: Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>>;
       };
+      upsell_pairs: {
+        Row: UpsellPair;
+        Insert: Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>>;
+      };
     };
   };
 }
-

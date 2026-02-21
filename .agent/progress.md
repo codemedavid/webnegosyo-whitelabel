@@ -1,0 +1,1 @@
+- 2026-02-07: Added MCP server scaffold in /Users/codemedavid/Documents/whitelabel/mcp with domain namespaces (ui, functions, tenants, admin, superadmin, api).

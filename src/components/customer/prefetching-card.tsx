@@ -13,13 +13,15 @@ interface PrefetchingCardProps {
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
   template?: CardTemplate
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Card wrapper that prefetches product detail page when card enters viewport
  * This makes the product detail page load instantly when clicked - no hover needed!
  */
-export function PrefetchingCard({ item, onSelect, branding, template = 'classic' }: PrefetchingCardProps) {
+export function PrefetchingCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
   const params = useParams()
   const router = useRouter()
   const cardRef = useRef<HTMLDivElement>(null)
@@ -81,6 +83,8 @@ export function PrefetchingCard({ item, onSelect, branding, template = 'classic'
         item={item}
         onSelect={onSelect}
         branding={branding}
+        menuEngineeringEnabled={menuEngineeringEnabled}
+        hideCurrencySymbol={hideCurrencySymbol}
       />
     </div>
   )

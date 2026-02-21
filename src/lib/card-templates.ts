@@ -4,13 +4,19 @@
  * All templates respect tenant branding colors
  */
 
-export type CardTemplate = 
+export type CardTemplate =
   | 'classic'      // Current design - image on top, content below
   | 'minimal'      // Clean, minimal design with subtle borders
   | 'modern'       // Overlapping elements, bold typography
   | 'elegant'      // Sophisticated with soft shadows
   | 'compact'      // Horizontal layout, info beside image
   | 'bold'         // High contrast, prominent CTA
+  | 'glass'        // Glassmorphism with frosted glass effect
+  | 'polaroid'     // Retro photo-style with thick frame
+  | 'brutalist'    // Raw industrial with thick borders
+  | 'magazine'     // Editorial full-bleed image overlay
+  | 'zen'          // Ultra-minimal borderless design
+  | 'neon'         // Dark card with neon glow accents
 
 export interface CardTemplateDefinition {
   id: CardTemplate
@@ -94,6 +100,78 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
       'Large add button',
       'Strong visuals',
       'Action-focused'
+    ]
+  },
+  {
+    id: 'glass',
+    name: 'Glass',
+    description: 'Glassmorphism with frosted translucent layers',
+    preview: '🪟',
+    features: [
+      'Frosted glass effect',
+      'Backdrop blur',
+      'Translucent layers',
+      'Soft glow hover'
+    ]
+  },
+  {
+    id: 'polaroid',
+    name: 'Polaroid',
+    description: 'Retro photo-style card with thick frame',
+    preview: '📸',
+    features: [
+      'Photo frame style',
+      'Tilt on hover',
+      'Caption-style text',
+      'Nostalgic feel'
+    ]
+  },
+  {
+    id: 'brutalist',
+    name: 'Brutalist',
+    description: 'Raw industrial design with bold geometry',
+    preview: '🏗️',
+    features: [
+      'Thick borders',
+      'Monospace pricing',
+      'Offset shadow hover',
+      'Stark contrast'
+    ]
+  },
+  {
+    id: 'magazine',
+    name: 'Magazine',
+    description: 'Editorial full-bleed image with text overlay',
+    preview: '📰',
+    features: [
+      'Full-bleed image',
+      'Tall portrait ratio',
+      'Text over image',
+      'Editorial feel'
+    ]
+  },
+  {
+    id: 'zen',
+    name: 'Zen',
+    description: 'Ultra-minimal borderless with airy spacing',
+    preview: '🍃',
+    features: [
+      'No borders',
+      'Generous whitespace',
+      'Muted tones',
+      'Appear-on-hover button'
+    ]
+  },
+  {
+    id: 'neon',
+    name: 'Neon',
+    description: 'Dark card with neon glow border accents',
+    preview: '💜',
+    features: [
+      'Dark background',
+      'Neon glow border',
+      'Vibrant accents',
+      'Cyberpunk feel'
     ]
   }
 ]

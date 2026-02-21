@@ -9,13 +9,15 @@ interface CompactCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Compact Card Template
  * Horizontal layout for space-efficient display
  */
-export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
+export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -50,8 +52,20 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
             </div>
           )}
 
+          {/* Custom Badge */}
+          {menuEngineeringEnabled && item.badge_text && (
+            <div className="absolute left-1 top-1 z-10">
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+                style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+              >
+                {item.badge_text}
+              </span>
+            </div>
+          )}
+
           {/* Badges overlay */}
-          {item.is_featured && (
+          {item.is_featured && !item.badge_text && (
             <div className="absolute left-1 top-1">
               <span className="text-sm">⭐</span>
             </div>
@@ -114,14 +128,14 @@ export function CompactCard({ item, onSelect, branding }: CompactCardProps) {
                   className="text-[11px] line-through"
                   style={{ color: branding.textMuted }}
                 >
-                  {formatPrice(item.price)}
+                  {formatPrice(item.price, { hideCurrencySymbol })}
                 </div>
               )}
               <div
                 className="text-base font-bold"
                 style={{ color: branding.cardPrice }}
               >
-                {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
+                {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
               </div>
             </div>
 

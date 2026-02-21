@@ -50,6 +50,8 @@ describe('Product Detail Theme', () => {
 
             expect(result.pageBackground).toBe(mockBranding.background)
             expect(result.productName).toBe(mockBranding.textPrimary)
+            expect(result.buyNowButtonLabel).toBe('Buy Now')
+            expect(result.addToCartButtonLabel).toBe('Add To Cart')
             expect(result.primary).toBe(mockBranding.primary)
             expect(result.enableAnimations).toBe(true)
         })
@@ -175,6 +177,8 @@ describe('Product Detail Theme', () => {
         it('should have all required default values', () => {
             expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.page_background_color).toBeDefined()
             expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.product_name_color).toBeDefined()
+            expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.variation_required_text).toBe('* Pick 1')
+            expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.buy_now_button_label).toBe('Buy Now')
             expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.enable_animations).toBe(true)
             expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.section_padding).toBe('24px')
         })

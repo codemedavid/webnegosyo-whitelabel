@@ -1,0 +1,79 @@
+name: Build Tenant App
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_slug:
+        description: 'Tenant slug (e.g., demo-restaurant)'
+        required: true
+        type: string
+      platform:
+        description: 'Platform to build for'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      profile:
+        description: 'Build profile'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - preview
+      submit:
+        description: 'Submit to stores after build'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    name: Build ${{ inputs.tenant_slug }} (${{ inputs.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build tenant app
+        working-directory: mobile
+        run: |
+          npx tsx scripts/build-tenant.ts ${{ inputs.tenant_slug }} \
+            --platform ${{ inputs.platform }} \
+            --profile ${{ inputs.profile }} \
+            ${{ inputs.submit && '--submit' || '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Upload build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report-${{ inputs.tenant_slug }}
+          path: mobile/build-report.json
+          if-no-files-found: ignore

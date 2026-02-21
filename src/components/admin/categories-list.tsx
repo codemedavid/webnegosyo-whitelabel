@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Edit, Trash2, GripVertical } from 'lucide-react'
+import { Plus, Edit, Trash2, GripVertical, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,13 +21,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from '@/app/actions/categories'
-import type { Category } from '@/types/database'
+import type { Category, Addon } from '@/types/database'
 
 interface CategoryFormData {
   name: string
   icon: string
   description: string
   is_active: boolean
+  default_addons: Addon[]
 }
 
 interface CategoriesListProps {
@@ -50,6 +51,7 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
     icon: '',
     description: '',
     is_active: true,
+    default_addons: [],
   })
 
   const handleAdd = () => {
@@ -59,6 +61,7 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
       icon: '',
       description: '',
       is_active: true,
+      default_addons: [],
     })
     setIsDialogOpen(true)
   }
@@ -70,6 +73,7 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
       icon: category.icon || '',
       description: category.description || '',
       is_active: category.is_active,
+      default_addons: category.default_addons || [],
     })
     setIsDialogOpen(true)
   }
@@ -88,6 +92,7 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
       description: formData.description,
       is_active: formData.is_active,
       order: editingCategory?.order || categories.length,
+      default_addons: formData.default_addons,
     }
 
     const result = editingCategory
@@ -235,6 +240,72 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
                 className="h-4 w-4"
               />
               <Label htmlFor="is_active">Active</Label>
+            </div>
+
+            {/* Default Add-ons */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Default Add-ons</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      default_addons: [
+                        ...formData.default_addons,
+                        { id: crypto.randomUUID(), name: '', price: 0 },
+                      ],
+                    })
+                  }}
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These add-ons will appear on all items in this category.
+              </p>
+              {formData.default_addons.map((addon, index) => (
+                <div key={addon.id} className="flex items-center gap-2">
+                  <Input
+                    placeholder="Add-on name"
+                    value={addon.name}
+                    onChange={(e) => {
+                      const updated = [...formData.default_addons]
+                      updated[index] = { ...updated[index], name: e.target.value }
+                      setFormData({ ...formData, default_addons: updated })
+                    }}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Price"
+                    value={addon.price || ''}
+                    onChange={(e) => {
+                      const updated = [...formData.default_addons]
+                      updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 }
+                      setFormData({ ...formData, default_addons: updated })
+                    }}
+                    className="w-24"
+                    min={0}
+                    step={0.01}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    onClick={() => {
+                      const updated = formData.default_addons.filter((_, i) => i !== index)
+                      setFormData({ ...formData, default_addons: updated })
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
           <DialogFooter>

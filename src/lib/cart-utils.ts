@@ -80,7 +80,17 @@ export function generateCartItemId(
 /**
  * Format price for display
  */
-export function formatPrice(price: number): string {
+export interface FormatPriceOptions {
+  hideCurrencySymbol?: boolean
+}
+
+export function formatPrice(price: number, options?: FormatPriceOptions): string {
+  if (options?.hideCurrencySymbol) {
+    return new Intl.NumberFormat('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(price)
+  }
   return new Intl.NumberFormat('en-PH', {
     style: 'currency',
     currency: 'PHP',

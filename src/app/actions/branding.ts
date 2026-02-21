@@ -26,12 +26,27 @@ const brandingSchema = z.object({
     modal_title_color: z.string().optional().or(z.literal('')),
     modal_price_color: z.string().optional().or(z.literal('')),
     modal_description_color: z.string().optional().or(z.literal('')),
+    // Checkout interstitial modal colors
+    checkout_modal_background_color: z.string().optional().or(z.literal('')),
+    checkout_modal_title_color: z.string().optional().or(z.literal('')),
+    checkout_modal_description_color: z.string().optional().or(z.literal('')),
+    checkout_modal_price_color: z.string().optional().or(z.literal('')),
+    checkout_modal_button_color: z.string().optional().or(z.literal('')),
+    checkout_modal_button_text_color: z.string().optional().or(z.literal('')),
+    checkout_modal_border_color: z.string().optional().or(z.literal('')),
     // Button colors
     button_primary_color: z.string().optional().or(z.literal('')),
     button_primary_text_color: z.string().optional().or(z.literal('')),
     // Text colors
     text_primary_color: z.string().optional().or(z.literal('')),
     text_secondary_color: z.string().optional().or(z.literal('')),
+    menu_main_header_text_color: z.string().optional().or(z.literal('')),
+    menu_main_header_subtitle_color: z.string().optional().or(z.literal('')),
+    menu_category_header_color: z.string().optional().or(z.literal('')),
+    menu_category_active_color: z.string().optional().or(z.literal('')),
+    menu_category_inactive_color: z.string().optional().or(z.literal('')),
+    menu_cart_badge_background_color: z.string().optional().or(z.literal('')),
+    menu_cart_badge_text_color: z.string().optional().or(z.literal('')),
     border_color: z.string().optional().or(z.literal('')),
     // Hero settings
     hero_title: z.string().optional().or(z.literal('')),

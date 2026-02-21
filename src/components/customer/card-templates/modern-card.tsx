@@ -9,13 +9,15 @@ interface ModernCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  menuEngineeringEnabled?: boolean
+  hideCurrencySymbol?: boolean
 }
 
 /**
  * Modern Card Template
  * Contemporary design with overlapping elements and bold typography
  */
-export function ModernCard({ item, onSelect, branding }: ModernCardProps) {
+export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -49,9 +51,21 @@ export function ModernCard({ item, onSelect, branding }: ModernCardProps) {
         {/* Gradient overlay for text readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
+        {/* Custom Badge */}
+        {menuEngineeringEnabled && item.badge_text && (
+          <div className="absolute top-3 left-3 z-10">
+            <span
+              className="rounded-full px-2.5 py-1 text-xs font-bold backdrop-blur-md shadow-sm"
+              style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+            >
+              {item.badge_text}
+            </span>
+          </div>
+        )}
+
         {/* Badges - Top corners */}
         <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
-          {item.is_featured && (
+          {item.is_featured && !item.badge_text && (
             <div
               className="px-2 py-1 rounded-full text-xs font-bold backdrop-blur-md"
               style={{
@@ -94,14 +108,14 @@ export function ModernCard({ item, onSelect, branding }: ModernCardProps) {
                 className="text-xs line-through"
                 style={{ color: branding.textMuted }}
               >
-                {formatPrice(item.price)}
+                {formatPrice(item.price, { hideCurrencySymbol })}
               </span>
             )}
             <span
               className="text-xl font-black"
               style={{ color: branding.primary }}
             >
-              {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice)}
+              {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
           </div>
         </div>

@@ -7,6 +7,10 @@
 export type PageLayout =
     | 'default'     // Current design - hero + horizontal category tabs + grid
     | 'sidebar'     // Left sidebar with category icons + 2-column grid
+    | 'magazine'    // Editorial-style with featured hero item + 2-col grid
+    | 'grid-focus'  // Photo-forward, no hero, dense photo grid
+    | 'list'        // Ultra-minimal single-column horizontal rows
+    | 'mosaic'      // Pinterest-style masonry with varied card heights
 
 export interface PageLayoutDefinition {
     id: PageLayout
@@ -42,6 +46,54 @@ export const PAGE_LAYOUTS: PageLayoutDefinition[] = [
             'Category icons with labels',
             '2-column product grid',
             'Search bar at top'
+        ]
+    },
+    {
+        id: 'magazine',
+        name: 'Magazine',
+        description: 'Editorial style with large featured hero + grid',
+        preview: '📰',
+        features: [
+            'Featured hero item',
+            'Editorial typography',
+            '2-column grid',
+            'Generous whitespace'
+        ]
+    },
+    {
+        id: 'grid-focus',
+        name: 'Grid Focus',
+        description: 'Photo-forward dense grid, no hero section',
+        preview: '🖼️',
+        features: [
+            'No hero section',
+            'Dense 3-column grid',
+            'Photo-first cards',
+            'Slim category strip'
+        ]
+    },
+    {
+        id: 'list',
+        name: 'List',
+        description: 'Ultra-minimal single-column list rows',
+        preview: '📋',
+        features: [
+            'Horizontal item rows',
+            'Small thumbnails',
+            'Ultra-clean layout',
+            'Fast scanning'
+        ]
+    },
+    {
+        id: 'mosaic',
+        name: 'Mosaic',
+        description: 'Pinterest-style masonry with organic spacing',
+        preview: '🧩',
+        features: [
+            'Masonry columns',
+            'Varied card heights',
+            'Discovery-oriented',
+            'Artsy feel'
         ]
     }
 ]

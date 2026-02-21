@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
-import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check } from 'lucide-react'
+import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,7 +16,20 @@ import { createOrderAction } from '@/app/actions/orders'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import { toast } from 'sonner'
-import type { Tenant, OrderType, CustomerFormField, PaymentMethod } from '@/types/database'
+import type { Tenant, OrderType, CustomerFormField, PaymentMethod, CartItem } from '@/types/database'
+
+interface CompletedOrderData {
+  items: CartItem[]
+  total: number
+  deliveryFee: number | null
+  customerData: Record<string, string>
+  orderTypeName: string | null
+  paymentMethodName: string | null
+  paymentMethodDetails: string | null
+  messengerMessage: string
+  messengerUrl: string
+  formFields: { field_name: string; field_label: string }[]
+}
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -31,6 +44,7 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
+  const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
 
   // Lalamove delivery fee state
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
@@ -574,17 +588,26 @@ export default function CheckoutPage() {
         // Don't await - let it run in background while we redirect
       }
 
+      // Save order data before clearing cart (for confirmation page)
+      const selectedOrderTypeName = orderTypes.find(ot => ot.id === orderType)?.name ?? null
+      const selectedPaymentName = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name ?? null
+      const selectedPaymentDetails = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.details ?? null
+      const formFieldsMeta2 = formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label }))
+
+      setCompletedOrderData({
+        items: [...items],
+        total,
+        deliveryFee: (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : null,
+        customerData: { ...customerData },
+        orderTypeName: selectedOrderTypeName,
+        paymentMethodName: selectedPaymentName,
+        paymentMethodDetails: selectedPaymentDetails,
+        messengerMessage: message,
+        messengerUrl,
+        formFields: formFieldsMeta2,
+      })
+
       // Clear cart
-      // Note: Order message delivery depends on Facebook page connection:
-      // 
-      // If Facebook page IS connected (ref-based):
-      // 1. Proactive send (if user has PSID stored and within 24-hour window) - sends immediately
-      // 2. Webhook referral event (when user clicks link in new conversation) - sends immediately
-      // 3. Webhook fallback (when user sends message in existing conversation) - checks for recent orders
-      //
-      // If Facebook page NOT connected (text-based):
-      // - Message is pre-filled in URL, user sees it when they open Messenger
-      // - No webhook needed, works for all restaurants without Facebook integration
       clearCart()
 
       // Show success message
@@ -621,18 +644,10 @@ export default function CheckoutPage() {
           try {
             window.location.href = messengerUrl
           } catch {
-            // Last resort: show URL for manual copy
-            toast.error(
-              'Unable to open Messenger. Please copy this link: ' + messengerUrl,
-              { duration: 10000 }
-            )
-            // Copy to clipboard if possible
-            if (navigator.clipboard && messengerUrl) {
-              navigator.clipboard.writeText(messengerUrl).catch(() => {
-                // Ignore clipboard errors
-              })
-            }
+            // Last resort: show confirmation page with manual Messenger link
+            setCheckoutComplete(true)
             setIsProcessing(false)
+            toast.error('Unable to open Messenger automatically. Use the buttons below to open it manually.')
           }
         }
       }, 1000)
@@ -660,6 +675,168 @@ export default function CheckoutPage() {
         <div className="text-center">
           <p className="text-gray-600">Restaurant not found</p>
         </div>
+      </div>
+    )
+  }
+
+  // Order Confirmation / Thank You view
+  if (checkoutComplete && completedOrderData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+        <main className="container mx-auto px-4 py-8">
+          <div className="mx-auto max-w-2xl space-y-6">
+            {/* Success Header */}
+            <div className="text-center py-8">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
+                <CheckCircle2 className="h-10 w-10 text-green-600" />
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Thank You!</h1>
+              <p className="text-gray-600 text-lg">Your order has been sent to {tenant.name}</p>
+              <Badge className="mt-3 bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-100">
+                Pending — Please check Messenger to confirm
+              </Badge>
+            </div>
+
+            {/* Order Summary */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900 mb-1">Order Summary</h2>
+              {completedOrderData.orderTypeName && (
+                <p className="text-sm text-gray-500 mb-4">{completedOrderData.orderTypeName}</p>
+              )}
+
+              <div className="space-y-3">
+                {completedOrderData.items.map((item, index) => (
+                  <div key={item.id}>
+                    {index > 0 && <Separator className="my-3" />}
+                    <div className="flex justify-between">
+                      <div className="flex-1 mr-4">
+                        <span className="font-medium text-sm">{item.menu_item.name}</span>
+                        {item.selected_variation && (
+                          <span className="text-xs text-muted-foreground"> ({item.selected_variation.name})</span>
+                        )}
+                        {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {' '}({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground"> x{item.quantity}</span>
+                        {item.selected_addons.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Add-ons: {item.selected_addons.map(a => a.name).join(', ')}
+                          </p>
+                        )}
+                        {item.special_instructions && (
+                          <p className="text-xs italic text-muted-foreground mt-0.5">
+                            Note: {item.special_instructions}
+                          </p>
+                        )}
+                      </div>
+                      <span className="font-semibold text-sm flex-shrink-0">{formatPrice(item.subtotal)}</span>
+                    </div>
+                  </div>
+                ))}
+
+                <Separator className="my-3" />
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal</span>
+                  <span className="font-medium">{formatPrice(completedOrderData.total)}</span>
+                </div>
+
+                {completedOrderData.deliveryFee !== null && completedOrderData.deliveryFee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Delivery Fee</span>
+                    <span className="font-medium">{formatPrice(completedOrderData.deliveryFee)}</span>
+                  </div>
+                )}
+
+                <Separator className="my-2" />
+
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span className="text-orange-600">
+                    {formatPrice(completedOrderData.total + (completedOrderData.deliveryFee ?? 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Information */}
+            {completedOrderData.formFields.length > 0 && (
+              <div className="rounded-2xl bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Customer Information</h2>
+                <div className="space-y-2">
+                  {completedOrderData.formFields.map(field => {
+                    const value = completedOrderData.customerData[field.field_name]
+                    if (!value) return null
+                    return (
+                      <div key={field.field_name} className="flex justify-between text-sm">
+                        <span className="text-gray-600">{field.field_label}</span>
+                        <span className="font-medium text-right ml-4 max-w-[60%] break-words">{value}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Payment Method */}
+            {completedOrderData.paymentMethodName && (
+              <div className="rounded-2xl bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold text-gray-900 mb-2">Payment Method</h2>
+                <p className="font-medium text-gray-900">{completedOrderData.paymentMethodName}</p>
+                {completedOrderData.paymentMethodDetails && (
+                  <p className="text-sm text-gray-600 mt-1">{completedOrderData.paymentMethodDetails}</p>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              <Button
+                size="lg"
+                className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full"
+                onClick={() => {
+                  window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
+                }}
+              >
+                <ExternalLink className="mr-2 h-5 w-5" />
+                Open Messenger
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full h-12 rounded-full border-orange-300 text-orange-700 hover:bg-orange-50"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(completedOrderData.messengerMessage)
+                    toast.success('Order message copied to clipboard!')
+                  } catch {
+                    toast.error('Failed to copy message')
+                  }
+                }}
+              >
+                <Copy className="mr-2 h-5 w-5" />
+                Copy Order Message
+              </Button>
+
+              <Button
+                size="lg"
+                variant="ghost"
+                className="w-full h-12 rounded-full text-gray-600 hover:text-gray-900"
+                onClick={() => router.push(`/${tenantSlug}/menu`)}
+              >
+                <ArrowLeft className="mr-2 h-5 w-5" />
+                Back to Menu
+              </Button>
+            </div>
+
+            <p className="text-center text-xs text-gray-400 pb-8">
+              If Messenger didn&apos;t open, use the buttons above to open it manually or copy your order message.
+            </p>
+          </div>
+        </main>
       </div>
     )
   }

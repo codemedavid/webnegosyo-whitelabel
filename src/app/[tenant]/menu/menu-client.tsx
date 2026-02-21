@@ -2,15 +2,16 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { Pencil } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
-import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { createClient } from '@/lib/supabase/client'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { BrandingEditorOverlay } from '@/components/admin/branding-editor-overlay'
+import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -24,20 +25,106 @@ interface MenuClientProps {
   error: string | null
 }
 
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+
+interface AdminEditPencilProps {
+  visible: boolean
+  onClick: () => void
+  label: string
+  className?: string
+}
+
+function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencilProps) {
+  if (!visible) return null
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900 ${className || ''}`}
+    >
+      <Pencil className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
 export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error }: MenuClientProps) {
   const router = useRouter()
-  const { addItem, items, setTenantContext } = useCart()
+  const supabase = useMemo(() => createClient(), [])
+  const { addItem, item_count, setTenantContext } = useCart()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isBrandAdmin, setIsBrandAdmin] = useState(false)
+  const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
+  const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
 
   useEffect(() => {
     if (tenant) {
       setTenantContext(tenant.id, tenant.slug)
     }
   }, [tenant, setTenantContext])
+
+  useEffect(() => {
+    if (!tenant) return
+    let isCancelled = false
+    const tenantId = tenant.id
+
+    async function checkAdminRole() {
+      // Gate behind session check first to avoid unnecessary DB queries for anonymous visitors
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      const { data: role } = await supabase
+        .from('app_users')
+        .select('role, tenant_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+
+      if (isCancelled) return
+      const currentRole = role as { role: string; tenant_id: string | null } | null
+      const allowed = !!currentRole && (
+        currentRole.role === 'superadmin' ||
+        (currentRole.role === 'admin' && currentRole.tenant_id === tenantId)
+      )
+      setIsBrandAdmin(allowed)
+    }
+
+    checkAdminRole()
+    return () => { isCancelled = true }
+  }, [supabase, tenant])
+
+  useEffect(() => {
+    if (!flashScreenEnabled) {
+      setShowFlashScreen(false)
+      return
+    }
+
+    try {
+      const storageKey = `flash-screen-seen:${tenant?.id ?? tenantSlug}`
+      const hasSeenFlash = window.sessionStorage.getItem(storageKey) === '1'
+      if (hasSeenFlash) {
+        setShowFlashScreen(false)
+        return
+      }
+
+      window.sessionStorage.setItem(storageKey, '1')
+    } catch {
+      // Ignore storage errors (private browsing, blocked storage, etc.)
+    }
+
+    setShowFlashScreen(true)
+    const durationMsRaw = tenant?.flash_screen_duration_ms ?? 2000
+    const durationMs = Math.min(15000, Math.max(500, durationMsRaw))
+    const timer = window.setTimeout(() => {
+      setShowFlashScreen(false)
+    }, durationMs)
+
+    return () => window.clearTimeout(timer)
+  }, [flashScreenEnabled, tenant?.flash_screen_duration_ms, tenant?.id, tenantSlug])
 
   const filteredItems = useMemo(() => {
     let items = allMenuItems
@@ -58,9 +145,15 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
     return items.sort((a, b) => {
       if (a.is_featured && !b.is_featured) return -1
       if (!a.is_featured && b.is_featured) return 1
+      if (tenant?.menu_engineering_enabled) {
+        const aIsStar = a.bcg_classification === 'star'
+        const bIsStar = b.bcg_classification === 'star'
+        if (aIsStar && !bIsStar) return -1
+        if (!aIsStar && bIsStar) return 1
+      }
       return a.order - b.order
     })
-  }, [allMenuItems, activeCategory, searchQuery])
+  }, [allMenuItems, activeCategory, searchQuery, tenant?.menu_engineering_enabled])
 
   const baseBranding = getTenantBranding(tenant)
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
@@ -78,6 +171,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
   const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
   const [pageLayoutOverride, setPageLayoutOverride] = useState<string | null>(null)
   const [mobileGridColumnsOverride, setMobileGridColumnsOverride] = useState<number | null>(null)
+  const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
@@ -102,11 +196,25 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
     setIf('modalTitle', draft.modal_title_color)
     setIf('modalPrice', draft.modal_price_color)
     setIf('modalDescription', draft.modal_description_color)
+    setIf('checkoutModalBackground', draft.checkout_modal_background_color)
+    setIf('checkoutModalTitle', draft.checkout_modal_title_color)
+    setIf('checkoutModalDescription', draft.checkout_modal_description_color)
+    setIf('checkoutModalPrice', draft.checkout_modal_price_color)
+    setIf('checkoutModalButton', draft.checkout_modal_button_color)
+    setIf('checkoutModalButtonText', draft.checkout_modal_button_text_color)
+    setIf('checkoutModalBorder', draft.checkout_modal_border_color)
     setIf('buttonPrimary', draft.button_primary_color)
     setIf('buttonPrimaryText', draft.button_primary_text_color)
     setIf('textPrimary', draft.text_primary_color)
     setIf('textSecondary', draft.text_secondary_color)
     setIf('textMuted', draft.text_muted_color)
+    setIf('menuMainHeaderText', draft.menu_main_header_text_color)
+    setIf('menuMainHeaderSubtitle', draft.menu_main_header_subtitle_color)
+    setIf('menuCategoryHeader', draft.menu_category_header_color)
+    setIf('menuCategoryActive', draft.menu_category_active_color)
+    setIf('menuCategoryInactive', draft.menu_category_inactive_color)
+    setIf('menuCartBadgeBackground', draft.menu_cart_badge_background_color)
+    setIf('menuCartBadgeText', draft.menu_cart_badge_text_color)
     setIf('border', draft.border_color)
     setIf('success', draft.success_color)
     setIf('warning', draft.warning_color)
@@ -156,6 +264,10 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
     }, 5000)
     return () => clearInterval(interval)
   }, [bannerOverride?.isPromotionVisible, bannerOverride?.promotionBanners, tenant?.is_promotion_visible, tenant?.promotion_banners])
+
+  function openBrandingEditor(section: MenuBrandingSection) {
+    window.dispatchEvent(new CustomEvent('menu-branding-editor:open', { detail: { section } }))
+  }
 
   if (error === 'Restaurant not found') {
     return (
@@ -220,6 +332,46 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
       className="min-h-screen"
       style={{ backgroundColor: branding.background }}
     >
+      {showFlashScreen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center px-6"
+          style={{
+            backgroundColor: tenant?.flash_screen_background_color || '#111111',
+            color: tenant?.flash_screen_text_color || '#ffffff',
+          }}
+        >
+          <div className="flex w-full max-w-sm flex-col items-center text-center">
+            {(tenant?.flash_screen_image_url || tenant?.logo_url) ? (
+              <div className="mb-6 h-24 w-24 overflow-hidden rounded-full border border-white/20 bg-white/10">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={tenant?.flash_screen_image_url || tenant?.logo_url || ''}
+                  alt={tenant?.name || 'Brand logo'}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/10 text-3xl font-bold">
+                {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
+              </div>
+            )}
+
+            <h2 className="text-2xl font-semibold">
+              {tenant?.flash_screen_title || 'Loading menu...'}
+            </h2>
+
+            {tenant?.flash_screen_subtitle && (
+              <p className="mt-2 text-sm opacity-90">{tenant.flash_screen_subtitle}</p>
+            )}
+
+            <div
+              className="mt-8 h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent"
+              aria-label="Loading"
+            />
+          </div>
+        </div>
+      )}
+
       {(bannerOverride?.isAnnouncementVisible ?? tenant?.is_announcement_visible) && (
         <div
           className="w-full text-center py-2 px-4 text-sm font-medium relative z-[51]"
@@ -262,49 +414,56 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
                   </span>
                 </div>
               )}
-              <div>
-                <h1
-                  className="text-xl font-bold"
-                  style={{ color: branding.textPrimary }}
-                >
-                  {tenant?.name || tenantSlug.replace(/-/g, ' ')}
-                </h1>
-                <p
-                  className="text-xs"
-                  style={{ color: branding.textMuted }}
-                >
-                  Smart Ordering Partner
-                </p>
+              <div className="flex items-start gap-2">
+                <div>
+                  <h1
+                    className="text-xl font-bold"
+                    style={{ color: branding.menuMainHeaderText }}
+                  >
+                    {tenant?.name || tenantSlug.replace(/-/g, ' ')}
+                  </h1>
+                  {(tenant?.hero_description || tenant?.announcement_text) && (
+                    <p
+                      className="text-xs"
+                      style={{ color: branding.menuMainHeaderSubtitle }}
+                    >
+                      {tenant.hero_description || tenant.announcement_text}
+                    </p>
+                  )}
+                </div>
+                <AdminEditPencil
+                  visible={isBrandAdmin}
+                  onClick={() => openBrandingEditor('main_header')}
+                  label="Edit main header colors"
+                  className="mt-0.5"
+                />
               </div>
             </div>
 
             <div className="flex items-center gap-4">
               <button
-                className="flex items-center gap-2 text-sm transition-colors"
-                style={{ color: branding.textSecondary }}
-                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
-                onMouseLeave={(e) => e.currentTarget.style.color = branding.textSecondary}
-              >
-                <span className="text-lg">📦</span>
-                <span className="hidden sm:inline">Track Order</span>
-              </button>
-              <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative p-2 transition-colors"
+                className="relative p-2 transition-colors hover:opacity-80"
                 style={{ color: branding.textSecondary }}
-                onMouseEnter={(e) => e.currentTarget.style.color = branding.primary}
-                onMouseLeave={(e) => e.currentTarget.style.color = branding.textSecondary}
               >
                 <span className="text-xl">🛒</span>
-                {items.length > 0 && (
+                {item_count > 0 && (
                   <span
-                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
-                    style={{ backgroundColor: branding.primary }}
+                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold"
+                    style={{
+                      backgroundColor: branding.menuCartBadgeBackground,
+                      color: branding.menuCartBadgeText,
+                    }}
                   >
-                    {items.length}
+                    {item_count > 99 ? '99+' : item_count}
                   </span>
                 )}
               </button>
+              <AdminEditPencil
+                visible={isBrandAdmin}
+                onClick={() => openBrandingEditor('cart_badge')}
+                label="Edit cart badge colors"
+              />
             </div>
           </div>
         </div>
@@ -316,6 +475,8 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
           activeCategory={activeCategory}
           onCategoryChange={setActiveCategory}
           branding={branding}
+          isBrandAdmin={isBrandAdmin}
+          onEditBrandingSection={() => openBrandingEditor('category_navigation')}
         />
       )}
 
@@ -332,8 +493,10 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
           }}
           onSaved={() => {
             toast.success('Branding updated!')
-            // No reload needed - server action revalidates cached pages automatically
+            // Refresh server props so the client gets the saved tenant data
+            router.refresh()
           }}
+          onToggleCheckoutPreview={() => setIsCheckoutPreviewOpen(prev => !prev)}
         />
       )}
 
@@ -354,7 +517,11 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
               item.variations.length > 0 ||
               (item.variation_types && item.variation_types.length > 0) ||
               item.addons.length > 0
-            if (!hasCustomizations) {
+            // When menu engineering is enabled, always navigate to the product
+            // detail page so upsell pairs (upgrade/complementary) can be shown.
+            // For simple items without customizations, the product detail page
+            // handles the upsell flow before adding to cart.
+            if (!hasCustomizations && !tenant?.menu_engineering_enabled) {
               addItem(
                 item,
                 undefined,
@@ -378,23 +545,45 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
           currentSlide={currentSlide}
           setCurrentSlide={setCurrentSlide}
           mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+          menuEngineeringEnabled={tenant?.menu_engineering_enabled}
+          hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+          isBrandAdmin={isBrandAdmin}
+          onOpenBrandingSection={openBrandingEditor}
         />
       </main>
 
-      <ItemDetailModal
-        item={selectedItem}
-        open={!!selectedItem}
-        onClose={() => setSelectedItem(null)}
-        onAddToCart={addItem}
-        branding={branding}
-      />
+
 
       <CartDrawer
         open={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         tenantSlug={tenantSlug}
         branding={branding}
+        tenantId={tenant?.id}
+        menuEngineeringEnabled={tenant?.menu_engineering_enabled}
+        checkoutUpsellEnabled={tenant?.checkout_upsell_enabled}
+        checkoutUpsellTitle={tenant?.checkout_upsell_title}
+        checkoutUpsellSubtitle={tenant?.checkout_upsell_subtitle}
+        checkoutUpsellMaxItems={tenant?.checkout_upsell_max_items}
       />
+
+      {/* Checkout Interstitial Preview (admin only, z-[61] above branding editor z-[60]) */}
+      {tenant && (
+        <CheckoutUpsellModal
+          open={isCheckoutPreviewOpen}
+          onContinue={() => setIsCheckoutPreviewOpen(false)}
+          tenantId={tenant.id}
+          branding={branding}
+          title={tenant.checkout_upsell_title || 'Before you go...'}
+          subtitle={tenant.checkout_upsell_subtitle || 'You might also enjoy these items'}
+          maxItems={4}
+          previewSuggestions={allMenuItems.slice(0, 3).map(item => ({
+            ...item,
+            category_id: item.category_id || '',
+          }))}
+          zIndexClass="z-[61]"
+        />
+      )}
     </div>
   )
 }

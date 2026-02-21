@@ -24,6 +24,15 @@ export interface BrandingColors {
   modalPrice: string
   modalDescription: string
 
+  // Checkout interstitial modal colors
+  checkoutModalBackground: string
+  checkoutModalTitle: string
+  checkoutModalDescription: string
+  checkoutModalPrice: string
+  checkoutModalButton: string
+  checkoutModalButtonText: string
+  checkoutModalBorder: string
+
   // Button colors
   buttonPrimary: string
   buttonPrimaryText: string
@@ -34,6 +43,15 @@ export interface BrandingColors {
   textPrimary: string
   textSecondary: string
   textMuted: string
+
+  // Menu-specific colors
+  menuMainHeaderText: string
+  menuMainHeaderSubtitle: string
+  menuCategoryHeader: string
+  menuCategoryActive: string
+  menuCategoryInactive: string
+  menuCartBadgeBackground: string
+  menuCartBadgeText: string
 
   // UI colors
   border: string
@@ -65,6 +83,13 @@ export const DEFAULT_BRANDING: BrandingColors = {
   modalTitle: '#111111',
   modalPrice: '#111111',
   modalDescription: '#6b7280',
+  checkoutModalBackground: '#ffffff',
+  checkoutModalTitle: '#111111',
+  checkoutModalDescription: '#6b7280',
+  checkoutModalPrice: '#111111',
+  checkoutModalButton: '#111111',
+  checkoutModalButtonText: '#ffffff',
+  checkoutModalBorder: '#e5e7eb',
   buttonPrimary: '#111111',
   buttonPrimaryText: '#ffffff',
   buttonSecondary: '#f3f4f6',
@@ -72,6 +97,13 @@ export const DEFAULT_BRANDING: BrandingColors = {
   textPrimary: '#111111',
   textSecondary: '#6b7280',
   textMuted: '#9ca3af',
+  menuMainHeaderText: '#111111',
+  menuMainHeaderSubtitle: '#9ca3af',
+  menuCategoryHeader: '#111111',
+  menuCategoryActive: '#111111',
+  menuCategoryInactive: '#6b7280',
+  menuCartBadgeBackground: '#111111',
+  menuCartBadgeText: '#ffffff',
   border: '#e5e7eb',
   success: '#10b981',
   warning: '#f59e0b',
@@ -110,6 +142,13 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     modalTitle: get('modal_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.modalTitle),
     modalPrice: get('modal_price_color', '') || get('primary_color', DEFAULT_BRANDING.modalPrice),
     modalDescription: get('modal_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.modalDescription),
+    checkoutModalBackground: get('checkout_modal_background_color', '') || get('modal_background_color', '') || get('cards_color', DEFAULT_BRANDING.checkoutModalBackground),
+    checkoutModalTitle: get('checkout_modal_title_color', '') || get('modal_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.checkoutModalTitle),
+    checkoutModalDescription: get('checkout_modal_description_color', '') || get('modal_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.checkoutModalDescription),
+    checkoutModalPrice: get('checkout_modal_price_color', '') || get('modal_price_color', '') || get('primary_color', DEFAULT_BRANDING.checkoutModalPrice),
+    checkoutModalButton: get('checkout_modal_button_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.checkoutModalButton),
+    checkoutModalButtonText: get('checkout_modal_button_text_color', '') || get('button_primary_text_color', DEFAULT_BRANDING.checkoutModalButtonText),
+    checkoutModalBorder: get('checkout_modal_border_color', '') || get('border_color', DEFAULT_BRANDING.checkoutModalBorder),
     buttonPrimary: get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
     buttonPrimaryText: get('button_primary_text_color', DEFAULT_BRANDING.buttonPrimaryText),
     buttonSecondary: get('button_secondary_color', DEFAULT_BRANDING.buttonSecondary),
@@ -117,6 +156,13 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     textPrimary: get('text_primary_color', DEFAULT_BRANDING.textPrimary),
     textSecondary: get('text_secondary_color', DEFAULT_BRANDING.textSecondary),
     textMuted: get('text_muted_color', DEFAULT_BRANDING.textMuted),
+    menuMainHeaderText: get('menu_main_header_text_color', '') || get('text_primary_color', DEFAULT_BRANDING.menuMainHeaderText),
+    menuMainHeaderSubtitle: get('menu_main_header_subtitle_color', '') || get('text_muted_color', DEFAULT_BRANDING.menuMainHeaderSubtitle),
+    menuCategoryHeader: get('menu_category_header_color', '') || get('primary_color', DEFAULT_BRANDING.menuCategoryHeader),
+    menuCategoryActive: get('menu_category_active_color', '') || get('primary_color', DEFAULT_BRANDING.menuCategoryActive),
+    menuCategoryInactive: get('menu_category_inactive_color', '') || get('text_secondary_color', DEFAULT_BRANDING.menuCategoryInactive),
+    menuCartBadgeBackground: get('menu_cart_badge_background_color', '') || get('primary_color', DEFAULT_BRANDING.menuCartBadgeBackground),
+    menuCartBadgeText: get('menu_cart_badge_text_color', '') || get('button_primary_text_color', DEFAULT_BRANDING.menuCartBadgeText),
     border: get('border_color', DEFAULT_BRANDING.border),
     success: get('success_color', DEFAULT_BRANDING.success),
     warning: get('warning_color', DEFAULT_BRANDING.warning),
@@ -146,6 +192,13 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-modal-title': branding.modalTitle,
     '--brand-modal-price': branding.modalPrice,
     '--brand-modal-description': branding.modalDescription,
+    '--brand-checkout-modal-background': branding.checkoutModalBackground,
+    '--brand-checkout-modal-title': branding.checkoutModalTitle,
+    '--brand-checkout-modal-description': branding.checkoutModalDescription,
+    '--brand-checkout-modal-price': branding.checkoutModalPrice,
+    '--brand-checkout-modal-button': branding.checkoutModalButton,
+    '--brand-checkout-modal-button-text': branding.checkoutModalButtonText,
+    '--brand-checkout-modal-border': branding.checkoutModalBorder,
     '--brand-button-primary': branding.buttonPrimary,
     '--brand-button-primary-text': branding.buttonPrimaryText,
     '--brand-button-secondary': branding.buttonSecondary,
@@ -153,6 +206,13 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-text-primary': branding.textPrimary,
     '--brand-text-secondary': branding.textSecondary,
     '--brand-text-muted': branding.textMuted,
+    '--brand-menu-main-header-text': branding.menuMainHeaderText,
+    '--brand-menu-main-header-subtitle': branding.menuMainHeaderSubtitle,
+    '--brand-menu-category-header': branding.menuCategoryHeader,
+    '--brand-menu-category-active': branding.menuCategoryActive,
+    '--brand-menu-category-inactive': branding.menuCategoryInactive,
+    '--brand-menu-cart-badge-bg': branding.menuCartBadgeBackground,
+    '--brand-menu-cart-badge-text': branding.menuCartBadgeText,
     '--brand-border': branding.border,
     '--brand-success': branding.success,
     '--brand-warning': branding.warning,

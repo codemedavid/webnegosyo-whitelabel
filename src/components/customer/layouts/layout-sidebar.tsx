@@ -6,6 +6,7 @@ import { SearchBar } from '../search-bar'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
+import { Pencil } from 'lucide-react'
 
 interface LayoutSidebarProps {
     tenant: Tenant | null
@@ -35,6 +36,10 @@ interface LayoutSidebarProps {
     currentSlide: number
     setCurrentSlide: (slide: number) => void
     mobileGridColumns?: number
+    menuEngineeringEnabled?: boolean
+    hideCurrencySymbol?: boolean
+    isBrandAdmin?: boolean
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge') => void
 }
 
 import { useEffect, useState, useRef } from 'react'
@@ -52,6 +57,10 @@ export function LayoutSidebar({
     currentSlide,
     setCurrentSlide,
     mobileGridColumns = 1,
+    menuEngineeringEnabled,
+    hideCurrencySymbol,
+    isBrandAdmin = false,
+    onOpenBrandingSection,
 }: Omit<LayoutSidebarProps, 'allMenuItems' | 'activeCategory' | 'setActiveCategory' | 'heroOverride'>) {
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
@@ -61,6 +70,8 @@ export function LayoutSidebar({
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
+    const activeColor = branding.menuCategoryActive || branding.primary
+    const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
 
     // Scroll spy implementation
     useEffect(() => {
@@ -133,15 +144,15 @@ export function LayoutSidebar({
                     onClick={() => scrollToCategory(null)}
                     className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all mb-2"
                     style={{
-                        backgroundColor: !activeSection ? `${branding.primary}15` : 'transparent',
-                        color: !activeSection ? branding.primary : branding.textSecondary,
+                        backgroundColor: !activeSection ? `${activeColor}15` : 'transparent',
+                        color: !activeSection ? activeColor : inactiveColor,
                     }}
                 >
                     <div
                         className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full text-lg md:text-xl transition-transform active:scale-95"
-                        style={{ backgroundColor: !activeSection ? branding.primary : `${branding.primary}10` }}
+                        style={{ backgroundColor: !activeSection ? activeColor : `${activeColor}10` }}
                     >
-                        <span style={{ color: !activeSection ? 'white' : branding.primary }}>🍽️</span>
+                        <span style={{ color: !activeSection ? 'white' : activeColor }}>🍽️</span>
                     </div>
                     <span className="text-[10px] md:text-xs font-medium text-center leading-tight">All</span>
                 </button>
@@ -153,17 +164,17 @@ export function LayoutSidebar({
                         onClick={() => scrollToCategory(category.id)}
                         className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all"
                         style={{
-                            backgroundColor: activeSection === category.id ? `${branding.primary}15` : 'transparent',
-                            color: activeSection === category.id ? branding.primary : branding.textSecondary,
+                            backgroundColor: activeSection === category.id ? `${activeColor}15` : 'transparent',
+                            color: activeSection === category.id ? activeColor : inactiveColor,
                         }}
                     >
                         <div
                             className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full text-lg md:text-xl transition-transform active:scale-95"
                             style={{
-                                backgroundColor: activeSection === category.id ? branding.primary : `${branding.primary}10`
+                                backgroundColor: activeSection === category.id ? activeColor : `${activeColor}10`
                             }}
                         >
-                            <span style={{ color: activeSection === category.id ? 'white' : branding.primary }}>
+                            <span style={{ color: activeSection === category.id ? 'white' : activeColor }}>
                                 {category.icon || '🍽️'}
                             </span>
                         </div>
@@ -172,6 +183,17 @@ export function LayoutSidebar({
                         </span>
                     </button>
                 ))}
+                {isBrandAdmin && onOpenBrandingSection && (
+                    <button
+                        type="button"
+                        onClick={() => onOpenBrandingSection('category_navigation')}
+                        title="Edit category navigation colors"
+                        aria-label="Edit category navigation colors"
+                        className="mt-2 self-center inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                    >
+                        <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                )}
             </aside>
 
             {/* Main Content */}
@@ -264,6 +286,10 @@ export function LayoutSidebar({
                         onItemSelect={onItemSelect}
                         branding={branding}
                         mobileGridColumns={mobileGridColumns}
+                        menuEngineeringEnabled={menuEngineeringEnabled}
+                        hideCurrencySymbol={hideCurrencySymbol}
+                        isBrandAdmin={isBrandAdmin}
+                        onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
                     />
                 )}
             </div>

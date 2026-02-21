@@ -10,6 +10,8 @@ import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/databa
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+
 interface LayoutDefaultProps {
     tenant: Tenant | null
     tenantSlug: string
@@ -39,6 +41,10 @@ interface LayoutDefaultProps {
     currentSlide: number
     setCurrentSlide: (slide: number) => void
     mobileGridColumns?: number
+    menuEngineeringEnabled?: boolean
+    hideCurrencySymbol?: boolean
+    isBrandAdmin?: boolean
+    onOpenBrandingSection?: (section: MenuBrandingSection) => void
 }
 
 export function LayoutDefault({
@@ -58,6 +64,10 @@ export function LayoutDefault({
     currentSlide,
     setCurrentSlide,
     mobileGridColumns = 1,
+    menuEngineeringEnabled,
+    hideCurrencySymbol,
+    isBrandAdmin = false,
+    onOpenBrandingSection,
 }: Omit<LayoutDefaultProps, 'allMenuItems'>) {
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
@@ -158,6 +168,8 @@ export function LayoutDefault({
                             activeCategory={activeCategory}
                             onCategoryChange={setActiveCategory}
                             branding={branding}
+                            isBrandAdmin={isBrandAdmin}
+                            onEditBrandingSection={() => onOpenBrandingSection?.('category_navigation')}
                         />
                     </div>
                 </div>
@@ -211,6 +223,8 @@ export function LayoutDefault({
                         onItemSelect={onItemSelect}
                         branding={branding}
                         mobileGridColumns={mobileGridColumns}
+                        menuEngineeringEnabled={menuEngineeringEnabled}
+                        hideCurrencySymbol={hideCurrencySymbol}
                     />
                 ) : (
                     <MenuGridGrouped
@@ -220,6 +234,10 @@ export function LayoutDefault({
                         onItemSelect={onItemSelect}
                         branding={branding}
                         mobileGridColumns={mobileGridColumns}
+                        menuEngineeringEnabled={menuEngineeringEnabled}
+                        hideCurrencySymbol={hideCurrencySymbol}
+                        isBrandAdmin={isBrandAdmin}
+                        onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
                     />
                 )
             )}

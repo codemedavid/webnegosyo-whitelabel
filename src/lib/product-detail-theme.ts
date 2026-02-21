@@ -111,6 +111,8 @@ export interface ProductDetailSettings {
 
     variation_price_modifier_color?: string
     variation_required_badge_color?: string
+    variation_required_text?: string
+    variation_optional_text?: string
 
     addon_section_title_color?: string
     addon_section_title_font_size?: string
@@ -124,6 +126,7 @@ export interface ProductDetailSettings {
     addon_selected_check_color?: string
     addon_price_color?: string
     addon_price_free_text?: string
+    addon_optional_text?: string
 
     related_section_title_color?: string
     related_section_title_font_size?: string
@@ -138,6 +141,7 @@ export interface ProductDetailSettings {
     summary_text_color?: string
     total_price_color?: string
     original_price_color?: string
+    footer_empty_summary_text?: string
 
     quantity_controls_background?: string
     quantity_button_color?: string
@@ -146,14 +150,32 @@ export interface ProductDetailSettings {
     buy_now_button_background?: string
     buy_now_button_text_color?: string
     buy_now_button_border_color?: string
+    buy_now_button_label?: string
 
     add_to_cart_button_background?: string
     add_to_cart_button_text_color?: string
     add_to_cart_button_shadow_color?: string
+    add_to_cart_button_label?: string
 
     modal_background_color?: string
     modal_close_button_color?: string
     modal_close_button_background?: string
+
+    popup_modal_background_color?: string
+    popup_modal_title_color?: string
+    popup_modal_description_color?: string
+    popup_modal_price_color?: string
+    popup_modal_button_color?: string
+    popup_modal_button_text_color?: string
+    popup_modal_border_color?: string
+
+    checkout_modal_background_color?: string
+    checkout_modal_title_color?: string
+    checkout_modal_description_color?: string
+    checkout_modal_price_color?: string
+    checkout_modal_button_color?: string
+    checkout_modal_button_text_color?: string
+    checkout_modal_border_color?: string
 
     font_family_heading?: string
     font_family_body?: string
@@ -188,6 +210,8 @@ export const DEFAULT_PRODUCT_DETAIL_SETTINGS: Partial<ProductDetailSettings> = {
     variation_option_selected_text_color: '#ffffff',
     variation_price_modifier_color: '#6b7280',
     variation_required_badge_color: '#6b7280',
+    variation_required_text: '* Pick 1',
+    variation_optional_text: 'Optional',
     addon_section_title_color: '#111827',
     addon_section_title_font_size: '16px',
     addon_background_color: '#ffffff',
@@ -195,6 +219,7 @@ export const DEFAULT_PRODUCT_DETAIL_SETTINGS: Partial<ProductDetailSettings> = {
     addon_border_color: '#e5e7eb',
     addon_price_color: '#6b7280',
     addon_price_free_text: 'Free',
+    addon_optional_text: '(Optional)',
     related_section_title_color: '#111827',
     related_section_title_font_size: '18px',
     related_item_name_color: '#111827',
@@ -204,9 +229,12 @@ export const DEFAULT_PRODUCT_DETAIL_SETTINGS: Partial<ProductDetailSettings> = {
     summary_text_color: '#6b7280',
     total_price_color: '#111827',
     original_price_color: '#9ca3af',
+    footer_empty_summary_text: 'Standard',
     quantity_controls_background: '#f3f4f6',
     quantity_button_color: '#374151',
     quantity_text_color: '#111827',
+    buy_now_button_label: 'Buy Now',
+    add_to_cart_button_label: 'Add To Cart',
     add_to_cart_button_text_color: '#ffffff',
     add_to_cart_button_shadow_color: 'rgba(0,0,0,0.1)',
     modal_background_color: 'rgba(0,0,0,0.95)',
@@ -258,6 +286,8 @@ export interface ProductDetailColors {
 
     variationPriceModifier: string
     variationRequiredBadge: string
+    variationRequiredText: string
+    variationOptionalText: string
 
     addonSectionTitle: string
     addonSectionTitleFontSize: string
@@ -271,6 +301,7 @@ export interface ProductDetailColors {
     addonSelectedCheck: string
     addonPrice: string
     addonPriceFreeText: string
+    addonOptionalText: string
 
     relatedSectionTitle: string
     relatedSectionTitleFontSize: string
@@ -285,6 +316,7 @@ export interface ProductDetailColors {
     summaryText: string
     totalPrice: string
     originalPrice: string
+    footerEmptySummaryText: string
 
     quantityControlsBackground: string
     quantityButton: string
@@ -293,14 +325,32 @@ export interface ProductDetailColors {
     buyNowButtonBackground: string
     buyNowButtonText: string
     buyNowButtonBorder: string
+    buyNowButtonLabel: string
 
     addToCartButtonBackground: string
     addToCartButtonText: string
     addToCartButtonShadow: string
+    addToCartButtonLabel: string
 
     modalBackground: string
     modalCloseButton: string
     modalCloseButtonBackground: string
+
+    popupModalBackground: string
+    popupModalTitle: string
+    popupModalDescription: string
+    popupModalPrice: string
+    popupModalButton: string
+    popupModalButtonText: string
+    popupModalBorder: string
+
+    checkoutModalBackground: string
+    checkoutModalTitle: string
+    checkoutModalDescription: string
+    checkoutModalPrice: string
+    checkoutModalButton: string
+    checkoutModalButtonText: string
+    checkoutModalBorder: string
 
     fontFamilyHeading: string
     fontFamilyBody: string
@@ -327,8 +377,23 @@ export function mergeSettingsWithBranding(
     const defaults = DEFAULT_PRODUCT_DETAIL_SETTINGS
     const s: Partial<ProductDetailSettings> = settings || {}
 
+    // Helper: only use the product detail setting if it was explicitly customized
+    // (i.e., differs from the default). Otherwise fall back to the branding value.
+    const custom = (
+        settingValue: string | undefined | null,
+        defaultValue: string | undefined,
+        brandingFallback: string
+    ): string => {
+        // If the setting is null/undefined, use branding
+        if (!settingValue) return brandingFallback
+        // If the setting matches the table default, use branding (tenant didn't customize it)
+        if (defaultValue && settingValue === defaultValue) return brandingFallback
+        // The tenant explicitly set a custom value
+        return settingValue
+    }
+
     return {
-        pageBackground: s.page_background_color || branding.background,
+        pageBackground: custom(s.page_background_color, defaults.page_background_color, branding.background),
         pageGradient: s.page_background_gradient,
 
         headerBackground: s.header_background_color || branding.header,
@@ -340,21 +405,21 @@ export function mergeSettingsWithBranding(
         saleBadgeBackground: s.sale_badge_background_color || defaults.sale_badge_background_color!,
         saleBadgeText: s.sale_badge_text_color || defaults.sale_badge_text_color!,
 
-        productName: s.product_name_color || branding.textPrimary,
+        productName: custom(s.product_name_color, defaults.product_name_color, branding.textPrimary),
         productNameFontSize: s.product_name_font_size || defaults.product_name_font_size!,
         productNameFontWeight: s.product_name_font_weight || defaults.product_name_font_weight!,
 
         breadcrumb: s.breadcrumb_color || branding.textMuted,
         breadcrumbActive: s.breadcrumb_active_color || branding.link,
 
-        description: s.description_color || branding.textSecondary,
+        description: custom(s.description_color, defaults.description_color, branding.textSecondary),
         descriptionFontSize: s.description_font_size || defaults.description_font_size!,
 
         dietaryTagBackground: s.dietary_tag_background_color || 'transparent',
         dietaryTagText: s.dietary_tag_text_color || branding.textPrimary,
         dietaryTagBorder: s.dietary_tag_border_color || branding.border,
 
-        variationSectionTitle: s.variation_section_title_color || branding.textPrimary,
+        variationSectionTitle: custom(s.variation_section_title_color, defaults.variation_section_title_color, branding.textPrimary),
         variationSectionTitleFontSize: s.variation_section_title_font_size || defaults.variation_section_title_font_size!,
 
         variationOptionBackground: s.variation_option_background_color || defaults.variation_option_background_color!,
@@ -366,33 +431,37 @@ export function mergeSettingsWithBranding(
 
         variationPriceModifier: s.variation_price_modifier_color || defaults.variation_price_modifier_color!,
         variationRequiredBadge: s.variation_required_badge_color || defaults.variation_required_badge_color!,
+        variationRequiredText: s.variation_required_text || defaults.variation_required_text!,
+        variationOptionalText: s.variation_optional_text || defaults.variation_optional_text!,
 
-        addonSectionTitle: s.addon_section_title_color || branding.textPrimary,
+        addonSectionTitle: custom(s.addon_section_title_color, defaults.addon_section_title_color, branding.textPrimary),
         addonSectionTitleFontSize: s.addon_section_title_font_size || defaults.addon_section_title_font_size!,
 
-        addonBackground: s.addon_background_color || defaults.addon_background_color!,
-        addonText: s.addon_text_color || defaults.addon_text_color!,
-        addonBorder: s.addon_border_color || defaults.addon_border_color!,
+        addonBackground: custom(s.addon_background_color, defaults.addon_background_color, branding.cards),
+        addonText: custom(s.addon_text_color, defaults.addon_text_color, branding.textPrimary),
+        addonBorder: custom(s.addon_border_color, defaults.addon_border_color, branding.border),
         addonSelectedBackground: s.addon_selected_background_color || setAlpha(branding.primary, 0.03),
         addonSelectedText: s.addon_selected_text_color || branding.primary,
         addonSelectedBorder: s.addon_selected_border_color || branding.primary,
         addonSelectedCheck: s.addon_selected_check_color || branding.primary,
         addonPrice: s.addon_price_color || defaults.addon_price_color!,
         addonPriceFreeText: s.addon_price_free_text || defaults.addon_price_free_text!,
+        addonOptionalText: s.addon_optional_text || defaults.addon_optional_text!,
 
-        relatedSectionTitle: s.related_section_title_color || branding.textPrimary,
+        relatedSectionTitle: custom(s.related_section_title_color, defaults.related_section_title_color, branding.textPrimary),
         relatedSectionTitleFontSize: s.related_section_title_font_size || defaults.related_section_title_font_size!,
         relatedItemBackground: s.related_item_background_color || branding.cards,
-        relatedItemName: s.related_item_name_color || branding.cardTitle,
+        relatedItemName: custom(s.related_item_name_color, defaults.related_item_name_color, branding.cardTitle),
         relatedItemPrice: s.related_item_price_color || branding.cardPrice,
 
-        footerBackground: s.footer_background_color || branding.cards,
-        footerBorder: s.footer_border_color || branding.border,
+        footerBackground: custom(s.footer_background_color, defaults.footer_background_color, branding.cards),
+        footerBorder: custom(s.footer_border_color, defaults.footer_border_color, branding.border),
         footerShadow: s.footer_shadow_color || defaults.footer_shadow_color!,
 
-        summaryText: s.summary_text_color || branding.textMuted,
-        totalPrice: s.total_price_color || branding.textPrimary,
-        originalPrice: s.original_price_color || branding.textMuted,
+        summaryText: custom(s.summary_text_color, defaults.summary_text_color, branding.textMuted),
+        totalPrice: custom(s.total_price_color, defaults.total_price_color, branding.textPrimary),
+        originalPrice: custom(s.original_price_color, defaults.original_price_color, branding.textMuted),
+        footerEmptySummaryText: s.footer_empty_summary_text || defaults.footer_empty_summary_text!,
 
         quantityControlsBackground: s.quantity_controls_background || defaults.quantity_controls_background!,
         quantityButton: s.quantity_button_color || defaults.quantity_button_color!,
@@ -401,14 +470,32 @@ export function mergeSettingsWithBranding(
         buyNowButtonBackground: s.buy_now_button_background || branding.buttonSecondary,
         buyNowButtonText: s.buy_now_button_text_color || branding.buttonPrimary,
         buyNowButtonBorder: s.buy_now_button_border_color || branding.primary,
+        buyNowButtonLabel: s.buy_now_button_label || defaults.buy_now_button_label!,
 
         addToCartButtonBackground: s.add_to_cart_button_background || branding.buttonPrimary,
-        addToCartButtonText: s.add_to_cart_button_text_color || defaults.add_to_cart_button_text_color!,
+        addToCartButtonText: s.add_to_cart_button_text_color || branding.buttonPrimaryText,
         addToCartButtonShadow: s.add_to_cart_button_shadow_color || defaults.add_to_cart_button_shadow_color!,
+        addToCartButtonLabel: s.add_to_cart_button_label || defaults.add_to_cart_button_label!,
 
         modalBackground: s.modal_background_color || defaults.modal_background_color!,
         modalCloseButton: s.modal_close_button_color || defaults.modal_close_button_color!,
         modalCloseButtonBackground: s.modal_close_button_background || defaults.modal_close_button_background!,
+
+        popupModalBackground: s.popup_modal_background_color || branding.modalBackground,
+        popupModalTitle: s.popup_modal_title_color || branding.modalTitle,
+        popupModalDescription: s.popup_modal_description_color || branding.modalDescription,
+        popupModalPrice: s.popup_modal_price_color || branding.modalPrice,
+        popupModalButton: s.popup_modal_button_color || branding.buttonPrimary,
+        popupModalButtonText: s.popup_modal_button_text_color || branding.buttonPrimaryText,
+        popupModalBorder: s.popup_modal_border_color || branding.border,
+
+        checkoutModalBackground: s.checkout_modal_background_color || branding.modalBackground,
+        checkoutModalTitle: s.checkout_modal_title_color || branding.modalTitle,
+        checkoutModalDescription: s.checkout_modal_description_color || branding.modalDescription,
+        checkoutModalPrice: s.checkout_modal_price_color || branding.modalPrice,
+        checkoutModalButton: s.checkout_modal_button_color || branding.buttonPrimary,
+        checkoutModalButtonText: s.checkout_modal_button_text_color || branding.buttonPrimaryText,
+        checkoutModalBorder: s.checkout_modal_border_color || branding.border,
 
         fontFamilyHeading: s.font_family_heading || 'system-ui, -apple-system, sans-serif',
         fontFamilyBody: s.font_family_body || 'system-ui, -apple-system, sans-serif',
@@ -503,6 +590,20 @@ export function getProductDetailThemeCSS(colors: ProductDetailColors): React.CSS
         '--pd-modal-bg': val(colors.modalBackground, 'rgba(0,0,0,0.95)'),
         '--pd-modal-close': val(colors.modalCloseButton, '#ffffff'),
         '--pd-modal-close-bg': val(colors.modalCloseButtonBackground, 'rgba(255,255,255,0.1)'),
+        '--pd-popup-bg': val(colors.popupModalBackground, '#ffffff'),
+        '--pd-popup-title': val(colors.popupModalTitle, '#111111'),
+        '--pd-popup-description': val(colors.popupModalDescription, '#6b7280'),
+        '--pd-popup-price': val(colors.popupModalPrice, '#111111'),
+        '--pd-popup-button': val(colors.popupModalButton, '#3b82f6'),
+        '--pd-popup-button-text': val(colors.popupModalButtonText, '#ffffff'),
+        '--pd-popup-border': val(colors.popupModalBorder, '#e5e7eb'),
+        '--pd-checkout-bg': val(colors.checkoutModalBackground, '#ffffff'),
+        '--pd-checkout-title': val(colors.checkoutModalTitle, '#111111'),
+        '--pd-checkout-description': val(colors.checkoutModalDescription, '#6b7280'),
+        '--pd-checkout-price': val(colors.checkoutModalPrice, '#111111'),
+        '--pd-checkout-button': val(colors.checkoutModalButton, '#3b82f6'),
+        '--pd-checkout-button-text': val(colors.checkoutModalButtonText, '#ffffff'),
+        '--pd-checkout-border': val(colors.checkoutModalBorder, '#e5e7eb'),
         '--pd-font-heading': val(colors.fontFamilyHeading, 'system-ui, -apple-system, sans-serif'),
         '--pd-font-body': val(colors.fontFamilyBody, 'system-ui, -apple-system, sans-serif'),
         '--pd-section-padding': val(colors.sectionPadding, '24px'),

@@ -20,7 +20,9 @@ import {
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
+import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
+import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { toast } from 'sonner'
 import type { Tenant, CartItem } from '@/types/database'
 
@@ -35,6 +37,10 @@ export default function CartPage() {
   const [isNavigating, setIsNavigating] = useState(false)
   const navigationCompletedRef = useRef(false)
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
+  const [showUpsellModal, setShowUpsellModal] = useState(false)
+
+  const showInterstitial = tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled
+  const branding = getTenantBranding(tenant)
 
   // Load tenant data from Supabase
   useEffect(() => {
@@ -268,11 +274,13 @@ export default function CartPage() {
                       className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={async () => {
                         if (isNavigating) return
+                        if (showInterstitial) {
+                          setShowUpsellModal(true)
+                          return
+                        }
                         setIsNavigating(true)
                         navigationCompletedRef.current = false
-                        // Safety timeout to prevent UI from being stuck indefinitely
                         const safetyTimeout = setTimeout(() => {
-                          // Only reset if navigation hasn't actually completed
                           if (!navigationCompletedRef.current) {
                             setIsNavigating(false)
                           }
@@ -336,6 +344,40 @@ export default function CartPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Checkout Upsell Interstitial */}
+      {showInterstitial && tenant && (
+        <CheckoutUpsellModal
+          open={showUpsellModal}
+          onContinue={async () => {
+            setShowUpsellModal(false)
+            setIsNavigating(true)
+            navigationCompletedRef.current = false
+            const safetyTimeout = setTimeout(() => {
+              if (!navigationCompletedRef.current) {
+                setIsNavigating(false)
+              }
+            }, 5000)
+            try {
+              await router.push(`/${tenantSlug}/checkout`)
+              navigationCompletedRef.current = true
+            } catch (error) {
+              console.error('Navigation to checkout failed:', error)
+              toast.error('Failed to navigate to checkout')
+              navigationCompletedRef.current = true
+            } finally {
+              clearTimeout(safetyTimeout)
+              navigationCompletedRef.current = true
+              setIsNavigating(false)
+            }
+          }}
+          tenantId={tenant.id}
+          branding={branding}
+          title={tenant.checkout_upsell_title || 'Before you go...'}
+          subtitle={tenant.checkout_upsell_subtitle || 'You might also enjoy these items'}
+          maxItems={tenant.checkout_upsell_max_items || 4}
+        />
+      )}
     </>
   )
 }

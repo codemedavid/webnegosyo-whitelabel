@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { ShoppingCart, Minus, Plus, Trash2 } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
@@ -25,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
+import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CartItem } from '@/types/database'
 import Link from 'next/link'
@@ -34,11 +36,48 @@ interface CartDrawerProps {
   onClose: () => void
   tenantSlug: string
   branding: BrandingColors
+  tenantId?: string
+  menuEngineeringEnabled?: boolean
+  checkoutUpsellEnabled?: boolean
+  checkoutUpsellTitle?: string
+  checkoutUpsellSubtitle?: string
+  checkoutUpsellMaxItems?: number
 }
 
-export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerProps) {
+export function CartDrawer({
+  open,
+  onClose,
+  tenantSlug,
+  branding,
+  tenantId,
+  menuEngineeringEnabled,
+  checkoutUpsellEnabled,
+  checkoutUpsellTitle = 'Before you go...',
+  checkoutUpsellSubtitle = 'You might also enjoy these items',
+  checkoutUpsellMaxItems = 4,
+}: CartDrawerProps) {
+  const router = useRouter()
   const { items, total, updateQuantity, removeItem } = useCart()
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
+  const [showUpsellModal, setShowUpsellModal] = useState(false)
+
+  const showInterstitial = menuEngineeringEnabled && checkoutUpsellEnabled && !!tenantId
+
+  const handleCheckoutClick = useCallback(() => {
+    if (showInterstitial) {
+      onClose()
+      setShowUpsellModal(true)
+    } else {
+      onClose()
+      router.push(`/${tenantSlug}/checkout`)
+    }
+  }, [showInterstitial, onClose, router, tenantSlug])
+
+  const handleUpsellContinue = useCallback(() => {
+    setShowUpsellModal(false)
+    onClose()
+    router.push(`/${tenantSlug}/checkout`)
+  }, [onClose, router, tenantSlug])
 
   const handleDecreaseQuantity = (item: CartItem) => {
     if (item.quantity <= 1) {
@@ -228,14 +267,13 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
                       Review Cart
                     </Button>
                   </Link>
-                  <Link href={`/${tenantSlug}/checkout`} className="w-full" onClick={onClose}>
-                    <Button
-                      className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
-                      style={{ backgroundColor: branding.primary }}
-                    >
-                      Proceed to Checkout
-                    </Button>
-                  </Link>
+                  <Button
+                    className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: branding.primary }}
+                    onClick={handleCheckoutClick}
+                  >
+                    Proceed to Checkout
+                  </Button>
                 </div>
 
                 <p className="text-xs text-center text-gray-500 pt-2 pb-10">
@@ -269,6 +307,19 @@ export function CartDrawer({ open, onClose, tenantSlug, branding }: CartDrawerPr
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Checkout Upsell Interstitial */}
+      {showInterstitial && (
+        <CheckoutUpsellModal
+          open={showUpsellModal}
+          onContinue={handleUpsellContinue}
+          tenantId={tenantId}
+          branding={branding}
+          title={checkoutUpsellTitle}
+          subtitle={checkoutUpsellSubtitle}
+          maxItems={checkoutUpsellMaxItems}
+        />
+      )}
     </>
   )
 }
