@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Pencil, UtensilsCrossed } from 'lucide-react'
@@ -20,7 +21,7 @@ interface MenuGridGroupedProps {
   onEditCategoryHeader?: () => void
 }
 
-export function MenuGridGrouped({
+export const MenuGridGrouped = memo(function MenuGridGrouped({
   items,
   categories,
   onItemSelect,
@@ -123,4 +124,4 @@ export function MenuGridGrouped({
       ))}
     </div>
   )
-}
+})

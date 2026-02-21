@@ -84,7 +84,7 @@ export function LayoutDefault({
                     {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
                 </h1>
                 <p
-                    className="text-lg font-light"
+                    className="text-lg font-light hidden md:block"
                     style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
                 >
                     {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
@@ -148,7 +148,7 @@ export function LayoutDefault({
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
-                        placeholder="Search....."
+                        placeholder="Search..."
                     />
                 </div>
             )}

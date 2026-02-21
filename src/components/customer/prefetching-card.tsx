@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { memo, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { CardTemplateRenderer } from './card-templates'
 import type { MenuItem } from '@/types/database'
@@ -18,13 +18,9 @@ interface PrefetchingCardProps {
 
 /**
  * Card wrapper that prefetches the product detail route on hover/touch only.
- * 
- * Previously this component created a per-card IntersectionObserver and
- * eagerly fired Supabase queries for every visible card, causing 40+
- * concurrent network requests on load. Now it only does a lightweight
- * Next.js route prefetch on user interaction (hover/touch).
+ * Memoized to prevent re-renders from parent state changes (e.g. carousel slide).
  */
-export function PrefetchingCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
+export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
   const params = useParams()
   const router = useRouter()
   const hasPrefetched = useRef(false)
@@ -54,4 +50,4 @@ export function PrefetchingCard({ item, onSelect, branding, template = 'classic'
       />
     </div>
   )
-}
+})

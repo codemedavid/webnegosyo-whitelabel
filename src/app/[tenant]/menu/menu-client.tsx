@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -176,6 +176,20 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
   }, [baseBranding, brandingOverride])
+
+  // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
+  const handleItemSelect = useCallback((item: MenuItem) => {
+    const hasCustomizations =
+      item.variations.length > 0 ||
+      (item.variation_types && item.variation_types.length > 0) ||
+      item.addons.length > 0
+    if (!hasCustomizations && !tenant?.menu_engineering_enabled) {
+      addItem(item, undefined, [], 1, undefined)
+      toast.success(`Added ${item.name} to cart`)
+    } else {
+      router.push(`/${tenantSlug}/menu/item/${item.id}`)
+    }
+  }, [tenant?.menu_engineering_enabled, addItem, router, tenantSlug])
 
   function mapDraftToBranding(draft: Partial<Record<string, unknown>> | null): Partial<Record<string, string>> | null {
     if (!draft) return null
@@ -422,14 +436,12 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
                   >
                     {tenant?.name || tenantSlug.replace(/-/g, ' ')}
                   </h1>
-                  {(tenant?.hero_description || tenant?.announcement_text) && (
-                    <p
-                      className="text-xs"
-                      style={{ color: branding.menuMainHeaderSubtitle }}
-                    >
-                      {tenant.hero_description || tenant.announcement_text}
-                    </p>
-                  )}
+                  <p
+                    className="text-xs"
+                    style={{ color: branding.menuMainHeaderSubtitle }}
+                  >
+                    {tenant?.hero_description || 'Your Smart Ordering Partner'}
+                  </p>
                 </div>
                 <AdminEditPencil
                   visible={isBrandAdmin}
@@ -512,28 +524,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
           setActiveCategory={setActiveCategory}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onItemSelect={(item: MenuItem) => {
-            const hasCustomizations =
-              item.variations.length > 0 ||
-              (item.variation_types && item.variation_types.length > 0) ||
-              item.addons.length > 0
-            // When menu engineering is enabled, always navigate to the product
-            // detail page so upsell pairs (upgrade/complementary) can be shown.
-            // For simple items without customizations, the product detail page
-            // handles the upsell flow before adding to cart.
-            if (!hasCustomizations && !tenant?.menu_engineering_enabled) {
-              addItem(
-                item,
-                undefined,
-                [],
-                1,
-                undefined
-              )
-              toast.success(`Added ${item.name} to cart`)
-            } else {
-              router.push(`/${tenantSlug}/menu/item/${item.id}`)
-            }
-          }}
+          onItemSelect={handleItemSelect}
           branding={branding}
           cardTemplate={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
           isLoading={false}

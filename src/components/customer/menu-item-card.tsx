@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -14,7 +15,7 @@ interface MenuItemCardProps {
   hideCurrencySymbol?: boolean
 }
 
-export function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: MenuItemCardProps) {
+export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: MenuItemCardProps) {
   return (
     <CardTemplateRenderer
       template={template}
@@ -25,5 +26,4 @@ export function MenuItemCard({ item, onSelect, branding, template = 'classic', m
       hideCurrencySymbol={hideCurrencySymbol}
     />
   )
-}
-
+})

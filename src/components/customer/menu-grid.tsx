@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { PrefetchingCard } from './prefetching-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { UtensilsCrossed } from 'lucide-react'
@@ -17,7 +18,7 @@ interface MenuGridProps {
   hideCurrencySymbol?: boolean
 }
 
-export function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2, menuEngineeringEnabled, hideCurrencySymbol }: MenuGridProps) {
+export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, branding, template = 'classic', mobileGridColumns = 2, menuEngineeringEnabled, hideCurrencySymbol }: MenuGridProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
@@ -48,5 +49,4 @@ export function MenuGrid({ items, onItemSelect, branding, template = 'classic', 
       ))}
     </div>
   )
-}
-
+})

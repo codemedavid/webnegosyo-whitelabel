@@ -3,6 +3,7 @@
  * Exports all card templates and provides a convenient selector
  */
 
+import { memo } from 'react'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -78,12 +79,12 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
  * Unified Card Template Renderer
  * Automatically selects the correct template based on the template prop
  */
-export function CardTemplateRenderer({
+export const CardTemplateRenderer = memo(function CardTemplateRenderer({
   template = 'classic',
   ...props
 }: CardTemplateProps & { template?: CardTemplate }) {
   const CardComponent = getCardTemplateComponent(template)
   return <CardComponent {...props} />
-}
+})
 
 
