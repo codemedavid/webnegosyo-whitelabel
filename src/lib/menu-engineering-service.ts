@@ -52,6 +52,7 @@ export async function updateBcgClassification(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('menu_items')
+    // @ts-expect-error – Supabase generated types not available
     .update({ bcg_classification: classification } as Record<string, unknown>)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
@@ -74,6 +75,7 @@ export async function bulkUpdateBcgClassification(
       bcgClassificationSchema.parse(classification)
       return supabase
         .from('menu_items')
+        // @ts-expect-error – Supabase generated types not available
         .update({ bcg_classification: classification } as Record<string, unknown>)
         .eq('id', itemId)
         .eq('tenant_id', tenantId)
@@ -104,6 +106,7 @@ export async function updateBadgeText(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('menu_items')
+    // @ts-expect-error – Supabase generated types not available
     .update({ badge_text: badgeText } as Record<string, unknown>)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
@@ -154,6 +157,7 @@ export async function createUpsellPair(tenantId: string, input: UpsellPairInput)
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('upsell_pairs')
+    // @ts-expect-error – Supabase generated types not available
     .insert({
       tenant_id: tenantId,
       ...validated,
@@ -350,6 +354,7 @@ export async function updateCheckoutUpsellSettings(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('tenants')
+    // @ts-expect-error – Supabase generated types not available
     .update(validated as Record<string, unknown>)
     .eq('id', tenantId)
     .select('id, checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items')

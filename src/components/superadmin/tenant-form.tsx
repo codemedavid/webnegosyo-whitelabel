@@ -63,6 +63,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,6 +113,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      menu_engineering_enabled: formData.menu_engineering_enabled,
+      hide_currency_symbol: formData.hide_currency_symbol,
     }
 
     if (tenant) {
