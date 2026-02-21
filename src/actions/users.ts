@@ -31,6 +31,26 @@ export interface TenantUser {
  * Get all users for a specific tenant
  */
 export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
+  // Verify current user is superadmin before using admin client
+  const supabase = await createClient()
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) {
+    console.error('getTenantUsers: Unauthorized - not authenticated')
+    return []
+  }
+
+  const { data: roleData } = await supabase
+    .from('app_users')
+    .select('role')
+    .eq('user_id', currentUser.id)
+    .maybeSingle()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!roleData || (roleData as any).role !== 'superadmin') {
+    console.error('getTenantUsers: Unauthorized - only superadmins can list tenant users')
+    return []
+  }
+
   // Use admin client for consistent access
   const adminClient = createAdminClient()
 
@@ -46,10 +66,6 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
 
-  console.log('getTenantUsers - tenantId:', tenantId)
-  console.log('getTenantUsers - data:', data)
-  console.log('getTenantUsers - error:', error)
-
   if (error) {
     console.error('Error fetching tenant users:', error)
     return []
@@ -59,14 +75,10 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userIds = data?.map((u: any) => u.user_id) || []
   if (userIds.length === 0) {
-    console.log('No users found for tenant:', tenantId)
     return []
   }
 
   const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
-  
-  console.log('Auth users count:', authUsers?.users.length)
-  console.log('Auth error:', authError)
 
   if (authError || !authUsers) {
     console.error('Error fetching auth users:', authError)
@@ -78,16 +90,13 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
   )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = (data || []).map((user: any) => ({
+  return (data || []).map((user: any) => ({
     user_id: user.user_id,
     email: emailMap.get(user.user_id) || 'Unknown',
     role: user.role as 'superadmin' | 'admin',
     tenant_id: user.tenant_id,
     created_at: user.created_at,
   }))
-
-  console.log('Returning users:', result)
-  return result
 }
 
 /**

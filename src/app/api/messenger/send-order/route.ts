@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Authorization: Verify user has access to this tenant
     const { data: tenantMembership, error: membershipError } = await supabase
-      .from('tenant_users')
+      .from('app_users')
       .select('role')
       .eq('user_id', user.id)
       .eq('tenant_id', tenantId)

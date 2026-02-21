@@ -102,10 +102,11 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Public routes that don't require authentication
+  // Use regex to match /[tenant]/menu but NOT /[tenant]/admin/menu
   const isPublicRoute =
-    pathname.includes('/menu') ||
+    (/^\/[^/]+\/menu(\/|$)/.test(pathname) && !pathname.includes('/admin/')) ||
     pathname === '/' ||
-    pathname.includes('/login') ||
+    (/^\/[^/]+\/login(\/|$)/.test(pathname) && !pathname.includes('/admin/')) ||
     pathname.startsWith('/superadmin/login')
 
   // Protect superadmin routes: require auth + role
