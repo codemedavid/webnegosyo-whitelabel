@@ -84,7 +84,7 @@ export function RelatedItemsSection({ relatedItems, tenantSlug }: RelatedItemsSe
     const router = useRouter()
 
     const handleRelatedItemClick = useCallback((relatedItem: MenuItem) => {
-        router.push(`/${tenantSlug}/menu/item/${relatedItem.id}`)
+        router.push(`/${tenantSlug}/menu/item/${relatedItem.id}`, { scroll: true })
     }, [router, tenantSlug])
 
     if (relatedItems.length === 0) {

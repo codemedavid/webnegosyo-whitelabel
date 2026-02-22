@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -238,6 +238,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const router = useRouter()
     const supabase = useMemo(() => createClient(), [])
     const { addItem, setTenantContext } = useCart()
+    const mainContentRef = useRef<HTMLElement | null>(null)
 
     const [isImageModalOpen, setIsImageModalOpen] = useState(false)
     const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false)
@@ -366,6 +367,35 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         setSelectedAddons([])
         setQuantity(1)
     }, [item.id, item.variations, item.variation_types])
+
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'test') {
+            try {
+                window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+            } catch {
+                document.documentElement.scrollTop = 0
+                document.body.scrollTop = 0
+            }
+        } else {
+            document.documentElement.scrollTop = 0
+            document.body.scrollTop = 0
+        }
+
+        const main = mainContentRef.current
+        if (!main) return
+
+        if (typeof main.scrollTo === 'function') {
+            try {
+                main.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+                return
+            } catch {
+                // Fall through to direct property assignment.
+            }
+        }
+
+        main.scrollTop = 0
+        main.scrollLeft = 0
+    }, [item.id])
 
     // Memoized boolean flags and computed values
     const hasDiscount = useMemo(() =>
@@ -641,7 +671,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             </header>
 
             {/* Main Content - Scrollable */}
-            <main className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
+            <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
                 {/* Product Image - Hero */}
                 <div className="relative w-full h-[50vh]" style={{ backgroundColor: 'var(--pd-image-background)' }}>
                     <AdminEditPencil

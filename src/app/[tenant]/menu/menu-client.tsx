@@ -193,7 +193,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
       addItem(item, undefined, [], 1, undefined)
       toast.success(`Added ${item.name} to cart`)
     } else {
-      router.push(`/${tenantSlug}/menu/item/${item.id}`)
+      router.push(`/${tenantSlug}/menu/item/${item.id}`, { scroll: true })
     }
   }, [tenant?.menu_engineering_enabled, addItem, router, tenantSlug])
 
@@ -434,7 +434,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
                   </span>
                 </div>
               )}
-              <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2">
                 <div>
                   <h1
                     className="text-xl font-bold"
@@ -442,12 +442,6 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
                   >
                     {tenant?.name || tenantSlug.replace(/-/g, ' ')}
                   </h1>
-                  <p
-                    className="text-xs"
-                    style={{ color: branding.menuMainHeaderSubtitle }}
-                  >
-                    {tenant?.hero_description || 'Your Smart Ordering Partner'}
-                  </p>
                 </div>
                 <AdminEditPencil
                   visible={isBrandAdmin}
