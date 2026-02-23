@@ -8,6 +8,8 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
+import { BundlesSection } from '@/components/customer/bundles-section'
+import { BundleCustomizationModal } from '@/components/customer/bundle-customization-modal'
 import { useCart } from '@/hooks/useCart'
 import { createClient } from '@/lib/supabase/client'
 import { getTenantBranding } from '@/lib/branding-utils'
@@ -16,11 +18,13 @@ import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
+import type { BundleWithItems } from '@/lib/bundles-service'
 
 interface MenuClientProps {
   tenant: Tenant | null
   categories: Category[]
   allMenuItems: MenuItem[]
+  bundles: BundleWithItems[]
   tenantSlug: string
   error: string | null
 }
@@ -55,7 +59,7 @@ function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencil
   )
 }
 
-export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error }: MenuClientProps) {
+export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSlug, error }: MenuClientProps) {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { addItem, item_count, setTenantContext } = useCart()
@@ -64,6 +68,7 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isBrandAdmin, setIsBrandAdmin] = useState(false)
+  const [selectedBundle, setSelectedBundle] = useState<BundleWithItems | null>(null)
   const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
   const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
 
@@ -503,8 +508,12 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
             setPageLayoutOverride(draft?.page_layout as string || null)
             setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
           }}
-          onSaved={() => {
-            toast.success('Branding updated!')
+          onSaved={(result) => {
+            if (result?.warning) {
+              toast.warning(result.warning)
+            } else {
+              toast.success('Branding updated!')
+            }
             // Refresh server props so the client gets the saved tenant data
             router.refresh()
           }}
@@ -513,6 +522,18 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
       )}
 
       <main className="container mx-auto px-4 py-12">
+        {/* Bundles section — shown at top when no active category filter */}
+        {bundles.length > 0 && !activeCategory && (
+          <div className="mb-12">
+            <BundlesSection
+              bundles={bundles}
+              onBundleSelect={setSelectedBundle}
+              branding={branding}
+              hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+            />
+          </div>
+        )}
+
         <MenuLayout
           layout={(pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout}
           tenant={tenant}
@@ -575,6 +596,15 @@ export function MenuClient({ tenant, categories, allMenuItems, tenantSlug, error
           zIndexClass="z-[61]"
         />
       )}
+
+      {/* Bundle Customization Modal */}
+      <BundleCustomizationModal
+        open={!!selectedBundle}
+        onClose={() => setSelectedBundle(null)}
+        bundle={selectedBundle}
+        branding={branding}
+        hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+      />
     </div>
   )
 }

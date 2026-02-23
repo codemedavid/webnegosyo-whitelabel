@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   CreditCard,
   TrendingUp,
+  Package,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -32,9 +33,10 @@ interface SidebarProps {
   tenantName?: string
   enableOrderManagement?: boolean
   menuEngineeringEnabled?: boolean
+  bundlesEnabled?: boolean
 }
 
-export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -45,6 +47,10 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
 
   if (menuEngineeringEnabled === false || menuEngineeringEnabled === undefined) {
     filteredItems = filteredItems.filter(item => !item.href.includes('/menu-engineering'))
+  }
+
+  if (bundlesEnabled === false || bundlesEnabled === undefined) {
+    filteredItems = filteredItems.filter(item => !item.href.includes('/bundles'))
   }
 
   return (
@@ -147,6 +153,11 @@ export const adminSidebarItems: SidebarItem[] = [
     label: 'Menu Engineering',
     href: '/admin/menu-engineering',
     icon: TrendingUp,
+  },
+  {
+    label: 'Bundles',
+    href: '/admin/bundles',
+    icon: Package,
   },
   {
     label: 'Orders',

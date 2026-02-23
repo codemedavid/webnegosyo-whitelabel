@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState, useTransition } from 'react'
 import { saveBrandingAction } from '@/app/actions/branding'
 import type { Tenant, PromotionBanner } from '@/types/database'
 import { Button } from '@/components/ui/button'
@@ -11,6 +10,7 @@ import { CARD_TEMPLATES } from '@/lib/card-templates'
 import { PAGE_LAYOUTS } from '@/lib/page-layouts'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
+import { toast } from 'sonner'
 
 type BrandingEditorTab = 'colors' | 'layouts' | 'cards' | 'banners'
 type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
@@ -76,18 +76,12 @@ interface BrandingDraft {
 interface BrandingEditorOverlayProps {
   tenant: Tenant
   onPreview: (draft: Partial<BrandingDraft> | null) => void
-  onSaved?: () => void
+  onSaved?: (result?: { warning?: string; skippedFields?: string[] }) => void
   onToggleCheckoutPreview?: () => void
 }
 
-export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleCheckoutPreview }: BrandingEditorOverlayProps) {
-  const supabase = useMemo(() => createClient(), [])
-  const [isAllowed, setIsAllowed] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<BrandingEditorTab>('colors')
-  const [focusedMenuSection, setFocusedMenuSection] = useState<MenuBrandingSection | null>(null)
-  const [isSaving, startSaving] = useTransition()
-  const [draft, setDraft] = useState<BrandingDraft>({
+function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
+  return {
     primary_color: tenant.primary_color,
     secondary_color: tenant.secondary_color,
     accent_color: tenant.accent_color || '',
@@ -136,32 +130,18 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
     promotion_image_url: tenant.promotion_image_url || '',
     is_promotion_visible: tenant.is_promotion_visible || false,
     promotion_banners: tenant.promotion_banners || [],
-  })
+  }
+}
 
-  // Check role client-side (RLS still protects the update)
-  useEffect(() => {
-    let isCancelled = false
-    async function checkRole() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data: role } = await supabase
-        .from('app_users')
-        .select('role, tenant_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (isCancelled) return
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = role as any
-      const allowed = !!r && (r.role === 'superadmin' || (r.role === 'admin' && r.tenant_id === tenant.id))
-      setIsAllowed(allowed)
-    }
-    checkRole()
-    return () => { isCancelled = true }
-  }, [supabase, tenant.id])
+export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleCheckoutPreview }: BrandingEditorOverlayProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<BrandingEditorTab>('colors')
+  const [focusedMenuSection, setFocusedMenuSection] = useState<MenuBrandingSection | null>(null)
+  const [isSaving, startSaving] = useTransition()
+  const [draft, setDraft] = useState<BrandingDraft>(() => buildDraftFromTenant(tenant))
 
   useEffect(() => {
     const handleOpenCustomizer = (event: Event) => {
-      if (!isAllowed) return
       const detail = (event as CustomEvent<MenuBrandingEditorOpenDetail>).detail
       setActiveTab('colors')
       setFocusedMenuSection(detail?.section ?? null)
@@ -172,7 +152,14 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
     return () => {
       window.removeEventListener('menu-branding-editor:open', handleOpenCustomizer as EventListener)
     }
-  }, [isAllowed])
+  }, [])
+
+  // Keep editor state aligned with latest server tenant values after refresh.
+  useEffect(() => {
+    if (!isOpen) {
+      setDraft(buildDraftFromTenant(tenant))
+    }
+  }, [tenant, isOpen])
 
   // Live preview hook
   useEffect(() => {
@@ -180,8 +167,6 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
     else onPreview(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, draft])
-
-  if (!isAllowed) return null
 
   function updateDraft<K extends keyof BrandingDraft>(key: K, value: BrandingDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
@@ -193,8 +178,9 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
       if (result.success) {
         setIsOpen(false)
         setFocusedMenuSection(null)
-        onSaved?.()
+        onSaved?.({ warning: result.warning, skippedFields: result.skippedFields })
       } else {
+        toast.error(result.error || 'Failed to save branding')
         console.error('[BrandingEditor] Save failed:', result.error)
       }
     })

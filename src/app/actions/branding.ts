@@ -74,6 +74,46 @@ const brandingSchema = z.object({
 })
 
 export type BrandingInput = z.infer<typeof brandingSchema>
+type SaveBrandingResult = {
+    success: boolean
+    error?: string
+    warning?: string
+    skippedFields?: string[]
+}
+
+const ROLLOUT_DEPENDENT_FIELDS = [
+    'checkout_modal_background_color',
+    'checkout_modal_title_color',
+    'checkout_modal_description_color',
+    'checkout_modal_price_color',
+    'checkout_modal_button_color',
+    'checkout_modal_button_text_color',
+    'checkout_modal_border_color',
+    'menu_main_header_text_color',
+    'menu_main_header_subtitle_color',
+    'menu_category_header_color',
+    'menu_category_active_color',
+    'menu_category_inactive_color',
+    'menu_cart_badge_background_color',
+    'menu_cart_badge_text_color',
+    'page_layout',
+    'mobile_grid_columns',
+] as const
+
+function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {
+    if (!error) return false
+    const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase()
+    if (error.code === '42703' || error.code === 'PGRST204') return true
+    return text.includes('column') && (
+        text.includes('does not exist') ||
+        text.includes('could not find')
+    )
+}
+
+function omitFields<T extends Record<string, unknown>>(payload: T, fields: readonly string[]): Partial<T> {
+    const entries = Object.entries(payload).filter(([key]) => !fields.includes(key))
+    return Object.fromEntries(entries) as Partial<T>
+}
 
 /**
  * Save branding settings and revalidate cached pages for instant updates.
@@ -84,7 +124,7 @@ export async function saveBrandingAction(
     tenantId: string,
     tenantSlug: string,
     branding: BrandingInput
-): Promise<{ success: boolean; error?: string }> {
+): Promise<SaveBrandingResult> {
     try {
         const supabase = await createClient()
 
@@ -100,12 +140,39 @@ export async function saveBrandingAction(
             promotion_banners: parsed.promotion_banners as PromotionBanner[] | undefined,
         }
 
-        // Update database
-        const { error } = await supabase
+        // Update database. If rollout-dependent columns are missing in the
+        // current environment, retry once with those fields omitted so
+        // the rest of branding still persists.
+        const { error: firstError } = await supabase
             .from('tenants')
             // Cast through unknown to satisfy strict generic constraints
             .update(updatePayload as unknown as never)
             .eq('id', tenantId)
+            .select('id')
+            .single()
+
+        let warning: string | undefined
+        let skippedFields: string[] | undefined
+        let error = firstError
+
+        if (error && isMissingColumnError(error)) {
+            const fallbackPayload = omitFields(updatePayload, ROLLOUT_DEPENDENT_FIELDS)
+            const { error: fallbackError } = await supabase
+                .from('tenants')
+                .update(fallbackPayload as unknown as never)
+                .eq('id', tenantId)
+                .select('id')
+                .single()
+
+            if (!fallbackError) {
+                error = null
+                skippedFields = [...ROLLOUT_DEPENDENT_FIELDS]
+                warning = 'Saved core branding, but layout/checkout settings were skipped until database migrations are applied.'
+                console.warn('[saveBrandingAction] Saved with skipped rollout fields:', skippedFields)
+            } else {
+                error = fallbackError
+            }
+        }
 
         if (error) {
             console.error('[saveBrandingAction] Database error:', error)
@@ -119,7 +186,7 @@ export async function saveBrandingAction(
 
         console.log(`[saveBrandingAction] Branding saved and cache revalidated for ${tenantSlug}`)
 
-        return { success: true }
+        return { success: true, warning, skippedFields }
     } catch (error) {
         console.error('[saveBrandingAction] Error:', error)
 

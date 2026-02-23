@@ -65,6 +65,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
+    bundles_enabled: tenant?.bundles_enabled ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,6 +116,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       lalamove_sandbox: formData.lalamove_sandbox,
       menu_engineering_enabled: formData.menu_engineering_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
+      bundles_enabled: formData.bundles_enabled,
     }
 
     if (tenant) {

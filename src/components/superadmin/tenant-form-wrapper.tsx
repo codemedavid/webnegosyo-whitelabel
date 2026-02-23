@@ -56,6 +56,8 @@ interface TenantFormData {
   hide_currency_symbol: boolean
   // Flash screen
   flash_screen_feature_enabled: boolean
+  // Bundles
+  bundles_enabled: boolean
   // Restaurant address for Lalamove pickup
   restaurant_address: string
   restaurant_latitude: string
@@ -722,6 +724,51 @@ function FlashScreenFeatureSection({
   )
 }
 
+// Bundles Feature Toggle Section
+function BundlesFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bundles</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Allow admins to create menu item bundles with special pricing for upsells and menu display
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="bundles_enabled">Enable Bundles</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the tenant admin can create, manage, and display curated bundles of menu items
+            </p>
+          </div>
+          <Switch
+            id="bundles_enabled"
+            checked={formData.bundles_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, bundles_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.bundles_enabled && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Disabled:</strong> Bundle management will not appear in the admin dashboard and customers will not see bundles on the menu.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Restaurant Address Section (for Lalamove pickup)
 function RestaurantAddressSection({
   formData,
@@ -959,6 +1006,8 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     // Flash screen
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
+    // Bundles
+    bundles_enabled: tenant?.bundles_enabled ?? false,
     // Restaurant address
     restaurant_address: tenant?.restaurant_address || '',
     restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
@@ -1013,6 +1062,8 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       hide_currency_symbol: formData.hide_currency_symbol,
       // Flash screen
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
+      // Bundles
+      bundles_enabled: formData.bundles_enabled,
       // Restaurant address
       restaurant_address: formData.restaurant_address || undefined,
       restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
@@ -1108,6 +1159,12 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       />
 
       <FlashScreenFeatureSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <BundlesFeatureSection
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}

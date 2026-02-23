@@ -19,7 +19,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
     try {
       const supabase = createClient()
       const { error } = await supabase.auth.signOut()
-      
+
       if (error) {
         toast.error('Failed to logout')
         console.error('Logout error:', error)
@@ -50,6 +50,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
         tenantName={tenant.name}
         enableOrderManagement={tenant.enable_order_management}
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
+        bundlesEnabled={tenant.bundles_enabled}
       />
       <main className="flex-1 overflow-y-auto">
         <div className="container mx-auto p-6">{children}</div>

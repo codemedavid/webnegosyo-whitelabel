@@ -93,6 +93,8 @@ export interface Tenant {
   checkout_upsell_title?: string;
   checkout_upsell_subtitle?: string;
   checkout_upsell_max_items?: number;
+  // Bundles
+  bundles_enabled?: boolean;
   // Flash screen
   flash_screen_feature_enabled?: boolean;
   flash_screen_is_active?: boolean;
@@ -199,8 +201,52 @@ export interface CartItem {
   subtotal: number;
 }
 
+export interface Bundle {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  image_url: string;
+  pricing_type: 'fixed' | 'discount';
+  fixed_price?: number;
+  discount_percent?: number;
+  is_active: boolean;
+  show_on_menu: boolean;
+  show_as_upsell: boolean;
+  display_order: number;
+  items?: BundleItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BundleItem {
+  id: string;
+  bundle_id: string;
+  menu_item_id: string;
+  quantity: number;
+  display_order: number;
+  menu_item?: MenuItem;
+}
+
+export interface BundleItemCustomization {
+  menu_item: MenuItem;
+  selected_variations?: { [variationTypeId: string]: VariationOption };
+  selected_variation?: Variation;
+  selected_addons: Addon[];
+  quantity: number;
+}
+
+export interface CartBundleItem {
+  id: string;
+  bundle: Bundle;
+  customizations: BundleItemCustomization[];
+  quantity: number;
+  subtotal: number;
+}
+
 export interface Cart {
   items: CartItem[];
+  bundle_items?: CartBundleItem[];
   total: number;
   item_count: number;
 }
@@ -419,6 +465,16 @@ export interface Database {
         Row: UpsellPair;
         Insert: Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      bundles: {
+        Row: Bundle;
+        Insert: Omit<Bundle, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Bundle, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      bundle_items: {
+        Row: BundleItem;
+        Insert: Omit<BundleItem, 'id'>;
+        Update: Partial<Omit<BundleItem, 'id'>>;
       };
     };
   };

@@ -60,6 +60,7 @@ interface TenantFormData {
   lalamove_sandbox: boolean
   menu_engineering_enabled: boolean
   hide_currency_symbol: boolean
+  bundles_enabled: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -505,6 +506,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     lalamove_sandbox: (tenant as Tenant | undefined)?.lalamove_sandbox ?? true,
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
+    bundles_enabled: tenant?.bundles_enabled ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -555,6 +557,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       lalamove_sandbox: formData.lalamove_sandbox,
       menu_engineering_enabled: formData.menu_engineering_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
+      bundles_enabled: formData.bundles_enabled,
     }
 
     startTransition(async () => {

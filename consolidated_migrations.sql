@@ -1209,5 +1209,182 @@ ADD COLUMN IF NOT EXISTS promotion_banners jsonb DEFAULT '[]'::jsonb;
 
 
 -- ============================================================================
+-- 0022_bundles.sql - Menu Item Bundle System
+-- ============================================================================
+
+-- Feature flag on tenants
+ALTER TABLE public.tenants
+ADD COLUMN IF NOT EXISTS bundles_enabled boolean DEFAULT false;
+
+COMMENT ON COLUMN public.tenants.bundles_enabled IS
+  'Enable/disable the bundle system for this tenant. Toggled by superadmin.';
+
+-- Bundles table
+CREATE TABLE IF NOT EXISTS public.bundles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT NOT NULL DEFAULT '',
+  pricing_type TEXT NOT NULL DEFAULT 'fixed'
+    CHECK (pricing_type IN ('fixed', 'discount')),
+  fixed_price NUMERIC(10,2),
+  discount_percent NUMERIC(5,2),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  show_on_menu BOOLEAN NOT NULL DEFAULT false,
+  show_as_upsell BOOLEAN NOT NULL DEFAULT false,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Ensure exactly one pricing field is populated
+  CONSTRAINT bundles_pricing_ck CHECK (
+    (pricing_type = 'fixed' AND fixed_price IS NOT NULL AND fixed_price >= 0)
+    OR
+    (pricing_type = 'discount' AND discount_percent IS NOT NULL AND discount_percent > 0 AND discount_percent <= 100)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_bundles_tenant ON public.bundles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bundles_active ON public.bundles(tenant_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_bundles_display ON public.bundles(tenant_id, display_order);
+
+CREATE TRIGGER bundles_set_updated_at
+  BEFORE UPDATE ON public.bundles
+  FOR EACH ROW
+  EXECUTE FUNCTION set_updated_at();
+
+COMMENT ON TABLE public.bundles IS
+  'Curated bundles of menu items with special pricing (fixed or discount)';
+
+-- Bundle items (join table)
+CREATE TABLE IF NOT EXISTS public.bundle_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bundle_id UUID NOT NULL REFERENCES public.bundles(id) ON DELETE CASCADE,
+  menu_item_id UUID NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  display_order INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (bundle_id, menu_item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bundle_items_bundle ON public.bundle_items(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_bundle_items_menu_item ON public.bundle_items(menu_item_id);
+
+COMMENT ON TABLE public.bundle_items IS
+  'Join table linking bundles to their constituent menu items';
+
+-- RLS
+ALTER TABLE public.bundles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bundle_items ENABLE ROW LEVEL SECURITY;
+
+-- Public read: active bundles under active tenants
+CREATE POLICY bundles_read_active ON public.bundles
+  FOR SELECT USING (
+    is_active = true AND EXISTS (
+      SELECT 1 FROM public.tenants t
+      WHERE t.id = tenant_id AND t.is_active = true
+    )
+  );
+
+-- Admin write
+CREATE POLICY bundles_write_admin ON public.bundles
+  FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.app_users au
+    WHERE au.user_id = auth.uid() AND (
+      au.role = 'superadmin' OR (au.role = 'admin' AND au.tenant_id = tenant_id)
+    )
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.app_users au
+    WHERE au.user_id = auth.uid() AND (
+      au.role = 'superadmin' OR (au.role = 'admin' AND au.tenant_id = tenant_id)
+    )
+  ));
+
+-- Bundle items: public read via parent bundle
+CREATE POLICY bundle_items_read ON public.bundle_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.bundles b
+      JOIN public.tenants t ON t.id = b.tenant_id
+      WHERE b.id = bundle_id AND b.is_active = true AND t.is_active = true
+    )
+  );
+
+-- Bundle items: admin write via parent bundle
+CREATE POLICY bundle_items_write_admin ON public.bundle_items
+  FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.bundles b
+    JOIN public.app_users au ON au.user_id = auth.uid()
+    WHERE b.id = bundle_id AND (
+      au.role = 'superadmin' OR (au.role = 'admin' AND au.tenant_id = b.tenant_id)
+    )
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.bundles b
+    JOIN public.app_users au ON au.user_id = auth.uid()
+    WHERE b.id = bundle_id AND (
+      au.role = 'superadmin' OR (au.role = 'admin' AND au.tenant_id = b.tenant_id)
+    )
+  ));
+
+
+-- ============================================================================
+-- 0023_tenant_layout_checkout_branding.sql - Tenant Layout + Checkout Branding
+-- ============================================================================
+
+ALTER TABLE public.tenants
+ADD COLUMN IF NOT EXISTS page_layout text DEFAULT 'default',
+ADD COLUMN IF NOT EXISTS mobile_grid_columns integer DEFAULT 1,
+ADD COLUMN IF NOT EXISTS checkout_modal_background_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_title_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_description_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_price_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_button_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_button_text_color text,
+ADD COLUMN IF NOT EXISTS checkout_modal_border_color text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'tenants_mobile_grid_columns_check'
+  ) THEN
+    ALTER TABLE public.tenants
+      ADD CONSTRAINT tenants_mobile_grid_columns_check
+      CHECK (mobile_grid_columns IS NULL OR mobile_grid_columns IN (1, 2));
+  END IF;
+END
+$$;
+
+UPDATE public.tenants
+SET
+  page_layout = COALESCE(page_layout, 'default'),
+  mobile_grid_columns = COALESCE(mobile_grid_columns, 1)
+WHERE page_layout IS NULL OR mobile_grid_columns IS NULL;
+
+COMMENT ON COLUMN public.tenants.page_layout IS
+  'Menu page layout preset. Example values: default, sidebar, magazine, grid-focus, list, mosaic.';
+COMMENT ON COLUMN public.tenants.mobile_grid_columns IS
+  'Number of menu cards per row on mobile devices. Supported values: 1 or 2.';
+COMMENT ON COLUMN public.tenants.checkout_modal_background_color IS
+  'Checkout interstitial modal background color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_title_color IS
+  'Checkout interstitial modal title color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_description_color IS
+  'Checkout interstitial modal description text color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_price_color IS
+  'Checkout interstitial modal price text color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_button_color IS
+  'Checkout interstitial modal button background color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_button_text_color IS
+  'Checkout interstitial modal button text color.';
+COMMENT ON COLUMN public.tenants.checkout_modal_border_color IS
+  'Checkout interstitial modal border color.';
+
+
+-- ============================================================================
 -- END OF CONSOLIDATED MIGRATIONS
 -- ============================================================================
