@@ -315,10 +315,12 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
 
   const isPreview = !!previewSuggestions
   const shownTrackedRef = useRef(false)
+  const upsellAddedCountRef = useRef(0)
 
   useEffect(() => {
     if (!open) {
       shownTrackedRef.current = false
+      upsellAddedCountRef.current = 0
     }
   }, [open])
 
@@ -367,11 +369,21 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     border: branding.checkoutModalBorder,
   }
 
+  const handleContinue = useCallback(() => {
+    if (upsellAddedCountRef.current > 0 && !isPreview) {
+      trackAnalyticsEventAction(tenantId, 'upsell_converted', {
+        itemCount: upsellAddedCountRef.current,
+      })
+    }
+    onContinue()
+  }, [onContinue, isPreview, tenantId])
+
   const handleAddItem = useCallback(
     (item: MenuItem) => {
       if (isPreview) return
       addItem(item, undefined, [], 1)
       toast.success(`Added ${item.name} to cart`)
+      upsellAddedCountRef.current += 1
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
         itemId: item.id,
         itemName: item.name,
@@ -441,7 +453,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         boxShadow: `0 6px 20px 0 color-mix(in srgb, ${colors.button} 38%, transparent)`,
         height: '52px',
       }}
-      onClick={onContinue}
+      onClick={handleContinue}
     >
       <ShoppingBag className="mr-2 h-5 w-5" />
       Continue to Checkout
@@ -459,7 +471,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
             initial="hidden"
             animate="visible"
             exit="hidden"
-            onClick={onContinue}
+            onClick={handleContinue}
           />
 
           {/* Mobile: Bottom sheet */}
@@ -498,7 +510,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                 </div>
               </div>
               <button
-                onClick={onContinue}
+                onClick={handleContinue}
                 className="rounded-full p-2 ml-2 shrink-0 transition-colors hover:bg-black/6"
                 style={{ color: colors.description }}
               >
@@ -559,7 +571,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                   </div>
                 </div>
                 <button
-                  onClick={onContinue}
+                  onClick={handleContinue}
                   className="rounded-full p-2 ml-4 shrink-0 transition-colors hover:bg-black/6"
                   style={{ color: colors.description }}
                 >

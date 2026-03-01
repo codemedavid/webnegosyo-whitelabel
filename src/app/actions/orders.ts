@@ -111,17 +111,6 @@ export async function createOrderAction(
         paymentMethodDetails,
         paymentMethodQrCodeUrl
       )
-      // Track upsell conversion if order has upsell items
-      const hasUpsellItems = items.some((i) => i.isUpsellItem === true)
-      if (hasUpsellItems) {
-        import('@/app/actions/analytics').then(({ trackAnalyticsEventAction }) => {
-          trackAnalyticsEventAction(tenantId, 'upsell_converted', {
-            orderId: result.order.id,
-            itemCount: items.filter((i) => i.isUpsellItem).length,
-          })
-        }).catch(() => {})
-      }
-
       return { success: true, data: result.order, orderToken: result.orderToken }
     }
 
