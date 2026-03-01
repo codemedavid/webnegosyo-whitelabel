@@ -52,6 +52,10 @@ export interface SelectedTenant {
     checkout_upsell_title?: string | null
     checkout_upsell_subtitle?: string | null
     checkout_upsell_max_items?: number | null
+    // Convex integration
+    convex_deployment_url?: string | null
+    convex_deploy_key?: string | null
+    convex_schema_version?: number
     // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
     [key: string]: unknown
 }
@@ -108,7 +112,10 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
                 checkout_upsell_enabled,
                 checkout_upsell_title,
                 checkout_upsell_subtitle,
-                checkout_upsell_max_items
+                checkout_upsell_max_items,
+                convex_deployment_url,
+                convex_deploy_key,
+                convex_schema_version
             `)
             .eq('slug', slug)
             .eq('is_active', true)

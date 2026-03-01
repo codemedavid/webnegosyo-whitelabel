@@ -104,6 +104,10 @@ export interface Tenant {
   flash_screen_background_color?: string;
   flash_screen_text_color?: string;
   flash_screen_duration_ms?: number;
+  // Convex integration
+  convex_deployment_url?: string | null;
+  convex_deploy_key?: string | null;
+  convex_schema_version?: number;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)

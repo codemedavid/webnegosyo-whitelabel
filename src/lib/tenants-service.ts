@@ -96,6 +96,9 @@ export const tenantSchema = z.object({
   lalamove_market: z.string().optional().or(z.literal('')).optional(),
   lalamove_service_type: z.string().optional().or(z.literal('')).optional(),
   lalamove_sandbox: z.boolean().default(true),
+  // Convex integration
+  convex_deployment_url: z.string().url().nullable().optional(),
+  convex_deploy_key: z.string().nullable().optional(),
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>
@@ -231,6 +234,9 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    // Convex integration
+    convex_deployment_url: parsed.convex_deployment_url ?? undefined,
+    convex_deploy_key: parsed.convex_deploy_key ?? undefined,
   }
   const { data, error } = await supabase
     .from('tenants')
@@ -335,6 +341,9 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    // Convex integration
+    convex_deployment_url: parsed.convex_deployment_url ?? undefined,
+    convex_deploy_key: parsed.convex_deploy_key ?? undefined,
   }
   const { data, error } = await supabase
     .from('tenants')
