@@ -370,9 +370,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   }
 
   const handleContinue = useCallback(() => {
-    if (upsellAddedCountRef.current > 0 && !isPreview) {
+    if (!isPreview) {
       trackAnalyticsEventAction(tenantId, 'upsell_converted', {
-        itemCount: upsellAddedCountRef.current,
+        itemsAdded: upsellAddedCountRef.current,
       })
     }
     onContinue()
