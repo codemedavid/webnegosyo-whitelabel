@@ -3,6 +3,7 @@
 # dependencies
 /node_modules
 /convex-template/node_modules
+/webnegosyo-app/node_modules
 /.pnp
 .pnp.*
 .yarn/*
