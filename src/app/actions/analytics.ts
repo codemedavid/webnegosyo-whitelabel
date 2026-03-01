@@ -26,7 +26,7 @@ export async function trackAnalyticsEventAction(
       type: eventType,
       metadata: metadata ?? {},
     })
-  } catch {
-    // Analytics should never break the user flow
+  } catch (error) {
+    console.error('[Analytics] Failed to track event:', eventType, error instanceof Error ? error.message : error)
   }
 }

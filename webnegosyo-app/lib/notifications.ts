@@ -36,8 +36,10 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 
-  // Android notification channel
+  // Android notification channel — delete old channel first since channels are
+  // immutable once created (sound/vibration changes won't take effect otherwise)
   if (Platform.OS === "android") {
+    await Notifications.deleteNotificationChannelAsync("orders").catch(() => {});
     await Notifications.setNotificationChannelAsync("orders", {
       name: "New Orders",
       importance: Notifications.AndroidImportance.MAX,
