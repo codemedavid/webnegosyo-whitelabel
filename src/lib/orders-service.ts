@@ -4,6 +4,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { createConvexServerClient } from '@/lib/convex/server'
 import type { Order } from '@/types/database'
 
 export interface OrderWithItems extends Order {
@@ -386,5 +387,70 @@ async function getOrderTypeName(orderTypeId: string): Promise<string | null> {
 
   if (error) return null
   return (data as { name?: string } | null)?.name ?? null
+}
+
+// ============================================
+// Convex Order Creation
+// ============================================
+
+export async function createOrderConvex(
+  convexUrl: string,
+  convexKey: string,
+  tenantId: string,
+  items: Array<{
+    menu_item_id: string
+    menu_item_name: string
+    variation?: string
+    addons: string[] | { name: string; price: number; quantity?: number }[]
+    quantity: number
+    price: number
+    subtotal: number
+    special_instructions?: string
+  }>,
+  customerInfo?: { name?: string; contact?: string },
+  orderTypeId?: string,
+  customerData?: Record<string, unknown>,
+  deliveryFee?: number,
+  lalamoveQuotationId?: string,
+  paymentMethodId?: string,
+  paymentMethodName?: string,
+  paymentMethodDetails?: string,
+  paymentMethodQrCodeUrl?: string
+) {
+  const convex = createConvexServerClient(convexUrl, convexKey)
+
+  const orderId = await convex.mutation<string>('orders:createOrder', {
+    tenantId,
+    customerName: customerInfo?.name ?? 'Guest',
+    customerContact: customerInfo?.contact ?? '',
+    customerData: customerData ?? {},
+    total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
+    orderType: undefined,
+    orderTypeId: orderTypeId,
+    source: 'web',
+    itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
+    paymentMethod: paymentMethodName,
+    paymentMethodDetails: paymentMethodDetails,
+    paymentMethodId: paymentMethodId,
+    paymentMethodQrCodeUrl: paymentMethodQrCodeUrl,
+    deliveryFee: deliveryFee,
+    lalamoveQuotationId: lalamoveQuotationId,
+    items: items.map((item) => ({
+      menuItemId: item.menu_item_id,
+      menuItemName: item.menu_item_name,
+      quantity: item.quantity,
+      price: item.price,
+      subtotal: item.subtotal,
+      specialInstructions: item.special_instructions,
+      variation: item.variation,
+      addons: item.addons?.map((a) =>
+        typeof a === 'string'
+          ? { name: a, price: 0 }
+          : { name: a.name, price: a.price, quantity: a.quantity }
+      ),
+    })),
+  })
+
+  return { order: { id: orderId }, orderToken: null }
 }
 

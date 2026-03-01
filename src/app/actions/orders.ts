@@ -7,7 +7,9 @@ import {
   updateOrderStatus,
   getOrderStats,
   createOrder,
+  createOrderConvex,
 } from '@/lib/orders-service'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -78,6 +80,35 @@ export async function createOrderAction(
   paymentMethodQrCodeUrl?: string
 ) {
   try {
+    // Check if tenant has Convex configured
+    const supabaseAdmin = createAdminClient()
+    const { data: tenantConfig } = await supabaseAdmin
+      .from('tenants')
+      .select('convex_deployment_url, convex_deploy_key')
+      .eq('id', tenantId)
+      .single()
+
+    if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
+      // Route to Convex
+      const result = await createOrderConvex(
+        tenantConfig.convex_deployment_url,
+        tenantConfig.convex_deploy_key,
+        tenantId,
+        items,
+        customerInfo,
+        orderTypeId,
+        customerData,
+        deliveryFee,
+        lalamoveQuotationId,
+        paymentMethodId,
+        paymentMethodName,
+        paymentMethodDetails,
+        paymentMethodQrCodeUrl
+      )
+      return { success: true, data: result.order, orderToken: result.orderToken }
+    }
+
+    // Otherwise, continue with existing Supabase flow
     const result = await createOrder(
       tenantId,
       items,
