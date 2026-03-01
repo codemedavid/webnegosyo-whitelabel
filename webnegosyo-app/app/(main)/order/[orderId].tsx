@@ -37,6 +37,7 @@ interface OrderDetail {
   _creationTime: number;
   customerName: string;
   customerContact: string;
+  customerData?: Record<string, unknown>;
   status: OrderStatus;
   orderType?: string;
   source: string;
@@ -46,8 +47,12 @@ interface OrderDetail {
   lalamoveStatus?: string;
   lalamoveDriverName?: string;
   lalamoveDriverPhone?: string;
+  lalamoveTrackingUrl?: string;
   paymentMethod?: string;
+  paymentMethodDetails?: string;
   paymentStatus?: string;
+  hasUpsellItems?: boolean;
+  hasBundleItems?: boolean;
   items?: OrderItem[];
 }
 
@@ -93,6 +98,21 @@ const stepperStyles = StyleSheet.create({
   line: { position: "absolute", top: 5, left: "60%", right: "-40%", height: 2, backgroundColor: colors.separator },
   lineComplete: { backgroundColor: colors.success },
 });
+
+const HIDDEN_FIELDS = new Set([
+  'messenger_psid',
+  'delivery_lat',
+  'delivery_lng',
+  'customer_name',
+  'customer_phone',
+  'customer_contact',
+]);
+
+function formatFieldLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -151,7 +171,36 @@ export default function OrderDetailScreen() {
         <Text style={styles.sub}>
           {order.orderType ?? "N/A"} · {order.source} · {new Date(order._creationTime).toLocaleString()}
         </Text>
+        {(order.hasUpsellItems || order.hasBundleItems) && (
+          <View style={styles.tagRow}>
+            {order.hasUpsellItems && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>Upsell</Text>
+              </View>
+            )}
+            {order.hasBundleItems && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>Bundle</Text>
+              </View>
+            )}
+          </View>
+        )}
       </Card>
+
+      {order.customerData && Object.keys(order.customerData).filter(
+        (k) => !HIDDEN_FIELDS.has(k) && order.customerData![k] != null && String(order.customerData![k]).trim() !== ''
+      ).length > 0 && (
+        <Card title="Customer Details" style={styles.section}>
+          {Object.entries(order.customerData)
+            .filter(([k, v]) => !HIDDEN_FIELDS.has(k) && v != null && String(v).trim() !== '')
+            .map(([key, value]) => (
+              <View key={key} style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{formatFieldLabel(key)}</Text>
+                <Text style={styles.detailValue}>{String(value)}</Text>
+              </View>
+            ))}
+        </Card>
+      )}
 
       <Card title={`Items (${order.items?.length ?? 0})`} style={styles.section}>
         {order.items?.map((item, i) => (
@@ -192,6 +241,9 @@ export default function OrderDetailScreen() {
       {order.paymentMethod && (
         <Card title="Payment" style={styles.section}>
           <Text style={styles.value}>{order.paymentMethod}</Text>
+          {order.paymentMethodDetails && (
+            <Text style={styles.sub}>{order.paymentMethodDetails}</Text>
+          )}
           <Text style={styles.sub}>Status: {order.paymentStatus ?? "pending"}</Text>
         </Card>
       )}
@@ -247,4 +299,38 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: "#FFFFFF", ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.separator,
+  },
+  detailLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  detailValue: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 2,
+    textAlign: "right",
+  },
+  tagRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  tag: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: `${colors.primary}15`,
+  },
+  tagText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "600",
+  },
 });
