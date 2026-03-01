@@ -419,22 +419,15 @@ export async function createOrderConvex(
 ) {
   const convex = createConvexServerClient(convexUrl, convexKey)
 
-  const orderId = await convex.mutation<string>('orders:createOrder', {
-    tenantId,
+  // Build args matching Convex createOrder mutation schema exactly
+  // Do NOT send fields not in the schema (tenantId, paymentMethodId, paymentMethodQrCodeUrl)
+  const mutationArgs: Record<string, unknown> = {
     customerName: customerInfo?.name ?? 'Guest',
     customerContact: customerInfo?.contact ?? '',
     customerData: customerData ?? {},
     total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
-    orderType: undefined,
-    orderTypeId: orderTypeId,
-    source: 'web',
+    source: 'web' as const,
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
-    paymentMethod: paymentMethodName,
-    paymentMethodDetails: paymentMethodDetails,
-    paymentMethodId: paymentMethodId,
-    paymentMethodQrCodeUrl: paymentMethodQrCodeUrl,
-    deliveryFee: deliveryFee,
-    lalamoveQuotationId: lalamoveQuotationId,
     items: items.map((item) => ({
       menuItemId: item.menu_item_id,
       menuItemName: item.menu_item_name,
@@ -449,7 +442,16 @@ export async function createOrderConvex(
           : { name: a.name, price: a.price, quantity: a.quantity }
       ),
     })),
-  })
+  }
+
+  // Only include optional fields if they have values
+  if (orderTypeId) mutationArgs.orderTypeId = orderTypeId
+  if (paymentMethodName) mutationArgs.paymentMethod = paymentMethodName
+  if (paymentMethodDetails) mutationArgs.paymentMethodDetails = paymentMethodDetails
+  if (deliveryFee) mutationArgs.deliveryFee = deliveryFee
+  if (lalamoveQuotationId) mutationArgs.lalamoveQuotationId = lalamoveQuotationId
+
+  const orderId = await convex.mutation<string>('orders:createOrder', mutationArgs)
 
   return { order: { id: orderId }, orderToken: undefined }
 }
