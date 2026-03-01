@@ -87,6 +87,8 @@ export interface Tenant {
   checkout_upsell_title?: string;
   checkout_upsell_subtitle?: string;
   checkout_upsell_max_items?: number;
+  convex_deployment_url?: string;
+  convex_deploy_key?: string;
   ios_app_store_id?: string;
   android_package_name?: string;
   app_enabled?: boolean;

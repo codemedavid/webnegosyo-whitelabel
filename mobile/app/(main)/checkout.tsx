@@ -93,8 +93,56 @@ export default function CheckoutScreen() {
     try {
       let orderId: string | null = null
 
-      // Only create order in database if order management is enabled
-      if (tenant.enable_order_management) {
+      // Create order in Convex (if tenant has Convex configured) or Supabase
+      if (tenant.convex_deployment_url) {
+        // Write to Convex via HTTP API
+        const convexResponse = await fetch(`${tenant.convex_deployment_url}/api/mutation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: 'orders:createOrder',
+            args: {
+              customerName: formValues.customer_name || null,
+              customerContact: formValues.customer_phone || formValues.customer_email || null,
+              customerData: formValues,
+              total,
+              orderType: selectedOrderType.name,
+              orderTypeId: String(selectedOrderType.id),
+              source: 'mobile' as const,
+              itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+              paymentMethod: selectedPaymentMethod?.name || null,
+              paymentMethodDetails: selectedPaymentMethod?.details || null,
+              deliveryFee: null,
+              items: items.map((item) => ({
+                menuItemId: String(item.menu_item.id),
+                menuItemName: item.menu_item.name,
+                quantity: item.quantity,
+                price: item.menu_item.discounted_price ?? item.menu_item.price,
+                subtotal: item.subtotal,
+                specialInstructions: item.special_instructions || null,
+                variation: item.selected_variations
+                  ? Object.values(item.selected_variations).map(o => o.name).join(', ')
+                  : item.selected_variation?.name || null,
+                addons: item.selected_addons.map((a) => ({
+                  name: a.name,
+                  price: 0,
+                })),
+              })),
+            },
+            format: 'json',
+          }),
+        })
+
+        const convexResult = await convexResponse.json()
+        if (convexResult.status === 'success') {
+          orderId = convexResult.value
+        } else {
+          console.warn('Convex order creation failed, proceeding to Messenger...', convexResult)
+        }
+      } else if (tenant.enable_order_management) {
+        // Existing Supabase flow
         const orderItems = items.map(item => {
           const variationText = item.selected_variations
             ? Object.values(item.selected_variations).map(o => o.name).join(', ')
