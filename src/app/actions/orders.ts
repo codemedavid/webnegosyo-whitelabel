@@ -65,6 +65,9 @@ export async function createOrderAction(
     price: number
     subtotal: number
     special_instructions?: string
+    isUpsellItem?: boolean
+    isBundleItem?: boolean
+    bundleId?: string
   }>,
   customerInfo?: {
     name?: string
@@ -108,6 +111,17 @@ export async function createOrderAction(
         paymentMethodDetails,
         paymentMethodQrCodeUrl
       )
+      // Track upsell conversion if order has upsell items
+      const hasUpsellItems = items.some((i) => i.isUpsellItem === true)
+      if (hasUpsellItems) {
+        import('@/app/actions/analytics').then(({ trackAnalyticsEventAction }) => {
+          trackAnalyticsEventAction(tenantId, 'upsell_converted', {
+            orderId: result.order.id,
+            itemCount: items.filter((i) => i.isUpsellItem).length,
+          })
+        }).catch(() => {})
+      }
+
       return { success: true, data: result.order, orderToken: result.orderToken }
     }
 

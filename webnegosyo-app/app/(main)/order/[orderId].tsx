@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "rea
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
-import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
+import { colors, typography, spacing, radius } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
 import { LoadingState } from "../../../components/LoadingState";

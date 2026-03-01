@@ -28,12 +28,12 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
       const latest = newOrders[0];
       const body = `${latest.customerName} — ₱${latest.total.toFixed(2)} (${latest.itemCount} item${latest.itemCount !== 1 ? "s" : ""})`;
 
-      // Schedule immediate local notification (plays system sound)
+      // Schedule immediate local notification (plays custom ringtone)
       Notifications.scheduleNotificationAsync({
         content: {
           title: "New Order!",
           body,
-          sound: "default",
+          sound: "ringtone.mp3",
         },
         trigger: null, // immediate
       }).catch(() => {});

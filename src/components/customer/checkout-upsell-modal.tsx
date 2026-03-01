@@ -8,6 +8,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { useCart } from '@/hooks/useCart'
 import { toast } from 'sonner'
+import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 
@@ -313,6 +314,13 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   const [isLoading, setIsLoading] = useState(true)
 
   const isPreview = !!previewSuggestions
+  const shownTrackedRef = useRef(false)
+
+  useEffect(() => {
+    if (!open) {
+      shownTrackedRef.current = false
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -331,6 +339,12 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
       .then((result) => {
         if (result.success && result.data) {
           setSuggestions(result.data)
+          if (result.data.length > 0 && !shownTrackedRef.current) {
+            shownTrackedRef.current = true
+            trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+              itemCount: result.data.length,
+            })
+          }
         }
         // Never auto-continue — always let the user click "Continue to Checkout"
       })
@@ -358,9 +372,14 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
       if (isPreview) return
       addItem(item, undefined, [], 1)
       toast.success(`Added ${item.name} to cart`)
+      trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
+        itemId: item.id,
+        itemName: item.name,
+        price: item.price,
+      })
       setSuggestions((prev) => prev.filter((s) => s.id !== item.id))
     },
-    [addItem, isPreview]
+    [addItem, isPreview, tenantId]
   )
 
   const renderGrid = () => {

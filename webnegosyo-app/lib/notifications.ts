@@ -42,7 +42,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
       name: "New Orders",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      sound: "default",
+      sound: "ringtone.mp3",
     });
   }
 

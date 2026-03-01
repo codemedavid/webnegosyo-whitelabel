@@ -28,7 +28,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   },
-  plugins: ["expo-router"],
+  plugins: [
+    "expo-router",
+    [
+      "expo-notifications",
+      {
+        sounds: ["./assets/ringtone.mp3"],
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },

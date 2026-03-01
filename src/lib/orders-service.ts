@@ -406,6 +406,9 @@ export async function createOrderConvex(
     price: number
     subtotal: number
     special_instructions?: string
+    isUpsellItem?: boolean
+    isBundleItem?: boolean
+    bundleId?: string
   }>,
   customerInfo?: { name?: string; contact?: string },
   orderTypeId?: string,
@@ -441,8 +444,16 @@ export async function createOrderConvex(
           ? { name: a, price: 0 }
           : { name: a.name, price: a.price, quantity: a.quantity }
       ),
+      ...(item.isUpsellItem ? { isUpsellItem: true } : {}),
+      ...(item.isBundleItem ? { isBundleItem: true } : {}),
+      ...(item.bundleId ? { bundleId: item.bundleId } : {}),
     })),
   }
+
+  const hasUpsell = items.some((i) => i.isUpsellItem === true)
+  const hasBundle = items.some((i) => i.isBundleItem === true)
+  if (hasUpsell) mutationArgs.hasUpsellItems = true
+  if (hasBundle) mutationArgs.hasBundleItems = true
 
   // Only include optional fields if they have values
   if (orderTypeId) mutationArgs.orderTypeId = orderTypeId
