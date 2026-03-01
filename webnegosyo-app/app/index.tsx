@@ -1,9 +1,10 @@
 import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { colors } from "../theme/colors";
 
 export default function IndexScreen() {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#4F46E5" />
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }
@@ -13,6 +14,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#111",
+    backgroundColor: colors.background,
   },
 });

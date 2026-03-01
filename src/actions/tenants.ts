@@ -136,6 +136,9 @@ export async function createTenantAction(input: TenantInput) {
       lalamove_market: parsed.lalamove_market || undefined,
       lalamove_service_type: parsed.lalamove_service_type || undefined,
       lalamove_sandbox: parsed.lalamove_sandbox,
+      // Convex / Mobile App
+      convex_deployment_url: parsed.convex_deployment_url || undefined,
+      convex_deploy_key: parsed.convex_deploy_key || undefined,
     }
 
     const query = supabase
@@ -265,6 +268,9 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     lalamove_market: parsed.lalamove_market || undefined,
     lalamove_service_type: parsed.lalamove_service_type || undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    // Convex / Mobile App
+    convex_deployment_url: parsed.convex_deployment_url || undefined,
+    convex_deploy_key: parsed.convex_deploy_key || undefined,
   }
 
   const query = supabase

@@ -13,6 +13,7 @@ import { ImageUpload } from '@/components/shared/image-upload'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
+import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { toast } from 'sonner'
 
 interface TenantFormWrapperProps {
@@ -69,6 +70,9 @@ interface TenantFormData {
   lalamove_market: string
   lalamove_service_type: string
   lalamove_sandbox: boolean
+  // Convex / Mobile App
+  convex_deployment_url: string
+  convex_deploy_key: string
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -964,6 +968,115 @@ function LalamoveSection({
   )
 }
 
+// Convex / Mobile App Configuration Section
+function ConvexMobileAppSection({
+  formData,
+  setFormData,
+  isPending,
+  tenant,
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+  tenant?: Tenant
+}) {
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [deployStatus, setDeployStatus] = useState<string | null>(null)
+
+  const handleDeployConvex = async () => {
+    if (!tenant?.id) return
+    setIsDeploying(true)
+    setDeployStatus(null)
+    try {
+      const result = await deployConvexToTenantAction(tenant.id)
+      if (result.success) {
+        setDeployStatus('Schema deployed successfully!')
+      } else {
+        setDeployStatus(`Deploy failed: ${result.error}`)
+      }
+    } catch {
+      setDeployStatus('Deploy failed: unexpected error')
+    } finally {
+      setIsDeploying(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Convex / Mobile App</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure Convex backend for real-time order tracking and mobile app support
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="convex_deployment_url">Convex Deployment URL</Label>
+          <Input
+            id="convex_deployment_url"
+            value={formData.convex_deployment_url}
+            onChange={(e) => setFormData({ ...formData, convex_deployment_url: e.target.value })}
+            placeholder="https://your-project.convex.cloud"
+            disabled={isPending}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="convex_deploy_key">Convex Deploy Key</Label>
+          <Input
+            id="convex_deploy_key"
+            type="password"
+            value={formData.convex_deploy_key}
+            onChange={(e) => setFormData({ ...formData, convex_deploy_key: e.target.value })}
+            placeholder="prod:your-deployment|key..."
+            disabled={isPending}
+          />
+        </div>
+
+        {tenant?.convex_schema_version != null && (
+          <div className="space-y-2">
+            <Label>Current Schema Version</Label>
+            <p className="text-sm text-muted-foreground">
+              v{tenant.convex_schema_version}
+            </p>
+          </div>
+        )}
+
+        {tenant?.id && (
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDeployConvex}
+              disabled={
+                isDeploying ||
+                isPending ||
+                !formData.convex_deployment_url ||
+                !formData.convex_deploy_key
+              }
+            >
+              {isDeploying ? 'Deploying...' : 'Deploy Schema to Convex'}
+            </Button>
+            {deployStatus && (
+              <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-destructive' : 'text-green-600'}`}>
+                {deployStatus}
+              </p>
+            )}
+          </div>
+        )}
+
+        {!formData.convex_deployment_url && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> Without Convex configuration, orders will only be stored in Supabase. Configure Convex to enable real-time order tracking and mobile app support.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -1019,6 +1132,9 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    // Convex / Mobile App
+    convex_deployment_url: tenant?.convex_deployment_url || '',
+    convex_deploy_key: tenant?.convex_deploy_key || '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1075,6 +1191,9 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      // Convex / Mobile App
+      convex_deployment_url: formData.convex_deployment_url || undefined,
+      convex_deploy_key: formData.convex_deploy_key || undefined,
     }
 
     startTransition(async () => {
@@ -1180,6 +1299,13 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}
+      />
+
+      <ConvexMobileAppSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+        tenant={tenant}
       />
 
       <div className="flex justify-end gap-2">

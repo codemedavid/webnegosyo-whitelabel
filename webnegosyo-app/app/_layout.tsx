@@ -7,13 +7,17 @@ import { supabase } from "../lib/supabase";
 function AuthGate({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
   const setAuth = useAuthStore((s) => s.setAuth);
 
   useEffect(() => {
-    // Check for existing session on mount
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (data.session?.user) {
-        // Restore auth state
+    supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      if (sessionError || !data.session?.user) {
+        setAuth({ isLoading: false });
+        return;
+      }
+
+      try {
         const { data: appUser } = await supabase
           .from("app_users")
           .select("tenant_id")
@@ -21,40 +25,46 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           .in("role", ["admin", "superadmin"])
           .single();
 
-        if (appUser) {
-          const { data: tenant } = await supabase
-            .from("tenants")
-            .select("id, slug, name, convex_deployment_url")
-            .eq("id", appUser.tenant_id)
-            .single();
-
-          if (tenant?.convex_deployment_url) {
-            setAuth({
-              userId: data.session.user.id,
-              tenantId: tenant.id,
-              tenantSlug: tenant.slug,
-              tenantName: tenant.name,
-              convexUrl: tenant.convex_deployment_url,
-              isLoading: false,
-              isAuthenticated: true,
-            });
-            return;
-          }
+        if (!appUser) {
+          setAuth({ isLoading: false });
+          return;
         }
+
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("id, slug, name, convex_deployment_url")
+          .eq("id", appUser.tenant_id)
+          .single();
+
+        if (!tenant) {
+          setAuth({ isLoading: false });
+          return;
+        }
+
+        setAuth({
+          userId: data.session.user.id,
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          tenantName: tenant.name,
+          convexUrl: tenant.convex_deployment_url ?? null,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+      } catch {
+        setAuth({ isLoading: false });
       }
-      setAuth({ isLoading: false });
     });
   }, [setAuth]);
 
   useEffect(() => {
-    if (!isLoading) {
-      if (isAuthenticated) {
-        router.replace("/(main)/dashboard");
-      } else {
-        router.replace("/(auth)/login");
-      }
+    if (isLoading) return;
+
+    if (isAuthenticated) {
+      router.replace("/(main)/dashboard");
+    } else {
+      router.replace("/(auth)/login");
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, convexUrl]);
 
   return <>{children}</>;
 }

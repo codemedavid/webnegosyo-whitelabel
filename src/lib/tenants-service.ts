@@ -97,8 +97,8 @@ export const tenantSchema = z.object({
   lalamove_service_type: z.string().optional().or(z.literal('')).optional(),
   lalamove_sandbox: z.boolean().default(true),
   // Convex integration
-  convex_deployment_url: z.string().url().nullable().optional(),
-  convex_deploy_key: z.string().nullable().optional(),
+  convex_deployment_url: z.string().url().optional().or(z.literal('')).optional(),
+  convex_deploy_key: z.string().optional().or(z.literal('')).optional(),
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>

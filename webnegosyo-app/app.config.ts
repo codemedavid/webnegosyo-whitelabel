@@ -25,8 +25,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.webnegosyo.admin",
   },
   extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   },
   plugins: ["expo-router"],
   experiments: {

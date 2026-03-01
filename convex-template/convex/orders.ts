@@ -171,7 +171,6 @@ export const getOrders = query({
     } else {
       orders = await ctx.db
         .query("orders")
-        .withIndex("by_created")
         .order("desc")
         .take(args.limit ?? 50);
     }
@@ -218,7 +217,6 @@ export const getDashboardStats = query({
 
     const allOrders = await ctx.db
       .query("orders")
-      .withIndex("by_created")
       .order("desc")
       .collect();
 

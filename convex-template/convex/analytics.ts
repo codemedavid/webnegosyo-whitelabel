@@ -22,15 +22,15 @@ export const getUpsellAnalytics = query({
 
     const shown = await ctx.db
       .query("analyticsEvents")
-      .withIndex("by_type_time", (q) => q.eq("type", "upsell_shown"))
+      .withIndex("by_type", (q) => q.eq("type", "upsell_shown"))
       .collect();
     const clicked = await ctx.db
       .query("analyticsEvents")
-      .withIndex("by_type_time", (q) => q.eq("type", "upsell_clicked"))
+      .withIndex("by_type", (q) => q.eq("type", "upsell_clicked"))
       .collect();
     const converted = await ctx.db
       .query("analyticsEvents")
-      .withIndex("by_type_time", (q) => q.eq("type", "upsell_converted"))
+      .withIndex("by_type", (q) => q.eq("type", "upsell_converted"))
       .collect();
 
     const shownCount = shown.filter((e) => e._creationTime >= cutoff).length;
@@ -57,11 +57,11 @@ export const getBundleAnalytics = query({
 
     const viewed = await ctx.db
       .query("analyticsEvents")
-      .withIndex("by_type_time", (q) => q.eq("type", "bundle_viewed"))
+      .withIndex("by_type", (q) => q.eq("type", "bundle_viewed"))
       .collect();
     const added = await ctx.db
       .query("analyticsEvents")
-      .withIndex("by_type_time", (q) => q.eq("type", "bundle_added"))
+      .withIndex("by_type", (q) => q.eq("type", "bundle_added"))
       .collect();
 
     const viewedCount = viewed.filter((e) => e._creationTime >= cutoff).length;
@@ -86,7 +86,7 @@ export const getTopItems = query({
 
     const recentOrders = await ctx.db
       .query("orders")
-      .withIndex("by_created")
+      .order("desc")
       .collect();
 
     const filteredOrderIds = new Set(

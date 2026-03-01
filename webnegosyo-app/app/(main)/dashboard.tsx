@@ -1,7 +1,16 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { useQuery } from "convex/react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
+import { useSafeQuery } from "../../lib/hooks";
+import { useAuthStore } from "../../stores/auth-store";
+import { supabase } from "../../lib/supabase";
+import { router } from "expo-router";
+import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
+import { StatCard } from "../../components/StatCard";
+import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
+import { Badge } from "../../components/Badge";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -17,24 +26,45 @@ interface QueueOrder {
   _id: string;
   _creationTime: number;
   customerName: string;
-  customerContact: string;
   total: number;
   itemCount: number;
   orderType?: string;
   status: string;
 }
 
-export default function DashboardScreen() {
-  const stats = useQuery(getDashboardStatsRef) as DashboardStats | undefined;
-  const queue = useQuery(getRealtimeQueueRef) as Record<string, QueueOrder[]> | undefined;
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
-  if (!stats) {
+export default function DashboardScreen() {
+  const tenantName = useAuthStore((s) => s.tenantName);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const clear = useAuthStore((s) => s.clear);
+
+  const stats = useSafeQuery<DashboardStats>(getDashboardStatsRef);
+  const queue = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    clear();
+    router.replace("/(auth)/login");
+  };
+
+  if (!convexUrl) {
     return (
-      <View style={styles.loading}>
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View style={styles.screen}>
+        <ErrorState
+          message="Convex is not configured for this tenant. Please contact support."
+          onRetry={handleLogout}
+        />
       </View>
     );
   }
+
+  const isLoading = stats === undefined;
 
   const pendingCount = queue?.pending?.length ?? 0;
   const confirmCount = queue?.confirmed?.length ?? 0;
@@ -42,91 +72,99 @@ export default function DashboardScreen() {
   const readyCount = queue?.ready?.length ?? 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>Dashboard</Text>
-
-      {/* Stats Row */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.totalOrders}</Text>
-          <Text style={styles.statLabel}>Orders Today</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={false} onRefresh={() => {}} tintColor={colors.primary} />
+      }
+    >
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>&#8369;{stats.totalRevenue.toFixed(0)}</Text>
-          <Text style={styles.statLabel}>Revenue</Text>
-        </View>
-      </View>
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>&#8369;{stats.avgOrderValue.toFixed(0)}</Text>
-          <Text style={styles.statLabel}>Avg Order</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{pendingCount}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Queue Summary */}
-      <Text style={styles.sectionTitle}>Order Queue</Text>
-      <View style={styles.queueRow}>
-        <View style={[styles.queueItem, { backgroundColor: "#FEF3C7" }]}>
-          <Text style={styles.queueCount}>{pendingCount}</Text>
-          <Text style={styles.queueLabel}>Pending</Text>
-        </View>
-        <View style={[styles.queueItem, { backgroundColor: "#DBEAFE" }]}>
-          <Text style={styles.queueCount}>{confirmCount}</Text>
-          <Text style={styles.queueLabel}>Confirmed</Text>
-        </View>
-        <View style={[styles.queueItem, { backgroundColor: "#FED7AA" }]}>
-          <Text style={styles.queueCount}>{preparingCount}</Text>
-          <Text style={styles.queueLabel}>Preparing</Text>
-        </View>
-        <View style={[styles.queueItem, { backgroundColor: "#BBF7D0" }]}>
-          <Text style={styles.queueCount}>{readyCount}</Text>
-          <Text style={styles.queueLabel}>Ready</Text>
-        </View>
-      </View>
-
-      {/* Recent pending orders */}
-      <Text style={styles.sectionTitle}>Recent Pending</Text>
-      {(queue?.pending ?? []).slice(0, 5).map((order) => (
-        <View key={order._id} style={styles.orderCard}>
-          <View style={styles.orderHeader}>
-            <Text style={styles.orderName}>{order.customerName}</Text>
-            <Text style={styles.orderTotal}>&#8369;{order.total.toFixed(2)}</Text>
+      {isLoading ? (
+        <LoadingState message="Loading dashboard..." />
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard value={stats.totalOrders} label="Orders Today" />
+            <StatCard value={`₱${stats.totalRevenue.toFixed(0)}`} label="Revenue" />
           </View>
-          <Text style={styles.orderMeta}>
-            {order.itemCount} item{order.itemCount !== 1 ? "s" : ""} · {order.orderType ?? "N/A"} · {new Date(order._creationTime).toLocaleTimeString()}
-          </Text>
-        </View>
-      ))}
-      {pendingCount === 0 && (
-        <Text style={styles.emptyText}>No pending orders</Text>
+          <View style={styles.statsRow}>
+            <StatCard value={`₱${stats.avgOrderValue.toFixed(0)}`} label="Avg Order" />
+            <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Orders" />
+          </View>
+
+          <Text style={styles.sectionTitle}>Order Queue</Text>
+          <View style={styles.queueRow}>
+            {([
+              { label: "Pending", count: pendingCount, color: colors.warningLight, textColor: colors.statusPending.text },
+              { label: "Confirmed", count: confirmCount, color: colors.infoLight, textColor: colors.statusConfirmed.text },
+              { label: "Preparing", count: preparingCount, color: "#FFF8E1", textColor: colors.statusPreparing.text },
+              { label: "Ready", count: readyCount, color: colors.successLight, textColor: colors.statusReady.text },
+            ] as const).map((item) => (
+              <View key={item.label} style={[styles.queueItem, { backgroundColor: item.color }]}>
+                <Text style={[styles.queueCount, { color: item.textColor }]}>{item.count}</Text>
+                <Text style={[styles.queueLabel, { color: item.textColor }]}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Text style={styles.sectionTitle}>Recent Pending</Text>
+          {pendingCount === 0 ? (
+            <EmptyState message="No pending orders" />
+          ) : (
+            (queue?.pending ?? []).slice(0, 5).map((order) => (
+              <TouchableOpacity
+                key={order._id}
+                style={styles.orderCard}
+                onPress={() => router.push(`/(main)/order/${order._id}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.orderHeader}>
+                  <Text style={styles.orderName}>{order.customerName}</Text>
+                  <Text style={styles.orderTotal}>₱{order.total.toFixed(2)}</Text>
+                </View>
+                <View style={styles.orderMeta}>
+                  <Text style={styles.orderMetaText}>
+                    {order.itemCount} item{order.itemCount !== 1 ? "s" : ""} · {order.orderType ?? "N/A"}
+                  </Text>
+                  <Badge label="pending" variant="pending" />
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </>
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F0F0F" },
-  content: { padding: 20 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F0F0F" },
-  loadingText: { color: "#999", fontSize: 16 },
-  heading: { fontSize: 28, fontWeight: "bold", color: "#fff", marginBottom: 20 },
-  statsRow: { flexDirection: "row", gap: 12, marginBottom: 12 },
-  statCard: { flex: 1, backgroundColor: "#1A1A1A", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#2A2A2A" },
-  statValue: { fontSize: 24, fontWeight: "bold", color: "#fff" },
-  statLabel: { fontSize: 13, color: "#999", marginTop: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: "600", color: "#fff", marginTop: 24, marginBottom: 12 },
-  queueRow: { flexDirection: "row", gap: 8 },
-  queueItem: { flex: 1, borderRadius: 10, padding: 12, alignItems: "center" },
-  queueCount: { fontSize: 20, fontWeight: "bold", color: "#111" },
-  queueLabel: { fontSize: 11, color: "#444", marginTop: 2 },
-  orderCard: { backgroundColor: "#1A1A1A", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#2A2A2A" },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.xl, paddingTop: 60 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.xxl },
+  greeting: { ...typography.body, color: colors.textSecondary },
+  tenantName: { ...typography.title, color: colors.textPrimary, marginTop: 2 },
+  logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  logoutText: { ...typography.body, color: colors.danger, fontWeight: "500" },
+  statsRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
+  sectionTitle: { ...typography.heading, color: colors.textPrimary, marginTop: spacing.xl, marginBottom: spacing.md },
+  queueRow: { flexDirection: "row", gap: spacing.sm },
+  queueItem: { flex: 1, borderRadius: radius.md, padding: spacing.md, alignItems: "center" },
+  queueCount: { fontSize: 22, fontWeight: "700" },
+  queueLabel: { fontSize: 11, fontWeight: "500", marginTop: 2 },
+  orderCard: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm, ...shadow.sm },
   orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  orderName: { fontSize: 15, fontWeight: "600", color: "#fff" },
-  orderTotal: { fontSize: 15, fontWeight: "bold", color: "#4F46E5" },
-  orderMeta: { fontSize: 12, color: "#999", marginTop: 4 },
-  emptyText: { color: "#666", textAlign: "center", paddingVertical: 20 },
+  orderName: { ...typography.heading, color: colors.textPrimary },
+  orderTotal: { ...typography.heading, color: colors.primary },
+  orderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
+  orderMetaText: { ...typography.caption, color: colors.textSecondary },
 });

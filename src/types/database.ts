@@ -108,6 +108,10 @@ export interface Tenant {
   convex_deployment_url?: string | null;
   convex_deploy_key?: string | null;
   convex_schema_version?: number;
+  // Mobile app
+  app_enabled?: boolean;
+  ios_app_store_id?: string | null;
+  android_package_name?: string | null;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)

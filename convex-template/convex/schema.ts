@@ -35,9 +35,7 @@ export default defineSchema({
     hasUpsellItems: v.optional(v.boolean()),
     hasBundleItems: v.optional(v.boolean()),
   })
-    .index("by_status", ["status"])
-    .index("by_created", ["_creationTime"])
-    .index("by_status_created", ["status", "_creationTime"]),
+    .index("by_status", ["status"]),
 
   orderItems: defineTable({
     orderId: v.id("orders"),
@@ -76,8 +74,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
     sessionId: v.optional(v.string()),
   })
-    .index("by_type", ["type"])
-    .index("by_type_time", ["type", "_creationTime"]),
+    .index("by_type", ["type"]),
 
   dailyStats: defineTable({
     date: v.string(),

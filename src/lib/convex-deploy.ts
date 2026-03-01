@@ -17,6 +17,15 @@ export async function deployConvexSchema(
   deployKey: string
 ): Promise<DeployResult> {
   try {
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    const supabaseIssuer = supabaseUrl
+      ? `${supabaseUrl}/auth/v1`
+      : "";
+    const supabaseJwks = supabaseUrl
+      ? `${supabaseUrl}/auth/v1/.well-known/jwks.json`
+      : "";
+
     const { stderr } = await execAsync(
       `npx convex deploy --cmd 'echo deployed'`,
       {
@@ -25,6 +34,8 @@ export async function deployConvexSchema(
         env: {
           ...process.env,
           CONVEX_DEPLOY_KEY: deployKey,
+          SUPABASE_ISSUER: supabaseIssuer,
+          SUPABASE_JWKS: supabaseJwks,
         },
       }
     );

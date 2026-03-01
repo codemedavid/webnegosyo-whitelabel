@@ -13,6 +13,7 @@ import {
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
+import { colors, typography, radius, spacing } from "../../theme/colors";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -29,7 +30,6 @@ export default function LoginScreen() {
     setIsLoading(true);
 
     try {
-      // 1. Sign in with Supabase
       const { data: authData, error: authError } =
         await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -39,7 +39,6 @@ export default function LoginScreen() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("No user returned");
 
-      // 2. Fetch the user's tenant from app_users
       const { data: appUser, error: appUserError } = await supabase
         .from("app_users")
         .select("tenant_id, role")
@@ -49,10 +48,9 @@ export default function LoginScreen() {
 
       if (appUserError || !appUser) {
         await supabase.auth.signOut();
-        throw new Error("You do not have admin access to any tenant");
+        throw new Error("You do not have admin access");
       }
 
-      // 3. Fetch the tenant's details including Convex URL
       const { data: tenant, error: tenantError } = await supabase
         .from("tenants")
         .select("id, slug, name, convex_deployment_url")
@@ -64,25 +62,16 @@ export default function LoginScreen() {
         throw new Error("Tenant not found");
       }
 
-      if (!tenant.convex_deployment_url) {
-        await supabase.auth.signOut();
-        throw new Error(
-          "This tenant does not have Convex configured. Please contact support."
-        );
-      }
-
-      // 4. Set auth state
       setAuth({
         userId: authData.user.id,
         tenantId: tenant.id,
         tenantSlug: tenant.slug,
         tenantName: tenant.name,
-        convexUrl: tenant.convex_deployment_url,
+        convexUrl: tenant.convex_deployment_url ?? null,
         isLoading: false,
         isAuthenticated: true,
       });
 
-      // 5. Navigate to dashboard
       router.replace("/(main)/dashboard");
     } catch (error: unknown) {
       const message =
@@ -99,32 +88,41 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>WebNegosyo</Text>
-        <Text style={styles.subtitle}>Admin Dashboard</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>WebNegosyo</Text>
+          <Text style={styles.subtitle}>Admin Dashboard</Text>
+        </View>
 
         <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#999"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.textTertiary}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your password"
+              placeholderTextColor={colors.textTertiary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
           <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={isLoading}
+            activeOpacity={0.8}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />
@@ -139,53 +137,25 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#111",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#fff",
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#999",
-    textAlign: "center",
-    marginBottom: 48,
-  },
-  form: {
-    gap: 16,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
+  header: { alignItems: "center", marginBottom: 48 },
+  title: { fontSize: 28, fontWeight: "700", color: colors.textPrimary },
+  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
+  form: { gap: spacing.lg },
+  inputGroup: { gap: spacing.xs },
+  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "500", marginLeft: spacing.xs },
   input: {
-    backgroundColor: "#222",
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 14,
-    fontSize: 16,
-    color: "#fff",
+    ...typography.body,
+    color: colors.textPrimary,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: colors.separator,
   },
-  button: {
-    backgroundColor: "#4F46E5",
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  button: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: "#FFFFFF", fontSize: 17, fontWeight: "600" },
 });

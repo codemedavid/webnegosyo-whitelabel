@@ -1,10 +1,27 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { useQuery } from "convex/react";
 import { FunctionReference } from "convex/server";
+import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
+import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
+import { Card } from "../../../components/Card";
+import { Badge } from "../../../components/Badge";
+import { LoadingState } from "../../../components/LoadingState";
+import { ErrorState } from "../../../components/ErrorState";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
+const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+
+type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
+
+const STATUS_STEPS: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "delivered"];
+
+const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+  pending: "confirmed",
+  confirmed: "preparing",
+  preparing: "ready",
+  ready: "delivered",
+};
 
 interface OrderItem {
   menuItemName: string;
@@ -17,9 +34,10 @@ interface OrderItem {
 
 interface OrderDetail {
   _id: string;
+  _creationTime: number;
   customerName: string;
   customerContact: string;
-  status: string;
+  status: OrderStatus;
   orderType?: string;
   source: string;
   total: number;
@@ -33,51 +51,108 @@ interface OrderDetail {
   items?: OrderItem[];
 }
 
+function StatusStepper({ currentStatus }: { currentStatus: OrderStatus }) {
+  const currentIndex = STATUS_STEPS.indexOf(currentStatus);
+  const isCancelled = currentStatus === "cancelled";
+
+  return (
+    <View style={stepperStyles.container}>
+      {STATUS_STEPS.map((step, i) => {
+        const isComplete = !isCancelled && i <= currentIndex;
+        const isCurrent = !isCancelled && i === currentIndex;
+        return (
+          <View key={step} style={stepperStyles.step}>
+            <View style={[
+              stepperStyles.dot,
+              isComplete && stepperStyles.dotComplete,
+              isCurrent && stepperStyles.dotCurrent,
+              isCancelled && stepperStyles.dotCancelled,
+            ]} />
+            <Text style={[stepperStyles.label, isComplete && stepperStyles.labelComplete]}>
+              {step.charAt(0).toUpperCase() + step.slice(1)}
+            </Text>
+            {i < STATUS_STEPS.length - 1 && (
+              <View style={[stepperStyles.line, isComplete && i < currentIndex && stepperStyles.lineComplete]} />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const stepperStyles = StyleSheet.create({
+  container: { flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.md },
+  step: { alignItems: "center", flex: 1 },
+  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.separator },
+  dotComplete: { backgroundColor: colors.success },
+  dotCurrent: { backgroundColor: colors.primary, width: 14, height: 14, borderRadius: 7 },
+  dotCancelled: { backgroundColor: colors.danger },
+  label: { ...typography.small, color: colors.textTertiary, marginTop: spacing.xs },
+  labelComplete: { color: colors.textSecondary, fontWeight: "500" },
+  line: { position: "absolute", top: 5, left: "60%", right: "-40%", height: 2, backgroundColor: colors.separator },
+  lineComplete: { backgroundColor: colors.success },
+});
+
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const order = useQuery(getOrderByIdRef, orderId ? { orderId } : "skip") as OrderDetail | null | undefined;
+  const order = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
+  const updateStatus = useSafeMutation(updateOrderStatusRef);
 
-  if (!order) {
+  const handleUpdateStatus = async (newStatus: OrderStatus) => {
+    if (!order) return;
+    try {
+      await updateStatus({ orderId: order._id, status: newStatus });
+    } catch {
+      Alert.alert("Error", "Failed to update status");
+    }
+  };
+
+  if (order === undefined) {
+    return <LoadingState fullScreen message="Loading order..." />;
+  }
+
+  if (order === null) {
     return (
-      <View style={styles.loading}>
-        <Text style={styles.loadingText}>Loading order...</Text>
+      <View style={styles.screen}>
+        <ErrorState message="Order not found" onRetry={() => router.back()} />
       </View>
     );
   }
 
+  const nextStatus = NEXT_STATUS[order.status];
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()}>
-        <Text style={styles.backLink}>← Back to Orders</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Order Details</Text>
+      <View style={styles.statusHeader}>
+        <Text style={styles.title}>Order Details</Text>
+        <Badge label={order.status} variant={order.status} />
+      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Customer</Text>
+      <Card style={styles.section}>
+        <StatusStepper currentStatus={order.status} />
+      </Card>
+
+      <Card title="Customer" style={styles.section}>
         <Text style={styles.value}>{order.customerName}</Text>
-        <Text style={styles.valueSub}>{order.customerContact}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Status</Text>
-        <Text style={styles.value}>{order.status}</Text>
-        <Text style={styles.valueSub}>
-          {order.orderType ?? "N/A"} · {order.source} · &#8369;{order.total.toFixed(2)}
+        <Text style={styles.sub}>{order.customerContact}</Text>
+        <Text style={styles.sub}>
+          {order.orderType ?? "N/A"} · {order.source} · {new Date(order._creationTime).toLocaleString()}
         </Text>
-      </View>
+      </Card>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Items ({order.items?.length ?? 0})</Text>
-        {order.items?.map((item, i: number) => (
-          <View key={i} style={styles.itemRow}>
-            <View style={styles.itemInfo}>
+      <Card title={`Items (${order.items?.length ?? 0})`} style={styles.section}>
+        {order.items?.map((item, i) => (
+          <View key={i} style={[styles.itemRow, i < (order.items?.length ?? 0) - 1 && styles.itemBorder]}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.itemName}>{item.menuItemName}</Text>
               {item.variation && <Text style={styles.itemDetail}>Variation: {item.variation}</Text>}
-              {item.addons?.length > 0 && (
-                <Text style={styles.itemDetail}>
-                  Add-ons: {item.addons.map((a: { name: string }) => a.name).join(", ")}
-                </Text>
+              {item.addons && item.addons.length > 0 && (
+                <Text style={styles.itemDetail}>Add-ons: {item.addons.map((a) => a.name).join(", ")}</Text>
               )}
               {item.specialInstructions && (
                 <Text style={styles.itemDetail}>Note: {item.specialInstructions}</Text>
@@ -85,27 +160,55 @@ export default function OrderDetailScreen() {
             </View>
             <View style={styles.itemRight}>
               <Text style={styles.itemQty}>x{item.quantity}</Text>
-              <Text style={styles.itemPrice}>&#8369;{item.subtotal.toFixed(2)}</Text>
+              <Text style={styles.itemPrice}>₱{item.subtotal.toFixed(2)}</Text>
             </View>
           </View>
         ))}
-      </View>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalValue}>₱{order.total.toFixed(2)}</Text>
+        </View>
+      </Card>
 
       {order.deliveryAddress && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Delivery</Text>
+        <Card title="Delivery" style={styles.section}>
           <Text style={styles.value}>{order.deliveryAddress}</Text>
-          {order.deliveryFee && <Text style={styles.valueSub}>Fee: &#8369;{order.deliveryFee.toFixed(2)}</Text>}
-          {order.lalamoveStatus && <Text style={styles.valueSub}>Lalamove: {order.lalamoveStatus}</Text>}
-          {order.lalamoveDriverName && <Text style={styles.valueSub}>Driver: {order.lalamoveDriverName} ({order.lalamoveDriverPhone})</Text>}
-        </View>
+          {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
+          {order.lalamoveStatus && <Text style={styles.sub}>Lalamove: {order.lalamoveStatus}</Text>}
+          {order.lalamoveDriverName && (
+            <Text style={styles.sub}>Driver: {order.lalamoveDriverName} ({order.lalamoveDriverPhone})</Text>
+          )}
+        </Card>
       )}
 
       {order.paymentMethod && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment</Text>
+        <Card title="Payment" style={styles.section}>
           <Text style={styles.value}>{order.paymentMethod}</Text>
-          <Text style={styles.valueSub}>Status: {order.paymentStatus ?? "pending"}</Text>
+          <Text style={styles.sub}>Status: {order.paymentStatus ?? "pending"}</Text>
+        </Card>
+      )}
+
+      {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
+        <View style={styles.actions}>
+          {nextStatus && (
+            <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
+              <Text style={styles.primaryActionText}>
+                Mark as {nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {order.status !== "delivered" && order.status !== "cancelled" && (
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert("Cancel Order", "Are you sure?", [
+                  { text: "No" },
+                  { text: "Yes", onPress: () => handleUpdateStatus("cancelled"), style: "destructive" },
+                ]);
+              }}
+            >
+              <Text style={styles.cancelText}>Cancel Order</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </ScrollView>
@@ -113,21 +216,27 @@ export default function OrderDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F0F0F" },
-  content: { padding: 20 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F0F0F" },
-  loadingText: { color: "#999", fontSize: 16 },
-  backLink: { color: "#4F46E5", fontSize: 14, marginBottom: 16 },
-  heading: { fontSize: 24, fontWeight: "bold", color: "#fff", marginBottom: 20 },
-  section: { backgroundColor: "#1A1A1A", borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#2A2A2A" },
-  sectionTitle: { fontSize: 13, color: "#999", fontWeight: "600", marginBottom: 6, textTransform: "uppercase" },
-  value: { fontSize: 16, color: "#fff", fontWeight: "500" },
-  valueSub: { fontSize: 13, color: "#999", marginTop: 2 },
-  itemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#2A2A2A" },
-  itemInfo: { flex: 1 },
-  itemName: { fontSize: 14, color: "#fff", fontWeight: "500" },
-  itemDetail: { fontSize: 12, color: "#999", marginTop: 2 },
-  itemRight: { alignItems: "flex-end", marginLeft: 12 },
-  itemQty: { fontSize: 13, color: "#999" },
-  itemPrice: { fontSize: 14, color: "#4F46E5", fontWeight: "600" },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.xl, paddingTop: 60 },
+  backButton: { marginBottom: spacing.md },
+  backText: { ...typography.body, color: colors.primary },
+  statusHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg },
+  title: { ...typography.title, color: colors.textPrimary },
+  section: { marginBottom: spacing.md },
+  value: { ...typography.heading, color: colors.textPrimary },
+  sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.sm },
+  itemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.separator },
+  itemName: { ...typography.body, color: colors.textPrimary, fontWeight: "500" },
+  itemDetail: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  itemRight: { alignItems: "flex-end", marginLeft: spacing.md },
+  itemQty: { ...typography.caption, color: colors.textSecondary },
+  itemPrice: { ...typography.body, color: colors.primary, fontWeight: "600" },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.separator },
+  totalLabel: { ...typography.heading, color: colors.textPrimary },
+  totalValue: { ...typography.heading, color: colors.primary },
+  actions: { marginTop: spacing.md, gap: spacing.sm },
+  primaryAction: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center" },
+  primaryActionText: { color: "#FFFFFF", ...typography.heading },
+  cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
 });
