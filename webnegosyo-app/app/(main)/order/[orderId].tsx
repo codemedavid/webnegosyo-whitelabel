@@ -6,9 +6,36 @@ import { FunctionReference } from "convex/server";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 
+interface OrderItem {
+  menuItemName: string;
+  variation?: string;
+  addons?: { name: string; price: number }[];
+  specialInstructions?: string;
+  quantity: number;
+  subtotal: number;
+}
+
+interface OrderDetail {
+  _id: string;
+  customerName: string;
+  customerContact: string;
+  status: string;
+  orderType?: string;
+  source: string;
+  total: number;
+  deliveryAddress?: string;
+  deliveryFee?: number;
+  lalamoveStatus?: string;
+  lalamoveDriverName?: string;
+  lalamoveDriverPhone?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  items?: OrderItem[];
+}
+
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const order = useQuery(getOrderByIdRef, orderId ? { orderId } : "skip") as any;
+  const order = useQuery(getOrderByIdRef, orderId ? { orderId } : "skip") as OrderDetail | null | undefined;
 
   if (!order) {
     return (
@@ -42,14 +69,14 @@ export default function OrderDetailScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Items ({order.items?.length ?? 0})</Text>
-        {order.items?.map((item: any, i: number) => (
+        {order.items?.map((item, i: number) => (
           <View key={i} style={styles.itemRow}>
             <View style={styles.itemInfo}>
               <Text style={styles.itemName}>{item.menuItemName}</Text>
               {item.variation && <Text style={styles.itemDetail}>Variation: {item.variation}</Text>}
               {item.addons?.length > 0 && (
                 <Text style={styles.itemDetail}>
-                  Add-ons: {item.addons.map((a: any) => a.name).join(", ")}
+                  Add-ons: {item.addons.map((a: { name: string }) => a.name).join(", ")}
                 </Text>
               )}
               {item.specialInstructions && (

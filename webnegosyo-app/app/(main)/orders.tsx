@@ -5,7 +5,6 @@ import { FunctionReference } from "convex/server";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
-const bookLalamoveRef = "lalamove:bookLalamove" as unknown as FunctionReference<"action">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
 
@@ -27,15 +26,31 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 
 const STATUS_FILTERS: (OrderStatus | "all")[] = ["all", "pending", "confirmed", "preparing", "ready", "delivered", "cancelled"];
 
+interface ConvexOrder {
+  _id: string;
+  _creationTime: number;
+  customerName: string;
+  customerContact: string;
+  total: number;
+  itemCount: number;
+  orderType?: string;
+  status: OrderStatus;
+  source?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  deliveryAddress?: string;
+  lalamoveStatus?: string;
+}
+
 export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
-  const orders = useQuery(getOrdersRef, filter === "all" ? {} : { status: filter }) as any[] | undefined;
+  const orders = useQuery(getOrdersRef, filter === "all" ? {} : { status: filter }) as ConvexOrder[] | undefined;
   const updateStatus = useMutation(updateOrderStatusRef);
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       await updateStatus({ orderId, status: newStatus });
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to update order status");
     }
   };
@@ -66,7 +81,7 @@ export default function OrdersScreen() {
         ) : orders.length === 0 ? (
           <Text style={styles.emptyText}>No orders found</Text>
         ) : (
-          orders.map((order: any) => {
+          orders.map((order) => {
             const statusColor = STATUS_COLORS[order.status as OrderStatus] ?? STATUS_COLORS.pending;
             const nextStatus = NEXT_STATUS[order.status as OrderStatus];
 

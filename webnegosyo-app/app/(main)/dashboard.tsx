@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useQuery } from "convex/react";
 import { FunctionReference } from "convex/server";
 
@@ -13,9 +13,20 @@ interface DashboardStats {
   statusCounts: Record<string, number>;
 }
 
+interface QueueOrder {
+  _id: string;
+  _creationTime: number;
+  customerName: string;
+  customerContact: string;
+  total: number;
+  itemCount: number;
+  orderType?: string;
+  status: string;
+}
+
 export default function DashboardScreen() {
   const stats = useQuery(getDashboardStatsRef) as DashboardStats | undefined;
-  const queue = useQuery(getRealtimeQueueRef) as Record<string, any[]> | undefined;
+  const queue = useQuery(getRealtimeQueueRef) as Record<string, QueueOrder[]> | undefined;
 
   if (!stats) {
     return (
@@ -79,7 +90,7 @@ export default function DashboardScreen() {
 
       {/* Recent pending orders */}
       <Text style={styles.sectionTitle}>Recent Pending</Text>
-      {(queue?.pending ?? []).slice(0, 5).map((order: any) => (
+      {(queue?.pending ?? []).slice(0, 5).map((order) => (
         <View key={order._id} style={styles.orderCard}>
           <View style={styles.orderHeader}>
             <Text style={styles.orderName}>{order.customerName}</Text>
