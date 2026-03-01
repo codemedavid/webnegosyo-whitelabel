@@ -11,6 +11,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { Badge } from "../../components/Badge";
+import { useOrderAlerts } from "../../hooks/useOrderAlerts";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -46,6 +47,9 @@ export default function DashboardScreen() {
 
   const { data: stats, isLoading, error: statsError } = useSafeQuery<DashboardStats>(getDashboardStatsRef);
   const { data: queue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+
+  // Alert on new pending orders
+  useOrderAlerts({ orders: queue?.pending, enabled: !!convexUrl });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

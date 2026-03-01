@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // --- MUTATIONS ---
 
@@ -70,6 +71,14 @@ export const createOrder = mutation({
         ...item,
       });
     }
+
+    // Send push notification to admin devices
+    await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
+      customerName: args.customerName,
+      total: args.total,
+      itemCount: args.itemCount,
+      orderId: orderId,
+    });
 
     return orderId;
   },

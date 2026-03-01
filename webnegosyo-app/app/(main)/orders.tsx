@@ -8,6 +8,7 @@ import { Badge } from "../../components/Badge";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+import { useOrderAlerts } from "../../hooks/useOrderAlerts";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -53,6 +54,9 @@ export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, filter === "all" ? {} : { status: filter });
   const updateStatus = useSafeMutation(updateOrderStatusRef);
+
+  // Alert on new orders (only when viewing all or pending)
+  useOrderAlerts({ orders: orders, enabled: filter === "all" || filter === "pending" });
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {

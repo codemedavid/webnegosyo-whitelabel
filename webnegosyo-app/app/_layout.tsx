@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { Stack, router } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
 import { supabase } from "../lib/supabase";
+import { registerForPushNotifications } from "../lib/notifications";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -65,6 +67,35 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace("/(auth)/login");
     }
   }, [isLoading, isAuthenticated, convexUrl]);
+
+  // Register push token when authenticated and Convex is available
+  useEffect(() => {
+    if (!isAuthenticated || !convexUrl) return;
+
+    const userId = useAuthStore.getState().userId;
+    if (!userId) return;
+
+    registerForPushNotifications().then(async (token) => {
+      if (!token) return;
+      try {
+        await fetch(`${convexUrl}/api/mutation`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: "notifications:registerPushToken",
+            args: {
+              userId,
+              token,
+              platform: Platform.OS === "ios" ? "ios" : "android",
+            },
+            format: "json",
+          }),
+        });
+      } catch (e) {
+        console.warn("Failed to register push token:", e);
+      }
+    });
+  }, [isAuthenticated, convexUrl]);
 
   return <>{children}</>;
 }
