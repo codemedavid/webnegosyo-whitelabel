@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ImageUpload } from '@/components/shared/image-upload'
 import type { Tenant } from '@/types/database'
 import { useCreateTenant, useUpdateTenant } from '@/lib/queries/tenants'
+import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { toast } from 'sonner'
 
 interface TenantFormProps {
@@ -19,6 +20,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
   const router = useRouter()
   const createMutation = useCreateTenant()
   const updateMutation = useUpdateTenant()
+
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [deployStatus, setDeployStatus] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     name: tenant?.name || '',
@@ -66,6 +70,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    // Convex / Mobile App
+    convex_deployment_url: tenant?.convex_deployment_url || '',
+    convex_deploy_key: tenant?.convex_deploy_key || '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -117,6 +124,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
       menu_engineering_enabled: formData.menu_engineering_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      // Convex / Mobile App
+      convex_deployment_url: formData.convex_deployment_url || undefined,
+      convex_deploy_key: formData.convex_deploy_key || undefined,
     }
 
     if (tenant) {
@@ -154,6 +164,24 @@ export function TenantForm({ tenant }: TenantFormProps) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
     setFormData({ ...formData, slug })
+  }
+
+  const handleDeployConvex = async () => {
+    if (!tenant?.id) return
+    setIsDeploying(true)
+    setDeployStatus(null)
+    try {
+      const result = await deployConvexToTenantAction(tenant.id)
+      if (result.success) {
+        setDeployStatus('Schema deployed successfully!')
+      } else {
+        setDeployStatus(`Deploy failed: ${result.error}`)
+      }
+    } catch (error) {
+      setDeployStatus('Deploy failed: unexpected error')
+    } finally {
+      setIsDeploying(false)
+    }
   }
 
   return (
@@ -468,6 +496,65 @@ export function TenantForm({ tenant }: TenantFormProps) {
               Optional: If provided, will use m.me/username instead of page ID
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Convex / Mobile App</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="convex_deployment_url">Convex Deployment URL</Label>
+            <Input
+              id="convex_deployment_url"
+              value={formData.convex_deployment_url}
+              onChange={(e) => setFormData({ ...formData, convex_deployment_url: e.target.value })}
+              placeholder="https://your-project.convex.cloud"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="convex_deploy_key">Convex Deploy Key</Label>
+            <Input
+              id="convex_deploy_key"
+              type="password"
+              value={formData.convex_deploy_key}
+              onChange={(e) => setFormData({ ...formData, convex_deploy_key: e.target.value })}
+              placeholder="prod:your-deployment|key..."
+            />
+          </div>
+
+          {tenant?.convex_schema_version != null && (
+            <div className="space-y-2">
+              <Label>Current Schema Version</Label>
+              <p className="text-sm text-muted-foreground">
+                v{tenant.convex_schema_version}
+              </p>
+            </div>
+          )}
+
+          {tenant?.id && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDeployConvex}
+                disabled={
+                  isDeploying ||
+                  !formData.convex_deployment_url ||
+                  !formData.convex_deploy_key
+                }
+              >
+                {isDeploying ? 'Deploying...' : 'Deploy Schema to Convex'}
+              </Button>
+              {deployStatus && (
+                <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-destructive' : 'text-green-600'}`}>
+                  {deployStatus}
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
