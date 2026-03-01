@@ -1,0 +1,7 @@
+{
+  "name": "webnegosyo-convex-template",
+  "private": true,
+  "dependencies": {
+    "convex": "^1.17.0"
+  }
+}
