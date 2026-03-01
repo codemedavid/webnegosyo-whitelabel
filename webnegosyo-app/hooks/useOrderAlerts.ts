@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import { Audio } from "expo-av";
+import * as Notifications from "expo-notifications";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ringtoneSource = require("../assets/ringtone.mp3");
@@ -49,7 +50,17 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
       // Play custom ringtone sound in-app
       playRingtone();
 
-      // Show in-app alert
+      // Schedule local push notification (visible in notification tray / when app is backgrounded)
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: "New Order!",
+          body,
+          sound: "default",
+        },
+        trigger: null,
+      }).catch(() => {});
+
+      // Show in-app alert dialog
       Alert.alert("New Order!", body, [{ text: "OK" }]);
     }
 
