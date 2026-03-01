@@ -5,6 +5,7 @@ import { useSafeQuery } from "../../lib/hooks";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 
 const getUpsellAnalyticsRef = "analytics:getUpsellAnalytics" as unknown as FunctionReference<"query">;
@@ -18,9 +19,11 @@ interface TopItem { itemId: string; name: string; count: number; revenue: number
 export default function AnalyticsScreen() {
   const [daysBack, setDaysBack] = useState(7);
 
-  const upsellStats = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
-  const bundleStats = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
-  const topItems = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
+  const { data: upsellStats, error: upsellError } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
+  const { data: bundleStats, error: bundleError } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
+  const { data: topItems, error: topItemsError } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
+
+  const error = upsellError || bundleError || topItemsError;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -39,8 +42,10 @@ export default function AnalyticsScreen() {
         ))}
       </View>
 
+      {error && <ErrorState message={error} />}
+
       <Card title="Upsell Performance" style={styles.section}>
-        {upsellStats === undefined ? (
+        {!upsellStats ? (
           <LoadingState />
         ) : (
           <>
@@ -75,7 +80,7 @@ export default function AnalyticsScreen() {
       </Card>
 
       <Card title="Bundle Performance" style={styles.section}>
-        {bundleStats === undefined ? (
+        {!bundleStats ? (
           <LoadingState />
         ) : (
           <>
@@ -101,7 +106,7 @@ export default function AnalyticsScreen() {
       </Card>
 
       <Card title="Top Items by Revenue" style={styles.section}>
-        {topItems === undefined ? (
+        {!topItems ? (
           <LoadingState />
         ) : topItems.length === 0 ? (
           <EmptyState message="No data yet" />

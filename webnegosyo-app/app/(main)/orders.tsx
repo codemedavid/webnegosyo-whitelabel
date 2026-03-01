@@ -6,6 +6,7 @@ import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Badge } from "../../components/Badge";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -50,7 +51,7 @@ function timeAgo(timestamp: number): string {
 
 export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
-  const orders = useSafeQuery<ConvexOrder[]>(getOrdersRef, filter === "all" ? {} : { status: filter });
+  const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, filter === "all" ? {} : { status: filter });
   const updateStatus = useSafeMutation(updateOrderStatusRef);
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
@@ -94,12 +95,14 @@ export default function OrdersScreen() {
           <RefreshControl refreshing={false} onRefresh={() => {}} tintColor={colors.primary} />
         }
       >
-        {orders === undefined ? (
+        {error ? (
+          <ErrorState message={error} onRetry={() => setFilter("all")} />
+        ) : isLoading ? (
           <LoadingState message="Loading orders..." />
-        ) : orders.length === 0 ? (
+        ) : (orders ?? []).length === 0 ? (
           <EmptyState message="No orders found" />
         ) : (
-          orders.map((order) => {
+          (orders ?? []).map((order) => {
             const nextStatus = NEXT_STATUS[order.status];
 
             return (

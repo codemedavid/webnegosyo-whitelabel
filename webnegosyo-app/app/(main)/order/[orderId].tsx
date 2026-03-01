@@ -96,7 +96,7 @@ const stepperStyles = StyleSheet.create({
 
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const order = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
+  const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
@@ -108,11 +108,19 @@ export default function OrderDetailScreen() {
     }
   };
 
-  if (order === undefined) {
+  if (error) {
+    return (
+      <View style={styles.screen}>
+        <ErrorState message={error} onRetry={() => router.back()} />
+      </View>
+    );
+  }
+
+  if (isLoading) {
     return <LoadingState fullScreen message="Loading order..." />;
   }
 
-  if (order === null) {
+  if (order === null || order === undefined) {
     return (
       <View style={styles.screen}>
         <ErrorState message="Order not found" onRetry={() => router.back()} />

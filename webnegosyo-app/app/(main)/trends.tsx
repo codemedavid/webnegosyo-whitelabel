@@ -6,6 +6,7 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { Card } from "../../components/Card";
 import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
@@ -53,7 +54,7 @@ function BarChart({ data, valueKey, color, label }: {
 
 export default function TrendsScreen() {
   const [daysBack, setDaysBack] = useState(14);
-  const trends = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
+  const { data: trends, isLoading, error } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -72,20 +73,22 @@ export default function TrendsScreen() {
         ))}
       </View>
 
-      {trends === undefined ? (
+      {error ? (
+        <ErrorState message={error} />
+      ) : isLoading ? (
         <LoadingState message="Loading trends..." />
-      ) : trends.length === 0 ? (
+      ) : (trends ?? []).length === 0 ? (
         <EmptyState message="No trend data yet. Data appears after daily stats are aggregated." />
       ) : (
         <>
           <View style={styles.summaryRow}>
-            <StatCard value={trends.reduce((s, d) => s + d.totalOrders, 0)} label="Total Orders" />
-            <StatCard value={`₱${trends.reduce((s, d) => s + d.totalRevenue, 0).toFixed(0)}`} label="Total Revenue" />
+            <StatCard value={(trends ?? []).reduce((s, d) => s + d.totalOrders, 0)} label="Total Orders" />
+            <StatCard value={`₱${(trends ?? []).reduce((s, d) => s + d.totalRevenue, 0).toFixed(0)}`} label="Total Revenue" />
           </View>
 
-          <BarChart data={trends} valueKey="totalRevenue" color={colors.primary} label="Daily Revenue" />
-          <BarChart data={trends} valueKey="totalOrders" color={colors.success} label="Daily Orders" />
-          <BarChart data={trends} valueKey="avgOrderValue" color={colors.warning} label="Avg Order Value" />
+          <BarChart data={trends ?? []} valueKey="totalRevenue" color={colors.primary} label="Daily Revenue" />
+          <BarChart data={trends ?? []} valueKey="totalOrders" color={colors.success} label="Daily Orders" />
+          <BarChart data={trends ?? []} valueKey="avgOrderValue" color={colors.warning} label="Avg Order Value" />
         </>
       )}
     </ScrollView>

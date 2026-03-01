@@ -44,8 +44,8 @@ export default function DashboardScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const clear = useAuthStore((s) => s.clear);
 
-  const stats = useSafeQuery<DashboardStats>(getDashboardStatsRef);
-  const queue = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const { data: stats, isLoading, error: statsError } = useSafeQuery<DashboardStats>(getDashboardStatsRef);
+  const { data: queue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -53,18 +53,27 @@ export default function DashboardScreen() {
     router.replace("/(auth)/login");
   };
 
-  if (!convexUrl) {
+  const error = statsError || queueError;
+
+  if (!convexUrl || error) {
     return (
       <View style={styles.screen}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
+            <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
+          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
         <ErrorState
-          message="Convex is not configured for this tenant. Please contact support."
-          onRetry={handleLogout}
+          message={error ?? "Convex is not configured for this tenant. Please contact support."}
+          onRetry={() => router.replace("/(main)/dashboard")}
         />
       </View>
     );
   }
-
-  const isLoading = stats === undefined;
 
   const pendingCount = queue?.pending?.length ?? 0;
   const confirmCount = queue?.confirmed?.length ?? 0;
@@ -94,11 +103,11 @@ export default function DashboardScreen() {
       ) : (
         <>
           <View style={styles.statsRow}>
-            <StatCard value={stats.totalOrders} label="Orders Today" />
-            <StatCard value={`₱${stats.totalRevenue.toFixed(0)}`} label="Revenue" />
+            <StatCard value={stats?.totalOrders ?? 0} label="Orders Today" />
+            <StatCard value={`₱${(stats?.totalRevenue ?? 0).toFixed(0)}`} label="Revenue" />
           </View>
           <View style={styles.statsRow}>
-            <StatCard value={`₱${stats.avgOrderValue.toFixed(0)}`} label="Avg Order" />
+            <StatCard value={`₱${(stats?.avgOrderValue ?? 0).toFixed(0)}`} label="Avg Order" />
             <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Orders" />
           </View>
 
