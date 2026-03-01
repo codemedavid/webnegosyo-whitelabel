@@ -27,11 +27,14 @@ export async function POST(request: NextRequest) {
 
     // Fetch tenant's Convex credentials
     const supabase = createAdminClient();
-    const { data: tenant, error } = await supabase
+    const { data: tenantData, error } = await supabase
       .from("tenants")
       .select("convex_deployment_url, convex_deploy_key")
       .eq("id", tenantId)
       .single();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenant = tenantData as Record<string, any> | null;
 
     if (error || !tenant?.convex_deployment_url || !tenant?.convex_deploy_key) {
       return NextResponse.json(

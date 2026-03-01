@@ -177,7 +177,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       } else {
         setDeployStatus(`Deploy failed: ${result.error}`)
       }
-    } catch (error) {
+    } catch {
       setDeployStatus('Deploy failed: unexpected error')
     } finally {
       setIsDeploying(false)

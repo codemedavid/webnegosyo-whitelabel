@@ -451,6 +451,6 @@ export async function createOrderConvex(
     })),
   })
 
-  return { order: { id: orderId }, orderToken: null }
+  return { order: { id: orderId }, orderToken: undefined }
 }
 

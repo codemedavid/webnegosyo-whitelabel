@@ -11,13 +11,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function deployConvexToTenantAction(tenantId: string) {
   const supabase = createAdminClient();
 
-  const { data: tenant, error } = await supabase
+  const { data, error } = await supabase
     .from("tenants")
     .select(
       "convex_deployment_url, convex_deploy_key, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, restaurant_address, restaurant_latitude, restaurant_longitude"
     )
     .eq("id", tenantId)
     .single();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tenant = data as Record<string, any> | null;
 
   if (error || !tenant?.convex_deployment_url || !tenant?.convex_deploy_key) {
     return { success: false, error: "Missing Convex credentials" };
@@ -81,12 +84,14 @@ export async function deployConvexToTenantAction(tenantId: string) {
   }
 
   // Update schema version and enable app
+  const updatePayload = {
+    convex_schema_version: CURRENT_SCHEMA_VERSION,
+    app_enabled: true,
+  };
   await supabase
     .from("tenants")
-    .update({
-      convex_schema_version: CURRENT_SCHEMA_VERSION,
-      app_enabled: true,
-    })
+    // @ts-expect-error - Supabase type inference issue with update
+    .update(updatePayload)
     .eq("id", tenantId);
 
   return { success: true, schemaVersion: CURRENT_SCHEMA_VERSION };
@@ -95,7 +100,7 @@ export async function deployConvexToTenantAction(tenantId: string) {
 export async function bulkDeployConvexAction() {
   const supabase = createAdminClient();
 
-  const { data: tenants } = await supabase
+  const { data } = await supabase
     .from("tenants")
     .select(
       "id, convex_deployment_url, convex_deploy_key, convex_schema_version"
@@ -103,6 +108,8 @@ export async function bulkDeployConvexAction() {
     .not("convex_deployment_url", "is", null)
     .not("convex_deploy_key", "is", null)
     .lt("convex_schema_version", CURRENT_SCHEMA_VERSION);
+
+  const tenants = data as Array<{ id: string }> | null;
 
   if (!tenants?.length) {
     return { success: true, updated: 0, errors: [] as string[] };

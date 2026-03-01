@@ -82,11 +82,14 @@ export async function createOrderAction(
   try {
     // Check if tenant has Convex configured
     const supabaseAdmin = createAdminClient()
-    const { data: tenantConfig } = await supabaseAdmin
+    const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
       .select('convex_deployment_url, convex_deploy_key')
       .eq('id', tenantId)
       .single()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenantConfig = tenantConfigData as Record<string, any> | null
 
     if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
       // Route to Convex
