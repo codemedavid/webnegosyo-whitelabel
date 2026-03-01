@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // Configure how notifications appear when app is in foreground
@@ -45,7 +46,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
     });
   }
 
-  // Get the Expo push token
-  const tokenData = await Notifications.getExpoPushTokenAsync();
+  // Get the Expo push token — projectId required in Expo Go / bare workflow
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  if (!projectId) {
+    console.log("No EAS projectId found — push tokens require an EAS project. Skipping.");
+    return null;
+  }
+
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
   return tokenData.data;
 }

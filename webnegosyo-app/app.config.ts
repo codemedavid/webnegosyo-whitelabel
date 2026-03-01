@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   splash: {
     image: "./assets/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#111111",
+    backgroundColor: "#F2F2F7",
   },
   ios: {
     supportsTablet: true,
@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: "./assets/adaptive-icon.png",
+      foregroundImage: "./assets/android-icon-foreground.png",
       backgroundColor: "#111111",
     },
     package: "com.webnegosyo.admin",
