@@ -3,6 +3,7 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrdersByTenant } from '@/lib/orders-service'
 import { RealtimeOrdersWrapper } from '@/components/admin/realtime-orders-wrapper'
+import { ConvexOrdersWrapper } from '@/components/admin/convex-orders-wrapper'
 import { OrdersSkeleton } from '@/components/admin/orders-skeleton'
 import type { Tenant } from '@/types/database'
 import type { PaginatedOrdersResult } from '@/lib/orders-service'
@@ -68,6 +69,30 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
   const page = parseInt(searchParamsData.page || '1', 10)
   const status = searchParamsData.status
   const orderType = searchParamsData.orderType
+
+  // If tenant has Convex configured, use Convex-powered orders with real-time subscriptions
+  if (tenant.convex_deployment_url) {
+    return (
+      <div className="space-y-6">
+        <Breadcrumbs
+          items={[
+            { label: 'Dashboard', href: `/${tenantSlug}/admin` },
+            { label: 'Orders' },
+          ]}
+        />
+
+        <div>
+          <h1 className="text-3xl font-bold">Orders</h1>
+          <p className="text-muted-foreground">Manage customer orders</p>
+        </div>
+
+        <ConvexOrdersWrapper
+          convexUrl={tenant.convex_deployment_url}
+          tenantSlug={tenantSlug}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
