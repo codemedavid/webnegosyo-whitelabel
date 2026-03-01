@@ -1,15 +1,18 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
 
 export default function IndexScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>WebNegosyo Admin</Text>
-      <Text>Redirecting...</Text>
+      <ActivityIndicator size="large" color="#4F46E5" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 8 },
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#111",
+  },
 });
