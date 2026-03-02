@@ -16,21 +16,40 @@ const COMMANDS = {
   FEED: `${ESC}d\x03`,       // Feed 3 lines
 };
 
+// Native module availability flag
+// react-native-esc-pos-printer requires a development build with native modules.
+// In Expo Go, the native TurboModule won't exist so we disable printer features.
 let printerModule: any = null;
+let printerAvailable: boolean | null = null;
 
-async function getPrinterModule() {
-  if (!printerModule) {
-    try {
-      printerModule = require("react-native-esc-pos-printer");
-    } catch {
-      return null;
+function checkPrinterAvailable(): boolean {
+  if (printerAvailable !== null) return printerAvailable;
+  try {
+    // Check if the native module is registered before requiring it
+    const { TurboModuleRegistry } = require("react-native");
+    const nativeModule = TurboModuleRegistry.get("EscPosPrinter");
+    if (!nativeModule) {
+      printerAvailable = false;
+      return false;
     }
+    printerModule = require("react-native-esc-pos-printer");
+    printerAvailable = true;
+    return true;
+  } catch {
+    printerAvailable = false;
+    return false;
   }
+}
+
+function getPrinterModule() {
+  if (!checkPrinterAvailable()) return null;
   return printerModule;
 }
 
+const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not available in Expo Go.";
+
 export async function discoverBluetoothPrinters(): Promise<Array<{ name: string; address: string }>> {
-  const mod = await getPrinterModule();
+  const mod = getPrinterModule();
   if (!mod) return [];
 
   try {
@@ -46,9 +65,9 @@ export async function discoverBluetoothPrinters(): Promise<Array<{ name: string;
 }
 
 export async function connectPrinter(type: "bluetooth" | "network", address: string): Promise<boolean> {
-  const mod = await getPrinterModule();
+  const mod = getPrinterModule();
   if (!mod) {
-    Alert.alert("Printer Error", "Printer module not available. Please rebuild the app with native modules.");
+    Alert.alert("Printer Not Available", NOT_AVAILABLE_MSG);
     return false;
   }
 
@@ -69,7 +88,7 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
 }
 
 export async function disconnectPrinter(): Promise<void> {
-  const mod = await getPrinterModule();
+  const mod = getPrinterModule();
   if (!mod) return;
   try {
     await mod.default.disconnect();
@@ -80,7 +99,7 @@ export async function disconnectPrinter(): Promise<void> {
 }
 
 export async function printReceipt(receiptText: string): Promise<boolean> {
-  const mod = await getPrinterModule();
+  const mod = getPrinterModule();
   if (!mod) return false;
 
   const { printer, isConnected } = usePrinterStore.getState();
@@ -121,4 +140,8 @@ export async function printTestPage(): Promise<boolean> {
   ].join("\n");
 
   return printReceipt(testReceipt);
+}
+
+export function isPrinterSupported(): boolean {
+  return checkPrinterAvailable();
 }

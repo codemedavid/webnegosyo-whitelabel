@@ -12,6 +12,7 @@ import {
   connectPrinter,
   disconnectPrinter,
   printTestPage,
+  isPrinterSupported,
 } from "../../lib/printer";
 
 interface DiscoveredPrinter {
@@ -29,7 +30,13 @@ export default function PrinterSettingsScreen() {
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  const printerSupported = isPrinterSupported();
+
   const handleScan = async () => {
+    if (!printerSupported) {
+      Alert.alert("Not Available", "Printer requires a development build. Not available in Expo Go.");
+      return;
+    }
     setScanning(true);
     const printers = await discoverBluetoothPrinters();
     setDiscovered(printers);
@@ -89,6 +96,14 @@ export default function PrinterSettingsScreen() {
       </TouchableOpacity>
 
       <Text style={styles.title}>Printer Settings</Text>
+
+      {!printerSupported && (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningText}>
+            Printer features require a development build. Settings can be configured but printing won't work in Expo Go.
+          </Text>
+        </View>
+      )}
 
       <Card style={styles.section}>
         <View style={styles.statusRow}>
@@ -261,5 +276,18 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.separator,
+  },
+  warningBanner: {
+    backgroundColor: "#FFF3CD",
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: "#FFECB5",
+  },
+  warningText: {
+    ...typography.caption,
+    color: "#856404",
+    textAlign: "center",
   },
 });
