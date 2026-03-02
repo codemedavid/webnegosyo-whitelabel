@@ -8,6 +8,10 @@ import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
+import { usePrinterStore } from "../../../stores/printer-store";
+import { printReceipt } from "../../../lib/printer";
+import { formatReceipt } from "../../../lib/receipt-formatter";
+import { useAuthStore } from "../../../stores/auth-store";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -118,11 +122,22 @@ export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const tenantName = useAuthStore((s) => s.tenantName);
+  const { autoPrint, printer } = usePrinterStore();
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
     try {
       await updateStatus({ orderId: order._id, status: newStatus });
+
+      // Auto-print receipt on confirm
+      if (newStatus === "confirmed" && autoPrint && printer) {
+        const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
+        const printed = await printReceipt(receipt);
+        if (!printed) {
+          Alert.alert("Print Warning", "Order confirmed but receipt could not be printed.");
+        }
+      }
     } catch {
       Alert.alert("Error", "Failed to update status");
     }
@@ -257,6 +272,21 @@ export default function OrderDetailScreen() {
               </Text>
             </TouchableOpacity>
           )}
+          {order.status !== "pending" && order.status !== "cancelled" && printer && (
+            <TouchableOpacity
+              style={styles.reprintButton}
+              onPress={async () => {
+                const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
+                const printed = await printReceipt(receipt);
+                if (!printed) {
+                  Alert.alert("Print Failed", "Could not print receipt.");
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.reprintText}>Reprint Receipt</Text>
+            </TouchableOpacity>
+          )}
           {order.status !== "delivered" && order.status !== "cancelled" && (
             <TouchableOpacity
               onPress={() => {
@@ -299,6 +329,17 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: "#FFFFFF", ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  reprintButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  reprintText: {
+    color: colors.primary,
+    ...typography.heading,
+  },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",

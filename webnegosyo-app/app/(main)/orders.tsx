@@ -8,6 +8,7 @@ import { Badge } from "../../components/Badge";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+import { usePrinterStore } from "../../stores/printer-store";
 
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -54,10 +55,14 @@ export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, filter === "all" ? {} : { status: filter });
   const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const { autoPrint, printer } = usePrinterStore();
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       await updateStatus({ orderId, status: newStatus });
+      if (newStatus === "confirmed" && autoPrint && printer) {
+        Alert.alert("Order Confirmed", "Open order details to print receipt.");
+      }
     } catch {
       Alert.alert("Error", "Failed to update order status");
     }
