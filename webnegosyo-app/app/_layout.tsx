@@ -1,15 +1,13 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { Stack, router } from "expo-router";
+import { Stack, router, useRootNavigationState } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
+import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications } from "../lib/notifications";
 
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isLoading = useAuthStore((s) => s.isLoading);
-  const convexUrl = useAuthStore((s) => s.convexUrl);
+function useAuthInit() {
   const setAuth = useAuthStore((s) => s.setAuth);
 
   useEffect(() => {
@@ -57,18 +55,31 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       }
     });
   }, [setAuth]);
+}
+
+function useAuthRedirect() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+
+  const rootNavigationState = useRootNavigationState();
+  const navigatorReady = rootNavigationState?.key != null;
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !navigatorReady) return;
 
     if (isAuthenticated) {
       router.replace("/(main)/dashboard");
     } else {
       router.replace("/(auth)/login");
     }
-  }, [isLoading, isAuthenticated, convexUrl]);
+  }, [isLoading, isAuthenticated, convexUrl, navigatorReady]);
+}
 
-  // Register push token when authenticated and Convex is available
+function usePushNotifications() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+
   useEffect(() => {
     if (!isAuthenticated || !convexUrl) return;
 
@@ -96,20 +107,25 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       }
     });
   }, [isAuthenticated, convexUrl]);
-
-  return <>{children}</>;
 }
 
 export default function RootLayout() {
+  useAuthInit();
+  useAuthRedirect();
+  usePushNotifications();
+
+  // Load saved printer config on app start
+  useEffect(() => {
+    usePrinterStore.getState().loadSaved();
+  }, []);
+
   return (
     <ConvexAuthProvider>
-      <AuthGate>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(main)" />
-        </Stack>
-      </AuthGate>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(main)" />
+      </Stack>
     </ConvexAuthProvider>
   );
 }
