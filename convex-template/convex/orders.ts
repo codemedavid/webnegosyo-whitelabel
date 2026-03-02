@@ -255,3 +255,43 @@ export const getDashboardStats = query({
     };
   },
 });
+
+export const getDashboardStatsByPeriod = query({
+  args: {
+    startDate: v.number(),
+    endDate: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const allOrders = await ctx.db
+      .query("orders")
+      .order("desc")
+      .collect();
+
+    const filtered = allOrders.filter(
+      (o) => o._creationTime >= args.startDate && o._creationTime <= args.endDate
+    );
+
+    const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
+    const avgOrderValue = filtered.length > 0 ? totalRevenue / filtered.length : 0;
+
+    const statusCounts: Record<string, number> = {
+      pending: 0,
+      confirmed: 0,
+      preparing: 0,
+      ready: 0,
+      delivered: 0,
+      cancelled: 0,
+    };
+
+    for (const order of filtered) {
+      statusCounts[order.status]++;
+    }
+
+    return {
+      totalOrders: filtered.length,
+      totalRevenue,
+      avgOrderValue,
+      statusCounts,
+    };
+  },
+});
