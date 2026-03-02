@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
+import { usePrinterStore } from "../../stores/printer-store";
 import { supabase } from "../../lib/supabase";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
@@ -12,9 +13,11 @@ import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { Badge } from "../../components/Badge";
 import { useOrderAlerts } from "../../hooks/useOrderAlerts";
+import { PeriodSelector } from "../../components/PeriodSelector";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
 
 interface DashboardStats {
   totalOrders: number;
@@ -33,6 +36,42 @@ interface QueueOrder {
   status: string;
 }
 
+const DASHBOARD_PERIODS = [
+  { label: "Today", value: "today" },
+  { label: "Yesterday", value: "yesterday" },
+  { label: "This Week", value: "this_week" },
+  { label: "This Month", value: "this_month" },
+  { label: "This Year", value: "this_year" },
+];
+
+function getDateRange(period: string): { startDate: number; endDate: number } {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+  switch (period) {
+    case "yesterday": {
+      const start = todayStart - 24 * 60 * 60 * 1000;
+      return { startDate: start, endDate: todayStart - 1 };
+    }
+    case "this_week": {
+      const dayOfWeek = now.getDay();
+      const start = todayStart - dayOfWeek * 24 * 60 * 60 * 1000;
+      return { startDate: start, endDate: todayEnd };
+    }
+    case "this_month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      return { startDate: start, endDate: todayEnd };
+    }
+    case "this_year": {
+      const start = new Date(now.getFullYear(), 0, 1).getTime();
+      return { startDate: start, endDate: todayEnd };
+    }
+    default:
+      return { startDate: todayStart, endDate: todayEnd };
+  }
+}
+
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -44,12 +83,27 @@ export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const clear = useAuthStore((s) => s.clear);
+  const { isConnected, loadSaved } = usePrinterStore();
+
+  const [period, setPeriod] = useState("today");
+  const dateRange = useMemo(() => getDateRange(period), [period]);
 
   const { data: stats, isLoading, error: statsError } = useSafeQuery<DashboardStats>(getDashboardStatsRef);
+  const { data: periodStats, isLoading: periodLoading } = useSafeQuery<DashboardStats>(
+    getDashboardStatsByPeriodRef,
+    period !== "today" ? dateRange : "skip"
+  );
   const { data: queue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+
+  const displayStats = period === "today" ? stats : periodStats;
+  const isStatsLoading = period === "today" ? isLoading : periodLoading;
 
   // Alert on new pending orders
   useOrderAlerts({ orders: queue?.pending, enabled: !!convexUrl });
+
+  useEffect(() => {
+    loadSaved();
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -67,9 +121,18 @@ export default function DashboardScreen() {
             <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => router.push("/(main)/printer-settings")}
+              style={styles.printerButton}
+            >
+              <Text style={{ fontSize: 20 }}>🖨</Text>
+              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <ErrorState
           message={error ?? "Convex is not configured for this tenant. Please contact support."}
@@ -97,21 +160,31 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/printer-settings")}
+            style={styles.printerButton}
+          >
+            <Text style={{ fontSize: 20 }}>🖨</Text>
+            <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {isLoading ? (
+      {isStatsLoading ? (
         <LoadingState message="Loading dashboard..." />
       ) : (
         <>
+          <PeriodSelector periods={DASHBOARD_PERIODS} selected={period} onSelect={setPeriod} />
           <View style={styles.statsRow}>
-            <StatCard value={stats?.totalOrders ?? 0} label="Orders Today" />
-            <StatCard value={`₱${(stats?.totalRevenue ?? 0).toFixed(0)}`} label="Revenue" />
+            <StatCard value={displayStats?.totalOrders ?? 0} label={period === "today" ? "Orders Today" : "Total Orders"} />
+            <StatCard value={`₱${(displayStats?.totalRevenue ?? 0).toFixed(0)}`} label="Revenue" />
           </View>
           <View style={styles.statsRow}>
-            <StatCard value={`₱${(stats?.avgOrderValue ?? 0).toFixed(0)}`} label="Avg Order" />
+            <StatCard value={`₱${(displayStats?.avgOrderValue ?? 0).toFixed(0)}`} label="Avg Order" />
             <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Orders" />
           </View>
 
@@ -180,4 +253,7 @@ const styles = StyleSheet.create({
   orderTotal: { ...typography.heading, color: colors.primary },
   orderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
   orderMetaText: { ...typography.caption, color: colors.textSecondary },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  printerButton: { position: "relative", padding: spacing.sm },
+  printerDot: { position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4 },
 });

@@ -55,6 +55,10 @@ export default function MainLayout() {
         name="order/[orderId]"
         options={{ href: null, title: "Order Detail" }}
       />
+      <Tabs.Screen
+        name="printer-settings"
+        options={{ href: null, title: "Printer Settings" }}
+      />
     </Tabs>
   );
 }
