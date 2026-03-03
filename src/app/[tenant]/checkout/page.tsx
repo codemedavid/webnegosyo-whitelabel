@@ -13,6 +13,7 @@ import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
 import { createOrderAction } from '@/app/actions/orders'
+import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import { toast } from 'sonner'
@@ -384,6 +385,7 @@ export default function CheckoutPage() {
             price: itemPrice,
             subtotal: item.subtotal,
             special_instructions: item.special_instructions,
+            ...(item.upsellSource ? { isUpsellItem: true } : {}),
           }
         })
 
@@ -417,7 +419,23 @@ export default function CheckoutPage() {
           orderResult = result
 
           if (result.success) {
-            // Order created successfully
+            // Track upsell conversions if any cart items came from upsell modals
+            const upsellItems = items.filter(i => i.upsellSource)
+            if (upsellItems.length > 0) {
+              const sourceBreakdown: Record<string, number> = {}
+              let upsellRevenue = 0
+              for (const ui of upsellItems) {
+                const src = ui.upsellSource!
+                sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1
+                upsellRevenue += ui.subtotal
+              }
+              trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
+                orderId: result.data?.id,
+                upsellItemCount: upsellItems.length,
+                upsellRevenue,
+                sources: sourceBreakdown,
+              })
+            }
           } else {
             console.warn('Order creation failed:', result.error)
             toast.warning('Order creation failed, but proceeding to Messenger...')

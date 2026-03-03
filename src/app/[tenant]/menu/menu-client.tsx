@@ -84,14 +84,14 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
     const tenantId = tenant.id
 
     async function checkAdminRole() {
-      // Gate behind session check first to avoid unnecessary DB queries for anonymous visitors
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
+      // Use getUser() for server-verified auth (getSession reads unverified local JWT)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
       const { data: role } = await supabase
         .from('app_users')
         .select('role, tenant_id')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .maybeSingle()
 
       if (isCancelled) return

@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(challenge, { status: 200 })
   }
 
-  console.error('[Webhook] Verification failed', { mode, token, expected: verifyToken })
+  console.error('[Webhook] Verification failed', { mode, tokenProvided: !!token })
   return new NextResponse('Forbidden', { status: 403 })
 }
 

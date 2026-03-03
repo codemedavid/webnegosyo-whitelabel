@@ -59,13 +59,14 @@ async function initLalamoveClient(tenant: Tenant) {
   const SDKClient = await getLalamoveSDK()
   const environment = tenant.lalamove_sandbox ? 'sandbox' : 'production'
   
-  console.log('[Lalamove] Initializing client:', {
-    environment,
-    hasApiKey: !!tenant.lalamove_api_key,
-    hasSecretKey: !!tenant.lalamove_secret_key,
-    apiKeyPrefix: tenant.lalamove_api_key.substring(0, 8) + '...',
-    market: tenant.lalamove_market,
-  })
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Lalamove] Initializing client:', {
+      environment,
+      hasApiKey: !!tenant.lalamove_api_key,
+      hasSecretKey: !!tenant.lalamove_secret_key,
+      market: tenant.lalamove_market,
+    })
+  }
   
   return new SDKClient.ClientModule(
     new SDKClient.Config(
@@ -100,14 +101,16 @@ export async function createLalamoveQuotation(
     const market = tenant.lalamove_market || 'HK'
     const service = serviceType || tenant.lalamove_service_type || 'MOTORCYCLE'
 
-    console.log('[Lalamove] Creating quotation:', {
-      market,
-      service,
-      pickupAddress,
-      deliveryAddress,
-      pickupCoords: pickupCoordinates,
-      deliveryCoords: deliveryCoordinates,
-    })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Lalamove] Creating quotation:', {
+        market,
+        service,
+        pickupAddress,
+        deliveryAddress,
+        pickupCoords: pickupCoordinates,
+        deliveryCoords: deliveryCoordinates,
+      })
+    }
 
     // Build stops array (pickup + delivery)
     const stop1: LalamoveStop = {
@@ -135,7 +138,9 @@ export async function createLalamoveQuotation(
       .withStops([stop1, stop2])
       .build()
 
-    console.log('[Lalamove] Quotation payload:', JSON.stringify(quotationPayload, null, 2))
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Lalamove] Quotation payload:', JSON.stringify(quotationPayload, null, 2))
+    }
 
     // Create quotation
     const quotation = await client.Quotation.create(
@@ -143,7 +148,9 @@ export async function createLalamoveQuotation(
       quotationPayload
     )
 
-    console.log('[Lalamove] Quotation created:', quotation.id)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Lalamove] Quotation created:', quotation.id)
+    }
 
     return {
       quotationId: quotation.id,

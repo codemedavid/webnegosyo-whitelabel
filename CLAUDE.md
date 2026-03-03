@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-tenant restaurant ordering SaaS platform ("WebNegosyo"). Merchants create white-labeled online menus; customers order via the web and orders are sent to the merchant's Facebook Messenger. Built with Next.js 15 App Router, Supabase, and TypeScript.
+Multi-tenant restaurant ordering SaaS platform ("WebNegosyo"). Merchants create white-labeled online menus; customers order via the web and orders are sent to the merchant's Facebook Messenger. Built with Next.js 15 App Router, Supabase, Convex, and TypeScript. The platform includes a Next.js web app, a white-labeled customer mobile app, and a merchant admin mobile app.
 
 ## Commands
 
@@ -39,6 +39,7 @@ The entire app is multi-tenant. Tenant resolution happens in `src/middleware.ts`
 - `src/app/[tenant]/admin/` — Tenant admin dashboard (protected)
 - `src/app/[tenant]/login/` — Tenant admin login
 - `src/app/superadmin/` — Platform admin (protected, requires `superadmin` role)
+- `src/app/[tenant]/admin/menu-engineering/` — Menu engineering dashboard (BCG matrix, upsell pairs, checkout upsell settings)
 - `src/app/api/` — API routes (webhooks, messenger, facebook OAuth, AI parsing)
 
 ### Authentication & Authorization
@@ -73,13 +74,94 @@ Menu items support two variation formats:
 
 Cart utilities in `src/lib/cart-utils.ts` handle both formats.
 
+### Menu Engineering & Upsell System
+
+Menu engineering is a feature-flagged system (`menu_engineering_enabled` + `checkout_upsell_enabled`) that enables BCG matrix classification, upsell pairs, bundles, and checkout interstitials.
+
+**BCG Matrix Classification** (`src/lib/menu-engineering-service.ts`):
+- Each `MenuItem` has a `bcg_classification`: `star | plowhorse | puzzle | dog | unclassified`
+- Admin dashboard at `/[tenant]/admin/menu-engineering` with 2x2 quadrant visual, bulk classify, and per-item dropdowns
+- `badge_text` field renders as an overlay pill on card templates when `menuEngineeringEnabled` is true
+
+**Upsell Pairs** (`upsell_pairs` table):
+- Two pair types: `complementary` (post-add-to-cart suggestion) and `upgrade` (pre-add side-by-side comparison)
+- `UpsellSuggestionModal` — shown after adding an item, displays complementary items
+- `UpgradeUpsellModal` — shown before adding, side-by-side comparison with animated arrow
+
+**Checkout Interstitial** (`src/components/customer/checkout-upsell-modal.tsx`):
+- Triggered on "Checkout" click from cart. Bottom sheet on mobile, centered modal on desktop.
+- 4-tier priority waterfall: manually-flagged items → complementary pairs → BCG star items → any available items
+- Tracks analytics: `upsell_shown`, `upsell_clicked`, `upsell_converted`
+- Customizable branding via 7 `checkout_modal_*` tenant color fields
+- Preview mode available for admin settings sidebar
+
+**Bundles** (`src/lib/bundles-service.ts`, `src/components/customer/bundles-section.tsx`):
+- `bundles` + `bundle_items` tables. Pricing types: `fixed` or `discount` (percentage off)
+- `BundlesSection` renders above menu categories with savings badges and 2x2 thumbnail grids
+- `BundleCustomizationModal` — per-item variation/addon selection before adding bundle to cart
+- `BundleUpsellModal` — suggests a bundle when adding a single item that belongs to one
+- `show_on_menu` and `show_as_upsell` are independent toggles per bundle
+- Gated by `bundles_enabled` per-tenant flag
+
+### Convex (Real-Time Backend)
+
+Convex serves as a secondary real-time backend alongside Supabase. Each tenant optionally has a `convex_deployment_url`.
+
+- **Template**: `convex-template/convex/` — deployable per-tenant Convex backend
+- **Schema**: `orders`, `orderItems`, `analyticsEvents`, `dailyStats`, `tenantConfig`, `pushTokens`
+- **Orders**: Real-time order queue (`getRealtimeQueue`), dashboard stats, status management. Web admin falls back to Supabase Realtime if no Convex URL is set.
+- **Analytics**: `trackEvent` mutation, `getUpsellAnalytics`, `getBundleAnalytics`, `getTopItems`, `getTrends` queries
+- **Notifications**: `sendOrderNotification` pushes to Expo Push API on new orders
+- **Lalamove**: `bookLalamove` action calls Lalamove v3 REST API directly from Convex
+- **Cron**: Daily stats aggregation at 23:59 UTC via `statsAggregator.aggregateToday`
+- **Web wrapper**: `src/components/admin/convex-orders-wrapper.tsx` wraps `ConvexProvider` per tenant
+- **Client hook**: `src/hooks/use-analytics.ts` buffers events and flushes to Convex every 5 seconds
+- **Graceful degradation**: If `convex_deployment_url` is null, analytics and Convex features no-op silently
+
+### Real-Time Orders (Web Admin)
+
+- `src/hooks/use-realtime-orders.ts` — Supabase Realtime subscription for `orders` table (INSERT + UPDATE)
+- `src/components/admin/realtime-orders-wrapper.tsx` — Plays chime, fires browser notification, shows toast on new orders. Green pulse dot indicates live connection.
+- `src/lib/notification-utils.ts` — Web Audio API two-tone chime, browser Notification API with `requireInteraction: true`
+- Orders page (`admin/orders/page.tsx`) routes to `ConvexOrdersWrapper` if Convex is configured, otherwise `RealtimeOrdersWrapper`
+
+### Mobile Apps
+
+**Customer App** (`mobile/`):
+- Expo SDK 54 / React Native 0.81.5 with Expo Router (Stack navigation)
+- White-labeled per tenant — each merchant gets their own branded build (name, icon, splash, colors)
+- Screens: home, menu (category sidebar + grid), item detail, cart, checkout, order confirmation, order status
+- State: Zustand stores (cart, order, app, customer history) + React Query for server data
+- Theme: `theme/provider.tsx` applies tenant branding via ported `src/lib/branding-utils.ts`
+- Build: `scripts/build-tenant.ts` fetches tenant → generates icons via Sharp → EAS Build
+- CI: `.github/workflows/build-tenant.yml` (workflow_dispatch)
+
+**Merchant Admin App** (`webnegosyo-app/`):
+- Expo SDK 54 / React Native with Expo Router (Tab navigation)
+- Single app (`com.webnegosyo.admin`) shared by all merchants, tenant resolved via Supabase `app_users` lookup after login
+- Screens: dashboard (live order queue + daily stats), orders list, order detail, analytics (upsell/bundle), trends (revenue charts)
+- Uses Convex for real-time order data, Supabase for auth
+- Push notifications via `expo-notifications` + custom ringtone sound on new orders
+- `useOrderAlerts` hook for in-app new order alerts
+
+### Analytics
+
+Two-path architecture with graceful degradation:
+- **Server-side**: `src/app/actions/analytics.ts` dynamically creates a Convex client per-tenant and fires `analytics:trackEvent`
+- **Client-side**: `src/hooks/use-analytics.ts` buffers events in a ref array, flushes to Convex every 5 seconds
+- **Provider**: `src/components/customer/analytics-provider.tsx` wraps Convex; no-ops if `convex_deployment_url` is null
+- **Platform analytics**: `src/lib/queries/analytics-server.ts` queries Supabase directly for superadmin dashboard (`getTopActiveTenants`, `getTotalOrders`)
+
 ### Key Integrations
 
 - **Facebook Messenger**: Webhook at `/api/webhook`, OAuth at `/api/auth/facebook/`, sends orders/carts via `/api/messenger/`
 - **Cloudinary**: Image uploads (`src/lib/cloudinary-utils.ts`)
 - **Mapbox**: Address autocomplete and geocoding
-- **Lalamove**: Delivery service (`src/lib/lalamove-service.ts`)
+- **Lalamove**: Delivery service via `@lalamove/lalamove-js` SDK (`src/lib/lalamove-service.ts`). Quotation, booking, tracking, cancellation. Markets: PH, SG, HK, TH, TW, MY, VN.
 - **Upstash Redis**: Caching for webhooks (`src/lib/redis-cache.ts`)
+- **Sentry**: Error tracking and session replay. Server + edge + client instrumentation (`src/instrumentation.ts`, `src/instrumentation-client.ts`, `src/app/global-error.tsx`)
+- **AI Menu Parsing**: `POST /api/ai/parse-menu` — superadmin endpoint that sends raw menu text to NVIDIA API for structured extraction of categories, items, variations, and addons
+- **Expo Push**: Mobile push notifications via `exp.host/--/api/v2/push/send` (triggered from Convex on new orders)
 
 ### Component Organization
 
@@ -91,7 +173,18 @@ Cart utilities in `src/lib/cart-utils.ts` handle both formats.
 
 ### Tenant Branding
 
-Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, compact, bold.
+Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, compact, bold, glass, polaroid, brutalist, magazine, zen, neon.
+
+### Feature Flags
+
+Feature flags are per-tenant boolean columns on the `tenants` table, controlled by superadmin:
+- `menu_engineering_enabled` — Master toggle for BCG classification, badges, and upsell pairs
+- `checkout_upsell_enabled` — Secondary toggle for checkout interstitial (requires `menu_engineering_enabled`)
+- `bundles_enabled` — Bundle system (menu bundles + bundle upsell)
+- `mapbox_enabled` — Address autocomplete
+- `lalamove_enabled` — Delivery integration
+- `enable_order_management` — Admin order management features
+- `app_enabled` — Mobile app availability
 
 ## Code Conventions
 

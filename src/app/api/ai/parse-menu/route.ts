@@ -121,6 +121,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Menu text is required' }, { status: 400 })
         }
 
+        // Limit input size to prevent abuse (50KB should be more than enough for any menu)
+        const MAX_MENU_TEXT_LENGTH = 50000
+        if (menuText.length > MAX_MENU_TEXT_LENGTH) {
+            return NextResponse.json({ error: `Menu text too long. Maximum ${MAX_MENU_TEXT_LENGTH} characters allowed.` }, { status: 400 })
+        }
+
         // Get NVIDIA API key from environment
         const apiKey = process.env.NVIDIA_API_KEY
         if (!apiKey) {
@@ -230,21 +236,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
                 success: true,
                 data: parsedMenu,
-                rawResponse: aiContent // Include raw for debugging if needed
             })
         } catch (parseError) {
             console.error('[Parse Menu] JSON parse error:', parseError)
             console.error('[Parse Menu] Raw AI response:', aiContent)
             return NextResponse.json({
                 error: 'AI response was not valid JSON. Please try again.',
-                rawResponse: aiContent
             }, { status: 500 })
         }
 
     } catch (error) {
         console.error('[Parse Menu] Error:', error)
         return NextResponse.json({
-            error: error instanceof Error ? error.message : 'Failed to parse menu'
+            error: 'Failed to parse menu'
         }, { status: 500 })
     }
 }

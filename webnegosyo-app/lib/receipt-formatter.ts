@@ -74,10 +74,16 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
   for (const item of order.items ?? []) {
     const qtyStr = ` ${item.quantity}`;
     const priceStr = `P${item.subtotal.toFixed(2)}`;
-    const nameMaxLen = w - qtyStr.length - priceStr.length - 3;
-    const name = item.menuItemName.length > nameMaxLen
-      ? item.menuItemName.slice(0, nameMaxLen - 1) + "."
-      : item.menuItemName;
+    // Clamp nameMaxLen to prevent negative-length slices
+    const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 3);
+    let name: string;
+    if (nameMaxLen === 0) {
+      name = "";
+    } else if (item.menuItemName.length > nameMaxLen) {
+      name = nameMaxLen > 1 ? item.menuItemName.slice(0, nameMaxLen - 1) + "." : item.menuItemName.slice(0, nameMaxLen);
+    } else {
+      name = item.menuItemName;
+    }
 
     lines.push(leftRight(`${qtyStr}  ${name}`, priceStr, w));
     subtotal += item.subtotal;
@@ -104,13 +110,21 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
     }
   }
 
-  // Totals
+  // Totals — validate computed subtotal against order.total
+  const expectedTotal = subtotal + (order.deliveryFee ?? 0);
+  if (Math.abs(expectedTotal - order.total) > 0.01) {
+    console.warn(
+      `[Receipt] Subtotal mismatch: computed=${expectedTotal.toFixed(2)} vs order.total=${order.total.toFixed(2)} (order ${order._id})`
+    );
+  }
+
   lines.push(line("-", w));
   if (order.deliveryFee && order.deliveryFee > 0) {
     lines.push(leftRight("Subtotal:", `P${subtotal.toFixed(2)}`, w));
     lines.push(leftRight("Delivery Fee:", `P${order.deliveryFee.toFixed(2)}`, w));
   }
   lines.push(line("-", w));
+  // Always use order.total as the authoritative total
   lines.push(leftRight("TOTAL:", `P${order.total.toFixed(2)}`, w));
   if (order.paymentMethod) {
     lines.push(`Payment: ${order.paymentMethod}`);

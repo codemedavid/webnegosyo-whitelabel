@@ -1,4 +1,4 @@
-import { Alert, Platform } from "react-native";
+import { Platform, PermissionsAndroid } from "react-native";
 import { usePrinterStore } from "../stores/printer-store";
 
 // ESC/POS commands for text formatting
@@ -16,23 +16,29 @@ const COMMANDS = {
   FEED: `${ESC}d\x03`,       // Feed 3 lines
 };
 
+/** Structured result for printer operations — callers handle UI */
+export interface PrinterResult {
+  success: boolean;
+  error?: string;
+}
+
 // Native module availability flag
-// react-native-esc-pos-printer requires a development build with native modules.
-// In Expo Go, the native TurboModule won't exist so we disable printer features.
-let printerModule: any = null;
+// @haroldtran/react-native-thermal-printer requires a development build with native modules.
+// In Expo Go, the native modules won't exist so we disable printer features.
+let printerModule: { BLEPrinter: any; NetPrinter: any } | null = null;
 let printerAvailable: boolean | null = null;
+
+const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not available in Expo Go.";
 
 function checkPrinterAvailable(): boolean {
   if (printerAvailable !== null) return printerAvailable;
   try {
-    // Check if the native module is registered before requiring it
-    const { TurboModuleRegistry } = require("react-native");
-    const nativeModule = TurboModuleRegistry.get("EscPosPrinter");
-    if (!nativeModule) {
+    const mod = require("@haroldtran/react-native-thermal-printer");
+    if (!mod || (!mod.BLEPrinter && !mod.NetPrinter)) {
       printerAvailable = false;
       return false;
     }
-    printerModule = require("react-native-esc-pos-printer");
+    printerModule = mod;
     printerAvailable = true;
     return true;
   } catch {
@@ -46,17 +52,79 @@ function getPrinterModule() {
   return printerModule;
 }
 
-const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not available in Expo Go.";
+/**
+ * Request Bluetooth permissions required for printer scanning/connecting.
+ * Android 12+ requires BLUETOOTH_SCAN and BLUETOOTH_CONNECT.
+ * iOS permissions are handled via Info.plist entries by the library.
+ * Returns true if permissions granted, false otherwise.
+ */
+export async function requestBluetoothPermissions(): Promise<PrinterResult> {
+  if (Platform.OS === "ios") {
+    // iOS Bluetooth permissions are declared in Info.plist
+    // (NSBluetoothAlwaysUsageDescription, NSBluetoothPeripheralUsageDescription)
+    // and prompted automatically by the system when scanning starts.
+    return { success: true };
+  }
+
+  if (Platform.OS === "android") {
+    try {
+      // Android 12+ (API 31+) requires runtime Bluetooth permissions
+      const apiLevel = Platform.Version;
+      if (typeof apiLevel === "number" && apiLevel >= 31) {
+        const results = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        ]);
+
+        const scanGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === PermissionsAndroid.RESULTS.GRANTED;
+        const connectGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
+
+        if (!scanGranted || !connectGranted) {
+          return {
+            success: false,
+            error: "Bluetooth permissions are required to scan for printers. Please grant Bluetooth permissions in Settings.",
+          };
+        }
+      } else {
+        // Android < 12 requires location permission for Bluetooth scanning
+        const locationGranted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: "Location Permission",
+            message: "Location permission is required to scan for Bluetooth printers.",
+            buttonPositive: "OK",
+          }
+        );
+        if (locationGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+          return {
+            success: false,
+            error: "Location permission is required for Bluetooth scanning on this Android version.",
+          };
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: `Failed to request Bluetooth permissions: ${err?.message ?? "Unknown error"}`,
+      };
+    }
+  }
+
+  return { success: true };
+}
 
 export async function discoverBluetoothPrinters(): Promise<Array<{ name: string; address: string }>> {
   const mod = getPrinterModule();
   if (!mod) return [];
 
   try {
-    const devices = await mod.default.discover({ type: "bluetooth" });
+    await mod.BLEPrinter.init();
+    const devices = await mod.BLEPrinter.getDeviceList();
     return (devices ?? []).map((d: any) => ({
-      name: d.name || d.deviceName || "Unknown Printer",
-      address: d.address || d.macAddress,
+      name: d.device_name || d.name || "Unknown Printer",
+      address: d.inner_mac_address || d.address || d.macAddress,
     }));
   } catch (err: any) {
     console.warn("Bluetooth discovery failed:", err?.message);
@@ -64,26 +132,31 @@ export async function discoverBluetoothPrinters(): Promise<Array<{ name: string;
   }
 }
 
-export async function connectPrinter(type: "bluetooth" | "network", address: string): Promise<boolean> {
+/**
+ * Connect to a printer. Returns a structured result instead of calling Alert.alert,
+ * so callers can present the error in whatever UI they prefer.
+ */
+export async function connectPrinter(type: "bluetooth" | "network", address: string): Promise<PrinterResult> {
   const mod = getPrinterModule();
   if (!mod) {
-    Alert.alert("Printer Not Available", NOT_AVAILABLE_MSG);
-    return false;
+    return { success: false, error: NOT_AVAILABLE_MSG };
   }
 
   try {
     if (type === "bluetooth") {
-      await mod.default.connect({ type: "bluetooth", address });
+      await mod.BLEPrinter.init();
+      await mod.BLEPrinter.connectPrinter(address);
     } else {
       const [ip, port] = address.split(":");
-      await mod.default.connect({ type: "tcp", address: ip, port: parseInt(port || "9100", 10) });
+      await mod.NetPrinter.init();
+      await mod.NetPrinter.connectPrinter(ip, parseInt(port || "9100", 10));
     }
     usePrinterStore.getState().setConnected(true);
-    return true;
+    return { success: true };
   } catch (err: any) {
     console.warn("Printer connection failed:", err?.message);
     usePrinterStore.getState().setConnected(false);
-    return false;
+    return { success: false, error: err?.message ?? "Connection failed" };
   }
 }
 
@@ -91,7 +164,13 @@ export async function disconnectPrinter(): Promise<void> {
   const mod = getPrinterModule();
   if (!mod) return;
   try {
-    await mod.default.disconnect();
+    // closeConn works for both BLE and Net printers
+    await mod.BLEPrinter.closeConn();
+  } catch {
+    // Ignore disconnect errors — may already be disconnected
+  }
+  try {
+    await mod.NetPrinter.closeConn();
   } catch {
     // Ignore disconnect errors
   }
@@ -108,13 +187,17 @@ export async function printReceipt(receiptText: string): Promise<boolean> {
   try {
     // Reconnect if needed
     if (!isConnected) {
-      const connected = await connectPrinter(printer.type, printer.address);
-      if (!connected) return false;
+      const result = await connectPrinter(printer.type, printer.address);
+      if (!result.success) return false;
     }
 
     // Send text with ESC/POS formatting
     const data = COMMANDS.INIT + receiptText + COMMANDS.FEED + COMMANDS.CUT;
-    await mod.default.printText(data);
+    if (printer.type === "bluetooth") {
+      await mod.BLEPrinter.printText(data);
+    } else {
+      await mod.NetPrinter.printText(data);
+    }
     return true;
   } catch (err: any) {
     console.warn("Print failed:", err?.message);

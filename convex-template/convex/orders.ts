@@ -155,6 +155,9 @@ export const updateLalamoveDetailsInternal = internalMutation({
 
 // --- QUERIES ---
 
+// Safety cap for queries that load orders — prevents OOM on large datasets
+const QUERY_LIMIT = 10000;
+
 export const getOrders = query({
   args: {
     status: v.optional(
@@ -224,17 +227,17 @@ export const getDashboardStats = query({
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    const allOrders = await ctx.db
+    // Server-side filter: only fetch today's orders instead of loading all
+    const todayOrders = await ctx.db
       .query("orders")
+      .filter((q) => q.gte(q.field("_creationTime"), todayStart))
       .order("desc")
-      .collect();
-
-    const todayOrders = allOrders.filter((o) => o._creationTime >= todayStart);
+      .take(QUERY_LIMIT);
 
     const totalRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
     const avgOrderValue = todayOrders.length > 0 ? totalRevenue / todayOrders.length : 0;
 
-    const statusCounts = {
+    const statusCounts: Record<string, number> = {
       pending: 0,
       confirmed: 0,
       preparing: 0,
@@ -262,14 +265,17 @@ export const getDashboardStatsByPeriod = query({
     endDate: v.number(),
   },
   handler: async (ctx, args) => {
-    const allOrders = await ctx.db
+    // Server-side filter: push date range filtering into the query
+    const filtered = await ctx.db
       .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), args.startDate),
+          q.lte(q.field("_creationTime"), args.endDate)
+        )
+      )
       .order("desc")
-      .collect();
-
-    const filtered = allOrders.filter(
-      (o) => o._creationTime >= args.startDate && o._creationTime <= args.endDate
-    );
+      .take(QUERY_LIMIT);
 
     const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
     const avgOrderValue = filtered.length > 0 ? totalRevenue / filtered.length : 0;

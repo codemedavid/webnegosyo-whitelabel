@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, memo } from 'react'
+import { useState, memo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
+import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { MenuItem } from '@/types/database'
 
 interface UpsellSuggestionModalProps {
@@ -13,6 +14,8 @@ interface UpsellSuggestionModalProps {
   onAddItem: (item: MenuItem) => void
   suggestions: MenuItem[]
   triggerItemName: string
+  tenantId?: string
+  sourceItemId?: string
   /** Override z-index class for preview mode (renders above sidebar) */
   zIndexClass?: string
 }
@@ -74,15 +77,30 @@ function SuggestionCard({
   onAdd: () => void
 }) {
   const [isAdded, setIsAdded] = useState(false)
+  const addResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
-  const handleAdd = () => {
+  useEffect(() => {
+    return () => {
+      if (addResetTimeoutRef.current) {
+        clearTimeout(addResetTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleAdd = useCallback(() => {
     if (isAdded) return
     onAdd()
     setIsAdded(true)
-    setTimeout(() => setIsAdded(false), 900)
-  }
+    if (addResetTimeoutRef.current) {
+      clearTimeout(addResetTimeoutRef.current)
+    }
+    addResetTimeoutRef.current = setTimeout(() => {
+      setIsAdded(false)
+      addResetTimeoutRef.current = null
+    }, 900)
+  }, [isAdded, onAdd])
 
   return (
     <motion.div
@@ -183,8 +201,39 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
   onAddItem,
   suggestions,
   triggerItemName,
+  tenantId,
+  sourceItemId,
   zIndexClass = 'z-50',
 }: UpsellSuggestionModalProps) {
+  const shownTrackedRef = useRef(false)
+
+  useEffect(() => {
+    if (open && tenantId && suggestions.length > 0 && !shownTrackedRef.current) {
+      shownTrackedRef.current = true
+      trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+        source: 'suggestion',
+        itemCount: suggestions.length,
+        sourceItemId,
+      })
+    }
+    if (!open) {
+      shownTrackedRef.current = false
+    }
+  }, [open, tenantId, suggestions.length, sourceItemId])
+
+  const handleAddWithTracking = (item: MenuItem) => {
+    if (tenantId) {
+      trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
+        source: 'suggestion',
+        itemId: item.id,
+        itemName: item.name,
+        price: item.price,
+        sourceItemId,
+      })
+    }
+    onAddItem(item)
+  }
+
   if (suggestions.length === 0) return null
 
   return (
@@ -246,7 +295,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
                 animate="visible"
               >
                 {suggestions.map((item) => (
-                  <SuggestionCard key={item.id} item={item} onAdd={() => onAddItem(item)} />
+                  <SuggestionCard key={item.id} item={item} onAdd={() => handleAddWithTracking(item)} />
                 ))}
               </motion.div>
             </div>
@@ -308,7 +357,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
                   animate="visible"
                 >
                   {suggestions.map((item) => (
-                    <SuggestionCard key={item.id} item={item} onAdd={() => onAddItem(item)} />
+                    <SuggestionCard key={item.id} item={item} onAdd={() => handleAddWithTracking(item)} />
                   ))}
                 </motion.div>
               </div>

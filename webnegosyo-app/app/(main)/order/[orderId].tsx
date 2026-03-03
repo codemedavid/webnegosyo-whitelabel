@@ -8,10 +8,7 @@ import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
-import { usePrinterStore } from "../../../stores/printer-store";
-import { printReceipt } from "../../../lib/printer";
-import { formatReceipt } from "../../../lib/receipt-formatter";
-import { useAuthStore } from "../../../stores/auth-store";
+import { useOrderPrint } from "../../../hooks/useOrderPrint";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -122,22 +119,20 @@ export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const tenantName = useAuthStore((s) => s.tenantName);
-  const { autoPrint, printer } = usePrinterStore();
+  const { printOrder, autoPrint, hasPrinter } = useOrderPrint();
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
     try {
-      await updateStatus({ orderId: order._id, status: newStatus });
-
-      // Auto-print receipt on confirm
-      if (newStatus === "confirmed" && autoPrint && printer) {
-        const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
-        const printed = await printReceipt(receipt);
+      // When confirming with auto-print enabled, attempt print BEFORE updating status
+      if (newStatus === "confirmed" && autoPrint && hasPrinter) {
+        const printed = await printOrder(order);
         if (!printed) {
-          Alert.alert("Print Warning", "Order confirmed but receipt could not be printed.");
+          Alert.alert("Print Warning", "Receipt could not be printed. Order will still be confirmed.");
         }
       }
+
+      await updateStatus({ orderId: order._id, status: newStatus });
     } catch {
       Alert.alert("Error", "Failed to update status");
     }
@@ -272,12 +267,11 @@ export default function OrderDetailScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          {order.status !== "pending" && order.status !== "cancelled" && printer && (
+          {order.status !== "pending" && order.status !== "cancelled" && hasPrinter && (
             <TouchableOpacity
               style={styles.reprintButton}
               onPress={async () => {
-                const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
-                const printed = await printReceipt(receipt);
+                const printed = await printOrder(order);
                 if (!printed) {
                   Alert.alert("Print Failed", "Could not print receipt.");
                 }

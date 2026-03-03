@@ -561,7 +561,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [])
 
     const handleIncreaseQuantity = useCallback(() => {
-        setQuantity(prev => prev + 1)
+        setQuantity(prev => Math.min(prev + 1, 99))
     }, [])
 
     const toggleAddon = useCallback((addon: Addon) => {
@@ -605,7 +605,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     const handleUpgrade = useCallback((upgradeItem: MenuItem) => {
         // Original was never added — just add the upgrade item
-        addItem(upgradeItem, undefined, [], quantity)
+        addItem(upgradeItem, undefined, [], quantity, undefined, 'upgrade', item.id)
         toast.success(`Upgraded to ${upgradeItem.name}`)
         setIsUpgradeModalOpen(false)
         // After upgrade, check for complementary suggestions
@@ -614,7 +614,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         } else {
             router.back()
         }
-    }, [addItem, quantity, router, menuEngineeringEnabled, complementaryUpsells])
+    }, [addItem, quantity, router, menuEngineeringEnabled, complementaryUpsells, item.id])
 
     const handleUpsellClose = useCallback(() => {
         setIsUpsellModalOpen(false)
@@ -622,9 +622,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [router])
 
     const handleUpsellAddItem = useCallback((upsellItem: MenuItem) => {
-        addItem(upsellItem, undefined, [], 1)
+        addItem(upsellItem, undefined, [], 1, undefined, 'suggestion', item.id)
         toast.success(`Added ${upsellItem.name} to cart`)
-    }, [addItem])
+    }, [addItem, item.id])
 
     const handleVariationTypeSelect = useCallback((typeId: string, option: VariationOption) => {
         setSelectedVariations(prev => ({ ...prev, [typeId]: option }))
@@ -981,6 +981,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     onUpgrade={handleUpgrade}
                     sourceItem={item}
                     upgrade={upgradeUpsells[0]}
+                    tenantId={tenant.id}
                 />
             )}
 
@@ -992,6 +993,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     onAddItem={handleUpsellAddItem}
                     suggestions={complementaryUpsells}
                     triggerItemName={item.name}
+                    tenantId={tenant.id}
+                    sourceItemId={item.id}
                 />
             )}
 

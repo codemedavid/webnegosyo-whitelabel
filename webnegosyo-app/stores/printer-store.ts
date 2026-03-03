@@ -11,13 +11,19 @@ interface PrinterState {
   printer: PrinterConfig | null;
   isConnected: boolean;
   autoPrint: boolean;
-  setPrinter: (printer: PrinterConfig | null) => void;
+  // Async actions — callers should await these
+  setPrinter: (printer: PrinterConfig | null) => Promise<void>;
   setConnected: (connected: boolean) => void;
-  setAutoPrint: (auto: boolean) => void;
+  setAutoPrint: (auto: boolean) => Promise<void>;
   loadSaved: () => Promise<void>;
 }
 
+// Printer config storage key.
+// Security note: Printer config contains device identifiers (name, BT MAC address or IP:port)
+// which are not sensitive PII or secrets. AsyncStorage is appropriate here.
+// For truly sensitive data (tokens, passwords), use react-native-keychain or SecureStore instead.
 const STORAGE_KEY = "printer_config";
+const AUTO_PRINT_KEY = "auto_print";
 
 export const usePrinterStore = create<PrinterState>((set) => ({
   printer: null,
@@ -25,21 +31,29 @@ export const usePrinterStore = create<PrinterState>((set) => ({
   autoPrint: true,
   setPrinter: async (printer) => {
     set({ printer });
-    if (printer) {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(printer));
-    } else {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+    try {
+      if (printer) {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(printer));
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (err) {
+      console.warn("[PrinterStore] Failed to persist printer config:", err);
     }
   },
   setConnected: (isConnected) => set({ isConnected }),
   setAutoPrint: async (autoPrint) => {
     set({ autoPrint });
-    await AsyncStorage.setItem("auto_print", JSON.stringify(autoPrint));
+    try {
+      await AsyncStorage.setItem(AUTO_PRINT_KEY, JSON.stringify(autoPrint));
+    } catch (err) {
+      console.warn("[PrinterStore] Failed to persist autoPrint setting:", err);
+    }
   },
   loadSaved: async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      const autoPrint = await AsyncStorage.getItem("auto_print");
+      const autoPrint = await AsyncStorage.getItem(AUTO_PRINT_KEY);
       if (saved) {
         set({ printer: JSON.parse(saved) });
       }

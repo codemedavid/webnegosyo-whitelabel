@@ -17,6 +17,9 @@ import { PeriodSelector } from "../../components/PeriodSelector";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+// TODO: Replace double type assertion with proper Convex-generated function reference type
+// when the codegen pipeline is set up. This pattern is used throughout the app as a workaround
+// for the template architecture where generated types aren't available in the mobile app.
 const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
 
 interface DashboardStats {

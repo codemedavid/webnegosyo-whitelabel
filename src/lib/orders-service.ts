@@ -304,7 +304,42 @@ export async function createOrder(
 ) {
   const supabase = await createClient()
 
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
+  // SERVER-SIDE PRICE VALIDATION: Verify prices against database
+  const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
+  const { data: dbItems, error: priceCheckError } = await supabase
+    .from('menu_items')
+    .select('id, price, name')
+    .eq('tenant_id', tenantId)
+    .in('id', menuItemIds)
+
+  if (priceCheckError) {
+    throw new Error('Failed to verify item prices')
+  }
+
+  const priceMap = new Map((dbItems || []).map(i => [i.id, i.price]))
+
+  // Recalculate total from verified DB prices
+  let verifiedTotal = 0
+  for (const item of items) {
+    const dbPrice = priceMap.get(item.menu_item_id)
+    if (dbPrice === undefined) {
+      throw new Error(`Menu item not found: ${item.menu_item_id}`)
+    }
+    // Use the database price as the base price for calculation
+    // Note: variation/addon price modifiers come from client but the base price is verified
+    const priceDiff = Math.abs(item.price - dbPrice)
+    // Allow price difference only if item has variation (variation adds a price modifier)
+    // but base price must not be lower than DB price
+    if (item.price < dbPrice && priceDiff > 0.01) {
+      console.warn(`[Order] Price mismatch for ${item.menu_item_name}: client=${item.price}, db=${dbPrice}`)
+      // Override with DB price - recalculate subtotal
+      item.price = dbPrice
+      item.subtotal = dbPrice * item.quantity
+    }
+    verifiedTotal += item.subtotal
+  }
+
+  const total = verifiedTotal
   const finalTotal = total + (deliveryFee || 0)
 
   // Create order

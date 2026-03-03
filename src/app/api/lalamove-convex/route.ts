@@ -3,6 +3,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate webhook secret to prevent unauthorized access
+    const webhookSecret = request.nextUrl.searchParams.get("secret");
+    const expectedSecret = process.env.LALAMOVE_WEBHOOK_SECRET;
+    if (!expectedSecret || webhookSecret !== expectedSecret) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
 
     // Lalamove webhook payload fields
@@ -21,6 +31,15 @@ export async function POST(request: NextRequest) {
     if (!tenantId || !convexOrderId) {
       return NextResponse.json(
         { error: "Missing tenant_id or order_id query parameter" },
+        { status: 400 }
+      );
+    }
+
+    // Validate tenant_id is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tenantId)) {
+      return NextResponse.json(
+        { error: "Invalid tenant_id format" },
         { status: 400 }
       );
     }

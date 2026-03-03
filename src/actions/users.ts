@@ -31,6 +31,26 @@ export interface TenantUser {
  * Get all users for a specific tenant
  */
 export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
+  // Verify caller is authenticated and has superadmin role
+  const supabase = await createClient()
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) {
+    console.error('getTenantUsers: Unauthorized - not authenticated')
+    return []
+  }
+
+  const { data: roleData } = await supabase
+    .from('app_users')
+    .select('role')
+    .eq('user_id', currentUser.id)
+    .maybeSingle()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!roleData || (roleData as any).role !== 'superadmin') {
+    console.error('getTenantUsers: Unauthorized - not superadmin')
+    return []
+  }
+
   // Use admin client for consistent access
   const adminClient = createAdminClient()
 
@@ -46,10 +66,6 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
 
-  console.log('getTenantUsers - tenantId:', tenantId)
-  console.log('getTenantUsers - data:', data)
-  console.log('getTenantUsers - error:', error)
-
   if (error) {
     console.error('Error fetching tenant users:', error)
     return []
@@ -63,10 +79,8 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     return []
   }
 
+  // Only fetch users whose IDs match the tenant's app_users (not ALL auth users)
   const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
-  
-  console.log('Auth users count:', authUsers?.users.length)
-  console.log('Auth error:', authError)
 
   if (authError || !authUsers) {
     console.error('Error fetching auth users:', authError)
@@ -86,7 +100,6 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     created_at: user.created_at,
   }))
 
-  console.log('Returning users:', result)
   return result
 }
 
@@ -98,70 +111,86 @@ export async function createTenantUser(input: {
   password: string
   tenant_id: string
 }) {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  // Validate input
-  const parsed = createUserSchema.parse(input)
+    // Validate input
+    const parsed = createUserSchema.parse(input)
 
-  // Verify current user is superadmin
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
-  if (!currentUser) {
-    return { error: 'Unauthorized: Not authenticated' }
-  }
-
-  const { data: roleData } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', currentUser.id)
-    .maybeSingle()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!roleData || (roleData as any).role !== 'superadmin') {
-    return { error: 'Unauthorized: Only superadmins can create users' }
-  }
-
-  // Create auth user using admin client
-  const adminClient = createAdminClient()
-  const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-    email: parsed.email,
-    password: parsed.password,
-    email_confirm: true,
-  })
-
-  if (authError) {
-    return { error: authError.message }
-  }
-
-  if (!authData.user) {
-    return { error: 'Failed to create user' }
-  }
-
-  // Create app_users entry using admin client
-  const { error: appUserError } = await adminClient
-    .from('app_users')
-    .insert({
-      user_id: authData.user.id,
-      role: 'admin',
-      tenant_id: parsed.tenant_id,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)
-
-  if (appUserError) {
-    // Cleanup: delete auth user if app_users insert fails
-    await adminClient.auth.admin.deleteUser(authData.user.id)
-    return { error: appUserError.message }
-  }
-
-  // Revalidate pages
-  revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
-  revalidatePath('/superadmin/tenants')
-
-  return { 
-    success: true, 
-    user: {
-      user_id: authData.user.id,
-      email: authData.user.email || '',
+    // Verify current user is superadmin
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (!currentUser) {
+      return { error: 'Unauthorized: Not authenticated' }
     }
+
+    const { data: roleData } = await supabase
+      .from('app_users')
+      .select('role')
+      .eq('user_id', currentUser.id)
+      .maybeSingle()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!roleData || (roleData as any).role !== 'superadmin') {
+      return { error: 'Unauthorized: Only superadmins can create users' }
+    }
+
+    // Create auth user using admin client
+    const adminClient = createAdminClient()
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: parsed.email,
+      password: parsed.password,
+      email_confirm: true,
+    })
+
+    if (authError) {
+      return { error: authError.message }
+    }
+
+    if (!authData.user) {
+      return { error: 'Failed to create user' }
+    }
+
+    // Create app_users entry using admin client
+    const { error: appUserError } = await adminClient
+      .from('app_users')
+      .insert({
+        user_id: authData.user.id,
+        role: 'admin',
+        tenant_id: parsed.tenant_id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any)
+
+    if (appUserError) {
+      // Cleanup: delete auth user if app_users insert fails
+      let cleanupError: string | null = null
+      const { error: deleteError } = await adminClient.auth.admin.deleteUser(authData.user.id)
+      if (deleteError) {
+        cleanupError = deleteError.message || String(deleteError)
+        console.error('Failed to cleanup auth user after app_users insert failure:', deleteError)
+      }
+      const errorMessage = cleanupError
+        ? `${appUserError.message} (cleanup also failed: ${cleanupError})`
+        : appUserError.message
+      return { error: errorMessage }
+    }
+
+    // Revalidate pages
+    revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
+    revalidatePath('/superadmin/tenants')
+
+    return {
+      success: true,
+      user: {
+        user_id: authData.user.id,
+        email: authData.user.email || '',
+      }
+    }
+  } catch (err) {
+    console.error('createTenantUser error:', err)
+    if (err instanceof z.ZodError) {
+      return { error: err.errors.map(e => e.message).join(', ') }
+    }
+    return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
   }
 }
 
@@ -169,50 +198,60 @@ export async function createTenantUser(input: {
  * Remove a user from a tenant (delete from app_users)
  */
 export async function removeTenantUser(userId: string, tenantId: string) {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  // Verify current user is superadmin
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
-  if (!currentUser) {
-    return { error: 'Unauthorized: Not authenticated' }
+    // Verify current user is superadmin
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (!currentUser) {
+      return { error: 'Unauthorized: Not authenticated' }
+    }
+
+    const { data: roleData } = await supabase
+      .from('app_users')
+      .select('role')
+      .eq('user_id', currentUser.id)
+      .maybeSingle()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!roleData || (roleData as any).role !== 'superadmin') {
+      return { error: 'Unauthorized: Only superadmins can remove users' }
+    }
+
+    // Don't allow removing self
+    if (currentUser.id === userId) {
+      return { error: 'Cannot remove yourself' }
+    }
+
+    // Delete from app_users
+    const { data: deletedRows, error } = await supabase
+      .from('app_users')
+      .delete()
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .select()
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+      return { error: 'User not found for this tenant' }
+    }
+
+    // Also delete the auth user using admin client
+    const adminClient = createAdminClient()
+    await adminClient.auth.admin.deleteUser(userId)
+
+    // Revalidate pages
+    revalidatePath(`/superadmin/tenants/${tenantId}`)
+    revalidatePath('/superadmin/tenants')
+
+    return { success: true }
+  } catch (err) {
+    console.error('removeTenantUser error:', err)
+    return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
   }
-
-  const { data: roleData } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', currentUser.id)
-    .maybeSingle()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!roleData || (roleData as any).role !== 'superadmin') {
-    return { error: 'Unauthorized: Only superadmins can remove users' }
-  }
-
-  // Don't allow removing self
-  if (currentUser.id === userId) {
-    return { error: 'Cannot remove yourself' }
-  }
-
-  // Delete from app_users (this will also delete auth user due to cascade)
-  const { error } = await supabase
-    .from('app_users')
-    .delete()
-    .eq('user_id', userId)
-    .eq('tenant_id', tenantId)
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  // Also delete the auth user using admin client
-  const adminClient = createAdminClient()
-  await adminClient.auth.admin.deleteUser(userId)
-
-  // Revalidate pages
-  revalidatePath(`/superadmin/tenants/${tenantId}`)
-  revalidatePath('/superadmin/tenants')
-
-  return { success: true }
 }
 
 /**
@@ -223,53 +262,66 @@ export async function updateTenantUser(input: {
   role: 'superadmin' | 'admin'
   tenant_id: string | null
 }) {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  // Validate input
-  const parsed = updateUserSchema.parse(input)
+    // Validate input
+    const parsed = updateUserSchema.parse(input)
 
-  // Verify current user is superadmin
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
-  if (!currentUser) {
-    return { error: 'Unauthorized: Not authenticated' }
+    // Verify current user is superadmin
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (!currentUser) {
+      return { error: 'Unauthorized: Not authenticated' }
+    }
+
+    const { data: roleData } = await supabase
+      .from('app_users')
+      .select('role')
+      .eq('user_id', currentUser.id)
+      .maybeSingle()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!roleData || (roleData as any).role !== 'superadmin') {
+      return { error: 'Unauthorized: Only superadmins can update users' }
+    }
+
+    // Don't allow modifying self
+    if (currentUser.id === parsed.user_id) {
+      return { error: 'Cannot modify your own role' }
+    }
+
+    // Update app_users entry
+    const { data, error } = await supabase
+      .from('app_users')
+      // @ts-expect-error - Supabase type mismatch for app_users table
+      .update({
+        role: parsed.role,
+        tenant_id: parsed.tenant_id,
+      })
+      .eq('user_id', parsed.user_id)
+      .select()
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    if (!data || data.length === 0) {
+      return { error: 'User not found' }
+    }
+
+    // Revalidate pages
+    if (parsed.tenant_id) {
+      revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
+    }
+    revalidatePath('/superadmin/tenants')
+
+    return { success: true }
+  } catch (err) {
+    console.error('updateTenantUser error:', err)
+    if (err instanceof z.ZodError) {
+      return { error: err.errors.map(e => e.message).join(', ') }
+    }
+    return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
   }
-
-  const { data: roleData } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', currentUser.id)
-    .maybeSingle()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!roleData || (roleData as any).role !== 'superadmin') {
-    return { error: 'Unauthorized: Only superadmins can update users' }
-  }
-
-  // Don't allow modifying self
-  if (currentUser.id === parsed.user_id) {
-    return { error: 'Cannot modify your own role' }
-  }
-
-  // Update app_users entry
-  const { error } = await supabase
-    .from('app_users')
-    // @ts-expect-error - Supabase type mismatch for app_users table
-    .update({
-      role: parsed.role,
-      tenant_id: parsed.tenant_id,
-    })
-    .eq('user_id', parsed.user_id)
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  // Revalidate pages
-  if (parsed.tenant_id) {
-    revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
-  }
-  revalidatePath('/superadmin/tenants')
-
-  return { success: true }
 }
 

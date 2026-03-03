@@ -167,7 +167,7 @@ function UpsellItemCard({
         addResetTimeoutRef.current = null
       }
     }
-  }, [isAdded])
+  }, [])
 
   return (
     <motion.div
@@ -344,6 +344,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
           if (result.data.length > 0 && !shownTrackedRef.current) {
             shownTrackedRef.current = true
             trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+              source: 'checkout_modal',
               itemCount: result.data.length,
             })
           }
@@ -370,21 +371,17 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   }
 
   const handleContinue = useCallback(() => {
-    if (!isPreview) {
-      trackAnalyticsEventAction(tenantId, 'upsell_converted', {
-        itemsAdded: upsellAddedCountRef.current,
-      })
-    }
     onContinue()
-  }, [onContinue, isPreview, tenantId])
+  }, [onContinue])
 
   const handleAddItem = useCallback(
     (item: MenuItem) => {
       if (isPreview) return
-      addItem(item, undefined, [], 1)
+      addItem(item, undefined, [], 1, undefined, 'checkout_modal')
       toast.success(`Added ${item.name} to cart`)
       upsellAddedCountRef.current += 1
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
+        source: 'checkout_modal',
         itemId: item.id,
         itemName: item.name,
         price: item.price,

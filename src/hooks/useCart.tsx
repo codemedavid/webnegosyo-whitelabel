@@ -22,7 +22,9 @@ interface CartContextType extends Cart {
     variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
     addons: Addon[],
     quantity: number,
-    specialInstructions?: string
+    specialInstructions?: string,
+    upsellSource?: CartItem['upsellSource'],
+    upsellSourceItemId?: string
   ) => void
   removeItem: (cartItemId: string) => void
   updateQuantity: (cartItemId: string, quantity: number) => void
@@ -344,7 +346,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
       addons: Addon[],
       quantity: number,
-      specialInstructions?: string
+      specialInstructions?: string,
+      upsellSource?: CartItem['upsellSource'],
+      upsellSourceItemId?: string
     ) => {
       const subtotal = calculateCartItemSubtotal(
         menuItem.price,
@@ -399,6 +403,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           quantity,
           special_instructions: specialInstructions,
           subtotal,
+          ...(upsellSource ? { upsellSource, upsellSourceItemId } : {}),
         }
 
         return [...prevItems, newItem]
@@ -417,6 +422,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    // Enforce maximum quantity per item
+    const MAX_QUANTITY = 99
+    const clampedQuantity = Math.min(quantity, MAX_QUANTITY)
+
     setItems((prevItems) => {
       return prevItems.map((item) => {
         if (item.id === cartItemId) {
@@ -426,11 +435,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
             item.menu_item.price,
             variations,
             item.selected_addons,
-            quantity
+            clampedQuantity
           )
           return {
             ...item,
-            quantity,
+            quantity: clampedQuantity,
             subtotal: newSubtotal,
           }
         }

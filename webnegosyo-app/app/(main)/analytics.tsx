@@ -111,7 +111,7 @@ export default function AnalyticsScreen() {
                           ]}
                         />
                         <Text style={styles.sparkLabel}>
-                          {day.date.slice(5)}
+                          {new Date(day.date + "T00:00:00").toLocaleDateString("en-PH", { month: "2-digit", day: "2-digit" })}
                         </Text>
                       </View>
                     );

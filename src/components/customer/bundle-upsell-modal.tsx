@@ -1,10 +1,11 @@
 'use client'
 
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Package, Sparkles } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
+import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { BundleWithItems } from '@/lib/bundles-service'
 
@@ -14,6 +15,8 @@ interface BundleUpsellModalProps {
     onAccept: (bundle: BundleWithItems) => void
     bundle: BundleWithItems | null
     branding: BrandingColors
+    tenantId?: string
+    sourceItemId?: string
     hideCurrencySymbol?: boolean
 }
 
@@ -43,11 +46,40 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
     onAccept,
     bundle,
     branding,
+    tenantId,
+    sourceItemId,
     hideCurrencySymbol,
 }: BundleUpsellModalProps) {
+    const shownTrackedRef = useRef(false)
+
+    useEffect(() => {
+        if (open && tenantId && bundle && !shownTrackedRef.current) {
+            shownTrackedRef.current = true
+            trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+                source: 'bundle',
+                bundleId: bundle.id,
+                bundleName: bundle.name,
+                sourceItemId,
+            })
+        }
+        if (!open) {
+            shownTrackedRef.current = false
+        }
+    }, [open, tenantId, bundle, sourceItemId])
+
     const handleAccept = useCallback(() => {
-        if (bundle) onAccept(bundle)
-    }, [bundle, onAccept])
+        if (bundle) {
+            if (tenantId) {
+                trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
+                    source: 'bundle',
+                    bundleId: bundle.id,
+                    bundleName: bundle.name,
+                    sourceItemId,
+                })
+            }
+            onAccept(bundle)
+        }
+    }, [bundle, onAccept, tenantId, sourceItemId])
 
     if (!bundle) return null
 

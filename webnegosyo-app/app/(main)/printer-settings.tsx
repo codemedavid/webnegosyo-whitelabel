@@ -13,6 +13,7 @@ import {
   disconnectPrinter,
   printTestPage,
   isPrinterSupported,
+  requestBluetoothPermissions,
 } from "../../lib/printer";
 
 interface DiscoveredPrinter {
@@ -37,6 +38,14 @@ export default function PrinterSettingsScreen() {
       Alert.alert("Not Available", "Printer requires a development build. Not available in Expo Go.");
       return;
     }
+
+    // Request Bluetooth permissions before scanning
+    const permResult = await requestBluetoothPermissions();
+    if (!permResult.success) {
+      Alert.alert("Bluetooth Permission Required", permResult.error ?? "Bluetooth permissions are needed to scan for printers.");
+      return;
+    }
+
     setScanning(true);
     const printers = await discoverBluetoothPrinters();
     setDiscovered(printers);
@@ -48,12 +57,12 @@ export default function PrinterSettingsScreen() {
 
   const handleSelectBluetooth = async (device: DiscoveredPrinter) => {
     setConnecting(true);
-    const connected = await connectPrinter("bluetooth", device.address);
-    if (connected) {
+    const result = await connectPrinter("bluetooth", device.address);
+    if (result.success) {
       setPrinter({ type: "bluetooth", name: device.name, address: device.address });
       Alert.alert("Connected", `Connected to ${device.name}`);
     } else {
-      Alert.alert("Connection Failed", "Could not connect to printer. Try again.");
+      Alert.alert("Connection Failed", result.error ?? "Could not connect to printer. Try again.");
     }
     setConnecting(false);
   };
@@ -65,12 +74,12 @@ export default function PrinterSettingsScreen() {
     }
     setConnecting(true);
     const address = `${networkIp.trim()}:${networkPort.trim() || "9100"}`;
-    const connected = await connectPrinter("network", address);
-    if (connected) {
+    const result = await connectPrinter("network", address);
+    if (result.success) {
       setPrinter({ type: "network", name: `Network (${networkIp})`, address });
       Alert.alert("Connected", `Connected to ${address}`);
     } else {
-      Alert.alert("Connection Failed", "Could not connect. Check IP and port.");
+      Alert.alert("Connection Failed", result.error ?? "Could not connect. Check IP and port.");
     }
     setConnecting(false);
   };

@@ -207,6 +207,9 @@ export interface CartItem {
   quantity: number;
   special_instructions?: string;
   subtotal: number;
+  // Upsell attribution: tracks which upsell modal added this item
+  upsellSource?: 'checkout_modal' | 'suggestion' | 'upgrade' | 'bundle';
+  upsellSourceItemId?: string;
 }
 
 export interface Bundle {

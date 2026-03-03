@@ -102,8 +102,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Public routes that don't require authentication
+  // Use specific patterns to avoid matching admin paths like /tenant/admin/menu-engineering
   const isPublicRoute =
-    pathname.includes('/menu') ||
+    (pathname.match(/^\/[^/]+\/menu(\/|$)/) && !pathname.match(/^\/[^/]+\/admin\//)) ||
     pathname === '/' ||
     pathname.includes('/login') ||
     pathname.startsWith('/superadmin/login')
@@ -195,7 +196,7 @@ export const config = {
      * - Common image formats
      * - API routes for images
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!monitoring|_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
 

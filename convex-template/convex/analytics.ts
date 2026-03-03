@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+// Safety cap for queries that load large collections
+const QUERY_LIMIT = 10000;
+
 export const trackEvent = mutation({
   args: {
     type: v.string(),
@@ -84,15 +87,20 @@ export const getTopItems = query({
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
+    // Server-side filter: only fetch orders from the period instead of all
     const recentOrders = await ctx.db
       .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
       .order("desc")
-      .collect();
+      .take(QUERY_LIMIT);
 
     const filteredOrderIds = new Set(
-      recentOrders
-        .filter((o) => o._creationTime >= cutoff && o.status !== "cancelled")
-        .map((o) => o._id)
+      recentOrders.map((o) => o._id)
     );
 
     const allItems = await ctx.db.query("orderItems").collect();
@@ -147,14 +155,17 @@ export const getRevenueBreakdown = query({
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
-    const allOrders = await ctx.db
+    // Server-side filter: push date and status filtering into the query
+    const filtered = await ctx.db
       .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
       .order("desc")
-      .collect();
-
-    const filtered = allOrders.filter(
-      (o) => o._creationTime >= cutoff && o.status !== "cancelled"
-    );
+      .take(QUERY_LIMIT);
 
     // Group by order type
     const orderTypeMap = new Map<string, { revenue: number; count: number }>();
@@ -231,14 +242,19 @@ export const getUpsellTrends = query({
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Calculate total upsell revenue from order items
+    // Server-side filter: only fetch orders from the period
     const recentOrders = await ctx.db
       .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
       .order("desc")
-      .collect();
+      .take(QUERY_LIMIT);
     const filteredOrderIds = new Set(
-      recentOrders
-        .filter((o) => o._creationTime >= cutoff && o.status !== "cancelled")
-        .map((o) => o._id)
+      recentOrders.map((o) => o._id)
     );
 
     const allItems = await ctx.db.query("orderItems").collect();

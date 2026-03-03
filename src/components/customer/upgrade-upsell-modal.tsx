@@ -1,10 +1,11 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ArrowRight, Sparkles } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
+import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { MenuItem, UpgradeUpsell } from '@/types/database'
 
 interface UpgradeUpsellModalProps {
@@ -13,6 +14,7 @@ interface UpgradeUpsellModalProps {
   onUpgrade: (upgradeItem: MenuItem) => void
   sourceItem: MenuItem
   upgrade: UpgradeUpsell
+  tenantId?: string
   /** Override z-index class for preview mode */
   zIndexClass?: string
 }
@@ -266,8 +268,42 @@ export const UpgradeUpsellModal = memo(function UpgradeUpsellModal({
   onUpgrade,
   sourceItem,
   upgrade,
+  tenantId,
   zIndexClass = 'z-50',
 }: UpgradeUpsellModalProps) {
+  const shownTrackedRef = useRef(false)
+
+  useEffect(() => {
+    if (open && tenantId && !shownTrackedRef.current) {
+      shownTrackedRef.current = true
+      trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+        source: 'upgrade',
+        sourceItemId: sourceItem.id,
+        sourceItemName: sourceItem.name,
+        targetItemId: upgrade.targetItem.id,
+        targetItemName: upgrade.targetItem.name,
+      })
+    }
+    if (!open) {
+      shownTrackedRef.current = false
+    }
+  }, [open, tenantId, sourceItem.id, sourceItem.name, upgrade.targetItem.id, upgrade.targetItem.name])
+
+  const handleUpgradeWithTracking = (upgradeItem: MenuItem) => {
+    if (tenantId) {
+      trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
+        source: 'upgrade',
+        itemId: upgradeItem.id,
+        itemName: upgradeItem.name,
+        price: upgradeItem.discounted_price && upgradeItem.discounted_price < upgradeItem.price
+          ? upgradeItem.discounted_price
+          : upgradeItem.price,
+        sourceItemId: sourceItem.id,
+      })
+    }
+    onUpgrade(upgradeItem)
+  }
+
   return (
     <AnimatePresence>
       {open && (
@@ -297,7 +333,7 @@ export const UpgradeUpsellModal = memo(function UpgradeUpsellModal({
             </div>
             <ModalContent
               onClose={onClose}
-              onUpgrade={onUpgrade}
+              onUpgrade={handleUpgradeWithTracking}
               sourceItem={sourceItem}
               upgrade={upgrade}
             />
@@ -321,7 +357,7 @@ export const UpgradeUpsellModal = memo(function UpgradeUpsellModal({
             >
               <ModalContent
                 onClose={onClose}
-                onUpgrade={onUpgrade}
+                onUpgrade={handleUpgradeWithTracking}
                 sourceItem={sourceItem}
                 upgrade={upgrade}
               />
