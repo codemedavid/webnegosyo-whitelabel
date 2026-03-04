@@ -99,6 +99,9 @@ export const tenantSchema = z.object({
   // Convex integration
   convex_deployment_url: z.string().url().optional().or(z.literal('')).optional(),
   convex_deploy_key: z.string().optional().or(z.literal('')).optional(),
+  // Email notifications
+  admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
+  email_notifications_enabled: z.boolean().default(false),
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>

@@ -139,6 +139,9 @@ export async function createTenantAction(input: TenantInput) {
       // Convex / Mobile App
       convex_deployment_url: parsed.convex_deployment_url || undefined,
       convex_deploy_key: parsed.convex_deploy_key || undefined,
+      // Email notifications
+      admin_email: parsed.admin_email || null,
+      email_notifications_enabled: parsed.email_notifications_enabled,
     }
 
     const query = supabase
@@ -271,6 +274,9 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     // Convex / Mobile App
     convex_deployment_url: parsed.convex_deployment_url || undefined,
     convex_deploy_key: parsed.convex_deploy_key || undefined,
+    // Email notifications
+    admin_email: parsed.admin_email || null,
+    email_notifications_enabled: parsed.email_notifications_enabled,
   }
 
   const query = supabase
