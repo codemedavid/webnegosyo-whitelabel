@@ -41,17 +41,59 @@ export interface OrderEventData {
   deliveryAddress: string | null | undefined
 }
 
-function formatItemsSummary(items: OrderEventData['items']): string {
-  return items.map(item => {
-    let line = `${item.quantity}x ${item.name}`
-    if (item.variation) line += ` (${item.variation})`
+function formatOrderMessage(data: OrderEventData): string {
+  const lines: string[] = []
+
+  lines.push(`New Order from ${data.tenantName}`)
+  lines.push('')
+
+  if (data.orderType && data.orderType !== 'unknown') {
+    lines.push(`Order Type: ${data.orderType}`)
+    lines.push('')
+  }
+
+  lines.push('Customer Information:')
+  lines.push(`  Name: ${data.customerName ?? 'Guest'}`)
+  if (data.customerContact) {
+    lines.push(`  Contact: ${data.customerContact}`)
+  }
+  lines.push('')
+
+  if (data.deliveryAddress) {
+    lines.push(`Delivery Address: ${data.deliveryAddress}`)
+    lines.push('')
+  }
+
+  lines.push('Order Details:')
+  lines.push('')
+  data.items.forEach((item, index) => {
+    lines.push(`${index + 1}. ${item.name}`)
+    if (item.variation) lines.push(`   Variation: ${item.variation}`)
     if (item.addons && item.addons.length > 0) {
       const addonNames = item.addons.map(a => typeof a === 'string' ? a : a.name)
-      line += ` + ${addonNames.join(', ')}`
+      lines.push(`   Add-ons: ${addonNames.join(', ')}`)
     }
-    line += ` — ${item.subtotal.toFixed(2)}`
-    return line
-  }).join('\n')
+    lines.push(`   Qty: ${item.quantity}`)
+    lines.push(`   Price: ${item.subtotal.toFixed(2)}`)
+    lines.push('')
+  })
+
+  const subtotal = data.orderTotal - data.deliveryFee
+  lines.push(`Subtotal: ${subtotal.toFixed(2)}`)
+  if (data.deliveryFee > 0) {
+    lines.push(`Delivery Fee: ${data.deliveryFee.toFixed(2)}`)
+  }
+  lines.push(`Total: ${data.orderTotal.toFixed(2)}`)
+  lines.push('')
+
+  if (data.paymentMethod && data.paymentMethod !== 'Not specified') {
+    lines.push(`Payment: ${data.paymentMethod}`)
+    lines.push('')
+  }
+
+  lines.push(`Order ID: ${data.orderId}`)
+
+  return lines.join('\n')
 }
 
 export async function captureOrderCreated(data: OrderEventData): Promise<void> {
@@ -63,18 +105,11 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
       distinctId: `tenant_${data.tenantId}`,
       event: 'order_created',
       properties: {
+        order_message: formatOrderMessage(data),
         tenant_name: data.tenantName,
-        tenant_slug: data.tenantSlug,
         order_id: data.orderId,
         customer_name: data.customerName ?? 'Guest',
-        customer_contact: data.customerContact ?? '',
-        items_summary: formatItemsSummary(data.items),
-        item_count: data.items.reduce((sum, i) => sum + i.quantity, 0),
         order_total: data.orderTotal.toFixed(2),
-        delivery_fee: data.deliveryFee.toFixed(2),
-        order_type: data.orderType ?? 'unknown',
-        payment_method: data.paymentMethod ?? 'Not specified',
-        delivery_address: data.deliveryAddress ?? '',
         $set: {
           email: data.adminEmail,
           name: data.tenantName,
