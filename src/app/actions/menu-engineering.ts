@@ -8,8 +8,6 @@ import {
   createUpsellPair,
   deleteUpsellPair,
   getUpsellPairsByTenant,
-  getUpsellsForCart,
-  getStarItems,
   getManualUpsellItems,
   updateCheckoutUpsellSettings,
   type UpsellPairInput,
@@ -179,58 +177,10 @@ export async function getCheckoutUpsellsAction(
   maxItems: number = 4
 ) {
   try {
-    const seen = new Set<string>(cartItemIds)
-    const items: Awaited<ReturnType<typeof getManualUpsellItems>> = []
-
-    const addUnique = (newItems: typeof items) => {
-      for (const item of newItems) {
-        if (!seen.has(item.id) && items.length < maxItems) {
-          seen.add(item.id)
-          items.push(item)
-        }
-      }
-    }
-
-    // 1. Manually-selected items (highest priority — admin-curated)
     const manualItems = await getManualUpsellItems(tenantId, maxItems)
-    addUnique(manualItems)
-
-    // 2. Complementary upsell pairs for cart items
-    if (items.length < maxItems) {
-      const pairItems = await getUpsellsForCart(cartItemIds, tenantId)
-      addUnique(pairItems)
-    }
-
-    // 3. Star items (BCG classification)
-    if (items.length < maxItems) {
-      const starItems = await getStarItems(tenantId, maxItems - items.length)
-      addUnique(starItems)
-    }
-
-    // 4. Any available items as final fallback (so the modal always has something)
-    if (items.length < maxItems) {
-      const { data: anyItems } = await (async () => {
-        const { createClient } = await import('@/lib/supabase/server')
-        const supabase = await createClient()
-        return supabase
-          .from('menu_items')
-          .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
-          .eq('tenant_id', tenantId)
-          .eq('is_available', true)
-          .order('is_featured', { ascending: false })
-          .limit(maxItems * 3)
-      })()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = (anyItems || []).map((item: any) => ({
-        ...item,
-        variations: item.variations || [],
-        variation_types: item.variation_types || [],
-        addons: item.addons || [],
-      }))
-      addUnique(mapped)
-    }
-
-    return { success: true, data: items.slice(0, maxItems) }
+    // Filter out items already in cart
+    const filtered = manualItems.filter(item => !cartItemIds.includes(item.id))
+    return { success: true, data: filtered.slice(0, maxItems) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch checkout upsells' }
   }
@@ -247,5 +197,32 @@ export async function updateCheckoutUpsellSettingsAction(
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update checkout upsell settings' }
+  }
+}
+
+export async function toggleCheckoutUpsellItemAction(
+  itemId: string,
+  tenantId: string,
+  tenantSlug: string,
+  showInCheckout: boolean
+) {
+  try {
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('menu_items')
+      // @ts-expect-error – Supabase generated types not available
+      .update({ show_in_checkout_upsell: showInCheckout })
+      .eq('id', itemId)
+      .eq('tenant_id', tenantId)
+      .select('id, show_in_checkout_upsell')
+      .single()
+
+    if (error) throw error
+    revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
+    revalidatePath(`/${tenantSlug}/menu`)
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle checkout upsell item' }
   }
 }
