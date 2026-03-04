@@ -5,7 +5,7 @@ import path from "path";
 const execAsync = promisify(exec);
 
 const CONVEX_TEMPLATE_DIR = path.join(process.cwd(), "convex-template");
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 interface DeployResult {
   success: boolean;

@@ -268,3 +268,246 @@ export const getUpsellTrends = query({
     };
   },
 });
+
+export const getSalesAnalytics = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const days = args.daysBack ?? 7;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const prevCutoff = cutoff - days * 24 * 60 * 60 * 1000;
+
+    // Current period orders
+    const currentOrders = await ctx.db
+      .query("orders")
+      .filter((q) => q.gte(q.field("_creationTime"), cutoff))
+      .order("desc")
+      .take(QUERY_LIMIT);
+
+    // Previous period orders (for growth comparison)
+    const prevOrders = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), prevCutoff),
+          q.lt(q.field("_creationTime"), cutoff)
+        )
+      )
+      .order("desc")
+      .take(QUERY_LIMIT);
+
+    const completed = currentOrders.filter((o) => o.status !== "cancelled");
+    const cancelled = currentOrders.filter((o) => o.status === "cancelled");
+    const prevCompleted = prevOrders.filter((o) => o.status !== "cancelled");
+
+    const totalRevenue = completed.reduce((sum, o) => sum + o.total, 0);
+    const prevRevenue = prevCompleted.reduce((sum, o) => sum + o.total, 0);
+    const cancelledRevenue = cancelled.reduce((sum, o) => sum + o.total, 0);
+
+    const webOrders = currentOrders.filter((o) => o.source === "web").length;
+    const mobileOrders = currentOrders.filter((o) => o.source === "mobile").length;
+
+    const statusCounts: Record<string, number> = {};
+    for (const order of currentOrders) {
+      statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
+    }
+
+    return {
+      totalRevenue,
+      totalOrders: currentOrders.length,
+      completedOrders: completed.length,
+      avgOrderValue: completed.length > 0 ? totalRevenue / completed.length : 0,
+      cancelledOrders: cancelled.length,
+      cancelledRevenue,
+      cancellationRate: currentOrders.length > 0 ? cancelled.length / currentOrders.length : 0,
+      ordersBySource: { web: webOrders, mobile: mobileOrders },
+      ordersByStatus: statusCounts,
+      revenueGrowth: prevRevenue > 0 ? (totalRevenue - prevRevenue) / prevRevenue : 0,
+    };
+  },
+});
+
+export const getPaymentMethodAnalytics = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const days = args.daysBack ?? 7;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    const orders = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
+      .order("desc")
+      .take(QUERY_LIMIT);
+
+    // Aggregate by payment method
+    const methodMap = new Map<string, { count: number; revenue: number; totalOrderValue: number }>();
+    for (const order of orders) {
+      const method = order.paymentMethod ?? "Unknown";
+      const existing = methodMap.get(method) ?? { count: 0, revenue: 0, totalOrderValue: 0 };
+      existing.count += 1;
+      existing.revenue += order.total;
+      existing.totalOrderValue += order.total;
+      methodMap.set(method, existing);
+    }
+
+    const totalOrders = orders.length;
+    const methods = Array.from(methodMap.entries())
+      .map(([method, data]) => ({
+        method,
+        count: data.count,
+        revenue: data.revenue,
+        percentage: totalOrders > 0 ? data.count / totalOrders : 0,
+        avgOrderValue: data.count > 0 ? data.totalOrderValue / data.count : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // Daily breakdown for trend lines
+    const dailyMap = new Map<string, Map<string, number>>();
+    for (const order of orders) {
+      const date = new Date(order._creationTime).toISOString().split("T")[0];
+      const method = order.paymentMethod ?? "Unknown";
+      if (!dailyMap.has(date)) dailyMap.set(date, new Map());
+      const dayMethods = dailyMap.get(date)!;
+      dayMethods.set(method, (dayMethods.get(method) ?? 0) + order.total);
+    }
+
+    const dailyBreakdown = Array.from(dailyMap.entries())
+      .map(([date, methodRevenues]) => ({
+        date,
+        methods: Object.fromEntries(methodRevenues),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return { methods, dailyBreakdown };
+  },
+});
+
+export const getOrderHeatmap = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const days = args.daysBack ?? 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    const orders = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
+      .order("desc")
+      .take(QUERY_LIMIT);
+
+    // Build 7x24 heatmap (day 0=Sun, 1=Mon, ..., 6=Sat)
+    const grid: { day: number; hour: number; count: number }[] = [];
+    const countMap = new Map<string, number>();
+
+    for (const order of orders) {
+      const d = new Date(order._creationTime);
+      const key = `${d.getDay()}-${d.getHours()}`;
+      countMap.set(key, (countMap.get(key) ?? 0) + 1);
+    }
+
+    let peakHour = { day: 0, hour: 0, count: 0 };
+    let quietHour = { day: 0, hour: 0, count: Infinity };
+
+    for (let day = 0; day < 7; day++) {
+      for (let hour = 0; hour < 24; hour++) {
+        const count = countMap.get(`${day}-${hour}`) ?? 0;
+        grid.push({ day, hour, count });
+        if (count > peakHour.count) peakHour = { day, hour, count };
+        if (count < quietHour.count) quietHour = { day, hour, count };
+      }
+    }
+
+    // Fix quietHour if no orders at all
+    if (quietHour.count === Infinity) quietHour = { day: 0, hour: 0, count: 0 };
+
+    return { heatmap: grid, peakHour, quietHour };
+  },
+});
+
+export const getCustomerInsights = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const days = args.daysBack ?? 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    const orders = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), cutoff),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
+      .order("desc")
+      .take(QUERY_LIMIT);
+
+    // Group by customerContact (lowercased + trimmed)
+    const customerMap = new Map<string, {
+      name: string;
+      orderCount: number;
+      totalSpent: number;
+      lastOrderDate: number;
+    }>();
+
+    for (const order of orders) {
+      const key = order.customerContact.toLowerCase().trim();
+      const existing = customerMap.get(key);
+      if (existing) {
+        existing.orderCount += 1;
+        existing.totalSpent += order.total;
+        existing.lastOrderDate = Math.max(existing.lastOrderDate, order._creationTime);
+      } else {
+        customerMap.set(key, {
+          name: order.customerName,
+          orderCount: 1,
+          totalSpent: order.total,
+          lastOrderDate: order._creationTime,
+        });
+      }
+    }
+
+    const customers = Array.from(customerMap.values());
+    const totalCustomers = customers.length;
+    const returningCustomers = customers.filter((c) => c.orderCount > 1).length;
+    const newCustomers = totalCustomers - returningCustomers;
+
+    const topCustomers = customers
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 10)
+      .map((c) => ({
+        name: c.name,
+        contact: "",  // omit contact for privacy in display
+        orderCount: c.orderCount,
+        totalSpent: c.totalSpent,
+        lastOrderDate: c.lastOrderDate,
+      }));
+
+    return {
+      totalCustomers,
+      newCustomers,
+      returningCustomers,
+      returnRate: totalCustomers > 0 ? returningCustomers / totalCustomers : 0,
+      avgOrdersPerCustomer: totalCustomers > 0 ? orders.length / totalCustomers : 0,
+      avgRevenuePerCustomer: totalCustomers > 0
+        ? orders.reduce((s, o) => s + o.total, 0) / totalCustomers
+        : 0,
+      topCustomers,
+    };
+  },
+});

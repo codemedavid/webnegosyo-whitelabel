@@ -7,12 +7,19 @@ import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+import { StatCard } from "../../components/StatCard";
+import { HeatmapGrid } from "../../components/HeatmapGrid";
+import { GrowthIndicator } from "../../components/GrowthIndicator";
 
 const getUpsellAnalyticsRef = "analytics:getUpsellAnalytics" as unknown as FunctionReference<"query">;
 const getBundleAnalyticsRef = "analytics:getBundleAnalytics" as unknown as FunctionReference<"query">;
 const getTopItemsRef = "analytics:getTopItems" as unknown as FunctionReference<"query">;
 const getRevenueBreakdownRef = "analytics:getRevenueBreakdown" as unknown as FunctionReference<"query">;
 const getUpsellTrendsRef = "analytics:getUpsellTrends" as unknown as FunctionReference<"query">;
+const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
+const getCustomerInsightsRef = "analytics:getCustomerInsights" as unknown as FunctionReference<"query">;
+const getOrderHeatmapRef = "analytics:getOrderHeatmap" as unknown as FunctionReference<"query">;
+const getPaymentMethodAnalyticsRef = "analytics:getPaymentMethodAnalytics" as unknown as FunctionReference<"query">;
 
 interface UpsellStats { shown: number; clicked: number; converted: number; clickRate: number; conversionRate: number; }
 interface BundleStats { viewed: number; added: number; conversionRate: number; }
@@ -24,6 +31,40 @@ interface RevenueBreakdown {
 interface UpsellTrends {
   dailyRates: { date: string; rate: number }[];
   totalUpsellRevenue: number;
+}
+
+interface SalesAnalytics {
+  totalRevenue: number;
+  totalOrders: number;
+  completedOrders: number;
+  avgOrderValue: number;
+  cancelledOrders: number;
+  cancelledRevenue: number;
+  cancellationRate: number;
+  ordersBySource: { web: number; mobile: number };
+  ordersByStatus: Record<string, number>;
+  revenueGrowth: number;
+}
+
+interface PaymentMethodAnalytics {
+  methods: { method: string; count: number; revenue: number; percentage: number; avgOrderValue: number }[];
+  dailyBreakdown: { date: string; methods: Record<string, number> }[];
+}
+
+interface OrderHeatmap {
+  heatmap: { day: number; hour: number; count: number }[];
+  peakHour: { day: number; hour: number; count: number };
+  quietHour: { day: number; hour: number; count: number };
+}
+
+interface CustomerInsights {
+  totalCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
+  returnRate: number;
+  avgOrdersPerCustomer: number;
+  avgRevenuePerCustomer: number;
+  topCustomers: { name: string; contact: string; orderCount: number; totalSpent: number; lastOrderDate: number }[];
 }
 
 const FUNNEL_COLORS = {
@@ -42,7 +83,13 @@ export default function AnalyticsScreen() {
   const { data: topItems, error: topItemsError } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
   const { data: revenueBreakdown, error: revenueError } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { daysBack });
   const { data: upsellTrends, error: trendsError } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { daysBack });
+  const { data: salesAnalytics, error: salesError } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
+  const { data: paymentAnalytics, error: paymentError } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  const { data: heatmapData, error: heatmapError } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
+  const { data: customerInsights, error: customerError } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
 
+  // Only include existing query errors in the global error banner.
+  // New analytics queries degrade gracefully (sections hide when not deployed).
   const error = upsellError || bundleError || topItemsError || revenueError || trendsError;
 
   return (
@@ -63,6 +110,127 @@ export default function AnalyticsScreen() {
       </View>
 
       {error && <ErrorState message={error} />}
+
+      {/* Sales Overview — hidden if query not deployed */}
+      {!salesError && (
+        <Card title="Sales Overview" style={styles.section}>
+          {!salesAnalytics ? (
+            <LoadingState />
+          ) : (
+            <>
+              <View style={styles.salesHeadline}>
+                <Text style={styles.headlineValue}>₱{salesAnalytics.totalRevenue.toFixed(0)}</Text>
+                <GrowthIndicator value={salesAnalytics.revenueGrowth} />
+              </View>
+              <View style={styles.metricsRow}>
+                <StatCard value={salesAnalytics.totalOrders} label="Orders" />
+                <StatCard value={`₱${salesAnalytics.avgOrderValue.toFixed(0)}`} label="Avg Order" />
+              </View>
+              <View style={styles.metricsRow}>
+                <StatCard value={salesAnalytics.cancelledOrders} label="Cancelled" />
+                <StatCard value={`${(salesAnalytics.cancellationRate * 100).toFixed(1)}%`} label="Cancel Rate" />
+              </View>
+              <View style={[styles.sourceRow, { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 0.5, borderTopColor: colors.separator }]}>
+                <View style={styles.sourceItem}>
+                  <Text style={styles.sourceValue}>{salesAnalytics.ordersBySource.web}</Text>
+                  <Text style={styles.sourceLabel}>Web</Text>
+                </View>
+                <View style={styles.sourceDivider} />
+                <View style={styles.sourceItem}>
+                  <Text style={styles.sourceValue}>{salesAnalytics.ordersBySource.mobile}</Text>
+                  <Text style={styles.sourceLabel}>Mobile</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </Card>
+      )}
+
+      {/* Payment Methods — hidden if query not deployed */}
+      {!paymentError && (
+        <Card title="Payment Methods" style={styles.section}>
+          {!paymentAnalytics ? (
+            <LoadingState />
+          ) : paymentAnalytics.methods.length === 0 ? (
+            <EmptyState message="No payment data yet" />
+          ) : (
+            <>
+              {paymentAnalytics.methods.map((m, i) => {
+                const maxRevenue = paymentAnalytics.methods[0]?.revenue ?? 1;
+                const barWidthPct = Math.max((m.revenue / maxRevenue) * 100, 8);
+                const color = BAR_COLORS[i % BAR_COLORS.length];
+                return (
+                  <View key={m.method} style={styles.paymentRow}>
+                    <View style={styles.paymentHeader}>
+                      <View style={[styles.paymentDot, { backgroundColor: color }]} />
+                      <Text style={styles.paymentLabel}>{m.method}</Text>
+                      <Text style={styles.paymentPct}>{(m.percentage * 100).toFixed(0)}%</Text>
+                    </View>
+                    <View style={breakdownStyles.barTrack}>
+                      <View style={[breakdownStyles.barFill, { width: `${barWidthPct}%`, backgroundColor: color }]} />
+                    </View>
+                    <View style={styles.paymentMeta}>
+                      <Text style={styles.paymentMetaText}>₱{m.revenue.toFixed(0)} · {m.count} orders · avg ₱{m.avgOrderValue.toFixed(0)}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          )}
+        </Card>
+      )}
+
+      {/* Peak Hours — hidden if query not deployed */}
+      {!heatmapError && (
+        <Card title="Peak Hours" style={styles.section}>
+          {!heatmapData ? (
+            <LoadingState />
+          ) : (
+            <HeatmapGrid
+              heatmap={heatmapData.heatmap}
+              peakHour={heatmapData.peakHour}
+              quietHour={heatmapData.quietHour}
+            />
+          )}
+        </Card>
+      )}
+
+      {/* Customer Insights — hidden if query not deployed */}
+      {!customerError && (
+        <Card title="Customer Insights" style={styles.section}>
+          {!customerInsights ? (
+            <LoadingState />
+          ) : (
+            <>
+              <View style={styles.metricsRow}>
+                <StatCard value={customerInsights.totalCustomers} label="Total" />
+                <StatCard value={customerInsights.newCustomers} label="New" />
+                <StatCard value={customerInsights.returningCustomers} label="Returning" />
+              </View>
+              <View style={styles.metricsRow}>
+                <StatCard value={`${(customerInsights.returnRate * 100).toFixed(0)}%`} label="Return Rate" />
+                <StatCard value={customerInsights.avgOrdersPerCustomer.toFixed(1)} label="Avg Orders" />
+                <StatCard value={`₱${customerInsights.avgRevenuePerCustomer.toFixed(0)}`} label="Avg Spend" />
+              </View>
+
+              {customerInsights.topCustomers.length > 0 && (
+                <View style={{ marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 0.5, borderTopColor: colors.separator }}>
+                  <Text style={styles.trendTitle}>Top Customers</Text>
+                  {customerInsights.topCustomers.map((c, i) => (
+                    <View key={i} style={styles.customerRow}>
+                      <Text style={styles.rankText}>#{i + 1}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.customerName}>{c.name}</Text>
+                        <Text style={styles.customerMeta}>{c.orderCount} orders · ₱{c.totalSpent.toFixed(0)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </Card>
+      )}
 
       {/* Upsell Funnel — Visual Bars */}
       <Card title="Upsell Funnel" style={styles.section}>
@@ -346,4 +514,21 @@ const styles = StyleSheet.create({
   barTrack: { height: 4, backgroundColor: colors.separator, borderRadius: 2, marginTop: spacing.xs },
   barFill: { height: 4, backgroundColor: colors.primary, borderRadius: 2 },
   topItemMeta: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  metricsRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
+  salesHeadline: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginBottom: spacing.md },
+  sourceRow: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  sourceItem: { flex: 1, alignItems: "center" },
+  sourceValue: { fontSize: 20, fontWeight: "700", color: colors.primary },
+  sourceLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  sourceDivider: { width: 1, height: 32, backgroundColor: colors.separator },
+  paymentRow: { marginBottom: spacing.md },
+  paymentHeader: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 4 },
+  paymentDot: { width: 8, height: 8, borderRadius: 4 },
+  paymentLabel: { ...typography.body, color: colors.textPrimary, fontWeight: "500", flex: 1 },
+  paymentPct: { ...typography.body, color: colors.textSecondary, fontWeight: "600" },
+  paymentMeta: { marginTop: 2 },
+  paymentMetaText: { ...typography.small, color: colors.textTertiary },
+  customerRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.sm, gap: spacing.sm },
+  customerName: { ...typography.body, color: colors.textPrimary, fontWeight: "500" },
+  customerMeta: { ...typography.small, color: colors.textSecondary },
 });

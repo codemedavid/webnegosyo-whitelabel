@@ -29,7 +29,9 @@ export function useSafeQuery<T>(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     hookError = msg;
-    console.error("[useSafeQuery] Convex error:", msg);
+    if (!msg.includes("Could not find public function")) {
+      console.error("[useSafeQuery] Convex error:", msg);
+    }
   }
 
   // Track loading timeout
