@@ -41,6 +41,19 @@ export interface OrderEventData {
   deliveryAddress: string | null | undefined
 }
 
+function formatItemsSummary(items: OrderEventData['items']): string {
+  return items.map(item => {
+    let line = `${item.quantity}x ${item.name}`
+    if (item.variation) line += ` (${item.variation})`
+    if (item.addons && item.addons.length > 0) {
+      const addonNames = item.addons.map(a => typeof a === 'string' ? a : a.name)
+      line += ` + ${addonNames.join(', ')}`
+    }
+    line += ` — ${item.subtotal.toFixed(2)}`
+    return line
+  }).join('\n')
+}
+
 export async function captureOrderCreated(data: OrderEventData): Promise<void> {
   const posthog = getPostHogClient()
   if (!posthog) return
@@ -55,9 +68,10 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
         order_id: data.orderId,
         customer_name: data.customerName ?? 'Guest',
         customer_contact: data.customerContact ?? '',
-        items: data.items,
-        order_total: data.orderTotal,
-        delivery_fee: data.deliveryFee,
+        items_summary: formatItemsSummary(data.items),
+        item_count: data.items.reduce((sum, i) => sum + i.quantity, 0),
+        order_total: data.orderTotal.toFixed(2),
+        delivery_fee: data.deliveryFee.toFixed(2),
         order_type: data.orderType ?? 'unknown',
         payment_method: data.paymentMethod ?? 'Not specified',
         delivery_address: data.deliveryAddress ?? '',
