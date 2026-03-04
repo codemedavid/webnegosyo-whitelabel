@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo, useCallback, useRef } from 'react'
 import {
   Star,
   Tractor,
@@ -39,7 +39,7 @@ import {
   createUpsellPairAction,
   deleteUpsellPairAction,
   updateCheckoutUpsellSettingsAction,
-  toggleCheckoutUpsellItemAction,
+  setCheckoutUpsellItemsAction,
 } from '@/app/actions/menu-engineering'
 import type { MenuItem, Category, BcgClassification, UpsellPairWithItems } from '@/types/database'
 import { toast } from 'sonner'
@@ -784,7 +784,9 @@ function CheckoutUpsellSettingsTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(menuItems.filter(i => i.show_in_checkout_upsell).map(i => i.id))
   )
-  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [isSavingItems, setIsSavingItems] = useState(false)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedRef = useRef<string>(JSON.stringify([...selectedIds].sort()))
 
   const handleSave = () => {
     startTransition(async () => {
@@ -802,54 +804,58 @@ function CheckoutUpsellSettingsTab({
     })
   }
 
-  const handleToggleItem = async (itemId: string) => {
-    const isCurrentlySelected = selectedIds.has(itemId)
-    setTogglingId(itemId)
+  // Debounced batch save — waits 800ms after last toggle, then saves all at once
+  const debouncedSaveItems = useCallback((newSelectedIds: Set<string>) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+    saveTimeoutRef.current = setTimeout(async () => {
+      const idsArray = [...newSelectedIds]
+      const currentHash = JSON.stringify(idsArray.sort())
+      if (currentHash === lastSavedRef.current) return
 
-    // Optimistic update
+      setIsSavingItems(true)
+      const result = await setCheckoutUpsellItemsAction(tenantId, tenantSlug, idsArray)
+      if (result.success) {
+        lastSavedRef.current = currentHash
+        toast.success('Upsell items updated')
+      } else {
+        toast.error(result.error || 'Failed to update items')
+      }
+      setIsSavingItems(false)
+    }, 800)
+  }, [tenantId, tenantSlug])
+
+  const handleToggleItem = useCallback((itemId: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      if (isCurrentlySelected) {
+      if (next.has(itemId)) {
         next.delete(itemId)
       } else {
         next.add(itemId)
       }
+      debouncedSaveItems(next)
       return next
     })
+  }, [debouncedSaveItems])
 
-    const result = await toggleCheckoutUpsellItemAction(
-      itemId, tenantId, tenantSlug, !isCurrentlySelected
-    )
-
-    if (!result.success) {
-      // Revert on failure
-      setSelectedIds(prev => {
-        const next = new Set(prev)
-        if (isCurrentlySelected) {
-          next.add(itemId)
-        } else {
-          next.delete(itemId)
-        }
-        return next
-      })
-      toast.error('Failed to update item')
-    }
-
-    setTogglingId(null)
-  }
-
-  const availableItems = menuItems.filter(i => i.is_available)
-  const filteredItems = availableItems.filter(i =>
-    i.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Memoize filtered + sorted items
+  const availableItems = useMemo(
+    () => menuItems.filter(i => i.is_available),
+    [menuItems]
   )
 
-  // Sort: selected items first, then alphabetical
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    const aSelected = selectedIds.has(a.id) ? 0 : 1
-    const bSelected = selectedIds.has(b.id) ? 0 : 1
-    if (aSelected !== bSelected) return aSelected - bSelected
-    return a.name.localeCompare(b.name)
-  })
+  const sortedItems = useMemo(() => {
+    const filtered = searchQuery
+      ? availableItems.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : availableItems
+    return [...filtered].sort((a, b) => {
+      const aSelected = selectedIds.has(a.id) ? 0 : 1
+      const bSelected = selectedIds.has(b.id) ? 0 : 1
+      if (aSelected !== bSelected) return aSelected - bSelected
+      return a.name.localeCompare(b.name)
+    })
+  }, [availableItems, searchQuery, selectedIds])
 
   return (
     <div className="space-y-6">
@@ -926,10 +932,15 @@ function CheckoutUpsellSettingsTab({
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Select Upsell Items</span>
-            <Badge variant="secondary">{selectedIds.size} selected</Badge>
+            <div className="flex items-center gap-2">
+              {isSavingItems && (
+                <span className="text-xs text-muted-foreground animate-pulse">Saving...</span>
+              )}
+              <Badge variant="secondary">{selectedIds.size} selected</Badge>
+            </div>
           </CardTitle>
           <CardDescription>
-            Choose which items appear in the checkout interstitial. Only selected items will be shown to customers.
+            Choose which items appear in the checkout interstitial. Changes save automatically.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -948,17 +959,15 @@ function CheckoutUpsellSettingsTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto pr-1">
             {sortedItems.map((item) => {
               const isSelected = selectedIds.has(item.id)
-              const isToggling = togglingId === item.id
               return (
                 <button
                   key={item.id}
                   onClick={() => handleToggleItem(item.id)}
-                  disabled={isToggling}
-                  className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-colors ${
                     isSelected
                       ? 'border-primary bg-primary/5'
                       : 'border-transparent bg-muted/50 hover:bg-muted'
-                  } ${isToggling ? 'opacity-50' : ''}`}
+                  }`}
                 >
                   {/* Thumbnail */}
                   <div className="relative h-12 w-12 rounded-lg overflow-hidden bg-gray-100 shrink-0">
@@ -968,6 +977,7 @@ function CheckoutUpsellSettingsTab({
                         src={item.image_url}
                         alt={item.name}
                         className="h-full w-full object-cover"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center">

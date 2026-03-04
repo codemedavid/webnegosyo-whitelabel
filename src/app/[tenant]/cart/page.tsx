@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag } from 'lucide-react'
@@ -43,7 +43,7 @@ export default function CartPage() {
   const prefetchedRef = useRef(false)
 
   const showInterstitial = tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled
-  const branding = getTenantBranding(tenant)
+  const branding = useMemo(() => getTenantBranding(tenant), [tenant])
 
   // Load tenant data from Supabase
   useEffect(() => {
@@ -105,6 +105,26 @@ export default function CartPage() {
   const handleCancelRemove = () => {
     setItemToRemove(null)
   }
+
+  const navigateToCheckout = useCallback(async () => {
+    if (isNavigating) return
+    setIsNavigating(true)
+    navigationCompletedRef.current = false
+    const safetyTimeout = setTimeout(() => {
+      if (!navigationCompletedRef.current) setIsNavigating(false)
+    }, 5000)
+    try {
+      await router.push(`/${tenantSlug}/checkout`)
+      navigationCompletedRef.current = true
+    } catch {
+      toast.error('Failed to navigate to checkout')
+      navigationCompletedRef.current = true
+    } finally {
+      clearTimeout(safetyTimeout)
+      navigationCompletedRef.current = true
+      setIsNavigating(false)
+    }
+  }, [isNavigating, router, tenantSlug])
 
   if (isLoading) {
     return (
@@ -296,31 +316,12 @@ export default function CartPage() {
                   <div className="space-y-4">
                     <Button
                       className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={async () => {
-                        if (isNavigating) return
+                      onClick={() => {
                         if (showInterstitial) {
                           setShowUpsellModal(true)
                           return
                         }
-                        setIsNavigating(true)
-                        navigationCompletedRef.current = false
-                        const safetyTimeout = setTimeout(() => {
-                          if (!navigationCompletedRef.current) {
-                            setIsNavigating(false)
-                          }
-                        }, 5000)
-                        try {
-                          await router.push(`/${tenantSlug}/checkout`)
-                          navigationCompletedRef.current = true
-                        } catch (error) {
-                          console.error('Navigation to checkout failed:', error)
-                          toast.error('Failed to navigate to checkout')
-                          navigationCompletedRef.current = true
-                        } finally {
-                          clearTimeout(safetyTimeout)
-                          navigationCompletedRef.current = true
-                          setIsNavigating(false)
-                        }
+                        navigateToCheckout()
                       }}
                       disabled={isNavigating}
                     >
@@ -373,27 +374,9 @@ export default function CartPage() {
       {showInterstitial && tenant && (
         <CheckoutUpsellModal
           open={showUpsellModal}
-          onContinue={async () => {
+          onContinue={() => {
             setShowUpsellModal(false)
-            setIsNavigating(true)
-            navigationCompletedRef.current = false
-            const safetyTimeout = setTimeout(() => {
-              if (!navigationCompletedRef.current) {
-                setIsNavigating(false)
-              }
-            }, 5000)
-            try {
-              await router.push(`/${tenantSlug}/checkout`)
-              navigationCompletedRef.current = true
-            } catch (error) {
-              console.error('Navigation to checkout failed:', error)
-              toast.error('Failed to navigate to checkout')
-              navigationCompletedRef.current = true
-            } finally {
-              clearTimeout(safetyTimeout)
-              navigationCompletedRef.current = true
-              setIsNavigating(false)
-            }
+            navigateToCheckout()
           }}
           tenantId={tenant.id}
           branding={branding}

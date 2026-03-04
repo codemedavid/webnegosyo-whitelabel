@@ -200,31 +200,42 @@ export async function updateCheckoutUpsellSettingsAction(
   }
 }
 
-export async function toggleCheckoutUpsellItemAction(
-  itemId: string,
+export async function setCheckoutUpsellItemsAction(
   tenantId: string,
   tenantSlug: string,
-  showInCheckout: boolean
+  selectedItemIds: string[]
 ) {
   try {
     const { verifyTenantAdmin } = await import('@/lib/admin-service')
     await verifyTenantAdmin(tenantId)
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
-    const { data, error } = await supabase
+
+    // Clear all existing selections for this tenant, then set new ones — 2 queries instead of N
+    const { error: clearError } = await supabase
       .from('menu_items')
       // @ts-expect-error – Supabase generated types not available
-      .update({ show_in_checkout_upsell: showInCheckout })
-      .eq('id', itemId)
+      .update({ show_in_checkout_upsell: false })
       .eq('tenant_id', tenantId)
-      .select('id, show_in_checkout_upsell')
-      .single()
+      .eq('show_in_checkout_upsell', true)
 
-    if (error) throw error
+    if (clearError) throw clearError
+
+    if (selectedItemIds.length > 0) {
+      const { error: setError } = await supabase
+        .from('menu_items')
+        // @ts-expect-error – Supabase generated types not available
+        .update({ show_in_checkout_upsell: true })
+        .eq('tenant_id', tenantId)
+        .in('id', selectedItemIds)
+
+      if (setError) throw setError
+    }
+
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`)
-    return { success: true, data }
+    return { success: true }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle checkout upsell item' }
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update checkout upsell items' }
   }
 }

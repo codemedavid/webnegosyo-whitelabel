@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, memo, useCallback } from 'react'
+import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ShoppingBag, Check, ArrowRight } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -131,7 +131,7 @@ function SkeletonCard() {
   )
 }
 
-function UpsellItemCard({
+const UpsellItemCard = memo(function UpsellItemCard({
   item,
   onAdd,
   colors,
@@ -297,7 +297,7 @@ function UpsellItemCard({
       </div>
     </motion.div>
   )
-}
+})
 
 export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   open,
@@ -375,9 +375,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         setIsLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, prefetchedItems, previewSuggestions])
 
-  const colors: CheckoutModalColors = previewColors ?? {
+  const colors: CheckoutModalColors = useMemo(() => previewColors ?? {
     background: branding.checkoutModalBackground,
     title: branding.checkoutModalTitle,
     description: branding.checkoutModalDescription,
@@ -385,11 +385,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     button: branding.checkoutModalButton,
     buttonText: branding.checkoutModalButtonText,
     border: branding.checkoutModalBorder,
-  }
-
-  const handleContinue = useCallback(() => {
-    onContinue()
-  }, [onContinue])
+  }, [previewColors, branding])
 
   const handleAddItem = useCallback(
     (item: MenuItem) => {
@@ -466,7 +462,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         color: colors.description,
         border: `1.5px solid ${colors.border}`,
       }}
-      onClick={handleContinue}
+      onClick={onContinue}
     >
       No thanks, checkout
       <ArrowRight className="h-4 w-4" />
@@ -484,7 +480,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
             initial="hidden"
             animate="visible"
             exit="hidden"
-            onClick={handleContinue}
+            onClick={onContinue}
           />
 
           {/* Mobile: Full-screen takeover */}
@@ -510,7 +506,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                 </p>
               </div>
               <button
-                onClick={handleContinue}
+                onClick={onContinue}
                 className="rounded-full p-2 ml-2 shrink-0 transition-colors hover:bg-black/6"
                 style={{ color: colors.description }}
               >
@@ -563,7 +559,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                   </p>
                 </div>
                 <button
-                  onClick={handleContinue}
+                  onClick={onContinue}
                   className="rounded-full p-2 ml-4 shrink-0 transition-colors hover:bg-black/6"
                   style={{ color: colors.description }}
                 >
