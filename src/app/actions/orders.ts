@@ -94,11 +94,12 @@ export async function createOrderAction(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tenantConfig = tenantConfigData as Record<string, any> | null
 
-    // Fire-and-forget PostHog email notification
-    const firePostHogNotification = (orderId: string, orderItems: typeof items) => {
+    // PostHog email notification - awaited to ensure flush completes
+    const firePostHogNotification = async (orderId: string, orderItems: typeof items) => {
       if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
-        import('@/lib/posthog').then(({ captureOrderCreated }) => {
-          captureOrderCreated({
+        try {
+          const { captureOrderCreated } = await import('@/lib/posthog')
+          await captureOrderCreated({
             tenantId,
             tenantName: tenantConfig.name ?? '',
             tenantSlug: tenantConfig.slug ?? '',
@@ -119,9 +120,9 @@ export async function createOrderAction(
             paymentMethod: paymentMethodName ?? null,
             deliveryAddress: (customerData?.address as string) ?? null,
           })
-        }).catch((err) => {
+        } catch (err) {
           console.error('[PostHog] Email notification failed:', err)
-        })
+        }
       }
     }
 
@@ -142,7 +143,7 @@ export async function createOrderAction(
         paymentMethodDetails,
         paymentMethodQrCodeUrl
       )
-      firePostHogNotification(result.order.id, items)
+      await firePostHogNotification(result.order.id, items)
       return { success: true, data: result.order, orderToken: result.orderToken }
     }
 
@@ -161,7 +162,7 @@ export async function createOrderAction(
       paymentMethodQrCodeUrl
     )
     // Return both order and token for secure public API access
-    firePostHogNotification(result.order.id, items)
+    await firePostHogNotification(result.order.id, items)
     return { success: true, data: result.order, orderToken: result.orderToken }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }

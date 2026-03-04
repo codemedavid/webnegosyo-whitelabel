@@ -4,6 +4,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 jest.mock('posthog-node', () => ({
   PostHog: jest.fn().mockImplementation(() => ({
     capture: jest.fn(),
+    flush: jest.fn().mockResolvedValue(undefined),
     shutdown: jest.fn().mockResolvedValue(undefined),
   })),
 }))
@@ -63,6 +64,7 @@ describe('posthog client', () => {
     jest.mock('posthog-node', () => ({
       PostHog: jest.fn().mockImplementation(() => ({
         capture: mockCapture,
+        flush: jest.fn().mockResolvedValue(undefined),
         shutdown: jest.fn().mockResolvedValue(undefined),
       })),
     }))

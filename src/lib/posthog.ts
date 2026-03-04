@@ -116,6 +116,7 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
         },
       },
     })
+    await posthog.flush()
   } catch (error) {
     // Fire-and-forget: log but never block the order flow
     console.error('[PostHog] Failed to capture order_created event:', error)
