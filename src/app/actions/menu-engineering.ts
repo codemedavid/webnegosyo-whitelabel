@@ -207,6 +207,8 @@ export async function toggleCheckoutUpsellItemAction(
   showInCheckout: boolean
 ) {
   try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
     const { data, error } = await supabase

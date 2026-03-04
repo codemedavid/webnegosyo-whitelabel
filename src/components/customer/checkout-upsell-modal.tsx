@@ -412,10 +412,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     if (isLoading) {
       return (
         <div className="grid grid-cols-2 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+          {Array.from({ length: Math.min(maxItems, 4) }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       )
     }

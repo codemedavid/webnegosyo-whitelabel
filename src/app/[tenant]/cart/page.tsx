@@ -40,6 +40,7 @@ export default function CartPage() {
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
   const [prefetchedItems, setPrefetchedItems] = useState<MenuItem[] | null>(null)
+  const prefetchedRef = useRef(false)
 
   const showInterstitial = tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled
   const branding = getTenantBranding(tenant)
@@ -66,11 +67,13 @@ export default function CartPage() {
     loadTenant()
   }, [tenantSlug, router])
 
-  // Prefetch upsell items as soon as tenant loads
+  // Prefetch upsell items once when tenant loads
   useEffect(() => {
+    if (prefetchedRef.current) return
     if (!tenant || !tenant.menu_engineering_enabled || !tenant.checkout_upsell_enabled) return
     if (items.length === 0) return
 
+    prefetchedRef.current = true
     const cartItemIds = items.map((ci) => ci.menu_item.id)
     getCheckoutUpsellsAction(cartItemIds, tenant.id, tenant.checkout_upsell_max_items || 4)
       .then((result) => {
