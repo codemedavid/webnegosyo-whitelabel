@@ -61,10 +61,10 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
         order_type: data.orderType ?? 'unknown',
         payment_method: data.paymentMethod ?? 'Not specified',
         delivery_address: data.deliveryAddress ?? '',
-      },
-      $set: {
-        email: data.adminEmail,
-        name: data.tenantName,
+        $set: {
+          email: data.adminEmail,
+          name: data.tenantName,
+        },
       },
     })
   } catch (error) {
