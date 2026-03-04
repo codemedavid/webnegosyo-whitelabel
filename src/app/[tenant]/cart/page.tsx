@@ -23,8 +23,9 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { toast } from 'sonner'
-import type { Tenant, CartItem } from '@/types/database'
+import type { Tenant, CartItem, MenuItem } from '@/types/database'
 
 export default function CartPage() {
   const params = useParams()
@@ -38,6 +39,7 @@ export default function CartPage() {
   const navigationCompletedRef = useRef(false)
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
+  const [prefetchedItems, setPrefetchedItems] = useState<MenuItem[] | null>(null)
 
   const showInterstitial = tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled
   const branding = getTenantBranding(tenant)
@@ -63,6 +65,23 @@ export default function CartPage() {
 
     loadTenant()
   }, [tenantSlug, router])
+
+  // Prefetch upsell items as soon as tenant loads
+  useEffect(() => {
+    if (!tenant || !tenant.menu_engineering_enabled || !tenant.checkout_upsell_enabled) return
+    if (items.length === 0) return
+
+    const cartItemIds = items.map((ci) => ci.menu_item.id)
+    getCheckoutUpsellsAction(cartItemIds, tenant.id, tenant.checkout_upsell_max_items || 4)
+      .then((result) => {
+        if (result.success && result.data) {
+          setPrefetchedItems(result.data)
+        }
+      })
+      .catch(() => {
+        // Silent fail — modal will fallback to on-demand fetch
+      })
+  }, [tenant, items])
 
   const handleDecreaseQuantity = (item: CartItem) => {
     if (item.quantity <= 1) {
@@ -375,9 +394,10 @@ export default function CartPage() {
           }}
           tenantId={tenant.id}
           branding={branding}
-          title={tenant.checkout_upsell_title || 'Before you go...'}
-          subtitle={tenant.checkout_upsell_subtitle || 'You might also enjoy these items'}
+          title={tenant.checkout_upsell_title || 'Would you like to add...?'}
+          subtitle={tenant.checkout_upsell_subtitle || 'Complete your meal!'}
           maxItems={tenant.checkout_upsell_max_items || 4}
+          prefetchedItems={prefetchedItems || undefined}
         />
       )}
     </>

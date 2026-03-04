@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ShoppingBag, Check, Sparkles } from 'lucide-react'
+import { X, ShoppingBag, Check, ArrowRight } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
@@ -30,11 +30,13 @@ interface CheckoutUpsellModalProps {
   title: string
   subtitle: string
   maxItems: number
-  /** When provided, skip server fetch and use these items directly */
+  /** Prefetched items from cart page — skip server fetch */
+  prefetchedItems?: MenuItem[]
+  /** Preview mode for admin — skip analytics */
   previewSuggestions?: MenuItem[]
-  /** When provided, skip settings fetch and use these colors directly */
+  /** Preview mode colors */
   previewColors?: CheckoutModalColors
-  /** Override z-index class for preview mode (renders above sidebar) */
+  /** Override z-index class */
   zIndexClass?: string
 }
 
@@ -305,6 +307,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   title,
   subtitle,
   maxItems,
+  prefetchedItems,
   previewSuggestions,
   previewColors,
   zIndexClass = 'z-50',
@@ -327,13 +330,28 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   useEffect(() => {
     if (!open) return
 
-    // Preview mode: use provided data directly, skip fetching
+    // 1. Preview mode: use provided data directly, skip fetch + analytics
     if (previewSuggestions) {
       setSuggestions(previewSuggestions)
       setIsLoading(false)
       return
     }
 
+    // 2. Prefetched items: use instantly, no loading state, but DO track analytics
+    if (prefetchedItems && prefetchedItems.length > 0) {
+      setSuggestions(prefetchedItems)
+      setIsLoading(false)
+      if (!shownTrackedRef.current) {
+        shownTrackedRef.current = true
+        trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+          source: 'checkout_modal',
+          itemCount: prefetchedItems.length,
+        })
+      }
+      return
+    }
+
+    // 3. Fallback: fetch on demand (shouldn't happen normally)
     setIsLoading(true)
     const cartItemIds = cartItems.map((ci) => ci.menu_item.id)
 
@@ -349,7 +367,6 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
             })
           }
         }
-        // Never auto-continue — always let the user click "Continue to Checkout"
       })
       .catch(() => {
         // On error just show empty state, don't auto-skip
@@ -421,7 +438,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
 
     return (
       <motion.div
-        className="grid grid-cols-2 gap-3"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         variants={gridVariants}
         initial="hidden"
         animate="visible"
@@ -439,21 +456,21 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     )
   }
 
-  const continueButton = (
+  const footerButton = (
     <motion.button
       whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
-      className="flex w-full items-center justify-center rounded-xl text-base font-semibold tracking-wide"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl text-base font-semibold"
       style={{
-        backgroundColor: colors.button,
-        color: colors.buttonText,
-        boxShadow: `0 6px 20px 0 color-mix(in srgb, ${colors.button} 38%, transparent)`,
         height: '52px',
+        backgroundColor: 'transparent',
+        color: colors.description,
+        border: `1.5px solid ${colors.border}`,
       }}
       onClick={handleContinue}
     >
-      <ShoppingBag className="mr-2 h-5 w-5" />
-      Continue to Checkout
+      No thanks, checkout
+      <ArrowRight className="h-4 w-4" />
     </motion.button>
   )
 
@@ -461,9 +478,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     <AnimatePresence>
       {open && (
         <>
-          {/* Overlay */}
+          {/* Overlay — desktop only (mobile is full-screen) */}
           <motion.div
-            className={`fixed inset-0 ${zIndexClass} bg-black/65 backdrop-blur-sm`}
+            className={`fixed inset-0 ${zIndexClass} hidden bg-black/65 backdrop-blur-sm sm:block`}
             variants={overlayVariants}
             initial="hidden"
             animate="visible"
@@ -471,40 +488,27 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
             onClick={handleContinue}
           />
 
-          {/* Mobile: Bottom sheet */}
+          {/* Mobile: Full-screen takeover */}
           <motion.div
-            className={`fixed inset-x-0 bottom-0 ${zIndexClass} max-h-[90vh] flex flex-col rounded-t-3xl sm:hidden`}
+            className={`fixed inset-0 ${zIndexClass} flex flex-col sm:hidden`}
             style={{ backgroundColor: colors.background }}
             variants={sheetVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-2 shrink-0">
-              <div className="h-1 w-10 rounded-full bg-black/10" />
-            </div>
-
             {/* Header */}
             <div
-              className="flex items-center justify-between px-5 pb-4 shrink-0 border-b"
+              className="flex items-center justify-between px-5 py-4 shrink-0 border-b"
               style={{ borderColor: colors.border }}
             >
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0"
-                  style={{ backgroundColor: `color-mix(in srgb, ${colors.button} 12%, transparent)` }}
-                >
-                  <Sparkles className="h-5 w-5" style={{ color: colors.button }} />
-                </div>
-                <div>
-                  <p className="text-base font-bold leading-tight" style={{ color: colors.title }}>
-                    {title}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: colors.description }}>
-                    {subtitle}
-                  </p>
-                </div>
+              <div>
+                <p className="text-lg font-bold leading-tight" style={{ color: colors.title }}>
+                  {title}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: colors.description }}>
+                  {subtitle}
+                </p>
               </div>
               <button
                 onClick={handleContinue}
@@ -525,7 +529,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
               className="px-4 pt-3 pb-5 shrink-0 border-t"
               style={{ backgroundColor: colors.background, borderColor: colors.border }}
             >
-              {continueButton}
+              {footerButton}
             </div>
           </motion.div>
 
@@ -551,21 +555,13 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                 className="flex items-center justify-between px-6 py-5 border-b shrink-0"
                 style={{ borderColor: colors.border }}
               >
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className="flex h-11 w-11 items-center justify-center rounded-xl shrink-0"
-                    style={{ backgroundColor: `color-mix(in srgb, ${colors.button} 12%, transparent)` }}
-                  >
-                    <Sparkles className="h-5 w-5" style={{ color: colors.button }} />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold leading-tight" style={{ color: colors.title }}>
-                      {title}
-                    </p>
-                    <p className="text-sm mt-0.5" style={{ color: colors.description }}>
-                      {subtitle}
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-xl font-bold leading-tight" style={{ color: colors.title }}>
+                    {title}
+                  </p>
+                  <p className="text-sm mt-0.5" style={{ color: colors.description }}>
+                    {subtitle}
+                  </p>
                 </div>
                 <button
                   onClick={handleContinue}
@@ -586,7 +582,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
                 className="px-6 py-5 border-t shrink-0"
                 style={{ borderColor: colors.border }}
               >
-                {continueButton}
+                {footerButton}
               </div>
             </motion.div>
           </motion.div>
