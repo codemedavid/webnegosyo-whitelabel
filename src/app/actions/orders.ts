@@ -87,12 +87,43 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key')
+      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug')
       .eq('id', tenantId)
       .single()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tenantConfig = tenantConfigData as Record<string, any> | null
+
+    // Fire-and-forget PostHog email notification
+    const firePostHogNotification = (orderId: string, orderItems: typeof items) => {
+      if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
+        import('@/lib/posthog').then(({ captureOrderCreated }) => {
+          captureOrderCreated({
+            tenantId,
+            tenantName: tenantConfig.name ?? '',
+            tenantSlug: tenantConfig.slug ?? '',
+            adminEmail: tenantConfig.admin_email,
+            orderId,
+            customerName: customerInfo?.name,
+            customerContact: customerInfo?.contact,
+            items: orderItems.map(i => ({
+              name: i.menu_item_name,
+              quantity: i.quantity,
+              variation: i.variation ?? null,
+              addons: i.addons,
+              subtotal: i.subtotal,
+            })),
+            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
+            deliveryFee: deliveryFee ?? 0,
+            orderType: null,
+            paymentMethod: paymentMethodName ?? null,
+            deliveryAddress: (customerData?.address as string) ?? null,
+          })
+        }).catch((err) => {
+          console.error('[PostHog] Email notification failed:', err)
+        })
+      }
+    }
 
     if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
       // Route to Convex
@@ -111,6 +142,7 @@ export async function createOrderAction(
         paymentMethodDetails,
         paymentMethodQrCodeUrl
       )
+      firePostHogNotification(result.order.id, items)
       return { success: true, data: result.order, orderToken: result.orderToken }
     }
 
@@ -129,6 +161,7 @@ export async function createOrderAction(
       paymentMethodQrCodeUrl
     )
     // Return both order and token for secure public API access
+    firePostHogNotification(result.order.id, items)
     return { success: true, data: result.order, orderToken: result.orderToken }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }

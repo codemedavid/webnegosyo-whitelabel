@@ -52,6 +52,8 @@ export interface Tenant {
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
+  mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
+  mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
   messenger_page_id: string;
   messenger_username?: string;
   messenger_redirect_mode?: 'webhook' | 'direct'; // 'webhook' = m.me with ref+text, 'direct' = messenger.com/t/
@@ -112,6 +114,9 @@ export interface Tenant {
   app_enabled?: boolean;
   ios_app_store_id?: string | null;
   android_package_name?: string | null;
+  // Email notifications
+  admin_email?: string | null;
+  email_notifications_enabled?: boolean;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
@@ -131,8 +136,10 @@ export interface Category {
   name: string;
   description?: string;
   icon?: string;
+  icon_color?: string;
   order: number;
   is_active: boolean;
+  display_layout: 'grid' | 'horizontal_scroll' | 'horizontal_mobile_only' | 'horizontal_desktop_only';
   default_addons?: Addon[];
   created_at: string;
   updated_at: string;

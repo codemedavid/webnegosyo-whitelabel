@@ -70,6 +70,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    // Email notifications
+    admin_email: tenant?.admin_email || '',
+    email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
     // Convex / Mobile App
     convex_deployment_url: tenant?.convex_deployment_url || '',
     convex_deploy_key: tenant?.convex_deploy_key || '',
@@ -124,6 +127,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
       menu_engineering_enabled: formData.menu_engineering_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      // Email notifications
+      admin_email: formData.admin_email || null,
+      email_notifications_enabled: formData.email_notifications_enabled,
       // Convex / Mobile App
       convex_deployment_url: formData.convex_deployment_url || undefined,
       convex_deploy_key: formData.convex_deploy_key || undefined,
@@ -494,6 +500,41 @@ export function TenantForm({ tenant }: TenantFormProps) {
             />
             <p className="text-xs text-muted-foreground">
               Optional: If provided, will use m.me/username instead of page ID
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={formData.email_notifications_enabled}
+              onChange={(e) => setFormData({ ...formData, email_notifications_enabled: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <span className="text-sm font-medium">Enable Email Notifications</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Send order notification emails to the restaurant via PostHog Workflows
+          </p>
+
+          <div className="space-y-2">
+            <Label htmlFor="admin_email">Restaurant Email Address</Label>
+            <Input
+              id="admin_email"
+              type="email"
+              value={formData.admin_email}
+              onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+              placeholder="restaurant@example.com"
+              disabled={!formData.email_notifications_enabled}
+            />
+            <p className="text-xs text-muted-foreground">
+              Orders will be sent to this email address when a new order is placed
             </p>
           </div>
         </CardContent>
