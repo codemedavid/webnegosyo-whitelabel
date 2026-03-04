@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -73,6 +73,9 @@ interface TenantFormData {
   // Convex / Mobile App
   convex_deployment_url: string
   convex_deploy_key: string
+  // Email notifications
+  admin_email: string
+  email_notifications_enabled: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -968,6 +971,57 @@ function LalamoveSection({
   )
 }
 
+// Email Notifications Section
+function EmailNotificationsSection({
+  formData,
+  setFormData,
+  isPending,
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Email Notifications</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Enable Email Notifications</Label>
+            <p className="text-xs text-muted-foreground">
+              Send order notification emails to the restaurant via PostHog
+            </p>
+          </div>
+          <Switch
+            checked={formData.email_notifications_enabled}
+            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, email_notifications_enabled: checked }))}
+            disabled={isPending}
+          />
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <Label htmlFor="admin_email">Restaurant Email Address</Label>
+          <Input
+            id="admin_email"
+            type="email"
+            value={formData.admin_email}
+            onChange={(e) => setFormData(prev => ({ ...prev, admin_email: e.target.value }))}
+            placeholder="restaurant@example.com"
+            disabled={isPending || !formData.email_notifications_enabled}
+          />
+          <p className="text-xs text-muted-foreground">
+            Orders will be sent to this email when a new order is placed
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // Convex / Mobile App Configuration Section
 function ConvexMobileAppSection({
   formData,
@@ -1079,7 +1133,7 @@ function ConvexMobileAppSection({
 
 export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
   const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+  const [isPending, setIsPending] = useState(false)
 
   const [formData, setFormData] = useState<TenantFormData>({
     name: tenant?.name || '',
@@ -1135,6 +1189,9 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     // Convex / Mobile App
     convex_deployment_url: tenant?.convex_deployment_url || '',
     convex_deploy_key: tenant?.convex_deploy_key || '',
+    // Email notifications
+    admin_email: tenant?.admin_email || '',
+    email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1194,37 +1251,41 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       // Convex / Mobile App
       convex_deployment_url: formData.convex_deployment_url || undefined,
       convex_deploy_key: formData.convex_deploy_key || undefined,
+      // Email notifications
+      admin_email: formData.admin_email || null,
+      email_notifications_enabled: formData.email_notifications_enabled,
     }
 
-    startTransition(async () => {
-      try {
-        if (tenant) {
-          const result = await updateTenantAction(tenant.id, input)
-          if (result?.error) {
-            toast.error(result.error)
-            return
-          }
-          toast.success('Tenant updated!')
-          router.push('/superadmin/tenants')
-        } else {
-          // createTenantAction returns error or redirects on success
-          const result = await createTenantAction(input)
-          if (result?.error) {
-            toast.error(result.error)
-            return
-          }
-          // If no error, redirect happened (redirect() throws NEXT_REDIRECT)
-        }
-      } catch (err) {
-        // Check if it's a redirect error (expected behavior)
-        if (err && typeof err === 'object' && 'digest' in err) {
-          // This is likely a NEXT_REDIRECT error, which is expected
+    setIsPending(true)
+    try {
+      if (tenant) {
+        const result = await updateTenantAction(tenant.id, input)
+        if (result?.error) {
+          toast.error(result.error)
           return
         }
-        const message = err instanceof Error ? err.message : 'Failed to save tenant'
-        toast.error(message)
+        toast.success('Tenant updated!')
+        router.push('/superadmin/tenants')
+      } else {
+        // createTenantAction returns error or redirects on success
+        const result = await createTenantAction(input)
+        if (result?.error) {
+          toast.error(result.error)
+          return
+        }
+        // If no error, redirect happened (redirect() throws NEXT_REDIRECT)
       }
-    })
+    } catch (err) {
+      // Check if it's a redirect error (expected behavior)
+      if (err && typeof err === 'object' && 'digest' in err) {
+        // This is likely a NEXT_REDIRECT error, which is expected
+        return
+      }
+      const message = err instanceof Error ? err.message : 'Failed to save tenant'
+      toast.error(message)
+    } finally {
+      setIsPending(false)
+    }
   }
 
   return (
@@ -1296,6 +1357,12 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       />
 
       <LalamoveSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <EmailNotificationsSection
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}
