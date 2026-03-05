@@ -866,6 +866,199 @@ function SmartMenuSystemSection() {
   )
 }
 
+// ── How It Works Section ──────────────────────────────────────────────
+
+const STEPS = [
+  {
+    number: 1,
+    title: 'Book a Call',
+    description: 'Pag-usapan natin yung business mo.',
+  },
+  {
+    number: 2,
+    title: 'We Set Up Your Smart Menu',
+    description: 'Kasama na lahat ng blueprints at system.',
+  },
+  {
+    number: 3,
+    title: 'Launch',
+    description: 'Panoorin mo na lang tumaas ang Average Order Value mo.',
+  },
+] as const
+
+function HowItWorksSection() {
+  return (
+    <section id="process" className="relative bg-white py-20 md:py-28 lg:py-32">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+        >
+          How It Works
+        </motion.h2>
+
+        {/* Steps */}
+        <div className="mt-14 md:mt-20 flex flex-col md:flex-row gap-8 items-start">
+          {STEPS.map((step, index) => (
+            <motion.div
+              key={step.number}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.6, delay: index * 0.15 }}
+              className="flex-1 relative flex flex-col items-center text-center"
+            >
+              {/* Connecting line on desktop (between steps, not after last) */}
+              {index < STEPS.length - 1 && (
+                <div className="hidden md:block absolute top-7 left-[calc(50%+2rem)] right-[calc(-50%+2rem)] border-t-2 border-dashed border-gray-300" />
+              )}
+
+              {/* Number circle */}
+              <div
+                className="relative z-10 flex items-center justify-center h-14 w-14 rounded-full text-2xl font-bold text-white shadow-lg"
+                style={{ backgroundColor: BRAND_RED }}
+              >
+                {step.number}
+              </div>
+
+              {/* Step title */}
+              <h3 className="mt-6 text-xl font-bold text-gray-900">
+                {step.title}
+              </h3>
+
+              {/* Step description */}
+              <p className="mt-3 text-lg text-gray-600 leading-relaxed max-w-xs">
+                {step.description}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Value Stack Section ──────────────────────────────────────────────
+
+const VALUE_STACK_ITEMS = [
+  { name: 'Smart Menu Ordering System (Dine-in + Pick-up + Delivery)', value: '10,000' },
+  { name: 'Menu Curation Blueprint', value: '2,500' },
+  { name: 'Menu Engineering Blueprint', value: '2,500' },
+  { name: 'App Selling System Blueprint', value: '2,500' },
+  { name: 'Bundling System', value: '2,500' },
+] as const
+
+function ValueStackSection() {
+  return (
+    <section id="pricing" className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
+      <div className="mx-auto max-w-3xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight"
+        >
+          Everything You Get
+        </motion.h2>
+
+        {/* Stack List */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="mt-14 md:mt-20"
+        >
+          {VALUE_STACK_ITEMS.map((item, index) => (
+            <motion.div
+              key={item.name}
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5, delay: 0.2 + index * 0.08 }}
+              className="flex items-center justify-between py-5 border-b border-white/10"
+            >
+              <div className="flex items-center gap-3">
+                <Check className="h-5 w-5 shrink-0 text-green-400" />
+                <span className="text-lg text-gray-300">{item.name}</span>
+              </div>
+              <span className="text-lg text-gray-500 line-through ml-4 shrink-0">
+                ₱{item.value}
+              </span>
+            </motion.div>
+          ))}
+
+          {/* Total Value Row */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.6, delay: 0.6 }}
+            className="flex items-center justify-between pt-6 pb-2"
+          >
+            <span className="text-xl md:text-2xl font-bold text-white">Total Value:</span>
+            <span className="text-xl md:text-2xl font-bold text-white">₱20,000+</span>
+          </motion.div>
+        </motion.div>
+
+        {/* Price Reveal */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.7, delay: 0.3 }}
+          className="mt-16 md:mt-20 text-center"
+        >
+          <p className="text-2xl md:text-3xl text-gray-400 font-medium">
+            Pero hindi mo babayaran ng ganun.
+          </p>
+          <p
+            className="mt-4 text-5xl md:text-6xl font-bold"
+            style={{ color: BRAND_RED }}
+          >
+            ₱3,499 lang.
+          </p>
+        </motion.div>
+
+        {/* CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+          className="mt-12 flex flex-col items-center gap-4"
+        >
+          <a
+            href={MESSENGER_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative inline-flex items-center gap-3 rounded-full px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.03] hover:shadow-xl hover:shadow-red-500/30 active:scale-[0.98]"
+            style={{ backgroundColor: BRAND_RED }}
+          >
+            <span
+              className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"
+              style={{ backgroundColor: BRAND_RED }}
+            />
+            <span className="relative flex items-center gap-3">
+              <MessageCircle className="h-5 w-5" />
+              Book Your Free Strategy Call
+            </span>
+          </a>
+          <span className="text-sm text-gray-500">
+            One-time payment. Walang monthly fees.
+          </span>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
 // ── Landing Page (exported) ────────────────────────────────────────────
 
 export function LandingPage() {
@@ -877,6 +1070,8 @@ export function LandingPage() {
       <ProblemSection />
       <SolutionSection />
       <SmartMenuSystemSection />
+      <HowItWorksSection />
+      <ValueStackSection />
       {/* More sections will be added in subsequent tasks */}
     </div>
   )
