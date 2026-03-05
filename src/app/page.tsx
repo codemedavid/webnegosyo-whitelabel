@@ -8,12 +8,12 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export const metadata: Metadata = {
-  title: 'WebNegosyo - Smart Menu System for Filipino Businesses',
-  description: 'Your customers order online. You get every order in Messenger. Beautiful online menu, simple ordering. Starting at ₱999 one-time payment. No login required, all orders come to your Messenger.',
-  keywords: ['restaurant menu', 'online ordering', 'messenger ordering', 'Philippines', 'food ordering system', 'restaurant management'],
+  title: 'WebNegosyo - Your Menu Should Be Your Best Salesperson',
+  description: 'Smart Menu System na nagbo-boost ng Average Order Value para sa food businesses. Menu Engineering, Bundling System, at Upsell Automation. P3,499 one-time.',
+  keywords: ['smart menu', 'restaurant menu engineering', 'upsell system', 'food business Philippines', 'online ordering', 'messenger ordering', 'average order value'],
   openGraph: {
-    title: 'WebNegosyo - Smart Menu System for Filipino Businesses',
-    description: 'Your customers order online. You get every order in Messenger.',
+    title: 'WebNegosyo - Your Menu Should Be Your Best Salesperson',
+    description: 'Smart Menu System na nagbo-boost ng Average Order Value para sa food businesses.',
     type: 'website',
   },
   robots: {
