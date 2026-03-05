@@ -984,11 +984,11 @@ function ValueStackSection() {
               transition={{ duration: 0.5, delay: 0.2 + index * 0.08 }}
               className="flex items-center justify-between py-5 border-b border-white/10"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <Check className="h-5 w-5 shrink-0 text-green-400" />
-                <span className="text-lg text-gray-300">{item.name}</span>
+                <span className="text-base md:text-lg text-gray-300">{item.name}</span>
               </div>
-              <span className="text-lg text-gray-500 line-through ml-4 shrink-0">
+              <span className="text-base md:text-lg text-gray-500 line-through ml-4 shrink-0">
                 ₱{item.value}
               </span>
             </motion.div>
