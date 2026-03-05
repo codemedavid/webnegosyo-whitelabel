@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, TrendingDown, UserX, DollarSign } from 'lucide-react'
+import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, TrendingDown, UserX, DollarSign, LayoutGrid, BarChart3, Smartphone, Package, Check } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────
 const BRAND_RED = '#FF3B30'
@@ -636,6 +636,236 @@ function ProblemSection() {
   )
 }
 
+// ── Solution Section ──────────────────────────────────────────────────
+
+const BLUEPRINT_CARDS = [
+  {
+    icon: LayoutGrid,
+    title: 'Menu Curation Blueprint',
+    description: 'Paano i-layout ang menu mo para ma-guide ang customer kung saan ka kumikita.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Menu Engineering Blueprint',
+    description: 'Alam mo ba kung aling item mo ang Star at aling item ang Dead Weight? Dito mo malalaman.',
+  },
+  {
+    icon: Smartphone,
+    title: 'App Selling System Blueprint',
+    description: 'Turn your menu into a conversion machine. Hindi lang basta menu — salesperson.',
+  },
+  {
+    icon: Package,
+    title: 'Bundling System',
+    description: "Yung 'Make it a Meal' na system ng McDonald's? Ganun din to — automated bundles na nagbo-boost ng AOV mo.",
+  },
+] as const
+
+function SolutionSection() {
+  return (
+    <section id="system" className="relative bg-white py-20 md:py-28 lg:py-32">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight max-w-4xl mx-auto"
+        >
+          Introducing the Smart Menu{' '}
+          <span
+            className="bg-clip-text text-transparent"
+            style={{
+              backgroundImage: `linear-gradient(135deg, ${BRAND_RED}, #FF6B61)`,
+            }}
+          >
+            That Sells For You
+          </span>
+        </motion.h2>
+
+        {/* Blueprint Cards */}
+        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-2 gap-8">
+          {BLUEPRINT_CARDS.map((card, index) => {
+            const Icon = card.icon
+            return (
+              <motion.div
+                key={card.title}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: index * 0.12 }}
+                className="bg-white border border-gray-200 rounded-2xl p-8 hover:-translate-y-1 hover:shadow-lg transition-all"
+              >
+                <div
+                  className="inline-flex items-center justify-center h-12 w-12 rounded-xl mb-6"
+                  style={{ backgroundColor: `${BRAND_RED}15` }}
+                >
+                  <Icon className="h-6 w-6" style={{ color: BRAND_RED }} />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">
+                  {card.title}
+                </h3>
+                <p className="text-lg text-gray-600 leading-relaxed">
+                  {card.description}
+                </p>
+              </motion.div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Smart Menu Ordering System Section ────────────────────────────────
+
+const SMART_MENU_FEATURES = [
+  'Handles Dine-in, Pick-up, at Delivery — isang system lang.',
+  'Never misses an upsell opportunity. Kahit wala kang staff na nag-su-suggest, yung menu mo mismo ang gagawa.',
+  'Lahat ng orders, diretso sa Messenger mo. No app needed para sa customers.',
+  'Automated bundling suggestions sa bawat order.',
+  'Works on any phone — walang need mag-install ng app.',
+  'Real-time notifications sa bawat bagong order.',
+] as const
+
+function SmartMenuSystemSection() {
+  return (
+    <section className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight max-w-4xl mx-auto mb-14 md:mb-20"
+        >
+          Plus: Your Very Own{' '}
+          <span
+            className="bg-clip-text text-transparent"
+            style={{
+              backgroundImage: `linear-gradient(135deg, ${BRAND_RED}, #FF6B61)`,
+            }}
+          >
+            Smart Menu Ordering System
+          </span>
+        </motion.h2>
+
+        {/* Content: Features + Mockup */}
+        <div className="flex flex-col lg:flex-row gap-12 items-center">
+          {/* Left: Feature Bullets */}
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.6, delay: 0.15 }}
+            className="flex-1 space-y-5"
+          >
+            {SMART_MENU_FEATURES.map((feature, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
+                className="flex items-start gap-4"
+              >
+                <div className="mt-1 shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-green-500/20">
+                  <Check className="h-4 w-4 text-green-400" />
+                </div>
+                <p className="text-lg text-gray-300 leading-relaxed">
+                  {feature}
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Right: Phone/Tablet Mockup */}
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.6, delay: 0.25 }}
+            className="flex-1 flex items-center justify-center"
+          >
+            <div className="relative w-full max-w-[360px]">
+              {/* Glow */}
+              <div
+                className="absolute -inset-6 rounded-[2rem] opacity-20 blur-3xl"
+                style={{
+                  background: `radial-gradient(ellipse at center, ${BRAND_RED}40 0%, transparent 70%)`,
+                }}
+              />
+
+              {/* Device frame */}
+              <div className="relative rounded-[2rem] border border-white/15 bg-gradient-to-b from-gray-800 to-gray-900 p-4 shadow-2xl shadow-black/50">
+                <div className="rounded-[1.5rem] bg-white overflow-hidden">
+                  {/* Header */}
+                  <div className="px-5 py-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-7 w-7 rounded-lg" style={{ backgroundColor: BRAND_RED }} />
+                      <span className="text-sm font-bold text-gray-900">Your Restaurant</span>
+                    </div>
+                  </div>
+
+                  {/* Order Type Selector */}
+                  <div className="p-4 space-y-3">
+                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      How would you like your order?
+                    </div>
+
+                    {/* Order type cards */}
+                    {[
+                      { emoji: '🍽️', label: 'Dine-in', sublabel: 'Eat here' },
+                      { emoji: '🛍️', label: 'Pick-up', sublabel: 'Take away' },
+                      { emoji: '🛵', label: 'Delivery', sublabel: 'To your door' },
+                    ].map((orderType, i) => (
+                      <div
+                        key={orderType.label}
+                        className="flex items-center gap-3 rounded-xl border p-3.5 transition-all"
+                        style={{
+                          borderColor: i === 0 ? BRAND_RED : '#E5E7EB',
+                          backgroundColor: i === 0 ? `${BRAND_RED}08` : 'white',
+                        }}
+                      >
+                        <span className="text-xl">{orderType.emoji}</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-bold text-gray-900">{orderType.label}</div>
+                          <div className="text-xs text-gray-500">{orderType.sublabel}</div>
+                        </div>
+                        {i === 0 && (
+                          <div
+                            className="h-5 w-5 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: BRAND_RED }}
+                          >
+                            <Check className="h-3 w-3 text-white" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Messenger notification mock */}
+                    <div className="mt-2 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100 p-3 border border-blue-200">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4 text-blue-600 shrink-0" />
+                        <div>
+                          <div className="text-[10px] font-bold text-blue-900">New Order Received!</div>
+                          <div className="text-[9px] text-blue-700">Diretso sa Messenger mo</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── Landing Page (exported) ────────────────────────────────────────────
 
 export function LandingPage() {
@@ -645,6 +875,8 @@ export function LandingPage() {
       <HeroSection />
       <McDonaldsStorySection />
       <ProblemSection />
+      <SolutionSection />
+      <SmartMenuSystemSection />
       {/* More sections will be added in subsequent tasks */}
     </div>
   )
