@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, TrendingDown, UserX, DollarSign, LayoutGrid, BarChart3, Smartphone, Package, Check } from 'lucide-react'
+import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, ChevronDown, TrendingDown, UserX, DollarSign, LayoutGrid, BarChart3, Smartphone, Package, Check, Star, ArrowRight } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────
 const BRAND_RED = '#FF3B30'
@@ -1059,6 +1059,278 @@ function ValueStackSection() {
   )
 }
 
+// ── Testimonials Section ──────────────────────────────────────────────
+
+interface Testimonial {
+  quote: string
+  name: string
+  business: string
+  aovBefore: string
+  aovAfter: string
+}
+
+const TESTIMONIALS: Testimonial[] = [
+  {
+    quote: "Akala ko dati okay na yung menu ko. Nung nakita ko yung data, dun ko na-realize kung magkano ang nami-miss ko.",
+    name: "Maria Santos",
+    business: "Restaurant Owner",
+    aovBefore: "₱180",
+    aovAfter: "₱250",
+  },
+  {
+    quote: "Yung bundling system nila, grabe. Tumaas ng 40% yung average order namin in 2 weeks.",
+    name: "Juan dela Cruz",
+    business: "Cafe Owner",
+    aovBefore: "₱120",
+    aovAfter: "₱168",
+  },
+  {
+    quote: "Hindi ko alam na ganun kadali. Setup lang, tapos yung menu na mismo ang nag-uupsell.",
+    name: "Ana Reyes",
+    business: "Food Truck Owner",
+    aovBefore: "₱95",
+    aovAfter: "₱145",
+  },
+]
+
+function TestimonialsSection() {
+  return (
+    <section id="testimonials" className="bg-white py-20 md:py-28 lg:py-32">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+        >
+          What Business Owners Say
+        </motion.h2>
+
+        {/* Cards */}
+        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
+          {TESTIMONIALS.map((t, index) => (
+            <motion.div
+              key={t.name}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.6, delay: index * 0.15 }}
+              className="rounded-2xl border bg-white p-8 shadow-sm"
+            >
+              {/* Stars */}
+              <div className="flex gap-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className="h-5 w-5 fill-yellow-400 text-yellow-400"
+                  />
+                ))}
+              </div>
+
+              {/* Quote */}
+              <p className="mt-5 text-lg italic text-gray-700 leading-relaxed">
+                &ldquo;{t.quote}&rdquo;
+              </p>
+
+              {/* AOV metric */}
+              <div className="mt-6 flex items-center gap-2 text-sm font-medium">
+                <span className="text-gray-500">AOV:</span>
+                <span className="text-gray-400">{t.aovBefore}</span>
+                <ArrowRight className="h-4 w-4 text-green-500" />
+                <span className="font-bold text-green-600">{t.aovAfter}</span>
+              </div>
+
+              {/* Name + Business */}
+              <div className="mt-4">
+                <p className="font-bold text-gray-900">{t.name}</p>
+                <p className="text-sm text-gray-500">{t.business}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── FAQ Section ───────────────────────────────────────────────────────
+
+interface FAQItem {
+  q: string
+  a: string
+}
+
+const FAQ_ITEMS: FAQItem[] = [
+  { q: "Para kanino to?", a: "Para sa lahat ng food business — restaurant, coffee shop, food truck, commissary. Basta may menu ka, pwede to." },
+  { q: "Kailangan ba ng technical skills?", a: "Hindi. We handle everything. Ikaw, mag-fo-focus ka lang sa food mo." },
+  { q: "Gaano katagal ang setup?", a: "Depende sa menu mo, pero usually 1-3 days ready na." },
+  { q: "Paano yung orders, saan napupunta?", a: "Diretso sa Messenger mo. Real-time. Walang missed orders." },
+  { q: "One-time payment lang ba talaga?", a: "Oo. ₱3,499 lang. Walang monthly fees, walang hidden charges." },
+  { q: "Pano kung marami akong menu items?", a: "Kahit gaano karami, kaya ng system. Categories, variations, add-ons — lahat supported." },
+]
+
+function FAQSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+  return (
+    <section id="faq" className="bg-white py-20 md:py-28 lg:py-32">
+      <div className="mx-auto max-w-3xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+        >
+          Frequently Asked Questions
+        </motion.h2>
+
+        {/* FAQ Items */}
+        <div className="mt-14 md:mt-20 divide-y divide-gray-200">
+          {FAQ_ITEMS.map((item, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5, delay: index * 0.08 }}
+            >
+              <button
+                onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                className="flex w-full items-center justify-between py-5 text-left"
+              >
+                <span className="text-lg font-bold text-gray-900 pr-4">
+                  {item.q}
+                </span>
+                <ChevronDown
+                  className={`h-5 w-5 shrink-0 text-gray-500 transition-transform duration-300 ${
+                    openIndex === index ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+              <AnimatePresence initial={false}>
+                {openIndex === index && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <p className="pb-5 text-lg text-gray-600 leading-relaxed">
+                      {item.a}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Final CTA Section ─────────────────────────────────────────────────
+
+function FinalCTASection() {
+  return (
+    <section className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
+      <div className="mx-auto max-w-3xl px-6 lg:px-8 text-center">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight tracking-tight"
+        >
+          Stop Leaving Money on the Table
+        </motion.h2>
+
+        {/* Body */}
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="mt-6 text-lg md:text-xl text-gray-400 leading-relaxed"
+        >
+          Bawat araw na walang Smart Menu ang business mo, may pera kang hindi nakukuha.
+          Hindi mo kailangan ng mas maraming customers — kailangan mo lang na mas malaki ang bili ng bawat isa.
+        </motion.p>
+
+        {/* CTA Button */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="mt-12 flex flex-col items-center gap-4"
+        >
+          <a
+            href={MESSENGER_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative inline-flex items-center gap-3 rounded-full px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.03] hover:shadow-xl hover:shadow-red-500/30 active:scale-[0.98]"
+            style={{ backgroundColor: BRAND_RED }}
+          >
+            <span
+              className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"
+              style={{ backgroundColor: BRAND_RED }}
+            />
+            <span className="relative flex items-center gap-3">
+              <MessageCircle className="h-5 w-5" />
+              Book Your Free 15-Min Strategy Call
+            </span>
+          </a>
+          <span className="text-sm text-gray-500">
+            Free consultation. Walang bayad. Walang commitment.
+          </span>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
+// ── Footer ────────────────────────────────────────────────────────────
+
+function Footer() {
+  return (
+    <footer className="border-t border-white/10 py-8" style={{ backgroundColor: '#0B1120' }}>
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="flex flex-col items-center gap-4 md:flex-row md:justify-between">
+          {/* Logo + Copyright */}
+          <div className="flex items-center gap-2.5">
+            <div
+              className="flex h-7 w-7 items-center justify-center rounded-md"
+              style={{ backgroundColor: BRAND_RED }}
+            >
+              <Menu className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-sm text-gray-400">
+              &copy; {new Date().getFullYear()} WebNegosyo. All rights reserved.
+            </span>
+          </div>
+
+          {/* Links */}
+          <div className="flex items-center gap-6">
+            <a href="#" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+              Terms
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
 // ── Landing Page (exported) ────────────────────────────────────────────
 
 export function LandingPage() {
@@ -1072,7 +1344,10 @@ export function LandingPage() {
       <SmartMenuSystemSection />
       <HowItWorksSection />
       <ValueStackSection />
-      {/* More sections will be added in subsequent tasks */}
+      <TestimonialsSection />
+      <FAQSection />
+      <FinalCTASection />
+      <Footer />
     </div>
   )
 }
