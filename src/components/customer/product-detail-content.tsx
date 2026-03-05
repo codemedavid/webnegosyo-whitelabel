@@ -271,6 +271,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const router = useRouter()
     const { addItem, setTenantContext } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
+    const [isPageTransitioning, setIsPageTransitioning] = useState(false)
+    const pendingNavigationRef = useRef<string | null>(null)
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     const {
@@ -441,6 +443,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         main.scrollLeft = 0
     }, [item.id])
 
+    useEffect(() => {
+        if (isPageTransitioning && pendingNavigationRef.current) {
+            const timer = setTimeout(() => {
+                const url = pendingNavigationRef.current!
+                pendingNavigationRef.current = null
+                setIsPageTransitioning(false)
+                router.replace(url)
+            }, 250) // Match the exit animation duration
+            return () => clearTimeout(timer)
+        }
+    }, [isPageTransitioning, router])
+
     const hasImage = useMemo(() =>
         item.image_url && item.image_url.trim() !== '',
         [item.image_url]
@@ -575,7 +589,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [addItem, item.id])
 
     return (
-        <div
+        <motion.div
+            animate={isPageTransitioning ? { x: '-100%', opacity: 0 } : { x: 0, opacity: 1 }}
+            transition={{ type: 'tween' as const, duration: 0.25, ease: 'easeInOut' }}
             className="min-h-screen flex flex-col"
             style={cssVariables}
         >
@@ -918,7 +934,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     onSelectUpgrade={(upgrade) => {
                         setIsUpgradeScreenOpen(false)
                         setUpgradeDismissed(true)
-                        router.replace(`/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`)
+                        // Trigger slide-left exit animation, then navigate
+                        pendingNavigationRef.current = `/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`
+                        setIsPageTransitioning(true)
                     }}
                     onSelectBundle={(bundle) => {
                         setIsUpgradeScreenOpen(false)
@@ -1185,6 +1203,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     onToggleCheckoutPreview={handleToggleCheckoutPreview}
                 />
             )}
-        </div>
+        </motion.div>
     )
 })
