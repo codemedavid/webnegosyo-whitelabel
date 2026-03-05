@@ -958,12 +958,15 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     open={isPairSheetOpen}
                     onClose={() => {
                         setIsPairSheetOpen(false)
-                        if (buyNowIntentRef.current) {
-                            buyNowIntentRef.current = false
-                            router.push(`/${tenant.slug}/cart`)
-                        } else {
-                            router.back()
-                        }
+                        // Wait for exit animation to complete before navigating
+                        setTimeout(() => {
+                            if (buyNowIntentRef.current) {
+                                buyNowIntentRef.current = false
+                                router.push(`/${tenant.slug}/cart`)
+                            } else {
+                                router.back()
+                            }
+                        }, 250)
                     }}
                     onAddItem={handleUpsellAddItem}
                     suggestions={complementaryUpsells}
