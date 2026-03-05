@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface PolaroidCardProps {
  * Polaroid Card Template
  * Retro photo-style card with thick white frame, slight tilt on hover, and caption-style text
  */
-export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: PolaroidCardProps) {
+export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: PolaroidCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -73,7 +74,10 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
 
                 {hasDiscount && (
                     <div className="absolute right-2 top-2">
-                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                        <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm"
+                            style={{ backgroundColor: branding.error, color: '#ffffff' }}
+                        >
                             SALE
                         </span>
                     </div>
@@ -89,9 +93,9 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
             </div>
 
             {/* Caption area — thick bottom like a real polaroid */}
-            <div className="py-4 px-1 space-y-1.5">
+            <div className="py-2 px-0.5 space-y-1 md:py-4 md:px-1 md:space-y-1.5">
                 <h3
-                    className="text-base font-semibold line-clamp-1"
+                    className="text-sm md:text-base font-semibold line-clamp-1"
                     style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -99,7 +103,7 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
 
                 {item.description && (
                     <p
-                        className="text-xs line-clamp-2"
+                        className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
                         style={{ color: branding.cardDescription }}
                     >
                         {item.description}
@@ -113,13 +117,13 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
                                 {formatPrice(item.price, { hideCurrencySymbol })}
                             </span>
                         )}
-                        <span className="text-lg font-bold" style={{ color: branding.cardPrice }}>
+                        <span className="text-sm md:text-lg font-bold" style={{ color: branding.cardPrice }}>
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>
                     </div>
 
                     <button
-                        className="flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-110"
+                        className="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full transition-all hover:scale-110"
                         style={{
                             backgroundColor: branding.buttonPrimary,
                             color: branding.buttonPrimaryText,
@@ -131,7 +135,7 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
                         }}
                         disabled={!item.is_available}
                     >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                         </svg>
                     </button>
@@ -150,4 +154,4 @@ export function PolaroidCard({ item, onSelect, branding, menuEngineeringEnabled,
             </div>
         </div>
     )
-}
+})

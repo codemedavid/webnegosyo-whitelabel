@@ -1,4 +1,6 @@
 // Database Types for Smart Restaurant Menu System
+// Re-export the auto-generated Database type used by Supabase client
+export type { Database } from './supabase'
 
 export type BcgClassification = 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified';
 
@@ -403,6 +405,10 @@ export interface UpsellPair {
   source_label: string | null;
   target_label: string | null;
   upgrade_header: string | null;
+  is_auto_generated: boolean;
+  bcg_strategy: string | null;
+  upgrade_display_style: 'inline' | 'modal';
+  max_suggestions: number;
   created_at: string;
   updated_at: string;
 }
@@ -420,80 +426,29 @@ export interface UpsellPairWithItems extends UpsellPair {
   target_item: MenuItem;
 }
 
-// Database schema definition (for Supabase)
-export interface Database {
-  public: {
-    Tables: {
-      tenants: {
-        Row: Tenant;
-        Insert: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Tenant, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      categories: {
-        Row: Category;
-        Insert: Omit<Category, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Category, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      menu_items: {
-        Row: MenuItem;
-        Insert: Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      order_types: {
-        Row: OrderType;
-        Insert: Omit<OrderType, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<OrderType, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      customer_form_fields: {
-        Row: CustomerFormField;
-        Insert: Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      payment_methods: {
-        Row: PaymentMethod;
-        Insert: Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      payment_method_order_types: {
-        Row: PaymentMethodOrderType;
-        Insert: Omit<PaymentMethodOrderType, 'id' | 'created_at'>;
-        Update: Partial<Omit<PaymentMethodOrderType, 'id' | 'created_at'>>;
-      };
-      users: {
-        Row: User;
-        Insert: Omit<User, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<User, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      app_users: {
-        Row: AppUser;
-        Insert: Omit<AppUser, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<AppUser, 'user_id' | 'created_at' | 'updated_at'>>;
-      };
-      orders: {
-        Row: Order;
-        Insert: Omit<Order, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Order, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      facebook_pages: {
-        Row: FacebookPage;
-        Insert: Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<FacebookPage, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      upsell_pairs: {
-        Row: UpsellPair;
-        Insert: Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<UpsellPair, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      bundles: {
-        Row: Bundle;
-        Insert: Omit<Bundle, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Bundle, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      bundle_items: {
-        Row: BundleItem;
-        Insert: Omit<BundleItem, 'id'>;
-        Update: Partial<Omit<BundleItem, 'id'>>;
-      };
-    };
-  };
+// Complementary Pairs (Phase 2 — "Perfect With")
+export interface ComplementaryPair {
+  id: string
+  tenant_id: string
+  source_type: 'item' | 'category'
+  source_item_id: string | null
+  source_category_id: string | null
+  target_item_id: string
+  display_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
+
+export interface ComplementaryPairWithTarget extends ComplementaryPair {
+  target_item: MenuItem
+}
+
+export interface ComplementaryPairWithDetails extends ComplementaryPair {
+  target_item: MenuItem
+  source_item?: MenuItem
+  source_category?: Category
+}
+
+// Note: Database type is now auto-generated in ./supabase.ts and re-exported above.
+// Convenience type aliases above are kept for backward compatibility throughout the codebase.

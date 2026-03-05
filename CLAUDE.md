@@ -85,15 +85,39 @@ Menu engineering is a feature-flagged system (`menu_engineering_enabled` + `chec
 
 **Upsell Pairs** (`upsell_pairs` table):
 - Two pair types: `complementary` (post-add-to-cart suggestion) and `upgrade` (pre-add side-by-side comparison)
+- Extra columns: `is_auto_generated`, `bcg_strategy`, `upgrade_display_style` (`inline` | `modal`), `max_suggestions`
 - `UpsellSuggestionModal` — shown after adding an item, displays complementary items
 - `UpgradeUpsellModal` — shown before adding, side-by-side comparison with animated arrow
 
-**Checkout Interstitial** (`src/components/customer/checkout-upsell-modal.tsx`):
-- Triggered on "Checkout" click from cart. Bottom sheet on mobile, centered modal on desktop.
+**Phase 1 — "Make it a Meal?" Upgrade** (`src/components/customer/inline-upgrade-section.tsx`):
+- McDonald's kiosk-style full-width section on product detail page with side-by-side cards
+- "Ala Carte" (current item) vs "Meal" (upgrade/bundle) — large 4:3 images, bold labels, price diff badges
+- Default selects "Ala Carte"; tapping upgrade switches with green border + checkmark animation
+- Supports custom labels via `upgrade_header`, `source_label`, `target_label` on upsell pairs
+- Smart suggestions via `getSmartUpgradeSuggestions` / `getSmartUpgradeSuggestionsRanked` (AOV lift scoring)
+- Admin: `SmartUpgradePanel` in upsell pairs tab, live preview of customer-facing cards
+- Analytics: `upsell_shown` + `upsell_clicked` with `source: 'inline_upgrade'`
+- Gated by `menuEngineeringEnabled`
+
+**Phase 2 — "Perfect with..." Pair Suggestion** (`src/components/customer/pair-suggestion-sheet.tsx`):
+- Full-screen takeover page triggered after "Add to Cart" for complementary pair suggestions
+- Bold header: "Perfect with [item name]", subtitle: "Complete your order"
+- Responsive grid: 2 cols mobile, 3 tablet, 4 desktop — large cards with 4:3 images and "Add" buttons
+- Green "Added!" state with checkmark overlay on added items
+- "Continue" button navigates back to menu; "Buy Now" flow redirects to cart after prompts
+- Analytics: `upsell_shown`, `upsell_clicked`, `upsell_dismissed` with `source: 'pair_suggestion'`
+- BCG-powered auto-generation: `generateSmartPairSuggestions` pairs plowhorses→stars, stars→stars, puzzles→plowhorses
+- Admin: `SmartPairSuggestionsTab` with Generate/Accept/Reject/Bulk Accept, images, prices, AOV lift estimates
+
+**Phase 3 — "Before you go..." Checkout Page** (`src/components/customer/checkout-upsell-modal.tsx`):
+- Full-screen takeover on ALL devices (not a modal/drawer) triggered from cart "Checkout" button
 - 4-tier priority waterfall: manually-flagged items → complementary pairs → BCG star items → any available items
-- Tracks analytics: `upsell_shown`, `upsell_clicked`, `upsell_converted`
+- Running cart total display, responsive grid (2/3/4 cols), large cards with "Add to Cart" buttons
+- "No thanks, checkout" ghost button as secondary action
+- Analytics: `upsell_shown`, `upsell_clicked`, `upsell_dismissed` with `source: 'checkout_modal'`
 - Customizable branding via 7 `checkout_modal_*` tenant color fields
-- Preview mode available for admin settings sidebar
+- Cart page prefetches suggestions on load for instant display
+- Admin settings: `CheckoutUpsellSettingsTab` in menu engineering dashboard (enable/disable, title, subtitle, max items, item picker)
 
 **Bundles** (`src/lib/bundles-service.ts`, `src/components/customer/bundles-section.tsx`):
 - `bundles` + `bundle_items` tables. Pricing types: `fixed` or `discount` (percentage off)

@@ -125,6 +125,8 @@ export function OptimizedImage({
                 ? (estimatedFillWidth || 1200)
                 : undefined
         const requestedHeight = typeof height === 'number' ? height : undefined
+        // The * 2 multiplier already accounts for retina/2x displays,
+        // so we do NOT add dpr:'auto' (which would double the size again).
         const transformWidth = typeof requestedWidth === 'number'
             ? Math.min(2000, Math.round(requestedWidth * 2))
             : undefined
@@ -139,7 +141,6 @@ export function OptimizedImage({
             height: transformHeight,
             quality: cloudinaryQuality,
             crop: cropMode,
-            dpr: 'auto',
         }) || src
 
         // Use unoptimized prop to bypass Next.js optimization

@@ -1,17 +1,13 @@
 'use client'
 
-import { LayoutDefault } from './layout-default'
-import { LayoutSidebar } from './layout-sidebar'
-import { LayoutMagazine } from './layout-magazine'
-import { LayoutGridFocus } from './layout-grid-focus'
-import { LayoutList } from './layout-list'
-import { LayoutMosaic } from './layout-mosaic'
+import dynamic from 'next/dynamic'
+import { useEffect } from 'react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
 
 interface MenuLayoutProps {
     layout: PageLayout
@@ -49,7 +45,45 @@ interface MenuLayoutProps {
     onOpenBrandingSection?: (section: MenuBrandingSection) => void
 }
 
-import { useEffect } from 'react'
+// Minimal skeleton shown while the layout chunk loads on first render.
+function LayoutSkeleton() {
+    return (
+        <div className="space-y-6 animate-pulse">
+            <div className="h-12 w-48 rounded-lg bg-gray-100 mx-auto" />
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="rounded-xl bg-gray-100" style={{ minHeight: 200 }} />
+                ))}
+            </div>
+        </div>
+    )
+}
+
+// Each layout is loaded lazily — only the active tenant's layout chunk is fetched.
+const LayoutDefault = dynamic(
+    () => import('./layout-default').then((m) => ({ default: m.LayoutDefault })),
+    { loading: LayoutSkeleton }
+)
+const LayoutSidebar = dynamic(
+    () => import('./layout-sidebar').then((m) => ({ default: m.LayoutSidebar })),
+    { loading: LayoutSkeleton }
+)
+const LayoutMagazine = dynamic(
+    () => import('./layout-magazine').then((m) => ({ default: m.LayoutMagazine })),
+    { loading: LayoutSkeleton }
+)
+const LayoutGridFocus = dynamic(
+    () => import('./layout-grid-focus').then((m) => ({ default: m.LayoutGridFocus })),
+    { loading: LayoutSkeleton }
+)
+const LayoutList = dynamic(
+    () => import('./layout-list').then((m) => ({ default: m.LayoutList })),
+    { loading: LayoutSkeleton }
+)
+const LayoutMosaic = dynamic(
+    () => import('./layout-mosaic').then((m) => ({ default: m.LayoutMosaic })),
+    { loading: LayoutSkeleton }
+)
 
 export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
     const { activeCategory, setActiveCategory } = props
@@ -76,10 +110,3 @@ export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
             return <LayoutDefault isLoading={isLoading} {...props} />
     }
 }
-
-export { LayoutDefault } from './layout-default'
-export { LayoutSidebar } from './layout-sidebar'
-export { LayoutMagazine } from './layout-magazine'
-export { LayoutGridFocus } from './layout-grid-focus'
-export { LayoutList } from './layout-list'
-export { LayoutMosaic } from './layout-mosaic'

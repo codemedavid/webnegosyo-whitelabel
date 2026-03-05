@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getBundlesByTenant } from '@/lib/bundles-service'
+import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { BundlesList } from '@/components/admin/bundles-list'
+import { BundleSuggestions } from '@/components/admin/bundle-suggestions'
 import type { Tenant } from '@/types/database'
 
 function BundlesSkeleton() {
@@ -24,18 +26,36 @@ function BundlesSkeleton() {
 async function BundlesContent({
     tenantSlug,
     tenantId,
+    menuEngineeringEnabled,
 }: {
     tenantSlug: string
     tenantId: string
+    menuEngineeringEnabled: boolean
 }) {
-    const bundles = await getBundlesByTenant(tenantId)
+    const [bundles, menuItems] = await Promise.all([
+        getBundlesByTenant(tenantId),
+        getMenuItemsByTenant(tenantId),
+    ])
+
+    const existingBundleItemIds = bundles.flatMap(
+        (b) => b.items?.map((i) => i.menu_item_id) || []
+    )
 
     return (
-        <BundlesList
-            bundles={bundles}
-            tenantSlug={tenantSlug}
-            tenantId={tenantId}
-        />
+        <div className="space-y-6">
+            {menuEngineeringEnabled && menuItems.length > 0 && (
+                <BundleSuggestions
+                    menuItems={menuItems}
+                    tenantSlug={tenantSlug}
+                    existingBundleItemIds={existingBundleItemIds}
+                />
+            )}
+            <BundlesList
+                bundles={bundles}
+                tenantSlug={tenantSlug}
+                tenantId={tenantId}
+            />
+        </div>
     )
 }
 
@@ -92,7 +112,11 @@ export default async function AdminBundlesPage({
             </div>
 
             <Suspense fallback={<BundlesSkeleton />}>
-                <BundlesContent tenantSlug={tenantSlug} tenantId={tenant.id} />
+                <BundlesContent
+                    tenantSlug={tenantSlug}
+                    tenantId={tenant.id}
+                    menuEngineeringEnabled={!!tenant.menu_engineering_enabled}
+                />
             </Suspense>
         </div>
     )

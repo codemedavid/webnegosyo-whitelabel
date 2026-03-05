@@ -1,8 +1,7 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug } from '@/lib/admin-service'
+import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrderTypesByTenant } from '@/lib/order-types-service'
 import { OrderTypeCreate } from '@/components/admin/order-type-create'
-import type { Tenant } from '@/types/database'
 import { notFound } from 'next/navigation'
 
 export default async function NewOrderTypePage({
@@ -12,13 +11,11 @@ export default async function NewOrderTypePage({
 }) {
     const { tenant: tenantSlug } = await params
 
-    const tenantData = await getTenantBySlug(tenantSlug)
+    const tenant = await getCachedTenantBySlug(tenantSlug)
 
-    if (!tenantData) {
+    if (!tenant) {
         notFound()
     }
-
-    const tenant: Tenant = tenantData
 
     // Get existing order types to determine which types are already used
     const existingOrderTypes = await getOrderTypesByTenant(tenant.id)

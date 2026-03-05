@@ -2,6 +2,7 @@
  * Orders service for tenant admin operations
  */
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -62,7 +63,7 @@ export async function getOrdersByTenant(
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return data as OrderWithItems[]
+    return data as unknown as OrderWithItems[]
   }
 
   // Pagination logic
@@ -109,7 +110,7 @@ export async function getOrdersByTenant(
   const totalPages = Math.ceil(totalCount / limit)
 
   return {
-    orders: data as OrderWithItems[],
+    orders: data as unknown as OrderWithItems[],
     totalCount,
     currentPage: page,
     totalPages,
@@ -134,7 +135,7 @@ export async function getOrderById(orderId: string, tenantId: string) {
     .single()
 
   if (error) throw error
-  return data as OrderWithItems
+  return data as unknown as OrderWithItems
 }
 
 export async function updateOrderStatus(
@@ -156,7 +157,6 @@ export async function updateOrderStatus(
 
   const query = supabase
     .from('orders')
-    // @ts-expect-error - Supabase type inference issue with update
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ status } as any)
     .eq('id', orderId)
@@ -170,8 +170,8 @@ export async function updateOrderStatus(
 
   // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
   // trigger Lalamove order creation (async, don't wait)
-  if (status === 'confirmed' && existingOrder && (existingOrder as Order).lalamove_quotation_id && !(existingOrder as Order).lalamove_order_id) {
-    const order = existingOrder as Order
+  if (status === 'confirmed' && existingOrder && (existingOrder as unknown as Order).lalamove_quotation_id && !(existingOrder as unknown as Order).lalamove_order_id) {
+    const order = existingOrder as unknown as Order
 
     // Extract customer info for Lalamove
     const customerName = order.customer_name || 'Customer'
@@ -207,7 +207,7 @@ export async function updateOrderStatus(
         const existingId = (currentOrder as { lalamove_order_id: string }).lalamove_order_id
         if (existingId && String(existingId).trim() !== '') {
           console.log('Lalamove order already exists, skipping automatic creation')
-          return data as Order
+          return data as unknown as Order
         }
       }
 
@@ -238,10 +238,10 @@ export async function updateOrderStatus(
     }
   }
 
-  return data as Order
+  return data as unknown as Order
 }
 
-export async function getOrderStats(tenantId: string) {
+export const getOrderStats = cache(async function getOrderStats(tenantId: string) {
   await verifyTenantAdmin(tenantId)
 
   const supabase = await createClient()
@@ -271,11 +271,16 @@ export async function getOrderStats(tenantId: string) {
   }
 
   return stats
-}
+})
 
 // ============================================
 // Customer Order Creation (Public)
 // ============================================
+
+// Maximum character lengths to prevent large-payload abuse
+const MAX_FIELD_LENGTH = 500
+const MAX_INSTRUCTION_LENGTH = 1000
+const MAX_ITEMS = 50
 
 export async function createOrder(
   tenantId: string,
@@ -302,6 +307,38 @@ export async function createOrder(
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string
 ) {
+  // Input length validation to prevent large-payload abuse and potential DoS
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('Order must contain at least one item')
+  }
+  if (items.length > MAX_ITEMS) {
+    throw new Error(`Order cannot contain more than ${MAX_ITEMS} items`)
+  }
+
+  // Validate and truncate string fields
+  for (const item of items) {
+    if (item.special_instructions && item.special_instructions.length > MAX_INSTRUCTION_LENGTH) {
+      // Truncate instead of reject to avoid breaking the user experience
+      item.special_instructions = item.special_instructions.substring(0, MAX_INSTRUCTION_LENGTH)
+    }
+  }
+
+  if (customerInfo?.name && customerInfo.name.length > MAX_FIELD_LENGTH) {
+    customerInfo.name = customerInfo.name.substring(0, MAX_FIELD_LENGTH)
+  }
+  if (customerInfo?.contact && customerInfo.contact.length > MAX_FIELD_LENGTH) {
+    customerInfo.contact = customerInfo.contact.substring(0, MAX_FIELD_LENGTH)
+  }
+
+  // Truncate customerData string fields
+  if (customerData) {
+    for (const key of Object.keys(customerData)) {
+      if (typeof customerData[key] === 'string' && (customerData[key] as string).length > MAX_FIELD_LENGTH) {
+        customerData[key] = (customerData[key] as string).substring(0, MAX_FIELD_LENGTH)
+      }
+    }
+  }
+
   const supabase = await createClient()
 
   // SERVER-SIDE PRICE VALIDATION: Verify prices against database
@@ -318,24 +355,82 @@ export async function createOrder(
 
   const priceMap = new Map((dbItems || []).map(i => [i.id, i.price]))
 
-  // Recalculate total from verified DB prices
+  // IDOR GUARD: Verify orderTypeId belongs to this tenant before using it
+  if (orderTypeId) {
+    const { data: orderTypeData, error: otError } = await supabase
+      .from('order_types')
+      .select('id')
+      .eq('id', orderTypeId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (otError || !orderTypeData) {
+      throw new Error('Invalid order type for this restaurant')
+    }
+  }
+
+  // IDOR GUARD: Verify paymentMethodId belongs to this tenant before using it
+  if (paymentMethodId) {
+    const { data: pmData, error: pmError } = await supabase
+      .from('payment_methods')
+      .select('id')
+      .eq('id', paymentMethodId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (pmError || !pmData) {
+      console.warn(`[Order] paymentMethodId ${paymentMethodId} not found for tenant ${tenantId}, clearing`)
+      paymentMethodId = undefined
+      paymentMethodName = undefined
+      paymentMethodDetails = undefined
+      paymentMethodQrCodeUrl = undefined
+    }
+  }
+
+  // SERVER-SIDE PRICE & QUANTITY VALIDATION
+  // Base prices are verified against the DB. Variation/addon modifiers come from the client,
+  // but we enforce that the submitted subtotal must equal price * quantity exactly.
+  // This prevents a client from sending an inflated price (e.g. variation modifier > actual DB value)
+  // or a manipulated subtotal that doesn't match quantity.
+  const MAX_QUANTITY = 99
+  const MAX_PRICE = 1_000_000 // sanity cap: no single item should exceed ₱1,000,000
   let verifiedTotal = 0
   for (const item of items) {
     const dbPrice = priceMap.get(item.menu_item_id)
     if (dbPrice === undefined) {
       throw new Error(`Menu item not found: ${item.menu_item_id}`)
     }
-    // Use the database price as the base price for calculation
-    // Note: variation/addon price modifiers come from client but the base price is verified
-    const priceDiff = Math.abs(item.price - dbPrice)
-    // Allow price difference only if item has variation (variation adds a price modifier)
-    // but base price must not be lower than DB price
-    if (item.price < dbPrice && priceDiff > 0.01) {
-      console.warn(`[Order] Price mismatch for ${item.menu_item_name}: client=${item.price}, db=${dbPrice}`)
-      // Override with DB price - recalculate subtotal
-      item.price = dbPrice
-      item.subtotal = dbPrice * item.quantity
+
+    // Enforce quantity bounds server-side (client allows 1-99 but we re-validate here)
+    if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_QUANTITY) {
+      throw new Error(`Invalid quantity for ${item.menu_item_name}: must be between 1 and ${MAX_QUANTITY}`)
     }
+
+    // Enforce that the submitted per-unit price is at least the DB base price.
+    // Variation modifiers legitimately add to the price, so prices above DB price are allowed,
+    // but we cap them to prevent absurd values.
+    if (item.price < dbPrice - 0.01) {
+      console.warn(`[Order] Price below DB price for ${item.menu_item_name}: client=${item.price}, db=${dbPrice}`)
+      // Override with DB price — client submitted a price lower than the DB base price
+      item.price = dbPrice
+    }
+
+    if (item.price > MAX_PRICE) {
+      throw new Error(`Price exceeds maximum allowed value for ${item.menu_item_name}`)
+    }
+
+    // Enforce that subtotal matches price × quantity (tolerance: ₱0.01 for floating-point rounding)
+    const expectedSubtotal = Math.round(item.price * item.quantity * 100) / 100
+    const submittedSubtotal = Math.round(item.subtotal * 100) / 100
+    if (Math.abs(submittedSubtotal - expectedSubtotal) > 0.02) {
+      console.warn(
+        `[Order] Subtotal mismatch for ${item.menu_item_name}: ` +
+        `submitted=${submittedSubtotal}, expected=${expectedSubtotal} (price=${item.price} × qty=${item.quantity})`
+      )
+      // Recalculate subtotal from server-verified price and quantity
+      item.subtotal = expectedSubtotal
+    }
+
     verifiedTotal += item.subtotal
   }
 
@@ -407,7 +502,7 @@ export async function createOrder(
     // The caller should handle the case where orderToken is undefined
   }
 
-  return { order: orderData as Order, orderToken }
+  return { order: orderData as unknown as Order, orderToken }
 }
 
 // Helper function to get order type name
@@ -453,6 +548,7 @@ export async function createOrderConvex(
   paymentMethodId?: string,
   paymentMethodName?: string,
   paymentMethodDetails?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   paymentMethodQrCodeUrl?: string
 ) {
   const convex = createConvexServerClient(convexUrl, convexKey)

@@ -6,8 +6,10 @@ import type { Tenant } from '@/types/database'
 
 export default async function NewBundlePage({
     params,
+    searchParams,
 }: {
     params: Promise<{ tenant: string }>
+    searchParams: Promise<{ suggestItems?: string; suggestDiscount?: string }>
 }) {
     const { tenant: tenantSlug } = await params
 
@@ -21,6 +23,12 @@ export default async function NewBundlePage({
 
     // Fetch menu items for the bundle item picker
     const menuItems = await getMenuItemsByTenant(tenant.id)
+
+    const resolvedSearchParams = await searchParams
+    const suggestedItemIds = resolvedSearchParams.suggestItems?.split(',') || []
+    const suggestedDiscount = resolvedSearchParams.suggestDiscount
+        ? parseInt(resolvedSearchParams.suggestDiscount)
+        : undefined
 
     return (
         <div className="space-y-6">
@@ -43,6 +51,8 @@ export default async function NewBundlePage({
                 tenantId={tenant.id}
                 tenantSlug={tenantSlug}
                 menuItems={menuItems}
+                suggestedItemIds={suggestedItemIds}
+                suggestedDiscount={suggestedDiscount}
             />
         </div>
     )

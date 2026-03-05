@@ -2,9 +2,10 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag } from 'lucide-react'
+import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -19,19 +20,24 @@ import {
 } from '@/components/ui/alert-dialog'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice } from '@/lib/cart-utils'
+import { formatPrice, calculateBundleSavings, calculateBundleOriginalTotal, calculateTotalBundleSavings } from '@/lib/cart-utils'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
-import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { toast } from 'sonner'
 import type { Tenant, CartItem, MenuItem } from '@/types/database'
+
+// Lazy-loaded — only fetched when the checkout upsell interstitial is enabled for the tenant.
+const CheckoutUpsellModal = dynamic(
+  () => import('@/components/customer/checkout-upsell-modal').then((m) => ({ default: m.CheckoutUpsellModal })),
+  { ssr: false }
+)
 
 export default function CartPage() {
   const params = useParams()
   const router = useRouter()
   const tenantSlug = params.tenant as string
-  const { items, total, updateQuantity, removeItem } = useCart()
+  const { items, bundleItems, total, updateQuantity, removeItem, removeBundleFromCart, updateBundleQuantity } = useCart()
 
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -163,7 +169,7 @@ export default function CartPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8">
-          {items.length === 0 ? (
+          {items.length === 0 && bundleItems.length === 0 ? (
             <div className="flex min-h-[60vh] items-center justify-center">
               <div className="rounded-3xl bg-white p-16 shadow-lg text-center max-w-md">
                 <EmptyState
@@ -288,6 +294,88 @@ export default function CartPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* Bundle Items */}
+                {bundleItems.map((bundleItem) => {
+                  const savings = calculateBundleSavings(bundleItem.bundle, bundleItem.customizations)
+                  const originalTotal = calculateBundleOriginalTotal(bundleItem.customizations)
+
+                  return (
+                    <div key={bundleItem.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm border border-orange-100">
+                      {/* Bundle header */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Package className="h-4 w-4 text-orange-500" />
+                        <span className="font-bold text-gray-900">{bundleItem.bundle.name}</span>
+                        {savings > 0 && (
+                          <Badge className="bg-green-100 text-green-700 text-xs">
+                            Save {formatPrice(savings)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Bundle items list */}
+                      <div className="space-y-2 mb-3 pl-6 border-l-2 border-orange-100">
+                        {bundleItem.customizations.map((cust, idx) => (
+                          <div key={idx} className="text-sm">
+                            <span className="font-medium text-gray-800">
+                              {cust.quantity > 1 ? `${cust.quantity}x ` : ''}{cust.menu_item.name}
+                            </span>
+                            {cust.selected_variations && Object.values(cust.selected_variations).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {Object.values(cust.selected_variations).map((opt, i) => (
+                                  <Badge key={i} variant="secondary" className="text-xs">
+                                    {opt.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            {cust.selected_variation && (
+                              <Badge variant="secondary" className="text-xs mt-0.5">
+                                {cust.selected_variation.name}
+                              </Badge>
+                            )}
+                            {cust.selected_addons.length > 0 && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                + {cust.selected_addons.map(a => a.name).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Bundle pricing and controls */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 bg-gray-50 rounded-full px-2 py-1">
+                            <button onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity - 1)}
+                              className="p-1 rounded-full hover:bg-gray-200 transition-colors">
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="text-sm font-semibold w-6 text-center">{bundleItem.quantity}</span>
+                            <button onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity + 1)}
+                              className="p-1 rounded-full hover:bg-gray-200 transition-colors">
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <button onClick={() => removeBundleFromCart(bundleItem.id)}
+                            className="p-1.5 rounded-full text-red-400 hover:bg-red-50 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="text-right">
+                          {savings > 0 && (
+                            <span className="text-xs text-gray-400 line-through block">
+                              {formatPrice(originalTotal * bundleItem.quantity)}
+                            </span>
+                          )}
+                          <span className="font-bold text-orange-600">
+                            {formatPrice(bundleItem.subtotal)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
               <div className="lg:col-span-1">
@@ -304,6 +392,13 @@ export default function CartPage() {
                       <span className="text-gray-600">Items ({items.length})</span>
                       <span className="font-semibold text-gray-900">{formatPrice(total)}</span>
                     </div>
+
+                    {calculateTotalBundleSavings(bundleItems) > 0 && (
+                      <div className="flex justify-between items-center text-green-600 text-sm">
+                        <span>Bundle savings</span>
+                        <span>-{formatPrice(calculateTotalBundleSavings(bundleItems))}</span>
+                      </div>
+                    )}
 
                     <div className="border-t border-gray-200 pt-4">
                       <div className="flex justify-between items-center">

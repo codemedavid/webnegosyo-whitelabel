@@ -3,7 +3,7 @@ import { Alert } from "react-native";
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const ringtoneSource = require("../assets/ringtone.mp3");
 
 interface OrderAlertOptions {

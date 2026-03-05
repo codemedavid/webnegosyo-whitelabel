@@ -372,25 +372,37 @@ export function setAlpha(color: string, alpha: number): string {
 }
 
 /**
+ * Sanitize a CSS color value to prevent injection.
+ * Allows hex, rgb/rgba, hsl/hsla, and named CSS colors.
+ */
+const CSS_COLOR_PATTERN = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|hsl\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*\)|hsla\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*,\s*[\d.]+\s*\)|[a-zA-Z]{1,30})$/
+function sanitizeCSSColor(value: string): string {
+  const trimmed = value.trim()
+  if (CSS_COLOR_PATTERN.test(trimmed)) return trimmed
+  return 'inherit'
+}
+
+/**
  * Generate CSS classes for tenant branding
  */
 export function generateBrandingClasses(branding: BrandingColors): string {
+  const s = sanitizeCSSColor
   return `
-    .brand-bg { background-color: ${branding.background} !important; }
-    .brand-header { background-color: ${branding.header} !important; color: ${branding.headerFont} !important; }
-    .brand-cards { background-color: ${branding.cards} !important; border-color: ${branding.cardsBorder} !important; }
-    .brand-card-title { color: ${branding.cardTitle} !important; }
-    .brand-card-price { color: ${branding.cardPrice} !important; }
-    .brand-card-description { color: ${branding.cardDescription} !important; }
-    .brand-button-primary { background-color: ${branding.buttonPrimary} !important; color: ${branding.buttonPrimaryText} !important; }
-    .brand-button-secondary { background-color: ${branding.buttonSecondary} !important; color: ${branding.buttonSecondaryText} !important; }
-    .brand-text-primary { color: ${branding.textPrimary} !important; }
-    .brand-text-secondary { color: ${branding.textSecondary} !important; }
-    .brand-text-muted { color: ${branding.textMuted} !important; }
-    .brand-border { border-color: ${branding.border} !important; }
-    .brand-success { color: ${branding.success} !important; }
-    .brand-warning { color: ${branding.warning} !important; }
-    .brand-error { color: ${branding.error} !important; }
-    .brand-link { color: ${branding.link} !important; }
+    .brand-bg { background-color: ${s(branding.background)} !important; }
+    .brand-header { background-color: ${s(branding.header)} !important; color: ${s(branding.headerFont)} !important; }
+    .brand-cards { background-color: ${s(branding.cards)} !important; border-color: ${s(branding.cardsBorder)} !important; }
+    .brand-card-title { color: ${s(branding.cardTitle)} !important; }
+    .brand-card-price { color: ${s(branding.cardPrice)} !important; }
+    .brand-card-description { color: ${s(branding.cardDescription)} !important; }
+    .brand-button-primary { background-color: ${s(branding.buttonPrimary)} !important; color: ${s(branding.buttonPrimaryText)} !important; }
+    .brand-button-secondary { background-color: ${s(branding.buttonSecondary)} !important; color: ${s(branding.buttonSecondaryText)} !important; }
+    .brand-text-primary { color: ${s(branding.textPrimary)} !important; }
+    .brand-text-secondary { color: ${s(branding.textSecondary)} !important; }
+    .brand-text-muted { color: ${s(branding.textMuted)} !important; }
+    .brand-border { border-color: ${s(branding.border)} !important; }
+    .brand-success { color: ${s(branding.success)} !important; }
+    .brand-warning { color: ${s(branding.warning)} !important; }
+    .brand-error { color: ${s(branding.error)} !important; }
+    .brand-link { color: ${s(branding.link)} !important; }
   `
 }

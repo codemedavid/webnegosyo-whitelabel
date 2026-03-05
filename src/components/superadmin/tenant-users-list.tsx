@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -26,25 +25,43 @@ interface TenantUsersListProps {
   users: TenantUser[]
 }
 
-export function TenantUsersList({ tenantId, tenantName, users }: TenantUsersListProps) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: TenantUsersListProps) {
+  const [users, setUsers] = useState<TenantUser[]>(initialUsers)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [userToDelete, setUserToDelete] = useState<TenantUser | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
 
-  const handleDeleteUser = (user: TenantUser) => {
-    startTransition(async () => {
-      const result = await removeTenantUser(user.user_id, tenantId)
-      
-      if (result.error) {
-        toast.error(result.error)
-      } else {
-        toast.success('User removed successfully')
-        setUserToDelete(null)
-        // Force refresh to update the user list
-        router.refresh()
-      }
-    })
+  const handleDeleteUser = async (user: TenantUser) => {
+    setIsDeleting(true)
+
+    // Optimistic: remove from list immediately
+    setUsers((prev) => prev.filter((u) => u.user_id !== user.user_id))
+    setUserToDelete(null)
+
+    const result = await removeTenantUser(user.user_id, tenantId)
+
+    if (result.error) {
+      // Rollback on error
+      setUsers((prev) => [...prev, user])
+      toast.error(result.error)
+    } else {
+      toast.success('User removed successfully')
+    }
+    setIsDeleting(false)
+  }
+
+  const handleUserCreated = (newUser: { user_id: string; email: string }) => {
+    // Optimistic: add to list immediately
+    setUsers((prev) => [
+      {
+        user_id: newUser.user_id,
+        email: newUser.email,
+        role: 'admin',
+        tenant_id: tenantId,
+        created_at: new Date().toISOString(),
+      },
+      ...prev,
+    ])
   }
 
   return (
@@ -96,7 +113,7 @@ export function TenantUsersList({ tenantId, tenantName, users }: TenantUsersList
                       variant="ghost"
                       size="icon"
                       onClick={() => setUserToDelete(user)}
-                      disabled={isPending}
+                      disabled={isDeleting}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
@@ -122,13 +139,13 @@ export function TenantUsersList({ tenantId, tenantName, users }: TenantUsersList
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => userToDelete && handleDeleteUser(userToDelete)}
-              disabled={isPending}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isPending ? 'Removing...' : 'Remove User'}
+              {isDeleting ? 'Removing...' : 'Remove User'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -140,8 +157,8 @@ export function TenantUsersList({ tenantId, tenantName, users }: TenantUsersList
         tenantName={tenantName}
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
+        onUserCreated={handleUserCreated}
       />
     </>
   )
 }
-

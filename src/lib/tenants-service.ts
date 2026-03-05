@@ -76,6 +76,8 @@ export const tenantSchema = z.object({
   // Menu engineering
   menu_engineering_enabled: z.boolean().default(false),
   hide_currency_symbol: z.boolean().default(false),
+  checkout_upsell_enabled: z.boolean().default(false),
+  bundles_enabled: z.boolean().default(false),
   // Flash screen
   flash_screen_feature_enabled: z.boolean().optional(),
   flash_screen_is_active: z.boolean().optional(),
@@ -114,7 +116,7 @@ export async function getTenantBySlugSupabase(slug: string): Promise<{ data: Ten
     .eq('slug', slug)
     .maybeSingle()
   if (error) return { data: null, error }
-  return { data: data as TenantRow | null, error: null }
+  return { data: data as unknown as TenantRow | null, error: null }
 }
 
 export async function getTenantByIdSupabase(id: string): Promise<{ data: TenantRow | null; error: PostgrestError | null }> {
@@ -125,7 +127,7 @@ export async function getTenantByIdSupabase(id: string): Promise<{ data: TenantR
     .eq('id', id)
     .maybeSingle()
   if (error) return { data: null, error }
-  return { data: data as TenantRow | null, error: null }
+  return { data: data as unknown as TenantRow | null, error: null }
 }
 
 export async function listTenantsSupabase(): Promise<{ data: TenantRow[]; error: PostgrestError | null }> {
@@ -134,7 +136,7 @@ export async function listTenantsSupabase(): Promise<{ data: TenantRow[]; error:
     .from('tenants')
     .select('*')
     .order('created_at', { ascending: false })
-  return { data: (data as TenantRow[]) || [], error }
+  return { data: (data as unknown as TenantRow[]) || [], error }
 }
 
 export async function isSlugTaken(slug: string, excludeId?: string) {
@@ -217,6 +219,8 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     // Menu engineering
     menu_engineering_enabled: parsed.menu_engineering_enabled,
     hide_currency_symbol: parsed.hide_currency_symbol,
+    checkout_upsell_enabled: parsed.checkout_upsell_enabled,
+    bundles_enabled: parsed.bundles_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -249,7 +253,7 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('Failed to create tenant')
-  return data as TenantRow
+  return data as unknown as TenantRow
 }
 
 export async function updateTenantSupabase(id: string, input: TenantInput): Promise<TenantRow> {
@@ -324,6 +328,8 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     // Menu engineering
     menu_engineering_enabled: parsed.menu_engineering_enabled,
     hide_currency_symbol: parsed.hide_currency_symbol,
+    checkout_upsell_enabled: parsed.checkout_upsell_enabled,
+    bundles_enabled: parsed.bundles_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -362,7 +368,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     clearDomainCache(parsed.domain)
   }
 
-  return data as TenantRow
+  return data as unknown as TenantRow
 }
 
 export async function deleteTenantSupabase(id: string): Promise<void> {

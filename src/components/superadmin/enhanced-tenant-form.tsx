@@ -140,6 +140,8 @@ export function TenantForm({ tenant }: TenantFormProps) {
       menu_engineering_enabled: formData.menu_engineering_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
+      email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
     }
 
     if (tenant) {

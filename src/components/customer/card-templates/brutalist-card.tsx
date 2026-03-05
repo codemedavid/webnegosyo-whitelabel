@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface BrutalistCardProps {
  * Brutalist Card Template
  * Raw, industrial design with thick borders, stark contrast, and geometric shapes
  */
-export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BrutalistCardProps) {
+export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BrutalistCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -55,7 +56,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                 {menuEngineeringEnabled && item.badge_text && (
                     <div className="absolute left-0 top-0 z-10">
                         <span
-                            className="inline-block px-3 py-1 text-xs font-black uppercase tracking-widest"
+                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
                             style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
                         >
                             {item.badge_text}
@@ -66,7 +67,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                 {item.is_featured && !item.badge_text && (
                     <div className="absolute left-0 top-0">
                         <span
-                            className="inline-block px-3 py-1 text-xs font-black uppercase tracking-widest"
+                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
                             style={{ backgroundColor: branding.warning, color: '#000000' }}
                         >
                             ★ FEATURED
@@ -77,7 +78,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                 {hasDiscount && (
                     <div className="absolute right-0 top-0">
                         <span
-                            className="inline-block px-3 py-1 text-xs font-black uppercase tracking-widest"
+                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
                             style={{ backgroundColor: branding.error, color: '#ffffff' }}
                         >
                             SALE
@@ -99,11 +100,11 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
 
             {/* Content — raw and direct */}
             <div
-                className="p-4 space-y-2"
+                className="p-2.5 space-y-1 md:p-4 md:space-y-2"
                 style={{ borderTop: `3px solid ${branding.cardTitle || '#000000'}` }}
             >
                 <h3
-                    className="text-lg font-black uppercase tracking-tight line-clamp-1"
+                    className="text-sm md:text-lg font-black uppercase tracking-tight line-clamp-1"
                     style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -111,7 +112,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
 
                 {item.description && (
                     <p
-                        className="text-xs line-clamp-2"
+                        className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
                         style={{ color: branding.cardDescription }}
                     >
                         {item.description}
@@ -126,7 +127,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                             </span>
                         )}
                         <span
-                            className="text-2xl font-black"
+                            className="text-lg md:text-2xl font-black"
                             style={{ color: branding.cardPrice, fontFamily: 'ui-monospace, monospace' }}
                         >
                             {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -134,7 +135,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                     </div>
 
                     <button
-                        className="flex h-10 w-10 items-center justify-center transition-all hover:scale-110"
+                        className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center transition-all hover:scale-110"
                         style={{
                             backgroundColor: branding.buttonPrimary,
                             color: branding.buttonPrimaryText,
@@ -146,7 +147,7 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
                         }}
                         disabled={!item.is_available}
                     >
-                        <span className="text-xl font-black">+</span>
+                        <span className="text-base md:text-xl font-black">+</span>
                     </button>
                 </div>
 
@@ -163,4 +164,4 @@ export function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled
             </div>
         </div>
     )
-}
+})

@@ -1,14 +1,18 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
 import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
+import { HorizontalScrollSection } from '../horizontal-scroll-section'
+import { ResponsiveCategorySection } from '../responsive-category-section'
+import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface LayoutMosaicProps {
     tenant: Tenant | null
@@ -39,10 +43,10 @@ interface LayoutMosaicProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
 }
 
-export function LayoutMosaic({
+export const LayoutMosaic = memo(function LayoutMosaic({
     tenant,
     categories,
     filteredItems,
@@ -66,6 +70,7 @@ export function LayoutMosaic({
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
     const activeColor = branding.menuCategoryActive || branding.primary
+    const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
 
     const groupedItems = useMemo(
@@ -82,12 +87,25 @@ export function LayoutMosaic({
         <div>
             {/* Header */}
             <div className="text-center mb-10">
-                <h1
-                    className="text-3xl md:text-5xl font-bold mb-3"
-                    style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
-                >
-                    {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                </h1>
+                <div className="inline-flex items-center gap-2 justify-center">
+                    <h1
+                        className="text-3xl md:text-5xl font-bold mb-3"
+                        style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
+                    >
+                        {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                    </h1>
+                    {isBrandAdmin && onOpenBrandingSection && (
+                        <button
+                            type="button"
+                            onClick={() => onOpenBrandingSection('hero')}
+                            title="Edit hero section"
+                            aria-label="Edit hero section"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
                 <p
                     className="text-base font-light"
                     style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
@@ -105,7 +123,7 @@ export function LayoutMosaic({
                             className="px-4 py-2 rounded-full text-xs font-medium transition-all"
                             style={{
                                 backgroundColor: !activeCategory ? activeColor : `${activeColor}10`,
-                                color: !activeCategory ? '#fff' : inactiveColor,
+                                color: !activeCategory ? activeTextColor : inactiveColor,
                             }}
                         >
                             All
@@ -117,10 +135,14 @@ export function LayoutMosaic({
                                 className="px-4 py-2 rounded-full text-xs font-medium transition-all"
                                 style={{
                                     backgroundColor: activeCategory === cat.id ? activeColor : `${activeColor}10`,
-                                    color: activeCategory === cat.id ? '#fff' : inactiveColor,
+                                    color: activeCategory === cat.id ? activeTextColor : inactiveColor,
                                 }}
                             >
-                                {cat.icon && <span className="mr-1">{cat.icon}</span>}
+                                {cat.icon && (
+                                    <span className="mr-1">
+                                        <CategoryIcon icon={cat.icon} color={cat.icon_color} fallbackColor={activeColor} size="sm" />
+                                    </span>
+                                )}
                                 {cat.name}
                             </button>
                         ))}
@@ -145,6 +167,7 @@ export function LayoutMosaic({
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Find something..."
+                    branding={branding}
                 />
             </div>
 
@@ -242,7 +265,7 @@ export function LayoutMosaic({
                                     className="flex h-10 w-10 items-center justify-center rounded-full"
                                     style={{ backgroundColor: `${branding.primary}15` }}
                                 >
-                                    <span className="text-xl">{category.icon || '🍽️'}</span>
+                                    <CategoryIcon icon={category.icon || '🍽️'} color={category.icon_color} fallbackColor={branding.primary} size="sm" />
                                 </div>
                                 <div>
                                     <h2
@@ -267,32 +290,59 @@ export function LayoutMosaic({
                                     </button>
                                 )}
                             </div>
-
-                            {/* Masonry Grid */}
-                            <div
-                                style={{
-                                    columnCount: 2,
-                                    columnGap: '1rem',
-                                }}
-                                className="md:[column-count:3]"
-                            >
-                                {items.map((item) => (
-                                    <div key={item.id} className="break-inside-avoid mb-4">
-                                        <MenuItemCard
-                                            item={item}
-                                            onSelect={onItemSelect}
-                                            branding={branding}
-                                            template={cardTemplate}
-                                            menuEngineeringEnabled={menuEngineeringEnabled}
-                                            hideCurrencySymbol={hideCurrencySymbol}
-                                        />
+                            {/* Masonry Grid or Horizontal Scroll */}
+                            {isBrandAdmin && onOpenBrandingSection && (
+                                <div className="flex justify-end mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenBrandingSection('menu_cards')}
+                                        title="Edit card colors"
+                                        aria-label="Edit card colors"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            )}
+                            <ResponsiveCategorySection
+                                displayLayout={category.display_layout}
+                                horizontalContent={
+                                    <HorizontalScrollSection
+                                        items={items}
+                                        onItemSelect={onItemSelect}
+                                        branding={branding}
+                                        template={cardTemplate}
+                                        menuEngineeringEnabled={menuEngineeringEnabled}
+                                        hideCurrencySymbol={hideCurrencySymbol}
+                                    />
+                                }
+                                gridContent={
+                                    <div
+                                        style={{
+                                            columnCount: 2,
+                                            columnGap: '1rem',
+                                        }}
+                                        className="md:[column-count:3]"
+                                    >
+                                        {items.map((item) => (
+                                            <div key={item.id} className="break-inside-avoid mb-4">
+                                                <MenuItemCard
+                                                    item={item}
+                                                    onSelect={onItemSelect}
+                                                    branding={branding}
+                                                    template={cardTemplate}
+                                                    menuEngineeringEnabled={menuEngineeringEnabled}
+                                                    hideCurrencySymbol={hideCurrencySymbol}
+                                                />
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                }
+                            />
                         </section>
                     ))}
                 </div>
             )}
         </div>
     )
-}
+})

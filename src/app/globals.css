@@ -131,4 +131,12 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Safe branded placeholder color via CSS custom property.
+     The color value is set via the style prop (never injected into a <style> tag),
+     preventing XSS via malicious branding color values. */
+  .branded-search-input::placeholder {
+    color: var(--branded-placeholder-color, #9ca3af);
+    opacity: 1;
+  }
 }

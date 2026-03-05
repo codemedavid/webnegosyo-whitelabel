@@ -75,6 +75,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Track whether we have a rewrite so setAll can preserve it
+  const rewriteUrl = supabaseResponse.headers.get('x-middleware-rewrite')
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -85,9 +88,12 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
+          // Preserve the rewrite if one was set, otherwise create a plain next response
+          if (rewriteUrl) {
+            supabaseResponse = NextResponse.rewrite(new URL(rewriteUrl), { request })
+          } else {
+            supabaseResponse = NextResponse.next({ request })
+          }
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )

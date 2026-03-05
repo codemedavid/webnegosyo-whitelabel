@@ -49,7 +49,7 @@ export async function getOrderTypesByTenant(tenantId: string) {
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as OrderType[]
+  return data as unknown as OrderType[]
 }
 
 export async function getEnabledOrderTypesByTenant(tenantId: string) {
@@ -63,7 +63,7 @@ export async function getEnabledOrderTypesByTenant(tenantId: string) {
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as OrderType[]
+  return data as unknown as OrderType[]
 }
 
 export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
@@ -79,7 +79,7 @@ export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
     .single()
 
   if (error) throw error
-  return data as OrderType
+  return data as unknown as OrderType
 }
 
 export async function createOrderType(tenantId: string, input: OrderTypeInput) {
@@ -99,7 +99,7 @@ export async function createOrderType(tenantId: string, input: OrderTypeInput) {
     .single()
 
   if (error) throw error
-  return data as OrderType
+  return data as unknown as OrderType
 }
 
 export async function updateOrderType(orderTypeId: string, tenantId: string, input: OrderTypeInput) {
@@ -110,7 +110,6 @@ export async function updateOrderType(orderTypeId: string, tenantId: string, inp
 
   const { data, error } = await supabase
     .from('order_types')
-    // @ts-expect-error - Supabase client types unavailable; casting update payload
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update(validated as any)
     .eq('id', orderTypeId)
@@ -119,7 +118,7 @@ export async function updateOrderType(orderTypeId: string, tenantId: string, inp
     .single()
 
   if (error) throw error
-  return data as OrderType
+  return data as unknown as OrderType
 }
 
 export async function deleteOrderType(orderTypeId: string, tenantId: string) {
@@ -132,8 +131,8 @@ export async function deleteOrderType(orderTypeId: string, tenantId: string) {
   // IMPORTANT: Scoped to the current tenant to prevent cross-tenant data modification
   const { error: updateError } = await adminClient
     .from('orders')
-    // @ts-expect-error - Supabase client types unavailable
-    .update({ order_type_id: null } as Record<string, unknown>)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ order_type_id: null } as any)
     .eq('order_type_id', orderTypeId)
     .eq('tenant_id', tenantId)
 
@@ -171,7 +170,6 @@ export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: stri
 
   const { data, error } = await supabase
     .from('order_types')
-    // @ts-expect-error - Supabase client types unavailable; casting update payload
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ is_enabled: enabled } as any)
     .eq('id', orderTypeId)
@@ -180,7 +178,7 @@ export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: stri
     .single()
 
   if (error) throw error
-  return data as OrderType
+  return data as unknown as OrderType
 }
 
 /**
@@ -205,7 +203,6 @@ export async function initializeOrderTypesForTenant(tenantId: string) {
   }
 
   // Call the database function to initialize order types
-  // @ts-expect-error - RPC function not in generated types
   const { error } = await supabase.rpc('initialize_order_types_for_tenant', {
     tenant_uuid: tenantId,
   })
@@ -230,7 +227,7 @@ export async function getCustomerFormFieldsByOrderType(orderTypeId: string, tena
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as CustomerFormField[]
+  return data as unknown as CustomerFormField[]
 }
 
 export async function getCustomerFormFieldById(fieldId: string, tenantId: string) {
@@ -246,7 +243,7 @@ export async function getCustomerFormFieldById(fieldId: string, tenantId: string
     .single()
 
   if (error) throw error
-  return data as CustomerFormField
+  return data as unknown as CustomerFormField
 }
 
 export async function createCustomerFormField(tenantId: string, orderTypeId: string, input: CustomerFormFieldInput) {
@@ -267,7 +264,7 @@ export async function createCustomerFormField(tenantId: string, orderTypeId: str
     .single()
 
   if (error) throw error
-  return data as CustomerFormField
+  return data as unknown as CustomerFormField
 }
 
 export async function updateCustomerFormField(fieldId: string, tenantId: string, input: CustomerFormFieldInput) {
@@ -278,7 +275,6 @@ export async function updateCustomerFormField(fieldId: string, tenantId: string,
 
   const { data, error } = await supabase
     .from('customer_form_fields')
-    // @ts-expect-error - Supabase client types unavailable; casting update payload
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update(validated as any)
     .eq('id', fieldId)
@@ -287,7 +283,7 @@ export async function updateCustomerFormField(fieldId: string, tenantId: string,
     .single()
 
   if (error) throw error
-  return data as CustomerFormField
+  return data as unknown as CustomerFormField
 }
 
 export async function deleteCustomerFormField(fieldId: string, tenantId: string) {
@@ -313,7 +309,6 @@ export async function reorderCustomerFormFields(fieldIds: string[], tenantId: st
   const updates = fieldIds.map((fieldId, index) =>
     supabase
       .from('customer_form_fields')
-      // @ts-expect-error - Supabase client types unavailable; casting update payload
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ order_index: index } as any)
       .eq('id', fieldId)
@@ -346,7 +341,7 @@ export async function getOrderTypeWithFormFields(orderTypeId: string, tenantId: 
     .single()
 
   if (error) throw error
-  return data as OrderType & { customer_form_fields: CustomerFormField[] }
+  return data as unknown as OrderType & { customer_form_fields: CustomerFormField[] }
 }
 
 export async function getAllOrderTypesWithFormFields(tenantId: string) {
@@ -362,5 +357,5 @@ export async function getAllOrderTypesWithFormFields(tenantId: string) {
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as (OrderType & { customer_form_fields: CustomerFormField[] })[]
+  return data as unknown as (OrderType & { customer_form_fields: CustomerFormField[] })[]
 }

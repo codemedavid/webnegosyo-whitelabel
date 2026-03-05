@@ -83,30 +83,53 @@ export async function createOrderAction(
   paymentMethodQrCodeUrl?: string
 ) {
   try {
-    // Check if tenant has Convex configured
+    // Basic input sanity checks before hitting the database
+    if (!tenantId || typeof tenantId !== 'string') {
+      return { success: false, error: 'Invalid tenant ID' }
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return { success: false, error: 'Order must contain at least one item' }
+    }
+
+    // Check if tenant has Convex configured AND that the tenant is active.
+    // Using is_active check prevents order creation for deactivated tenants.
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug')
+      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active')
       .eq('id', tenantId)
+      .eq('is_active', true)
       .single()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tenantConfig = tenantConfigData as Record<string, any> | null
+
+    if (!tenantConfig) {
+      return { success: false, error: 'Restaurant not found or is currently inactive' }
+    }
 
     // PostHog email notification - awaited to ensure flush completes
     const firePostHogNotification = async (orderId: string, orderItems: typeof items) => {
       if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
         try {
           const { captureOrderCreated } = await import('@/lib/posthog')
+          // Resolve order type name from ID
+          let orderTypeName: string | null = null
+          if (orderTypeId) {
+            const { data: otData } = await supabaseAdmin
+              .from('order_types')
+              .select('name')
+              .eq('id', orderTypeId)
+              .single()
+            orderTypeName = (otData as { name: string } | null)?.name ?? null
+          }
+
           await captureOrderCreated({
             tenantId,
             tenantName: tenantConfig.name ?? '',
             tenantSlug: tenantConfig.slug ?? '',
             adminEmail: tenantConfig.admin_email,
             orderId,
-            customerName: customerInfo?.name,
-            customerContact: customerInfo?.contact,
             items: orderItems.map(i => ({
               name: i.menu_item_name,
               quantity: i.quantity,
@@ -116,9 +139,9 @@ export async function createOrderAction(
             })),
             orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
             deliveryFee: deliveryFee ?? 0,
-            orderType: null,
+            orderType: orderTypeName,
             paymentMethod: paymentMethodName ?? null,
-            deliveryAddress: (customerData?.address as string) ?? null,
+            customerData: customerData ?? null,
           })
         } catch (err) {
           console.error('[PostHog] Email notification failed:', err)
@@ -126,8 +149,47 @@ export async function createOrderAction(
       }
     }
 
+    // SERVER-SIDE PRICE VALIDATION (runs before BOTH Supabase and Convex paths)
+    const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
+    const { data: dbItems, error: priceCheckError } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, price, name')
+      .eq('tenant_id', tenantId)
+      .in('id', menuItemIds)
+
+    if (priceCheckError) {
+      return { success: false, error: 'Failed to verify item prices' }
+    }
+
+    const priceMap = new Map((dbItems || []).map((i: { id: string; price: number }) => [i.id, i.price]))
+    const MAX_QUANTITY = 99
+    const MAX_PRICE = 1_000_000
+
+    for (const item of items) {
+      const dbPrice = priceMap.get(item.menu_item_id)
+      if (dbPrice === undefined) {
+        return { success: false, error: `Menu item not found: ${item.menu_item_name}` }
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_QUANTITY) {
+        return { success: false, error: `Invalid quantity for ${item.menu_item_name}` }
+      }
+      // Ensure price is at least the DB base price (variations can add to it)
+      if (item.price < dbPrice - 0.01) {
+        item.price = dbPrice
+      }
+      if (item.price > MAX_PRICE) {
+        return { success: false, error: `Price exceeds maximum for ${item.menu_item_name}` }
+      }
+      // Enforce subtotal = price × quantity
+      const expectedSubtotal = Math.round(item.price * item.quantity * 100) / 100
+      const submittedSubtotal = Math.round(item.subtotal * 100) / 100
+      if (Math.abs(submittedSubtotal - expectedSubtotal) > 0.02) {
+        item.subtotal = expectedSubtotal
+      }
+    }
+
     if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
-      // Route to Convex
+      // Route to Convex (prices already validated above)
       const result = await createOrderConvex(
         tenantConfig.convex_deployment_url,
         tenantConfig.convex_deploy_key,
@@ -165,7 +227,8 @@ export async function createOrderAction(
     await firePostHogNotification(result.order.id, items)
     return { success: true, data: result.order, orderToken: result.orderToken }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to create order' }
+    console.error('[createOrderAction] Order creation failed:', error)
+    return { success: false, error: 'Failed to create order' }
   }
 }
 

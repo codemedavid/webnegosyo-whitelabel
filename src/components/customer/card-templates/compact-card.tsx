@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface CompactCardProps {
  * Compact Card Template
  * Horizontal layout for space-efficient display
  */
-export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
+export const CompactCard = memo(function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -34,7 +35,7 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
     >
       <div className="flex items-stretch">
         {/* Image - Left side */}
-        <div className="relative w-28 sm:w-32 flex-shrink-0 overflow-hidden bg-muted">
+        <div className="relative w-24 sm:w-28 md:w-32 flex-shrink-0 overflow-hidden bg-muted">
           {typeof item.image_url === 'string' && item.image_url ? (
             <OptimizedImage
               src={item.image_url}
@@ -92,10 +93,10 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
         </div>
 
         {/* Content - Right side */}
-        <div className="flex flex-1 flex-col justify-between p-3">
+        <div className="flex flex-1 flex-col justify-between p-2 md:p-3">
           <div>
             <h3
-              className="text-sm font-bold line-clamp-1 mb-1"
+              className="text-xs md:text-sm font-bold line-clamp-1 mb-0.5 md:mb-1"
               style={{ color: branding.cardTitle }}
             >
               {item.name}
@@ -103,7 +104,7 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
             {item.description && (
               <p
-                className="text-[11px] line-clamp-2 mb-1"
+                className="text-[10px] md:text-[11px] line-clamp-1 md:line-clamp-2 mb-0.5 md:mb-1"
                 style={{ color: branding.cardDescription }}
               >
                 {item.description}
@@ -132,7 +133,7 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
                 </div>
               )}
               <div
-                className="text-base font-bold"
+                className="text-sm md:text-base font-bold"
                 style={{ color: branding.cardPrice }}
               >
                 {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -141,7 +142,7 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
             {/* Compact add button */}
             <button
-              className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:scale-110"
+              className="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-lg transition-all hover:scale-110"
               style={{
                 backgroundColor: branding.buttonPrimary,
                 color: branding.buttonPrimaryText
@@ -153,7 +154,7 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
               disabled={!item.is_available}
             >
               <svg
-                className="h-4 w-4"
+                className="h-3.5 w-3.5 md:h-4 md:w-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -171,5 +172,4 @@ export function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
     </div>
   )
-}
-
+})

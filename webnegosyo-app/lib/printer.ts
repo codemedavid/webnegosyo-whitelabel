@@ -1,4 +1,5 @@
 import { Platform, PermissionsAndroid } from "react-native";
+import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
 
 // ESC/POS commands for text formatting
@@ -24,15 +25,31 @@ export interface PrinterResult {
 
 // Native module availability flag
 // @haroldtran/react-native-thermal-printer requires a development build with native modules.
-// In Expo Go, the native modules won't exist so we disable printer features.
+// In Expo Go, the native modules won't exist and require() triggers a fatal
+// TurboModule Invariant Violation that bypasses try/catch. Guard with appOwnership check first.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let printerModule: { BLEPrinter: any; NetPrinter: any } | null = null;
 let printerAvailable: boolean | null = null;
 
 const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not available in Expo Go.";
 
+/** Returns true when running inside the Expo Go client (no native module access). */
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo";
+}
+
 function checkPrinterAvailable(): boolean {
   if (printerAvailable !== null) return printerAvailable;
+
+  // In Expo Go, requiring native modules triggers a fatal TurboModule crash.
+  // Skip the require entirely — printer features are only available in dev/prod builds.
+  if (isExpoGo()) {
+    printerAvailable = false;
+    return false;
+  }
+
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require("@haroldtran/react-native-thermal-printer");
     if (!mod || (!mod.BLEPrinter && !mod.NetPrinter)) {
       printerAvailable = false;
@@ -104,10 +121,10 @@ export async function requestBluetoothPermissions(): Promise<PrinterResult> {
       }
 
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
-        error: `Failed to request Bluetooth permissions: ${err?.message ?? "Unknown error"}`,
+        error: `Failed to request Bluetooth permissions: ${err instanceof Error ? err.message : "Unknown error"}`,
       };
     }
   }
@@ -122,12 +139,13 @@ export async function discoverBluetoothPrinters(): Promise<Array<{ name: string;
   try {
     await mod.BLEPrinter.init();
     const devices = await mod.BLEPrinter.getDeviceList();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (devices ?? []).map((d: any) => ({
       name: d.device_name || d.name || "Unknown Printer",
       address: d.inner_mac_address || d.address || d.macAddress,
     }));
-  } catch (err: any) {
-    console.warn("Bluetooth discovery failed:", err?.message);
+  } catch (err: unknown) {
+    console.warn("Bluetooth discovery failed:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -153,10 +171,10 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
     }
     usePrinterStore.getState().setConnected(true);
     return { success: true };
-  } catch (err: any) {
-    console.warn("Printer connection failed:", err?.message);
+  } catch (err: unknown) {
+    console.warn("Printer connection failed:", err instanceof Error ? err.message : err);
     usePrinterStore.getState().setConnected(false);
-    return { success: false, error: err?.message ?? "Connection failed" };
+    return { success: false, error: err instanceof Error ? err.message : "Connection failed" };
   }
 }
 
@@ -199,8 +217,8 @@ export async function printReceipt(receiptText: string): Promise<boolean> {
       await mod.NetPrinter.printText(data);
     }
     return true;
-  } catch (err: any) {
-    console.warn("Print failed:", err?.message);
+  } catch (err: unknown) {
+    console.warn("Print failed:", err instanceof Error ? err.message : err);
     usePrinterStore.getState().setConnected(false);
     return false;
   }

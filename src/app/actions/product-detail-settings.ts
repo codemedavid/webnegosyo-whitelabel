@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
+import { stripToDBColumns } from '@/lib/product-detail-settings-utils'
 
 interface ActionResult<T = unknown> {
     success: boolean
@@ -56,7 +57,7 @@ export async function getProductDetailSettings(tenantId: string): Promise<Action
             return { success: false, error: error.message }
         }
         
-        return { success: true, data: data as ProductDetailSettings | null }
+        return { success: true, data: data as unknown as ProductDetailSettings | null }
     } catch (error) {
         return { 
             success: false, 
@@ -80,9 +81,10 @@ export async function saveProductDetailSettings(
         const supabase = await createClient()
         
         // Use upsert to avoid race condition (check-then-act)
+        const cleanSettings = stripToDBColumns(settings)
+        const upsertData = { tenant_id: tenantId, ...cleanSettings }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const upsertData: any = { tenant_id: tenantId, ...settings }
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('product_detail_settings')
             .upsert(upsertData, { onConflict: 'tenant_id' })
             .select()
@@ -92,9 +94,10 @@ export async function saveProductDetailSettings(
             return { success: false, error: error.message }
         }
         
-        revalidatePath(`/${tenantSlug}/menu/item`)
+        revalidatePath(`/${tenantSlug}/menu`, 'layout')
         revalidatePath(`/${tenantSlug}/admin`)
-        
+        revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+
         return { success: true, data }
     } catch (error) {
         return { 
@@ -127,9 +130,10 @@ export async function resetProductDetailSettings(
             return { success: false, error: error.message }
         }
         
-        revalidatePath(`/${tenantSlug}/menu/item`)
+        revalidatePath(`/${tenantSlug}/menu`, 'layout')
         revalidatePath(`/${tenantSlug}/admin`)
-        
+        revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+
         return { success: true, data: DEFAULT_PRODUCT_DETAIL_SETTINGS }
     } catch (error) {
         return { 

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,13 +18,13 @@ interface BoldCardProps {
  * Bold Card Template
  * High contrast design with prominent CTA
  */
-export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
+export const BoldCard = memo(function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl shadow-lg transition-all hover:shadow-2xl cursor-pointer"
+      className="group relative overflow-hidden rounded-xl md:rounded-2xl shadow-lg transition-all hover:shadow-2xl cursor-pointer"
       style={{
         backgroundColor: branding.cards,
         borderColor: branding.primary,
@@ -50,9 +51,9 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
 
         {/* Custom Badge */}
         {menuEngineeringEnabled && item.badge_text && (
-          <div className="absolute top-3 left-3 z-10">
+          <div className="absolute top-2 left-2 md:top-3 md:left-3 z-10">
             <span
-              className="rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wide"
+              className="rounded-lg px-2 py-1 text-[10px] md:px-3 md:py-1.5 md:text-xs font-black uppercase tracking-wide"
               style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
             >
               {item.badge_text}
@@ -61,7 +62,7 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
         )}
 
         {/* Badges - Bold style */}
-        <div className="absolute top-3 left-3 right-3 flex justify-between items-start gap-2">
+        <div className="absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-3 flex justify-between items-start gap-2">
           {item.is_featured && !item.badge_text && (
             <div
               className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide"
@@ -95,10 +96,10 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
         )}
 
         {/* Content overlaid on image - bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
+        <div className="absolute bottom-0 left-0 right-0 p-2.5 space-y-1.5 md:p-4 md:space-y-3">
           <div>
             <h3
-              className="text-xl font-black line-clamp-1"
+              className="text-base md:text-xl font-black line-clamp-1"
               style={{ color: '#ffffff' }}
             >
               {item.name}
@@ -106,7 +107,7 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
 
             {item.description && (
               <p
-                className="text-sm font-medium text-white/90 line-clamp-2 mt-1"
+                className="text-xs md:text-sm font-medium text-white/90 line-clamp-1 md:line-clamp-2 mt-1"
               >
                 {item.description}
               </p>
@@ -131,7 +132,7 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
               </span>
             )}
             <span
-              className="text-3xl font-black text-white"
+              className="text-xl md:text-3xl font-black text-white"
             >
               {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
@@ -141,7 +142,7 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
 
       {/* Large prominent CTA button */}
       <button
-        className="w-full py-4 text-base font-black uppercase tracking-wide transition-all"
+        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all"
         style={{
           backgroundColor: branding.buttonPrimary,
           color: branding.buttonPrimaryText
@@ -162,7 +163,7 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
       >
         {item.is_available ? (
           <>
-            <span className="text-2xl mr-2">+</span>
+            <span className="text-lg md:text-2xl mr-1.5 md:mr-2">+</span>
             Add to Cart
           </>
         ) : (
@@ -171,5 +172,4 @@ export function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hid
       </button>
     </div>
   )
-}
-
+})

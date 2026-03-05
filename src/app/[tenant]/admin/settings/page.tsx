@@ -1,8 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug } from '@/lib/admin-service'
+import { getCachedTenantBySlug } from '@/lib/cache'
 import { Badge } from '@/components/ui/badge'
-import type { Tenant } from '@/types/database'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -20,13 +19,11 @@ export default async function SettingsPage({
 }) {
   const { tenant: tenantSlug } = await params
 
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
-  if (!tenantData) {
+  if (!tenant) {
     return <div>Tenant not found</div>
   }
-
-  const tenant: Tenant = tenantData
 
   return (
     <div className="space-y-6">

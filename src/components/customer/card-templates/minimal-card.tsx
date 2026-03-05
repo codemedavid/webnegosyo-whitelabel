@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface MinimalCardProps {
  * Minimal Card Template
  * Ultra-clean design with subtle borders and minimal decoration
  */
-export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
+export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -93,9 +94,9 @@ export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
 
       {/* Content - Centered and minimal */}
-      <div className="p-3 text-center space-y-2">
+      <div className="p-2 md:p-3 text-center space-y-1 md:space-y-2">
         <h3
-          className="text-sm font-semibold line-clamp-1"
+          className="text-xs md:text-sm font-semibold line-clamp-1"
           style={{ color: branding.cardTitle }}
         >
           {item.name}
@@ -103,7 +104,7 @@ export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {item.description && (
           <p
-            className="text-xs line-clamp-2"
+            className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
             style={{ color: branding.cardDescription }}
           >
             {item.description}
@@ -120,7 +121,7 @@ export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, 
             </span>
           )}
           <span
-            className="text-base font-bold"
+            className="text-sm md:text-base font-bold"
             style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -129,7 +130,7 @@ export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {/* Simple add button */}
         <button
-          className="w-full py-1.5 text-xs font-medium rounded transition-colors"
+          className="w-full py-1 md:py-1.5 text-[11px] md:text-xs font-medium rounded transition-colors"
           style={{
             backgroundColor: branding.buttonPrimary,
             color: branding.buttonPrimaryText
@@ -151,5 +152,4 @@ export function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
     </div>
   )
-}
-
+})

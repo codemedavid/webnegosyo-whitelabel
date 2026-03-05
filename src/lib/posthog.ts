@@ -25,8 +25,6 @@ export interface OrderEventData {
   tenantSlug: string
   adminEmail: string
   orderId: string
-  customerName: string | undefined
-  customerContact: string | undefined
   items: Array<{
     name: string
     quantity: number
@@ -38,62 +36,36 @@ export interface OrderEventData {
   deliveryFee: number
   orderType: string | null | undefined
   paymentMethod: string | null | undefined
-  deliveryAddress: string | null | undefined
+  customerData: Record<string, unknown> | null | undefined
 }
 
-function formatOrderMessage(data: OrderEventData): string {
-  const lines: string[] = []
+function snakeToLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 
-  lines.push(`New Order from ${data.tenantName}`)
-  lines.push('')
-
-  if (data.orderType && data.orderType !== 'unknown') {
-    lines.push(`Order Type: ${data.orderType}`)
-    lines.push('')
+function buildCustomerText(customerData: Record<string, unknown> | null | undefined): string {
+  if (!customerData) return 'Guest'
+  const skipKeys = ['messenger_psid', 'delivery_lat', 'delivery_lng']
+  const parts: string[] = []
+  for (const [key, value] of Object.entries(customerData)) {
+    if (skipKeys.includes(key) || !value) continue
+    parts.push(`${snakeToLabel(key)}: ${String(value)}`)
   }
+  return parts.length > 0 ? parts.join('|||') : 'Guest'
+}
 
-  lines.push('Customer Information:')
-  lines.push(`  Name: ${data.customerName ?? 'Guest'}`)
-  if (data.customerContact) {
-    lines.push(`  Contact: ${data.customerContact}`)
-  }
-  lines.push('')
-
-  if (data.deliveryAddress) {
-    lines.push(`Delivery Address: ${data.deliveryAddress}`)
-    lines.push('')
-  }
-
-  lines.push('Order Details:')
-  lines.push('')
-  data.items.forEach((item, index) => {
-    lines.push(`${index + 1}. ${item.name}`)
-    if (item.variation) lines.push(`   Variation: ${item.variation}`)
-    if (item.addons && item.addons.length > 0) {
-      const addonNames = item.addons.map(a => typeof a === 'string' ? a : a.name)
-      lines.push(`   Add-ons: ${addonNames.join(', ')}`)
-    }
-    lines.push(`   Qty: ${item.quantity}`)
-    lines.push(`   Price: ${item.subtotal.toFixed(2)}`)
-    lines.push('')
-  })
-
-  const subtotal = data.orderTotal - data.deliveryFee
-  lines.push(`Subtotal: ${subtotal.toFixed(2)}`)
-  if (data.deliveryFee > 0) {
-    lines.push(`Delivery Fee: ${data.deliveryFee.toFixed(2)}`)
-  }
-  lines.push(`Total: ${data.orderTotal.toFixed(2)}`)
-  lines.push('')
-
-  if (data.paymentMethod && data.paymentMethod !== 'Not specified') {
-    lines.push(`Payment: ${data.paymentMethod}`)
-    lines.push('')
-  }
-
-  lines.push(`Order ID: ${data.orderId}`)
-
-  return lines.join('\n')
+function buildItemsList(items: OrderEventData['items']): string {
+  return items
+    .map((item, i) => {
+      let text = `${i + 1}. ${item.name} ×${item.quantity} — ₱${item.subtotal.toFixed(2)}`
+      if (item.variation) text += ` (${item.variation})`
+      if (item.addons && item.addons.length > 0) {
+        const names = item.addons.map(a => typeof a === 'string' ? a : a.name)
+        text += ` + ${names.join(', ')}`
+      }
+      return text
+    })
+    .join('|||')
 }
 
 export async function captureOrderCreated(data: OrderEventData): Promise<void> {
@@ -101,15 +73,21 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
   if (!posthog) return
 
   try {
+    const subtotal = data.orderTotal - data.deliveryFee
     posthog.capture({
       distinctId: `tenant_${data.tenantId}`,
       event: 'order_created',
       properties: {
-        order_message: formatOrderMessage(data),
         tenant_name: data.tenantName,
         order_id: data.orderId,
-        customer_name: data.customerName ?? 'Guest',
-        order_total: data.orderTotal.toFixed(2),
+        order_type: (data.orderType && data.orderType !== 'unknown') ? data.orderType : '',
+        customer_info: buildCustomerText(data.customerData),
+        items_list: buildItemsList(data.items),
+        item_count: String(data.items.reduce((sum, i) => sum + i.quantity, 0)),
+        subtotal: `₱${subtotal.toFixed(2)}`,
+        delivery_fee: data.deliveryFee > 0 ? `₱${data.deliveryFee.toFixed(2)}` : '',
+        order_total: `₱${data.orderTotal.toFixed(2)}`,
+        payment_method: (data.paymentMethod && data.paymentMethod !== 'Not specified') ? data.paymentMethod : '',
         $set: {
           email: data.adminEmail,
           name: data.tenantName,
@@ -118,7 +96,6 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
     })
     await posthog.flush()
   } catch (error) {
-    // Fire-and-forget: log but never block the order flow
     console.error('[PostHog] Failed to capture order_created event:', error)
   }
 }

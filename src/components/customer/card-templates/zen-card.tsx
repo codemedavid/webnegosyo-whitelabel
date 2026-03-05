@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface ZenCardProps {
  * Zen Card Template
  * Ultra-minimal, borderless design with generous whitespace and muted tones
  */
-export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ZenCardProps) {
+export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ZenCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -28,7 +29,7 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
             onClick={() => onSelect(item)}
         >
             {/* Image — soft rounded, no border */}
-            <div className="relative aspect-[1/1] overflow-hidden rounded-3xl bg-muted">
+            <div className="relative aspect-[1/1] overflow-hidden rounded-2xl md:rounded-3xl bg-muted">
                 {typeof item.image_url === 'string' && item.image_url.length > 0 && (
                     <OptimizedImage
                         src={item.image_url}
@@ -42,9 +43,9 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
 
                 {/* Ultra-subtle badges */}
                 {menuEngineeringEnabled && item.badge_text && (
-                    <div className="absolute left-4 top-4 z-10">
+                    <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
                         <span
-                            className="rounded-full px-2.5 py-1 text-[10px] font-medium tracking-wide"
+                            className="rounded-full px-2 py-0.5 md:px-2.5 md:py-1 text-[10px] font-medium tracking-wide"
                             style={{
                                 backgroundColor: `${branding.primary}22`,
                                 color: branding.primary,
@@ -57,13 +58,13 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
                 )}
 
                 {item.is_featured && !item.badge_text && (
-                    <div className="absolute left-4 top-4">
+                    <div className="absolute left-2 top-2 md:left-4 md:top-4">
                         <span className="text-sm opacity-70">✦</span>
                     </div>
                 )}
 
                 {hasDiscount && (
-                    <div className="absolute right-4 top-4">
+                    <div className="absolute right-2 top-2 md:right-4 md:top-4">
                         <span
                             className="text-[10px] font-medium tracking-wider uppercase"
                             style={{ color: branding.error, opacity: 0.9 }}
@@ -86,9 +87,9 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
             </div>
 
             {/* Content — minimal, airy */}
-            <div className="px-2 pt-4 pb-2 space-y-1.5">
+            <div className="px-1 pt-2.5 pb-1 space-y-1 md:px-2 md:pt-4 md:pb-2 md:space-y-1.5">
                 <h3
-                    className="text-sm font-medium line-clamp-1 tracking-wide"
+                    className="text-xs md:text-sm font-medium line-clamp-1 tracking-wide"
                     style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -96,7 +97,7 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
 
                 {item.description && (
                     <p
-                        className="text-xs line-clamp-2 leading-relaxed"
+                        className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2 leading-relaxed"
                         style={{ color: branding.cardDescription, opacity: 0.7 }}
                     >
                         {item.description}
@@ -111,7 +112,7 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
                             </span>
                         )}
                         <span
-                            className="text-base font-semibold tracking-tight"
+                            className="text-sm md:text-base font-semibold tracking-tight"
                             style={{ color: branding.cardPrice }}
                         >
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -119,7 +120,7 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
                     </div>
 
                     <button
-                        className="flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300 opacity-0 group-hover:opacity-100 hover:scale-110"
+                        className="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full transition-all duration-300 opacity-0 group-hover:opacity-100 hover:scale-110"
                         style={{
                             backgroundColor: branding.buttonPrimary,
                             color: branding.buttonPrimaryText,
@@ -130,7 +131,7 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
                         }}
                         disabled={!item.is_available}
                     >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                     </button>
@@ -147,4 +148,4 @@ export function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hide
             </div>
         </div>
     )
-}
+})

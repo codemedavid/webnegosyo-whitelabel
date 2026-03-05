@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,13 +18,13 @@ interface ClassicCardProps {
  * Classic Card Template
  * Traditional layout with image on top, content below
  */
-export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
+export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl shadow-sm transition-all hover:shadow-xl cursor-pointer"
+      className="group relative overflow-hidden rounded-xl md:rounded-2xl shadow-sm transition-all hover:shadow-xl cursor-pointer"
       style={{
         backgroundColor: branding.cards,
         borderColor: branding.cardsBorder,
@@ -47,9 +48,9 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {/* Overlay Elements */}
         {menuEngineeringEnabled && item.badge_text && (
-          <div className="absolute left-3 top-3 z-10">
+          <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
             <span
-              className="rounded-full px-2.5 py-1 text-xs font-bold shadow-sm"
+              className="rounded-full px-2 py-0.5 text-[10px] md:px-2.5 md:py-1 md:text-xs font-bold shadow-sm"
               style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
             >
               {item.badge_text}
@@ -58,14 +59,17 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
         )}
 
         {item.is_featured && !item.badge_text && (
-          <div className="absolute left-3 top-3">
+          <div className="absolute left-2 top-2 md:left-3 md:top-3">
             <span className="text-xl">⭐</span>
           </div>
         )}
 
         {hasDiscount && (
-          <div className="absolute right-3 top-3">
-            <span className="rounded-full bg-red-500 px-2 py-1 text-xs font-bold text-white">
+          <div className="absolute right-2 top-2 md:right-3 md:top-3">
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] md:px-2 md:py-1 md:text-xs font-bold"
+              style={{ backgroundColor: branding.error, color: '#ffffff' }}
+            >
               SALE
             </span>
           </div>
@@ -81,22 +85,22 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {/* Add to Cart Button */}
         <button
-          className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all hover:scale-110 hover:opacity-90"
-          style={{ backgroundColor: branding.buttonPrimary }}
+          className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full shadow-lg transition-all hover:scale-110 hover:opacity-90"
+          style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
           onClick={(e) => {
             e.stopPropagation()
             onSelect(item)
           }}
           disabled={!item.is_available}
         >
-          <span className="text-lg font-bold">+</span>
+          <span className="text-sm md:text-lg font-bold">+</span>
         </button>
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="p-2.5 md:p-4">
         <h3
-          className="mb-1 text-lg font-bold line-clamp-1"
+          className="mb-1 text-sm md:text-lg font-bold line-clamp-1"
           style={{ color: branding.cardTitle }}
         >
           {item.name}
@@ -104,7 +108,7 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {item.description && (
           <p
-            className="mb-2 text-sm line-clamp-2"
+            className="mb-2 text-xs md:text-sm line-clamp-1 md:line-clamp-2"
             style={{ color: branding.cardDescription }}
           >
             {item.description}
@@ -121,7 +125,7 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
             </span>
           )}
           <span
-            className="text-lg font-bold"
+            className="text-sm md:text-lg font-bold"
             style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -144,5 +148,4 @@ export function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
     </div>
   )
-}
-
+})

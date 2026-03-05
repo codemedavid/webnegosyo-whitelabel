@@ -41,14 +41,12 @@ describe('posthog client', () => {
         tenantSlug: 'test-restaurant',
         adminEmail: 'admin@test.com',
         orderId: 'order-1',
-        customerName: 'John',
-        customerContact: '09171234567',
         items: [{ name: 'Burger', quantity: 1, variation: null, addons: [], subtotal: 150 }],
         orderTotal: 150,
         deliveryFee: 0,
         orderType: 'pickup',
         paymentMethod: 'Cash',
-        deliveryAddress: null,
+        customerData: { customer_name: 'John', customer_phone: '09171234567' },
       })
     ).resolves.toBeUndefined()
   })
@@ -76,14 +74,12 @@ describe('posthog client', () => {
       tenantSlug: 'test-restaurant',
       adminEmail: 'admin@test.com',
       orderId: 'order-1',
-      customerName: 'John',
-      customerContact: '09171234567',
       items: [{ name: 'Burger', quantity: 1, variation: null, addons: [], subtotal: 150 }],
       orderTotal: 150,
       deliveryFee: 0,
       orderType: 'pickup',
       paymentMethod: 'Cash',
-      deliveryAddress: null,
+      customerData: { customer_name: 'John', customer_phone: '09171234567' },
     })
 
     expect(mockCapture).toHaveBeenCalledWith(

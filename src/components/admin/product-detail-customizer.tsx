@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useTransition, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Tenant } from '@/types/database'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { saveProductDetailSettings, resetProductDetailSettings } from '@/app/act
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
 import { X } from 'lucide-react'
+import { useDragResize } from '@/hooks/use-drag-resize'
 
 interface ProductDetailCustomizerProps {
     tenant: Pick<Tenant, 'id' | 'slug'>
@@ -26,7 +27,7 @@ interface ProductDetailCustomizerProps {
 
 type CustomizerTab = 'colors' | 'typography' | 'layout'
 type FocusedPane = 'palette' | 'settings'
-type CustomizerSection = 'header' | 'image' | 'product_info' | 'variations' | 'addons' | 'footer_summary' | 'footer_buttons'
+type CustomizerSection = 'header' | 'image' | 'product_info' | 'variations' | 'addons' | 'related_items' | 'footer_summary' | 'footer_buttons'
 
 const PANEL_MARGIN = 12
 const PANEL_DEFAULT_WIDTH = 820
@@ -51,17 +52,26 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
     const [isLoading, setIsLoading] = useState(false)
     const [draft, setDraft] = useState<Partial<ProductDetailSettings>>({})
     const [currentSettings, setCurrentSettings] = useState<Partial<ProductDetailSettings>>({})
-    const panelRef = useRef<HTMLDivElement>(null)
-    const [panelPosition, setPanelPosition] = useState({ x: 24, y: 72 })
-    const [panelSize, setPanelSize] = useState({ width: PANEL_DEFAULT_WIDTH, height: PANEL_DEFAULT_HEIGHT })
-    const [isDragging, setIsDragging] = useState(false)
-    const [isResizing, setIsResizing] = useState(false)
-    const dragOffset = useRef({ x: 0, y: 0 })
-    const resizeState = useRef({
-        startX: 0,
-        startY: 0,
-        startWidth: PANEL_DEFAULT_WIDTH,
-        startHeight: PANEL_DEFAULT_HEIGHT,
+    const {
+        panelRef,
+        panelPosition,
+        panelSize,
+        isDragging,
+        centerPanel,
+        handleDragStart,
+        handleDragMove,
+        handleDragEnd,
+        handleResizeStart,
+        handleResizeMove,
+        handleResizeEnd,
+        useWindowResize,
+        margin: panelMargin,
+    } = useDragResize({
+        defaultPosition: { x: 24, y: 72 },
+        defaultSize: { width: PANEL_DEFAULT_WIDTH, height: PANEL_DEFAULT_HEIGHT },
+        minWidth: PANEL_MIN_WIDTH,
+        minHeight: PANEL_MIN_HEIGHT,
+        margin: PANEL_MARGIN,
     })
 
     const defaults = DEFAULT_PRODUCT_DETAIL_SETTINGS
@@ -300,132 +310,20 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
             product_info: 'Product Info',
             variations: 'Variation Selector',
             addons: 'Add-ons',
+            related_items: 'Related Items',
             footer_summary: 'Footer Summary',
             footer_buttons: 'Footer Buttons',
         }
         return labels[focusedSection]
     }, [focusedSection])
 
-    const clampPanelSize = useCallback((width: number, height: number, x = panelPosition.x, y = panelPosition.y) => {
-        if (typeof window === 'undefined') return { width, height }
-        const maxWidth = Math.max(360, window.innerWidth - x - PANEL_MARGIN)
-        const maxHeight = Math.max(320, window.innerHeight - y - PANEL_MARGIN)
-        const minWidth = Math.min(PANEL_MIN_WIDTH, maxWidth)
-        const minHeight = Math.min(PANEL_MIN_HEIGHT, maxHeight)
-        return {
-            width: Math.min(Math.max(minWidth, width), maxWidth),
-            height: Math.min(Math.max(minHeight, height), maxHeight),
-        }
-    }, [panelPosition.x, panelPosition.y])
-
-    const clampPanelPosition = useCallback((x: number, y: number, width = panelSize.width, height = panelSize.height) => {
-        if (typeof window === 'undefined') return { x, y }
-        const maxX = Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN)
-        const maxY = Math.max(PANEL_MARGIN, window.innerHeight - height - PANEL_MARGIN)
-        return {
-            x: Math.min(Math.max(PANEL_MARGIN, x), maxX),
-            y: Math.min(Math.max(PANEL_MARGIN, y), maxY),
-        }
-    }, [panelSize.height, panelSize.width])
-
-    const centerPanel = useCallback(() => {
-        if (typeof window === 'undefined') return
-        const viewportMaxWidth = Math.max(360, window.innerWidth - (PANEL_MARGIN * 2))
-        const viewportMaxHeight = Math.max(320, window.innerHeight - (PANEL_MARGIN * 2))
-        const viewportMinWidth = Math.min(PANEL_MIN_WIDTH, viewportMaxWidth)
-        const viewportMinHeight = Math.min(PANEL_MIN_HEIGHT, viewportMaxHeight)
-        const nextSize = {
-            width: Math.min(Math.max(viewportMinWidth, panelSize.width), viewportMaxWidth),
-            height: Math.min(Math.max(viewportMinHeight, panelSize.height), viewportMaxHeight),
-        }
-        const centered = clampPanelPosition(
-            (window.innerWidth - nextSize.width) / 2,
-            (window.innerHeight - nextSize.height) / 2,
-            nextSize.width,
-            nextSize.height
-        )
-        setPanelSize(nextSize)
-        setPanelPosition(centered)
-    }, [clampPanelPosition, panelSize.height, panelSize.width])
+    useWindowResize(isOpen)
 
     useEffect(() => {
         if (!isOpen) return
         const frame = window.requestAnimationFrame(centerPanel)
         return () => window.cancelAnimationFrame(frame)
     }, [isOpen, focusedSection, centerPanel])
-
-    useEffect(() => {
-        if (!isOpen) return
-        const handleResize = () => {
-            const nextSize = clampPanelSize(panelSize.width, panelSize.height, panelPosition.x, panelPosition.y)
-            const nextPosition = clampPanelPosition(panelPosition.x, panelPosition.y, nextSize.width, nextSize.height)
-            setPanelSize(nextSize)
-            setPanelPosition(nextPosition)
-        }
-        window.addEventListener('resize', handleResize)
-        return () => window.removeEventListener('resize', handleResize)
-    }, [isOpen, clampPanelPosition, clampPanelSize, panelPosition.x, panelPosition.y, panelSize.height, panelSize.width])
-
-    const handleDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0 || isResizing) return
-        const target = event.target as HTMLElement | null
-        if (target?.closest('[data-editor-no-drag="true"]')) return
-        event.currentTarget.setPointerCapture(event.pointerId)
-        dragOffset.current = {
-            x: event.clientX - panelPosition.x,
-            y: event.clientY - panelPosition.y,
-        }
-        setIsDragging(true)
-    }, [isResizing, panelPosition.x, panelPosition.y])
-
-    const handleDragMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (!isDragging) return
-        const next = clampPanelPosition(
-            event.clientX - dragOffset.current.x,
-            event.clientY - dragOffset.current.y,
-            panelSize.width,
-            panelSize.height
-        )
-        setPanelPosition(next)
-    }, [clampPanelPosition, isDragging, panelSize.height, panelSize.width])
-
-    const handleDragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId)
-        }
-        setIsDragging(false)
-    }, [])
-
-    const handleResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0 || isDragging) return
-        event.preventDefault()
-        event.stopPropagation()
-        event.currentTarget.setPointerCapture(event.pointerId)
-        resizeState.current = {
-            startX: event.clientX,
-            startY: event.clientY,
-            startWidth: panelSize.width,
-            startHeight: panelSize.height,
-        }
-        setIsResizing(true)
-    }, [isDragging, panelSize.height, panelSize.width])
-
-    const handleResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (!isResizing) return
-        event.preventDefault()
-        const rawWidth = resizeState.current.startWidth + (event.clientX - resizeState.current.startX)
-        const rawHeight = resizeState.current.startHeight + (event.clientY - resizeState.current.startY)
-        const nextSize = clampPanelSize(rawWidth, rawHeight)
-        setPanelSize(nextSize)
-        setPanelPosition((current) => clampPanelPosition(current.x, current.y, nextSize.width, nextSize.height))
-    }, [clampPanelPosition, clampPanelSize, isResizing])
-
-    const handleResizeEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId)
-        }
-        setIsResizing(false)
-    }, [])
 
     const renderFocusedPalette = () => {
         if (!focusedSection) return null
@@ -435,6 +333,13 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                 return (
                     <CustomizeSection title="Header & Navigation" emoji="📍">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <ColorPickerField
+                                id="header_background_color"
+                                label="Header Background"
+                                value={getValue('header_background_color', '')}
+                                onChange={(v) => updateDraft('header_background_color', v)}
+                                compact
+                            />
                             <ColorPickerField
                                 id="header_button_background_color"
                                 label="Button Background"
@@ -482,6 +387,41 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                 defaultValue={defaults.sale_badge_text_color ?? '#ffffff'}
                                 compact
                             />
+                            <ColorPickerField
+                                id="image_placeholder_color"
+                                label="Placeholder Color"
+                                value={getValue('image_placeholder_color', defaults.image_placeholder_color ?? '#9ca3af')}
+                                onChange={(v) => updateDraft('image_placeholder_color', v)}
+                                defaultValue={defaults.image_placeholder_color ?? '#9ca3af'}
+                                compact
+                            />
+                        </div>
+                        <p className="text-xs font-medium text-muted-foreground mt-3">Image Lightbox Modal</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <ColorPickerField
+                                id="modal_background_color"
+                                label="Modal Background"
+                                value={getValue('modal_background_color', defaults.modal_background_color ?? 'rgba(0,0,0,0.95)')}
+                                onChange={(v) => updateDraft('modal_background_color', v)}
+                                defaultValue={defaults.modal_background_color ?? 'rgba(0,0,0,0.95)'}
+                                compact
+                            />
+                            <ColorPickerField
+                                id="modal_close_button_color"
+                                label="Close Button Icon"
+                                value={getValue('modal_close_button_color', defaults.modal_close_button_color ?? '#ffffff')}
+                                onChange={(v) => updateDraft('modal_close_button_color', v)}
+                                defaultValue={defaults.modal_close_button_color ?? '#ffffff'}
+                                compact
+                            />
+                            <ColorPickerField
+                                id="modal_close_button_background"
+                                label="Close Button Background"
+                                value={getValue('modal_close_button_background', defaults.modal_close_button_background ?? 'rgba(255,255,255,0.1)')}
+                                onChange={(v) => updateDraft('modal_close_button_background', v)}
+                                defaultValue={defaults.modal_close_button_background ?? 'rgba(255,255,255,0.1)'}
+                                compact
+                            />
                         </div>
                     </CustomizeSection>
                 )
@@ -518,6 +458,29 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                     label="Breadcrumb Active"
                                     value={getValue('breadcrumb_active_color', '')}
                                     onChange={(v) => updateDraft('breadcrumb_active_color', v)}
+                                    compact
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <ColorPickerField
+                                    id="dietary_tag_background_color"
+                                    label="Tag Background"
+                                    value={getValue('dietary_tag_background_color', '')}
+                                    onChange={(v) => updateDraft('dietary_tag_background_color', v)}
+                                    compact
+                                />
+                                <ColorPickerField
+                                    id="dietary_tag_text_color"
+                                    label="Tag Text"
+                                    value={getValue('dietary_tag_text_color', '')}
+                                    onChange={(v) => updateDraft('dietary_tag_text_color', v)}
+                                    compact
+                                />
+                                <ColorPickerField
+                                    id="dietary_tag_border_color"
+                                    label="Tag Border"
+                                    value={getValue('dietary_tag_border_color', '')}
+                                    onChange={(v) => updateDraft('dietary_tag_border_color', v)}
                                     compact
                                 />
                             </div>
@@ -677,6 +640,43 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                     compact
                                 />
                             </div>
+                        </div>
+                    </CustomizeSection>
+                )
+            case 'related_items':
+                return (
+                    <CustomizeSection title="Related Items Colors" emoji="🔗">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <ColorPickerField
+                                id="related_section_title_color"
+                                label="Section Title"
+                                value={getValue('related_section_title_color', defaults.related_section_title_color ?? '#111827')}
+                                onChange={(v) => updateDraft('related_section_title_color', v)}
+                                defaultValue={defaults.related_section_title_color ?? '#111827'}
+                                compact
+                            />
+                            <ColorPickerField
+                                id="related_item_background_color"
+                                label="Item Background"
+                                value={getValue('related_item_background_color', '')}
+                                onChange={(v) => updateDraft('related_item_background_color', v)}
+                                compact
+                            />
+                            <ColorPickerField
+                                id="related_item_name_color"
+                                label="Item Name"
+                                value={getValue('related_item_name_color', defaults.related_item_name_color ?? '#111827')}
+                                onChange={(v) => updateDraft('related_item_name_color', v)}
+                                defaultValue={defaults.related_item_name_color ?? '#111827'}
+                                compact
+                            />
+                            <ColorPickerField
+                                id="related_item_price_color"
+                                label="Item Price"
+                                value={getValue('related_item_price_color', '')}
+                                onChange={(v) => updateDraft('related_item_price_color', v)}
+                                compact
+                            />
                         </div>
                     </CustomizeSection>
                 )
@@ -862,6 +862,16 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
             case 'variations':
                 return (
                     <CustomizeSection title="Variation Settings" emoji="🔧">
+                        <div className="space-y-1">
+                            <Label htmlFor="variation_section_title_font_size" className="text-xs">Title Font Size</Label>
+                            <Input
+                                id="variation_section_title_font_size"
+                                value={getValue('variation_section_title_font_size', defaults.variation_section_title_font_size ?? '16px')}
+                                onChange={(e) => updateDraft('variation_section_title_font_size', e.target.value)}
+                                placeholder="16px"
+                                className="text-sm"
+                            />
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <Label htmlFor="variation_required_text" className="text-xs">Required Label</Label>
@@ -889,6 +899,16 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
             case 'addons':
                 return (
                     <CustomizeSection title="Add-on Settings" emoji="🔧">
+                        <div className="space-y-1">
+                            <Label htmlFor="addon_section_title_font_size" className="text-xs">Title Font Size</Label>
+                            <Input
+                                id="addon_section_title_font_size"
+                                value={getValue('addon_section_title_font_size', defaults.addon_section_title_font_size ?? '16px')}
+                                onChange={(e) => updateDraft('addon_section_title_font_size', e.target.value)}
+                                placeholder="16px"
+                                className="text-sm"
+                            />
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <Label htmlFor="addon_price_free_text" className="text-xs">Free Price Label</Label>
@@ -989,6 +1009,23 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                         </div>
                     </CustomizeSection>
                 )
+            case 'related_items':
+                return (
+                    <CustomizeSection title="Related Items Settings" emoji="🔧">
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                <Label htmlFor="related_section_title_font_size" className="text-xs">Title Font Size</Label>
+                                <Input
+                                    id="related_section_title_font_size"
+                                    value={getValue('related_section_title_font_size', defaults.related_section_title_font_size ?? '18px')}
+                                    onChange={(e) => updateDraft('related_section_title_font_size', e.target.value)}
+                                    placeholder="18px"
+                                    className="text-sm"
+                                />
+                            </div>
+                        </div>
+                    </CustomizeSection>
+                )
             default:
                 return (
                     <CustomizeSection title="Section Settings" emoji="🔧">
@@ -1034,8 +1071,8 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                             top: `${panelPosition.y}px`,
                             width: `${panelSize.width}px`,
                             height: `${panelSize.height}px`,
-                            maxWidth: `calc(100vw - ${PANEL_MARGIN * 2}px)`,
-                            maxHeight: `calc(100vh - ${PANEL_MARGIN * 2}px)`,
+                            maxWidth: `calc(100vw - ${panelMargin * 2}px)`,
+                            maxHeight: `calc(100vh - ${panelMargin * 2}px)`,
                         }}
                     >
                         {/* Header */}
@@ -1166,6 +1203,13 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                             <CustomizeSection title="Header & Navigation" emoji="📍">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                     <ColorPickerField
+                                                        id="header_background_color"
+                                                        label="Header Background"
+                                                        value={getValue('header_background_color', '')}
+                                                        onChange={(v) => updateDraft('header_background_color', v)}
+                                                        compact
+                                                    />
+                                                    <ColorPickerField
                                                         id="header_button_background_color"
                                                         label="Button Background"
                                                         value={getValue('header_button_background_color', '#ffffff')}
@@ -1210,6 +1254,41 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                                         defaultValue={defaults.sale_badge_text_color ?? '#ffffff'}
                                                         compact
                                                     />
+                                                    <ColorPickerField
+                                                        id="image_placeholder_color"
+                                                        label="Placeholder Color"
+                                                        value={getValue('image_placeholder_color', defaults.image_placeholder_color ?? '#9ca3af')}
+                                                        onChange={(v) => updateDraft('image_placeholder_color', v)}
+                                                        defaultValue={defaults.image_placeholder_color ?? '#9ca3af'}
+                                                        compact
+                                                    />
+                                                </div>
+                                                <p className="text-xs font-medium text-muted-foreground mt-3">Image Lightbox Modal</p>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <ColorPickerField
+                                                        id="modal_background_color"
+                                                        label="Modal Background"
+                                                        value={getValue('modal_background_color', defaults.modal_background_color ?? 'rgba(0,0,0,0.95)')}
+                                                        onChange={(v) => updateDraft('modal_background_color', v)}
+                                                        defaultValue={defaults.modal_background_color ?? 'rgba(0,0,0,0.95)'}
+                                                        compact
+                                                    />
+                                                    <ColorPickerField
+                                                        id="modal_close_button_color"
+                                                        label="Close Button Icon"
+                                                        value={getValue('modal_close_button_color', defaults.modal_close_button_color ?? '#ffffff')}
+                                                        onChange={(v) => updateDraft('modal_close_button_color', v)}
+                                                        defaultValue={defaults.modal_close_button_color ?? '#ffffff'}
+                                                        compact
+                                                    />
+                                                    <ColorPickerField
+                                                        id="modal_close_button_background"
+                                                        label="Close Button Background"
+                                                        value={getValue('modal_close_button_background', defaults.modal_close_button_background ?? 'rgba(255,255,255,0.1)')}
+                                                        onChange={(v) => updateDraft('modal_close_button_background', v)}
+                                                        defaultValue={defaults.modal_close_button_background ?? 'rgba(255,255,255,0.1)'}
+                                                        compact
+                                                    />
                                                 </div>
                                             </CustomizeSection>
 
@@ -1244,6 +1323,29 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
                                                             label="Breadcrumb Active"
                                                             value={getValue('breadcrumb_active_color', '')}
                                                             onChange={(v) => updateDraft('breadcrumb_active_color', v)}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <ColorPickerField
+                                                            id="dietary_tag_background_color"
+                                                            label="Tag Background"
+                                                            value={getValue('dietary_tag_background_color', '')}
+                                                            onChange={(v) => updateDraft('dietary_tag_background_color', v)}
+                                                            compact
+                                                        />
+                                                        <ColorPickerField
+                                                            id="dietary_tag_text_color"
+                                                            label="Tag Text"
+                                                            value={getValue('dietary_tag_text_color', '')}
+                                                            onChange={(v) => updateDraft('dietary_tag_text_color', v)}
+                                                            compact
+                                                        />
+                                                        <ColorPickerField
+                                                            id="dietary_tag_border_color"
+                                                            label="Tag Border"
+                                                            value={getValue('dietary_tag_border_color', '')}
+                                                            onChange={(v) => updateDraft('dietary_tag_border_color', v)}
                                                             compact
                                                         />
                                                     </div>

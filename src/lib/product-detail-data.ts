@@ -6,6 +6,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { getComplementaryItems } from '@/lib/complementary-pairs-service'
 import type { MenuItem, Category, Variation, VariationType, Addon, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 
@@ -52,6 +53,7 @@ export interface SelectedTenant {
     checkout_upsell_title?: string | null
     checkout_upsell_subtitle?: string | null
     checkout_upsell_max_items?: number | null
+    bundles_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
     convex_deployment_url?: string | null
     convex_schema_version?: number
@@ -112,6 +114,7 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
                 checkout_upsell_title,
                 checkout_upsell_subtitle,
                 checkout_upsell_max_items,
+                bundles_enabled,
                 convex_deployment_url,
                 convex_schema_version
             `)
@@ -124,7 +127,7 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
             return null
         }
 
-        return data as SelectedTenant | null
+        return data as unknown as SelectedTenant | null
     } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedTenantBySlug:', errMsg)
@@ -215,7 +218,7 @@ export const getCachedCategoryById = cache(async (categoryId: string, tenantId: 
             return null
         }
 
-        return data as Category | null
+        return data as unknown as Category | null
     } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedCategoryById:', errMsg)
@@ -273,26 +276,19 @@ export const getCachedRelatedItems = cache(async (categoryId: string, tenantId: 
  */
 export const getCachedUpsellsForItem = cache(async (
     itemId: string,
-    tenantId: string
+    tenantId: string,
+    categoryId?: string
 ): Promise<{ complementary: MenuItem[]; upgrades: UpgradeUpsell[] }> => {
     try {
         const supabase = await createClient()
 
-        // Fetch both types in parallel
-        const [complementaryResult, upgradesResult] = await Promise.all([
-            supabase
-                .from('upsell_pairs')
-                .select(`
-                    target_item:menu_items!upsell_pairs_target_item_id_fkey(
-                        id, tenant_id, category_id, name, description, price, discounted_price,
-                        image_url, is_available, is_featured, variations, variation_types, addons
-                    )
-                `)
-                .eq('source_item_id', itemId)
-                .eq('tenant_id', tenantId)
-                .eq('pair_type', 'complementary')
-                .eq('is_active', true)
-                .order('display_order', { ascending: true }),
+        // Fetch complementary items from new table and upgrades from upsell_pairs in parallel
+        const [complementary, upgradesResult] = await Promise.all([
+            // Complementary pairs from dedicated table (item-level overrides category-level)
+            categoryId
+                ? getComplementaryItems(itemId, categoryId, tenantId)
+                : Promise.resolve([]),
+            // Upgrade pairs still from upsell_pairs
             supabase
                 .from('upsell_pairs')
                 .select(`
@@ -311,23 +307,9 @@ export const getCachedUpsellsForItem = cache(async (
                 .order('display_order', { ascending: true }),
         ])
 
-        if (complementaryResult.error) {
-            console.error('Error fetching complementary upsells:', complementaryResult.error)
-        }
         if (upgradesResult.error) {
             console.error('Error fetching upgrade upsells:', upgradesResult.error)
         }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mapItems = (rows: any[]): MenuItem[] =>
-            rows
-                .filter((row) => row.target_item?.is_available === true)
-                .map((row) => ({
-                    ...row.target_item,
-                    variations: row.target_item.variations || [],
-                    variation_types: row.target_item.variation_types || [],
-                    addons: row.target_item.addons || [],
-                })) as MenuItem[]
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapUpgrades = (rows: any[]): UpgradeUpsell[] =>
@@ -346,7 +328,7 @@ export const getCachedUpsellsForItem = cache(async (
                 }))
 
         return {
-            complementary: mapItems(complementaryResult.data || []),
+            complementary,
             upgrades: mapUpgrades(upgradesResult.data || []),
         }
     } catch (error) {
@@ -374,7 +356,7 @@ export const getCachedProductDetailSettings = cache(async (tenantId: string): Pr
             return null
         }
 
-        return data as ProductDetailSettings | null
+        return data as unknown as ProductDetailSettings | null
     } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedProductDetailSettings:', errMsg)

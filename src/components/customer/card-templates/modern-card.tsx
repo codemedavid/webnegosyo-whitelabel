@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,13 +18,13 @@ interface ModernCardProps {
  * Modern Card Template
  * Contemporary design with overlapping elements and bold typography
  */
-export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
+export const ModernCard = memo(function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
   return (
     <div
-      className="group relative overflow-hidden rounded-3xl shadow-md transition-all hover:shadow-2xl cursor-pointer"
+      className="group relative overflow-hidden rounded-2xl md:rounded-3xl shadow-md transition-all hover:shadow-2xl cursor-pointer"
       style={{
         backgroundColor: branding.cards,
       }}
@@ -53,9 +54,9 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
 
         {/* Custom Badge */}
         {menuEngineeringEnabled && item.badge_text && (
-          <div className="absolute top-3 left-3 z-10">
+          <div className="absolute top-2 left-2 md:top-3 md:left-3 z-10">
             <span
-              className="rounded-full px-2.5 py-1 text-xs font-bold backdrop-blur-md shadow-sm"
+              className="rounded-full px-2 py-0.5 text-[10px] md:px-2.5 md:py-1 md:text-xs font-bold backdrop-blur-md shadow-sm"
               style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
             >
               {item.badge_text}
@@ -64,7 +65,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
         )}
 
         {/* Badges - Top corners */}
-        <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
+        <div className="absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-3 flex justify-between items-start">
           {item.is_featured && !item.badge_text && (
             <div
               className="px-2 py-1 rounded-full text-xs font-bold backdrop-blur-md"
@@ -99,7 +100,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
 
         {/* Floating price tag - bottom left */}
         <div
-          className="absolute bottom-4 left-4 rounded-xl px-3 py-2 backdrop-blur-md"
+          className="absolute bottom-2 left-2 md:bottom-4 md:left-4 rounded-xl px-2 py-1 md:px-3 md:py-2 backdrop-blur-md"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
         >
           <div className="flex items-center gap-2">
@@ -112,8 +113,8 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
               </span>
             )}
             <span
-              className="text-xl font-black"
-              style={{ color: branding.primary }}
+              className="text-sm md:text-xl font-black"
+              style={{ color: branding.cardPrice }}
             >
               {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
@@ -122,7 +123,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
 
         {/* Floating Add Button - bottom right */}
         <button
-          className="absolute bottom-4 right-4 flex h-12 w-12 items-center justify-center rounded-2xl shadow-2xl transition-all hover:scale-110"
+          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110"
           style={{
             backgroundColor: branding.buttonPrimary,
             color: branding.buttonPrimaryText
@@ -134,7 +135,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
           disabled={!item.is_available}
         >
           <svg
-            className="h-6 w-6"
+            className="h-4 w-4 md:h-6 md:w-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -150,7 +151,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
       </div>
 
       {/* Content - Overlapping the image */}
-      <div className="relative -mt-6 mx-4 mb-4 rounded-2xl p-4 backdrop-blur-md"
+      <div className="relative -mt-4 mx-2 mb-2 md:-mt-6 md:mx-4 md:mb-4 rounded-xl md:rounded-2xl p-2.5 md:p-4 backdrop-blur-md"
         style={{
           backgroundColor: branding.cards,
           borderColor: branding.cardsBorder,
@@ -159,7 +160,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
         }}
       >
         <h3
-          className="text-base font-black line-clamp-1"
+          className="text-sm md:text-base font-black line-clamp-1"
           style={{ color: branding.cardTitle }}
         >
           {item.name}
@@ -167,7 +168,7 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
 
         {item.description && (
           <p
-            className="mt-1 text-xs line-clamp-2"
+            className="mt-1 text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
             style={{ color: branding.cardDescription }}
           >
             {item.description}
@@ -187,5 +188,4 @@ export function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, h
       </div>
     </div>
   )
-}
-
+})

@@ -86,6 +86,7 @@ describe('Product Detail Theme', () => {
         })
 
         it('should handle undefined settings gracefully', () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const result = mergeSettingsWithBranding(undefined as any, mockBranding)
 
             expect(result).toBeDefined()

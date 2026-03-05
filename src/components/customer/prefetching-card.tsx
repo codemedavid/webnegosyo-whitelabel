@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { CardTemplateRenderer } from './card-templates'
 import type { MenuItem } from '@/types/database'
@@ -18,24 +18,55 @@ interface PrefetchingCardProps {
 }
 
 /**
- * Card wrapper that prefetches the product detail route on hover-capable devices.
+ * Card wrapper that prefetches the product detail route.
+ * - Desktop (hover-capable): prefetches on mouse enter.
+ * - Mobile (touch): prefetches via IntersectionObserver when nearing viewport.
  * Memoized to prevent re-renders from parent state changes (e.g. carousel slide).
  */
 export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, tenantSlug, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
   const router = useRouter()
   const hasPrefetched = useRef(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
-  // Prefetch only for hover-capable pointers to avoid touch-scroll prefetch storms on mobile.
-  const handleInteraction = useCallback(() => {
+  const prefetchRoute = useCallback(() => {
     if (hasPrefetched.current) return
-    if (typeof window !== 'undefined' && !window.matchMedia('(hover: hover)').matches) return
     router.prefetch(`/${tenantSlug}/menu/item/${item.id}`)
     hasPrefetched.current = true
   }, [tenantSlug, item.id, router])
 
+  // Desktop: prefetch on hover (only for hover-capable devices)
+  const handleMouseEnter = useCallback(() => {
+    if (typeof window !== 'undefined' && !window.matchMedia('(hover: hover)').matches) return
+    prefetchRoute()
+  }, [prefetchRoute])
+
+  // Mobile/touch: prefetch when card scrolls near the viewport
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    // Only use observer for touch/non-hover devices
+    if (window.matchMedia('(hover: hover)').matches) return
+
+    const el = cardRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          prefetchRoute()
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [prefetchRoute])
+
   return (
     <div
-      onMouseEnter={handleInteraction}
+      ref={cardRef}
+      onMouseEnter={handleMouseEnter}
       style={{ contentVisibility: 'auto' }}
     >
       <CardTemplateRenderer

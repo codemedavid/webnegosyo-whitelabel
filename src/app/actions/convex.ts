@@ -7,8 +7,41 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from "@/lib/convex-deploy";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * Verify the current user is a superadmin.
+ * Throws if not authenticated or not a superadmin.
+ */
+async function verifySuperadmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Unauthorized: Not authenticated");
+  }
+
+  const { data: userRole } = await supabase
+    .from("app_users")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const role = userRole as { role: string } | null;
+  if (!role || role.role !== "superadmin") {
+    throw new Error("Forbidden: Superadmin access required");
+  }
+
+  return { user, supabase };
+}
 
 export async function deployConvexToTenantAction(tenantId: string) {
+  // Verify superadmin access before proceeding
+  await verifySuperadmin();
+
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
@@ -90,7 +123,6 @@ export async function deployConvexToTenantAction(tenantId: string) {
   };
   await supabase
     .from("tenants")
-    // @ts-expect-error - Supabase type inference issue with update
     .update(updatePayload)
     .eq("id", tenantId);
 
@@ -98,6 +130,9 @@ export async function deployConvexToTenantAction(tenantId: string) {
 }
 
 export async function bulkDeployConvexAction() {
+  // Verify superadmin access before proceeding
+  await verifySuperadmin();
+
   const supabase = createAdminClient();
 
   const { data } = await supabase

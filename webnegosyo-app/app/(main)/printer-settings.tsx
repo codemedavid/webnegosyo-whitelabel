@@ -109,7 +109,7 @@ export default function PrinterSettingsScreen() {
       {!printerSupported && (
         <View style={styles.warningBanner}>
           <Text style={styles.warningText}>
-            Printer features require a development build. Settings can be configured but printing won't work in Expo Go.
+            Printer features require a development build. Settings can be configured but printing won&apos;t work in Expo Go.
           </Text>
         </View>
       )}

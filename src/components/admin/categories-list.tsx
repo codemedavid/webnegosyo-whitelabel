@@ -1,8 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Edit, Trash2, GripVertical, X } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,17 +33,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from '@/app/actions/categories'
+import { createCategoryAction, updateCategoryAction, deleteCategoryAction, reorderCategoriesAction } from '@/app/actions/categories'
 import type { Category, Addon } from '@/types/database'
+import { CategoryIcon } from '@/components/shared/category-icon'
+import { IconPicker } from '@/components/admin/icon-picker'
 
 interface CategoryFormData {
   name: string
   icon: string
+  icon_color: string
   description: string
   is_active: boolean
+  display_layout: 'grid' | 'horizontal_scroll' | 'horizontal_mobile_only' | 'horizontal_desktop_only'
   default_addons: Addon[]
 }
 
@@ -37,30 +64,143 @@ interface CategoriesListProps {
   tenantId: string
 }
 
-export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesListProps) {
+function SortableCategoryCard({
+  category,
+  onEdit,
+  onDelete,
+}: {
+  category: Category
+  onEdit: (category: Category) => void
+  onDelete: (categoryId: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  }
+
+  return (
+    <Card ref={setNodeRef} style={style}>
+      <CardContent className="flex items-center gap-4 p-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="cursor-grab active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </Button>
+
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <CategoryIcon icon={category.icon} color={category.icon_color} size="md" />
+            <h3 className="font-semibold">{category.name}</h3>
+            {!category.is_active && <Badge variant="secondary">Inactive</Badge>}
+            {category.display_layout && category.display_layout !== 'grid' && (
+              <Badge variant="outline" className="text-xs">
+                {category.display_layout === 'horizontal_scroll' ? 'Horizontal' :
+                 category.display_layout === 'horizontal_mobile_only' ? 'Horizontal (Mobile)' :
+                 'Horizontal (Desktop)'}
+              </Badge>
+            )}
+          </div>
+          {category.description && (
+            <p className="text-sm text-muted-foreground">{category.description}</p>
+          )}
+        </div>
+
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onEdit(category)}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive"
+            onClick={() => onDelete(category.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function CategoriesList({ categories: initialCategories, tenantSlug, tenantId }: CategoriesListProps) {
   const router = useRouter()
+  const dndId = useId()
+  const [categories, setCategories] = useState(initialCategories)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  
+
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     icon: '',
+    icon_color: '',
     description: '',
     is_active: true,
+    display_layout: 'grid',
     default_addons: [],
   })
+  const [iconPickerOpen, setIconPickerOpen] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = categories.findIndex((c) => c.id === active.id)
+    const newIndex = categories.findIndex((c) => c.id === over.id)
+
+    const reordered = arrayMove(categories, oldIndex, newIndex)
+    setCategories(reordered)
+
+    const result = await reorderCategoriesAction(
+      tenantId,
+      tenantSlug,
+      reordered.map((c) => c.id)
+    )
+
+    if (!result.success) {
+      setCategories(categories)
+      toast.error(result.error || 'Failed to reorder categories')
+    } else {
+      toast.success('Categories reordered')
+    }
+  }
 
   const handleAdd = () => {
     setEditingCategory(null)
     setFormData({
       name: '',
       icon: '',
+      icon_color: '',
       description: '',
       is_active: true,
+      display_layout: 'grid',
       default_addons: [],
     })
     setIsDialogOpen(true)
@@ -71,8 +211,10 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
     setFormData({
       name: category.name,
       icon: category.icon || '',
+      icon_color: category.icon_color || '',
       description: category.description || '',
       is_active: category.is_active,
+      display_layout: category.display_layout || 'grid',
       default_addons: category.default_addons || [],
     })
     setIsDialogOpen(true)
@@ -89,8 +231,10 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
     const input = {
       name: formData.name,
       icon: formData.icon,
+      icon_color: formData.icon_color || undefined,
       description: formData.description,
       is_active: formData.is_active,
+      display_layout: formData.display_layout,
       order: editingCategory?.order || categories.length,
       default_addons: formData.default_addons,
     }
@@ -152,47 +296,30 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
               Add Category
             </Button>
           </div>
-          {categories.map((category) => (
-            <Card key={category.id}>
-              <CardContent className="flex items-center gap-4 p-4">
-                <Button variant="ghost" size="icon" className="cursor-grab">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                </Button>
-
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{category.icon}</span>
-                    <h3 className="font-semibold">{category.name}</h3>
-                    {!category.is_active && <Badge variant="secondary">Inactive</Badge>}
-                  </div>
-                  {category.description && (
-                    <p className="text-sm text-muted-foreground">{category.description}</p>
-                  )}
-                </div>
-
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(category)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => {
-                      setCategoryToDelete(category.id)
-                      setDeleteDialogOpen(true)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <DndContext
+            id={dndId}
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToVerticalAxis]}
+          >
+            <SortableContext
+              items={categories.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {categories.map((category) => (
+                <SortableCategoryCard
+                  key={category.id}
+                  category={category}
+                  onEdit={handleEdit}
+                  onDelete={(id) => {
+                    setCategoryToDelete(id)
+                    setDeleteDialogOpen(true)
+                  }}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -214,12 +341,35 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="icon">Icon (Emoji)</Label>
-              <Input
-                id="icon"
-                placeholder="🍕"
+              <Label>Icon</Label>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start gap-2 h-10"
+                onClick={() => setIconPickerOpen(true)}
+              >
+                {formData.icon ? (
+                  <CategoryIcon
+                    icon={formData.icon}
+                    color={formData.icon_color}
+                    size="sm"
+                  />
+                ) : (
+                  <span className="text-muted-foreground">No icon</span>
+                )}
+                <span className="text-muted-foreground text-sm">
+                  {formData.icon ? 'Change icon' : 'Choose an icon'}
+                </span>
+              </Button>
+              <IconPicker
+                open={iconPickerOpen}
+                onOpenChange={setIconPickerOpen}
                 value={formData.icon}
-                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                color={formData.icon_color}
+                fallbackColor="#ea580c"
+                onSelect={(icon, color) =>
+                  setFormData({ ...formData, icon, icon_color: color })
+                }
               />
             </div>
             <div className="space-y-2">
@@ -230,6 +380,28 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="display_layout">Display Layout</Label>
+              <Select
+                value={formData.display_layout}
+                onValueChange={(value: CategoryFormData['display_layout']) =>
+                  setFormData({ ...formData, display_layout: value })
+                }
+              >
+                <SelectTrigger id="display_layout">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grid">Grid (All Devices)</SelectItem>
+                  <SelectItem value="horizontal_scroll">Horizontal Scroll (All Devices)</SelectItem>
+                  <SelectItem value="horizontal_mobile_only">Horizontal Scroll (Mobile Only)</SelectItem>
+                  <SelectItem value="horizontal_desktop_only">Horizontal Scroll (Desktop Only)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Horizontal scroll displays items in a swipeable row on the customer menu.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -343,4 +515,3 @@ export function CategoriesList({ categories, tenantSlug, tenantId }: CategoriesL
     </>
   )
 }
-

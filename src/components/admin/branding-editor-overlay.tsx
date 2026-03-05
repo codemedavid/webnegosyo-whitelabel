@@ -13,7 +13,7 @@ import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import { toast } from 'sonner'
 
 type BrandingEditorTab = 'colors' | 'layouts' | 'cards' | 'banners'
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
 
 interface MenuBrandingEditorOpenDetail {
   section?: MenuBrandingSection
@@ -45,8 +45,11 @@ interface BrandingDraft {
   checkout_modal_border_color?: string
   button_primary_color?: string
   button_primary_text_color?: string
+  button_secondary_color?: string
+  button_secondary_text_color?: string
   text_primary_color?: string
   text_secondary_color?: string
+  text_muted_color?: string
   menu_main_header_text_color?: string
   menu_main_header_subtitle_color?: string
   menu_category_header_color?: string
@@ -55,6 +58,21 @@ interface BrandingDraft {
   menu_cart_badge_background_color?: string
   menu_cart_badge_text_color?: string
   border_color?: string
+  // Utility colors
+  success_color?: string
+  warning_color?: string
+  error_color?: string
+  link_color?: string
+  shadow_color?: string
+  // Flash Screen
+  flash_screen_feature_enabled?: boolean
+  flash_screen_is_active?: boolean
+  flash_screen_title?: string
+  flash_screen_subtitle?: string
+  flash_screen_image_url?: string
+  flash_screen_background_color?: string
+  flash_screen_text_color?: string
+  flash_screen_duration_ms?: number
   // Hero customization
   hero_title?: string
   hero_description?: string
@@ -63,6 +81,8 @@ interface BrandingDraft {
   card_template?: string
   page_layout?: string
   mobile_grid_columns?: number
+  mobile_page_layout?: string | null
+  mobile_card_template?: string | null
   // Banners
   announcement_text?: string
   announcement_bg_color?: string
@@ -106,8 +126,11 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     checkout_modal_border_color: tenant.checkout_modal_border_color || '',
     button_primary_color: tenant.button_primary_color || '',
     button_primary_text_color: tenant.button_primary_text_color || '',
+    button_secondary_color: tenant.button_secondary_color || '',
+    button_secondary_text_color: tenant.button_secondary_text_color || '',
     text_primary_color: tenant.text_primary_color || '',
     text_secondary_color: tenant.text_secondary_color || '',
+    text_muted_color: tenant.text_muted_color || '',
     menu_main_header_text_color: tenant.menu_main_header_text_color || '',
     menu_main_header_subtitle_color: tenant.menu_main_header_subtitle_color || '',
     menu_category_header_color: tenant.menu_category_header_color || '',
@@ -116,6 +139,19 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     menu_cart_badge_background_color: tenant.menu_cart_badge_background_color || '',
     menu_cart_badge_text_color: tenant.menu_cart_badge_text_color || '',
     border_color: tenant.border_color || '',
+    success_color: tenant.success_color || '',
+    warning_color: tenant.warning_color || '',
+    error_color: tenant.error_color || '',
+    link_color: tenant.link_color || '',
+    shadow_color: tenant.shadow_color || '',
+    flash_screen_feature_enabled: tenant.flash_screen_feature_enabled || false,
+    flash_screen_is_active: tenant.flash_screen_is_active || false,
+    flash_screen_title: tenant.flash_screen_title || '',
+    flash_screen_subtitle: tenant.flash_screen_subtitle || '',
+    flash_screen_image_url: tenant.flash_screen_image_url || '',
+    flash_screen_background_color: tenant.flash_screen_background_color || '',
+    flash_screen_text_color: tenant.flash_screen_text_color || '',
+    flash_screen_duration_ms: tenant.flash_screen_duration_ms || 3000,
     hero_title: tenant.hero_title || '',
     hero_description: tenant.hero_description || '',
     hero_title_color: tenant.hero_title_color || '',
@@ -123,6 +159,8 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     card_template: tenant.card_template || 'classic',
     page_layout: tenant.page_layout || 'default',
     mobile_grid_columns: tenant.mobile_grid_columns || 1,
+    mobile_page_layout: tenant.mobile_page_layout || null,
+    mobile_card_template: tenant.mobile_card_template || null,
     announcement_text: tenant.announcement_text || '',
     announcement_bg_color: tenant.announcement_bg_color || '#FFF4E5',
     announcement_text_color: tenant.announcement_text_color || '#663C00',
@@ -139,6 +177,8 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
   const [focusedMenuSection, setFocusedMenuSection] = useState<MenuBrandingSection | null>(null)
   const [isSaving, startSaving] = useTransition()
   const [draft, setDraft] = useState<BrandingDraft>(() => buildDraftFromTenant(tenant))
+  const [layoutScreen, setLayoutScreen] = useState<'desktop' | 'mobile'>('desktop')
+  const [cardScreen, setCardScreen] = useState<'desktop' | 'mobile'>('desktop')
 
   useEffect(() => {
     const handleOpenCustomizer = (event: Event) => {
@@ -191,6 +231,8 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
     category_navigation: 'Category Navigation',
     category_header: 'Category Headers',
     cart_badge: 'Cart Badge',
+    hero: 'Hero Section',
+    menu_cards: 'Menu Cards',
   }
 
   function renderMenuBrandingSection(section: MenuBrandingSection) {
@@ -226,11 +268,47 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
       )
     }
 
+    if (section === 'cart_badge') {
+      return (
+        <Section key={section} title="Cart Badge" emoji="🛒">
+          <div className="grid gap-3 grid-cols-2">
+            <Swatch id="menu_cart_badge_background_color" label="Badge" value={draft.menu_cart_badge_background_color || ''} onChange={(v) => updateDraft('menu_cart_badge_background_color', v)} compact />
+            <Swatch id="menu_cart_badge_text_color" label="Number" value={draft.menu_cart_badge_text_color || ''} onChange={(v) => updateDraft('menu_cart_badge_text_color', v)} compact />
+          </div>
+        </Section>
+      )
+    }
+
+    if (section === 'hero') {
+      return (
+        <Section key={section} title="Hero Section" emoji="🏠">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="hero_title_focused" className="text-xs">Hero Title</Label>
+              <Input id="hero_title_focused" name="hero_title" value={draft.hero_title || ''} onChange={(e) => updateDraft('hero_title', e.target.value)} placeholder="Our Menu" className="text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="hero_description_focused" className="text-xs">Hero Description</Label>
+              <Input id="hero_description_focused" name="hero_description" value={draft.hero_description || ''} onChange={(e) => updateDraft('hero_description', e.target.value)} placeholder="Your Smart Ordering Partner" className="text-sm" />
+            </div>
+            <div className="grid gap-3 grid-cols-2">
+              <Swatch id="hero_title_color_focused" label="Title Color" value={draft.hero_title_color || ''} onChange={(v) => updateDraft('hero_title_color', v)} compact />
+              <Swatch id="hero_description_color_focused" label="Description Color" value={draft.hero_description_color || ''} onChange={(v) => updateDraft('hero_description_color', v)} compact />
+            </div>
+          </div>
+        </Section>
+      )
+    }
+
+    // menu_cards
     return (
-      <Section key={section} title="Cart Badge" emoji="🛒">
+      <Section key={section} title="Menu Cards" emoji="🃏">
         <div className="grid gap-3 grid-cols-2">
-          <Swatch id="menu_cart_badge_background_color" label="Badge" value={draft.menu_cart_badge_background_color || ''} onChange={(v) => updateDraft('menu_cart_badge_background_color', v)} compact />
-          <Swatch id="menu_cart_badge_text_color" label="Number" value={draft.menu_cart_badge_text_color || ''} onChange={(v) => updateDraft('menu_cart_badge_text_color', v)} compact />
+          <Swatch id="cards_color_focused" label="Card Background" value={draft.cards_color || ''} onChange={(v) => updateDraft('cards_color', v)} compact />
+          <Swatch id="cards_border_color_focused" label="Card Border" value={draft.cards_border_color || ''} onChange={(v) => updateDraft('cards_border_color', v)} compact />
+          <Swatch id="card_title_color_focused" label="Title" value={draft.card_title_color || ''} onChange={(v) => updateDraft('card_title_color', v)} compact />
+          <Swatch id="card_price_color_focused" label="Price" value={draft.card_price_color || ''} onChange={(v) => updateDraft('card_price_color', v)} compact />
+          <Swatch id="card_description_color_focused" label="Description" value={draft.card_description_color || ''} onChange={(v) => updateDraft('card_description_color', v)} compact />
         </div>
       </Section>
     )
@@ -321,25 +399,8 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
               ) : (
                 <>
               {(
-                ['main_header', 'category_navigation', 'category_header', 'cart_badge'] as MenuBrandingSection[]
+                ['main_header', 'category_navigation', 'category_header', 'cart_badge', 'hero', 'menu_cards'] as MenuBrandingSection[]
               ).map((section) => renderMenuBrandingSection(section))}
-              {/* Hero Section */}
-              <Section title="Hero Section" emoji="🏠">
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="hero_title" className="text-xs">Hero Title</Label>
-                    <Input id="hero_title" name="hero_title" value={draft.hero_title || ''} onChange={(e) => updateDraft('hero_title', e.target.value)} placeholder="Our Menu" className="text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="hero_description" className="text-xs">Hero Description</Label>
-                    <Input id="hero_description" name="hero_description" value={draft.hero_description || ''} onChange={(e) => updateDraft('hero_description', e.target.value)} placeholder="Your Smart Ordering Partner" className="text-sm" />
-                  </div>
-                  <div className="grid gap-3 grid-cols-2">
-                    <Swatch id="hero_title_color" label="Title Color" value={draft.hero_title_color || ''} onChange={(v) => updateDraft('hero_title_color', v)} compact />
-                    <Swatch id="hero_description_color" label="Description Color" value={draft.hero_description_color || ''} onChange={(v) => updateDraft('hero_description_color', v)} compact />
-                  </div>
-                </div>
-              </Section>
 
               {/* Core Brand Colors */}
               <Section title="Core Brand Colors" emoji="🎨">
@@ -357,17 +418,6 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                   <Swatch id="header_color" label="Header" value={draft.header_color || ''} onChange={(v) => updateDraft('header_color', v)} compact />
                   <Swatch id="header_font_color" label="Header Font" value={draft.header_font_color || ''} onChange={(v) => updateDraft('header_font_color', v)} compact />
                   <Swatch id="border_color" label="Border" value={draft.border_color || ''} onChange={(v) => updateDraft('border_color', v)} compact />
-                </div>
-              </Section>
-
-              {/* Menu Cards */}
-              <Section title="Menu Cards" emoji="🃏">
-                <div className="grid gap-3 grid-cols-2">
-                  <Swatch id="cards_color" label="Card Background" value={draft.cards_color || ''} onChange={(v) => updateDraft('cards_color', v)} compact />
-                  <Swatch id="cards_border_color" label="Card Border" value={draft.cards_border_color || ''} onChange={(v) => updateDraft('cards_border_color', v)} compact />
-                  <Swatch id="card_title_color" label="Title" value={draft.card_title_color || ''} onChange={(v) => updateDraft('card_title_color', v)} compact />
-                  <Swatch id="card_price_color" label="Price" value={draft.card_price_color || ''} onChange={(v) => updateDraft('card_price_color', v)} compact />
-                  <Swatch id="card_description_color" label="Description" value={draft.card_description_color || ''} onChange={(v) => updateDraft('card_description_color', v)} compact />
                 </div>
               </Section>
 
@@ -410,6 +460,8 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                 <div className="grid gap-3 grid-cols-2">
                   <Swatch id="button_primary_color" label="Primary" value={draft.button_primary_color || ''} onChange={(v) => updateDraft('button_primary_color', v)} compact />
                   <Swatch id="button_primary_text_color" label="Primary Text" value={draft.button_primary_text_color || ''} onChange={(v) => updateDraft('button_primary_text_color', v)} compact />
+                  <Swatch id="button_secondary_color" label="Secondary" value={draft.button_secondary_color || ''} onChange={(v) => updateDraft('button_secondary_color', v)} compact />
+                  <Swatch id="button_secondary_text_color" label="Secondary Text" value={draft.button_secondary_text_color || ''} onChange={(v) => updateDraft('button_secondary_text_color', v)} compact />
                 </div>
               </Section>
 
@@ -418,6 +470,95 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                 <div className="grid gap-3 grid-cols-2">
                   <Swatch id="text_primary_color" label="Primary" value={draft.text_primary_color || ''} onChange={(v) => updateDraft('text_primary_color', v)} compact />
                   <Swatch id="text_secondary_color" label="Secondary" value={draft.text_secondary_color || ''} onChange={(v) => updateDraft('text_secondary_color', v)} compact />
+                  <Swatch id="text_muted_color" label="Muted" value={draft.text_muted_color || ''} onChange={(v) => updateDraft('text_muted_color', v)} compact />
+                </div>
+              </Section>
+
+              {/* Utility Colors */}
+              <Section title="Utility Colors" emoji="🎨">
+                <div className="grid gap-3 grid-cols-2">
+                  <Swatch id="success_color" label="Success" value={draft.success_color || ''} onChange={(v) => updateDraft('success_color', v)} compact />
+                  <Swatch id="warning_color" label="Warning" value={draft.warning_color || ''} onChange={(v) => updateDraft('warning_color', v)} compact />
+                  <Swatch id="error_color" label="Error" value={draft.error_color || ''} onChange={(v) => updateDraft('error_color', v)} compact />
+                  <Swatch id="link_color" label="Link" value={draft.link_color || ''} onChange={(v) => updateDraft('link_color', v)} compact />
+                  <Swatch id="shadow_color" label="Shadow" value={draft.shadow_color || ''} onChange={(v) => updateDraft('shadow_color', v)} compact />
+                </div>
+              </Section>
+
+              {/* Flash Screen */}
+              <Section title="Flash Screen" emoji="⚡">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="flash_screen_feature_enabled"
+                      checked={draft.flash_screen_feature_enabled}
+                      onChange={(e) => updateDraft('flash_screen_feature_enabled', e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <Label htmlFor="flash_screen_feature_enabled">Enable Flash Screen</Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="flash_screen_is_active"
+                      checked={draft.flash_screen_is_active}
+                      onChange={(e) => updateDraft('flash_screen_is_active', e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <Label htmlFor="flash_screen_is_active">Active</Label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="flash_screen_title" className="text-xs">Title</Label>
+                    <Input
+                      id="flash_screen_title"
+                      value={draft.flash_screen_title || ''}
+                      onChange={(e) => updateDraft('flash_screen_title', e.target.value)}
+                      placeholder="Welcome!"
+                      className="text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="flash_screen_subtitle" className="text-xs">Subtitle</Label>
+                    <Input
+                      id="flash_screen_subtitle"
+                      value={draft.flash_screen_subtitle || ''}
+                      onChange={(e) => updateDraft('flash_screen_subtitle', e.target.value)}
+                      placeholder="Loading your experience..."
+                      className="text-sm"
+                    />
+                  </div>
+
+                  <SimpleImageUpload
+                    label="Image"
+                    folder="flash-screens"
+                    currentImageUrl={draft.flash_screen_image_url || ''}
+                    onImageUploaded={(url) => updateDraft('flash_screen_image_url', url)}
+                    description="Recommended: Square or portrait image"
+                  />
+
+                  <div className="grid gap-3 grid-cols-2">
+                    <Swatch id="flash_screen_background_color" label="Background" value={draft.flash_screen_background_color || ''} onChange={(v) => updateDraft('flash_screen_background_color', v)} compact />
+                    <Swatch id="flash_screen_text_color" label="Text Color" value={draft.flash_screen_text_color || ''} onChange={(v) => updateDraft('flash_screen_text_color', v)} compact />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="flash_screen_duration_ms" className="text-xs">Duration (ms)</Label>
+                    <Input
+                      id="flash_screen_duration_ms"
+                      type="number"
+                      value={draft.flash_screen_duration_ms || 3000}
+                      onChange={(e) => updateDraft('flash_screen_duration_ms', parseInt(e.target.value, 10) || 3000)}
+                      placeholder="3000"
+                      className="text-sm"
+                      min={500}
+                      max={10000}
+                      step={500}
+                    />
+                  </div>
                 </div>
               </Section>
                 </>
@@ -427,61 +568,97 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
             {/* Layouts Tab */}
             <TabsContent value="layouts" className="flex-1 overflow-y-auto p-4 mt-0">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Choose Your Page Layout</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Select how your menu page is structured. This controls the navigation and grid arrangement.
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-gray-900">Choose Your Page Layout</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Select how your menu page is structured.
+                    </p>
+                  </div>
+                  <ScreenToggle value={layoutScreen} onChange={setLayoutScreen} />
                 </div>
 
-                <div className="grid gap-4">
-                  {PAGE_LAYOUTS.map((layout) => (
-                    <button
-                      key={layout.id}
-                      type="button"
-                      className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
-                      style={{
-                        borderColor: draft.page_layout === layout.id ? draft.primary_color : '#e5e7eb',
-                        backgroundColor: draft.page_layout === layout.id ? `${draft.primary_color}10` : '#ffffff'
-                      }}
-                      onClick={() => updateDraft('page_layout', layout.id)}
-                    >
-                      {draft.page_layout === layout.id && (
-                        <div
-                          className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
-                          style={{ backgroundColor: draft.primary_color }}
-                        >
-                          ✓
-                        </div>
-                      )}
+                {layoutScreen === 'mobile' && !draft.mobile_page_layout && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs text-amber-900">
+                      Currently using the desktop layout. Pick a different layout to customize mobile separately.
+                    </p>
+                  </div>
+                )}
 
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 text-3xl">{layout.preview}</div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-sm mb-1">{layout.name}</h4>
-                          <p className="text-xs text-muted-foreground mb-2">{layout.description}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {layout.features.map((feature, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                style={{
-                                  backgroundColor: draft.page_layout === layout.id
-                                    ? draft.primary_color
-                                    : '#f3f4f6',
-                                  color: draft.page_layout === layout.id
-                                    ? '#ffffff'
-                                    : '#6b7280'
-                                }}
-                              >
-                                {feature}
-                              </span>
-                            ))}
+                {layoutScreen === 'mobile' && draft.mobile_page_layout && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      onClick={() => updateDraft('mobile_page_layout', null)}
+                    >
+                      Reset to desktop layout
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid gap-4">
+                  {PAGE_LAYOUTS.map((layout) => {
+                    const activeLayout = layoutScreen === 'desktop'
+                      ? draft.page_layout
+                      : (draft.mobile_page_layout || draft.page_layout)
+                    const isActive = activeLayout === layout.id
+
+                    return (
+                      <button
+                        key={layout.id}
+                        type="button"
+                        className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isActive ? draft.primary_color : '#e5e7eb',
+                          backgroundColor: isActive ? `${draft.primary_color}10` : '#ffffff'
+                        }}
+                        onClick={() => {
+                          if (layoutScreen === 'desktop') {
+                            updateDraft('page_layout', layout.id)
+                          } else {
+                            updateDraft('mobile_page_layout', layout.id)
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                            style={{ backgroundColor: draft.primary_color }}
+                          >
+                            ✓
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 text-3xl">{layout.preview}</div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm mb-1">{layout.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-2">{layout.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {layout.features.map((feature, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: isActive
+                                      ? draft.primary_color
+                                      : '#f3f4f6',
+                                    color: isActive
+                                      ? '#ffffff'
+                                      : '#6b7280'
+                                  }}
+                                >
+                                  {feature}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-2">
@@ -546,61 +723,97 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
             {/* Card Templates Tab */}
             <TabsContent value="cards" className="flex-1 overflow-y-auto p-4 mt-0">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Choose Your Card Design</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Select a card template that best represents your brand. All templates use your custom colors.
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-gray-900">Choose Your Card Design</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Select a card template that best represents your brand.
+                    </p>
+                  </div>
+                  <ScreenToggle value={cardScreen} onChange={setCardScreen} />
                 </div>
 
-                <div className="grid gap-4">
-                  {CARD_TEMPLATES.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
-                      style={{
-                        borderColor: draft.card_template === template.id ? draft.primary_color : '#e5e7eb',
-                        backgroundColor: draft.card_template === template.id ? `${draft.primary_color}10` : '#ffffff'
-                      }}
-                      onClick={() => updateDraft('card_template', template.id)}
-                    >
-                      {draft.card_template === template.id && (
-                        <div
-                          className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
-                          style={{ backgroundColor: draft.primary_color }}
-                        >
-                          ✓
-                        </div>
-                      )}
+                {cardScreen === 'mobile' && !draft.mobile_card_template && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs text-amber-900">
+                      Currently using the desktop card template. Pick a different template to customize mobile separately.
+                    </p>
+                  </div>
+                )}
 
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 text-3xl">{template.preview}</div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
-                          <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {template.features.map((feature, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                style={{
-                                  backgroundColor: draft.card_template === template.id
-                                    ? draft.primary_color
-                                    : '#f3f4f6',
-                                  color: draft.card_template === template.id
-                                    ? '#ffffff'
-                                    : '#6b7280'
-                                }}
-                              >
-                                {feature}
-                              </span>
-                            ))}
+                {cardScreen === 'mobile' && draft.mobile_card_template && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      onClick={() => updateDraft('mobile_card_template', null)}
+                    >
+                      Reset to desktop card template
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid gap-4">
+                  {CARD_TEMPLATES.map((template) => {
+                    const activeTemplate = cardScreen === 'desktop'
+                      ? draft.card_template
+                      : (draft.mobile_card_template || draft.card_template)
+                    const isActive = activeTemplate === template.id
+
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isActive ? draft.primary_color : '#e5e7eb',
+                          backgroundColor: isActive ? `${draft.primary_color}10` : '#ffffff'
+                        }}
+                        onClick={() => {
+                          if (cardScreen === 'desktop') {
+                            updateDraft('card_template', template.id)
+                          } else {
+                            updateDraft('mobile_card_template', template.id)
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                            style={{ backgroundColor: draft.primary_color }}
+                          >
+                            ✓
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 text-3xl">{template.preview}</div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {template.features.map((feature, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: isActive
+                                      ? draft.primary_color
+                                      : '#f3f4f6',
+                                    color: isActive
+                                      ? '#ffffff'
+                                      : '#6b7280'
+                                  }}
+                                >
+                                  {feature}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-2">
@@ -762,6 +975,37 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
         </div>
       )}
     </>
+  )
+}
+
+function ScreenToggle({ value, onChange }: { value: 'desktop' | 'mobile'; onChange: (v: 'desktop' | 'mobile') => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border bg-gray-50 p-1">
+      <button
+        type="button"
+        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+          value === 'desktop' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+        }`}
+        onClick={() => onChange('desktop')}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        Desktop
+      </button>
+      <button
+        type="button"
+        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+          value === 'mobile' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+        }`}
+        onClick={() => onChange('mobile')}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+        Mobile
+      </button>
+    </div>
   )
 }
 

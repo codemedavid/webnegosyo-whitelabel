@@ -1,10 +1,9 @@
 import { redirect } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug, getCategoriesByTenant } from '@/lib/admin-service'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemsByBcgClassification } from '@/lib/menu-engineering-service'
 import { getUpsellPairsByTenant } from '@/lib/menu-engineering-service'
 import { MenuEngineeringDashboard } from '@/components/admin/menu-engineering-dashboard'
-import type { Tenant } from '@/types/database'
 
 export default async function MenuEngineeringPage({
   params,
@@ -13,13 +12,11 @@ export default async function MenuEngineeringPage({
 }) {
   const { tenant: tenantSlug } = await params
 
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
-  if (!tenantData) {
+  if (!tenant) {
     return <div>Tenant not found</div>
   }
-
-  const tenant: Tenant = tenantData
 
   // Feature guard: redirect if menu engineering is not enabled
   if (!tenant.menu_engineering_enabled) {
@@ -29,7 +26,7 @@ export default async function MenuEngineeringPage({
   // Fetch data in parallel
   const [menuItems, categories, upsellPairs] = await Promise.all([
     getMenuItemsByBcgClassification(tenant.id),
-    getCategoriesByTenant(tenant.id),
+    getCachedCategoriesByTenant(tenant.id),
     getUpsellPairsByTenant(tenant.id),
   ])
 

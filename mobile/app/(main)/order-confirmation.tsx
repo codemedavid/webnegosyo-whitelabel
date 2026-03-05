@@ -282,7 +282,7 @@ export default function OrderConfirmationScreen() {
         </View>
 
         <Text style={[styles.footerNote, { color: c.footerNote }]}>
-          If Messenger didn't open, use the buttons above to open it manually or copy your order message.
+          If Messenger didn&apos;t open, use the buttons above to open it manually or copy your order message.
         </Text>
       </ScrollView>
     </SafeAreaView>

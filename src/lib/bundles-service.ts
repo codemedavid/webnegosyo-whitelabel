@@ -164,7 +164,6 @@ export async function updateBundle(
     // Update the bundle
     const { error: bundleError } = await supabase
         .from('bundles')
-        // @ts-expect-error - Supabase type inference issue
         .update({
             name: bundleData.name,
             description: bundleData.description,
@@ -237,7 +236,6 @@ export async function toggleBundleActive(
 
     const { data, error } = await supabase
         .from('bundles')
-        // @ts-expect-error - Supabase type inference issue
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update({ is_active: isActive } as any)
         .eq('id', bundleId)
@@ -260,7 +258,6 @@ export async function reorderBundles(tenantId: string, bundleIds: string[]): Pro
     const updates = bundleIds.map((id, index) =>
         supabase
             .from('bundles')
-            // @ts-expect-error - Supabase type inference issue
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             .update({ display_order: index } as any)
             .eq('id', id)

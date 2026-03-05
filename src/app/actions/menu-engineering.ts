@@ -9,12 +9,18 @@ import {
   deleteUpsellPair,
   getUpsellPairsByTenant,
   getManualUpsellItems,
+  getUpsellsForCart,
+  getStarItems,
   updateCheckoutUpsellSettings,
+  getSmartUpgradeSuggestions,
+  generateSmartPairSuggestions,
+  acceptPairSuggestion,
+  bulkAcceptPairSuggestions,
   type UpsellPairInput,
   type CheckoutUpsellSettingsInput,
 } from '@/lib/menu-engineering-service'
 import { toggleMenuItemAvailability } from '@/lib/admin-service'
-import type { BcgClassification } from '@/types/database'
+import type { BcgClassification, MenuItem } from '@/types/database'
 
 // ============================================
 // BCG Classification Actions
@@ -84,11 +90,13 @@ export async function promoteItemAction(
   isFeatured: boolean
 ) {
   try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
     const supabase = (await import('@/lib/supabase/server')).createClient
     const client = await supabase()
     const { data, error } = await client
       .from('menu_items')
-      // @ts-expect-error – Supabase generated types not available; update is typed as never
       .update({ is_featured: isFeatured })
       .eq('id', itemId)
       .eq('tenant_id', tenantId)
@@ -177,10 +185,43 @@ export async function getCheckoutUpsellsAction(
   maxItems: number = 4
 ) {
   try {
+    const collectedItems: MenuItem[] = []
+    const seenIds = new Set(cartItemIds)
+
+    const addUnique = (items: MenuItem[]) => {
+      for (const item of items) {
+        if (!seenIds.has(item.id) && collectedItems.length < maxItems) {
+          seenIds.add(item.id)
+          collectedItems.push(item)
+        }
+      }
+    }
+
+    // Tier 1: Manually-flagged items
     const manualItems = await getManualUpsellItems(tenantId, maxItems)
-    // Filter out items already in cart
-    const filtered = manualItems.filter(item => !cartItemIds.includes(item.id))
-    return { success: true, data: filtered.slice(0, maxItems) }
+    addUnique(manualItems)
+
+    // Tier 2: Complementary pairs for items in cart
+    if (collectedItems.length < maxItems && cartItemIds.length > 0) {
+      try {
+        const complementary = await getUpsellsForCart(cartItemIds, tenantId)
+        addUnique(complementary)
+      } catch {
+        // Complementary pairs may not exist, continue to next tier
+      }
+    }
+
+    // Tier 3: BCG star items
+    if (collectedItems.length < maxItems) {
+      try {
+        const stars = await getStarItems(tenantId, maxItems)
+        addUnique(stars)
+      } catch {
+        // Star items may not be classified yet, continue
+      }
+    }
+
+    return { success: true, data: collectedItems.slice(0, maxItems) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch checkout upsells' }
   }
@@ -214,7 +255,6 @@ export async function setCheckoutUpsellItemsAction(
     // Clear all existing selections for this tenant, then set new ones — 2 queries instead of N
     const { error: clearError } = await supabase
       .from('menu_items')
-      // @ts-expect-error – Supabase generated types not available
       .update({ show_in_checkout_upsell: false })
       .eq('tenant_id', tenantId)
       .eq('show_in_checkout_upsell', true)
@@ -224,7 +264,6 @@ export async function setCheckoutUpsellItemsAction(
     if (selectedItemIds.length > 0) {
       const { error: setError } = await supabase
         .from('menu_items')
-        // @ts-expect-error – Supabase generated types not available
         .update({ show_in_checkout_upsell: true })
         .eq('tenant_id', tenantId)
         .in('id', selectedItemIds)
@@ -237,5 +276,64 @@ export async function setCheckoutUpsellItemsAction(
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update checkout upsell items' }
+  }
+}
+
+// ============================================
+// Smart Upgrade Suggestions Actions
+// ============================================
+
+export async function getSmartUpgradeSuggestionsAction(
+  itemId: string,
+  tenantId: string
+) {
+  try {
+    return await getSmartUpgradeSuggestions(itemId, tenantId)
+  } catch (error) {
+    console.error('Failed to get smart upgrade suggestions:', error)
+    return { bundles: [], categoryUpgrades: [] }
+  }
+}
+
+// ============================================
+// BCG Smart Pair Suggestions Actions
+// ============================================
+
+export async function generateSmartPairSuggestionsAction(tenantId: string) {
+  try {
+    return await generateSmartPairSuggestions(tenantId)
+  } catch (error) {
+    console.error('Failed to generate smart pair suggestions:', error)
+    return []
+  }
+}
+
+export async function acceptPairSuggestionAction(
+  tenantId: string,
+  tenantSlug: string,
+  sourceItemId: string,
+  targetItemId: string,
+  strategy: string
+) {
+  try {
+    await acceptPairSuggestion(tenantId, sourceItemId, targetItemId, strategy)
+    revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
+  } catch (error) {
+    console.error('Failed to accept pair suggestion:', error)
+    throw error
+  }
+}
+
+export async function bulkAcceptPairSuggestionsAction(
+  tenantId: string,
+  tenantSlug: string,
+  suggestions: Array<{ sourceItemId: string; targetItemId: string; strategy: string }>
+) {
+  try {
+    await bulkAcceptPairSuggestions(tenantId, suggestions)
+    revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
+  } catch (error) {
+    console.error('Failed to bulk accept pair suggestions:', error)
+    throw error
   }
 }

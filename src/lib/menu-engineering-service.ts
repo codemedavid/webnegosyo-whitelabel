@@ -5,6 +5,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import type { BcgClassification, MenuItem, UpsellPair, UpsellPairWithItems } from '@/types/database'
 import { z } from 'zod'
@@ -52,8 +53,7 @@ export async function updateBcgClassification(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('menu_items')
-    // @ts-expect-error – Supabase generated types not available
-    .update({ bcg_classification: classification } as Record<string, unknown>)
+    .update({ bcg_classification: classification } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
     .select('id, bcg_classification')
@@ -75,8 +75,7 @@ export async function bulkUpdateBcgClassification(
       bcgClassificationSchema.parse(classification)
       return supabase
         .from('menu_items')
-        // @ts-expect-error – Supabase generated types not available
-        .update({ bcg_classification: classification } as Record<string, unknown>)
+        .update({ bcg_classification: classification } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
         .eq('id', itemId)
         .eq('tenant_id', tenantId)
         .select('id, bcg_classification')
@@ -106,8 +105,7 @@ export async function updateBadgeText(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('menu_items')
-    // @ts-expect-error – Supabase generated types not available
-    .update({ badge_text: badgeText } as Record<string, unknown>)
+    .update({ badge_text: badgeText } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
     .select('id, badge_text')
@@ -139,7 +137,7 @@ export async function getMenuItemsByBcgClassification(
 
   const { data, error } = await query
   if (error) throw error
-  return data as (MenuItem & { category: { id: string; name: string } | null })[]
+  return data as unknown as (MenuItem & { category: { id: string; name: string } | null })[]
 }
 
 // ============================================
@@ -157,11 +155,11 @@ export async function createUpsellPair(tenantId: string, input: UpsellPairInput)
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('upsell_pairs')
-    // @ts-expect-error – Supabase generated types not available
     .insert({
       tenant_id: tenantId,
       ...validated,
-    } as Record<string, unknown>)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
     .select()
     .single()
 
@@ -171,7 +169,7 @@ export async function createUpsellPair(tenantId: string, input: UpsellPairInput)
     }
     throw error
   }
-  return data as UpsellPair
+  return data as unknown as UpsellPair
 }
 
 export async function deleteUpsellPair(pairId: string, tenantId: string) {
@@ -341,6 +339,259 @@ export async function getManualUpsellItems(tenantId: string, limit: number = 8):
 
 
 // ============================================
+// Smart Upgrade Suggestions
+// ============================================
+
+/**
+ * Get smart upgrade suggestions for an item:
+ * 1. Bundles containing this item
+ * 2. Higher-priced items in the same category
+ * Returns ranked by potential AOV lift.
+ */
+export async function getSmartUpgradeSuggestions(
+  itemId: string,
+  tenantId: string
+): Promise<{ bundles: Array<{ id: string; name: string; items: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
+  const supabase = createAdminClient()
+
+  // Get the source item to know its category and price
+  const { data: sourceItem } = await supabase
+    .from('menu_items')
+    .select('id, category_id, price, name')
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (!sourceItem) return { bundles: [], categoryUpgrades: [] }
+
+  // 1. Find bundles containing this item
+  const { data: bundleItems } = await supabase
+    .from('bundle_items')
+    .select('bundle_id')
+    .eq('menu_item_id', itemId)
+
+  let bundles: Array<{ id: string; name: string; items: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }> = []
+  if (bundleItems && bundleItems.length > 0) {
+    const bundleIds = bundleItems.map((bi: { bundle_id: string }) => bi.bundle_id)
+    const { data: bundleData } = await supabase
+      .from('bundles')
+      .select('*, items:bundle_items(*, menu_item:menu_items(*))')
+      .in('id', bundleIds)
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+
+    bundles = (bundleData || []) as typeof bundles
+  }
+
+  // 2. Higher-priced items in the same category
+  const { data: categoryUpgrades } = await supabase
+    .from('menu_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('category_id', sourceItem.category_id!)
+    .eq('is_available', true)
+    .gt('price', sourceItem.price!)
+    .neq('id', itemId)
+    .order('price', { ascending: true })
+    .limit(5)
+
+  return {
+    bundles,
+    categoryUpgrades: (categoryUpgrades || []) as unknown as MenuItem[],
+  }
+}
+
+// ============================================
+// BCG-Based Smart Pair Suggestions
+// ============================================
+
+export interface PairSuggestion {
+  sourceItem: MenuItem
+  targetItem: MenuItem
+  strategy: string
+  reason: string
+}
+
+/**
+ * Generate smart pair suggestions based on BCG classification:
+ * - Plowhorses → Stars/Puzzles (boost margin)
+ * - Stars → Stars (maximize AOV)
+ * - Puzzles → Plowhorses (drive discovery)
+ */
+export async function generateSmartPairSuggestions(
+  tenantId: string
+): Promise<PairSuggestion[]> {
+  const supabase = createAdminClient()
+
+  const { data: items } = await supabase
+    .from('menu_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_available', true)
+    .neq('bcg_classification', 'unclassified')
+    .not('bcg_classification', 'is', null)
+
+  if (!items || items.length < 2) return []
+
+  const byClass: Record<string, MenuItem[]> = { star: [], plowhorse: [], puzzle: [], dog: [] }
+  for (const item of items as unknown as MenuItem[]) {
+    const cls = item.bcg_classification || 'unclassified'
+    if (byClass[cls]) byClass[cls].push(item)
+  }
+
+  // Existing pairs to avoid dupes
+  const { data: existingPairs } = await supabase
+    .from('upsell_pairs')
+    .select('source_item_id, target_item_id')
+    .eq('tenant_id', tenantId)
+    .eq('pair_type', 'complementary')
+
+  const existingSet = new Set(
+    (existingPairs || []).map((p: { source_item_id: string; target_item_id: string }) => `${p.source_item_id}:${p.target_item_id}`)
+  )
+
+  const suggestions: PairSuggestion[] = []
+
+  // Plowhorses → Stars
+  for (const plowhorse of byClass.plowhorse) {
+    for (const star of byClass.star) {
+      if (plowhorse.category_id === star.category_id) continue
+      if (existingSet.has(`${plowhorse.id}:${star.id}`)) continue
+      suggestions.push({
+        sourceItem: plowhorse,
+        targetItem: star,
+        strategy: 'plowhorse_to_star',
+        reason: `${plowhorse.name} is popular but low-margin. Pairing with ${star.name} (star) boosts order value.`,
+      })
+    }
+  }
+
+  // Stars → Stars
+  for (let i = 0; i < byClass.star.length; i++) {
+    for (let j = i + 1; j < byClass.star.length; j++) {
+      const a = byClass.star[i], b = byClass.star[j]
+      if (a.category_id === b.category_id) continue
+      if (existingSet.has(`${a.id}:${b.id}`)) continue
+      suggestions.push({
+        sourceItem: a, targetItem: b,
+        strategy: 'star_to_star',
+        reason: `Both ${a.name} and ${b.name} are stars. Pairing maximizes AOV.`,
+      })
+    }
+  }
+
+  // Puzzles → Plowhorses
+  for (const puzzle of byClass.puzzle) {
+    for (const plowhorse of byClass.plowhorse) {
+      if (puzzle.category_id === plowhorse.category_id) continue
+      if (existingSet.has(`${puzzle.id}:${plowhorse.id}`)) continue
+      suggestions.push({
+        sourceItem: puzzle, targetItem: plowhorse,
+        strategy: 'puzzle_to_plowhorse',
+        reason: `${puzzle.name} is high-margin but low-popularity. Pairing with popular ${plowhorse.name} drives discovery.`,
+      })
+    }
+  }
+
+  return suggestions.slice(0, 50)
+}
+
+export async function acceptPairSuggestion(
+  tenantId: string,
+  sourceItemId: string,
+  targetItemId: string,
+  strategy: string
+): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('upsell_pairs').insert({
+    tenant_id: tenantId,
+    source_item_id: sourceItemId,
+    target_item_id: targetItemId,
+    pair_type: 'complementary',
+    is_auto_generated: true,
+    bcg_strategy: strategy,
+    is_active: true,
+  })
+}
+
+export async function bulkAcceptPairSuggestions(
+  tenantId: string,
+  suggestions: Array<{ sourceItemId: string; targetItemId: string; strategy: string }>
+): Promise<void> {
+  const supabase = createAdminClient()
+  const rows = suggestions.map(s => ({
+    tenant_id: tenantId,
+    source_item_id: s.sourceItemId,
+    target_item_id: s.targetItemId,
+    pair_type: 'complementary' as const,
+    is_auto_generated: true,
+    bcg_strategy: s.strategy,
+    is_active: true,
+  }))
+  await supabase.from('upsell_pairs').upsert(rows, {
+    onConflict: 'tenant_id,source_item_id,target_item_id,pair_type',
+  })
+}
+
+// ============================================
+// Ranked Upgrade Suggestions with AOV Scoring
+// ============================================
+
+export interface RankedUpgradeSuggestion {
+  item: MenuItem
+  type: 'bundle' | 'category_upgrade'
+  aovLift: number
+  bundleId?: string
+  bundleName?: string
+}
+
+/**
+ * Get ranked upgrade suggestions sorted by AOV lift potential.
+ * Combines bundles and same-category upgrades, ranked by price difference.
+ */
+export async function getSmartUpgradeSuggestionsRanked(
+  itemId: string,
+  tenantId: string
+): Promise<RankedUpgradeSuggestion[]> {
+  const { bundles, categoryUpgrades } = await getSmartUpgradeSuggestions(itemId, tenantId)
+
+  const supabase = createAdminClient()
+  const { data: sourceItem } = await supabase
+    .from('menu_items')
+    .select('price, discounted_price')
+    .eq('id', itemId)
+    .single()
+
+  const sourcePrice = sourceItem?.discounted_price || sourceItem?.price || 0
+
+  const ranked: RankedUpgradeSuggestion[] = [
+    ...bundles.map(b => {
+      const itemsArr = (b.items || []) as Array<{ menu_item?: { price?: number } }>
+      const totalItemPrice = itemsArr.reduce((s, bi) => s + (bi.menu_item?.price || 0), 0)
+      const bundlePrice = b.pricing_type === 'fixed'
+        ? (b.fixed_price || 0)
+        : totalItemPrice * (1 - (b.discount_percent || 0) / 100)
+      return {
+        item: { id: b.id, name: b.name, price: bundlePrice, image_url: b.image_url } as unknown as MenuItem,
+        type: 'bundle' as const,
+        aovLift: bundlePrice - sourcePrice,
+        bundleId: b.id,
+        bundleName: b.name,
+      }
+    }),
+    ...categoryUpgrades.map(item => ({
+      item,
+      type: 'category_upgrade' as const,
+      aovLift: (item.discounted_price || item.price) - sourcePrice,
+    })),
+  ]
+
+  return ranked
+    .filter(r => r.aovLift > 0)
+    .sort((a, b) => b.aovLift - a.aovLift)
+}
+
+// ============================================
 // Checkout Upsell Settings
 // ============================================
 
@@ -354,8 +605,7 @@ export async function updateCheckoutUpsellSettings(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('tenants')
-    // @ts-expect-error – Supabase generated types not available
-    .update(validated as Record<string, unknown>)
+    .update(validated as any) // eslint-disable-line @typescript-eslint/no-explicit-any
     .eq('id', tenantId)
     .select('id, checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items')
     .single()

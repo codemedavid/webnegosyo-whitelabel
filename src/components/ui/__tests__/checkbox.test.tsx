@@ -20,19 +20,19 @@ describe('Checkbox', () => {
   })
 
   it('can be controlled with checked prop', () => {
-    render(<Checkbox checked={true} onChange={jest.fn()} />)
+    render(<Checkbox checked={true} onCheckedChange={jest.fn()} />)
     expect(screen.getByRole('checkbox')).toBeChecked()
   })
 
   it('handles click events', async () => {
     const user = userEvent.setup()
     const handleChange = jest.fn()
-    
-    render(<Checkbox onChange={handleChange} />)
-    
+
+    render(<Checkbox onCheckedChange={handleChange} />)
+
     const checkbox = screen.getByRole('checkbox')
     await user.click(checkbox)
-    
+
     expect(handleChange).toHaveBeenCalled()
   })
 
@@ -48,7 +48,7 @@ describe('Checkbox', () => {
   })
 
   it('shows check icon when checked', () => {
-    render(<Checkbox checked={true} onChange={jest.fn()} />)
+    render(<Checkbox checked={true} onCheckedChange={jest.fn()} />)
     const checkbox = screen.getByRole('checkbox')
     expect(checkbox).toHaveAttribute('data-state', 'checked')
   })

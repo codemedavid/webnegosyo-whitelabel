@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,13 +18,13 @@ interface GlassCardProps {
  * Glass Card Template
  * Glassmorphism design with frosted glass effect, backdrop blur, and translucent layers
  */
-export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: GlassCardProps) {
+export const GlassCard = memo(function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: GlassCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
     return (
         <div
-            className="group relative overflow-hidden rounded-2xl cursor-pointer transition-all duration-300"
+            className="group relative overflow-hidden rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300"
             style={{
                 background: `linear-gradient(135deg, ${branding.cards}cc, ${branding.cards}99)`,
                 backdropFilter: 'blur(20px)',
@@ -68,9 +69,9 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
 
                 {/* Badges */}
                 {menuEngineeringEnabled && item.badge_text && (
-                    <div className="absolute left-3 top-3 z-10">
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
                         <span
-                            className="rounded-full px-2.5 py-1 text-xs font-bold backdrop-blur-xl"
+                            className="rounded-full px-2 py-0.5 text-[10px] md:px-2.5 md:py-1 md:text-xs font-bold backdrop-blur-xl"
                             style={{
                                 backgroundColor: `${branding.primary}dd`,
                                 color: branding.buttonPrimaryText || '#ffffff',
@@ -82,7 +83,7 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
                 )}
 
                 {item.is_featured && !item.badge_text && (
-                    <div className="absolute left-3 top-3">
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3">
                         <span
                             className="rounded-full px-2 py-1 text-xs font-medium backdrop-blur-md"
                             style={{
@@ -96,10 +97,10 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
                 )}
 
                 {hasDiscount && (
-                    <div className="absolute right-3 top-3">
+                    <div className="absolute right-2 top-2 md:right-3 md:top-3">
                         <span
                             className="rounded-full px-2 py-1 text-xs font-bold backdrop-blur-md"
-                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.85)', color: '#ffffff' }}
+                            style={{ backgroundColor: `${branding.error}d9`, color: '#ffffff' }}
                         >
                             SALE
                         </span>
@@ -122,7 +123,7 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
 
                 {/* Floating Add Button */}
                 <button
-                    className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl"
+                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl"
                     style={{
                         backgroundColor: `${branding.buttonPrimary}dd`,
                         color: branding.buttonPrimaryText,
@@ -134,7 +135,7 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
                     }}
                     disabled={!item.is_available}
                 >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                     </svg>
                 </button>
@@ -142,13 +143,13 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
 
             {/* Content — frosted glass panel */}
             <div
-                className="p-4 space-y-2"
+                className="p-2.5 space-y-1 md:p-4 md:space-y-2"
                 style={{
                     background: `linear-gradient(135deg, ${branding.cards}ee, ${branding.cards}cc)`,
                 }}
             >
                 <h3
-                    className="text-base font-semibold line-clamp-1"
+                    className="text-sm md:text-base font-semibold line-clamp-1"
                     style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -156,7 +157,7 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
 
                 {item.description && (
                     <p
-                        className="text-sm line-clamp-2"
+                        className="text-xs md:text-sm line-clamp-1 md:line-clamp-2"
                         style={{ color: branding.cardDescription, opacity: 0.85 }}
                     >
                         {item.description}
@@ -170,7 +171,7 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
                                 {formatPrice(item.price, { hideCurrencySymbol })}
                             </span>
                         )}
-                        <span className="text-lg font-bold" style={{ color: branding.cardPrice }}>
+                        <span className="text-sm md:text-lg font-bold" style={{ color: branding.cardPrice }}>
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>
                     </div>
@@ -190,4 +191,4 @@ export function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hi
             </div>
         </div>
     )
-}
+})

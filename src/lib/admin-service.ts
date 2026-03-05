@@ -3,6 +3,7 @@
  * Uses server-side Supabase client with RLS policies
  */
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Category, MenuItem } from '@/types/database'
 import { z } from 'zod'
@@ -15,8 +16,10 @@ export const categorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().optional(),
   icon: z.string().optional(),
+  icon_color: z.string().optional(),
   order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
+  display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).default('grid'),
   default_addons: z.array(z.object({
     id: z.string(),
     name: z.string().min(1, 'Add-on name is required'),
@@ -140,9 +143,9 @@ export async function getCurrentUserRole() {
 // Categories Operations
 // ============================================
 
-export async function getCategoriesByTenant(tenantId: string) {
+export const getCategoriesByTenant = cache(async (tenantId: string) => {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('categories')
     .select('*')
@@ -150,8 +153,8 @@ export async function getCategoriesByTenant(tenantId: string) {
     .order('order', { ascending: true })
 
   if (error) throw error
-  return data as Category[]
-}
+  return data as unknown as Category[]
+})
 
 export async function createCategory(tenantId: string, input: CategoryInput) {
   await verifyTenantAdmin(tenantId)
@@ -170,7 +173,7 @@ export async function createCategory(tenantId: string, input: CategoryInput) {
     .single()
 
   if (error) throw error
-  return data as Category
+  return data as unknown as Category
 }
 
 export async function updateCategory(categoryId: string, tenantId: string, input: CategoryInput) {
@@ -181,7 +184,6 @@ export async function updateCategory(categoryId: string, tenantId: string, input
 
   const query = supabase
     .from('categories')
-    // @ts-expect-error - Supabase type inference issue with update
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update(validated as any)
     .eq('id', categoryId)
@@ -192,7 +194,7 @@ export async function updateCategory(categoryId: string, tenantId: string, input
   const { data, error } = await query
 
   if (error) throw error
-  return data as Category
+  return data as unknown as Category
 }
 
 export async function deleteCategory(categoryId: string, tenantId: string) {
@@ -218,7 +220,6 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
   const updates = categoryIds.map((id, index) => 
     supabase
       .from('categories')
-      // @ts-expect-error - Supabase type inference issue with update
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ order: index } as any)
       .eq('id', id)
@@ -275,7 +276,7 @@ export async function getMenuItemsByTenant(
       .order('order', { ascending: true })
 
     if (error) throw error
-    return data as MenuItem[]
+    return data as unknown as MenuItem[]
   }
 
   // Pagination logic
@@ -298,7 +299,16 @@ export async function getMenuItemsByTenant(
   }
 
   if (params.searchQuery) {
-    query = query.or(`name.ilike.%${params.searchQuery}%,description.ilike.%${params.searchQuery}%`)
+    // Sanitize search query to prevent PostgREST filter injection
+    // Escape all PostgREST-special characters: % _ \ * , . ( ) ! = < >
+    const sanitized = params.searchQuery
+      .replace(/[%_\\*,.()\!=><!]/g, '')
+      .replace(/[^\w\s-]/g, '')
+      .trim()
+      .slice(0, 100) // limit length
+    if (sanitized) {
+      query = query.or(`name.ilike.%${sanitized}%,description.ilike.%${sanitized}%`)
+    }
   }
 
   if (params.isAvailable !== undefined) {
@@ -318,7 +328,7 @@ export async function getMenuItemsByTenant(
   const totalPages = Math.ceil(totalCount / limit)
 
   return {
-    items: data as MenuItem[],
+    items: data as unknown as MenuItem[],
     totalCount,
     currentPage: page,
     totalPages,
@@ -327,9 +337,9 @@ export async function getMenuItemsByTenant(
   }
 }
 
-export async function getMenuItemById(itemId: string, tenantId: string) {
+export const getMenuItemById = cache(async (itemId: string, tenantId: string) => {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('menu_items')
     .select('*')
@@ -338,8 +348,8 @@ export async function getMenuItemById(itemId: string, tenantId: string) {
     .single()
 
   if (error) throw error
-  return data as MenuItem
-}
+  return data as unknown as MenuItem
+})
 
 export async function createMenuItem(tenantId: string, input: MenuItemInput) {
   await verifyTenantAdmin(tenantId)
@@ -362,7 +372,7 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput) {
     .single()
 
   if (error) throw error
-  return data as MenuItem
+  return data as unknown as MenuItem
 }
 
 export async function updateMenuItem(itemId: string, tenantId: string, input: MenuItemInput) {
@@ -373,7 +383,6 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
 
   const query = supabase
     .from('menu_items')
-    // @ts-expect-error - Supabase type inference issue with update
     .update({
       ...validated,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -390,7 +399,7 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
   const { data, error } = await query
 
   if (error) throw error
-  return data as MenuItem
+  return data as unknown as MenuItem
 }
 
 export async function deleteMenuItem(itemId: string, tenantId: string) {
@@ -414,7 +423,6 @@ export async function toggleMenuItemAvailability(itemId: string, tenantId: strin
 
   const query = supabase
     .from('menu_items')
-    // @ts-expect-error - Supabase type inference issue with update
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ is_available: isAvailable } as any)
     .eq('id', itemId)
@@ -425,7 +433,7 @@ export async function toggleMenuItemAvailability(itemId: string, tenantId: strin
   const { data, error } = await query
 
   if (error) throw error
-  return data as MenuItem
+  return data as unknown as MenuItem
 }
 
 // ============================================
@@ -451,9 +459,9 @@ export async function getPublicMenuByTenant(tenantId: string) {
   return data
 }
 
-export async function getTenantBySlug(slug: string) {
+export const getTenantBySlug = cache(async (slug: string) => {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('tenants')
     .select('*')
@@ -465,7 +473,7 @@ export async function getTenantBySlug(slug: string) {
     if (error.code === 'PGRST116') return null // Not found
     throw error
   }
-  
+
   return data
-}
+})
 

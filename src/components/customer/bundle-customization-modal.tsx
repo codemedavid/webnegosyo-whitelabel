@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, memo } from 'react'
+import { useState, useMemo, useCallback, useEffect, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Package, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -9,7 +9,7 @@ import { useCart } from '@/hooks/useCart'
 import { toast } from 'sonner'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { BundleWithItems } from '@/lib/bundles-service'
-import type { MenuItem } from '@/types/database'
+import type { MenuItem, Variation, VariationOption, Addon, BundleItemCustomization } from '@/types/database'
 
 interface BundleCustomizationModalProps {
     open: boolean
@@ -20,8 +20,9 @@ interface BundleCustomizationModalProps {
 }
 
 interface ItemCustomization {
-    selectedVariation?: { name: string; price_modifier: number; typeLabel: string }
-    selectedAddons: { id: string; name: string; price: number }[]
+    selectedVariations?: { [typeId: string]: VariationOption }
+    selectedVariation?: Variation
+    selectedAddons: Addon[]
 }
 
 const overlayVariants = {
@@ -59,16 +60,15 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
     branding,
     hideCurrencySymbol,
 }: BundleCustomizationModalProps) {
-    const { addItem } = useCart()
+    const { addBundleToCart } = useCart()
     const [expandedItemIdx, setExpandedItemIdx] = useState<number | null>(null)
     const [customizations, setCustomizations] = useState<Record<number, ItemCustomization>>({})
 
     // Reset state when bundle changes
     const bundleId = bundle?.id
-    useMemo(() => {
+    useEffect(() => {
         setCustomizations({})
         setExpandedItemIdx(null)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bundleId])
 
     const items = useMemo(() => bundle?.items ?? [], [bundle?.items])
@@ -86,47 +86,59 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
             : originalTotal * (1 - (bundle?.discount_percent ?? 0) / 100)
 
     // Sum of customization extras
-    const extrasTotal = Object.values(customizations).reduce((sum, c) => {
-        const varMod = c.selectedVariation?.price_modifier ?? 0
-        const addonSum = c.selectedAddons.reduce((s, a) => s + a.price, 0)
-        return sum + varMod + addonSum
+    const extrasTotal = Object.entries(customizations).reduce((sum, [idx, cust]) => {
+        let varExtra = 0
+        if (cust.selectedVariations) {
+            varExtra = Object.values(cust.selectedVariations).reduce((s, o) => s + o.price_modifier, 0)
+        } else if (cust.selectedVariation) {
+            varExtra = cust.selectedVariation.price_modifier ?? 0
+        }
+        const addonExtra = (cust.selectedAddons || []).reduce((s, a) => s + a.price, 0)
+        const itemQty = bundle?.items?.[Number(idx)]?.quantity || 1
+        return sum + (varExtra + addonExtra) * itemQty
     }, 0)
 
     const grandTotal = bundleBasePrice + extrasTotal
     const savings = originalTotal - bundleBasePrice
 
-    const bundleName = bundle?.name ?? ''
-
     const handleAddToCart = useCallback(() => {
-        // For now, add each bundle item individually to the cart
-        // A full cart integration would add the bundle as a single entity
-        items.forEach((bi, idx) => {
-            if (!bi.menu_item) return
-            const cust = customizations[idx]
-            const selectedVariation = cust?.selectedVariation
-                ? {
-                    id: `${cust.selectedVariation.typeLabel}-${cust.selectedVariation.name}`,
-                    name: cust.selectedVariation.name,
-                    price_modifier: cust.selectedVariation.price_modifier,
+        if (!bundle) return
+
+        // Validate required variations
+        if (bundle.items) {
+            for (let idx = 0; idx < bundle.items.length; idx++) {
+                const bi = bundle.items[idx]
+                const cust = customizations[idx]
+                if (bi.menu_item?.variation_types) {
+                    for (const vt of bi.menu_item.variation_types) {
+                        if (vt.is_required && !cust?.selectedVariations?.[vt.id]) {
+                            toast.error(`Please select ${vt.name} for ${bi.menu_item.name}`)
+                            setExpandedItemIdx(idx)
+                            return
+                        }
+                    }
                 }
-                : undefined
-            const selectedAddons = (cust?.selectedAddons ?? []).map((a) => ({
-                id: a.id,
-                name: a.name,
-                price: a.price,
-            }))
-            addItem(
-                bi.menu_item,
-                selectedVariation,
-                selectedAddons,
-                bi.quantity,
-                undefined
-            )
+            }
+        }
+
+        const bundleItemsList = bundle.items || []
+        // Filter out items with null menu_item (deleted items)
+        const validItems = bundleItemsList.filter(bi => bi.menu_item != null)
+        const bundleCustomizations: BundleItemCustomization[] = validItems.map((bi, idx) => {
+            const cust = customizations[idx] || { selectedAddons: [] }
+            return {
+                menu_item: bi.menu_item!,
+                selected_variations: cust.selectedVariations,
+                selected_variation: cust.selectedVariation,
+                selected_addons: cust.selectedAddons || [],
+                quantity: bi.quantity,
+            }
         })
 
-        toast.success(`Added ${bundleName} to cart`)
+        addBundleToCart(bundle, bundleCustomizations, 1)
+        toast.success(`${bundle.name} added to cart!`)
         onClose()
-    }, [items, customizations, addItem, bundleName, onClose])
+    }, [bundle, customizations, addBundleToCart, onClose])
 
     if (!bundle) return null
 
@@ -134,29 +146,39 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
         setExpandedItemIdx(expandedItemIdx === idx ? null : idx)
     }
 
-    const updateVariation = (
-        idx: number,
-        variation: { name: string; price_modifier: number; typeLabel: string } | undefined
-    ) => {
+    const handleVariationSelect = (itemIdx: number, typeId: string, option: VariationOption) => {
         setCustomizations((prev) => ({
             ...prev,
-            [idx]: {
-                ...prev[idx],
-                selectedVariation: variation,
-                selectedAddons: prev[idx]?.selectedAddons ?? [],
+            [itemIdx]: {
+                ...prev[itemIdx],
+                selectedVariations: {
+                    ...(prev[itemIdx]?.selectedVariations || {}),
+                    [typeId]: option,
+                },
+                selectedAddons: prev[itemIdx]?.selectedAddons || [],
             },
         }))
     }
 
-    const toggleAddon = (idx: number, addon: { id: string; name: string; price: number }) => {
+    const handleLegacyVariationSelect = (itemIdx: number, variation: Variation) => {
+        setCustomizations((prev) => ({
+            ...prev,
+            [itemIdx]: {
+                ...prev[itemIdx],
+                selectedVariation: variation,
+                selectedAddons: prev[itemIdx]?.selectedAddons || [],
+            },
+        }))
+    }
+
+    const handleAddonToggle = (itemIdx: number, addon: Addon) => {
         setCustomizations((prev) => {
-            const current = prev[idx]?.selectedAddons ?? []
-            const exists = current.find((a) => a.id === addon.id)
+            const current = prev[itemIdx]?.selectedAddons || []
+            const exists = current.some((a) => a.id === addon.id)
             return {
                 ...prev,
-                [idx]: {
-                    ...prev[idx],
-                    selectedVariation: prev[idx]?.selectedVariation,
+                [itemIdx]: {
+                    ...prev[itemIdx],
                     selectedAddons: exists
                         ? current.filter((a) => a.id !== addon.id)
                         : [...current, addon],
@@ -183,20 +205,18 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
 
         return (
             <div className="mt-2 space-y-3">
-                {/* Variation Types */}
+                {/* Variation Types (new grouped format) */}
                 {item.variation_types?.map((vt) => (
-                    <div key={vt.name}>
+                    <div key={vt.id}>
                         <p className="text-xs font-medium mb-1" style={{ color: branding.textSecondary }}>
-                            {vt.name}
+                            {vt.name}{vt.is_required && <span className="text-red-500 ml-0.5">*</span>}
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {vt.options.map((opt) => {
-                                const isSelected =
-                                    cust?.selectedVariation?.name === opt.name &&
-                                    cust?.selectedVariation?.typeLabel === vt.name
+                                const isSelected = cust?.selectedVariations?.[vt.id]?.id === opt.id
                                 return (
                                     <button
-                                        key={opt.name}
+                                        key={opt.id}
                                         type="button"
                                         className="rounded-full px-3 py-1 text-xs font-medium border transition-colors"
                                         style={{
@@ -204,12 +224,7 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                                             color: isSelected ? (branding.buttonPrimaryText || '#fff') : branding.textSecondary,
                                             borderColor: isSelected ? branding.primary : branding.border,
                                         }}
-                                        onClick={() =>
-                                            updateVariation(
-                                                idx,
-                                                isSelected ? undefined : { name: opt.name, price_modifier: opt.price_modifier ?? 0, typeLabel: vt.name }
-                                            )
-                                        }
+                                        onClick={() => handleVariationSelect(idx, vt.id, opt)}
                                     >
                                         {opt.name}
                                         {(opt.price_modifier ?? 0) > 0 && ` (+${formatPrice(opt.price_modifier!, { hideCurrencySymbol })})`}
@@ -220,7 +235,7 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                     </div>
                 ))}
 
-                {/* Legacy variations */}
+                {/* Legacy variations (flat format) */}
                 {!item.variation_types?.length && item.variations?.length > 0 && (
                     <div>
                         <p className="text-xs font-medium mb-1" style={{ color: branding.textSecondary }}>
@@ -228,10 +243,10 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {item.variations.map((v) => {
-                                const isSelected = cust?.selectedVariation?.name === v.name
+                                const isSelected = cust?.selectedVariation?.id === v.id
                                 return (
                                     <button
-                                        key={v.name}
+                                        key={v.id}
                                         type="button"
                                         className="rounded-full px-3 py-1 text-xs font-medium border transition-colors"
                                         style={{
@@ -239,12 +254,7 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                                             color: isSelected ? (branding.buttonPrimaryText || '#fff') : branding.textSecondary,
                                             borderColor: isSelected ? branding.primary : branding.border,
                                         }}
-                                        onClick={() =>
-                                            updateVariation(
-                                                idx,
-                                                isSelected ? undefined : { name: v.name, price_modifier: v.price_modifier ?? 0, typeLabel: 'Size' }
-                                            )
-                                        }
+                                        onClick={() => handleLegacyVariationSelect(idx, v)}
                                     >
                                         {v.name}
                                         {(v.price_modifier ?? 0) > 0 && ` (+${formatPrice(v.price_modifier!, { hideCurrencySymbol })})`}
@@ -274,7 +284,7 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                                             borderColor: isSelected ? branding.primary : branding.border,
                                             color: branding.textPrimary,
                                         }}
-                                        onClick={() => toggleAddon(idx, { id: addon.id, name: addon.name, price: addon.price })}
+                                        onClick={() => handleAddonToggle(idx, addon)}
                                     >
                                         <span>{addon.name}</span>
                                         <span style={{ color: branding.textMuted }}>
@@ -362,7 +372,10 @@ export const BundleCustomizationModal = memo(function BundleCustomizationModal({
                                     </p>
                                     <p className="text-xs" style={{ color: branding.textMuted }}>
                                         {formatPrice(item.price, { hideCurrencySymbol })}
-                                        {customizations[idx]?.selectedVariation && (
+                                        {customizations[idx]?.selectedVariations && Object.values(customizations[idx].selectedVariations!).length > 0 && (
+                                            <> · {Object.values(customizations[idx].selectedVariations!).map((o) => o.name).join(', ')}</>
+                                        )}
+                                        {!customizations[idx]?.selectedVariations && customizations[idx]?.selectedVariation && (
                                             <> · {customizations[idx].selectedVariation!.name}</>
                                         )}
                                         {(customizations[idx]?.selectedAddons?.length ?? 0) > 0 && (

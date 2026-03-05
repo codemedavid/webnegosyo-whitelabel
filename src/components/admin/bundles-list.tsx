@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Edit, Trash2, Eye, Package, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -92,11 +93,13 @@ export function BundlesList({ bundles, tenantSlug, tenantId }: BundlesListProps)
                             <div className="flex items-start gap-4">
                                 {/* Bundle Image */}
                                 {bundle.image_url ? (
-                                    <div className="h-20 w-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                                        <img
+                                    <div className="h-20 w-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 relative">
+                                        <Image
                                             src={bundle.image_url}
                                             alt={bundle.name}
-                                            className="h-full w-full object-cover"
+                                            fill
+                                            className="object-cover"
+                                            sizes="80px"
                                         />
                                     </div>
                                 ) : (

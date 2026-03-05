@@ -208,6 +208,7 @@ export const getOrderById = query({
 export const getRealtimeQueue = query({
   handler: async (ctx) => {
     const statuses = ["pending", "confirmed", "preparing", "ready"] as const;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: Record<string, any[]> = {};
 
     for (const status of statuses) {

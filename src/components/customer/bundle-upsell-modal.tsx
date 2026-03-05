@@ -81,6 +81,18 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
         }
     }, [bundle, onAccept, tenantId, sourceItemId])
 
+    const handleDismiss = useCallback(() => {
+        if (tenantId && bundle) {
+            trackAnalyticsEventAction(tenantId, 'upsell_dismissed', {
+                source: 'bundle',
+                bundleId: bundle.id,
+                bundleName: bundle.name,
+                sourceItemId,
+            })
+        }
+        onClose()
+    }, [tenantId, bundle, sourceItemId, onClose])
+
     if (!bundle) return null
 
     const items = bundle.items ?? []
@@ -107,7 +119,7 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
                         initial="hidden"
                         animate="visible"
                         exit="hidden"
-                        onClick={onClose}
+                        onClick={handleDismiss}
                     />
                     <motion.div
                         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
@@ -133,7 +145,7 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
                                 }}
                             >
                                 <button
-                                    onClick={onClose}
+                                    onClick={handleDismiss}
                                     className="absolute top-3 right-3 rounded-full p-1.5 transition-colors hover:bg-black/5"
                                     style={{ color: branding.textMuted }}
                                 >
@@ -246,7 +258,7 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
                                 <button
                                     className="w-full text-center text-sm py-1 transition-colors"
                                     style={{ color: branding.textMuted }}
-                                    onClick={onClose}
+                                    onClick={handleDismiss}
                                 >
                                     No thanks, continue
                                 </button>

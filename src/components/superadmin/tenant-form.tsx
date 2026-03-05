@@ -68,6 +68,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
     // Email notifications
@@ -125,6 +126,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
       menu_engineering_enabled: formData.menu_engineering_enabled,
+      checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
       // Email notifications

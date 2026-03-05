@@ -29,7 +29,7 @@ const sheetVariants = {
   hidden: { y: '100%' },
   visible: {
     y: 0,
-    transition: { type: 'spring' as const, damping: 30, stiffness: 300 },
+    transition: { type: 'spring' as const, damping: 28, stiffness: 400 },
   },
   exit: {
     y: '100%',
@@ -56,7 +56,7 @@ const desktopVariants = {
 const listContainerVariants = {
   hidden: {},
   visible: {
-    transition: { staggerChildren: 0.07, delayChildren: 0.05 },
+    transition: { staggerChildren: 0.03, delayChildren: 0 },
   },
 }
 
@@ -65,7 +65,7 @@ const listItemVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { type: 'spring' as const, damping: 22, stiffness: 280 },
+    transition: { type: 'tween' as const, duration: 0.15 },
   },
 }
 
@@ -142,56 +142,39 @@ function SuggestionCard({
           </span>
         </div>
       </div>
-      <AnimatePresence mode="wait">
-        {isAdded ? (
-          <motion.div
-            key="check"
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: 'spring' as const, damping: 15, stiffness: 300 }}
-            className="flex h-9 w-16 shrink-0 items-center justify-center rounded-full"
-            style={{ backgroundColor: 'var(--pd-popup-button)', color: 'var(--pd-popup-button-text)' }}
-          >
-            <Check className="h-4 w-4" />
-          </motion.div>
-        ) : (
-          <motion.button
-            key="add"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="shrink-0 rounded-full px-4 h-9 text-xs font-semibold"
-            style={{
-              backgroundColor: 'var(--pd-popup-button)',
-              color: 'var(--pd-popup-button-text)',
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleAdd()
-            }}
-          >
-            + Add
-          </motion.button>
-        )}
-      </AnimatePresence>
+      <div className="relative shrink-0 h-9 w-16">
+        <div
+          className={`absolute inset-0 flex items-center justify-center rounded-full transition-all duration-150 ${isAdded ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}
+          style={{ backgroundColor: 'var(--pd-popup-button)', color: 'var(--pd-popup-button-text)' }}
+        >
+          <Check className="h-4 w-4" />
+        </div>
+        <button
+          className={`absolute inset-0 flex items-center justify-center rounded-full text-xs font-semibold transition-all duration-150 hover:scale-105 active:scale-95 ${isAdded ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}
+          style={{
+            backgroundColor: 'var(--pd-popup-button)',
+            color: 'var(--pd-popup-button-text)',
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleAdd()
+          }}
+        >
+          + Add
+        </button>
+      </div>
     </motion.div>
   )
 }
 
 function HeaderIcon() {
   return (
-    <motion.div
-      initial={{ scale: 0 }}
-      animate={{ scale: 1 }}
-      transition={{ type: 'spring' as const, damping: 12, stiffness: 200, delay: 0.1 }}
+    <div
       className="flex h-9 w-9 items-center justify-center rounded-full sm:h-10 sm:w-10"
       style={{ backgroundColor: 'color-mix(in srgb, var(--pd-popup-button) 12%, transparent)' }}
     >
       <Check className="h-4.5 w-4.5 sm:h-5 sm:w-5" style={{ color: 'var(--pd-popup-button)' }} />
-    </motion.div>
+    </div>
   )
 }
 
@@ -221,6 +204,14 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
     }
   }, [open, tenantId, suggestions.length, sourceItemId])
 
+  const addedCountRef = useRef(0)
+
+  useEffect(() => {
+    if (!open) {
+      addedCountRef.current = 0
+    }
+  }, [open])
+
   const handleAddWithTracking = (item: MenuItem) => {
     if (tenantId) {
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
@@ -231,8 +222,21 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
         sourceItemId,
       })
     }
+    addedCountRef.current += 1
     onAddItem(item)
   }
+
+  const handleDismiss = useCallback(() => {
+    if (tenantId) {
+      trackAnalyticsEventAction(tenantId, 'upsell_dismissed', {
+        source: 'suggestion',
+        suggestionsShown: suggestions.length,
+        itemsAdded: addedCountRef.current,
+        sourceItemId,
+      })
+    }
+    onClose()
+  }, [tenantId, suggestions.length, sourceItemId, onClose])
 
   if (suggestions.length === 0) return null
 
@@ -247,7 +251,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
             initial="hidden"
             animate="visible"
             exit="hidden"
-            onClick={onClose}
+            onClick={handleDismiss}
           />
 
           {/* Mobile: Bottom sheet */}
@@ -280,7 +284,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
                 </div>
               </div>
               <button
-                onClick={onClose}
+                onClick={handleDismiss}
                 className="rounded-full p-2 transition-colors hover:bg-black/5"
                 style={{ color: 'var(--pd-popup-description)' }}
               >
@@ -306,7 +310,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
               <button
                 className="w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-70"
                 style={{ color: 'var(--pd-popup-description)' }}
-                onClick={onClose}
+                onClick={handleDismiss}
               >
                 No thanks, continue shopping
               </button>
@@ -342,7 +346,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
                   </div>
                 </div>
                 <button
-                  onClick={onClose}
+                  onClick={handleDismiss}
                   className="rounded-full p-2 transition-colors hover:bg-black/5"
                   style={{ color: 'var(--pd-popup-description)' }}
                 >
@@ -365,7 +369,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
                 <button
                   className="w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-70"
                   style={{ color: 'var(--pd-popup-description)' }}
-                  onClick={onClose}
+                  onClick={handleDismiss}
                 >
                   No thanks, continue shopping
                 </button>

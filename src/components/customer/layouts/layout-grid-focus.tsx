@@ -1,14 +1,18 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
 import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
+import { HorizontalScrollSection } from '../horizontal-scroll-section'
+import { ResponsiveCategorySection } from '../responsive-category-section'
+import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface LayoutGridFocusProps {
     tenant: Tenant | null
@@ -40,10 +44,10 @@ interface LayoutGridFocusProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
 }
 
-export function LayoutGridFocus({
+export const LayoutGridFocus = memo(function LayoutGridFocus({
     tenant,
     categories,
     filteredItems,
@@ -67,6 +71,7 @@ export function LayoutGridFocus({
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
     const activeColor = branding.menuCategoryActive || branding.primary
+    const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
     const groupedItems = useMemo(
         () =>
@@ -86,6 +91,7 @@ export function LayoutGridFocus({
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search menu..."
+                        branding={branding}
                     />
                 </div>
             )}
@@ -106,7 +112,7 @@ export function LayoutGridFocus({
                                 className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap"
                                 style={{
                                     backgroundColor: !activeCategory ? activeColor : 'transparent',
-                                    color: !activeCategory ? '#fff' : inactiveColor,
+                                    color: !activeCategory ? activeTextColor : inactiveColor,
                                 }}
                             >
                                 All
@@ -118,10 +124,14 @@ export function LayoutGridFocus({
                                     className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap"
                                     style={{
                                         backgroundColor: activeCategory === cat.id ? activeColor : 'transparent',
-                                        color: activeCategory === cat.id ? '#fff' : inactiveColor,
+                                        color: activeCategory === cat.id ? activeTextColor : inactiveColor,
                                     }}
                                 >
-                                    {cat.icon && <span className="mr-1">{cat.icon}</span>}
+                                    {cat.icon && (
+                                        <span className="mr-1">
+                                            <CategoryIcon icon={cat.icon} color={cat.icon_color} fallbackColor={activeColor} size="sm" />
+                                        </span>
+                                    )}
                                     {cat.name}
                                 </button>
                             ))}
@@ -215,7 +225,7 @@ export function LayoutGridFocus({
                                     className="text-xs uppercase tracking-[0.15em] font-semibold flex items-center gap-2"
                                     style={{ color: branding.menuCategoryHeader }}
                                 >
-                                    {category.icon && <span className="text-base">{category.icon}</span>}
+                                    {category.icon && <CategoryIcon icon={category.icon} color={category.icon_color} fallbackColor={branding.primary} size="sm" />}
                                     {category.name}
                                     <span className="text-[10px] font-normal">({items.length})</span>
                                 </h2>
@@ -231,23 +241,51 @@ export function LayoutGridFocus({
                                     </button>
                                 )}
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                {items.map((item) => (
-                                    <MenuItemCard
-                                        key={item.id}
-                                        item={item}
-                                        onSelect={onItemSelect}
+                            {isBrandAdmin && onOpenBrandingSection && (
+                                <div className="flex justify-end mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenBrandingSection('menu_cards')}
+                                        title="Edit card colors"
+                                        aria-label="Edit card colors"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            )}
+                            <ResponsiveCategorySection
+                                displayLayout={category.display_layout}
+                                horizontalContent={
+                                    <HorizontalScrollSection
+                                        items={items}
+                                        onItemSelect={onItemSelect}
                                         branding={branding}
                                         template={cardTemplate}
                                         menuEngineeringEnabled={menuEngineeringEnabled}
                                         hideCurrencySymbol={hideCurrencySymbol}
                                     />
-                                ))}
-                            </div>
+                                }
+                                gridContent={
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                        {items.map((item) => (
+                                            <MenuItemCard
+                                                key={item.id}
+                                                item={item}
+                                                onSelect={onItemSelect}
+                                                branding={branding}
+                                                template={cardTemplate}
+                                                menuEngineeringEnabled={menuEngineeringEnabled}
+                                                hideCurrencySymbol={hideCurrencySymbol}
+                                            />
+                                        ))}
+                                    </div>
+                                }
+                            />
                         </section>
                     ))}
                 </div>
             )}
         </div>
     )
-}
+})

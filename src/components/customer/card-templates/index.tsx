@@ -1,38 +1,73 @@
 /**
  * Card Templates Index
- * Exports all card templates and provides a convenient selector
+ * Exports all card templates and provides a convenient selector.
+ * Templates are lazy-loaded with next/dynamic since only one template
+ * is active per tenant at a time.
  */
 
+import dynamic from 'next/dynamic'
 import { memo } from 'react'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { ClassicCard } from './classic-card'
-import { MinimalCard } from './minimal-card'
-import { ModernCard } from './modern-card'
-import { ElegantCard } from './elegant-card'
-import { CompactCard } from './compact-card'
-import { BoldCard } from './bold-card'
-import { GlassCard } from './glass-card'
-import { PolaroidCard } from './polaroid-card'
-import { BrutalistCard } from './brutalist-card'
-import { MagazineCard } from './magazine-card'
-import { ZenCard } from './zen-card'
-import { NeonCard } from './neon-card'
 
-// Export all templates
-export { ClassicCard } from './classic-card'
-export { MinimalCard } from './minimal-card'
-export { ModernCard } from './modern-card'
-export { ElegantCard } from './elegant-card'
-export { CompactCard } from './compact-card'
-export { BoldCard } from './bold-card'
-export { GlassCard } from './glass-card'
-export { PolaroidCard } from './polaroid-card'
-export { BrutalistCard } from './brutalist-card'
-export { MagazineCard } from './magazine-card'
-export { ZenCard } from './zen-card'
-export { NeonCard } from './neon-card'
+// Minimal inline skeleton used as the loading fallback for all card templates.
+// Keeps the grid stable while the correct template chunk loads.
+function CardSkeleton() {
+  return (
+    <div className="rounded-xl bg-gray-100 animate-pulse" style={{ minHeight: 200 }} />
+  )
+}
+
+// Lazily-loaded card templates — only the active template's chunk is fetched.
+const ClassicCard = dynamic(
+  () => import('./classic-card').then((m) => ({ default: m.ClassicCard })),
+  { loading: CardSkeleton }
+)
+const MinimalCard = dynamic(
+  () => import('./minimal-card').then((m) => ({ default: m.MinimalCard })),
+  { loading: CardSkeleton }
+)
+const ModernCard = dynamic(
+  () => import('./modern-card').then((m) => ({ default: m.ModernCard })),
+  { loading: CardSkeleton }
+)
+const ElegantCard = dynamic(
+  () => import('./elegant-card').then((m) => ({ default: m.ElegantCard })),
+  { loading: CardSkeleton }
+)
+const CompactCard = dynamic(
+  () => import('./compact-card').then((m) => ({ default: m.CompactCard })),
+  { loading: CardSkeleton }
+)
+const BoldCard = dynamic(
+  () => import('./bold-card').then((m) => ({ default: m.BoldCard })),
+  { loading: CardSkeleton }
+)
+const GlassCard = dynamic(
+  () => import('./glass-card').then((m) => ({ default: m.GlassCard })),
+  { loading: CardSkeleton }
+)
+const PolaroidCard = dynamic(
+  () => import('./polaroid-card').then((m) => ({ default: m.PolaroidCard })),
+  { loading: CardSkeleton }
+)
+const BrutalistCard = dynamic(
+  () => import('./brutalist-card').then((m) => ({ default: m.BrutalistCard })),
+  { loading: CardSkeleton }
+)
+const MagazineCard = dynamic(
+  () => import('./magazine-card').then((m) => ({ default: m.MagazineCard })),
+  { loading: CardSkeleton }
+)
+const ZenCard = dynamic(
+  () => import('./zen-card').then((m) => ({ default: m.ZenCard })),
+  { loading: CardSkeleton }
+)
+const NeonCard = dynamic(
+  () => import('./neon-card').then((m) => ({ default: m.NeonCard })),
+  { loading: CardSkeleton }
+)
 
 interface CardTemplateProps {
   item: MenuItem
@@ -43,7 +78,7 @@ interface CardTemplateProps {
 }
 
 /**
- * Get the appropriate card component based on template ID
+ * Get the appropriate card component based on template ID.
  */
 export function getCardTemplateComponent(template: CardTemplate = 'classic') {
   switch (template) {
@@ -76,8 +111,9 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
 }
 
 /**
- * Unified Card Template Renderer
- * Automatically selects the correct template based on the template prop
+ * Unified Card Template Renderer.
+ * Automatically selects the correct template based on the template prop.
+ * Only the selected template's JS chunk is downloaded.
  */
 export const CardTemplateRenderer = memo(function CardTemplateRenderer({
   template = 'classic',
@@ -86,5 +122,3 @@ export const CardTemplateRenderer = memo(function CardTemplateRenderer({
   const CardComponent = getCardTemplateComponent(template)
   return <CardComponent {...props} />
 })
-
-

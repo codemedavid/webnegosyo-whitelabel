@@ -1,16 +1,18 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuGrid } from '../menu-grid'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
+import { Pencil } from 'lucide-react'
 // CategorySubmenu not currently used in this layout
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
 
 interface LayoutDefaultProps {
     tenant: Tenant | null
@@ -47,7 +49,7 @@ interface LayoutDefaultProps {
     onOpenBrandingSection?: (section: MenuBrandingSection) => void
 }
 
-export function LayoutDefault({
+export const LayoutDefault = memo(function LayoutDefault({
     tenant,
     tenantSlug,
     categories,
@@ -78,12 +80,25 @@ export function LayoutDefault({
         <div>
             {/* Hero Section */}
             <div className="text-center mb-16">
-                <h1
-                    className="text-5xl font-serif font-bold mb-4"
-                    style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
-                >
-                    {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                </h1>
+                <div className="inline-flex items-center gap-2 justify-center">
+                    <h1
+                        className="text-5xl font-serif font-bold mb-4"
+                        style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
+                    >
+                        {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                    </h1>
+                    {isBrandAdmin && onOpenBrandingSection && (
+                        <button
+                            type="button"
+                            onClick={() => onOpenBrandingSection('hero')}
+                            title="Edit hero section"
+                            aria-label="Edit hero section"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
                 <p
                     className="text-lg font-light hidden md:block"
                     style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
@@ -150,6 +165,7 @@ export function LayoutDefault({
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search..."
+                        branding={branding}
                     />
                 </div>
             )}
@@ -217,32 +233,47 @@ export function LayoutDefault({
                 </div>
             ) : (
                 // Show grouped view when no category is selected, regular grid when category is selected
-                activeCategory ? (
-                    <MenuGrid
-                        items={filteredItems}
-                        tenantSlug={tenantSlug}
-                        template={cardTemplate}
-                        onItemSelect={onItemSelect}
-                        branding={branding}
-                        mobileGridColumns={mobileGridColumns}
-                        menuEngineeringEnabled={menuEngineeringEnabled}
-                        hideCurrencySymbol={hideCurrencySymbol}
-                    />
-                ) : (
-                    <MenuGridGrouped
-                        items={filteredItems}
-                        categories={categories}
-                        template={cardTemplate}
-                        onItemSelect={onItemSelect}
-                        branding={branding}
-                        mobileGridColumns={mobileGridColumns}
-                        menuEngineeringEnabled={menuEngineeringEnabled}
-                        hideCurrencySymbol={hideCurrencySymbol}
-                        isBrandAdmin={isBrandAdmin}
-                        onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
-                    />
-                )
+                <div className="relative">
+                    {isBrandAdmin && onOpenBrandingSection && (
+                        <div className="flex justify-end mb-3">
+                            <button
+                                type="button"
+                                onClick={() => onOpenBrandingSection('menu_cards')}
+                                title="Edit card colors"
+                                aria-label="Edit card colors"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    )}
+                    {activeCategory ? (
+                        <MenuGrid
+                            items={filteredItems}
+                            tenantSlug={tenantSlug}
+                            template={cardTemplate}
+                            onItemSelect={onItemSelect}
+                            branding={branding}
+                            mobileGridColumns={mobileGridColumns}
+                            menuEngineeringEnabled={menuEngineeringEnabled}
+                            hideCurrencySymbol={hideCurrencySymbol}
+                        />
+                    ) : (
+                        <MenuGridGrouped
+                            items={filteredItems}
+                            categories={categories}
+                            template={cardTemplate}
+                            onItemSelect={onItemSelect}
+                            branding={branding}
+                            mobileGridColumns={mobileGridColumns}
+                            menuEngineeringEnabled={menuEngineeringEnabled}
+                            hideCurrencySymbol={hideCurrencySymbol}
+                            isBrandAdmin={isBrandAdmin}
+                            onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
+                        />
+                    )}
+                </div>
             )}
         </div>
     )
-}
+})

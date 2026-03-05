@@ -10,8 +10,12 @@ import {
     getCachedProductDetailSettings,
     getCachedUpsellsForItem
 } from '@/lib/product-detail-data'
+import { getUpsellBundles } from '@/lib/bundles-service'
+import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import { createClient } from '@/lib/supabase/server'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
+import type { BundleWithItems } from '@/lib/bundles-service'
 
 interface Props {
     params: Promise<{ tenant: string; itemId: string }>
@@ -94,6 +98,7 @@ export default async function ProductDetailPage({ params }: Props) {
         let customization: ProductDetailSettings | null = null
         let complementaryUpsells: MenuItem[] = []
         let upgradeUpsells: UpgradeUpsell[] = []
+        let upsellBundles: BundleWithItems[] = []
 
         try {
             const results = await Promise.allSettled([
@@ -112,8 +117,13 @@ export default async function ProductDetailPage({ params }: Props) {
 
                 // Upsell suggestions (only when menu engineering enabled)
                 tenant.menu_engineering_enabled
-                    ? getCachedUpsellsForItem(item.id, tenant.id)
+                    ? getCachedUpsellsForItem(item.id, tenant.id, item.category_id)
                     : Promise.resolve({ complementary: [], upgrades: [] }),
+
+                // Bundle upsell suggestions (only when bundles enabled)
+                tenant.bundles_enabled
+                    ? getUpsellBundles(tenant.id)
+                    : Promise.resolve([]),
             ])
 
             // Extract values from results, using defaults for failures
@@ -122,11 +132,12 @@ export default async function ProductDetailPage({ params }: Props) {
             customization = results[2].status === 'fulfilled' ? results[2].value : null
             complementaryUpsells = results[3].status === 'fulfilled' ? results[3].value.complementary : []
             upgradeUpsells = results[3].status === 'fulfilled' ? results[3].value.upgrades : []
+            upsellBundles = results[4].status === 'fulfilled' ? results[4].value : []
 
             // Log any failures for debugging
             results.forEach((result, index) => {
                 if (result.status === 'rejected') {
-                    const labels = ['category', 'relatedItems', 'customization', 'upsells']
+                    const labels = ['category', 'relatedItems', 'customization', 'upsells', 'upsellBundles']
                     console.warn(`Failed to fetch ${labels[index]}:`, result.reason)
                 }
             })
@@ -135,19 +146,65 @@ export default async function ProductDetailPage({ params }: Props) {
             console.warn('Non-critical data fetch failed:', nonCriticalError)
         }
 
+        // Check if the current user is a brand admin (server-side)
+        let isBrandAdmin = false
+        try {
+            const supabase = await createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                const { data: role } = await supabase
+                    .from('app_users')
+                    .select('role, tenant_id')
+                    .eq('user_id', user.id)
+                    .maybeSingle()
+                const userRole = role as { role: string; tenant_id: string | null } | null
+                isBrandAdmin = !!userRole && (
+                    userRole.role === 'superadmin' ||
+                    (userRole.role === 'admin' && userRole.tenant_id === tenant.id)
+                )
+            }
+        } catch {
+            // Non-critical: admin check failed, default to false
+        }
+
+        // Preload the hero image so it's fetched before the client JS hydrates.
+        // Uses 1280px width (matches OptimizedImage: sizes="(max-width:640px) 100vw, …, 800px" → max ~640*2=1280).
+        const preloadImageUrl = item.image_url
+            ? isCloudinaryUrl(item.image_url)
+                ? transformCloudinaryUrl(item.image_url, {
+                    width: 1280,
+                    quality: 'auto',
+                    crop: 'limit',
+                }) || item.image_url
+                : item.image_url
+            : null
+
         return (
-            <ProductDetailContent
-                tenant={tenant}
-                item={item}
-                branding={branding}
-                category={category}
-                relatedItems={relatedItems}
-                customization={customization}
-                complementaryUpsells={complementaryUpsells}
-                upgradeUpsells={upgradeUpsells}
-                menuEngineeringEnabled={tenant.menu_engineering_enabled}
-                hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
-            />
+            <>
+                {preloadImageUrl && (
+                    <link
+                        rel="preload"
+                        as="image"
+                        href={preloadImageUrl}
+                        fetchPriority="high"
+                    />
+                )}
+                <ProductDetailContent
+                    tenant={tenant}
+                    item={item}
+                    branding={branding}
+                    category={category}
+                    relatedItems={relatedItems}
+                    customization={customization}
+                    complementaryUpsells={complementaryUpsells}
+                    upgradeUpsells={upgradeUpsells}
+                    menuEngineeringEnabled={tenant.menu_engineering_enabled}
+                    hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
+                    upsellBundles={upsellBundles}
+                    bundlesEnabled={!!tenant.bundles_enabled}
+                    isBrandAdmin={isBrandAdmin}
+                />
+            </>
         )
     } catch (error) {
         console.error('Error loading product detail page:', error)

@@ -116,6 +116,8 @@ export async function createTenantAction(input: TenantInput) {
       // Menu engineering
       menu_engineering_enabled: parsed.menu_engineering_enabled,
       hide_currency_symbol: parsed.hide_currency_symbol,
+      checkout_upsell_enabled: parsed.checkout_upsell_enabled,
+      bundles_enabled: parsed.bundles_enabled,
       // Flash screen
       flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
       flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -251,6 +253,8 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     // Menu engineering
     menu_engineering_enabled: parsed.menu_engineering_enabled,
     hide_currency_symbol: parsed.hide_currency_symbol,
+    checkout_upsell_enabled: parsed.checkout_upsell_enabled,
+    bundles_enabled: parsed.bundles_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -281,9 +285,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
 
   const query = supabase
     .from('tenants')
-    // @ts-expect-error - Supabase type inference issue
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .update(updatePayload as any)
+    .update(updatePayload)
     .eq('id', id)
     .select('*')
     .single()

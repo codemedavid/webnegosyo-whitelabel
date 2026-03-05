@@ -58,6 +58,7 @@ export function useAnalytics() {
 // No-op version for when Convex is not available
 export function useAnalyticsNoop() {
   const trackEvent = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_type: string, _metadata?: Record<string, unknown>) => {
       // No-op
     },

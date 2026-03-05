@@ -16,7 +16,7 @@ export const getTenants = cache(async (): Promise<Tenant[]> => {
   const { data, error } = await supabase
     .from('tenants')
     .select(
-      'id, name, slug, is_active, primary_color, domain, created_at, logo_url'
+      'id, name, slug, is_active, primary_color, domain, created_at, logo_url, menu_engineering_enabled, bundles_enabled, lalamove_enabled, app_enabled'
     )
     .order('created_at', { ascending: false })
     .limit(100)
@@ -26,7 +26,7 @@ export const getTenants = cache(async (): Promise<Tenant[]> => {
     return []
   }
   
-  return (data as Tenant[]) || []
+  return (data as unknown as Tenant[]) || []
 })
 
 export const getTenant = cache(async (id: string): Promise<Tenant | null> => {
@@ -43,7 +43,7 @@ export const getTenant = cache(async (id: string): Promise<Tenant | null> => {
     return null
   }
   
-  return data as Tenant | null
+  return data as unknown as Tenant | null
 })
 
 export const getTenantBySlug = cache(async (slug: string): Promise<Tenant | null> => {
@@ -60,7 +60,7 @@ export const getTenantBySlug = cache(async (slug: string): Promise<Tenant | null
     return null
   }
   
-  return data as Tenant | null
+  return data as unknown as Tenant | null
 })
 
 // Prefetch function for better performance

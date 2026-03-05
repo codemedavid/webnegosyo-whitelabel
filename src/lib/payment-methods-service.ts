@@ -31,7 +31,7 @@ export async function getPaymentMethodsByTenant(tenantId: string) {
   if (error) throw error
   
   // Transform to include order_types array
-  const paymentMethods = (data as Array<PaymentMethod & { payment_method_order_types: Array<{ order_type_id: string }> }>).map(pm => ({
+  const paymentMethods = (data as unknown as Array<PaymentMethod & { payment_method_order_types: Array<{ order_type_id: string }> }>).map(pm => ({
     ...pm,
     order_types: pm.payment_method_order_types?.map((pmot: { order_type_id: string }) => pmot.order_type_id) || [],
     payment_method_order_types: undefined,
@@ -58,7 +58,7 @@ export async function getPaymentMethodById(paymentMethodId: string, tenantId: st
   if (error) throw error
   
   // Transform to include order_types array
-  const pm = data as PaymentMethod & { payment_method_order_types: Array<{ order_type_id: string }> }
+  const pm = data as unknown as PaymentMethod & { payment_method_order_types: Array<{ order_type_id: string }> }
   return {
     ...pm,
     order_types: pm.payment_method_order_types?.map((pmot: { order_type_id: string }) => pmot.order_type_id) || [],
@@ -106,7 +106,7 @@ export async function createPaymentMethod(
 
   if (paymentMethodError) throw paymentMethodError
 
-  const pm = paymentMethod as PaymentMethod
+  const pm = paymentMethod as unknown as PaymentMethod
 
   // Create order type associations
   if (orderTypes.length > 0) {
@@ -142,7 +142,6 @@ export async function updatePaymentMethod(
 
   const { data, error } = await supabase
     .from('payment_methods')
-    // @ts-expect-error - Supabase type inference issue with update
     .update(updates)
     .eq('id', paymentMethodId)
     .eq('tenant_id', tenantId)
@@ -150,7 +149,7 @@ export async function updatePaymentMethod(
     .single()
 
   if (error) throw error
-  return data as PaymentMethod
+  return data as unknown as PaymentMethod
 }
 
 export async function updatePaymentMethodOrderTypes(
@@ -193,7 +192,6 @@ export async function updatePaymentMethodOrderTypes(
 
     const { error: insertError } = await supabase
       .from('payment_method_order_types')
-      // @ts-expect-error - Supabase type inference issue with insert
       .insert(associations)
 
     if (insertError) {
@@ -228,7 +226,6 @@ export async function reorderPaymentMethods(tenantId: string, paymentMethodIds: 
   const updates = paymentMethodIds.map((id, index) => 
     supabase
       .from('payment_methods')
-      // @ts-expect-error - Supabase type inference issue with update
       .update({ order_index: index })
       .eq('id', id)
       .eq('tenant_id', tenantId)
@@ -250,7 +247,6 @@ export async function togglePaymentMethodStatus(
 
   const { data, error } = await supabase
     .from('payment_methods')
-    // @ts-expect-error - Supabase type inference issue with update
     .update({ is_active: isActive })
     .eq('id', paymentMethodId)
     .eq('tenant_id', tenantId)
@@ -258,7 +254,7 @@ export async function togglePaymentMethodStatus(
     .single()
 
   if (error) throw error
-  return data as PaymentMethod
+  return data as unknown as PaymentMethod
 }
 
 // ============================================
@@ -280,7 +276,7 @@ export async function getPaymentMethodsByOrderType(orderTypeId: string, tenantId
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as PaymentMethod[]
+  return data as unknown as PaymentMethod[]
 }
 
 export async function validatePaymentMethod(paymentMethodId: string, tenantId: string) {

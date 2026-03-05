@@ -703,5 +703,5 @@ export async function fetchProductDetailSettings(tenantId: string): Promise<Prod
         return null
     }
 
-    return data as ProductDetailSettings | null
+    return data as unknown as ProductDetailSettings | null
 }

@@ -53,13 +53,13 @@ const nextConfig: NextConfig = {
   // Headers for caching
   async headers() {
     return [
-      // Product detail pages - short browser cache, longer CDN cache
+      // Product detail pages - short browser cache, CDN cache aligned with ISR
       {
         source: '/:tenant/menu/item/:itemId',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+            value: 'public, max-age=30, s-maxage=300, stale-while-revalidate=60',
           },
         ],
       },
@@ -69,7 +69,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+            value: 'public, max-age=30, s-maxage=300, stale-while-revalidate=60',
           },
         ],
       },

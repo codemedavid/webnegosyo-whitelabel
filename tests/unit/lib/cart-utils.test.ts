@@ -201,7 +201,7 @@ describe('cart-utils', () => {
           subtotal: 100,
         },
       ]
-      const result = generateMessengerMessage(items, 'Test', true, { name: 'Dine In', type: 'dine_in' } as const)
+      const result = generateMessengerMessage(items, 'Test', { name: 'Dine In', type: 'dine_in' })
       expect(result).toContain('📋 Order Type: 🍽️ Dine In')
     })
 
@@ -217,7 +217,7 @@ describe('cart-utils', () => {
           subtotal: 100,
         },
       ]
-      const result = generateMessengerMessage(items, 'Test', true, { name: 'Pickup', type: 'pickup' } as const)
+      const result = generateMessengerMessage(items, 'Test', { name: 'Pickup', type: 'pickup' })
       expect(result).toContain('📋 Order Type: 📦 Pickup')
     })
 
@@ -233,7 +233,7 @@ describe('cart-utils', () => {
           subtotal: 100,
         },
       ]
-      const result = generateMessengerMessage(items, 'Test', true, { name: 'Delivery', type: 'delivery' } as const)
+      const result = generateMessengerMessage(items, 'Test', { name: 'Delivery', type: 'delivery' })
       expect(result).toContain('📋 Order Type: 🚚 Delivery')
     })
 
@@ -254,7 +254,7 @@ describe('cart-utils', () => {
         customer_phone: '1234567890',
         customer_email: 'john@example.com'
       }
-      const result = generateMessengerMessage(items, 'Test', true, null, customerData)
+      const result = generateMessengerMessage(items, 'Test', null, customerData)
       expect(result).toContain('👤 Customer Information:')
       expect(result).toContain('👤 Name: John Doe')
       expect(result).toContain('📞 Phone: 1234567890')
@@ -347,7 +347,7 @@ describe('cart-utils', () => {
           subtotal: 100,
         },
       ]
-      const result = generateMessengerMessage(items, 'Test', true, null, undefined, { name: 'GCash', details: '09123456789' })
+      const result = generateMessengerMessage(items, 'Test', null, undefined, { name: 'GCash', details: '09123456789' })
       expect(result).toContain('💳 Payment Method:')
       expect(result).toContain('GCash')
       expect(result).toContain('09123456789')

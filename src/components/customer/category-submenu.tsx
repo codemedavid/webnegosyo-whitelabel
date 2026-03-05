@@ -1,11 +1,14 @@
 'use client'
 
+import { memo } from 'react'
 import { Pencil } from 'lucide-react'
+import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface CategoryLite {
   id: string
   name: string
   icon?: string
+  icon_color?: string
 }
 
 interface CategorySubmenuProps {
@@ -23,7 +26,7 @@ interface CategorySubmenuProps {
   onEditBrandingSection?: () => void
 }
 
-export function CategorySubmenu({
+export const CategorySubmenu = memo(function CategorySubmenu({
   categories,
   activeCategory,
   onCategoryChange,
@@ -94,7 +97,14 @@ export function CategorySubmenu({
                 }}
                 onClick={() => onCategoryChange(category.id)}
               >
-                {category.icon && <span className="text-base">{category.icon}</span>}
+                {category.icon && (
+                  <CategoryIcon
+                    icon={category.icon}
+                    color={category.icon_color}
+                    fallbackColor={activeColor}
+                    size="sm"
+                  />
+                )}
                 <span>{category.name}</span>
               </button>
             ))}
@@ -114,4 +124,4 @@ export function CategorySubmenu({
       </div>
     </nav>
   )
-}
+})

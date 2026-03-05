@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,23 +14,24 @@ interface AddTenantUserDialogProps {
   tenantName: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  onUserCreated?: (user: { user_id: string; email: string }) => void
 }
 
-export function AddTenantUserDialog({ 
-  tenantId, 
-  tenantName, 
-  open, 
-  onOpenChange 
+export function AddTenantUserDialog({
+  tenantId,
+  tenantName,
+  open,
+  onOpenChange,
+  onUserCreated,
 }: AddTenantUserDialogProps) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validation
@@ -45,27 +45,31 @@ export function AddTenantUserDialog({
       return
     }
 
-    startTransition(async () => {
-      const result = await createTenantUser({
-        email: formData.email,
-        password: formData.password,
-        tenant_id: tenantId,
-      })
+    setIsSubmitting(true)
 
-      if (result.error) {
-        toast.error(result.error)
-      } else {
-        toast.success('User created successfully')
-        setFormData({ email: '', password: '', confirmPassword: '' })
-        onOpenChange(false)
-        // Force refresh the page to show the new user
-        router.refresh()
-      }
+    const result = await createTenantUser({
+      email: formData.email,
+      password: formData.password,
+      tenant_id: tenantId,
     })
+
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('User created successfully')
+      // Notify parent to update the list optimistically
+      if (result.user && onUserCreated) {
+        onUserCreated(result.user)
+      }
+      setFormData({ email: '', password: '', confirmPassword: '' })
+      onOpenChange(false)
+    }
+
+    setIsSubmitting(false)
   }
 
   const handleClose = () => {
-    if (!isPending) {
+    if (!isSubmitting) {
       setFormData({ email: '', password: '', confirmPassword: '' })
       onOpenChange(false)
     }
@@ -91,7 +95,7 @@ export function AddTenantUserDialog({
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
-              disabled={isPending}
+              disabled={isSubmitting}
             />
             <p className="text-xs text-muted-foreground">
               This will be used to log in to the admin panel
@@ -103,16 +107,13 @@ export function AddTenantUserDialog({
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder="Minimum 8 characters"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               required
-              disabled={isPending}
+              disabled={isSubmitting}
               minLength={8}
             />
-            <p className="text-xs text-muted-foreground">
-              Minimum 8 characters
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -120,11 +121,11 @@ export function AddTenantUserDialog({
             <Input
               id="confirmPassword"
               type="password"
-              placeholder="••••••••"
+              placeholder="Re-enter password"
               value={formData.confirmPassword}
               onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
               required
-              disabled={isPending}
+              disabled={isSubmitting}
               minLength={8}
             />
           </div>
@@ -134,12 +135,12 @@ export function AddTenantUserDialog({
               type="button"
               variant="outline"
               onClick={handleClose}
-              disabled={isPending}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? (
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating...
@@ -154,4 +155,3 @@ export function AddTenantUserDialog({
     </Dialog>
   )
 }
-

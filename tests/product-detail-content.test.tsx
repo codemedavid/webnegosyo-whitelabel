@@ -51,23 +51,29 @@ jest.mock('sonner', () => ({
 // Mock framer-motion - filter out animation-specific props
 jest.mock('framer-motion', () => ({
     motion: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         button: ({ children, whileTap, whileHover, layout, initial, animate, exit, transition, ...props }: any) =>
             <button {...props}>{children}</button>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         div: ({ children, whileTap, whileHover, layout, initial, animate, exit, transition, ...props }: any) =>
             <div {...props}>{children}</div>,
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     AnimatePresence: ({ children }: any) => <>{children}</>
 }))
 
 // Mock lazy-loaded components to render synchronously in tests
 jest.mock('@/components/customer/product-detail-lazy', () => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     LazyImageModal: ({ isOpen, onOpenChange, imageUrl, itemName }: any) =>
         isOpen ? <div data-testid="image-modal">{itemName}</div> : null,
     LazyProductDetailCustomizer: () => null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     LazyRelatedItemsSection: ({ relatedItems, tenantSlug }: any) => (
         <div>
             <h3>You might also like</h3>
             <div>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {relatedItems.map((item: any) => (
                     <div key={item.id}>{item.name}</div>
                 ))}

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
@@ -7,6 +8,7 @@ import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/databa
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { Pencil } from 'lucide-react'
+import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface LayoutSidebarProps {
     tenant: Tenant | null
@@ -39,12 +41,12 @@ interface LayoutSidebarProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
 }
 
 import { useEffect, useState, useRef } from 'react'
 
-export function LayoutSidebar({
+export const LayoutSidebar = memo(function LayoutSidebar({
     tenant,
     categories,
     filteredItems,
@@ -175,7 +177,11 @@ export function LayoutSidebar({
                             }}
                         >
                             <span style={{ color: activeSection === category.id ? 'white' : activeColor }}>
-                                {category.icon || '🍽️'}
+                                <CategoryIcon
+                                    icon={category.icon || '🍽️'}
+                                    color={category.icon_color || (activeSection === category.id ? 'white' : activeColor)}
+                                    size="sm"
+                                />
                             </span>
                         </div>
                         <span className="text-[10px] md:text-xs font-medium text-center leading-tight line-clamp-2 w-full break-words">
@@ -204,6 +210,7 @@ export function LayoutSidebar({
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search menu..."
+                        branding={branding}
                     />
                 </div>
 
@@ -260,6 +267,19 @@ export function LayoutSidebar({
                 {/* Removed Mobile Category Tabs as requested */}
 
                 {/* Menu Grid - Always show grouped view in this layout */}
+                {isBrandAdmin && onOpenBrandingSection && filteredItems.length > 0 && (
+                    <div className="flex justify-end mb-3">
+                        <button
+                            type="button"
+                            onClick={() => onOpenBrandingSection('menu_cards')}
+                            title="Edit card colors"
+                            aria-label="Edit card colors"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                )}
                 {filteredItems.length === 0 ? (
                     <div className="text-center py-12">
                         <div
@@ -295,4 +315,4 @@ export function LayoutSidebar({
             </div>
         </div>
     )
-}
+})

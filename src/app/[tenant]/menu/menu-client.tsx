@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
@@ -8,12 +8,8 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
-import { BundlesSection } from '@/components/customer/bundles-section'
-import { BundleCustomizationModal } from '@/components/customer/bundle-customization-modal'
 import { useCart } from '@/hooks/useCart'
-import { createClient } from '@/lib/supabase/client'
 import { getTenantBranding } from '@/lib/branding-utils'
-import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -26,10 +22,11 @@ interface MenuClientProps {
   allMenuItems: MenuItem[]
   bundles: BundleWithItems[]
   tenantSlug: string
+  isBrandAdmin: boolean
   error: string | null
 }
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
 
 interface AdminEditPencilProps {
   visible: boolean
@@ -40,6 +37,23 @@ interface AdminEditPencilProps {
 
 const BrandingEditorOverlay = dynamic(
   () => import('@/components/admin/branding-editor-overlay').then(mod => ({ default: mod.BrandingEditorOverlay })),
+  { ssr: false }
+)
+
+// Heavy modals — loaded lazily since they are not visible on initial render.
+const CheckoutUpsellModal = dynamic(
+  () => import('@/components/customer/checkout-upsell-modal').then(mod => ({ default: mod.CheckoutUpsellModal })),
+  { ssr: false }
+)
+const BundleCustomizationModal = dynamic(
+  () => import('@/components/customer/bundle-customization-modal').then(mod => ({ default: mod.BundleCustomizationModal })),
+  { ssr: false }
+)
+
+// BundlesSection is conditionally rendered and may not appear at all; lazy-load it
+// so it does not inflate the main bundle when bundles are not configured.
+const BundlesSection = dynamic(
+  () => import('@/components/customer/bundles-section').then(mod => ({ default: mod.BundlesSection })),
   { ssr: false }
 )
 
@@ -59,15 +73,26 @@ function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencil
   )
 }
 
-export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSlug, error }: MenuClientProps) {
+export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
   const { addItem, item_count, setTenantContext } = useCart()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value)
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(value)
+    }, 200)
+  }, [])
+
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
-  const [isBrandAdmin, setIsBrandAdmin] = useState(false)
   const [selectedBundle, setSelectedBundle] = useState<BundleWithItems | null>(null)
   const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
   const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
@@ -77,35 +102,6 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       setTenantContext(tenant.id, tenant.slug)
     }
   }, [tenant, setTenantContext])
-
-  useEffect(() => {
-    if (!tenant) return
-    let isCancelled = false
-    const tenantId = tenant.id
-
-    async function checkAdminRole() {
-      // Use getUser() for server-verified auth (getSession reads unverified local JWT)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data: role } = await supabase
-        .from('app_users')
-        .select('role, tenant_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (isCancelled) return
-      const currentRole = role as { role: string; tenant_id: string | null } | null
-      const allowed = !!currentRole && (
-        currentRole.role === 'superadmin' ||
-        (currentRole.role === 'admin' && currentRole.tenant_id === tenantId)
-      )
-      setIsBrandAdmin(allowed)
-    }
-
-    checkAdminRole()
-    return () => { isCancelled = true }
-  }, [supabase, tenant])
 
   useEffect(() => {
     if (!flashScreenEnabled) {
@@ -137,7 +133,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
   }, [flashScreenEnabled, tenant?.flash_screen_duration_ms, tenant?.id, tenantSlug])
 
   const filteredItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
+    const query = debouncedSearchQuery.trim().toLowerCase()
     const items = allMenuItems.filter((item) => {
       if (activeCategory && item.category_id !== activeCategory) {
         return false
@@ -164,7 +160,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       }
       return a.order - b.order
     })
-  }, [allMenuItems, activeCategory, searchQuery, tenant?.menu_engineering_enabled])
+  }, [allMenuItems, activeCategory, debouncedSearchQuery, tenant?.menu_engineering_enabled])
 
   const baseBranding = useMemo(() => getTenantBranding(tenant), [tenant])
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
@@ -182,11 +178,20 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
   const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
   const [pageLayoutOverride, setPageLayoutOverride] = useState<string | null>(null)
   const [mobileGridColumnsOverride, setMobileGridColumnsOverride] = useState<number | null>(null)
+  const [mobilePageLayoutOverride, setMobilePageLayoutOverride] = useState<string | null>(null)
+  const [mobileCardTemplateOverride, setMobileCardTemplateOverride] = useState<string | null>(null)
   const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
     return { ...baseBranding, ...brandingOverride }
   }, [baseBranding, brandingOverride])
+
+  // Memoize banner props to avoid creating new object literals on every render,
+  // which would force child components (MenuLayout, CategorySubmenu) to re-render.
+  const bannerPropsOverride = useMemo(() => ({
+    promotionBanners: bannerOverride?.promotionBanners,
+    isPromotionVisible: bannerOverride?.isPromotionVisible,
+  }), [bannerOverride?.promotionBanners, bannerOverride?.isPromotionVisible])
 
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
@@ -201,6 +206,12 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       router.push(`/${tenantSlug}/menu/item/${item.id}`, { scroll: true })
     }
   }, [tenant?.menu_engineering_enabled, addItem, router, tenantSlug])
+
+  const desktopLayout = (pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout
+  const mobileLayout = (mobilePageLayoutOverride ?? tenant?.mobile_page_layout ?? desktopLayout) as PageLayout
+  const desktopCard = (cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate
+  const mobileCard = (mobileCardTemplateOverride ?? tenant?.mobile_card_template ?? desktopCard) as CardTemplate
+  const needsDualRender = mobileLayout !== desktopLayout || mobileCard !== desktopCard
 
   function mapDraftToBranding(draft: Partial<Record<string, unknown>> | null): Partial<Record<string, string>> | null {
     if (!draft) return null
@@ -230,6 +241,8 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
     setIf('checkoutModalBorder', draft.checkout_modal_border_color)
     setIf('buttonPrimary', draft.button_primary_color)
     setIf('buttonPrimaryText', draft.button_primary_text_color)
+    setIf('buttonSecondary', draft.button_secondary_color)
+    setIf('buttonSecondaryText', draft.button_secondary_text_color)
     setIf('textPrimary', draft.text_primary_color)
     setIf('textSecondary', draft.text_secondary_color)
     setIf('textMuted', draft.text_muted_color)
@@ -487,14 +500,43 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       </header>
 
       {categories.length > 0 && (
-        <CategorySubmenu
-          categories={categories}
-          activeCategory={activeCategory}
-          onCategoryChange={setActiveCategory}
-          branding={branding}
-          isBrandAdmin={isBrandAdmin}
-          onEditBrandingSection={() => openBrandingEditor('category_navigation')}
-        />
+        needsDualRender ? (
+          <>
+            {desktopLayout === 'default' && (
+              <div className="hidden md:block">
+                <CategorySubmenu
+                  categories={categories}
+                  activeCategory={activeCategory}
+                  onCategoryChange={setActiveCategory}
+                  branding={branding}
+                  isBrandAdmin={isBrandAdmin}
+                  onEditBrandingSection={() => openBrandingEditor('category_navigation')}
+                />
+              </div>
+            )}
+            {mobileLayout === 'default' && (
+              <div className="md:hidden">
+                <CategorySubmenu
+                  categories={categories}
+                  activeCategory={activeCategory}
+                  onCategoryChange={setActiveCategory}
+                  branding={branding}
+                  isBrandAdmin={isBrandAdmin}
+                  onEditBrandingSection={() => openBrandingEditor('category_navigation')}
+                />
+              </div>
+            )}
+          </>
+        ) : desktopLayout === 'default' ? (
+          <CategorySubmenu
+            categories={categories}
+            activeCategory={activeCategory}
+            onCategoryChange={setActiveCategory}
+            branding={branding}
+            isBrandAdmin={isBrandAdmin}
+            onEditBrandingSection={() => openBrandingEditor('category_navigation')}
+          />
+        ) : null
       )}
 
       {tenant && isBrandAdmin && (
@@ -507,6 +549,8 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
             setCardTemplateOverride(draft?.card_template as string || null)
             setPageLayoutOverride(draft?.page_layout as string || null)
             setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
+            setMobilePageLayoutOverride(draft?.mobile_page_layout as string || null)
+            setMobileCardTemplateOverride(draft?.mobile_card_template as string || null)
           }}
           onSaved={(result) => {
             if (result?.warning) {
@@ -534,34 +578,90 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
           </div>
         )}
 
-        <MenuLayout
-          layout={(pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout}
-          tenant={tenant}
-          tenantSlug={tenantSlug}
-          categories={categories}
-          filteredItems={filteredItems}
-          allMenuItems={allMenuItems}
-          activeCategory={activeCategory}
-          setActiveCategory={setActiveCategory}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onItemSelect={handleItemSelect}
-          branding={branding}
-          cardTemplate={(cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate}
-          isLoading={false}
-          heroOverride={heroOverride}
-          bannerOverride={{
-            promotionBanners: bannerOverride?.promotionBanners,
-            isPromotionVisible: bannerOverride?.isPromotionVisible,
-          }}
-          currentSlide={currentSlide}
-          setCurrentSlide={setCurrentSlide}
-          mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
-          menuEngineeringEnabled={tenant?.menu_engineering_enabled}
-          hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
-          isBrandAdmin={isBrandAdmin}
-          onOpenBrandingSection={openBrandingEditor}
-        />
+        {needsDualRender ? (
+          <>
+            <div className="md:hidden">
+              <MenuLayout
+                layout={mobileLayout}
+                tenant={tenant}
+                tenantSlug={tenantSlug}
+                categories={categories}
+                filteredItems={filteredItems}
+                allMenuItems={allMenuItems}
+                activeCategory={activeCategory}
+                setActiveCategory={setActiveCategory}
+                searchQuery={searchQuery}
+                setSearchQuery={handleSearchChange}
+                onItemSelect={handleItemSelect}
+                branding={branding}
+                cardTemplate={mobileCard}
+                isLoading={false}
+                heroOverride={heroOverride}
+                bannerOverride={bannerPropsOverride}
+                currentSlide={currentSlide}
+                setCurrentSlide={setCurrentSlide}
+                mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+                menuEngineeringEnabled={tenant?.menu_engineering_enabled}
+                hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+                isBrandAdmin={isBrandAdmin}
+                onOpenBrandingSection={openBrandingEditor}
+              />
+            </div>
+            <div className="hidden md:block">
+              <MenuLayout
+                layout={desktopLayout}
+                tenant={tenant}
+                tenantSlug={tenantSlug}
+                categories={categories}
+                filteredItems={filteredItems}
+                allMenuItems={allMenuItems}
+                activeCategory={activeCategory}
+                setActiveCategory={setActiveCategory}
+                searchQuery={searchQuery}
+                setSearchQuery={handleSearchChange}
+                onItemSelect={handleItemSelect}
+                branding={branding}
+                cardTemplate={desktopCard}
+                isLoading={false}
+                heroOverride={heroOverride}
+                bannerOverride={bannerPropsOverride}
+                currentSlide={currentSlide}
+                setCurrentSlide={setCurrentSlide}
+                mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+                menuEngineeringEnabled={tenant?.menu_engineering_enabled}
+                hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+                isBrandAdmin={isBrandAdmin}
+                onOpenBrandingSection={openBrandingEditor}
+              />
+            </div>
+          </>
+        ) : (
+          <MenuLayout
+            layout={desktopLayout}
+            tenant={tenant}
+            tenantSlug={tenantSlug}
+            categories={categories}
+            filteredItems={filteredItems}
+            allMenuItems={allMenuItems}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
+            searchQuery={searchQuery}
+            setSearchQuery={handleSearchChange}
+            onItemSelect={handleItemSelect}
+            branding={branding}
+            cardTemplate={desktopCard}
+            isLoading={false}
+            heroOverride={heroOverride}
+            bannerOverride={bannerPropsOverride}
+            currentSlide={currentSlide}
+            setCurrentSlide={setCurrentSlide}
+            mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+            menuEngineeringEnabled={tenant?.menu_engineering_enabled}
+            hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+            isBrandAdmin={isBrandAdmin}
+            onOpenBrandingSection={openBrandingEditor}
+          />
+        )}
       </main>
 
 

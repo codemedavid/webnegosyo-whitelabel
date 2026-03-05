@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { Alert } from "react-native";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
 import { printReceipt } from "../lib/printer";
@@ -44,8 +43,8 @@ export function useOrderPrint() {
         const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
         const printed = await printReceipt(receipt);
         return printed;
-      } catch (err: any) {
-        console.warn("[useOrderPrint] Print failed:", err?.message);
+      } catch (err: unknown) {
+        console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
         return false;
       } finally {
         setIsPrinting(false);

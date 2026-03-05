@@ -1,4 +1,4 @@
-import type { CartItem, Variation, Addon, VariationOption } from '@/types/database'
+import type { CartItem, Variation, Addon, VariationOption, CartBundleItem, Bundle, BundleItemCustomization } from '@/types/database'
 
 /**
  * Calculate the subtotal for a cart item including variations and add-ons
@@ -28,7 +28,7 @@ export function calculateCartItemSubtotal(
 
   const addonsPrice = addons.reduce((sum, addon) => sum + addon.price, 0)
   const itemTotal = basePrice + variationPrice + addonsPrice
-  return itemTotal * quantity
+  return Math.round(itemTotal * quantity * 100) / 100
 }
 
 /**
@@ -84,17 +84,22 @@ export interface FormatPriceOptions {
   hideCurrencySymbol?: boolean
 }
 
+// Cache Intl.NumberFormat instances — constructing them is expensive
+const _phpFormatter = new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+})
+
+const _numberFormatter = new Intl.NumberFormat('en-PH', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 export function formatPrice(price: number, options?: FormatPriceOptions): string {
   if (options?.hideCurrencySymbol) {
-    return new Intl.NumberFormat('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(price)
+    return _numberFormatter.format(price)
   }
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-  }).format(price)
+  return _phpFormatter.format(price)
 }
 
 /**
@@ -377,4 +382,90 @@ export function generateMessengerDirectUrl(
   }
 
   return `https://www.messenger.com/t/${pageIdOrUsername.trim()}`
+}
+
+/**
+ * Calculate the base price of a bundle (before customization extras)
+ */
+export function calculateBundleBasePrice(bundle: Bundle, itemsOriginalTotal: number): number {
+  if (bundle.pricing_type === 'fixed') {
+    return bundle.fixed_price ?? 0
+  }
+  const discountPercent = Math.min(bundle.discount_percent ?? 0, 100)
+  const discountMultiplier = 1 - (discountPercent / 100)
+  return Math.max(0, Math.round(itemsOriginalTotal * discountMultiplier * 100) / 100)
+}
+
+/**
+ * Calculate the original total of items in a bundle (sum of individual prices * quantities)
+ */
+export function calculateBundleOriginalTotal(customizations: BundleItemCustomization[]): number {
+  return customizations.reduce((sum, c) => sum + c.menu_item.price * c.quantity, 0)
+}
+
+/**
+ * Calculate extras cost (variation modifiers + addons) across all items in a bundle
+ */
+export function calculateBundleExtras(customizations: BundleItemCustomization[]): number {
+  return customizations.reduce((sum, c) => {
+    let variationExtra = 0
+    if (c.selected_variations) {
+      variationExtra = Object.values(c.selected_variations).reduce(
+        (s, opt) => s + opt.price_modifier, 0
+      )
+    } else if (c.selected_variation) {
+      variationExtra = c.selected_variation.price_modifier || 0
+    }
+    const addonExtra = c.selected_addons.reduce((s, a) => s + a.price, 0)
+    return sum + (variationExtra + addonExtra) * c.quantity
+  }, 0)
+}
+
+/**
+ * Calculate the full subtotal for a cart bundle item
+ */
+export function calculateBundleSubtotal(bundleItem: CartBundleItem): number {
+  const originalTotal = calculateBundleOriginalTotal(bundleItem.customizations)
+  const basePrice = calculateBundleBasePrice(bundleItem.bundle, originalTotal)
+  const extras = calculateBundleExtras(bundleItem.customizations)
+  return (basePrice + extras) * bundleItem.quantity
+}
+
+/**
+ * Calculate savings from a bundle
+ */
+export function calculateBundleSavings(bundle: Bundle, customizations: BundleItemCustomization[]): number {
+  const originalTotal = calculateBundleOriginalTotal(customizations)
+  const basePrice = calculateBundleBasePrice(bundle, originalTotal)
+  return Math.max(0, originalTotal - basePrice)
+}
+
+/**
+ * Calculate cart total including both regular items and bundles
+ */
+export function calculateFullCartTotal(items: CartItem[], bundleItems: CartBundleItem[]): number {
+  const itemsTotal = items.reduce((total, item) => total + item.subtotal, 0)
+  const bundlesTotal = bundleItems.reduce((total, bi) => total + bi.subtotal, 0)
+  return Math.round((itemsTotal + bundlesTotal) * 100) / 100
+}
+
+/**
+ * Get total item count including bundles
+ */
+export function getFullCartItemCount(items: CartItem[], bundleItems: CartBundleItem[]): number {
+  const regularCount = items.reduce((count, item) => count + item.quantity, 0)
+  const bundleCount = bundleItems.reduce((count, bi) => {
+    const itemsInBundle = bi.customizations.reduce((s, c) => s + c.quantity, 0)
+    return count + itemsInBundle * bi.quantity
+  }, 0)
+  return regularCount + bundleCount
+}
+
+/**
+ * Get total bundle savings across all bundles in cart
+ */
+export function calculateTotalBundleSavings(bundleItems: CartBundleItem[]): number {
+  return bundleItems.reduce((total, bi) => {
+    return total + calculateBundleSavings(bi.bundle, bi.customizations) * bi.quantity
+  }, 0)
 }

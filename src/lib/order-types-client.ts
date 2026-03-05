@@ -20,7 +20,7 @@ export async function getEnabledOrderTypesByTenantClient(tenantId: string) {
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as OrderType[]
+  return data as unknown as OrderType[]
 }
 
 export async function getCustomerFormFieldsByOrderTypeClient(orderTypeId: string, tenantId: string) {
@@ -34,5 +34,5 @@ export async function getCustomerFormFieldsByOrderTypeClient(orderTypeId: string
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as CustomerFormField[]
+  return data as unknown as CustomerFormField[]
 }

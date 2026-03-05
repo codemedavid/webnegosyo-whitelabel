@@ -21,7 +21,7 @@ export async function getTenantBySlugClient(slug: string): Promise<{ data: Tenan
             return { data: null, error: new Error(error.message) }
         }
 
-        return { data: data as Tenant | null, error: null }
+        return { data: data as unknown as Tenant | null, error: null }
     } catch (err) {
         return { data: null, error: err instanceof Error ? err : new Error('Unknown error') }
     }
@@ -43,7 +43,7 @@ export async function getTenantByIdClient(id: string): Promise<{ data: Tenant | 
             return { data: null, error: new Error(error.message) }
         }
 
-        return { data: data as Tenant | null, error: null }
+        return { data: data as unknown as Tenant | null, error: null }
     } catch (err) {
         return { data: null, error: err instanceof Error ? err : new Error('Unknown error') }
     }
@@ -64,7 +64,7 @@ export async function listTenantsClient(): Promise<{ data: Tenant[]; error: Erro
             return { data: [], error: new Error(error.message) }
         }
 
-        return { data: (data as Tenant[]) || [], error: null }
+        return { data: (data as unknown as Tenant[]) || [], error: null }
     } catch (err) {
         return { data: [], error: err instanceof Error ? err : new Error('Unknown error') }
     }

@@ -21,6 +21,8 @@ interface BundleFormProps {
     tenantId: string
     tenantSlug: string
     menuItems: MenuItem[]
+    suggestedItemIds?: string[]
+    suggestedDiscount?: number
 }
 
 interface BundleItemEntry {
@@ -35,6 +37,8 @@ export function BundleForm({
     tenantId,
     tenantSlug,
     menuItems,
+    suggestedItemIds,
+    suggestedDiscount,
 }: BundleFormProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -44,13 +48,13 @@ export function BundleForm({
     const [description, setDescription] = useState(bundle?.description || '')
     const [imageUrl, setImageUrl] = useState(bundle?.image_url || '')
     const [pricingType, setPricingType] = useState<'fixed' | 'discount'>(
-        bundle?.pricing_type || 'fixed'
+        bundle?.pricing_type || (suggestedDiscount ? 'discount' : 'fixed')
     )
     const [fixedPrice, setFixedPrice] = useState(
         bundle?.fixed_price?.toString() || ''
     )
     const [discountPercent, setDiscountPercent] = useState(
-        bundle?.discount_percent?.toString() || ''
+        bundle?.discount_percent?.toString() || (suggestedDiscount?.toString() ?? '')
     )
     const [isActive, setIsActive] = useState(bundle?.is_active ?? true)
     const [showOnMenu, setShowOnMenu] = useState(bundle?.show_on_menu ?? false)
@@ -61,12 +65,21 @@ export function BundleForm({
     // Bundle items
     const [items, setItems] = useState<BundleItemEntry[]>(() => {
         if (bundle?.items) {
-            return bundle.items.map((item, index) => ({
+            return bundle.items.map((item, index): BundleItemEntry => ({
                 menu_item_id: item.menu_item_id,
                 quantity: item.quantity,
                 display_order: item.display_order ?? index,
                 menu_item: item.menu_item,
             }))
+        }
+        if (suggestedItemIds && suggestedItemIds.length > 0) {
+            return suggestedItemIds.reduce<BundleItemEntry[]>((acc, id, index) => {
+                const menuItem = menuItems.find((mi) => mi.id === id)
+                if (menuItem) {
+                    acc.push({ menu_item_id: id, quantity: 1, display_order: index, menu_item: menuItem })
+                }
+                return acc
+            }, [])
         }
         return []
     })
@@ -336,6 +349,16 @@ export function BundleForm({
                                             <span className="text-muted-foreground">
                                                 {formatPrice(menuItem.price)}
                                             </span>
+                                            {menuItem.bcg_classification && menuItem.bcg_classification !== 'unclassified' && (
+                                                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                                    menuItem.bcg_classification === 'star' ? 'bg-yellow-100 text-yellow-800' :
+                                                    menuItem.bcg_classification === 'plowhorse' ? 'bg-blue-100 text-blue-800' :
+                                                    menuItem.bcg_classification === 'puzzle' ? 'bg-purple-100 text-purple-800' :
+                                                    'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {menuItem.bcg_classification}
+                                                </span>
+                                            )}
                                             <Plus className="h-4 w-4 text-primary" />
                                         </div>
                                     </button>

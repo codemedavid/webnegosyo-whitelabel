@@ -24,7 +24,7 @@ export async function getPaymentMethodsByOrderTypeClient(orderTypeId: string, te
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as PaymentMethod[]
+  return data as unknown as PaymentMethod[]
 }
 
 export async function getActivePaymentMethodsClient(tenantId: string) {
@@ -38,6 +38,6 @@ export async function getActivePaymentMethodsClient(tenantId: string) {
     .order('order_index', { ascending: true })
 
   if (error) throw error
-  return data as PaymentMethod[]
+  return data as unknown as PaymentMethod[]
 }
 

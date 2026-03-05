@@ -1,7 +1,6 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
-import { getTenantBySlug, getCategoriesByTenant } from '@/lib/admin-service'
-import type { Tenant } from '@/types/database'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 
 export default async function NewMenuItemPage({
   params,
@@ -10,15 +9,13 @@ export default async function NewMenuItemPage({
 }) {
   const { tenant: tenantSlug } = await params
   
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
-  if (!tenantData) {
+  if (!tenant) {
     return <div>Tenant not found</div>
   }
 
-  const tenant: Tenant = tenantData
-
-  const categories = await getCategoriesByTenant(tenant.id)
+  const categories = await getCachedCategoriesByTenant(tenant.id)
 
   if (categories.length === 0) {
     return (

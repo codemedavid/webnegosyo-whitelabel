@@ -6,6 +6,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  reorderCategories,
   type CategoryInput,
 } from '@/lib/admin-service'
 
@@ -45,6 +46,17 @@ export async function deleteCategoryAction(categoryId: string, tenantId: string,
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete category' }
+  }
+}
+
+export async function reorderCategoriesAction(tenantId: string, tenantSlug: string, categoryIds: string[]) {
+  try {
+    await reorderCategories(tenantId, categoryIds)
+    revalidatePath(`/${tenantSlug}/admin/categories`)
+    revalidatePath(`/${tenantSlug}/menu`)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder categories' }
   }
 }
 

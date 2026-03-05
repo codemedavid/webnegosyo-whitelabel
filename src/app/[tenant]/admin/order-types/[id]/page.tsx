@@ -1,8 +1,7 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug } from '@/lib/admin-service'
+import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrderTypeWithFormFields } from '@/lib/order-types-service'
 import { OrderTypeDetail } from '@/components/admin/order-type-detail'
-import type { Tenant } from '@/types/database'
 import { notFound } from 'next/navigation'
 
 export default async function OrderTypeDetailPage({
@@ -12,13 +11,11 @@ export default async function OrderTypeDetailPage({
 }) {
   const { tenant: tenantSlug, id: orderTypeId } = await params
   
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
-  if (!tenantData) {
+  if (!tenant) {
     notFound()
   }
-
-  const tenant: Tenant = tenantData
 
   const orderTypeWithFields = await getOrderTypeWithFormFields(orderTypeId, tenant.id)
 

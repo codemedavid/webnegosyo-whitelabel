@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface NeonCardProps {
  * Neon Card Template
  * Dark card with neon glow borders using the primary color, vibrant accents
  */
-export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: NeonCardProps) {
+export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: NeonCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -70,7 +71,7 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
 
                 {/* Badges — neon style */}
                 {menuEngineeringEnabled && item.badge_text && (
-                    <div className="absolute left-3 top-3 z-10">
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
                         <span
                             className="rounded-sm px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                             style={{
@@ -85,7 +86,7 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
                 )}
 
                 {item.is_featured && !item.badge_text && (
-                    <div className="absolute left-3 top-3">
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3">
                         <span
                             className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
                             style={{
@@ -100,13 +101,13 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
                 )}
 
                 {hasDiscount && (
-                    <div className="absolute right-3 top-3">
+                    <div className="absolute right-2 top-2 md:right-3 md:top-3">
                         <span
                             className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
                             style={{
-                                backgroundColor: 'rgba(255, 50, 80, 0.9)',
+                                backgroundColor: `${branding.error}e6`,
                                 color: '#ffffff',
-                                boxShadow: '0 0 12px rgba(255, 50, 80, 0.5)',
+                                boxShadow: `0 0 12px ${branding.error}80`,
                             }}
                         >
                             SALE
@@ -130,16 +131,16 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
             </div>
 
             {/* Content — dark theme */}
-            <div className="p-4 space-y-2">
+            <div className="p-2.5 space-y-1 md:p-4 md:space-y-2">
                 <h3
-                    className="text-base font-bold line-clamp-1"
+                    className="text-sm md:text-base font-bold line-clamp-1"
                     style={{ color: '#f0f0f0' }}
                 >
                     {item.name}
                 </h3>
 
                 {item.description && (
-                    <p className="text-xs line-clamp-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                    <p className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
                         {item.description}
                     </p>
                 )}
@@ -152,9 +153,9 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
                             </span>
                         )}
                         <span
-                            className="text-lg font-bold"
+                            className="text-sm md:text-lg font-bold"
                             style={{
-                                color: branding.primary,
+                                color: branding.cardPrice,
                                 textShadow: `0 0 8px ${branding.primary}44`,
                             }}
                         >
@@ -163,7 +164,7 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
                     </div>
 
                     <button
-                        className="flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-200 hover:scale-110"
+                        className="flex h-7 w-7 md:h-9 md:w-9 items-center justify-center rounded-lg transition-all duration-200 hover:scale-110"
                         style={{
                             backgroundColor: 'transparent',
                             color: branding.primary,
@@ -186,7 +187,7 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
                         }}
                         disabled={!item.is_available}
                     >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                     </button>
@@ -203,4 +204,4 @@ export function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hid
             </div>
         </div>
     )
-}
+})

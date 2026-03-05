@@ -11,7 +11,7 @@ export default async function MenuPage({
   const { tenant: tenantSlug } = await params
 
   const data = await getMenuData(tenantSlug)
-  const { tenant, categories, menuItems, bundles, error } = data
+  const { tenant, categories, menuItems, bundles, isBrandAdmin, error } = data
 
   return (
     <MenuClient
@@ -20,6 +20,7 @@ export default async function MenuPage({
       allMenuItems={menuItems}
       bundles={bundles}
       tenantSlug={tenantSlug}
+      isBrandAdmin={isBrandAdmin}
       error={error}
     />
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, memo } from 'react'
+import { useState, useMemo, memo, useCallback } from 'react'
 import Link from 'next/link'
 import { Edit, Eye, MoreVertical, Trash2, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useDeleteTenant } from '@/lib/queries/tenants'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 import type { Tenant } from '@/types/database'
 
 interface TenantSearchProps {
@@ -104,7 +103,7 @@ const TenantCard = memo(({ tenant, onDelete }: TenantCardProps) => (
 
       {tenant.domain && (
         <p className="mb-4 text-sm text-muted-foreground">
-          🌐 {tenant.domain}
+          {tenant.domain}
         </p>
       )}
 
@@ -115,8 +114,8 @@ const TenantCard = memo(({ tenant, onDelete }: TenantCardProps) => (
             View
           </Button>
         </Link>
-        <Link 
-          href={`/superadmin/tenants/${tenant.id}`} 
+        <Link
+          href={`/superadmin/tenants/${tenant.id}`}
           className="flex-1"
           prefetch={true}
         >
@@ -133,34 +132,40 @@ const TenantCard = memo(({ tenant, onDelete }: TenantCardProps) => (
 TenantCard.displayName = 'TenantCard'
 
 export function TenantSearch({ initialTenants }: TenantSearchProps) {
-  const router = useRouter()
+  const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
   const [searchQuery, setSearchQuery] = useState('')
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null)
   const deleteMutation = useDeleteTenant()
 
   const filteredTenants = useMemo(
-    () => initialTenants.filter((tenant) =>
+    () => tenants.filter((tenant) =>
       tenant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tenant.slug.toLowerCase().includes(searchQuery.toLowerCase())
     ),
-    [initialTenants, searchQuery]
+    [tenants, searchQuery]
   )
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (!tenantToDelete) return
 
-    deleteMutation.mutate(tenantToDelete.id, {
+    const deletedTenant = tenantToDelete
+
+    // Optimistic: remove from list immediately
+    setTenants((prev) => prev.filter((t) => t.id !== deletedTenant.id))
+    setTenantToDelete(null)
+
+    deleteMutation.mutate(deletedTenant.id, {
       onSuccess: () => {
-        toast.success(`${tenantToDelete.name} has been deleted`)
-        setTenantToDelete(null)
-        router.refresh()
+        toast.success(`${deletedTenant.name} has been deleted`)
       },
       onError: (error) => {
+        // Rollback on error
+        setTenants((prev) => [...prev, deletedTenant])
         const message = error instanceof Error ? error.message : 'Failed to delete tenant'
         toast.error(message)
       },
     })
-  }
+  }, [tenantToDelete, deleteMutation])
 
   return (
     <>
@@ -172,17 +177,23 @@ export function TenantSearch({ initialTenants }: TenantSearchProps) {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredTenants.map((tenant) => (
-          <TenantCard 
-            key={tenant.id} 
-            tenant={tenant} 
+          <TenantCard
+            key={tenant.id}
+            tenant={tenant}
             onDelete={setTenantToDelete}
           />
         ))}
       </div>
 
+      {filteredTenants.length === 0 && searchQuery && (
+        <div className="text-center py-8 text-muted-foreground">
+          No tenants matching &quot;{searchQuery}&quot;
+        </div>
+      )}
+
       {/* Delete Confirmation Dialog */}
-      <AlertDialog 
-        open={!!tenantToDelete} 
+      <AlertDialog
+        open={!!tenantToDelete}
         onOpenChange={(open) => !open && setTenantToDelete(null)}
       >
         <AlertDialogContent>

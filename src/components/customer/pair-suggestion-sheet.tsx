@@ -33,7 +33,7 @@ const sheetVariants = {
   },
   exit: {
     y: '100%',
-    transition: { type: 'tween' as const, duration: 0.2, ease: 'easeOut' },
+    transition: { type: 'tween' as const, duration: 0.2, ease: 'easeOut' as const },
   },
 }
 

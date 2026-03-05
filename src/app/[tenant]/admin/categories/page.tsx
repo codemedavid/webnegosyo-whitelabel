@@ -1,7 +1,6 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getTenantBySlug, getCategoriesByTenant } from '@/lib/admin-service'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { CategoriesList } from '@/components/admin/categories-list'
-import type { Tenant } from '@/types/database'
 
 export default async function CategoriesPage({
   params,
@@ -10,15 +9,13 @@ export default async function CategoriesPage({
 }) {
   const { tenant: tenantSlug } = await params
   
-  const tenantData = await getTenantBySlug(tenantSlug)
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
-  if (!tenantData) {
+  if (!tenant) {
     return <div>Tenant not found</div>
   }
 
-  const tenant: Tenant = tenantData
-
-  const categories = await getCategoriesByTenant(tenant.id)
+  const categories = await getCachedCategoriesByTenant(tenant.id)
 
   return (
     <div className="space-y-6">

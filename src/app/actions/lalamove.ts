@@ -39,14 +39,14 @@ export async function createQuotationAction(
     }
 
     // Check if Lalamove is enabled
-    const tenantTyped = tenant as Tenant
+    const tenantTyped = tenant as unknown as Tenant
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled for this restaurant' }
     }
 
     // Create quotation
     const quotation = await createLalamoveQuotation(
-      tenant,
+      tenantTyped,
       pickupAddress,
       { lat: pickupLat, lng: pickupLng },
       deliveryAddress,
@@ -118,19 +118,19 @@ export async function checkQuotationValidity(
       .eq('id', tenantId)
       .single()
 
-    if (!tenant || !(tenant as Tenant).lalamove_enabled) {
+    if (!tenant || !(tenant as unknown as Tenant).lalamove_enabled) {
       return { valid: false, error: 'Lalamove not enabled' }
     }
 
     // Retrieve quotation from Lalamove to check expiry
     const SDKClient = await import('@lalamove/lalamove-js')
-    const environment = (tenant as Tenant).lalamove_sandbox ? 'sandbox' : 'production'
-    const market = (tenant as Tenant).lalamove_market || 'HK'
-    
+    const environment = (tenant as unknown as Tenant).lalamove_sandbox ? 'sandbox' : 'production'
+    const market = (tenant as unknown as Tenant).lalamove_market || 'HK'
+
     const client = new SDKClient.ClientModule(
       new SDKClient.Config(
-        (tenant as Tenant).lalamove_api_key!,
-        (tenant as Tenant).lalamove_secret_key!,
+        (tenant as unknown as Tenant).lalamove_api_key!,
+        (tenant as unknown as Tenant).lalamove_secret_key!,
         environment
       )
     )
@@ -189,8 +189,11 @@ export async function createLalamoveOrderAction(
   metadata?: Record<string, unknown>
 ) {
   try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
     const supabase = await createClient()
-    
+
     // Get tenant data
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
@@ -202,7 +205,7 @@ export async function createLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as Tenant
+    const tenantTyped = tenant as unknown as Tenant
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -212,6 +215,7 @@ export async function createLalamoveOrderAction(
       .from('orders')
       .select('lalamove_order_id')
       .eq('id', orderId)
+      .eq('tenant_id', tenantId)
       .single()
 
     if (existingOrder && (existingOrder as { lalamove_order_id?: string | null }).lalamove_order_id) {
@@ -285,7 +289,6 @@ export async function createLalamoveOrderAction(
     // Use a conditional update to prevent overwriting if another process already created it
     const { error: updateError } = await supabase
       .from('orders')
-      // @ts-expect-error - Supabase type inference issue with update
       .update({
         lalamove_order_id: lalamoveOrder.orderId,
         lalamove_status: lalamoveOrder.status,
@@ -321,8 +324,11 @@ export async function syncLalamoveOrderAction(
   lalamoveOrderId: string
 ) {
   try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
     const supabase = await createClient()
-    
+
     // Get tenant data
     const { data: tenant } = await supabase
       .from('tenants')
@@ -334,7 +340,7 @@ export async function syncLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as Tenant
+    const tenantTyped = tenant as unknown as Tenant
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -370,9 +376,9 @@ export async function syncLalamoveOrderAction(
 
     const { error: updateError } = await supabase
       .from('orders')
-      // @ts-expect-error - Supabase type inference issue with update
       .update(updateData)
       .eq('id', orderId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       throw updateError
@@ -403,8 +409,11 @@ export async function cancelLalamoveOrderAction(
   lalamoveOrderId: string
 ) {
   try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
     const supabase = await createClient()
-    
+
     // Get tenant data
     const { data: tenant } = await supabase
       .from('tenants')
@@ -416,7 +425,7 @@ export async function cancelLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as Tenant
+    const tenantTyped = tenant as unknown as Tenant
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -427,11 +436,11 @@ export async function cancelLalamoveOrderAction(
     // Update order in database
     const { error: updateError } = await supabase
       .from('orders')
-      // @ts-expect-error - Supabase type inference issue with update
       .update({
         lalamove_status: 'CANCELLED',
       })
       .eq('id', orderId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       throw updateError

@@ -175,6 +175,7 @@ describe('orders validation', () => {
         { total: 50, status: 'delivered' },
         { total: 25, status: 'cancelled' }, // Should this count?
       ]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const revenue = orders.reduce((sum, order: any) => sum + (order.status === 'delivered' ? order.total : 0), 0)
       expect(revenue).toBe(150)
     })
@@ -187,7 +188,9 @@ describe('orders validation', () => {
         { status: 'preparing' },
       ]
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pendingCount = orders.filter((o: any) => o.status === 'pending').length
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const confirmedCount = orders.filter((o: any) => o.status === 'confirmed').length
 
       expect(pendingCount).toBe(2)

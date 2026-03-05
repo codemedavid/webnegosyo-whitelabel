@@ -6,61 +6,98 @@ import { verifyTenantAdmin } from '@/lib/admin-service'
 import { z } from 'zod'
 import type { PromotionBanner } from '@/types/database'
 
+/**
+ * Validates that a string is a plausible CSS color value.
+ * Accepts: #rgb, #rrggbb, #rrggbbaa, rgb(...), rgba(...), hsl(...), hsla(...),
+ * color-mix(...), named colors, transparent, inherit, initial, and empty string.
+ * Rejects values containing <, >, ", ', ;, { or } to prevent CSS injection.
+ * This is a defense-in-depth measure — branding values are set by tenant admins,
+ * but malicious values could be stored via MITM or compromised accounts and then
+ * injected into CSS custom properties or future <style> blocks.
+ */
+const CSS_INJECTION_CHARS = /[<>"';{}]/
+function cssColorString() {
+    return z.string().refine(
+        (val) => val === '' || !CSS_INJECTION_CHARS.test(val),
+        { message: 'Color value contains invalid characters' }
+    )
+}
+
 // Schema for all branding fields
 const brandingSchema = z.object({
     // Core colors
-    primary_color: z.string().min(1),
-    secondary_color: z.string().min(1),
-    accent_color: z.string().optional().or(z.literal('')),
-    background_color: z.string().optional().or(z.literal('')),
-    header_color: z.string().optional().or(z.literal('')),
-    header_font_color: z.string().optional().or(z.literal('')),
+    primary_color: cssColorString().min(1),
+    secondary_color: cssColorString().min(1),
+    accent_color: cssColorString().optional().or(z.literal('')),
+    background_color: cssColorString().optional().or(z.literal('')),
+    header_color: cssColorString().optional().or(z.literal('')),
+    header_font_color: cssColorString().optional().or(z.literal('')),
     // Card colors
-    cards_color: z.string().optional().or(z.literal('')),
-    cards_border_color: z.string().optional().or(z.literal('')),
-    card_title_color: z.string().optional().or(z.literal('')),
-    card_price_color: z.string().optional().or(z.literal('')),
-    card_description_color: z.string().optional().or(z.literal('')),
+    cards_color: cssColorString().optional().or(z.literal('')),
+    cards_border_color: cssColorString().optional().or(z.literal('')),
+    card_title_color: cssColorString().optional().or(z.literal('')),
+    card_price_color: cssColorString().optional().or(z.literal('')),
+    card_description_color: cssColorString().optional().or(z.literal('')),
     // Modal colors
-    modal_background_color: z.string().optional().or(z.literal('')),
-    modal_title_color: z.string().optional().or(z.literal('')),
-    modal_price_color: z.string().optional().or(z.literal('')),
-    modal_description_color: z.string().optional().or(z.literal('')),
+    modal_background_color: cssColorString().optional().or(z.literal('')),
+    modal_title_color: cssColorString().optional().or(z.literal('')),
+    modal_price_color: cssColorString().optional().or(z.literal('')),
+    modal_description_color: cssColorString().optional().or(z.literal('')),
     // Checkout interstitial modal colors
-    checkout_modal_background_color: z.string().optional().or(z.literal('')),
-    checkout_modal_title_color: z.string().optional().or(z.literal('')),
-    checkout_modal_description_color: z.string().optional().or(z.literal('')),
-    checkout_modal_price_color: z.string().optional().or(z.literal('')),
-    checkout_modal_button_color: z.string().optional().or(z.literal('')),
-    checkout_modal_button_text_color: z.string().optional().or(z.literal('')),
-    checkout_modal_border_color: z.string().optional().or(z.literal('')),
+    checkout_modal_background_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_title_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_description_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_price_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_button_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_button_text_color: cssColorString().optional().or(z.literal('')),
+    checkout_modal_border_color: cssColorString().optional().or(z.literal('')),
     // Button colors
-    button_primary_color: z.string().optional().or(z.literal('')),
-    button_primary_text_color: z.string().optional().or(z.literal('')),
+    button_primary_color: cssColorString().optional().or(z.literal('')),
+    button_primary_text_color: cssColorString().optional().or(z.literal('')),
+    button_secondary_color: cssColorString().optional().or(z.literal('')),
+    button_secondary_text_color: cssColorString().optional().or(z.literal('')),
     // Text colors
-    text_primary_color: z.string().optional().or(z.literal('')),
-    text_secondary_color: z.string().optional().or(z.literal('')),
-    menu_main_header_text_color: z.string().optional().or(z.literal('')),
-    menu_main_header_subtitle_color: z.string().optional().or(z.literal('')),
-    menu_category_header_color: z.string().optional().or(z.literal('')),
-    menu_category_active_color: z.string().optional().or(z.literal('')),
-    menu_category_inactive_color: z.string().optional().or(z.literal('')),
-    menu_cart_badge_background_color: z.string().optional().or(z.literal('')),
-    menu_cart_badge_text_color: z.string().optional().or(z.literal('')),
-    border_color: z.string().optional().or(z.literal('')),
+    text_primary_color: cssColorString().optional().or(z.literal('')),
+    text_secondary_color: cssColorString().optional().or(z.literal('')),
+    text_muted_color: cssColorString().optional().or(z.literal('')),
+    menu_main_header_text_color: cssColorString().optional().or(z.literal('')),
+    menu_main_header_subtitle_color: cssColorString().optional().or(z.literal('')),
+    menu_category_header_color: cssColorString().optional().or(z.literal('')),
+    menu_category_active_color: cssColorString().optional().or(z.literal('')),
+    menu_category_inactive_color: cssColorString().optional().or(z.literal('')),
+    menu_cart_badge_background_color: cssColorString().optional().or(z.literal('')),
+    menu_cart_badge_text_color: cssColorString().optional().or(z.literal('')),
+    border_color: cssColorString().optional().or(z.literal('')),
+    // Utility colors
+    success_color: cssColorString().optional().or(z.literal('')),
+    warning_color: cssColorString().optional().or(z.literal('')),
+    error_color: cssColorString().optional().or(z.literal('')),
+    link_color: cssColorString().optional().or(z.literal('')),
+    shadow_color: cssColorString().optional().or(z.literal('')),
+    // Flash Screen
+    flash_screen_feature_enabled: z.boolean().optional(),
+    flash_screen_is_active: z.boolean().optional(),
+    flash_screen_title: z.string().max(200).optional().or(z.literal('')),
+    flash_screen_subtitle: z.string().max(500).optional().or(z.literal('')),
+    flash_screen_image_url: z.string().optional().or(z.literal('')),
+    flash_screen_background_color: cssColorString().optional().or(z.literal('')),
+    flash_screen_text_color: cssColorString().optional().or(z.literal('')),
+    flash_screen_duration_ms: z.number().min(500).max(15000).optional(),
     // Hero settings
-    hero_title: z.string().optional().or(z.literal('')),
-    hero_description: z.string().optional().or(z.literal('')),
-    hero_title_color: z.string().optional().or(z.literal('')),
-    hero_description_color: z.string().optional().or(z.literal('')),
+    hero_title: z.string().max(200).optional().or(z.literal('')),
+    hero_description: z.string().max(1000).optional().or(z.literal('')),
+    hero_title_color: cssColorString().optional().or(z.literal('')),
+    hero_description_color: cssColorString().optional().or(z.literal('')),
     // Layout settings
     card_template: z.string().optional(),
     page_layout: z.string().optional(),
-    mobile_grid_columns: z.number().optional(),
+    mobile_grid_columns: z.number().min(1).max(4).optional(),
+    mobile_page_layout: z.string().optional().nullable(),
+    mobile_card_template: z.string().optional().nullable(),
     // Announcement banner
-    announcement_text: z.string().optional().or(z.literal('')),
-    announcement_bg_color: z.string().optional().or(z.literal('')),
-    announcement_text_color: z.string().optional().or(z.literal('')),
+    announcement_text: z.string().max(500).optional().or(z.literal('')),
+    announcement_bg_color: cssColorString().optional().or(z.literal('')),
+    announcement_text_color: cssColorString().optional().or(z.literal('')),
     is_announcement_visible: z.boolean().optional(),
     // Promotion banners
     promotion_image_url: z.string().optional().or(z.literal('')),
@@ -98,6 +135,24 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'menu_cart_badge_text_color',
     'page_layout',
     'mobile_grid_columns',
+    'button_secondary_color',
+    'button_secondary_text_color',
+    'text_muted_color',
+    'success_color',
+    'warning_color',
+    'error_color',
+    'link_color',
+    'shadow_color',
+    'flash_screen_feature_enabled',
+    'flash_screen_is_active',
+    'flash_screen_title',
+    'flash_screen_subtitle',
+    'flash_screen_image_url',
+    'flash_screen_background_color',
+    'flash_screen_text_color',
+    'flash_screen_duration_ms',
+    'mobile_page_layout',
+    'mobile_card_template',
 ] as const
 
 function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {

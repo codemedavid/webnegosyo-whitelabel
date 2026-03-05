@@ -8,37 +8,40 @@ export async function getMenuData(tenantSlug: string) {
   const { data: tenantData, error: tenantError } = await supabase
     .from('tenants')
     .select(`
-      id, slug, name, logo_url, description, hero_image_url,
-      primary_color, secondary_color, background_color,
+      id, slug, name, logo_url, domain,
+      primary_color, secondary_color, background_color, accent_color,
       text_primary_color, text_secondary_color, text_muted_color,
       border_color, header_color, header_font_color,
       cards_color, cards_border_color, card_title_color, card_price_color, card_description_color,
       modal_background_color, modal_title_color, modal_price_color, modal_description_color,
       button_primary_color, button_primary_text_color, button_secondary_color, button_secondary_text_color,
-      link_color, shadow_color, success_color, warning_color, error_color, accent_color,
+      link_color, shadow_color, success_color, warning_color, error_color,
       is_active, menu_engineering_enabled, hide_currency_symbol, bundles_enabled,
       checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
-      checkout_modal_background, checkout_modal_title_color, checkout_modal_description_color,
+      checkout_modal_background_color, checkout_modal_title_color, checkout_modal_description_color,
       checkout_modal_price_color, checkout_modal_button_color, checkout_modal_button_text_color, checkout_modal_border_color,
-      card_template, menu_layout,
-      facebook_page_id, facebook_page_name, currency, currency_symbol,
+      card_template, page_layout,
+      hero_title, hero_description, hero_title_color, hero_description_color,
+      announcement_text, announcement_bg_color, announcement_text_color, is_announcement_visible,
+      promotion_image_url,
+      facebook_page_id,
       promotion_banners, is_promotion_visible,
       mapbox_enabled, lalamove_enabled, enable_order_management,
       convex_deployment_url, convex_schema_version,
-      mobile_grid_columns, category_navigation_bg_color, category_navigation_text_color,
-      category_navigation_active_bg_color, category_navigation_active_text_color,
-      category_header_bg_color, category_header_text_color, category_header_border_color,
-      cart_badge_bg_color, cart_badge_text_color
+      mobile_grid_columns,
+      menu_main_header_text_color, menu_main_header_subtitle_color,
+      menu_category_header_color, menu_category_active_color, menu_category_inactive_color,
+      menu_cart_badge_background_color, menu_cart_badge_text_color
     `)
     .eq('slug', tenantSlug)
     .eq('is_active', true)
     .maybeSingle()
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithItems[], error: 'Restaurant not found' }
+    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithItems[], isBrandAdmin: false, error: 'Restaurant not found' }
   }
 
-  const tenant = tenantData as Tenant
+  const tenant = tenantData as unknown as Tenant
 
   // Fetch categories, items, and bundles in parallel for better performance
   const bundlesQuery = tenant.bundles_enabled
@@ -59,9 +62,29 @@ export async function getMenuData(tenantSlug: string) {
 
   const [catsResult, itemsResult, bundleResult] = await Promise.all([
     supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
-    supabase.from('menu_items').select('*').eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
+    supabase.from('menu_items').select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, order, variations, variation_types, addons, bcg_classification, badge_text').eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
     bundlesQuery,
   ])
+
+  // Check if the current user is an admin for this tenant (server-side)
+  let isBrandAdmin = false
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: role } = await supabase
+        .from('app_users')
+        .select('role, tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const currentRole = role as { role: string; tenant_id: string | null } | null
+      isBrandAdmin = !!currentRole && (
+        currentRole.role === 'superadmin' ||
+        (currentRole.role === 'admin' && currentRole.tenant_id === tenant.id)
+      )
+    }
+  } catch {
+    // Silently ignore auth errors — default to non-admin
+  }
 
   if (catsResult.error || itemsResult.error || bundleResult.error) {
     const details = [
@@ -69,7 +92,7 @@ export async function getMenuData(tenantSlug: string) {
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
       bundleResult.error?.message && `bundles: ${bundleResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithItems[], error: `Failed to load menu data (${details})` }
+    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithItems[], isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
   const bundles = (!bundleResult.error && bundleResult.data
@@ -78,9 +101,10 @@ export async function getMenuData(tenantSlug: string) {
 
   return {
     tenant,
-    categories: (catsResult.data as Category[]) || [],
-    menuItems: (itemsResult.data as MenuItem[]) || [],
+    categories: (catsResult.data as unknown as Category[]) || [],
+    menuItems: (itemsResult.data as unknown as MenuItem[]) || [],
     bundles,
+    isBrandAdmin,
     error: null
   }
 }

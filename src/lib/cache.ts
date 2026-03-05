@@ -52,7 +52,7 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Tenant 
         throw error
       }
       
-      return data as Tenant
+      return data as unknown as Tenant
     },
     CACHE_TTL.TENANT
   )
@@ -81,7 +81,7 @@ export const getCachedTenantById = cache(async (id: string): Promise<Tenant | nu
         throw error
       }
       
-      return data as Tenant
+      return data as unknown as Tenant
     },
     CACHE_TTL.TENANT
   )
@@ -105,7 +105,7 @@ export const getCachedCategoriesByTenant = cache(async (tenantId: string): Promi
         .order('order', { ascending: true })
 
       if (error) throw error
-      return data as Category[]
+      return data as unknown as Category[]
     },
     CACHE_TTL.CATEGORIES
   )
@@ -179,7 +179,7 @@ export const getCachedMenuItemsList = cache(async (tenantId: string): Promise<Me
         .order('order', { ascending: true })
 
       if (error) throw error
-      return data as MenuItemListItem[]
+      return data as unknown as MenuItemListItem[]
     },
     CACHE_TTL.MENU_ITEMS
   )

@@ -188,11 +188,13 @@ export async function POST(request: NextRequest) {
 
         const supabase = await createClient()
 
-        // Get tenant and Facebook page
+        // Get tenant and Facebook page — select only the fields we need, never expose
+        // sensitive columns like API keys via select('*')
         const { data: tenantData } = await supabase
             .from('tenants')
-            .select('*, facebook_page_id')
+            .select('id, name, slug, domain, facebook_page_id, is_active')
             .eq('id', tenantId)
+            .eq('is_active', true)
             .single()
 
         if (!tenantData) {

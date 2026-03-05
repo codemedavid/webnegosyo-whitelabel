@@ -75,21 +75,17 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userIds = data?.map((u: any) => u.user_id) || []
   if (userIds.length === 0) {
-    console.log('No users found for tenant:', tenantId)
     return []
   }
 
-  // Only fetch users whose IDs match the tenant's app_users (not ALL auth users)
-  const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
-
-  if (authError || !authUsers) {
-    console.error('Error fetching auth users:', authError)
-    return []
+  // Fetch only the specific users we need (not ALL auth users)
+  const emailMap = new Map<string, string>()
+  for (const userId of userIds) {
+    const { data: authUser } = await adminClient.auth.admin.getUserById(userId)
+    if (authUser?.user) {
+      emailMap.set(userId, authUser.user.email || '')
+    }
   }
-
-  const emailMap = new Map(
-    authUsers.users.map(u => [u.id, u.email || ''])
-  )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (data || []).map((user: any) => ({
@@ -188,7 +184,7 @@ export async function createTenantUser(input: {
   } catch (err) {
     console.error('createTenantUser error:', err)
     if (err instanceof z.ZodError) {
-      return { error: err.errors.map(e => e.message).join(', ') }
+      return { error: err.issues.map((e: z.ZodIssue) => e.message).join(', ') }
     }
     return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
   }
@@ -293,7 +289,6 @@ export async function updateTenantUser(input: {
     // Update app_users entry
     const { data, error } = await supabase
       .from('app_users')
-      // @ts-expect-error - Supabase type mismatch for app_users table
       .update({
         role: parsed.role,
         tenant_id: parsed.tenant_id,
@@ -319,7 +314,7 @@ export async function updateTenantUser(input: {
   } catch (err) {
     console.error('updateTenantUser error:', err)
     if (err instanceof z.ZodError) {
-      return { error: err.errors.map(e => e.message).join(', ') }
+      return { error: err.issues.map((e: z.ZodIssue) => e.message).join(', ') }
     }
     return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
   }

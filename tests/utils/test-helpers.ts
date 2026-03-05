@@ -2,7 +2,7 @@
  * Test helpers and utilities
  */
 
-import { createMockSupabaseClient, createMockSupabaseResponse } from '../mocks/supabase'
+import { createMockSupabaseClient } from '../mocks/supabase'
 
 /**
  * Create a mock environment for testing
@@ -20,9 +20,9 @@ export function createMockEnvironment() {
  */
 export function setupMockResponseSequence(
   mockFn: jest.Mock,
-  responses: Array<{ data: any; error: any }>
+  responses: Array<{ data: unknown; error: unknown }>
 ) {
-  responses.forEach((response, index) => {
+  responses.forEach((response) => {
     mockFn.mockImplementationOnce(() => Promise.resolve(response))
   })
 }

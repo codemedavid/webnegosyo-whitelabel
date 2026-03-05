@@ -1,51 +1,17 @@
 import { Suspense } from 'react'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getCachedTenantBySlug } from '@/lib/cache'
 import { PaymentMethodsManagement } from './payment-methods-management'
-import type { Tenant } from '@/types/database'
 
 interface PaymentMethodsPageProps {
   params: Promise<{ tenant: string }>
 }
 
 export default async function PaymentMethodsPage({ params }: PaymentMethodsPageProps) {
-  const resolvedParams = await params
-  const supabase = await createClient()
-
-  // Get current user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect(`/${resolvedParams.tenant}/login`)
-  }
-
-  // Verify admin access
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id')
-    .eq('user_id', user.id)
-    .single<{ role: string; tenant_id: string }>()
-
-  if (!appUser || (appUser.role !== 'superadmin' && appUser.role !== 'admin')) {
-    redirect(`/${resolvedParams.tenant}/menu`)
-  }
-
-  // Get tenant
-  const { data: tenant } = await supabase
-    .from('tenants')
-    .select('*')
-    .eq('slug', resolvedParams.tenant)
-    .single<Tenant>()
+  const { tenant: tenantSlug } = await params
+  const tenant = await getCachedTenantBySlug(tenantSlug)
 
   if (!tenant) {
-    redirect('/')
-  }
-
-  // Verify admin belongs to this tenant (unless superadmin)
-  if (appUser.role === 'admin' && appUser.tenant_id !== tenant.id) {
-    redirect(`/${resolvedParams.tenant}/menu`)
+    return <div>Tenant not found</div>
   }
 
   return (
@@ -64,9 +30,8 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
           </div>
         }
       >
-        <PaymentMethodsManagement tenantId={tenant.id} tenantSlug={resolvedParams.tenant} />
+        <PaymentMethodsManagement tenantId={tenant.id} tenantSlug={tenantSlug} />
       </Suspense>
     </div>
   )
 }
-

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface ElegantCardProps {
  * Elegant Card Template
  * Sophisticated design with soft shadows and refined spacing
  */
-export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
+export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -56,9 +57,9 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {/* Custom Badge */}
         {menuEngineeringEnabled && item.badge_text && (
-          <div className="absolute left-4 top-4 z-10">
+          <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
             <div
-              className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
+              className="px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[10px] md:text-xs font-semibold backdrop-blur-xl"
               style={{
                 backgroundColor: branding.primary,
                 color: branding.buttonPrimaryText || '#ffffff',
@@ -72,7 +73,7 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
         {/* Badges - Elegant styling */}
         {item.is_featured && !item.badge_text && (
-          <div className="absolute left-4 top-4">
+          <div className="absolute left-2 top-2 md:left-4 md:top-4">
             <div
               className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
               style={{
@@ -87,13 +88,13 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
         )}
 
         {hasDiscount && (
-          <div className="absolute right-4 top-4">
+          <div className="absolute right-2 top-2 md:right-4 md:top-4">
             <div
               className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
               style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.95)',
+                backgroundColor: branding.error,
                 color: '#ffffff',
-                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)'
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
               }}
             >
               SALE
@@ -118,10 +119,10 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
 
       {/* Content - Premium spacing */}
-      <div className="p-5 space-y-3">
+      <div className="p-3 space-y-1.5 md:p-5 md:space-y-3">
         <div>
           <h3
-            className="text-lg font-semibold line-clamp-1 mb-1"
+            className="text-sm md:text-lg font-semibold line-clamp-1 mb-1"
             style={{ color: branding.cardTitle }}
           >
             {item.name}
@@ -129,7 +130,7 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
           {item.description && (
             <p
-              className="text-sm line-clamp-2 mb-1"
+              className="text-xs md:text-sm line-clamp-1 md:line-clamp-2 mb-1"
               style={{ color: branding.cardDescription }}
             >
               {item.description}
@@ -158,7 +159,7 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
               </span>
             )}
             <span
-              className="text-2xl font-bold"
+              className="text-base md:text-2xl font-bold"
               style={{ color: branding.cardPrice }}
             >
               {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
@@ -167,7 +168,7 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
 
           {/* Elegant add button */}
           <button
-            className="flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300"
+            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-300"
             style={{
               backgroundColor: branding.buttonPrimary,
               color: branding.buttonPrimaryText,
@@ -188,7 +189,7 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
             }}
           >
             <svg
-              className="h-5 w-5"
+              className="h-4 w-4 md:h-5 md:w-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -205,5 +206,4 @@ export function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, 
       </div>
     </div>
   )
-}
-
+})

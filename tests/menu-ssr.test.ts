@@ -17,7 +17,10 @@ describe('Menu Server Component - SSR and ISR', () => {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
-    maybeSingle: jest.fn()
+    maybeSingle: jest.fn(),
+    auth: {
+      getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: null })
+    }
   }
 
   const mockTenant: Tenant = {
@@ -170,7 +173,7 @@ describe('Menu Server Component - SSR and ISR', () => {
 
       const result = await getMenuData('non-existent')
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         tenant: null,
         categories: [],
         menuItems: [],
@@ -259,7 +262,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       const result = await getMenuData('test-restaurant')
 
       expect(result.tenant).toEqual(mockTenant)
-      expect(result.error).toBe('Failed to load menu data')
+      expect(result.error).toContain('Failed to load menu data')
       expect(result.categories).toEqual([])
     })
 
@@ -282,7 +285,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       const result = await getMenuData('test-restaurant')
 
       expect(result.tenant).toEqual(mockTenant)
-      expect(result.error).toBe('Failed to load menu data')
+      expect(result.error).toContain('Failed to load menu data')
       expect(result.menuItems).toEqual([])
     })
 
@@ -444,7 +447,8 @@ describe('Menu Server Component - SSR and ISR', () => {
 
       (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
         { data: mockCategories, error: null },
-        { data: mockMenuItems, error: null }
+        { data: mockMenuItems, error: null },
+        { data: null, error: null }
       ])
 
       const result = await getMenuData('test-restaurant')
@@ -475,7 +479,8 @@ describe('Menu Server Component - SSR and ISR', () => {
 
       (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
         { data: mockCategories, error: null },
-        { data: mockMenuItems, error: null }
+        { data: mockMenuItems, error: null },
+        { data: null, error: null }
       ])
 
       const result = await getMenuData('test-restaurant')

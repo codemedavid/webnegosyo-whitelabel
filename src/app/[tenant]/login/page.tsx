@@ -1,5 +1,7 @@
 import { TenantLoginForm } from '@/components/auth/tenant-login-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getCachedTenantBySlug } from '@/lib/cache'
+import { notFound } from 'next/navigation'
 
 export default async function TenantLoginPage({
   params,
@@ -11,22 +13,28 @@ export default async function TenantLoginPage({
   const { tenant: tenantSlug } = await params
   const search = await searchParams
 
+  const tenant = await getCachedTenantBySlug(tenantSlug)
+  if (!tenant) {
+    notFound()
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Admin Login</CardTitle>
           <CardDescription>
-            Sign in to manage {tenantSlug.replace(/-/g, ' ')}
+            Sign in to manage {tenant.name || tenantSlug.replace(/-/g, ' ')}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TenantLoginForm 
+          <TenantLoginForm
             tenantSlug={tenantSlug}
+            tenantId={tenant.id}
             redirect={search.redirect || `/${tenantSlug}/admin`}
             unauthorized={search.error === 'unauthorized'}
           />
-          
+
           <div className="mt-4 text-center text-sm text-muted-foreground">
             <p>Admin access only</p>
             <p className="mt-1">
@@ -38,4 +46,3 @@ export default async function TenantLoginPage({
     </div>
   )
 }
-

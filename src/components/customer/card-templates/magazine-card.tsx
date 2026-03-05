@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,7 +18,7 @@ interface MagazineCardProps {
  * Magazine Card Template
  * Editorial-style with full-bleed image and text overlay, like a food magazine spread
  */
-export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MagazineCardProps) {
+export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MagazineCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -49,7 +50,7 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                 />
 
                 {/* Top badges */}
-                <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-10">
+                <div className="absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-4 flex justify-between items-start z-10">
                     {menuEngineeringEnabled && item.badge_text ? (
                         <span
                             className="rounded-sm px-2 py-1 text-[10px] font-semibold uppercase tracking-wider"
@@ -69,7 +70,7 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                     {hasDiscount && (
                         <span
                             className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
-                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.9)', color: '#ffffff' }}
+                            style={{ backgroundColor: branding.error, color: '#ffffff' }}
                         >
                             SALE
                         </span>
@@ -85,7 +86,7 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                 )}
 
                 {/* Editorial content overlay — bottom */}
-                <div className="absolute bottom-0 left-0 right-0 p-5 space-y-3 z-10">
+                <div className="absolute bottom-0 left-0 right-0 p-3 space-y-1.5 md:p-5 md:space-y-3 z-10">
                     {/* Category-like label */}
                     {item.variations.length > 0 && (
                         <span
@@ -96,13 +97,13 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                     )}
 
                     <h3
-                        className="text-xl font-bold line-clamp-2 leading-tight text-white"
+                        className="text-base md:text-xl font-bold line-clamp-1 md:line-clamp-2 leading-tight text-white"
                     >
                         {item.name}
                     </h3>
 
                     {item.description && (
-                        <p className="text-sm line-clamp-2 text-white/80 leading-relaxed">
+                        <p className="text-xs md:text-sm line-clamp-1 md:line-clamp-2 text-white/80 leading-relaxed">
                             {item.description}
                         </p>
                     )}
@@ -115,13 +116,13 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                                     {formatPrice(item.price, { hideCurrencySymbol })}
                                 </span>
                             )}
-                            <span className="text-2xl font-bold text-white">
+                            <span className="text-base md:text-2xl font-bold text-white">
                                 {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                             </span>
                         </div>
 
                         <button
-                            className="flex h-11 w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
                             style={{
                                 backgroundColor: branding.buttonPrimary,
                                 color: branding.buttonPrimaryText,
@@ -133,7 +134,7 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
                             }}
                             disabled={!item.is_available}
                         >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                             </svg>
                         </button>
@@ -142,4 +143,4 @@ export function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled,
             </div>
         </div>
     )
-}
+})

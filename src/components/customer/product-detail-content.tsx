@@ -591,7 +591,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     return (
         <motion.div
             animate={isPageTransitioning ? { x: '-100%', opacity: 0 } : { x: 0, opacity: 1 }}
-            transition={{ type: 'tween' as const, duration: 0.25, ease: 'easeInOut' }}
+            transition={{ type: 'tween' as const, duration: 0.25, ease: 'easeInOut' as const }}
             className="min-h-screen flex flex-col"
             style={cssVariables}
         >

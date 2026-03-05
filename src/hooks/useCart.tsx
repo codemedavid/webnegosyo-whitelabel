@@ -1,12 +1,13 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
-import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption } from '@/types/database'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
+import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption, CartBundleItem, BundleItemCustomization, Bundle } from '@/types/database'
 import {
   calculateCartItemSubtotal,
-  calculateCartTotal,
-  getCartItemCount,
+  calculateFullCartTotal,
+  getFullCartItemCount,
   generateCartItemId,
+  calculateBundleSubtotal,
 } from '@/lib/cart-utils'
 
 interface CartContextType extends Cart {
@@ -30,24 +31,79 @@ interface CartContextType extends Cart {
   updateQuantity: (cartItemId: string, quantity: number) => void
   clearCart: () => void
   getItem: (cartItemId: string) => CartItem | undefined
+  bundleItems: CartBundleItem[]
+  addBundleToCart: (bundle: Bundle, customizations: BundleItemCustomization[], quantity: number) => void
+  removeBundleFromCart: (bundleCartId: string) => void
+  updateBundleQuantity: (bundleCartId: string, quantity: number) => void
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
-const CART_STORAGE_KEY = 'restaurant_cart'
+const CART_STORAGE_KEY_PREFIX = 'restaurant_cart_'
 const ORDER_TYPE_STORAGE_KEY = 'restaurant_order_type'
 const MESSENGER_PSID_KEY = 'messenger_psid'
 const TENANT_CONTEXT_KEY = 'tenant_context'
+const LEGACY_CART_STORAGE_KEY = 'restaurant_cart'
+
+/** Get tenant-scoped cart storage key. Falls back to legacy key if no slug. */
+function getCartStorageKey(tenantSlug?: string | null): string {
+  return tenantSlug ? `${CART_STORAGE_KEY_PREFIX}${tenantSlug}` : LEGACY_CART_STORAGE_KEY
+}
 const CART_SYNC_DEBOUNCE_MS = 5000 // 5 seconds debounce for Messenger sync after last change
+const MAX_QUANTITY = 99
 
 // Helper functions for localStorage
-function loadCartFromStorage(): CartItem[] {
+/**
+ * Validate that a value parsed from localStorage is a valid CartItem array.
+ * Guards against corrupted or maliciously crafted localStorage data that could
+ * cause runtime errors in price calculations or expose unexpected behavior.
+ */
+function isValidCartItems(items: unknown): items is CartItem[] {
+  if (!Array.isArray(items)) return false
+  return items.every((item) => {
+    if (!item || typeof item !== 'object') return false
+    const i = item as Record<string, unknown>
+    return (
+      typeof i.id === 'string' &&
+      typeof i.quantity === 'number' &&
+      i.quantity > 0 &&
+      i.quantity <= 999 &&
+      typeof i.subtotal === 'number' &&
+      i.subtotal >= 0 &&
+      i.menu_item !== null &&
+      typeof i.menu_item === 'object' &&
+      typeof (i.menu_item as Record<string, unknown>).id === 'string' &&
+      typeof (i.menu_item as Record<string, unknown>).price === 'number' &&
+      Array.isArray(i.selected_addons)
+    )
+  })
+}
+
+function loadCartFromStorage(tenantSlug?: string | null): CartItem[] {
   if (typeof window === 'undefined') return []
 
   try {
-    const stored = localStorage.getItem(CART_STORAGE_KEY)
+    const key = getCartStorageKey(tenantSlug)
+    let stored = localStorage.getItem(key)
+
+    // Migration: if using tenant-scoped key but nothing found, check legacy key
+    if (!stored && tenantSlug) {
+      const legacyStored = localStorage.getItem(LEGACY_CART_STORAGE_KEY)
+      if (legacyStored) {
+        stored = legacyStored
+        // Migrate to tenant-scoped key and remove legacy
+        localStorage.setItem(key, legacyStored)
+        localStorage.removeItem(LEGACY_CART_STORAGE_KEY)
+      }
+    }
+
     if (stored) {
-      return JSON.parse(stored)
+      const parsed: unknown = JSON.parse(stored)
+      if (isValidCartItems(parsed)) {
+        return parsed
+      }
+      console.warn('[useCart] Cart data in localStorage failed validation, resetting cart')
+      localStorage.removeItem(key)
     }
   } catch (error) {
     console.error('Failed to load cart from storage:', error)
@@ -67,11 +123,11 @@ function loadOrderTypeFromStorage(): string | null {
   return null
 }
 
-function saveCartToStorage(items: CartItem[]) {
+function saveCartToStorage(items: CartItem[], tenantSlug?: string | null) {
   if (typeof window === 'undefined') return
 
   try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+    localStorage.setItem(getCartStorageKey(tenantSlug), JSON.stringify(items))
   } catch (error) {
     console.error('Failed to save cart to storage:', error)
   }
@@ -116,8 +172,70 @@ function saveMessengerPsidToStorage(psid: string | null) {
   }
 }
 
+const BUNDLE_STORAGE_KEY_PREFIX = 'restaurant_cart_bundles_'
+const LEGACY_BUNDLE_STORAGE_KEY = 'restaurant_cart_bundles'
+
+function getBundleStorageKey(tenantSlug?: string | null): string {
+  return tenantSlug ? `${BUNDLE_STORAGE_KEY_PREFIX}${tenantSlug}` : LEGACY_BUNDLE_STORAGE_KEY
+}
+
+function isValidBundleItems(items: unknown): items is CartBundleItem[] {
+  if (!Array.isArray(items)) return false
+  return items.every((item) => {
+    if (!item || typeof item !== 'object') return false
+    const i = item as Record<string, unknown>
+    return (
+      typeof i.id === 'string' &&
+      typeof i.quantity === 'number' &&
+      i.quantity > 0 &&
+      typeof i.subtotal === 'number' &&
+      i.bundle !== null &&
+      typeof i.bundle === 'object' &&
+      Array.isArray(i.customizations)
+    )
+  })
+}
+
+function loadBundlesFromStorage(tenantSlug?: string | null): CartBundleItem[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const key = getBundleStorageKey(tenantSlug)
+    let stored = localStorage.getItem(key)
+
+    // Migration: check legacy key
+    if (!stored && tenantSlug) {
+      const legacyStored = localStorage.getItem(LEGACY_BUNDLE_STORAGE_KEY)
+      if (legacyStored) {
+        stored = legacyStored
+        localStorage.setItem(key, legacyStored)
+        localStorage.removeItem(LEGACY_BUNDLE_STORAGE_KEY)
+      }
+    }
+
+    if (stored) {
+      const parsed: unknown = JSON.parse(stored)
+      if (isValidBundleItems(parsed)) return parsed
+      console.warn('[useCart] Bundle data in localStorage failed validation, resetting')
+      localStorage.removeItem(key)
+    }
+  } catch (error) {
+    console.error('Failed to load bundles from storage:', error)
+  }
+  return []
+}
+
+function saveBundlesToStorage(bundleItems: CartBundleItem[], tenantSlug?: string | null) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(getBundleStorageKey(tenantSlug), JSON.stringify(bundleItems))
+  } catch (error) {
+    console.error('Failed to save bundles to storage:', error)
+  }
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [bundleItems, setBundleItems] = useState<CartBundleItem[]>([])
   const [orderType, setOrderTypeState] = useState<string | null>(null)
   const [messengerPsid, setMessengerPsidState] = useState<string | null>(null)
   const [tenantId, setTenantId] = useState<string | null>(null)
@@ -128,38 +246,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   // Track if we've already synced the current cart state
   const lastSyncedCart = useRef<string>('')
+  // Keep a stable ref to items so getItem doesn't need to be recreated on every items change
+  const itemsRef = useRef<CartItem[]>([])
+  // Keep bundle items ref in sync for use in debounced Messenger sync callback
+  const bundleItemsRef = useRef<CartBundleItem[]>([])
 
   // Load cart, order type, PSID, and tenant context from localStorage on mount
   useEffect(() => {
-    const storedItems = loadCartFromStorage()
-    const storedOrderType = loadOrderTypeFromStorage()
-    const storedPsid = loadMessengerPsidFromStorage()
-    setItems(storedItems)
-    setOrderTypeState(storedOrderType)
-    setMessengerPsidState(storedPsid)
-
-    // Load tenant context from localStorage
+    // Load tenant context FIRST so we can scope cart storage by tenant
+    let resolvedSlug: string | null = null
     if (typeof window !== 'undefined') {
       try {
         const storedContext = localStorage.getItem(TENANT_CONTEXT_KEY)
         if (storedContext) {
           const parsed = JSON.parse(storedContext)
-          // Validate parsed values are non-empty strings before setting state
           const tid = parsed?.tenantId
           const ts = parsed?.tenantSlug
           if (typeof tid === 'string' && tid.trim() !== '' &&
             typeof ts === 'string' && ts.trim() !== '') {
             setTenantId(tid)
             setTenantSlug(ts)
+            resolvedSlug = ts
           } else {
-            // Invalid or corrupted data - clear the key and log warning
             console.warn('[useCart] Invalid tenant context in localStorage, clearing:', { tenantId: tid, tenantSlug: ts })
             localStorage.removeItem(TENANT_CONTEXT_KEY)
           }
         }
       } catch (error) {
         console.error('Failed to load tenant context:', error)
-        // Clear potentially corrupted data
         try {
           localStorage.removeItem(TENANT_CONTEXT_KEY)
         } catch {
@@ -168,15 +282,42 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Now load cart data scoped to tenant
+    const storedItems = loadCartFromStorage(resolvedSlug)
+    const storedOrderType = loadOrderTypeFromStorage()
+    const storedPsid = loadMessengerPsidFromStorage()
+    setItems(storedItems)
+    const storedBundles = loadBundlesFromStorage(resolvedSlug)
+    setBundleItems(storedBundles)
+    setOrderTypeState(storedOrderType)
+    setMessengerPsidState(storedPsid)
+
     setIsInitialized(true)
   }, [])
 
-  // Save cart to localStorage whenever it changes
+  // Refs for tenant context to use in stable callbacks without dependency changes
+  const tenantIdRef = useRef<string | null>(null)
+  tenantIdRef.current = tenantId
+  const tenantSlugRef = useRef<string | null>(null)
+  tenantSlugRef.current = tenantSlug
+
+  // Keep refs in sync with state for stable callbacks and debounced Messenger sync
+  itemsRef.current = items
+  bundleItemsRef.current = bundleItems
+
+  // Save cart to localStorage whenever it changes (scoped by tenant)
   useEffect(() => {
     if (isInitialized) {
-      saveCartToStorage(items)
+      saveCartToStorage(items, tenantSlugRef.current)
     }
   }, [items, isInitialized])
+
+  // Save bundle items to localStorage whenever they change (scoped by tenant)
+  useEffect(() => {
+    if (isInitialized) {
+      saveBundlesToStorage(bundleItems, tenantSlugRef.current)
+    }
+  }, [bundleItems, isInitialized])
 
   // Save order type to localStorage whenever it changes
   useEffect(() => {
@@ -226,7 +367,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     // Create a hash of current cart state
-    const cartHash = JSON.stringify(items.map(i => ({ id: i.id, qty: i.quantity })))
+    const cartHash = JSON.stringify([
+      ...items.map(i => ({ id: i.id, qty: i.quantity })),
+      ...bundleItems.map(bi => ({ id: bi.id, qty: bi.quantity })),
+    ])
 
     // Don't sync if cart hasn't changed
     if (cartHash === lastSyncedCart.current) {
@@ -237,7 +381,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const currentPsid = messengerPsid
     const currentTenantId = tenantId
     const currentTenantSlug = tenantSlug
-    const currentItems = items
 
     // Set new timeout for debounced sync
     syncTimeoutRef.current = setTimeout(() => {
@@ -246,8 +389,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (!currentPsid || !currentTenantId || !currentTenantSlug) {
         return
       }
+
+      // Read current state from refs to avoid stale closure values
+      const latestItems = itemsRef.current
+      const latestBundleItems = bundleItemsRef.current
+
+      // Recompute cart hash from refs to ensure we sync the latest state
+      const latestCartHash = JSON.stringify([
+        ...latestItems.map(i => ({ id: i.id, qty: i.quantity })),
+        ...latestBundleItems.map(bi => ({ id: bi.id, qty: bi.quantity })),
+      ])
+
+      // Don't sync if cart hasn't changed since last successful sync
+      if (latestCartHash === lastSyncedCart.current) {
+        return
+      }
+
       // Format items for API
-      const cartItems = currentItems.map(item => {
+      const cartItems = latestItems.map(item => {
         let variation = ''
         if (item.selected_variation) {
           variation = item.selected_variation.name
@@ -262,6 +421,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       })
 
+      const bundleCartItems = latestBundleItems.map(bi => ({
+        name: `Bundle: ${bi.bundle.name}`,
+        quantity: bi.quantity,
+        subtotal: bi.subtotal,
+        variation: bi.customizations.map(c => c.menu_item.name).join(', '),
+      }))
+      const allCartItems = [...cartItems, ...bundleCartItems]
+
       // Send to Messenger (fire-and-forget)
       // Use relative URL to avoid CORS issues with www/non-www redirects and subdomain routing
       fetch('/api/messenger/send-cart', {
@@ -271,7 +438,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           tenantId: currentTenantId,
           tenantSlug: currentTenantSlug,
           psid: currentPsid,
-          items: cartItems,
+          items: allCartItems,
         }),
       })
         .then(async response => {
@@ -279,10 +446,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
           const data = await response.json()
           if (data.success) {
-            lastSyncedCart.current = cartHash
+            lastSyncedCart.current = latestCartHash
           } else if (data.message === 'No Facebook page connected') {
             // Prevent repeated failed attempts for config issues
-            lastSyncedCart.current = cartHash
+            lastSyncedCart.current = latestCartHash
           }
         })
         .catch(() => {
@@ -297,7 +464,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         syncTimeoutRef.current = null
       }
     }
-  }, [items, isInitialized, messengerPsid, tenantId, tenantSlug])
+  }, [items, bundleItems, isInitialized, messengerPsid, tenantId, tenantSlug])
 
   const addItem = useCallback(
     (
@@ -309,6 +476,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
       upsellSource?: CartItem['upsellSource'],
       upsellSourceItemId?: string
     ) => {
+      // Cross-tenant contamination prevention: if the item belongs to a different
+      // tenant than the current cart context, clear the cart before adding
+      const currentTenantId = tenantIdRef.current
+      if (currentTenantId && menuItem.tenant_id !== currentTenantId) {
+        console.warn(
+          `[useCart] Cross-tenant item detected (cart: ${currentTenantId}, item: ${menuItem.tenant_id}). Clearing cart.`
+        )
+        setItems([])
+        setBundleItems([])
+      }
+
       const subtotal = calculateCartItemSubtotal(
         menuItem.price,
         variationOrVariations,
@@ -331,7 +509,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           // Update existing item
           const updatedItems = [...prevItems]
           const existingItem = updatedItems[existingItemIndex]
-          const newQuantity = existingItem.quantity + quantity
+          const newQuantity = Math.min(existingItem.quantity + quantity, MAX_QUANTITY)
           const newSubtotal = calculateCartItemSubtotal(
             menuItem.price,
             variationOrVariations,
@@ -382,7 +560,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     // Enforce maximum quantity per item
-    const MAX_QUANTITY = 99
     const clampedQuantity = Math.min(quantity, MAX_QUANTITY)
 
     setItems((prevItems) => {
@@ -409,38 +586,105 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([])
+    setBundleItems([])
     setOrderTypeState(null)
   }, [])
 
   const getItem = useCallback(
     (cartItemId: string) => {
-      return items.find((item) => item.id === cartItemId)
+      return itemsRef.current.find((item) => item.id === cartItemId)
     },
-    [items]
+    [] // stable — reads from ref, not state
   )
 
-  const total = calculateCartTotal(items)
-  const item_count = getCartItemCount(items)
+  const addBundleToCart = useCallback(
+    (bundle: Bundle, customizations: BundleItemCustomization[], quantity: number) => {
+      const bundleCartId = `bundle_${bundle.id}_${Date.now()}`
+      const newBundleItem: CartBundleItem = {
+        id: bundleCartId,
+        bundle,
+        customizations,
+        quantity,
+        subtotal: 0,
+      }
+      newBundleItem.subtotal = calculateBundleSubtotal(newBundleItem)
+      setBundleItems((prev) => [...prev, newBundleItem])
+    },
+    []
+  )
+
+  const removeBundleFromCart = useCallback((bundleCartId: string) => {
+    setBundleItems((prev) => prev.filter((bi) => bi.id !== bundleCartId))
+  }, [])
+
+  const updateBundleQuantity = useCallback((bundleCartId: string, quantity: number) => {
+    if (quantity <= 0) {
+      setBundleItems((prev) => prev.filter((bi) => bi.id !== bundleCartId))
+      return
+    }
+    const clampedQuantity = Math.min(quantity, MAX_QUANTITY)
+    setBundleItems((prev) =>
+      prev.map((bi) => {
+        if (bi.id === bundleCartId) {
+          const updated = { ...bi, quantity: clampedQuantity }
+          updated.subtotal = calculateBundleSubtotal(updated)
+          return updated
+        }
+        return bi
+      })
+    )
+  }, [])
+
+  const total = useMemo(() => calculateFullCartTotal(items, bundleItems), [items, bundleItems])
+  const item_count = useMemo(() => getFullCartItemCount(items, bundleItems), [items, bundleItems])
+
+  // Memoize the context value to avoid triggering all consumers on every render.
+  // Only changes when one of the actual values changes.
+  const contextValue = useMemo<CartContextType>(() => ({
+    items,
+    total,
+    item_count,
+    orderType,
+    setOrderType,
+    messengerPsid,
+    setMessengerPsid,
+    tenantId,
+    tenantSlug,
+    setTenantContext,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    getItem,
+    bundleItems,
+    addBundleToCart,
+    removeBundleFromCart,
+    updateBundleQuantity,
+  }), [
+    items,
+    total,
+    item_count,
+    orderType,
+    setOrderType,
+    messengerPsid,
+    setMessengerPsid,
+    tenantId,
+    tenantSlug,
+    setTenantContext,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    getItem,
+    bundleItems,
+    addBundleToCart,
+    removeBundleFromCart,
+    updateBundleQuantity,
+  ])
 
   return (
     <CartContext.Provider
-      value={{
-        items,
-        total,
-        item_count,
-        orderType,
-        setOrderType,
-        messengerPsid,
-        setMessengerPsid,
-        tenantId,
-        tenantSlug,
-        setTenantContext,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        getItem,
-      }}
+      value={contextValue}
     >
       {children}
     </CartContext.Provider>

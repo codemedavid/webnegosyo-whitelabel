@@ -54,6 +54,7 @@ interface TenantFormData {
   enable_order_management: boolean
   // Menu engineering
   menu_engineering_enabled: boolean
+  checkout_upsell_enabled: boolean
   hide_currency_symbol: boolean
   // Flash screen
   flash_screen_feature_enabled: boolean
@@ -1170,6 +1171,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     enable_order_management: tenant?.enable_order_management ?? true,
     // Menu engineering
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
+    checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     // Flash screen
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
@@ -1232,6 +1234,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       enable_order_management: formData.enable_order_management,
       // Menu engineering
       menu_engineering_enabled: formData.menu_engineering_enabled,
+      checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       // Flash screen
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,

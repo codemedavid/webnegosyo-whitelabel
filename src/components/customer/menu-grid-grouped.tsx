@@ -4,10 +4,13 @@ import { memo, useMemo } from 'react'
 import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Pencil, UtensilsCrossed } from 'lucide-react'
+import { CategoryIcon } from '@/components/shared/category-icon'
 import type { MenuItem, Category } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
+import { HorizontalScrollSection } from './horizontal-scroll-section'
+import { ResponsiveCategorySection } from './responsive-category-section'
 
 interface MenuGridGroupedProps {
   items: MenuItem[]
@@ -70,7 +73,12 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
               className="flex h-12 w-12 items-center justify-center rounded-full"
               style={{ backgroundColor: `${branding.primary}15` }}
             >
-              <span className="text-2xl">{category.icon || '🍽️'}</span>
+              <CategoryIcon
+                icon={category.icon || '🍽️'}
+                color={category.icon_color}
+                fallbackColor={branding.primary}
+                size="md"
+              />
             </div>
             <div>
               <h2
@@ -99,20 +107,35 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
             )}
           </div>
 
-          {/* Menu Items Grid */}
-          <div className={`grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-            {categoryItems.map((item) => (
-              <MenuItemCard
-                key={item.id}
-                item={item}
-                onSelect={onItemSelect}
+          {/* Menu Items Grid or Horizontal Scroll */}
+          <ResponsiveCategorySection
+            displayLayout={category.display_layout}
+            horizontalContent={
+              <HorizontalScrollSection
+                items={categoryItems}
+                onItemSelect={onItemSelect}
                 branding={branding}
                 template={template}
                 menuEngineeringEnabled={menuEngineeringEnabled}
                 hideCurrencySymbol={hideCurrencySymbol}
               />
-            ))}
-          </div>
+            }
+            gridContent={
+              <div className={`grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                {categoryItems.map((item) => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    onSelect={onItemSelect}
+                    branding={branding}
+                    template={template}
+                    menuEngineeringEnabled={menuEngineeringEnabled}
+                    hideCurrencySymbol={hideCurrencySymbol}
+                  />
+                ))}
+              </div>
+            }
+          />
         </section>
       ))}
     </div>
