@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight } from 'lucide-react'
+import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, TrendingDown, UserX, DollarSign } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────
 const BRAND_RED = '#FF3B30'
@@ -393,6 +393,249 @@ function HeroSection() {
   )
 }
 
+// ── McDonald's Story Section ──────────────────────────────────────────
+
+function McDonaldsStorySection() {
+  return (
+    <section id="story" className="relative bg-white py-20 md:py-28 lg:py-32">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Section Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+        >
+          What McDonald&apos;s Knows That
+          <br className="hidden sm:block" />
+          Most Food Businesses Don&apos;t
+        </motion.h2>
+
+        {/* Storytelling Body */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="mt-12 md:mt-16 max-w-3xl mx-auto space-y-6 text-lg md:text-xl text-gray-600 leading-relaxed"
+        >
+          <p>
+            Alam mo yung mga kiosk sa McDonald&apos;s? Karamihan ng tao akala nila,
+            pang-automate lang yun ng ordering — para mabawasan ang staff, para
+            mas mabilis.
+          </p>
+          <p className="text-gray-900 font-medium">
+            Pero hindi yun ang main reason.
+          </p>
+          <p>
+            Ang totoo?{' '}
+            <span className="font-bold" style={{ color: BRAND_RED }}>
+              The menu IS the salesperson.
+            </span>{' '}
+            Bawat screen, bawat &quot;Would you like to make it a meal?&quot;,
+            bawat suggestion na lumalabas — lahat yun, designed para mag-order ka
+            ng mas marami without you even noticing.
+          </p>
+          <p>
+            Hindi sila nag-rely sa cashier para mag-upsell.{' '}
+            <span className="text-gray-900 font-semibold">They built a system.</span>
+          </p>
+        </motion.div>
+
+        {/* Comparison Cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.7, delay: 0.25 }}
+          className="mt-16 md:mt-20 grid md:grid-cols-2 gap-6 md:gap-8 max-w-5xl mx-auto"
+        >
+          {/* Traditional Menu Card */}
+          <div className="relative rounded-2xl border-2 border-gray-200 bg-gray-50 p-6 md:p-8 overflow-hidden">
+            <div className="absolute top-4 right-4 rounded-full bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Traditional
+            </div>
+            <h3 className="text-xl font-bold text-gray-400 mb-6">Traditional Menu</h3>
+            {/* Mock menu list */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
+                <span className="text-sm text-gray-400">Chicken Adobo</span>
+                <span className="text-sm text-gray-400">P150</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
+                <span className="text-sm text-gray-400">Pork Sinigang</span>
+                <span className="text-sm text-gray-400">P180</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
+                <span className="text-sm text-gray-400">Pancit Canton</span>
+                <span className="text-sm text-gray-400">P120</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
+                <span className="text-sm text-gray-400">Halo-Halo</span>
+                <span className="text-sm text-gray-400">P90</span>
+              </div>
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm text-gray-400">Iced Tea</span>
+                <span className="text-sm text-gray-400">P45</span>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center gap-2 text-sm text-gray-400">
+              <X className="h-4 w-4 text-gray-300" />
+              <span>No suggestions</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
+              <X className="h-4 w-4 text-gray-300" />
+              <span>No upselling</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
+              <X className="h-4 w-4 text-gray-300" />
+              <span>Static list — walang nag-gu-guide</span>
+            </div>
+          </div>
+
+          {/* Smart Menu Card */}
+          <div className="relative rounded-2xl border-2 p-6 md:p-8 overflow-hidden shadow-xl" style={{ borderColor: BRAND_RED, backgroundColor: '#FFF5F5' }}>
+            <div className="absolute top-4 right-4 rounded-full px-3 py-1 text-xs font-bold text-white uppercase tracking-wider" style={{ backgroundColor: BRAND_RED }}>
+              Smart Menu
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Smart Menu</h3>
+            {/* Mock smart menu */}
+            <div className="space-y-3">
+              {/* Item with star badge */}
+              <div className="rounded-xl bg-white border border-gray-100 p-3 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🍗</span>
+                    <span className="text-sm font-bold text-gray-900">Chicken Inasal Meal</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: BRAND_RED }}>★ STAR</span>
+                    <span className="text-sm font-bold" style={{ color: BRAND_RED }}>P189</span>
+                  </div>
+                </div>
+              </div>
+              {/* Upsell prompt */}
+              <div className="rounded-xl bg-gray-900 p-3">
+                <div className="text-[10px] font-bold text-white mb-1.5">🍟 Make it a meal?</div>
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-orange-100 flex items-center justify-center text-xs shrink-0">🥤</div>
+                  <div className="flex-1">
+                    <div className="text-[10px] text-white font-medium">Add Iced Tea + Rice</div>
+                    <div className="text-[9px] text-green-400 font-semibold">Save P25!</div>
+                  </div>
+                  <div className="rounded-full px-2.5 py-1 text-[9px] font-bold text-white" style={{ backgroundColor: BRAND_RED }}>
+                    Add
+                  </div>
+                </div>
+              </div>
+              {/* Bundle highlight */}
+              <div className="rounded-xl bg-white border-2 p-3 shadow-sm" style={{ borderColor: `${BRAND_RED}40` }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🎁</span>
+                    <span className="text-sm font-bold text-gray-900">Family Bundle</span>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Save 15%</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center gap-2 text-sm text-gray-700">
+              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
+              <span className="font-medium">Smart upsell prompts</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-700 mt-2">
+              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
+              <span className="font-medium">Bundle suggestions</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-700 mt-2">
+              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
+              <span className="font-medium">Highlighted bestsellers</span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Transition line */}
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.35 }}
+          className="mt-16 md:mt-20 text-center text-2xl md:text-3xl font-bold text-gray-900"
+        >
+          We built the same system — for your business.
+        </motion.p>
+      </div>
+    </section>
+  )
+}
+
+// ── Problem Section ───────────────────────────────────────────────────
+
+const PAIN_POINTS = [
+  {
+    icon: TrendingDown,
+    text: 'Yung customer mo, nag-o-order ng minimum kasi walang gumagabay sa kanila na mag-order ng more.',
+  },
+  {
+    icon: UserX,
+    text: 'Walang upselling system — busy yung staff mo, static yung menu mo. Walang nag-su-suggest.',
+  },
+  {
+    icon: DollarSign,
+    text: 'Every missed upsell is money that walks out the door. At nangyayari to sa bawat customer, araw-araw.',
+  },
+] as const
+
+function ProblemSection() {
+  return (
+    <section id="problem" className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        {/* Title */}
+        <motion.h2
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6 }}
+          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight max-w-4xl mx-auto"
+        >
+          You&apos;re Not Losing Because of Foot Traffic.{' '}
+          <span style={{ color: BRAND_RED }}>
+            You&apos;re Losing Because Your Menu Isn&apos;t Selling.
+          </span>
+        </motion.h2>
+
+        {/* Pain Point Cards */}
+        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
+          {PAIN_POINTS.map((point, index) => {
+            const Icon = point.icon
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: index * 0.15 }}
+                className="bg-white/5 border border-white/10 rounded-2xl p-8"
+              >
+                <div
+                  className="inline-flex items-center justify-center h-12 w-12 rounded-xl mb-6"
+                  style={{ backgroundColor: `${BRAND_RED}20` }}
+                >
+                  <Icon className="h-6 w-6" style={{ color: BRAND_RED }} />
+                </div>
+                <p className="text-lg text-gray-300 leading-relaxed">
+                  {point.text}
+                </p>
+              </motion.div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── Landing Page (exported) ────────────────────────────────────────────
 
 export function LandingPage() {
@@ -400,6 +643,8 @@ export function LandingPage() {
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
       <Navigation />
       <HeroSection />
+      <McDonaldsStorySection />
+      <ProblemSection />
       {/* More sections will be added in subsequent tasks */}
     </div>
   )
