@@ -2,24 +2,51 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { ChevronLeft, Minus, Plus, Share2, UtensilsCrossed, Flame, Leaf, WheatOff, Heart, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
+import { useVariationState } from '@/hooks/useVariationState'
+import { useProductDetailModals } from '@/hooks/useProductDetailModals'
+import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
 import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpsell } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
+import type { BundleWithItems } from '@/lib/bundles-service'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
+import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import dynamic from 'next/dynamic'
 import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
-import { UpsellSuggestionModal } from './upsell-suggestion-modal'
-import { UpgradeUpsellModal } from './upgrade-upsell-modal'
-import { CheckoutUpsellModal } from './checkout-upsell-modal'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
+const InlineUpgradeSection = dynamic(
+  () => import('./inline-upgrade-section').then((m) => ({ default: m.InlineUpgradeSection })),
+  { ssr: false }
+)
+
+// Upsell/checkout modals — not visible on initial render; lazy-load them.
+const UpsellSuggestionModal = dynamic(
+  () => import('./upsell-suggestion-modal').then((m) => ({ default: m.UpsellSuggestionModal })),
+  { ssr: false }
+)
+const CheckoutUpsellModal = dynamic(
+  () => import('./checkout-upsell-modal').then((m) => ({ default: m.CheckoutUpsellModal })),
+  { ssr: false }
+)
+const BundleUpsellModal = dynamic(
+  () => import('@/components/customer/bundle-upsell-modal').then((m) => ({ default: m.BundleUpsellModal })),
+  { ssr: false }
+)
+const BundleCustomizationModal = dynamic(
+  () => import('@/components/customer/bundle-customization-modal').then((m) => ({ default: m.BundleCustomizationModal })),
+  { ssr: false }
+)
+const PairSuggestionSheet = dynamic(
+  () => import('./pair-suggestion-sheet').then((m) => ({ default: m.PairSuggestionSheet })),
+  { ssr: false }
+)
 
 interface ProductDetailContentProps {
     tenant: SelectedTenant
@@ -32,11 +59,14 @@ interface ProductDetailContentProps {
     upgradeUpsells?: UpgradeUpsell[]
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+    upsellBundles?: BundleWithItems[]
+    bundlesEnabled?: boolean
+    isBrandAdmin?: boolean
 }
 
 interface ProductDetailCustomizerOpenDetail {
     tab?: 'colors' | 'typography' | 'layout'
-    section?: 'header' | 'image' | 'product_info' | 'variations' | 'addons' | 'footer_summary' | 'footer_buttons'
+    section?: 'header' | 'image' | 'product_info' | 'variations' | 'addons' | 'related_items' | 'footer_summary' | 'footer_buttons'
     pane?: 'palette' | 'settings'
 }
 
@@ -234,32 +264,73 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     upgradeUpsells = [],
     menuEngineeringEnabled = false,
     hideCurrencySymbol,
+    upsellBundles = [],
+    bundlesEnabled = false,
+    isBrandAdmin = false,
 }: ProductDetailContentProps) {
     const router = useRouter()
-    const supabase = useMemo(() => createClient(), [])
     const { addItem, setTenantContext } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
-
-    const [isImageModalOpen, setIsImageModalOpen] = useState(false)
-    const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false)
-    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
-    const [isPopupPreviewOpen, setIsPopupPreviewOpen] = useState(false)
-    const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
-    const [isBrandAdmin, setIsBrandAdmin] = useState(false)
 
-    // Legacy single variation
-    const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>()
-    // New grouped variations: map of type ID -> selected option
-    const [selectedVariations, setSelectedVariations] = useState<{ [typeId: string]: VariationOption }>({})
-    const [selectedAddons, setSelectedAddons] = useState<Addon[]>([])
-    const [quantity, setQuantity] = useState(1)
+    const {
+        setUpgradeDismissed,
+        isImageModalOpen,
+        isUpsellModalOpen,
+        isPairSheetOpen,
+        setIsPairSheetOpen,
+        isPopupPreviewOpen,
+        setIsPopupPreviewOpen,
+        isCheckoutPreviewOpen,
+        setIsCheckoutPreviewOpen,
+        isUpgradeScreenOpen,
+        setIsUpgradeScreenOpen,
+        bundleUpsell,
+        setBundleUpsell,
+        bundleForCustomization,
+        setBundleForCustomization,
+        buyNowIntentRef,
+        handleOpenImageModal,
+        handleCloseImageModal,
+        handleTogglePopupPreview,
+        handleToggleCheckoutPreview,
+        handleUpsellClose,
+    } = useProductDetailModals({
+        tenantSlug: tenant.slug,
+        menuEngineeringEnabled,
+        upgradeUpsellsCount: upgradeUpsells.length,
+        upsellBundlesCount: upsellBundles.length,
+    })
 
-    // Determine if using new or legacy variation system - memoized
-    const useNewVariations = useMemo(() =>
-        item.variation_types && item.variation_types.length > 0,
-        [item.variation_types]
-    )
+    // Eager-preload upsell modal bundles so they're ready when triggered
+    useEffect(() => {
+        import('./inline-upgrade-section')
+        import('./pair-suggestion-sheet')
+        import('./upsell-suggestion-modal')
+        import('@/components/customer/bundle-upsell-modal')
+        import('@/components/customer/bundle-customization-modal')
+        import('@/components/customer/checkout-upsell-modal')
+    }, [])
+
+    const {
+        selectedVariation,
+        selectedVariations,
+        selectedAddons,
+        quantity,
+        useNewVariations,
+        hasVariations,
+        hasVariationTypes,
+        hasAddons,
+        hasCustomizations,
+        hasDiscount,
+        totalPrice,
+        mergedAddons,
+        handleVariationTypeSelect,
+        handleLegacyVariationSelect,
+        toggleAddon,
+        handleDecreaseQuantity,
+        handleIncreaseQuantity,
+    } = useVariationState({ item, category })
 
     // Merge customization settings with branding
     const activeCustomization = customizationDraft || customization
@@ -311,62 +382,35 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         setTenantContext(tenant.id, tenant.slug)
     }, [tenant.id, tenant.slug, setTenantContext])
 
-    // Show inline branding controls only for authenticated tenant admins/superadmins.
+    // Preload upgrade upsell images so they're in the browser cache when the modal opens
     useEffect(() => {
-        let isCancelled = false
+        if (!menuEngineeringEnabled || upgradeUpsells.length === 0) return
 
-        async function checkAdminRole() {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+        const imageUrls: string[] = []
+        const targetImage = upgradeUpsells[0]?.targetItem?.image_url
+        const sourceImage = item.image_url
 
-            const { data: role } = await supabase
-                .from('app_users')
-                .select('role, tenant_id')
-                .eq('user_id', user.id)
-                .maybeSingle()
-
-            if (isCancelled) return
-
-            const userRole = role as { role: string; tenant_id: string | null } | null
-            const allowed = !!userRole && (
-                userRole.role === 'superadmin' ||
-                (userRole.role === 'admin' && userRole.tenant_id === tenant.id)
-            )
-            setIsBrandAdmin(allowed)
+        for (const url of [sourceImage, targetImage]) {
+            if (!url) continue
+            // Match the transform the OptimizedImage component will use: fill mode, sizes="96px" → 96px * 2 = 192px
+            if (isCloudinaryUrl(url)) {
+                const transformed = transformCloudinaryUrl(url, {
+                    width: 192,
+                    height: 192,
+                    quality: 'auto',
+                    crop: 'fill',
+                })
+                if (transformed) imageUrls.push(transformed)
+            } else {
+                imageUrls.push(url)
+            }
         }
 
-        checkAdminRole()
-        return () => { isCancelled = true }
-    }, [supabase, tenant.id])
-
-    // Initialize/reset default selections when item changes
-    useEffect(() => {
-        // Reset legacy variations
-        if (item.variations && item.variations.length > 0) {
-            const defaultVar = item.variations.find((v) => v.is_default) || item.variations[0]
-            setSelectedVariation(defaultVar)
-        } else {
-            setSelectedVariation(undefined)
+        for (const src of imageUrls) {
+            const img = new window.Image()
+            img.src = src
         }
-
-        // Reset new variation types
-        if (item.variation_types && item.variation_types.length > 0) {
-            const defaults: { [typeId: string]: VariationOption } = {}
-            item.variation_types.forEach(type => {
-                if (type.options.length > 0) {
-                    const defaultOption = type.options.find(opt => opt.is_default) || type.options[0]
-                    defaults[type.id] = defaultOption
-                }
-            })
-            setSelectedVariations(defaults)
-        } else {
-            setSelectedVariations({})
-        }
-
-        // Reset addons and quantity when product changes
-        setSelectedAddons([])
-        setQuantity(1)
-    }, [item.id, item.variations, item.variation_types])
+    }, [menuEngineeringEnabled, upgradeUpsells, item.image_url])
 
     useEffect(() => {
         if (process.env.NODE_ENV !== 'test') {
@@ -397,39 +441,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         main.scrollLeft = 0
     }, [item.id])
 
-    // Memoized boolean flags and computed values
-    const hasDiscount = useMemo(() =>
-        item.discounted_price && item.discounted_price < item.price,
-        [item.discounted_price, item.price]
-    )
-
-    const basePrice = useMemo(() =>
-        hasDiscount ? item.discounted_price! : item.price,
-        [hasDiscount, item.discounted_price, item.price]
-    )
-
-    const hasVariations = useMemo(() => item.variations.length > 0, [item.variations.length])
-    const hasVariationTypes = useMemo(() =>
-        item.variation_types && item.variation_types.length > 0,
-        [item.variation_types]
-    )
-    // Merge item add-ons with category default add-ons (item-level wins on name conflict)
-    const mergedAddons = useMemo(() => {
-        const categoryAddons = category?.default_addons || []
-        if (categoryAddons.length === 0) return item.addons
-
-        const itemAddonNames = new Set(item.addons.map(a => a.name.toLowerCase()))
-        const uniqueCategoryAddons = categoryAddons.filter(
-            a => !itemAddonNames.has(a.name.toLowerCase())
-        )
-        return [...item.addons, ...uniqueCategoryAddons]
-    }, [item.addons, category?.default_addons])
-
-    const hasAddons = useMemo(() => mergedAddons.length > 0, [mergedAddons.length])
-    const hasCustomizations = useMemo(() =>
-        hasVariations || hasVariationTypes || hasAddons,
-        [hasVariations, hasVariationTypes, hasAddons]
-    )
     const hasImage = useMemo(() =>
         item.image_url && item.image_url.trim() !== '',
         [item.image_url]
@@ -458,14 +469,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         return tags
     }, [item.name, item.description])
 
-    // Calculate total price based on which variation system is used
-    const totalPrice = useMemo(() =>
-        useNewVariations
-            ? calculateCartItemSubtotal(basePrice, selectedVariations, selectedAddons, quantity)
-            : calculateCartItemSubtotal(basePrice, selectedVariation, selectedAddons, quantity),
-        [useNewVariations, basePrice, selectedVariations, selectedVariation, selectedAddons, quantity]
-    )
-
     // Memoized event handlers
     const handleGoBack = useCallback(() => {
         router.back()
@@ -478,16 +481,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const handleGoMenu = useCallback(() => {
         router.push(`/${tenant.slug}/menu`)
     }, [router, tenant.slug])
-
-    const handleOpenImageModal = useCallback(() => {
-        setIsImageModalOpen(true)
-    }, [])
-
-    const handleCloseImageModal = useCallback((open: boolean) => {
-        setIsImageModalOpen(open)
-    }, [])
-
-
 
     // Generate selected summary text - memoized
     const getSelectedSummary = useMemo(() => {
@@ -531,48 +524,41 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
 
         if (!skipNavigation) {
-            if (menuEngineeringEnabled && upgradeUpsells.length > 0) {
-                // Show upgrade modal FIRST — don't add to cart yet
-                setIsUpgradeModalOpen(true)
+            if (menuEngineeringEnabled && complementaryUpsells.length > 0) {
+                // Add to cart, then show pair suggestion sheet
+                addCurrentItemToCart()
+                setIsPairSheetOpen(true)
                 return
             }
-            if (menuEngineeringEnabled && complementaryUpsells.length > 0) {
-                // Add to cart, then show complementary suggestions
-                addCurrentItemToCart()
-                setIsUpsellModalOpen(true)
-                return
+            // Check for bundle upsell
+            if (bundlesEnabled && upsellBundles.length > 0) {
+                const matchingBundle = upsellBundles.find(b =>
+                    b.items?.some(bi => bi.menu_item_id === item.id)
+                )
+                if (matchingBundle) {
+                    addCurrentItemToCart()
+                    setBundleUpsell(matchingBundle)
+                    return
+                }
             }
         }
 
-        // Default: add to cart and navigate back
+        // Default: add to cart and navigate
         addCurrentItemToCart()
         if (!skipNavigation) {
-            router.back()
+            if (buyNowIntentRef.current) {
+                buyNowIntentRef.current = false
+                router.push(`/${tenant.slug}/cart`)
+            } else {
+                router.back()
+            }
         }
-    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, upgradeUpsells, complementaryUpsells])
+    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, complementaryUpsells, bundlesEnabled, upsellBundles, tenant.slug, buyNowIntentRef, setBundleUpsell, setIsPairSheetOpen])
 
     const handleBuyNow = useCallback(() => {
-        handleAddToCart(true) // Skip navigation back, we'll go to checkout instead
-        router.push(`/${tenant.slug}/checkout`)
-    }, [handleAddToCart, router, tenant.slug])
-
-    const handleDecreaseQuantity = useCallback(() => {
-        setQuantity(prev => Math.max(1, prev - 1))
-    }, [])
-
-    const handleIncreaseQuantity = useCallback(() => {
-        setQuantity(prev => Math.min(prev + 1, 99))
-    }, [])
-
-    const toggleAddon = useCallback((addon: Addon) => {
-        setSelectedAddons((prev) => {
-            const exists = prev.find((a) => a.id === addon.id)
-            if (exists) {
-                return prev.filter((a) => a.id !== addon.id)
-            }
-            return [...prev, addon]
-        })
-    }, [])
+        buyNowIntentRef.current = true
+        handleAddToCart(false) // Go through full upsell flow; navigateAfterUpsells handles checkout redirect
+    }, [handleAddToCart, buyNowIntentRef])
 
     const handleShare = useCallback(async () => {
         try {
@@ -583,56 +569,10 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
     }, [])
 
-    const handleTogglePopupPreview = useCallback(() => {
-        setIsPopupPreviewOpen(prev => !prev)
-    }, [])
-
-    const handleToggleCheckoutPreview = useCallback(() => {
-        setIsCheckoutPreviewOpen(prev => !prev)
-    }, [])
-
-    const handleUpgradeClose = useCallback(() => {
-        setIsUpgradeModalOpen(false)
-        // User declined upgrade — add the original item to cart now
-        addCurrentItemToCart()
-        // Then check for complementary suggestions
-        if (menuEngineeringEnabled && complementaryUpsells.length > 0) {
-            setIsUpsellModalOpen(true)
-        } else {
-            router.back()
-        }
-    }, [addCurrentItemToCart, router, menuEngineeringEnabled, complementaryUpsells])
-
-    const handleUpgrade = useCallback((upgradeItem: MenuItem) => {
-        // Original was never added — just add the upgrade item
-        addItem(upgradeItem, undefined, [], quantity, undefined, 'upgrade', item.id)
-        toast.success(`Upgraded to ${upgradeItem.name}`)
-        setIsUpgradeModalOpen(false)
-        // After upgrade, check for complementary suggestions
-        if (menuEngineeringEnabled && complementaryUpsells.length > 0) {
-            setIsUpsellModalOpen(true)
-        } else {
-            router.back()
-        }
-    }, [addItem, quantity, router, menuEngineeringEnabled, complementaryUpsells, item.id])
-
-    const handleUpsellClose = useCallback(() => {
-        setIsUpsellModalOpen(false)
-        router.back()
-    }, [router])
-
     const handleUpsellAddItem = useCallback((upsellItem: MenuItem) => {
         addItem(upsellItem, undefined, [], 1, undefined, 'suggestion', item.id)
         toast.success(`Added ${upsellItem.name} to cart`)
     }, [addItem, item.id])
-
-    const handleVariationTypeSelect = useCallback((typeId: string, option: VariationOption) => {
-        setSelectedVariations(prev => ({ ...prev, [typeId]: option }))
-    }, [])
-
-    const handleLegacyVariationSelect = useCallback((variation: Variation) => {
-        setSelectedVariation(variation)
-    }, [])
 
     return (
         <div
@@ -673,7 +613,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             {/* Main Content - Scrollable */}
             <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
                 {/* Product Image - Hero */}
-                <div className="relative w-full h-[50vh]" style={{ backgroundColor: 'var(--pd-image-background)' }}>
+                <div
+                    className="relative w-full h-[50vh]"
+                    style={{
+                        backgroundColor: 'var(--pd-image-background)',
+                        ...(hasImage && item.image_url && isCloudinaryUrl(item.image_url) ? {
+                            backgroundImage: `url(${transformCloudinaryUrl(item.image_url, { width: 40, quality: 1, crop: 'limit' }) || ''})`,
+                            backgroundSize: 'contain',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                        } : {}),
+                    }}
+                >
                     <AdminEditPencil
                         visible={isBrandAdmin}
                         onClick={() => openBrandingEditor('image')}
@@ -690,7 +641,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 alt={item.name}
                                 fill
                                 className="object-contain"
-                                sizes="100vw"
+                                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 800px"
                                 priority
                             />
                         </button>
@@ -803,71 +754,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     )}
 
                     {/* Variation Types (New System) */}
-                    <AnimatePresence>
-                        {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
-                            const selectedOption = selectedVariations[variationType.id]
+                    {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
+                        const selectedOption = selectedVariations[variationType.id]
 
-                            return (
-                                <motion.div
-                                    key={variationType.id}
-                                    className="mb-6"
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <div className="flex items-center justify-between gap-2 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <h3
-                                                className="text-base font-semibold"
-                                                style={{
-                                                    color: 'var(--pd-variation-title)',
-                                                    fontSize: 'var(--pd-variation-title-font-size)'
-                                                }}
-                                            >
-                                                {variationType.name}
-                                            </h3>
-                                            <span
-                                                className="text-xs font-medium px-2 py-0.5 rounded"
-                                                style={{ color: 'var(--pd-variation-required)' }}
-                                            >
-                                                {variationType.is_required ? themeColors.variationRequiredText : themeColors.variationOptionalText}
-                                            </span>
-                                        </div>
-                                        <AdminEditPencil
-                                            visible={isBrandAdmin}
-                                            onClick={() => openBrandingEditor('variations')}
-                                            label="Edit variation selector branding"
-                                        />
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-2">
-                                        <AnimatePresence mode="popLayout">
-                                            {variationType.options.map((option) => (
-                                                <VariationOptionButton
-                                                    key={option.id}
-                                                    option={option}
-                                                    isSelected={selectedOption?.id === option.id}
-                                                    onSelect={() => handleVariationTypeSelect(variationType.id, option)}
-                                                    dynamicStyles={dynamicStyles}
-                                                    showUpgradeNudge={menuEngineeringEnabled}
-                                                    currentPriceModifier={selectedOption?.price_modifier ?? 0}
-                                                />
-                                            ))}
-                                        </AnimatePresence>
-                                    </div>
-                                </motion.div>
-                            )
-                        })}
-                    </AnimatePresence>
-
-                    {/* Legacy Variations */}
-                    <AnimatePresence>
-                        {!useNewVariations && hasVariations && (
-                            <motion.div
+                        return (
+                            <div
+                                key={variationType.id}
                                 className="mb-6"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.3 }}
                             >
                                 <div className="flex items-center justify-between gap-2 mb-3">
                                     <div className="flex items-center gap-2">
@@ -878,13 +771,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                                 fontSize: 'var(--pd-variation-title-font-size)'
                                             }}
                                         >
-                                            Choose Size
+                                            {variationType.name}
                                         </h3>
                                         <span
                                             className="text-xs font-medium px-2 py-0.5 rounded"
                                             style={{ color: 'var(--pd-variation-required)' }}
                                         >
-                                            {themeColors.variationRequiredText}
+                                            {variationType.is_required ? themeColors.variationRequiredText : themeColors.variationOptionalText}
                                         </span>
                                     </div>
                                     <AdminEditPencil
@@ -895,72 +788,114 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
-                                    <AnimatePresence mode="popLayout">
-                                        {item.variations.map((variation) => (
-                                            <LegacyVariationButton
-                                                key={variation.id}
-                                                variation={variation}
-                                                isSelected={selectedVariation?.id === variation.id}
-                                                onSelect={() => handleLegacyVariationSelect(variation)}
-                                                dynamicStyles={dynamicStyles}
-                                            />
-                                        ))}
-                                    </AnimatePresence>
+                                    {variationType.options.map((option) => (
+                                        <VariationOptionButton
+                                            key={option.id}
+                                            option={option}
+                                            isSelected={selectedOption?.id === option.id}
+                                            onSelect={() => handleVariationTypeSelect(variationType.id, option)}
+                                            dynamicStyles={dynamicStyles}
+                                            showUpgradeNudge={menuEngineeringEnabled}
+                                            currentPriceModifier={selectedOption?.price_modifier ?? 0}
+                                        />
+                                    ))}
                                 </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                            </div>
+                        )
+                    })}
 
-                    {/* Add-ons */}
-                    <AnimatePresence>
-                        {hasAddons && (
-                            <motion.div
-                                className="mb-6"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.3 }}
-                            >
-                                <div className="flex items-center justify-between gap-2 mb-3">
+                    {/* Legacy Variations */}
+                    {!useNewVariations && hasVariations && (
+                        <div className="mb-6">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-2">
                                     <h3
                                         className="text-base font-semibold"
                                         style={{
-                                            color: 'var(--pd-addon-title)',
-                                            fontSize: 'var(--pd-addon-title-font-size)'
+                                            color: 'var(--pd-variation-title)',
+                                            fontSize: 'var(--pd-variation-title-font-size)'
                                         }}
                                     >
-                                        Add-ons <span style={{ color: 'var(--pd-text-muted)' }} className="font-normal text-xs">{themeColors.addonOptionalText}</span>
+                                        Choose Size
                                     </h3>
-                                    <AdminEditPencil
-                                        visible={isBrandAdmin}
-                                        onClick={() => openBrandingEditor('addons')}
-                                        label="Edit add-ons branding"
+                                    <span
+                                        className="text-xs font-medium px-2 py-0.5 rounded"
+                                        style={{ color: 'var(--pd-variation-required)' }}
+                                    >
+                                        {themeColors.variationRequiredText}
+                                    </span>
+                                </div>
+                                <AdminEditPencil
+                                    visible={isBrandAdmin}
+                                    onClick={() => openBrandingEditor('variations')}
+                                    label="Edit variation selector branding"
+                                />
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                {item.variations.map((variation) => (
+                                    <LegacyVariationButton
+                                        key={variation.id}
+                                        variation={variation}
+                                        isSelected={selectedVariation?.id === variation.id}
+                                        onSelect={() => handleLegacyVariationSelect(variation)}
+                                        dynamicStyles={dynamicStyles}
                                     />
-                                </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                                <div className="space-y-2">
-                                    <AnimatePresence>
-                                        {mergedAddons.map((addon) => (
-                                            <AddonButton
-                                                key={addon.id}
-                                                addon={addon}
-                                                isSelected={selectedAddons.some((a) => a.id === addon.id)}
-                                                onToggle={() => toggleAddon(addon)}
-                                                dynamicStyles={dynamicStyles}
-                                                freeText={themeColors.addonPriceFreeText}
-                                            />
-                                        ))}
-                                    </AnimatePresence>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                    {/* Add-ons */}
+                    {hasAddons && (
+                        <div className="mb-6">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                                <h3
+                                    className="text-base font-semibold"
+                                    style={{
+                                        color: 'var(--pd-addon-title)',
+                                        fontSize: 'var(--pd-addon-title-font-size)'
+                                    }}
+                                >
+                                    Add-ons <span style={{ color: 'var(--pd-text-muted)' }} className="font-normal text-xs">{themeColors.addonOptionalText}</span>
+                                </h3>
+                                <AdminEditPencil
+                                    visible={isBrandAdmin}
+                                    onClick={() => openBrandingEditor('addons')}
+                                    label="Edit add-ons branding"
+                                />
+                            </div>
 
+                            <div className="space-y-2">
+                                {mergedAddons.map((addon) => (
+                                    <AddonButton
+                                        key={addon.id}
+                                        addon={addon}
+                                        isSelected={selectedAddons.some((a) => a.id === addon.id)}
+                                        onToggle={() => toggleAddon(addon)}
+                                        dynamicStyles={dynamicStyles}
+                                        freeText={themeColors.addonPriceFreeText}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Inline Upgrade Section (McDonald's kiosk style) */}
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
-                        <LazyRelatedItemsSection
-                            relatedItems={relatedItems}
-                            tenantSlug={tenant.slug}
-                        />
+                        <div className="relative">
+                            <AdminEditPencil
+                                visible={isBrandAdmin}
+                                onClick={() => openBrandingEditor('related_items')}
+                                label="Edit related items branding"
+                                className="absolute right-0 top-10 z-10"
+                            />
+                            <LazyRelatedItemsSection
+                                relatedItems={relatedItems}
+                                tenantSlug={tenant.slug}
+                            />
+                        </div>
                     )}
                 </div>
             </main>
@@ -973,19 +908,55 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 itemName={item.name}
             />
 
-            {/* Upgrade Upsell Modal (kiosk-style comparison) */}
-            {menuEngineeringEnabled && upgradeUpsells.length > 0 && (
-                <UpgradeUpsellModal
-                    open={isUpgradeModalOpen}
-                    onClose={handleUpgradeClose}
-                    onUpgrade={handleUpgrade}
+            {/* Full-screen "Make it a Meal?" upgrade screen */}
+            {menuEngineeringEnabled && (upgradeUpsells.length > 0 || upsellBundles.length > 0) && (
+                <InlineUpgradeSection
+                    open={isUpgradeScreenOpen}
                     sourceItem={item}
-                    upgrade={upgradeUpsells[0]}
+                    upgrades={upgradeUpsells}
+                    bundles={upsellBundles}
+                    onSelectUpgrade={(upgrade) => {
+                        setIsUpgradeScreenOpen(false)
+                        setUpgradeDismissed(true)
+                        router.replace(`/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`)
+                    }}
+                    onSelectBundle={(bundle) => {
+                        setIsUpgradeScreenOpen(false)
+                        setUpgradeDismissed(true)
+                        setBundleForCustomization(bundle)
+                    }}
+                    onDismiss={() => {
+                        setIsUpgradeScreenOpen(false)
+                        setUpgradeDismissed(true)
+                    }}
+                    hideCurrencySymbol={hideCurrencySymbol}
                     tenantId={tenant.id}
                 />
             )}
 
-            {/* Upsell Suggestion Modal */}
+            {/* Pair Suggestion Sheet (replaces UpsellSuggestionModal for pair upsells) */}
+            {menuEngineeringEnabled && complementaryUpsells.length > 0 && (
+                <PairSuggestionSheet
+                    open={isPairSheetOpen}
+                    onClose={() => {
+                        setIsPairSheetOpen(false)
+                        if (buyNowIntentRef.current) {
+                            buyNowIntentRef.current = false
+                            router.push(`/${tenant.slug}/cart`)
+                        } else {
+                            router.back()
+                        }
+                    }}
+                    onAddItem={handleUpsellAddItem}
+                    suggestions={complementaryUpsells}
+                    triggerItemName={item.name}
+                    tenantId={tenant.id}
+                    sourceItemId={item.id}
+                    hideCurrencySymbol={hideCurrencySymbol}
+                />
+            )}
+
+            {/* Legacy Upsell Suggestion Modal (kept as fallback for admin preview) */}
             {menuEngineeringEnabled && complementaryUpsells.length > 0 && (
                 <UpsellSuggestionModal
                     open={isUpsellModalOpen}
@@ -995,6 +966,46 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     triggerItemName={item.name}
                     tenantId={tenant.id}
                     sourceItemId={item.id}
+                />
+            )}
+
+            {/* Bundle Upsell Modal */}
+            {bundleUpsell && (
+                <BundleUpsellModal
+                    open={!!bundleUpsell}
+                    onClose={() => {
+                        setBundleUpsell(null)
+                        if (buyNowIntentRef.current) {
+                            buyNowIntentRef.current = false
+                            router.push(`/${tenant.slug}/cart`)
+                        }
+                    }}
+                    bundle={bundleUpsell}
+                    branding={branding}
+                    tenantId={tenant.id}
+                    sourceItemId={item.id}
+                    hideCurrencySymbol={hideCurrencySymbol}
+                    onAccept={(bundle) => {
+                        setBundleForCustomization(bundle)
+                        setBundleUpsell(null)
+                    }}
+                />
+            )}
+
+            {/* Bundle Customization Modal */}
+            {bundleForCustomization && (
+                <BundleCustomizationModal
+                    open={!!bundleForCustomization}
+                    onClose={() => {
+                        setBundleForCustomization(null)
+                        if (buyNowIntentRef.current) {
+                            buyNowIntentRef.current = false
+                            router.push(`/${tenant.slug}/cart`)
+                        }
+                    }}
+                    bundle={bundleForCustomization}
+                    branding={branding}
+                    hideCurrencySymbol={hideCurrencySymbol}
                 />
             )}
 
@@ -1168,7 +1179,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     tenant={tenant}
                     onPreview={setCustomizationDraft}
                     onSaved={() => {
-                        // No reload needed - server action revalidates cached pages automatically
+                        router.refresh()
                     }}
                     onTogglePopupPreview={handleTogglePopupPreview}
                     onToggleCheckoutPreview={handleToggleCheckoutPreview}
