@@ -51,6 +51,7 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
+  hero_design?: Record<string, unknown> | null;  // HeroDesign JSON from hero designer
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon' | 'storefront'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile

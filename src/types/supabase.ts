@@ -1186,6 +1186,7 @@ export type Database = {
           hero_description_color: string | null
           hero_title: string | null
           hero_title_color: string | null
+          hero_design: Record<string, unknown> | null
           hide_currency_symbol: boolean
           id: string
           ios_app_store_id: string | null
@@ -1294,6 +1295,7 @@ export type Database = {
           hero_description_color?: string | null
           hero_title?: string | null
           hero_title_color?: string | null
+          hero_design?: Record<string, unknown> | null
           hide_currency_symbol?: boolean
           id?: string
           ios_app_store_id?: string | null
@@ -1402,6 +1404,7 @@ export type Database = {
           hero_description_color?: string | null
           hero_title?: string | null
           hero_title_color?: string | null
+          hero_design?: Record<string, unknown> | null
           hide_currency_symbol?: boolean
           id?: string
           ios_app_store_id?: string | null
