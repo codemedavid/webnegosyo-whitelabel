@@ -15,6 +15,7 @@ import {
   CreditCard,
   TrendingUp,
   Package,
+  Paintbrush,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -158,6 +159,11 @@ export const adminSidebarItems: SidebarItem[] = [
     label: 'Bundles',
     href: '/admin/bundles',
     icon: Package,
+  },
+  {
+    label: 'Hero Designer',
+    href: '/admin/hero-designer',
+    icon: Paintbrush,
   },
   {
     label: 'Orders',
