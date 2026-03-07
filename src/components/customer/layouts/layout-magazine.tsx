@@ -6,6 +6,8 @@ import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
 import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
+import type { HeroDesign } from '@/types/hero-designer'
+import { HeroRenderer } from '@/components/customer/hero-renderer'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -98,43 +100,47 @@ export const LayoutMagazine = memo(function LayoutMagazine({
     return (
         <div className="max-w-5xl mx-auto">
             {/* Editorial Header */}
-            <div className="mb-16 text-center">
-                <p
-                    className="text-xs uppercase tracking-[0.3em] mb-4 font-medium"
-                    style={{ color: branding.primary }}
-                >
-                    {tenant?.name || 'Menu'}
-                </p>
-                <div className="inline-flex items-center gap-2 justify-center">
-                    <h1
-                        className="text-5xl md:text-7xl font-serif font-bold mb-6 leading-[1.1]"
-                        style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
+            {tenant?.hero_design ? (
+                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-16" />
+            ) : (
+                <div className="mb-16 text-center">
+                    <p
+                        className="text-xs uppercase tracking-[0.3em] mb-4 font-medium"
+                        style={{ color: branding.primary }}
                     >
-                        {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                    </h1>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('hero')}
-                            title="Edit hero section"
-                            aria-label="Edit hero section"
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                        {tenant?.name || 'Menu'}
+                    </p>
+                    <div className="inline-flex items-center gap-2 justify-center">
+                        <h1
+                            className="text-5xl md:text-7xl font-serif font-bold mb-6 leading-[1.1]"
+                            style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
                         >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
+                            {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                        </h1>
+                        {isBrandAdmin && onOpenBrandingSection && (
+                            <button
+                                type="button"
+                                onClick={() => onOpenBrandingSection('hero')}
+                                title="Edit hero section"
+                                aria-label="Edit hero section"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <div
+                        className="w-16 h-[2px] mx-auto mb-6"
+                        style={{ backgroundColor: branding.primary }}
+                    />
+                    <p
+                        className="text-lg font-light max-w-md mx-auto"
+                        style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
+                    >
+                        {heroOverride?.description || tenant?.hero_description || 'Handcrafted with care'}
+                    </p>
                 </div>
-                <div
-                    className="w-16 h-[2px] mx-auto mb-6"
-                    style={{ backgroundColor: branding.primary }}
-                />
-                <p
-                    className="text-lg font-light max-w-md mx-auto"
-                    style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
-                >
-                    {heroOverride?.description || tenant?.hero_description || 'Handcrafted with care'}
-                </p>
-            </div>
+            )}
 
             {/* Promotion Banners */}
             {showPromotionBanners && (

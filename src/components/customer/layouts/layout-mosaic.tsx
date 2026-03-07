@@ -6,6 +6,8 @@ import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
 import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
+import type { HeroDesign } from '@/types/hero-designer'
+import { HeroRenderer } from '@/components/customer/hero-renderer'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -86,33 +88,37 @@ export const LayoutMosaic = memo(function LayoutMosaic({
     return (
         <div>
             {/* Header */}
-            <div className="text-center mb-10">
-                <div className="inline-flex items-center gap-2 justify-center">
-                    <h1
-                        className="text-3xl md:text-5xl font-bold mb-3"
-                        style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
-                    >
-                        {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                    </h1>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('hero')}
-                            title="Edit hero section"
-                            aria-label="Edit hero section"
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+            {tenant?.hero_design ? (
+                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-10" />
+            ) : (
+                <div className="text-center mb-10">
+                    <div className="inline-flex items-center gap-2 justify-center">
+                        <h1
+                            className="text-3xl md:text-5xl font-bold mb-3"
+                            style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
                         >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
+                            {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                        </h1>
+                        {isBrandAdmin && onOpenBrandingSection && (
+                            <button
+                                type="button"
+                                onClick={() => onOpenBrandingSection('hero')}
+                                title="Edit hero section"
+                                aria-label="Edit hero section"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <p
+                        className="text-base font-light"
+                        style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
+                    >
+                        {heroOverride?.description || tenant?.hero_description || 'Explore our offerings'}
+                    </p>
                 </div>
-                <p
-                    className="text-base font-light"
-                    style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
-                >
-                    {heroOverride?.description || tenant?.hero_description || 'Explore our offerings'}
-                </p>
-            </div>
+            )}
 
             {/* Category Pills */}
             {categories.length > 0 && (

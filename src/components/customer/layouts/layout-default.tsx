@@ -9,6 +9,8 @@ import { CategoryTabs } from '../category-tabs'
 import { Pencil } from 'lucide-react'
 // CategorySubmenu not currently used in this layout
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
+import type { HeroDesign } from '@/types/hero-designer'
+import { HeroRenderer } from '@/components/customer/hero-renderer'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
@@ -79,33 +81,37 @@ export const LayoutDefault = memo(function LayoutDefault({
     return (
         <div>
             {/* Hero Section */}
-            <div className="text-center mb-16">
-                <div className="inline-flex items-center gap-2 justify-center">
-                    <h1
-                        className="text-5xl font-serif font-bold mb-4"
-                        style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
-                    >
-                        {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                    </h1>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('hero')}
-                            title="Edit hero section"
-                            aria-label="Edit hero section"
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+            {tenant?.hero_design ? (
+                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-16" />
+            ) : (
+                <div className="text-center mb-16">
+                    <div className="inline-flex items-center gap-2 justify-center">
+                        <h1
+                            className="text-5xl font-serif font-bold mb-4"
+                            style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
                         >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
+                            {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                        </h1>
+                        {isBrandAdmin && onOpenBrandingSection && (
+                            <button
+                                type="button"
+                                onClick={() => onOpenBrandingSection('hero')}
+                                title="Edit hero section"
+                                aria-label="Edit hero section"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <p
+                        className="text-lg font-light hidden md:block"
+                        style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
+                    >
+                        {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
+                    </p>
                 </div>
-                <p
-                    className="text-lg font-light hidden md:block"
-                    style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
-                >
-                    {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
-                </p>
-            </div>
+            )}
 
             {/* Promotion Banners Carousel */}
             {showPromotionBanners && (

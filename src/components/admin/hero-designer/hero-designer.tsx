@@ -13,6 +13,7 @@ import { LayersPanel } from '@/components/admin/hero-designer/layers-panel'
 import { DesignerCanvas } from '@/components/admin/hero-designer/designer-canvas'
 import { PropertiesPanel } from '@/components/admin/hero-designer/properties-panel'
 import { TemplatePicker } from '@/components/admin/hero-designer/template-picker'
+import { PreviewModal } from '@/components/admin/hero-designer/preview-modal'
 import type { HeroDesign, HeroElementType } from '@/types/hero-designer'
 
 // ---------------------------------------------------------------------------
@@ -383,23 +384,11 @@ export function HeroDesigner({
         onSelectTemplate={handleSelectTemplate}
       />
 
-      {/* Preview placeholder */}
-      {showPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-xl bg-white p-8 shadow-xl">
-            <p className="mb-4 text-lg font-semibold">Preview Mode</p>
-            <p className="mb-4 text-sm text-muted-foreground">
-              Full preview coming soon.
-            </p>
-            <button
-              onClick={() => setShowPreview(false)}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      <PreviewModal
+        design={state.design}
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
     </DndContext>
   )
 }
