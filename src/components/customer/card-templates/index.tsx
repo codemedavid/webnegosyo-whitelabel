@@ -68,6 +68,10 @@ const NeonCard = dynamic(
   () => import('./neon-card').then((m) => ({ default: m.NeonCard })),
   { loading: CardSkeleton }
 )
+const StorefrontCard = dynamic(
+  () => import('./storefront-card').then((m) => ({ default: m.StorefrontCard })),
+  { loading: CardSkeleton }
+)
 
 interface CardTemplateProps {
   item: MenuItem
@@ -104,6 +108,8 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
       return ZenCard
     case 'neon':
       return NeonCard
+    case 'storefront':
+      return StorefrontCard
     case 'classic':
     default:
       return ClassicCard

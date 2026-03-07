@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
-import { Audio } from "expo-av";
+import { useAudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -11,22 +11,8 @@ interface OrderAlertOptions {
   enabled?: boolean;
 }
 
-async function playRingtone() {
-  try {
-    const { sound } = await Audio.Sound.createAsync(ringtoneSource);
-    await sound.playAsync();
-    // Unload after playback finishes
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if ("didJustFinish" in status && status.didJustFinish) {
-        sound.unloadAsync().catch(() => {});
-      }
-    });
-  } catch {
-    // Fallback: silently fail if audio can't play
-  }
-}
-
 export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
+  const player = useAudioPlayer(ringtoneSource);
   const prevIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -48,7 +34,12 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
       const body = `${latest.customerName} — ₱${latest.total.toFixed(2)} (${latest.itemCount} item${latest.itemCount !== 1 ? "s" : ""})`;
 
       // Play custom ringtone sound in-app
-      playRingtone();
+      try {
+        player.seekTo(0);
+        player.play();
+      } catch {
+        // Silently fail if audio can't play
+      }
 
       // Schedule local push notification (visible in notification tray / when app is backgrounded)
       Notifications.scheduleNotificationAsync({
@@ -65,5 +56,5 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
     }
 
     prevIdsRef.current = currentIds;
-  }, [orders, enabled]);
+  }, [orders, enabled, player]);
 }

@@ -1,0 +1,60 @@
+WebNegosyo — March 2026 Update
+================================
+
+BIG THINGS JUST DROPPED.
+
+Here's everything new on the platform:
+
+
+SMART UPSELL SYSTEM
+--------------------
+Your menu now sells for you.
+
+- "Make it a Meal?" — McDonald's-style upgrade prompts right on the product page. Ala carte vs meal, side by side. One tap to upgrade.
+- "Perfect with..." — After adding to cart, customers see smart pairing suggestions. Fries with that burger. Drinks with that combo. Automatic.
+- "Before you go..." — A last-chance screen before checkout showing items they might have missed. More items per order. Higher ticket size.
+
+All powered by BCG menu engineering. The system knows your stars, your plowhorses, and pushes the right items at the right time.
+
+
+BUNDLES
+--------
+Create meal deals and combos. Fixed price or percentage discount. Customers see them front and center on your menu with savings badges. When someone adds a single item that belongs to a bundle — they get prompted to grab the full deal instead.
+
+
+BRANDING EDITOR — FIXED & IMPROVED
+------------------------------------
+We heard you. The branding editor now works properly. Colors apply correctly across all 12 card templates. Your store looks exactly how you want it.
+
+
+EMAIL ORDER NOTIFICATIONS
+--------------------------
+Get order notifications straight to your email. No more missed orders. Set it up once in your admin settings, done.
+
+
+MERCHANT ADMIN APP — NEW ANALYTICS
+------------------------------------
+Your admin app now has:
+- Advanced sales analytics — upsell performance, bundle stats
+- Revenue trend charts — see where your money's going
+- Growth indicators and heatmaps — spot your peak hours
+
+Real data. Real insights. In your pocket.
+
+
+SMOOTHER ANIMATIONS
+--------------------
+Every upsell screen, every modal, every transition — now has smooth slide-up animations and image preloading. No more janky popups. It feels premium.
+
+
+BETTER ORDER MESSAGES
+----------------------
+Order messages sent to Messenger are now properly formatted. Clean, readable, no more messy text blocks.
+
+
+---
+
+This is the biggest platform update yet.
+Your menu. Smarter. Your sales. Higher. Your brand. Yours.
+
+— WebNegosyo Team

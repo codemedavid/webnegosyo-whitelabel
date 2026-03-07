@@ -17,6 +17,7 @@ export type CardTemplate =
   | 'magazine'     // Editorial full-bleed image overlay
   | 'zen'          // Ultra-minimal borderless design
   | 'neon'         // Dark card with neon glow accents
+  | 'storefront'   // Square catalog image with floating add button
 
 export interface CardTemplateDefinition {
   id: CardTemplate
@@ -173,6 +174,18 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
       'Vibrant accents',
       'Cyberpunk feel'
     ]
+  },
+  {
+    id: 'storefront',
+    name: 'Storefront',
+    description: 'Square product showcase with a floating add button',
+    preview: '🛍️',
+    features: [
+      'Square full-bleed image',
+      'Floating white add button',
+      'Name + price only',
+      'Marketplace-style layout'
+    ]
   }
 ]
 
@@ -187,4 +200,3 @@ export function getTemplateById(id: CardTemplate): CardTemplateDefinition {
  * Default template
  */
 export const DEFAULT_CARD_TEMPLATE: CardTemplate = 'classic'
-

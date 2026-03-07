@@ -137,7 +137,7 @@ function SocialProofBadges() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.1 }}
-      className="flex flex-wrap items-center justify-center gap-3 md:gap-4"
+      className="flex flex-wrap items-center justify-center md:justify-start gap-3 md:gap-4"
     >
       {SOCIAL_PROOF.map((badge) => {
         const Icon = badge.icon
@@ -283,20 +283,20 @@ function HeroSection() {
           className="absolute -bottom-[30%] -left-[20%] h-[60%] w-[50%] rounded-full opacity-[0.05] blur-[100px]"
           style={{ backgroundColor: '#3B82F6' }}
         />
-        {/* Grid pattern overlay */}
+        {/* Grid pattern overlay — very subtle */}
         <div
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.015]"
           style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-            backgroundSize: '60px 60px',
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)`,
+            backgroundSize: '80px 80px',
           }}
         />
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8 py-20 md:py-28 lg:py-32">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
           {/* Left: Copy */}
-          <div className="text-center lg:text-left">
+          <div className="text-center md:text-left">
             {/* Social proof badges */}
             <div className="mb-8 lg:mb-10">
               <SocialProofBadges />
@@ -307,13 +307,10 @@ function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.05] tracking-tight"
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] tracking-tight"
             >
-              Your Menu
-              <br />
-              Should Be Your
-              <br />
-              <span className="relative">
+              Your Menu Should Be Your{' '}
+              <span className="relative inline-block">
                 <span
                   className="bg-clip-text text-transparent"
                   style={{
@@ -340,7 +337,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.35 }}
-              className="mt-6 md:mt-8 text-xl md:text-2xl text-gray-300 leading-relaxed max-w-xl mx-auto lg:mx-0"
+              className="mt-6 md:mt-8 text-xl md:text-2xl text-gray-300 leading-relaxed max-w-xl mx-auto md:mx-0"
             >
               Karamihan sa food businesses, nag-iiwan ng pera sa mesa sa bawat order.{' '}
               <span className="text-white font-medium">We fix that.</span>
@@ -351,7 +348,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="mt-10 md:mt-12 flex flex-col sm:flex-row items-center gap-4 lg:justify-start justify-center"
+              className="mt-10 md:mt-12 flex flex-col sm:flex-row items-center gap-4 md:justify-start justify-center"
             >
               <a
                 href={MESSENGER_LINK}
@@ -379,14 +376,9 @@ function HeroSection() {
           </div>
 
           {/* Right: Phone Mockup */}
-          <div className="hidden lg:flex items-center justify-center">
+          <div className="flex items-center justify-center">
             <PhoneMockup />
           </div>
-        </div>
-
-        {/* Mobile phone mockup (below content on small screens) */}
-        <div className="lg:hidden mt-16 flex justify-center">
-          <PhoneMockup />
         </div>
       </div>
     </section>

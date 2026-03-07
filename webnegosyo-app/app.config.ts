@@ -36,6 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         sounds: ["./assets/ringtone.mp3"],
       },
     ],
+    "expo-audio",
   ],
   experiments: {
     typedRoutes: true,

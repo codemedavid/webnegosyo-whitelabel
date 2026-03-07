@@ -20,7 +20,7 @@ export async function getMenuData(tenantSlug: string) {
       checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
       checkout_modal_background_color, checkout_modal_title_color, checkout_modal_description_color,
       checkout_modal_price_color, checkout_modal_button_color, checkout_modal_button_text_color, checkout_modal_border_color,
-      card_template, page_layout,
+      card_template, page_layout, mobile_page_layout, mobile_card_template,
       hero_title, hero_description, hero_title_color, hero_description_color,
       announcement_text, announcement_bg_color, announcement_text_color, is_announcement_visible,
       promotion_image_url,
