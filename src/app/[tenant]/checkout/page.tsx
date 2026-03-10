@@ -787,9 +787,11 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              <p className="text-xs text-gray-400 text-center">
-                Tap to confirm your order with the restaurant
-              </p>
+              {completedOrderData.messengerUrl && (
+                <p className="text-xs text-gray-400 text-center">
+                  Tap to confirm your order with the restaurant
+                </p>
+              )}
             </div>
 
             {/* Order Message Box (collapsible) */}
