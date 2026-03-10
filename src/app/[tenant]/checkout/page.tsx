@@ -218,9 +218,14 @@ export default function CheckoutPage() {
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
-  // Auto-expand order message section when Messenger is not configured
+  // Auto-open Messenger in new tab when checkout completes, and auto-expand message if no URL
   useEffect(() => {
-    if (checkoutComplete && !completedOrderData?.messengerUrl) {
+    if (!checkoutComplete) return
+    if (completedOrderData?.messengerUrl) {
+      // Open Messenger in a new tab automatically — confirmation screen stays on current tab
+      window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
+    } else {
+      // No Messenger URL — expand the order message so user can copy it
       setMessageExpanded(true)
     }
   }, [checkoutComplete, completedOrderData?.messengerUrl])
@@ -746,27 +751,20 @@ export default function CheckoutPage() {
             )}
 
             {/* Messenger Action Section */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100 space-y-4">
+            <div className="space-y-3">
               {completedOrderData.messengerUrl ? (
-                <a
-                  href={completedOrderData.messengerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full transition-colors text-base"
+                <Button
+                  size="lg"
+                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+                  onClick={() => window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')}
                 >
                   <ExternalLink className="mr-2 h-5 w-5" />
                   Go to Messenger
-                </a>
+                </Button>
               ) : (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   Copy the order message below and send it to the restaurant via Messenger or any chat app.
                 </div>
-              )}
-
-              {completedOrderData.messengerUrl && (
-                <p className="text-xs text-gray-400 text-center">
-                  Tap to confirm your order with the restaurant
-                </p>
               )}
             </div>
 
