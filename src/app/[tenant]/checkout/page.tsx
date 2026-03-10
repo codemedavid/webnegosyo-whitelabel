@@ -459,12 +459,40 @@ export default function CheckoutPage() {
         }
       }
 
-      // Get Facebook page ID for redirect
-      // First try to get from connected Facebook page, fallback to legacy messenger_page_id
+      // ── PHASE 2: Generate order message ──────────────────────────────────
+      // Do this before showing confirmation so the message is ready for copy-paste
+
+      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      const orderTypeInfo = selectedOrderType ? {
+        name: selectedOrderType.name,
+        type: selectedOrderType.type,
+      } : null
+
+      const selectedPaymentForMessage = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
+      const paymentMethodInfo = selectedPaymentForMessage ? {
+        name: selectedPaymentForMessage.name,
+        details: selectedPaymentForMessage.details || undefined,
+      } : null
+
+      const formFieldsMeta = formFields.map(field => ({
+        field_name: field.field_name,
+        field_label: field.field_label,
+      }))
+
+      const message = generateMessengerMessage(
+        items,
+        tenant.name,
+        orderTypeInfo,
+        customerData,
+        paymentMethodInfo,
+        formFieldsMeta,
+        serviceChargeAmount || undefined
+      )
+
+      // ── PHASE 3: Resolve Messenger URL (best-effort, never blocks confirmation) ──
       let pageId: string | null = null
 
       if (tenant.facebook_page_id) {
-        // Fetch connected Facebook page
         try {
           const { createClient } = await import('@/lib/supabase/client')
           const supabase = createClient()
@@ -477,150 +505,44 @@ export default function CheckoutPage() {
 
           if (!pageError && facebookPage) {
             const page = facebookPage as { page_id: string }
-            if (page.page_id) {
-              pageId = page.page_id
-            }
+            if (page.page_id) pageId = page.page_id
           }
         } catch (error) {
           console.error('Error fetching Facebook page:', error)
         }
       }
 
-      // Fallback to legacy messenger_page_id or messenger_username
       if (!pageId) {
         pageId = tenant.messenger_username || tenant.messenger_page_id || null
       }
 
-      if (!pageId || pageId.trim() === '') {
-        toast.error('Messenger is not configured for this restaurant. Please contact support.')
-        setIsProcessing(false)
-        return
-      }
-
-      // Always generate message first (needed for both ref+text combined URL and text-only fallback)
-      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-      const orderTypeInfo = selectedOrderType ? {
-        name: selectedOrderType.name,
-        type: selectedOrderType.type,
-      } : null
-
-      // Get payment method info for message
-      const selectedPaymentForMessage = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-      const paymentMethodInfo = selectedPaymentForMessage ? {
-        name: selectedPaymentForMessage.name,
-        details: selectedPaymentForMessage.details || undefined,
-      } : null
-
-      // Prepare form fields metadata for message (to display proper labels)
-      const formFieldsMeta = formFields.map(field => ({
-        field_name: field.field_name,
-        field_label: field.field_label,
-      }))
-
-      // Generate message (always needed, even for ref-based URLs)
-      // Pass all customerData and formFields so all custom fields appear with proper labels
-      const message = generateMessengerMessage(
-        items,
-        tenant.name,
-        orderTypeInfo,
-        customerData, // Pass all customer data, not just hardcoded fields
-        paymentMethodInfo,
-        formFieldsMeta, // Include field metadata for proper labels
-        serviceChargeAmount || undefined
-      )
-
-      // Determine if Facebook page is connected (for ref-based messaging)
-      // If connected, use combined URL with both ref and text (webhook + pre-filled message)
-      // If not connected, use text-based URL (pre-filled message only)
-      // A page is "connected" if we got pageId from facebook_pages table (not from legacy fields)
       const isFacebookPageConnected = tenant.facebook_page_id !== null &&
         tenant.facebook_page_id !== undefined &&
         pageId !== null &&
-        // Verify pageId came from facebook_pages table, not legacy fields
         (pageId !== tenant.messenger_username && pageId !== tenant.messenger_page_id)
+
+      const useDirectMode = tenant.messenger_redirect_mode === 'direct'
 
       let messengerUrl: string | null = null
 
-      // Check if admin has explicitly set direct mode
-      const useDirectMode = tenant.messenger_redirect_mode === 'direct'
-
-      if (useDirectMode) {
-        // Direct mode: use messenger.com/t/ URL with pre-filled message
-        // This opens Messenger directly without webhook/ref tracking
-        console.log('[Checkout] Using direct mode (messenger.com/t/)')
-        messengerUrl = generateMessengerDirectUrl(pageId)
-      } else if (isFacebookPageConnected) {
-        // Webhook mode with Facebook page: use combined ref+text URL
-        // This ensures:
-        // - Existing users (with PSID): Webhook can send message via ref, user also sees pre-filled text
-        // - New users (no PSID): User sees pre-filled text message, ref helps track when they first message
-        const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
-
-        if (orderId) {
-          // Use combined URL with both ref and text
-          messengerUrl = generateMessengerCombinedUrl(pageId, orderId, message)
+      if (pageId && pageId.trim() !== '') {
+        if (useDirectMode) {
+          messengerUrl = generateMessengerDirectUrl(pageId)
+        } else if (isFacebookPageConnected) {
+          const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
+          messengerUrl = orderId
+            ? generateMessengerCombinedUrl(pageId, orderId, message)
+            : generateMessengerUrl(pageId, message)
         } else {
-          // If order wasn't created, fallback to text-only
-          console.warn('Order ID not available, falling back to text-only Messenger URL')
           messengerUrl = generateMessengerUrl(pageId, message)
         }
-      } else {
-        // Webhook mode without Facebook page connected: use text-only URL
-        messengerUrl = generateMessengerUrl(pageId, message)
       }
+      // If messengerUrl is still null, that's OK — confirmation screen handles it gracefully
 
-      // Validate URL generation
-      if (!messengerUrl || messengerUrl.trim() === '') {
-        console.error('[Checkout] Failed to generate Messenger URL')
-        toast.error('Failed to generate Messenger link. Please try again or contact support.')
-        setIsProcessing(false)
-        return
-      }
+      // ── PHASE 4: Show confirmation screen IMMEDIATELY ─────────────────────
+      // This ALWAYS happens regardless of Messenger config. Order is placed — customer
+      // must always see their summary and be able to copy the message manually.
 
-      console.log('[Checkout] Generated Messenger URL:', messengerUrl.substring(0, 100) + '...')
-
-      // Attempt proactive message sending (only for webhook mode with ref-based URLs and order ID)
-      // This sends the message immediately without requiring user interaction
-      // Only works if Facebook page is connected and order was created
-      // Note: This is optional - if it fails, the webhook will handle it when user clicks the link
-      // Skip this entirely in direct mode since webhook won't be triggered
-      if (!useDirectMode && isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
-        // Use a fire-and-forget approach - don't await, just start the request
-        // This ensures redirect happens immediately regardless of API response
-        // Use public endpoint that doesn't require auth - secured by order token
-        fetch('/api/messenger/send-order-public', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: orderResult.data.id,
-            tenantId: tenant.id,
-            orderToken: orderResult.orderToken, // Cryptographic token for secure verification
-          }),
-        })
-          .then(async (response) => {
-            if (response.ok) {
-              try {
-                const result = await response.json()
-                if (result.success) {
-                  console.log('[Checkout] Order message sent proactively')
-                } else {
-                  console.log('[Checkout] Proactive send not available, will use webhook fallback:', result.message)
-                }
-              } catch (jsonError) {
-                console.warn('[Checkout] Failed to parse response JSON:', jsonError)
-              }
-            } else {
-              console.warn(`[Checkout] Proactive send API returned ${response.status}, will use webhook fallback`)
-            }
-          })
-          .catch((error) => {
-            // Network error or other fetch error - log but don't block
-            console.warn('[Checkout] Error attempting proactive send (non-blocking):', error)
-          })
-        // Don't await - let it run in background while we redirect
-      }
-
-      // Save order data before clearing cart (for confirmation page)
       const selectedOrderTypeName = orderTypes.find(ot => ot.id === orderType)?.name ?? null
       const selectedPaymentName = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name ?? null
       const selectedPaymentDetails = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.details ?? null
@@ -636,34 +558,49 @@ export default function CheckoutPage() {
         paymentMethodName: selectedPaymentName,
         paymentMethodDetails: selectedPaymentDetails,
         messengerMessage: message,
-        messengerUrl,
+        messengerUrl: messengerUrl ?? '',
         formFields: formFieldsMeta2,
       })
 
-      // Set ref synchronously FIRST to prevent cart-empty useEffect from redirecting to menu
-      // before React batches the checkoutComplete state update
+      // Set ref synchronously BEFORE clearCart to prevent race with cart-empty useEffect
       checkoutCompleteRef.current = true
-
-      // Clear cart and show confirmation immediately
       clearCart()
       setCheckoutComplete(true)
       setIsProcessing(false)
-      toast.success('Order placed successfully!')
+      toast.success('Order placed! 🎉')
 
-      // Open Messenger in background (non-blocking)
+      // ── PHASE 5: Messenger (fire-and-forget, non-blocking) ────────────────
+
+      // Proactive webhook send (background, does not block)
+      if (!useDirectMode && isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
+        fetch('/api/messenger/send-order-public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: orderResult.data.id,
+            tenantId: tenant.id,
+            orderToken: orderResult.orderToken,
+          }),
+        })
+          .then(async (response) => {
+            if (response.ok) {
+              const result = await response.json().catch(() => null)
+              if (result?.success) console.log('[Checkout] Order message sent proactively')
+            }
+          })
+          .catch((error) => console.warn('[Checkout] Proactive send error (non-blocking):', error))
+      }
+
+      // Try to open Messenger in new tab after a short delay
       setTimeout(() => {
+        if (!messengerUrl) return
         try {
-          if (!messengerUrl || messengerUrl.trim() === '') {
-            return
-          }
-
           const newWindow = window.open(messengerUrl, '_blank', 'noopener,noreferrer')
-
           if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            toast.info('Messenger was blocked by your browser. Use the button on the confirmation screen to open it manually.')
+            toast.info("Messenger popup was blocked. Tap 'Open Messenger' on the screen below.")
           }
         } catch {
-          // Silently fail - user can click the Messenger button on confirmation screen
+          // Silently fail — user can use the button on confirmation screen
         }
       }, 500)
     } catch (error) {
@@ -815,16 +752,22 @@ export default function CheckoutPage() {
 
             {/* Action Buttons */}
             <div className="space-y-3">
-              <Button
-                size="lg"
-                className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full"
-                onClick={() => {
-                  window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
-                }}
-              >
-                <ExternalLink className="mr-2 h-5 w-5" />
-                Open Messenger
-              </Button>
+              {completedOrderData.messengerUrl ? (
+                <Button
+                  size="lg"
+                  className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full"
+                  onClick={() => {
+                    window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
+                  }}
+                >
+                  <ExternalLink className="mr-2 h-5 w-5" />
+                  Open Messenger
+                </Button>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Messenger is not configured for this restaurant. Copy the order message below and send it manually.
+                </div>
+              )}
 
               <Button
                 size="lg"
