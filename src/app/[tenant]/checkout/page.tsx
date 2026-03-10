@@ -62,6 +62,8 @@ export default function CheckoutPage() {
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
   const [copiedText, setCopiedText] = useState<string | null>(null)
+  const [popupBlocked, setPopupBlocked] = useState(false)
+  const [messageExpanded, setMessageExpanded] = useState(false)
 
   // Copy to clipboard helper function
   const handleCopyText = async (text: string, label: string) => {
@@ -216,6 +218,30 @@ export default function CheckoutPage() {
       router.push(`/${tenantSlug}/menu`)
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
+
+  // Attempt to open Messenger in new tab when checkout completes
+  // Note: this will likely be blocked by popup blockers since it's not user-initiated.
+  // The "Go to Messenger" <a> button is the primary path for customers.
+  useEffect(() => {
+    if (!checkoutComplete || !completedOrderData?.messengerUrl) {
+      if (checkoutComplete && !completedOrderData?.messengerUrl) {
+        setMessageExpanded(true)
+      }
+      return
+    }
+    requestAnimationFrame(() => {
+      try {
+        const newWindow = window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          setPopupBlocked(true)
+          setMessageExpanded(true)
+        }
+      } catch {
+        setPopupBlocked(true)
+        setMessageExpanded(true)
+      }
+    })
+  }, [checkoutComplete, completedOrderData?.messengerUrl])
 
   // Fetch Lalamove delivery quotation when delivery address is entered
   useEffect(() => {
@@ -591,18 +617,7 @@ export default function CheckoutPage() {
           .catch((error) => console.warn('[Checkout] Proactive send error (non-blocking):', error))
       }
 
-      // Try to open Messenger in new tab after a short delay
-      setTimeout(() => {
-        if (!messengerUrl) return
-        try {
-          const newWindow = window.open(messengerUrl, '_blank', 'noopener,noreferrer')
-          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            toast.info("Messenger popup was blocked. Tap 'Open Messenger' on the screen below.")
-          }
-        } catch {
-          // Silently fail — user can use the button on confirmation screen
-        }
-      }, 500)
+      // Messenger window.open is handled by useEffect triggered by checkoutComplete state
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')
@@ -634,23 +649,21 @@ export default function CheckoutPage() {
   // Order Confirmation / Thank You view
   if (checkoutComplete && completedOrderData) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+      <div className="min-h-screen bg-gradient-to-b from-green-50/40 to-white">
         <main className="container mx-auto px-4 py-8">
           <div className="mx-auto max-w-2xl space-y-6">
-            {/* Success Header */}
+
+            {/* Success Hero */}
             <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
-                <CheckCircle2 className="h-10 w-10 text-green-600" />
+              <div className="inline-flex items-center justify-center w-24 h-24 bg-green-100 rounded-full mb-5">
+                <CheckCircle2 className="h-14 w-14 text-green-600 animate-[scale-in_0.4s_ease-out]" />
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Thank You!</h1>
-              <p className="text-gray-600 text-lg">Your order has been sent to {tenant.name}</p>
-              <Badge className="mt-3 bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-100">
-                Pending — Please check Messenger to confirm
-              </Badge>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Placed!</h1>
+              <p className="text-gray-500 text-lg">Your order has been sent to {tenant.name}</p>
             </div>
 
             {/* Order Summary */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-bold text-gray-900 mb-1">Order Summary</h2>
               {completedOrderData.orderTypeName && (
                 <p className="text-sm text-gray-500 mb-4">{completedOrderData.orderTypeName}</p>
@@ -713,7 +726,7 @@ export default function CheckoutPage() {
 
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span className="text-orange-600">
+                  <span className="text-green-700">
                     {formatPrice(completedOrderData.total + (completedOrderData.deliveryFee ?? 0) + completedOrderData.serviceChargeAmount)}
                   </span>
                 </div>
@@ -722,7 +735,7 @@ export default function CheckoutPage() {
 
             {/* Customer Information */}
             {completedOrderData.formFields.length > 0 && (
-              <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Customer Information</h2>
                 <div className="space-y-2">
                   {completedOrderData.formFields.map(field => {
@@ -741,7 +754,7 @@ export default function CheckoutPage() {
 
             {/* Payment Method */}
             {completedOrderData.paymentMethodName && (
-              <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 mb-2">Payment Method</h2>
                 <p className="font-medium text-gray-900">{completedOrderData.paymentMethodName}</p>
                 {completedOrderData.paymentMethodDetails && (
@@ -750,42 +763,79 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              {completedOrderData.messengerUrl ? (
-                <Button
-                  size="lg"
-                  className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full"
-                  onClick={() => {
-                    window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
-                  }}
-                >
-                  <ExternalLink className="mr-2 h-5 w-5" />
-                  Open Messenger
-                </Button>
-              ) : (
+            {/* Messenger Action Section */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100 space-y-4">
+              {popupBlocked && completedOrderData.messengerUrl && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  Messenger is not configured for this restaurant. Copy the order message below and send it manually.
+                  We couldn&apos;t open Messenger automatically. Tap the button below to open it.
                 </div>
               )}
 
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full h-12 rounded-full border-orange-300 text-orange-700 hover:bg-orange-50"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(completedOrderData.messengerMessage)
-                    toast.success('Order message copied to clipboard!')
-                  } catch {
-                    toast.error('Failed to copy message')
-                  }
-                }}
-              >
-                <Copy className="mr-2 h-5 w-5" />
-                Copy Order Message
-              </Button>
+              {completedOrderData.messengerUrl ? (
+                <a
+                  href={completedOrderData.messengerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full transition-colors text-base"
+                >
+                  <ExternalLink className="mr-2 h-5 w-5" />
+                  Go to Messenger
+                </a>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Copy the order message below and send it to the restaurant via Messenger or any chat app.
+                </div>
+              )}
 
+              <p className="text-xs text-gray-400 text-center">
+                Tap to confirm your order with the restaurant
+              </p>
+            </div>
+
+            {/* Order Message Box (collapsible) */}
+            <div className="rounded-2xl bg-white shadow-sm border border-gray-100 overflow-hidden">
+              <button
+                onClick={() => setMessageExpanded(!messageExpanded)}
+                className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 transition-colors"
+              >
+                <h2 className="text-lg font-bold text-gray-900">Order Message</h2>
+                <span className="text-sm text-gray-400">{messageExpanded ? 'Hide' : 'Show'}</span>
+              </button>
+
+              {messageExpanded && (
+                <div className="px-6 pb-6 space-y-3">
+                  <div className="bg-gray-50 rounded-xl p-4 max-h-64 overflow-y-auto">
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                      {completedOrderData.messengerMessage}
+                    </pre>
+                  </div>
+
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(completedOrderData.messengerMessage)
+                        toast.success('Order message copied to clipboard!')
+                      } catch {
+                        toast.error('Failed to copy message')
+                      }
+                    }}
+                  >
+                    <Copy className="mr-2 h-5 w-5" />
+                    Copy Order Message
+                  </Button>
+
+                  <p className="text-xs text-gray-400 text-center">
+                    Paste this in Messenger or any chat app
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pb-8">
               <Button
                 size="lg"
                 variant="ghost"
@@ -797,9 +847,6 @@ export default function CheckoutPage() {
               </Button>
             </div>
 
-            <p className="text-center text-xs text-gray-400 pb-8">
-              If Messenger didn&apos;t open, use the buttons above to open it manually or copy your order message.
-            </p>
           </div>
         </main>
       </div>
