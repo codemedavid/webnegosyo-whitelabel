@@ -46,6 +46,7 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
+  const checkoutCompleteRef = useRef(false) // Sync ref to prevent race with cart empty useEffect
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
 
   // Lalamove delivery fee state
@@ -211,7 +212,7 @@ export default function CheckoutPage() {
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
   useEffect(() => {
-    if (!isLoading && !isProcessing && !checkoutComplete && items.length === 0) {
+    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && items.length === 0) {
       router.push(`/${tenantSlug}/menu`)
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
@@ -638,6 +639,10 @@ export default function CheckoutPage() {
         messengerUrl,
         formFields: formFieldsMeta2,
       })
+
+      // Set ref synchronously FIRST to prevent cart-empty useEffect from redirecting to menu
+      // before React batches the checkoutComplete state update
+      checkoutCompleteRef.current = true
 
       // Clear cart and show confirmation immediately
       clearCart()
