@@ -62,7 +62,6 @@ export default function CheckoutPage() {
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
   const [copiedText, setCopiedText] = useState<string | null>(null)
-  const [popupBlocked, setPopupBlocked] = useState(false)
   const [messageExpanded, setMessageExpanded] = useState(false)
 
   // Copy to clipboard helper function
@@ -219,28 +218,11 @@ export default function CheckoutPage() {
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
-  // Attempt to open Messenger in new tab when checkout completes
-  // Note: this will likely be blocked by popup blockers since it's not user-initiated.
-  // The "Go to Messenger" <a> button is the primary path for customers.
+  // Auto-expand order message section when Messenger is not configured
   useEffect(() => {
-    if (!checkoutComplete || !completedOrderData?.messengerUrl) {
-      if (checkoutComplete && !completedOrderData?.messengerUrl) {
-        setMessageExpanded(true)
-      }
-      return
+    if (checkoutComplete && !completedOrderData?.messengerUrl) {
+      setMessageExpanded(true)
     }
-    requestAnimationFrame(() => {
-      try {
-        const newWindow = window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
-        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-          setPopupBlocked(true)
-          setMessageExpanded(true)
-        }
-      } catch {
-        setPopupBlocked(true)
-        setMessageExpanded(true)
-      }
-    })
   }, [checkoutComplete, completedOrderData?.messengerUrl])
 
   // Fetch Lalamove delivery quotation when delivery address is entered
@@ -765,12 +747,6 @@ export default function CheckoutPage() {
 
             {/* Messenger Action Section */}
             <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100 space-y-4">
-              {popupBlocked && completedOrderData.messengerUrl && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  We couldn&apos;t open Messenger automatically. Tap the button below to open it.
-                </div>
-              )}
-
               {completedOrderData.messengerUrl ? (
                 <a
                   href={completedOrderData.messengerUrl}
@@ -798,6 +774,7 @@ export default function CheckoutPage() {
             <div className="rounded-2xl bg-white shadow-sm border border-gray-100 overflow-hidden">
               <button
                 onClick={() => setMessageExpanded(!messageExpanded)}
+                aria-expanded={messageExpanded}
                 className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 transition-colors"
               >
                 <h2 className="text-lg font-bold text-gray-900">Order Message</h2>
