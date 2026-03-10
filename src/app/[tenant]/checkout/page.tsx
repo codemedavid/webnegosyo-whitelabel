@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerCombinedUrl, generateMessengerDirectUrl } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl } from '@/lib/cart-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
@@ -63,6 +63,7 @@ export default function CheckoutPage() {
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [messageExpanded, setMessageExpanded] = useState(false)
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
 
   // Copy to clipboard helper function
   const handleCopyText = async (text: string, label: string) => {
@@ -218,16 +219,27 @@ export default function CheckoutPage() {
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
-  // Auto-open Messenger in new tab when checkout completes, and auto-expand message if no URL
+  // Countdown timer: redirect to Messenger after 3 seconds, auto-expand message if no URL
   useEffect(() => {
     if (!checkoutComplete) return
-    if (completedOrderData?.messengerUrl) {
-      // Open Messenger in a new tab automatically — confirmation screen stays on current tab
-      window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
-    } else {
-      // No Messenger URL — expand the order message so user can copy it
+    if (!completedOrderData?.messengerUrl) {
       setMessageExpanded(true)
+      return
     }
+    // Start 3-second countdown
+    setRedirectCountdown(3)
+    const interval = setInterval(() => {
+      setRedirectCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval)
+          // Open Messenger in new tab when countdown reaches 0
+          window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
   }, [checkoutComplete, completedOrderData?.messengerUrl])
 
   // Fetch Lalamove delivery quotation when delivery address is entered
@@ -361,120 +373,10 @@ export default function CheckoutPage() {
     setIsProcessing(true)
 
     try {
-      // Check if order management is enabled for this tenant
-      let orderCreated = false
-      let orderResult: { success: boolean; data?: { id: string }; orderToken?: string } | null = null
-
-      // Get selected order type (for potential future use)
-      // const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-
       // Get selected payment method details for snapshot
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
 
-      if (tenant.enable_order_management) {
-        // Only save to database if order management is enabled
-        const orderItems = items.map(item => {
-          // Calculate price including variations
-          let itemPrice = item.menu_item.price
-
-          // Handle legacy single variation
-          if (item.selected_variation) {
-            itemPrice += item.selected_variation.price_modifier
-          }
-
-          // Handle new grouped variations
-          if (item.selected_variations) {
-            const modifierSum = Object.values(item.selected_variations).reduce(
-              (sum, option) => sum + option.price_modifier,
-              0
-            )
-            itemPrice += modifierSum
-          }
-
-          // Format variation text
-          let variationText = ''
-          if (item.selected_variation) {
-            variationText = item.selected_variation.name
-          } else if (item.selected_variations) {
-            variationText = Object.values(item.selected_variations)
-              .map(opt => opt.name)
-              .join(', ')
-          }
-
-          return {
-            menu_item_id: item.menu_item.id,
-            menu_item_name: item.menu_item.name,
-            variation: variationText || undefined,
-            addons: item.selected_addons.map(a => a.name),
-            quantity: item.quantity,
-            price: itemPrice,
-            subtotal: item.subtotal,
-            special_instructions: item.special_instructions,
-            ...(item.upsellSource ? { isUpsellItem: true } : {}),
-          }
-        })
-
-        const customerInfo = {
-          name: customerData.customer_name || undefined,
-          contact: customerData.customer_phone || customerData.customer_email || undefined,
-        }
-
-        try {
-          // Only use delivery fee if it matches the current address
-          const validDeliveryFee = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
-          const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
-
-          const result = await createOrderAction(
-            tenant.id,
-            orderItems,
-            customerInfo,
-            orderType,
-            // Include messenger_psid in customer data for tracking
-            messengerPsid
-              ? { ...customerData, messenger_psid: messengerPsid }
-              : customerData,
-            validDeliveryFee,
-            validQuotationId,
-            selectedPaymentMethod || undefined,
-            selectedPayment?.name || undefined,
-            selectedPayment?.details || undefined,
-            selectedPayment?.qr_code_url || undefined,
-            serviceChargeAmount || undefined
-          )
-          orderCreated = result.success
-          orderResult = result
-
-          if (result.success) {
-            // Track upsell conversions if any cart items came from upsell modals
-            const upsellItems = items.filter(i => i.upsellSource)
-            if (upsellItems.length > 0) {
-              const sourceBreakdown: Record<string, number> = {}
-              let upsellRevenue = 0
-              for (const ui of upsellItems) {
-                const src = ui.upsellSource!
-                sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1
-                upsellRevenue += ui.subtotal
-              }
-              trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
-                orderId: result.data?.id,
-                upsellItemCount: upsellItems.length,
-                upsellRevenue,
-                sources: sourceBreakdown,
-              })
-            }
-          } else {
-            console.warn('Order creation failed:', result.error)
-            toast.warning('Order creation failed, but proceeding to Messenger...')
-          }
-        } catch (error) {
-          console.warn('Order creation error:', error)
-          toast.warning('Order creation failed, but proceeding to Messenger...')
-        }
-      }
-
-      // ── PHASE 2: Generate order message ──────────────────────────────────
-      // Do this before showing confirmation so the message is ready for copy-paste
-
+      // ── PHASE 1: Generate order message (instant, no DB) ────────────────
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const orderTypeInfo = selectedOrderType ? {
         name: selectedOrderType.name,
@@ -502,8 +404,8 @@ export default function CheckoutPage() {
         serviceChargeAmount || undefined
       )
 
-      // ── PHASE 3: Resolve Messenger URL (best-effort, never blocks confirmation) ──
-      let pageId: string | null = null
+      // ── PHASE 2: Resolve Messenger URL (fast — uses cached tenant data) ──
+      let pageId: string | null = tenant.messenger_username || tenant.messenger_page_id || null
 
       if (tenant.facebook_page_id) {
         try {
@@ -525,10 +427,6 @@ export default function CheckoutPage() {
         }
       }
 
-      if (!pageId) {
-        pageId = tenant.messenger_username || tenant.messenger_page_id || null
-      }
-
       const isFacebookPageConnected = tenant.facebook_page_id !== null &&
         tenant.facebook_page_id !== undefined &&
         pageId !== null &&
@@ -536,37 +434,33 @@ export default function CheckoutPage() {
 
       const useDirectMode = tenant.messenger_redirect_mode === 'direct'
 
+      // Build Messenger URL without order ID first (we don't have it yet)
       let messengerUrl: string | null = null
-
       if (pageId && pageId.trim() !== '') {
         if (useDirectMode) {
           messengerUrl = generateMessengerDirectUrl(pageId)
-        } else if (isFacebookPageConnected) {
-          const orderId = orderCreated && orderResult?.data?.id ? orderResult.data.id : null
-          messengerUrl = orderId
-            ? generateMessengerCombinedUrl(pageId, orderId, message)
-            : generateMessengerUrl(pageId, message)
         } else {
           messengerUrl = generateMessengerUrl(pageId, message)
         }
       }
-      // If messengerUrl is still null, that's OK — confirmation screen handles it gracefully
 
-      // ── PHASE 4: Show confirmation screen IMMEDIATELY ─────────────────────
-      // This ALWAYS happens regardless of Messenger config. Order is placed — customer
-      // must always see their summary and be able to copy the message manually.
-
+      // ── PHASE 3: Show confirmation screen IMMEDIATELY ─────────────────────
       const selectedOrderTypeName = orderTypes.find(ot => ot.id === orderType)?.name ?? null
       const selectedPaymentName = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name ?? null
       const selectedPaymentDetails = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.details ?? null
       const formFieldsMeta2 = formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label }))
 
+      // Snapshot cart data before clearing
+      const snapshotItems = [...items]
+      const snapshotTotal = total
+      const snapshotCustomerData = { ...customerData }
+
       setCompletedOrderData({
-        items: [...items],
-        total,
+        items: snapshotItems,
+        total: snapshotTotal,
         deliveryFee: (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : null,
         serviceChargeAmount,
-        customerData: { ...customerData },
+        customerData: snapshotCustomerData,
         orderTypeName: selectedOrderTypeName,
         paymentMethodName: selectedPaymentName,
         paymentMethodDetails: selectedPaymentDetails,
@@ -582,29 +476,93 @@ export default function CheckoutPage() {
       setIsProcessing(false)
       toast.success('Order placed! 🎉')
 
-      // ── PHASE 5: Messenger (fire-and-forget, non-blocking) ────────────────
+      // ── PHASE 4: Save order to DB in background (non-blocking) ───────────
+      if (tenant.enable_order_management) {
+        const orderItems = snapshotItems.map(item => {
+          let itemPrice = item.menu_item.price
+          if (item.selected_variation) {
+            itemPrice += item.selected_variation.price_modifier
+          }
+          if (item.selected_variations) {
+            const modifierSum = Object.values(item.selected_variations).reduce(
+              (sum, option) => sum + option.price_modifier, 0
+            )
+            itemPrice += modifierSum
+          }
 
-      // Proactive webhook send (background, does not block)
-      if (!useDirectMode && isFacebookPageConnected && orderCreated && orderResult?.data?.id && orderResult?.orderToken) {
-        fetch('/api/messenger/send-order-public', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: orderResult.data.id,
-            tenantId: tenant.id,
-            orderToken: orderResult.orderToken,
-          }),
+          let variationText = ''
+          if (item.selected_variation) {
+            variationText = item.selected_variation.name
+          } else if (item.selected_variations) {
+            variationText = Object.values(item.selected_variations).map(opt => opt.name).join(', ')
+          }
+
+          return {
+            menu_item_id: item.menu_item.id,
+            menu_item_name: item.menu_item.name,
+            variation: variationText || undefined,
+            addons: item.selected_addons.map(a => a.name),
+            quantity: item.quantity,
+            price: itemPrice,
+            subtotal: item.subtotal,
+            special_instructions: item.special_instructions,
+            ...(item.upsellSource ? { isUpsellItem: true } : {}),
+          }
         })
-          .then(async (response) => {
-            if (response.ok) {
-              const result = await response.json().catch(() => null)
-              if (result?.success) console.log('[Checkout] Order message sent proactively')
-            }
-          })
-          .catch((error) => console.warn('[Checkout] Proactive send error (non-blocking):', error))
-      }
 
-      // Messenger window.open is handled by useEffect triggered by checkoutComplete state
+        const customerInfo = {
+          name: snapshotCustomerData.customer_name || undefined,
+          contact: snapshotCustomerData.customer_phone || snapshotCustomerData.customer_email || undefined,
+        }
+
+        const validDeliveryFee = (deliveryFee && deliveryFeeAddress === snapshotCustomerData.delivery_address) ? deliveryFee : undefined
+        const validQuotationId = (quotationId && deliveryFeeAddress === snapshotCustomerData.delivery_address) ? quotationId : undefined
+
+        // Fire-and-forget: save order + send proactive webhook
+        createOrderAction(
+          tenant.id, orderItems, customerInfo, orderType,
+          messengerPsid ? { ...snapshotCustomerData, messenger_psid: messengerPsid } : snapshotCustomerData,
+          validDeliveryFee, validQuotationId,
+          selectedPaymentMethod || undefined,
+          selectedPayment?.name || undefined,
+          selectedPayment?.details || undefined,
+          selectedPayment?.qr_code_url || undefined,
+          serviceChargeAmount || undefined
+        ).then(result => {
+          if (result.success) {
+            // Track upsell conversions
+            const upsellItems = snapshotItems.filter(i => i.upsellSource)
+            if (upsellItems.length > 0) {
+              const sourceBreakdown: Record<string, number> = {}
+              let upsellRevenue = 0
+              for (const ui of upsellItems) {
+                const src = ui.upsellSource!
+                sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1
+                upsellRevenue += ui.subtotal
+              }
+              trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
+                orderId: result.data?.id, upsellItemCount: upsellItems.length,
+                upsellRevenue, sources: sourceBreakdown,
+              })
+            }
+
+            // Proactive webhook send
+            if (!useDirectMode && isFacebookPageConnected && result.data?.id && result.orderToken) {
+              fetch('/api/messenger/send-order-public', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  orderId: result.data.id, tenantId: tenant.id, orderToken: result.orderToken,
+                }),
+              }).catch(error => console.warn('[Checkout] Proactive send error:', error))
+            }
+          } else {
+            console.warn('[Checkout] Background order save failed:', result.error)
+          }
+        }).catch(error => {
+          console.warn('[Checkout] Background order save error:', error)
+        })
+      }
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')
@@ -750,20 +708,80 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Messenger Action Section */}
-            <div className="space-y-3">
+            {/* Messenger Redirect Section */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
               {completedOrderData.messengerUrl ? (
-                <Button
-                  size="lg"
-                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
-                  onClick={() => window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')}
-                >
-                  <ExternalLink className="mr-2 h-5 w-5" />
-                  Go to Messenger
-                </Button>
+                <div className="space-y-4">
+                  {/* Countdown redirect indicator */}
+                  <div className="text-center space-y-2">
+                    {redirectCountdown !== null && redirectCountdown > 0 ? (
+                      <>
+                        <div className="inline-flex items-center justify-center w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                        <p className="text-sm text-gray-600">
+                          Redirecting to Messenger in <span className="font-bold text-green-700">{redirectCountdown}s</span>...
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        Messenger should have opened in a new tab.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Go to Messenger button */}
+                  <Button
+                    size="lg"
+                    className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+                    onClick={() => window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    <ExternalLink className="mr-2 h-5 w-5" />
+                    Go to Messenger
+                  </Button>
+
+                  {/* Copy fallback */}
+                  <div className="relative text-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-gray-200" />
+                    </div>
+                    <span className="relative bg-white px-3 text-xs text-gray-400">or</span>
+                  </div>
+
+                  <button
+                    className="w-full text-sm text-green-700 hover:text-green-800 hover:underline py-1"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(completedOrderData.messengerMessage)
+                        toast.success('Order message copied! Paste it in Messenger.')
+                      } catch {
+                        toast.error('Failed to copy message')
+                      }
+                    }}
+                  >
+                    <Copy className="inline mr-1.5 h-3.5 w-3.5" />
+                    Copy order text and paste it directly on Messenger
+                  </button>
+                </div>
               ) : (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  Copy the order message below and send it to the restaurant via Messenger or any chat app.
+                <div className="space-y-3 text-center">
+                  <p className="text-sm text-gray-600">
+                    Copy the order message and send it to the restaurant.
+                  </p>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(completedOrderData.messengerMessage)
+                        toast.success('Order message copied! Paste it in Messenger.')
+                      } catch {
+                        toast.error('Failed to copy message')
+                      }
+                    }}
+                  >
+                    <Copy className="mr-2 h-5 w-5" />
+                    Copy Order Message
+                  </Button>
                 </div>
               )}
             </div>
