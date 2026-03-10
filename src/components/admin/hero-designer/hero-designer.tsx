@@ -5,7 +5,7 @@ import { DndContext, type DragEndEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
 
 import { useHeroDesigner } from '@/hooks/use-hero-designer'
-import { saveHeroDesignAction } from '@/app/actions/hero-designer'
+import { saveHeroDesignAction, updateHeroSectionEnabledAction } from '@/app/actions/hero-designer'
 import { createBlankDesign } from '@/lib/hero-designer-defaults'
 import { DesignerToolbar } from '@/components/admin/hero-designer/designer-toolbar'
 import { ElementPanel } from '@/components/admin/hero-designer/element-panel'
@@ -24,6 +24,7 @@ interface HeroDesignerProps {
   tenantId: string
   tenantSlug: string
   initialDesign: HeroDesign | null
+  initialHeroSectionEnabled: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,7 @@ export function HeroDesigner({
   tenantId,
   tenantSlug,
   initialDesign,
+  initialHeroSectionEnabled,
 }: HeroDesignerProps) {
   const {
     state,
@@ -48,6 +50,24 @@ export function HeroDesigner({
   const [isSaving, setIsSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
+  const [heroSectionEnabled, setHeroSectionEnabled] = useState(initialHeroSectionEnabled)
+
+  // ---- Toggle hero section visibility ------------------------------------
+  const handleToggleHeroSection = useCallback(async (enabled: boolean) => {
+    setHeroSectionEnabled(enabled)
+    try {
+      const result = await updateHeroSectionEnabledAction(tenantId, tenantSlug, enabled)
+      if (!result.success) {
+        setHeroSectionEnabled(!enabled)
+        toast.error(result.error ?? 'Failed to update')
+      } else {
+        toast.success(enabled ? 'Hero section visible' : 'Hero section hidden')
+      }
+    } catch {
+      setHeroSectionEnabled(!enabled)
+      toast.error('An unexpected error occurred')
+    }
+  }, [tenantId, tenantSlug])
 
   // Track last-saved design for unsaved changes detection
   const lastSavedDesignRef = useRef<string>(JSON.stringify(initialDesign))
@@ -204,16 +224,22 @@ export function HeroDesigner({
         <DesignerToolbar
           tenantSlug={tenantSlug}
           breakpoint={state.activeBreakpoint}
+          layoutMode={state.design.layoutMode ?? 'boxed'}
           canUndo={canUndo}
           canRedo={canRedo}
           zoom={state.zoom}
           showGrid={state.showGrid}
           isSaving={isSaving}
           hasUnsavedChanges={hasUnsavedChanges}
+          heroSectionEnabled={heroSectionEnabled}
+          onToggleHeroSection={handleToggleHeroSection}
           onUndo={undo}
           onRedo={redo}
           onSetBreakpoint={(bp) =>
             dispatch({ type: 'SET_BREAKPOINT', breakpoint: bp })
+          }
+          onSetLayoutMode={(mode) =>
+            dispatch({ type: 'UPDATE_CANVAS', updates: { layoutMode: mode } })
           }
           onSetZoom={(zoom) => dispatch({ type: 'SET_ZOOM', zoom })}
           onToggleGrid={() => dispatch({ type: 'TOGGLE_GRID' })}
@@ -231,6 +257,9 @@ export function HeroDesigner({
               <ElementPanel
                 onAddElement={(type) =>
                   dispatch({ type: 'ADD_ELEMENT', elementType: type })
+                }
+                onAddRow={(columnCount) =>
+                  dispatch({ type: 'ADD_ROW_WITH_COLUMNS', columnCount })
                 }
               />
             </div>
@@ -302,6 +331,7 @@ export function HeroDesigner({
                   type: 'UPDATE_ELEMENT_PROPS',
                   id: elementId,
                   props,
+                  breakpoint: state.activeBreakpoint,
                 })
               }
               // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -331,6 +361,7 @@ export function HeroDesigner({
                 type: 'UPDATE_ELEMENT_PROPS',
                 id: selectedElement.id,
                 props,
+                breakpoint: state.activeBreakpoint,
               })
             }}
             onUpdateAnimation={(animation) => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { Plus, Trash2 } from 'lucide-react'
-import type { ElementProps } from '@/types/hero-designer'
+import type { ElementProps, RowProps, ColumnProps } from '@/types/hero-designer'
 
 interface ElementSpecificSectionProps {
   props: ElementProps
@@ -651,6 +651,130 @@ function AnimatedBgControls({
   )
 }
 
+function RowControls({
+  props,
+  onUpdate,
+}: {
+  props: RowProps
+  onUpdate: ElementSpecificSectionProps['onUpdate']
+}) {
+  return (
+    <div className="space-y-3">
+      <NumberField
+        label="Gap"
+        value={props.gap}
+        min={0}
+        max={200}
+        onChange={(v) => onUpdate({ gap: v } as Partial<ElementProps>)}
+      />
+      <SelectField
+        label="Align Items"
+        value={props.alignItems}
+        options={[
+          { value: 'flex-start', label: 'Start' },
+          { value: 'center', label: 'Center' },
+          { value: 'flex-end', label: 'End' },
+          { value: 'stretch', label: 'Stretch' },
+        ]}
+        onChange={(v) => onUpdate({ alignItems: v } as Partial<ElementProps>)}
+      />
+      <SelectField
+        label="Justify Content"
+        value={props.justifyContent}
+        options={[
+          { value: 'flex-start', label: 'Start' },
+          { value: 'center', label: 'Center' },
+          { value: 'flex-end', label: 'End' },
+          { value: 'space-between', label: 'Space Between' },
+          { value: 'space-around', label: 'Space Around' },
+        ]}
+        onChange={(v) => onUpdate({ justifyContent: v } as Partial<ElementProps>)}
+      />
+      <CheckboxField
+        label="Wrap"
+        checked={props.wrap}
+        onChange={(v) => onUpdate({ wrap: v } as Partial<ElementProps>)}
+      />
+      <ColorField
+        label="Background Color"
+        value={props.backgroundColor}
+        onChange={(v) => onUpdate({ backgroundColor: v } as Partial<ElementProps>)}
+      />
+      <NumberField
+        label="Border Radius"
+        value={props.borderRadius}
+        min={0}
+        max={500}
+        onChange={(v) => onUpdate({ borderRadius: v } as Partial<ElementProps>)}
+      />
+      <NumberField
+        label="Padding"
+        value={props.padding}
+        min={0}
+        max={500}
+        onChange={(v) => onUpdate({ padding: v } as Partial<ElementProps>)}
+      />
+    </div>
+  )
+}
+
+function ColumnControls({
+  props,
+  onUpdate,
+}: {
+  props: ColumnProps
+  onUpdate: ElementSpecificSectionProps['onUpdate']
+}) {
+  return (
+    <div className="space-y-3">
+      <NumberField
+        label="Flex"
+        value={props.flex}
+        min={0}
+        max={12}
+        onChange={(v) => onUpdate({ flex: v } as Partial<ElementProps>)}
+      />
+      <NumberField
+        label="Gap"
+        value={props.gap}
+        min={0}
+        max={200}
+        onChange={(v) => onUpdate({ gap: v } as Partial<ElementProps>)}
+      />
+      <SelectField
+        label="Align Items"
+        value={props.alignItems}
+        options={[
+          { value: 'flex-start', label: 'Start' },
+          { value: 'center', label: 'Center' },
+          { value: 'flex-end', label: 'End' },
+          { value: 'stretch', label: 'Stretch' },
+        ]}
+        onChange={(v) => onUpdate({ alignItems: v } as Partial<ElementProps>)}
+      />
+      <ColorField
+        label="Background Color"
+        value={props.backgroundColor}
+        onChange={(v) => onUpdate({ backgroundColor: v } as Partial<ElementProps>)}
+      />
+      <NumberField
+        label="Border Radius"
+        value={props.borderRadius}
+        min={0}
+        max={500}
+        onChange={(v) => onUpdate({ borderRadius: v } as Partial<ElementProps>)}
+      />
+      <NumberField
+        label="Padding"
+        value={props.padding}
+        min={0}
+        max={500}
+        onChange={(v) => onUpdate({ padding: v } as Partial<ElementProps>)}
+      />
+    </div>
+  )
+}
+
 export function ElementSpecificSection({ props, onUpdate }: ElementSpecificSectionProps) {
   switch (props.kind) {
     case 'text':
@@ -674,6 +798,10 @@ export function ElementSpecificSection({ props, onUpdate }: ElementSpecificSecti
       return <SocialProofControls props={props} onUpdate={onUpdate} />
     case 'animated-bg':
       return <AnimatedBgControls props={props} onUpdate={onUpdate} />
+    case 'row':
+      return <RowControls props={props} onUpdate={onUpdate} />
+    case 'column':
+      return <ColumnControls props={props} onUpdate={onUpdate} />
     default:
       return null
   }

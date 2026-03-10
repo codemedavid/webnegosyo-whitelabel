@@ -2,7 +2,13 @@
 
 import { useCallback, useReducer } from 'react'
 
-import { createBlankDesign, elementFactories } from '@/lib/hero-designer-defaults'
+import {
+  createBlankDesign,
+  createColumnElement,
+  createRowElement,
+  elementFactories,
+  migrateDesign,
+} from '@/lib/hero-designer-defaults'
 import type {
   Breakpoint,
   DesignerState,
@@ -36,7 +42,7 @@ export type DesignerAction =
       breakpoint: Breakpoint
       layout: Partial<ElementLayout>
     }
-  | { type: 'UPDATE_ELEMENT_PROPS'; id: string; props: Partial<ElementProps> }
+  | { type: 'UPDATE_ELEMENT_PROPS'; id: string; props: Partial<ElementProps>; breakpoint?: Breakpoint }
   | {
       type: 'UPDATE_ELEMENT_ANIMATION'
       id: string
@@ -54,12 +60,14 @@ export type DesignerAction =
   | {
       type: 'UPDATE_CANVAS'
       updates: Partial<
-        Pick<HeroDesign, 'backgroundColor' | 'backgroundImage'> & {
+        Pick<HeroDesign, 'backgroundColor' | 'backgroundImage' | 'layoutMode'> & {
           desktopHeight: number
           mobileHeight: number
         }
       >
     }
+  | { type: 'ADD_ROW_WITH_COLUMNS'; columnCount: number }
+  | { type: 'MOVE_ELEMENT_TO_PARENT'; id: string; parentId: string | null }
   | { type: 'UNDO' }
   | { type: 'REDO' }
 
@@ -103,7 +111,7 @@ function designerReducer(
 ): DesignerState {
   switch (action.type) {
     case 'SET_DESIGN': {
-      const design = structuredClone(action.design)
+      const design = migrateDesign(structuredClone(action.design))
       return {
         ...state,
         design,
@@ -129,16 +137,28 @@ function designerReducer(
 
     case 'REMOVE_ELEMENT': {
       const stateWithHistory = pushHistory(state)
+      // Cascade delete: remove element and all its descendants
+      const idsToRemove = new Set<string>([action.id])
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const el of stateWithHistory.design.elements) {
+          if (el.parentId && idsToRemove.has(el.parentId) && !idsToRemove.has(el.id)) {
+            idsToRemove.add(el.id)
+            changed = true
+          }
+        }
+      }
       return {
         ...stateWithHistory,
         design: {
           ...stateWithHistory.design,
           elements: stateWithHistory.design.elements.filter(
-            (el) => el.id !== action.id,
+            (el) => !idsToRemove.has(el.id),
           ),
         },
         selectedElementId:
-          stateWithHistory.selectedElementId === action.id
+          stateWithHistory.selectedElementId && idsToRemove.has(stateWithHistory.selectedElementId)
             ? null
             : stateWithHistory.selectedElementId,
       }
@@ -163,6 +183,7 @@ function designerReducer(
           x: source.mobile.x + 2,
           y: source.mobile.y + 2,
         },
+        mobileProps: source.mobileProps ? structuredClone(source.mobileProps) : undefined,
       }
 
       return {
@@ -196,15 +217,21 @@ function designerReducer(
 
     case 'UPDATE_ELEMENT_PROPS': {
       const stateWithHistory = pushHistory(state)
+      const targetField = action.breakpoint === 'mobile' ? 'mobileProps' : 'props'
       return {
         ...stateWithHistory,
         design: updateElement(
           stateWithHistory.design,
           action.id,
-          (el) => ({
-            ...el,
-            props: { ...el.props, ...action.props } as ElementProps,
-          }),
+          (el) => {
+            const currentProps = targetField === 'mobileProps'
+              ? (el.mobileProps ?? el.props)
+              : el.props
+            return {
+              ...el,
+              [targetField]: { ...currentProps, ...action.props } as ElementProps,
+            }
+          },
         ),
       }
     }
@@ -284,8 +311,50 @@ function designerReducer(
           mobile: { ...design.canvas.mobile, height: action.updates.mobileHeight },
         }
       }
+      if (action.updates.layoutMode !== undefined) {
+        design.layoutMode = action.updates.layoutMode
+      }
 
       return { ...stateWithHistory, design }
+    }
+
+    case 'ADD_ROW_WITH_COLUMNS': {
+      const stateWithHistory = pushHistory(state)
+      const row = createRowElement()
+      const columns: HeroElement[] = []
+      for (let i = 0; i < action.columnCount; i++) {
+        columns.push(
+          createColumnElement({
+            label: `Column ${i + 1}`,
+            props: { flex: 1 },
+          }),
+        )
+      }
+      // Set parentId on columns
+      const columnsWithParent = columns.map((col) => ({
+        ...col,
+        parentId: row.id,
+      }))
+      return {
+        ...stateWithHistory,
+        design: {
+          ...stateWithHistory.design,
+          elements: [...stateWithHistory.design.elements, row, ...columnsWithParent],
+        },
+        selectedElementId: row.id,
+      }
+    }
+
+    case 'MOVE_ELEMENT_TO_PARENT': {
+      const stateWithHistory = pushHistory(state)
+      return {
+        ...stateWithHistory,
+        design: updateElement(
+          stateWithHistory.design,
+          action.id,
+          (el) => ({ ...el, parentId: action.parentId }),
+        ),
+      }
     }
 
     case 'UNDO': {
@@ -318,7 +387,8 @@ function designerReducer(
 // ---------------------------------------------------------------------------
 
 function createInitialState(initialDesign?: HeroDesign): DesignerState {
-  const design = initialDesign ? structuredClone(initialDesign) : createBlankDesign()
+  const raw = initialDesign ? structuredClone(initialDesign) : createBlankDesign()
+  const design = migrateDesign(raw)
   return {
     design,
     selectedElementId: null,

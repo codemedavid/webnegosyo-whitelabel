@@ -80,7 +80,8 @@ export async function createOrderAction(
   paymentMethodId?: string,
   paymentMethodName?: string,
   paymentMethodDetails?: string,
-  paymentMethodQrCodeUrl?: string
+  paymentMethodQrCodeUrl?: string,
+  serviceChargeAmount?: number
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -137,7 +138,7 @@ export async function createOrderAction(
               addons: i.addons,
               subtotal: i.subtotal,
             })),
-            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
+            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
             deliveryFee: deliveryFee ?? 0,
             orderType: orderTypeName,
             paymentMethod: paymentMethodName ?? null,
@@ -203,7 +204,8 @@ export async function createOrderAction(
         paymentMethodId,
         paymentMethodName,
         paymentMethodDetails,
-        paymentMethodQrCodeUrl
+        paymentMethodQrCodeUrl,
+        serviceChargeAmount
       )
       await firePostHogNotification(result.order.id, items)
       return { success: true, data: result.order, orderToken: result.orderToken }
@@ -221,7 +223,8 @@ export async function createOrderAction(
       paymentMethodId,
       paymentMethodName,
       paymentMethodDetails,
-      paymentMethodQrCodeUrl
+      paymentMethodQrCodeUrl,
+      serviceChargeAmount
     )
     // Return both order and token for secure public API access
     await firePostHogNotification(result.order.id, items)

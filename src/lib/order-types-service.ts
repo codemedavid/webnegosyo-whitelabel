@@ -19,7 +19,21 @@ export const orderTypeSchema = z.object({
   note: z.string().optional(),
   is_enabled: z.boolean(),
   order_index: z.number().int().min(0),
-})
+  service_charge_enabled: z.boolean().optional(),
+  service_charge_type: z.enum(['percentage', 'fixed']).optional(),
+  service_charge_value: z.number().min(0).optional(),
+}).refine(
+  (data) => {
+    if (!data.service_charge_enabled) return true
+    if (data.service_charge_value === undefined || data.service_charge_value <= 0) return false
+    if (data.service_charge_type === 'percentage' && data.service_charge_value > 100) return false
+    return true
+  },
+  {
+    message: 'Service charge value must be > 0 (and <= 100 for percentage type)',
+    path: ['service_charge_value'],
+  }
+)
 
 export const customerFormFieldSchema = z.object({
   field_name: z.string().min(1, 'Field name is required'),

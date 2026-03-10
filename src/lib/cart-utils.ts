@@ -119,7 +119,8 @@ export function generateMessengerMessage(
   orderType?: { name: string; type: string } | null,
   customerData?: Record<string, string>,
   paymentMethod?: { name: string; details?: string } | null,
-  formFields?: FormFieldMeta[]
+  formFields?: FormFieldMeta[],
+  serviceChargeAmount?: number
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -216,7 +217,13 @@ export function generateMessengerMessage(
   })
 
   const total = calculateCartTotal(items)
-  lines.push(`💰 Total: ${formatPrice(total)}`)
+
+  if (serviceChargeAmount && serviceChargeAmount > 0) {
+    lines.push(`📋 Service Charge: ${formatPrice(serviceChargeAmount)}`)
+  }
+
+  const grandTotal = total + (serviceChargeAmount ?? 0)
+  lines.push(`💰 Total: ${formatPrice(grandTotal)}`)
   lines.push('')
 
   // Add payment method information

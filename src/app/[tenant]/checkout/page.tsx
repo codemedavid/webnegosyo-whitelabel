@@ -23,6 +23,7 @@ interface CompletedOrderData {
   items: CartItem[]
   total: number
   deliveryFee: number | null
+  serviceChargeAmount: number
   customerData: Record<string, string>
   orderTypeName: string | null
   paymentMethodName: string | null
@@ -73,6 +74,16 @@ export default function CheckoutPage() {
       toast.error('Failed to copy to clipboard')
     }
   }
+
+  // Compute service charge from selected order type
+  const selectedOrderTypeData = orderTypes.find(ot => ot.id === orderType)
+  const serviceChargeAmount = (() => {
+    if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
+    if (selectedOrderTypeData.service_charge_type === 'percentage') {
+      return Math.round(total * (selectedOrderTypeData.service_charge_value / 100) * 100) / 100
+    }
+    return selectedOrderTypeData.service_charge_value
+  })()
 
   // Ref to track loading state and prevent duplicate fetches
   const isLoadingRef = useRef(false)
@@ -413,7 +424,8 @@ export default function CheckoutPage() {
             selectedPaymentMethod || undefined,
             selectedPayment?.name || undefined,
             selectedPayment?.details || undefined,
-            selectedPayment?.qr_code_url || undefined
+            selectedPayment?.qr_code_url || undefined,
+            serviceChargeAmount || undefined
           )
           orderCreated = result.success
           orderResult = result
@@ -512,7 +524,8 @@ export default function CheckoutPage() {
         orderTypeInfo,
         customerData, // Pass all customer data, not just hardcoded fields
         paymentMethodInfo,
-        formFieldsMeta // Include field metadata for proper labels
+        formFieldsMeta, // Include field metadata for proper labels
+        serviceChargeAmount || undefined
       )
 
       // Determine if Facebook page is connected (for ref-based messaging)
@@ -616,6 +629,7 @@ export default function CheckoutPage() {
         items: [...items],
         total,
         deliveryFee: (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : null,
+        serviceChargeAmount,
         customerData: { ...customerData },
         orderTypeName: selectedOrderTypeName,
         paymentMethodName: selectedPaymentName,
@@ -625,50 +639,28 @@ export default function CheckoutPage() {
         formFields: formFieldsMeta2,
       })
 
-      // Clear cart
+      // Clear cart and show confirmation immediately
       clearCart()
+      setCheckoutComplete(true)
+      setIsProcessing(false)
+      toast.success('Order placed successfully!')
 
-      // Show success message
-      toast.success('Redirecting to Messenger...')
-
-      // Open Messenger in new tab with error handling
-      // Use a small delay to ensure toast is visible
+      // Open Messenger in background (non-blocking)
       setTimeout(() => {
         try {
           if (!messengerUrl || messengerUrl.trim() === '') {
-            console.error('[Checkout] Messenger URL is empty, cannot redirect')
-            toast.error('Failed to redirect to Messenger. Please try again.')
-            setIsProcessing(false)
             return
           }
 
-          console.log('[Checkout] Opening Messenger:', messengerUrl)
           const newWindow = window.open(messengerUrl, '_blank', 'noopener,noreferrer')
 
-          // Check if popup was blocked
           if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            console.warn('[Checkout] Popup may have been blocked, falling back to redirect')
-            // Fallback to direct navigation if popup is blocked
-            window.location.href = messengerUrl
-          } else {
-            // Popup succeeded - mark checkout as complete to prevent empty cart redirect
-            setCheckoutComplete(true)
-            setIsProcessing(false)
-            toast.success('Messenger opened in a new tab!')
+            toast.info('Messenger was blocked by your browser. Use the button on the confirmation screen to open it manually.')
           }
-        } catch (redirectError) {
-          console.error('[Checkout] Redirect error:', redirectError)
-          // Fallback: try direct navigation
-          try {
-            window.location.href = messengerUrl
-          } catch {
-            // Last resort: show confirmation page with manual Messenger link
-            setCheckoutComplete(true)
-            setIsProcessing(false)
-            toast.error('Unable to open Messenger automatically. Use the buttons below to open it manually.')
-          }
+        } catch {
+          // Silently fail - user can click the Messenger button on confirmation screen
         }
-      }, 1000)
+      }, 500)
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('An error occurred. Please try again.')
@@ -768,12 +760,19 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
+                {completedOrderData.serviceChargeAmount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Service Charge</span>
+                    <span className="font-medium">{formatPrice(completedOrderData.serviceChargeAmount)}</span>
+                  </div>
+                )}
+
                 <Separator className="my-2" />
 
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
                   <span className="text-orange-600">
-                    {formatPrice(completedOrderData.total + (completedOrderData.deliveryFee ?? 0))}
+                    {formatPrice(completedOrderData.total + (completedOrderData.deliveryFee ?? 0) + completedOrderData.serviceChargeAmount)}
                   </span>
                 </div>
               </div>
@@ -1103,13 +1102,24 @@ export default function CheckoutPage() {
                 </>
               )}
 
+              {/* Service Charge */}
+              {serviceChargeAmount > 0 && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Service Charge</span>
+                    <span className="font-semibold">{formatPrice(serviceChargeAmount)}</span>
+                  </div>
+                  <Separator className="my-2" />
+                </>
+              )}
+
               <div className="flex justify-between text-xl font-bold pt-4 border-t">
                 <span>Total</span>
                 <span className="text-orange-600">
                   {isFetchingDeliveryFee ? (
                     <span className="animate-pulse">Calculating...</span>
                   ) : (
-                    formatPrice(total + ((deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : 0))
+                    formatPrice(total + ((deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : 0) + serviceChargeAmount)
                   )}
                 </span>
               </div>
@@ -1421,10 +1431,16 @@ export default function CheckoutPage() {
                       <span className="font-medium">{formatPrice(deliveryFee)}</span>
                     </div>
                   )}
+                  {serviceChargeAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Service Charge</span>
+                      <span className="font-medium">{formatPrice(serviceChargeAmount)}</span>
+                    </div>
+                  )}
                   <Separator className="my-2" />
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total Amount to Pay</span>
-                    <span className="text-orange-600">{formatPrice(total + (deliveryFee || 0))}</span>
+                    <span className="text-orange-600">{formatPrice(total + (deliveryFee || 0) + serviceChargeAmount)}</span>
                   </div>
                 </div>
               </div>

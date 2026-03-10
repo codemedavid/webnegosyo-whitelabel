@@ -3,12 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { CanvasElement } from '@/components/admin/hero-designer/canvas-element'
+import { getActiveProps } from '@/lib/hero-designer-defaults'
 import type {
   HeroDesign,
+  HeroElement,
   Breakpoint,
   ElementLayout,
   ElementProps,
   HeroElementType,
+  RowProps,
+  ColumnProps,
 } from '@/types/hero-designer'
 
 // ---------------------------------------------------------------------------
@@ -35,6 +39,146 @@ const GRID_BG_IMAGE = [
   'repeating-linear-gradient(to right, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 1px, transparent 1px, transparent 10%)',
   'repeating-linear-gradient(to bottom, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 1px, transparent 1px, transparent 10%)',
 ].join(', ')
+
+// ---------------------------------------------------------------------------
+// Container canvas element (rows with column children)
+// ---------------------------------------------------------------------------
+
+function ContainerCanvasElement({
+  element,
+  columns,
+  childrenByParent,
+  isSelected,
+  selectedElementId,
+  breakpoint,
+  canvasWidth,
+  canvasHeight,
+  showGrid,
+  onSelectElement,
+  onUpdateElementLayout,
+  onUpdateElementProps,
+}: {
+  element: HeroElement
+  columns: HeroElement[]
+  childrenByParent: Map<string, HeroElement[]>
+  isSelected: boolean
+  selectedElementId: string | null
+  breakpoint: Breakpoint
+  canvasWidth: number
+  canvasHeight: number
+  showGrid: boolean
+  onSelectElement: (id: string | null) => void
+  onUpdateElementLayout: (elementId: string, breakpoint: Breakpoint, layout: Partial<ElementLayout>) => void
+  onUpdateElementProps: (elementId: string, props: Partial<ElementProps>) => void
+}) {
+  const layout = element[breakpoint]
+  const rowProps = getActiveProps(element, breakpoint) as RowProps
+
+  const pxX = (layout.x / 100) * canvasWidth
+  const pxY = (layout.y / 100) * canvasHeight
+  const pxW = layout.width === -1 ? undefined : (layout.width / 100) * canvasWidth
+  const pxH = layout.height === -1 ? undefined : (layout.height / 100) * canvasHeight
+
+  return (
+    <div
+      className={`absolute ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+      style={{
+        left: pxX,
+        top: pxY,
+        width: pxW ?? 'auto',
+        height: pxH ?? 'auto',
+        zIndex: element.zIndex,
+        cursor: 'move',
+      }}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelectElement(element.id)
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: rowProps.gap,
+          alignItems: rowProps.alignItems,
+          justifyContent: rowProps.justifyContent,
+          flexWrap: rowProps.wrap ? 'wrap' : 'nowrap',
+          backgroundColor: rowProps.backgroundColor,
+          borderRadius: rowProps.borderRadius,
+          padding: rowProps.padding,
+          border: '2px dashed rgba(99, 102, 241, 0.4)',
+          minHeight: 40,
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+        }}
+      >
+        <span className="absolute left-1 top-0.5 z-10 text-[10px] font-medium text-indigo-400 opacity-60">
+          Row
+        </span>
+        {columns.map((col) => {
+          const colProps = getActiveProps(col, breakpoint) as ColumnProps
+          const colChildren = childrenByParent.get(col.id) ?? []
+          return (
+            <div
+              key={col.id}
+              className={`relative ${col.id === selectedElementId ? 'ring-2 ring-blue-500' : ''}`}
+              style={{
+                flex: colProps.flex,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: colProps.gap,
+                alignItems: colProps.alignItems,
+                justifyContent: colProps.justifyContent,
+                backgroundColor: colProps.backgroundColor || 'rgba(99, 102, 241, 0.05)',
+                borderRadius: colProps.borderRadius,
+                padding: colProps.padding,
+                border: '1px dashed rgba(99, 102, 241, 0.3)',
+                minHeight: 30,
+                cursor: 'pointer',
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSelectElement(col.id)
+              }}
+            >
+              <span className="text-[10px] font-medium text-indigo-400 opacity-60">
+                Col
+              </span>
+              {/* Render children inside column using flow layout */}
+              {colChildren.map((child) => (
+                <CanvasElement
+                  key={child.id}
+                  element={{
+                    ...child,
+                    // Override layout for flow positioning inside column
+                    [breakpoint]: {
+                      ...child[breakpoint],
+                      x: 0,
+                      y: 0,
+                    },
+                  }}
+                  isSelected={child.id === selectedElementId}
+                  breakpoint={breakpoint}
+                  canvasWidth={pxW ?? canvasWidth}
+                  canvasHeight={pxH ?? canvasHeight}
+                  showGrid={showGrid}
+                  onSelect={() => onSelectElement(child.id)}
+                  onLayoutChange={(lay) =>
+                    onUpdateElementLayout(child.id, breakpoint, lay)
+                  }
+                  onPropsChange={(props) =>
+                    onUpdateElementProps(child.id, props)
+                  }
+                />
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // DesignerCanvas component
@@ -122,10 +266,20 @@ export function DesignerCanvas({
     bgStyles.backgroundRepeat = 'no-repeat'
   }
 
-  // --- Sorted visible elements -------------------------------------------
+  // --- Sorted visible root elements (no parentId) -----------------------
   const sortedElements = [...design.elements]
-    .filter((el) => el.visible)
+    .filter((el) => el.visible && !el.parentId)
     .sort((a, b) => a.zIndex - b.zIndex)
+
+  // --- Build child map for containers ------------------------------------
+  const childrenByParent = new Map<string, typeof design.elements>()
+  for (const el of design.elements) {
+    if (el.parentId && el.visible) {
+      const siblings = childrenByParent.get(el.parentId) ?? []
+      siblings.push(el)
+      childrenByParent.set(el.parentId, siblings)
+    }
+  }
 
   return (
     <div
@@ -167,24 +321,49 @@ export function DesignerCanvas({
         )}
 
         {/* Canvas elements */}
-        {sortedElements.map((element) => (
-          <CanvasElement
-            key={element.id}
-            element={element}
-            isSelected={element.id === selectedElementId}
-            breakpoint={breakpoint}
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-            showGrid={showGrid}
-            onSelect={() => onSelectElement(element.id)}
-            onLayoutChange={(layout) =>
-              onUpdateElementLayout(element.id, breakpoint, layout)
-            }
-            onPropsChange={(props) =>
-              onUpdateElementProps(element.id, props)
-            }
-          />
-        ))}
+        {sortedElements.map((element) => {
+          const resolvedProps = getActiveProps(element, breakpoint)
+          // Row containers render with their children inside
+          if (resolvedProps.kind === 'row') {
+            const columns = childrenByParent.get(element.id) ?? []
+            return (
+              <ContainerCanvasElement
+                key={element.id}
+                element={element}
+                columns={columns}
+                childrenByParent={childrenByParent}
+                isSelected={element.id === selectedElementId}
+                selectedElementId={selectedElementId}
+                breakpoint={breakpoint}
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+                showGrid={showGrid}
+                onSelectElement={onSelectElement}
+                onUpdateElementLayout={onUpdateElementLayout}
+                onUpdateElementProps={onUpdateElementProps}
+              />
+            )
+          }
+
+          return (
+            <CanvasElement
+              key={element.id}
+              element={element}
+              isSelected={element.id === selectedElementId}
+              breakpoint={breakpoint}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              showGrid={showGrid}
+              onSelect={() => onSelectElement(element.id)}
+              onLayoutChange={(layout) =>
+                onUpdateElementLayout(element.id, breakpoint, layout)
+              }
+              onPropsChange={(props) =>
+                onUpdateElementProps(element.id, props)
+              }
+            />
+          )
+        })}
       </div>
     </div>
   )

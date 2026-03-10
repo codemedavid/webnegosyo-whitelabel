@@ -49,6 +49,9 @@ export async function createOrderTypeAction(
     note?: string
     is_enabled?: boolean
     order_index?: number
+    service_charge_enabled?: boolean
+    service_charge_type?: 'percentage' | 'fixed'
+    service_charge_value?: number
   }
 ) {
   try {
@@ -76,6 +79,9 @@ export async function updateOrderTypeAction(
     note?: string
     is_enabled?: boolean
     order_index?: number
+    service_charge_enabled?: boolean
+    service_charge_type?: 'percentage' | 'fixed'
+    service_charge_value?: number
   }
 ) {
   try {
@@ -148,6 +154,9 @@ export async function reorderOrderTypesAction(
         note: existing.note,
         is_enabled: existing.is_enabled,
         order_index: index,
+        service_charge_enabled: existing.service_charge_enabled,
+        service_charge_type: existing.service_charge_type,
+        service_charge_value: existing.service_charge_value,
       })
     })
 

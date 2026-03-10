@@ -73,6 +73,9 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     description: orderType.description || '',
     note: orderType.note || '',
     is_enabled: orderType.is_enabled,
+    service_charge_enabled: orderType.service_charge_enabled ?? false,
+    service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
+    service_charge_value: orderType.service_charge_value ?? 0,
   })
 
   const [formFields, setFormFields] = useState<CustomerFormField[]>(
@@ -93,6 +96,9 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           note: formData.note || undefined,
           is_enabled: formData.is_enabled,
           order_index: orderType.order_index,
+          service_charge_enabled: formData.service_charge_enabled,
+          service_charge_type: formData.service_charge_type,
+          service_charge_value: formData.service_charge_value,
         }
       )
 
@@ -240,6 +246,64 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                 checked={formData.is_enabled}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_enabled: checked })}
               />
+            </div>
+
+            {/* Service Charge */}
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="service_charge_enabled">Service Charge</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.service_charge_enabled ? 'Applied to orders' : 'No service charge'}
+                  </p>
+                </div>
+                <Switch
+                  id="service_charge_enabled"
+                  checked={formData.service_charge_enabled}
+                  onCheckedChange={(checked) => setFormData({ ...formData, service_charge_enabled: checked })}
+                />
+              </div>
+
+              {formData.service_charge_enabled && (
+                <div className="space-y-4 pl-1">
+                  <div className="space-y-2">
+                    <Label htmlFor="service_charge_type">Charge Type</Label>
+                    <Select
+                      value={formData.service_charge_type}
+                      onValueChange={(value: 'percentage' | 'fixed') => setFormData({ ...formData, service_charge_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage (%)</SelectItem>
+                        <SelectItem value="fixed">Fixed Amount (₱)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="service_charge_value">
+                      {formData.service_charge_type === 'percentage' ? 'Percentage (%)' : 'Amount (₱)'}
+                    </Label>
+                    <Input
+                      id="service_charge_value"
+                      type="number"
+                      min="0"
+                      max={formData.service_charge_type === 'percentage' ? '100' : undefined}
+                      step="0.01"
+                      value={formData.service_charge_value}
+                      onChange={(e) => setFormData({ ...formData, service_charge_value: parseFloat(e.target.value) || 0 })}
+                      placeholder={formData.service_charge_type === 'percentage' ? 'e.g., 10' : 'e.g., 50'}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {formData.service_charge_type === 'percentage'
+                        ? `${formData.service_charge_value}% will be added to the order subtotal`
+                        : `₱${formData.service_charge_value.toFixed(2)} will be added to every order`}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button onClick={handleSave} disabled={isSaving} className="w-full">

@@ -565,7 +565,11 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         />
       )}
 
-      <main className="container mx-auto px-4 py-12">
+      <main className={
+        tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).layoutMode === 'fullscreen'
+          ? 'container mx-auto px-4 pb-12'
+          : 'container mx-auto px-4 py-12'
+      }>
         {/* Bundles section — shown at top when no active category filter */}
         {bundles.length > 0 && !activeCategory && (
           <div className="mb-12">

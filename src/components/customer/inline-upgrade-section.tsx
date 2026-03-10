@@ -135,7 +135,7 @@ export const InlineUpgradeSection = memo(function InlineUpgradeSection({
                                             <div className="flex h-full w-full items-center justify-center text-gray-300 text-4xl">🍽</div>
                                         )}
                                     </div>
-                                    <p className="text-sm font-semibold text-gray-900 mt-3">No, {sourceLabel.toLowerCase()} only</p>
+                                    <p className="text-sm font-semibold text-gray-900 mt-3">{sourceLabel.toLowerCase()}</p>
                                     <p className="text-sm text-gray-500 mt-0.5">
                                         {formatPrice(sourcePrice, { hideCurrencySymbol })}
                                     </p>

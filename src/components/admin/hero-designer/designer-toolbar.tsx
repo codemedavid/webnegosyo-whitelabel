@@ -7,31 +7,38 @@ import {
   Grid3X3,
   LayoutTemplate,
   Loader2,
+  Maximize,
   Monitor,
   Redo2,
   RotateCcw,
   Save,
   Smartphone,
+  Square,
   Undo2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import type { Breakpoint } from '@/types/hero-designer'
+import { Switch } from '@/components/ui/switch'
+import type { Breakpoint, HeroLayoutMode } from '@/types/hero-designer'
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
 
 interface DesignerToolbarProps {
   tenantSlug: string
   breakpoint: Breakpoint
+  layoutMode: HeroLayoutMode
   canUndo: boolean
   canRedo: boolean
   zoom: number
   showGrid: boolean
   isSaving: boolean
   hasUnsavedChanges: boolean
+  heroSectionEnabled: boolean
+  onToggleHeroSection: (enabled: boolean) => void
   onUndo: () => void
   onRedo: () => void
   onSetBreakpoint: (bp: Breakpoint) => void
+  onSetLayoutMode: (mode: HeroLayoutMode) => void
   onSetZoom: (zoom: number) => void
   onToggleGrid: () => void
   onSave: () => void
@@ -51,15 +58,19 @@ function stepZoom(current: number, direction: 'in' | 'out'): number {
 export function DesignerToolbar({
   tenantSlug,
   breakpoint,
+  layoutMode,
   canUndo,
   canRedo,
   zoom,
   showGrid,
   isSaving,
   hasUnsavedChanges,
+  heroSectionEnabled,
+  onToggleHeroSection,
   onUndo,
   onRedo,
   onSetBreakpoint,
+  onSetLayoutMode,
   onSetZoom,
   onToggleGrid,
   onSave,
@@ -78,6 +89,16 @@ export function DesignerToolbar({
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <span className="text-lg font-semibold">Hero Designer</span>
+        <div className="mx-1 h-6 border-l border-gray-200" />
+        <label className="flex items-center gap-2 cursor-pointer">
+          <Switch
+            checked={heroSectionEnabled}
+            onCheckedChange={onToggleHeroSection}
+          />
+          <span className="text-sm text-gray-600">
+            {heroSectionEnabled ? 'Visible' : 'Hidden'}
+          </span>
+        </label>
       </div>
 
       {/* Center group */}
@@ -112,6 +133,26 @@ export function DesignerToolbar({
         >
           <Grid3X3 className="h-4 w-4" />
         </button>
+
+        <div className="mx-1 h-6 border-l border-gray-200" />
+
+        {/* Layout mode toggle */}
+        <div className="flex items-center rounded-md border border-gray-200 p-0.5">
+          <button
+            onClick={() => onSetLayoutMode('boxed')}
+            title="Boxed layout"
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${layoutMode === 'boxed' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            <Square className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onSetLayoutMode('fullscreen')}
+            title="Full-screen layout"
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${layoutMode === 'fullscreen' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            <Maximize className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
         <div className="mx-1 h-6 border-l border-gray-200" />
 

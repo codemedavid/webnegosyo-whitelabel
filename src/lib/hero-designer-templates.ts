@@ -39,7 +39,7 @@ function design(
   elements: HeroElement[],
 ): HeroDesign {
   return {
-    version: 1,
+    version: 2,
     canvas: {
       desktop: { width: 1440, height: desktopHeight },
       mobile: { width: 390, height: mobileHeight },

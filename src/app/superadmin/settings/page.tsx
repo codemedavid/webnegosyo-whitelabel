@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { ChangePasswordForm } from '@/components/superadmin/change-password-form'
 
 interface EnvCheck {
   label: string
@@ -148,6 +149,8 @@ export default function SuperAdminSettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">Platform configuration and system status</p>
       </div>
+
+      <ChangePasswordForm />
 
       <Suspense fallback={<SettingsSkeleton />}>
         <SystemStatus />

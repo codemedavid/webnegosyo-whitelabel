@@ -4,16 +4,20 @@
 
 import type {
   AnimatedBgProps,
+  Breakpoint,
   ButtonProps,
+  ColumnProps,
   CountdownProps,
   DividerProps,
   ElementAnimation,
   ElementLayout,
+  ElementProps,
   HeroDesign,
   HeroElement,
   HeroElementType,
   IconProps,
   ImageProps,
+  RowProps,
   ShapeProps,
   SocialProofProps,
   Spacing,
@@ -92,6 +96,7 @@ export function createTextElement(
   return {
     ...baseElement('text', 'Text', { width: 50, height: -1 }, { x: 5, width: 90, height: -1 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -112,6 +117,7 @@ export function createImageElement(
   return {
     ...baseElement('image', 'Image', { width: 40, height: 50 }, { x: 5, width: 90, height: 40 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -138,6 +144,7 @@ export function createButtonElement(
   return {
     ...baseElement('button', 'Button', { width: 20, height: 6 }, { x: 10, width: 80, height: 8 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -159,6 +166,7 @@ export function createShapeElement(
   return {
     ...baseElement('shape', 'Shape', { width: 20, height: 20 }, { width: 40, height: 20 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -178,6 +186,7 @@ export function createDividerElement(
   return {
     ...baseElement('divider', 'Divider', { width: 60, height: 1 }, { x: 5, width: 90, height: 1 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -196,6 +205,7 @@ export function createIconElement(
   return {
     ...baseElement('icon', 'Icon', { width: 5, height: 8 }, { width: 10, height: 10 }),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -221,6 +231,7 @@ export function createVideoElement(
       { x: 0, y: 0, width: 100, height: 100 },
     ),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -252,6 +263,7 @@ export function createCountdownElement(
       { x: 5, width: 90, height: 10 },
     ),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -279,6 +291,7 @@ export function createSocialProofElement(
       { x: 10, width: 80, height: 5 },
     ),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
   }
 }
@@ -305,7 +318,84 @@ export function createAnimatedBgElement(
       { x: 0, y: 0, width: 100, height: 100 },
     ),
     props,
+    mobileProps: structuredClone(props),
     ...omitProps(overrides),
+  }
+}
+
+// ── Container factories ───────────────────────────────────────────────────
+
+export function createRowElement(
+  overrides?: Partial<Omit<HeroElement, 'props'>> & { props?: Partial<RowProps> },
+): HeroElement {
+  const props: RowProps = {
+    kind: 'row',
+    gap: 16,
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    wrap: false,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    padding: 0,
+    ...overrides?.props,
+  }
+
+  const element: HeroElement = {
+    ...baseElement('row', 'Row', { x: 5, y: 10, width: 90, height: 30 }, { x: 2, y: 10, width: 96, height: 30 }),
+    props,
+    mobileProps: structuredClone(props),
+    ...omitProps(overrides),
+  }
+  return element
+}
+
+export function createColumnElement(
+  overrides?: Partial<Omit<HeroElement, 'props'>> & { props?: Partial<ColumnProps> },
+): HeroElement {
+  const props: ColumnProps = {
+    kind: 'column',
+    flex: 1,
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    gap: 8,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    padding: 8,
+    ...overrides?.props,
+  }
+
+  const element: HeroElement = {
+    ...baseElement('column', 'Column', { width: 30, height: -1 }, { width: 100, height: -1 }),
+    props,
+    mobileProps: structuredClone(props),
+    ...omitProps(overrides),
+  }
+  return element
+}
+
+// ── Breakpoint-aware props helper ─────────────────────────────────────────
+
+/** Returns the active props for the given breakpoint, with fallback to desktop `props`. */
+export function getActiveProps(element: HeroElement, breakpoint: Breakpoint): ElementProps {
+  if (breakpoint === 'mobile' && element.mobileProps) {
+    return element.mobileProps
+  }
+  return element.props
+}
+
+// ── Migration helper ──────────────────────────────────────────────────────
+
+/** Migrate v1 designs to v2 by cloning props into mobileProps for each element. */
+export function migrateDesign(design: HeroDesign): HeroDesign {
+  if (design.version === 2) return design
+  return {
+    ...design,
+    version: 2,
+    elements: design.elements.map((el) => ({
+      ...el,
+      mobileProps: el.mobileProps ?? structuredClone(el.props),
+      parentId: el.parentId ?? null,
+    })),
   }
 }
 
@@ -322,18 +412,21 @@ export const elementFactories: Record<HeroElementType, () => HeroElement> = {
   'countdown': createCountdownElement,
   'social-proof': createSocialProofElement,
   'animated-bg': createAnimatedBgElement,
+  'row': createRowElement,
+  'column': createColumnElement,
 }
 
 // ── Blank design ───────────────────────────────────────────────────────────
 
 export function createBlankDesign(): HeroDesign {
   return {
-    version: 1,
+    version: 2,
     canvas: {
       desktop: { width: 1440, height: 600 },
       mobile: { width: 390, height: 500 },
     },
     backgroundColor: '#ffffff',
+    layoutMode: 'boxed',
     elements: [],
   }
 }

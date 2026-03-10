@@ -76,6 +76,45 @@ export async function saveHeroDesignAction(
 }
 
 /**
+ * Toggle hero section visibility for a tenant.
+ */
+export async function updateHeroSectionEnabledAction(
+  tenantId: string,
+  tenantSlug: string,
+  enabled: boolean
+): Promise<SaveHeroDesignResult> {
+  try {
+    const supabase = await createClient()
+
+    await verifyTenantAdmin(tenantId)
+
+    const validated = z.boolean().parse(enabled)
+
+    const { error } = await supabase
+      .from('tenants')
+      .update({ hero_section_enabled: validated })
+      .eq('id', tenantId)
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('[updateHeroSectionEnabledAction] Database error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+
+    return { success: true }
+  } catch (error) {
+    console.error('[updateHeroSectionEnabledAction] Error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+    }
+  }
+}
+
+/**
  * Load the hero design for a tenant.
  */
 export async function getHeroDesignAction(

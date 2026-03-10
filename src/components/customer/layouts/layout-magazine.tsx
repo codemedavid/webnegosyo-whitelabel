@@ -100,8 +100,10 @@ export const LayoutMagazine = memo(function LayoutMagazine({
     return (
         <div className="max-w-5xl mx-auto">
             {/* Editorial Header */}
-            {tenant?.hero_design ? (
-                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-16" />
+            {tenant?.hero_section_enabled !== false && tenant?.hero_design ? (
+                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
+                    (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
+                } />
             ) : (
                 <div className="mb-16 text-center">
                     <p

@@ -11,6 +11,8 @@ import {
   Timer,
   Award,
   Palette,
+  Rows3,
+  Columns3,
   type LucideIcon,
 } from 'lucide-react'
 import type { HeroElementType } from '@/types/hero-designer'
@@ -28,6 +30,8 @@ const ICON_MAP: Record<HeroElementType, LucideIcon> = {
   countdown: Timer,
   'social-proof': Award,
   'animated-bg': Palette,
+  row: Rows3,
+  column: Columns3,
 }
 
 // ── Element definitions ─────────────────────────────────────────────────────
@@ -57,11 +61,34 @@ const EXTENDED_ELEMENTS: ElementBlock[] = [
 
 interface ElementPanelProps {
   onAddElement: (type: HeroElementType) => void
+  onAddRow?: (columnCount: number) => void
 }
 
-export function ElementPanel({ onAddElement }: ElementPanelProps) {
+export function ElementPanel({ onAddElement, onAddRow }: ElementPanelProps) {
   return (
     <div className="space-y-4">
+      {/* Layout containers */}
+      {onAddRow && (
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Layout
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {[2, 3, 4].map((cols) => (
+              <button
+                key={cols}
+                type="button"
+                onClick={() => onAddRow(cols)}
+                className="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card p-3 text-sm transition-colors hover:border-primary/40 hover:bg-accent"
+              >
+                <Rows3 className="h-5 w-5 text-muted-foreground" />
+                <span className="text-xs font-medium">{cols} Cols</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Section title="Core Elements" elements={CORE_ELEMENTS} onAdd={onAddElement} />
       <Section title="Extended Elements" elements={EXTENDED_ELEMENTS} onAdd={onAddElement} />
     </div>

@@ -61,6 +61,20 @@ export function TypographySection({ props, onUpdate }: TypographySectionProps) {
 
   return (
     <div className="space-y-3">
+      {/* Text Content - only for text */}
+      {isText && textProps && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">Content</span>
+          <textarea
+            value={textProps.content}
+            onChange={(e) => onUpdate({ content: e.target.value } as Partial<ElementProps>)}
+            rows={3}
+            className="w-full resize-y rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-blue-500"
+            placeholder="Enter text content..."
+          />
+        </label>
+      )}
+
       {/* Font Family - only for text */}
       {isText && textProps && (
         <label className="flex flex-col gap-1">

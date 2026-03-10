@@ -305,7 +305,8 @@ export async function createOrder(
   paymentMethodId?: string,
   paymentMethodName?: string,
   paymentMethodDetails?: string,
-  paymentMethodQrCodeUrl?: string
+  paymentMethodQrCodeUrl?: string,
+  serviceChargeAmount?: number
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -435,7 +436,7 @@ export async function createOrder(
   }
 
   const total = verifiedTotal
-  const finalTotal = total + (deliveryFee || 0)
+  const finalTotal = total + (deliveryFee || 0) + (serviceChargeAmount || 0)
 
   // Create order
   const { data: order, error: orderError } = await supabase
@@ -454,6 +455,7 @@ export async function createOrder(
       payment_method_name: paymentMethodName || null,
       payment_method_details: paymentMethodDetails || null,
       payment_method_qr_code_url: paymentMethodQrCodeUrl || null,
+      service_charge_amount: serviceChargeAmount || 0,
       payment_status: 'pending',
       status: 'pending',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -549,7 +551,8 @@ export async function createOrderConvex(
   paymentMethodName?: string,
   paymentMethodDetails?: string,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  paymentMethodQrCodeUrl?: string
+  paymentMethodQrCodeUrl?: string,
+  serviceChargeAmount?: number
 ) {
   const convex = createConvexServerClient(convexUrl, convexKey)
 
@@ -559,7 +562,7 @@ export async function createOrderConvex(
     customerName: customerInfo?.name ?? 'Guest',
     customerContact: customerInfo?.contact ?? '',
     customerData: customerData ?? {},
-    total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0),
+    total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
     source: 'web' as const,
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
     items: items.map((item) => ({

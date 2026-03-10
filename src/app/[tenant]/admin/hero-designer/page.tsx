@@ -21,6 +21,7 @@ export default async function HeroDesignerPage({
         initialDesign={
           (tenantData.hero_design as unknown as HeroDesign) ?? null
         }
+        initialHeroSectionEnabled={tenantData.hero_section_enabled !== false}
       />
     </div>
   )

@@ -25,11 +25,12 @@ import {
   Flame,
   Zap,
 } from 'lucide-react'
+import { getActiveProps } from '@/lib/hero-designer-defaults'
 import type {
+  Breakpoint,
   HeroDesign,
   HeroElement,
   ElementLayout,
-  ElementAnimation,
   TextProps,
   ImageProps,
   ButtonProps,
@@ -40,6 +41,8 @@ import type {
   CountdownProps,
   SocialProofProps,
   AnimatedBgProps,
+  RowProps,
+  ColumnProps,
 } from '@/types/hero-designer'
 
 // ---------------------------------------------------------------------------
@@ -392,8 +395,8 @@ function RenderAnimatedBg({ props }: { props: AnimatedBgProps }) {
 // Element content dispatcher
 // ---------------------------------------------------------------------------
 
-function ElementContent({ element }: { element: HeroElement }) {
-  const p = element.props
+function ElementContent({ element, breakpoint }: { element: HeroElement; breakpoint: Breakpoint }) {
+  const p = getActiveProps(element, breakpoint)
   switch (p.kind) {
     case 'text':
       return <RenderText props={p} />
@@ -415,6 +418,10 @@ function ElementContent({ element }: { element: HeroElement }) {
       return <RenderSocialProof props={p} />
     case 'animated-bg':
       return <RenderAnimatedBg props={p} />
+    case 'row':
+    case 'column':
+      // Containers are rendered by CanvasView directly, not via ElementContent
+      return null
     default:
       return null
   }
@@ -427,9 +434,11 @@ function ElementContent({ element }: { element: HeroElement }) {
 function PositionedElement({
   element,
   layout,
+  breakpoint,
 }: {
   element: HeroElement
   layout: ElementLayout
+  breakpoint: Breakpoint
 }) {
   const anim = element.animation
 
@@ -447,7 +456,7 @@ function PositionedElement({
   if (anim.type === 'none') {
     return (
       <div style={positionStyle}>
-        <ElementContent element={element} />
+        <ElementContent element={element} breakpoint={breakpoint} />
       </div>
     )
   }
@@ -463,8 +472,123 @@ function PositionedElement({
         ...(anim.type === 'bounce' ? { type: 'spring' as const } : {}),
       }}
     >
-      <ElementContent element={element} />
+      <ElementContent element={element} breakpoint={breakpoint} />
     </motion.div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Container renderers
+// ---------------------------------------------------------------------------
+
+function RenderRow({
+  element,
+  columns,
+  childrenByParent,
+  breakpoint,
+}: {
+  element: HeroElement
+  columns: HeroElement[]
+  childrenByParent: Map<string, HeroElement[]>
+  breakpoint: Breakpoint
+}) {
+  const layout = element[breakpoint]
+  const rowProps = getActiveProps(element, breakpoint) as RowProps
+  const anim = element.animation
+
+  const positionStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `${layout.x}%`,
+    top: `${layout.y}%`,
+    width: layout.width === -1 ? 'auto' : `${layout.width}%`,
+    height: layout.height === -1 ? 'auto' : `${layout.height}%`,
+    zIndex: element.zIndex,
+  }
+
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'row',
+    gap: rowProps.gap,
+    alignItems: rowProps.alignItems,
+    justifyContent: rowProps.justifyContent,
+    flexWrap: rowProps.wrap ? 'wrap' : 'nowrap',
+    backgroundColor: rowProps.backgroundColor,
+    borderRadius: rowProps.borderRadius,
+    padding: rowProps.padding,
+    width: '100%',
+    height: '100%',
+  }
+
+  const content = (
+    <div style={rowStyle}>
+      {columns.map((col) => (
+        <RenderColumn
+          key={col.id}
+          element={col}
+          childElements={childrenByParent.get(col.id) ?? []}
+          breakpoint={breakpoint}
+        />
+      ))}
+    </div>
+  )
+
+  if (anim.type === 'none') {
+    return <div style={positionStyle}>{content}</div>
+  }
+
+  return (
+    <motion.div
+      style={positionStyle}
+      initial={ANIMATION_INITIAL[anim.type]}
+      animate={ANIMATION_FINAL[anim.type]}
+      transition={{
+        duration: anim.duration / 1000,
+        delay: anim.delay / 1000,
+        ...(anim.type === 'bounce' ? { type: 'spring' as const } : {}),
+      }}
+    >
+      {content}
+    </motion.div>
+  )
+}
+
+function RenderColumn({
+  element,
+  childElements,
+  breakpoint,
+}: {
+  element: HeroElement
+  childElements: HeroElement[]
+  breakpoint: Breakpoint
+}) {
+  const colProps = getActiveProps(element, breakpoint) as ColumnProps
+
+  return (
+    <div
+      style={{
+        flex: colProps.flex,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: colProps.gap,
+        alignItems: colProps.alignItems,
+        justifyContent: colProps.justifyContent,
+        backgroundColor: colProps.backgroundColor,
+        borderRadius: colProps.borderRadius,
+        padding: colProps.padding,
+      }}
+    >
+      {childElements
+        .filter((el) => el.visible !== false)
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((child) => {
+          const childProps = getActiveProps(child, breakpoint)
+          return (
+            <div key={child.id} style={{ position: 'relative' }}>
+              <ElementContent element={{ ...child, props: childProps }} breakpoint={breakpoint} />
+            </div>
+          )
+        })}
+    </div>
   )
 }
 
@@ -481,9 +605,23 @@ function CanvasView({
 }) {
   const height = design.canvas[breakpoint].height
 
+  // Build child map for containers
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, HeroElement[]>()
+    for (const el of design.elements) {
+      if (el.parentId && el.visible !== false) {
+        const siblings = map.get(el.parentId) ?? []
+        siblings.push(el)
+        map.set(el.parentId, siblings)
+      }
+    }
+    return map
+  }, [design.elements])
+
+  // Root elements (no parentId), sorted
   const sortedElements = useMemo(() => {
     return [...design.elements]
-      .filter((el) => el.visible !== false)
+      .filter((el) => el.visible !== false && !el.parentId)
       .sort((a, b) => a.zIndex - b.zIndex)
   }, [design.elements])
 
@@ -515,13 +653,34 @@ function CanvasView({
       )}
 
       {/* Elements */}
-      {sortedElements.map((element) => (
-        <PositionedElement
-          key={element.id}
-          element={element}
-          layout={element[breakpoint]}
-        />
-      ))}
+      {sortedElements.map((element) => {
+        const resolvedProps = getActiveProps(element, breakpoint)
+        // Row containers render with their children
+        if (resolvedProps.kind === 'row') {
+          const columns = childrenByParent.get(element.id) ?? []
+          return (
+            <RenderRow
+              key={element.id}
+              element={element}
+              columns={columns}
+              childrenByParent={childrenByParent}
+              breakpoint={breakpoint}
+            />
+          )
+        }
+
+        // Column elements are rendered inside rows, skip at root
+        if (resolvedProps.kind === 'column') return null
+
+        return (
+          <PositionedElement
+            key={element.id}
+            element={element}
+            layout={element[breakpoint]}
+            breakpoint={breakpoint}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -531,10 +690,21 @@ function CanvasView({
 // ---------------------------------------------------------------------------
 
 export function HeroRenderer({ design, className }: HeroRendererProps) {
+  const isFullscreen = design.layoutMode === 'fullscreen'
+
   return (
     <div
       className={className}
-      style={{ contain: 'layout style paint', position: 'relative' }}
+      style={{
+        contain: 'layout style paint',
+        position: 'relative',
+        ...(isFullscreen
+          ? {
+              width: '100vw',
+              marginLeft: 'calc(-50vw + 50%)',
+            }
+          : {}),
+      }}
     >
       {/* Desktop */}
       <div className="hidden md:block">

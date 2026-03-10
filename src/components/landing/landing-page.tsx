@@ -2,621 +2,861 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, Menu, X, Users, ShoppingCart, ChevronRight, ChevronDown, TrendingDown, UserX, DollarSign, LayoutGrid, BarChart3, Smartphone, Package, Check, Star, ArrowRight } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  BarChart3,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  DollarSign,
+  LayoutGrid,
+  Menu,
+  MessageCircle,
+  Package,
+  ShoppingCart,
+  Smartphone,
+  TrendingDown,
+  UserX,
+  Users,
+  X,
+} from 'lucide-react'
 
-// ── Constants ──────────────────────────────────────────────────────────
 const BRAND_RED = '#FF3B30'
-const DARK_BG = '#0F172A'
+const INK = '#16110F'
+const DARK_BG = '#110D0B'
+const PAPER_BG = '#FFF7ED'
+const SAND_BG = '#F2E2CA'
 const MESSENGER_LINK =
   'https://m.me/FACEBOOK_PAGE_ID?text=Hi%2C%20I%20want%20to%20learn%20more%20about%20the%20Smart%20Menu%20System'
-
-// ── Navigation ─────────────────────────────────────────────────────────
+const PRIMARY_CTA = 'Book My Free 15-Min Menu Growth Call'
+const PRIMARY_SUBCTA =
+  'We will show you where your menu is leaking upgrades, bundles, and average order value.'
+const VIEWPORT = { once: true, amount: 0.25 } as const
 
 const NAV_LINKS = [
-  { label: 'The Problem', href: '#problem' },
-  { label: 'The System', href: '#system' },
+  { label: 'Why It Works', href: '#why-it-works' },
+  { label: 'What You Get', href: '#what-you-get' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
 ] as const
 
+const SOCIAL_PROOF = [
+  { icon: Users, label: '100+ restaurant funnels observed' },
+  { icon: ShoppingCart, label: '10,000+ customer orders processed' },
+  { icon: MessageCircle, label: 'Messenger-ready ordering flow' },
+] as const
+
+const PAIN_POINTS = [
+  {
+    icon: TrendingDown,
+    title: 'Customers default to the safe order',
+    text: 'Kapag walang gumagabay, ang pinaka-obvious na item ang binibili - hindi ang pinaka-profitable.',
+  },
+  {
+    icon: UserX,
+    title: 'Staff cannot upsell every time',
+    text: 'Pag busy ang team mo, nawawala ang suggestive selling. Hindi naaalala ang next best offer.',
+  },
+  {
+    icon: DollarSign,
+    title: 'Margin gets buried in the menu',
+    text: 'Hindi napapansin ang bundles, upgrades, at high-margin items dahil pare-pareho lang ang presentation.',
+  },
+] as const
+
+const PLAYBOOK_ITEMS = [
+  'Menu engineering so profitable items get the best real estate.',
+  'Bundle prompts that feel useful instead of pushy.',
+  'Upgrade timing placed where customers are most likely to accept.',
+  'Messenger-ready handoff for dine-in, pick-up, and delivery orders.',
+  'Mobile-first ordering flow with fewer dead ends and fewer drop-offs.',
+  'Clear product hierarchy so your best offers stand out immediately.',
+] as const
+
+const BLUEPRINTS = [
+  {
+    icon: LayoutGrid,
+    title: 'Menu Curation Blueprint',
+    description:
+      'Inaayos natin ang sequence ng menu para ang tamang items ang unang mapansin.',
+    result: 'Better visibility for high-margin categories',
+  },
+  {
+    icon: BarChart3,
+    title: 'Menu Engineering Blueprint',
+    description:
+      'Makikita mo kung alin ang star products, margin drivers, at dead-weight items.',
+    result: 'Smarter decisions on what to push',
+  },
+  {
+    icon: Smartphone,
+    title: 'App Selling System Blueprint',
+    description:
+      'The ordering flow stops acting like a catalog and starts acting like a guided sales path.',
+    result: 'Cleaner decisions and fewer low-value baskets',
+  },
+  {
+    icon: Package,
+    title: 'Bundling System',
+    description:
+      'Gagawa tayo ng bundle prompts at meal upgrades na natural sa customer journey.',
+    result: 'Higher average order value without extra staff effort',
+  },
+] as const
+
+const PROCESS_STEPS = [
+  {
+    number: '01',
+    title: 'Audit',
+    description:
+      'We review your current menu and spot where you are losing bundles, upgrades, and clarity.',
+  },
+  {
+    number: '02',
+    title: 'Build',
+    description:
+      'We restructure the funnel, rewrite the key prompts, and shape the menu around conversion.',
+  },
+  {
+    number: '03',
+    title: 'Launch',
+    description:
+      'Customers get a cleaner ordering experience while Messenger receives the order in real time.',
+  },
+] as const
+
+const VALUE_STACK_ITEMS = [
+  {
+    name: 'Smart Menu Ordering System (Dine-in + Pick-up + Delivery)',
+    value: '10,000',
+  },
+  { name: 'Menu Curation Blueprint', value: '2,500' },
+  { name: 'Menu Engineering Blueprint', value: '2,500' },
+  { name: 'App Selling System Blueprint', value: '2,500' },
+  { name: 'Bundling System', value: '2,500' },
+] as const
+
+const OUTCOMES = [
+  {
+    icon: ShoppingCart,
+    title: 'Bigger baskets',
+    text: 'Mas madaling tanggapin ang combos, add-ons, at meal upgrades kapag malinaw ang next step.',
+  },
+  {
+    icon: LayoutGrid,
+    title: 'Cleaner decisions',
+    text: 'Hindi nalulunod ang customer sa menu. Alam nila kung saan magsisimula at ano ang susunod.',
+  },
+  {
+    icon: MessageCircle,
+    title: 'Faster handoff',
+    text: 'Orders go straight into Messenger, so your team can respond without switching workflows.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Better margin visibility',
+    text: 'Mas obvious kung aling products at bundles ang dapat i-push para kumita ka nang mas maayos.',
+  },
+] as const
+
+const FAQ_ITEMS = [
+  {
+    q: 'Para kanino itong funnel redesign?',
+    a: 'Para sa restaurants, cafes, cloud kitchens, food trucks, and commissaries na gusto ng mas malaking basket size per order.',
+  },
+  {
+    q: 'Kailangan ba ng technical skills sa side namin?',
+    a: 'Hindi. We handle the build. Kailangan lang namin ang menu, offer context, at kung paano dumadating ang orders mo ngayon.',
+  },
+  {
+    q: 'Messenger lang ba ang order destination?',
+    a: 'Sa current landing page flow, oo. Ang design ay ginawa para clean ang handoff papunta sa Messenger mo.',
+  },
+  {
+    q: 'Gaano kabilis puwedeng ma-setup?',
+    a: 'Depende sa complexity ng menu, pero kadalasan mabilis itong ma-outline at ma-launch once complete ang inputs.',
+  },
+  {
+    q: 'One-time payment lang ba ito?',
+    a: 'Yes. The current offer is positioned as a one-time P3,499 setup with no monthly fee on the landing page.',
+  },
+  {
+    q: 'Paano kung mahaba o komplikado ang menu namin?',
+    a: 'Mas lalo itong kailangan ng structure. Categories, bundles, variations, and add-ons are exactly where guided selling helps most.',
+  },
+] as const
+
+function SectionTag({
+  children,
+  dark = false,
+}: {
+  children: React.ReactNode
+  dark?: boolean
+}) {
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] ${
+        dark
+          ? 'border-white/10 bg-white/5 text-white/70'
+          : 'border-black/10 bg-white text-[#2F251F]'
+      }`}
+    >
+      <span
+        className="h-2.5 w-2.5 rounded-full animate-pulse"
+        style={{ backgroundColor: BRAND_RED }}
+      />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function PrimaryCTA({
+  compact = false,
+  mainText = PRIMARY_CTA,
+  subText = PRIMARY_SUBCTA,
+}: {
+  compact?: boolean
+  mainText?: string
+  subText?: string
+}) {
+  return (
+    <a
+      href={MESSENGER_LINK}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`group relative inline-flex w-full max-w-xl flex-col rounded-[1.75rem] text-white transition-transform duration-300 hover:-translate-y-0.5 ${
+        compact ? 'px-6 py-4' : 'px-7 py-5'
+      }`}
+      style={{
+        background: `linear-gradient(135deg, ${BRAND_RED} 0%, #D93025 100%)`,
+        boxShadow: '0 24px 60px rgba(255, 59, 48, 0.28)',
+      }}
+    >
+      <span className="absolute inset-0 rounded-[1.75rem] bg-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <span
+        className={`relative flex items-center justify-center gap-3 text-center font-black uppercase tracking-[-0.03em] ${
+          compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'
+        }`}
+      >
+        <MessageCircle className={compact ? 'h-4 w-4 shrink-0' : 'h-5 w-5 shrink-0'} />
+        <span>{mainText}</span>
+        <ChevronRight
+          className={compact ? 'h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1' : 'h-5 w-5 shrink-0 transition-transform duration-200 group-hover:translate-x-1'}
+        />
+      </span>
+      <span
+        className={`relative mt-1.5 text-center leading-snug text-white/80 ${
+          compact ? 'text-[11px] sm:text-xs' : 'text-xs sm:text-sm'
+        }`}
+      >
+        {subText}
+      </span>
+    </a>
+  )
+}
+
 function Navigation() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-[#0F172A]/80 backdrop-blur-xl">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105"
-              style={{ backgroundColor: BRAND_RED }}
-            >
-              <Menu className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-lg font-bold text-white tracking-tight">
-              WebNegosyo
-            </span>
-          </Link>
-
-          {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors duration-200 rounded-lg hover:bg-white/5"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
-
-          {/* Desktop CTA */}
-          <div className="hidden md:block">
-            <a
-              href={MESSENGER_LINK}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.03] hover:shadow-lg hover:shadow-red-500/25"
-              style={{ backgroundColor: BRAND_RED }}
-            >
-              <MessageCircle className="h-4 w-4" />
-              Book a Call
-            </a>
-          </div>
-
-          {/* Mobile Menu Toggle */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Toggle menu"
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#110D0B]/85 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
+        <Link href="/" className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-white"
+            style={{ backgroundColor: BRAND_RED }}
           >
-            {isMobileMenuOpen ? (
-              <X className="h-5 w-5" />
-            ) : (
-              <Menu className="h-5 w-5" />
-            )}
-          </button>
+            <Menu className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-sm font-black uppercase tracking-[0.18em] text-white">
+              WebNegosyo
+            </div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+              Funnel Rebuild
+            </div>
+          </div>
+        </Link>
+
+        <nav className="hidden items-center gap-6 md:flex">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="text-sm font-medium text-white/65 transition-colors duration-200 hover:text-white"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="hidden md:block">
+          <a
+            href={MESSENGER_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white/10"
+          >
+            <MessageCircle className="h-4 w-4" />
+            Message Us
+          </a>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setIsOpen((open) => !open)}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 text-white md:hidden"
+          aria-expanded={isOpen}
+          aria-label="Toggle menu"
+        >
+          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
 
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
+      <AnimatePresence initial={false}>
+        {isOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="md:hidden overflow-hidden border-t border-white/10 bg-[#0F172A]/95 backdrop-blur-xl"
+            className="overflow-hidden border-t border-white/10 md:hidden"
           >
-            <div className="px-6 py-4 space-y-1">
+            <div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-4 lg:px-8">
               {NAV_LINKS.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="block px-4 py-3 text-base font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-xl px-3 py-3 text-sm font-medium text-white/80 transition-colors duration-200 hover:bg-white/5 hover:text-white"
                 >
                   {link.label}
                 </a>
               ))}
-              <div className="pt-3">
-                <a
-                  href={MESSENGER_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full rounded-full px-5 py-3 text-sm font-semibold text-white transition-all"
-                  style={{ backgroundColor: BRAND_RED }}
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  Book a Call
-                </a>
-              </div>
+              <a
+                href={MESSENGER_LINK}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white"
+                style={{ backgroundColor: BRAND_RED }}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Message Us
+              </a>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </nav>
+    </header>
   )
 }
 
-// ── Social Proof Badges ────────────────────────────────────────────────
-
-const SOCIAL_PROOF = [
-  { icon: Users, label: '100+ Restaurants' },
-  { icon: ShoppingCart, label: '10,000+ Orders' },
-  { icon: MessageCircle, label: 'Works with Messenger' },
-] as const
-
-function SocialProofBadges() {
+function SocialProofStrip() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.1 }}
-      className="flex flex-wrap items-center justify-center md:justify-start gap-3 md:gap-4"
-    >
-      {SOCIAL_PROOF.map((badge) => {
-        const Icon = badge.icon
+    <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-center">
+      {SOCIAL_PROOF.map((item) => {
+        const Icon = item.icon
+
         return (
           <div
-            key={badge.label}
-            className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 backdrop-blur-sm"
+            key={item.label}
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 backdrop-blur-sm"
           >
-            <Icon className="h-4 w-4 text-gray-400" />
-            <span className="font-medium">{badge.label}</span>
+            <Icon className="h-4 w-4 text-white/55" />
+            <span>{item.label}</span>
           </div>
         )
       })}
-    </motion.div>
+    </div>
   )
 }
 
-// ── Phone Mockup ───────────────────────────────────────────────────────
-
-function PhoneMockup() {
+function HeroReport() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 40, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.8, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto w-[280px] md:w-[320px]"
-    >
-      {/* Glow effect */}
+    <div className="relative mx-auto w-full max-w-[380px]">
       <div
-        className="absolute -inset-8 rounded-[3rem] opacity-30 blur-3xl"
-        style={{
-          background: `radial-gradient(ellipse at center, ${BRAND_RED}40 0%, transparent 70%)`,
-        }}
+        className="absolute inset-x-10 bottom-0 h-12 rounded-full blur-2xl"
+        style={{ backgroundColor: `${BRAND_RED}55` }}
       />
 
-      {/* Phone frame */}
-      <div className="relative rounded-[2.5rem] border border-white/15 bg-gradient-to-b from-gray-800 to-gray-900 p-3 shadow-2xl shadow-black/50">
-        {/* Notch */}
-        <div className="absolute left-1/2 top-0 -translate-x-1/2 h-6 w-28 rounded-b-2xl bg-gray-900 z-10" />
-
-        {/* Screen */}
-        <div className="relative overflow-hidden rounded-[2rem] bg-white">
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-6 py-2 bg-gray-50">
-            <span className="text-[10px] font-semibold text-gray-800">9:41</span>
-            <div className="flex items-center gap-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-gray-800" />
-              <div className="h-1.5 w-1.5 rounded-full bg-gray-800" />
-              <div className="h-1.5 w-1.5 rounded-full bg-gray-800" />
+      <div className="relative aspect-[0.8]">
+        <div className="absolute left-0 top-12 h-[72%] w-[70%] rounded-[2rem] border border-white/10 bg-[#1A1411] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.38)]">
+          <div className="rounded-[1.5rem] border border-white/10 bg-[#0F0B09] p-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/45">
+              Inside the rebuild
             </div>
-          </div>
-
-          {/* App header */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-md" style={{ backgroundColor: BRAND_RED }} />
-              <span className="text-xs font-bold text-gray-900">Kusina ni Maria</span>
-            </div>
-          </div>
-
-          {/* Menu items */}
-          <div className="p-3 space-y-2.5">
-            {/* Category */}
-            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-1">
-              Bestsellers
-            </div>
-
-            {/* Item 1 - with upsell badge */}
-            <div className="relative rounded-xl overflow-hidden border border-gray-100 bg-white shadow-sm">
-              <div className="h-24 bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center">
-                <span className="text-3xl">🍗</span>
-              </div>
-              <div className="absolute top-2 right-2">
-                <div className="rounded-full px-2 py-0.5 text-[8px] font-bold text-white" style={{ backgroundColor: BRAND_RED }}>
-                  ★ STAR
+            <div className="mt-4 space-y-3">
+              {['Bundle logic', 'Upgrade prompts', 'Messenger handoff'].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-white/75"
+                >
+                  {item}
                 </div>
-              </div>
-              <div className="px-3 py-2">
-                <div className="text-[11px] font-bold text-gray-900">Chicken Inasal Meal</div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-[11px] font-bold" style={{ color: BRAND_RED }}>₱189</span>
-                  <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: BRAND_RED }}>
-                    <span className="text-white text-[10px]">+</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Item 2 */}
-            <div className="rounded-xl overflow-hidden border border-gray-100 bg-white shadow-sm">
-              <div className="h-24 bg-gradient-to-br from-yellow-100 to-yellow-50 flex items-center justify-center">
-                <span className="text-3xl">🍜</span>
-              </div>
-              <div className="px-3 py-2">
-                <div className="text-[11px] font-bold text-gray-900">Pancit Canton Special</div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-[11px] font-bold" style={{ color: BRAND_RED }}>₱149</span>
-                  <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: BRAND_RED }}>
-                    <span className="text-white text-[10px]">+</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Upsell prompt overlay */}
-          <div className="mx-3 mb-3 rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 p-3 border border-white/10">
-            <div className="text-[9px] font-bold text-white mb-1">🍟 Perfect with your order...</div>
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-200 to-orange-100 flex items-center justify-center text-sm shrink-0">
-                🥤
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[9px] font-medium text-white">Add Iced Tea?</div>
-                <div className="text-[8px] text-green-400 font-semibold">+₱35 only</div>
-              </div>
-              <div className="shrink-0 rounded-full px-2.5 py-1 text-[8px] font-bold text-white" style={{ backgroundColor: BRAND_RED }}>
-                Add
-              </div>
+              ))}
             </div>
           </div>
         </div>
+
+        <div
+          className="absolute right-0 top-0 w-[76%] rounded-[2.4rem] p-[1px] shadow-[0_32px_80px_rgba(0,0,0,0.45)]"
+          style={{
+            background: `linear-gradient(160deg, #FF8A73 0%, ${BRAND_RED} 45%, #C6261A 100%)`,
+          }}
+        >
+          <div className="rounded-[2.35rem] bg-[#120E0C] p-6">
+            <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.28em] text-white/75">
+              Free Playbook
+            </div>
+
+            <div className="mt-10 text-[11px] font-bold uppercase tracking-[0.34em] text-white/45">
+              WebNegosyo
+            </div>
+
+            <h3 className="mt-4 text-[2rem] font-black uppercase leading-[0.92] tracking-[-0.06em] text-white">
+              Smart Menu
+              <br />
+              Growth
+              <br />
+              Blueprint
+            </h3>
+
+            <div className="mt-8 space-y-2">
+              {['Guide bigger orders', 'Push better bundles', 'Sell without extra staff'].map(
+                (item) => (
+                  <div
+                    key={item}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/8 px-3 py-1.5 text-xs font-medium text-white/80"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: BRAND_RED }}
+                    />
+                    <span>{item}</span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute bottom-3 left-6 max-w-[220px] rounded-[1.6rem] border border-black/10 bg-[#FFF6E7] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.14)]">
+          <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#7A6357]">
+            Included
+          </div>
+          <div className="mt-2 text-base font-black uppercase leading-none tracking-[-0.04em] text-[#231A15]">
+            4 blueprints
+            <br />
+            + smart menu system
+          </div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
-
-// ── Hero Section ───────────────────────────────────────────────────────
 
 function HeroSection() {
   return (
     <section
-      className="relative min-h-screen flex items-center overflow-hidden pt-16"
+      className="relative overflow-hidden pt-28 pb-20 md:pt-36 md:pb-28 lg:pt-40"
       style={{ backgroundColor: DARK_BG }}
     >
-      {/* Background gradient orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 overflow-hidden">
         <div
-          className="absolute -top-[40%] -right-[20%] h-[80%] w-[60%] rounded-full opacity-[0.07] blur-[120px]"
-          style={{ backgroundColor: BRAND_RED }}
+          className="absolute left-1/2 top-0 h-[480px] w-[780px] -translate-x-1/2 rounded-full blur-3xl"
+          style={{ backgroundColor: `${BRAND_RED}20` }}
         />
         <div
-          className="absolute -bottom-[30%] -left-[20%] h-[60%] w-[50%] rounded-full opacity-[0.05] blur-[100px]"
-          style={{ backgroundColor: '#3B82F6' }}
-        />
-        {/* Grid pattern overlay — very subtle */}
-        <div
-          className="absolute inset-0 opacity-[0.015]"
+          className="absolute inset-0 opacity-[0.06]"
           style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)`,
+            backgroundImage:
+              'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
+            backgroundSize: '22px 22px',
+          }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 h-40"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(17,13,11,0) 0%, rgba(17,13,11,0.88) 100%)',
+          }}
+        />
+      </div>
+
+      <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl text-center">
+          <SectionTag dark>Open Letter For Food Business Owners</SectionTag>
+
+          <h1 className="mt-6 text-[3rem] font-black uppercase leading-[0.9] tracking-[-0.07em] text-white sm:text-[4.4rem] lg:text-[6.1rem]">
+            Turn your menu into a sales system that pushes bigger orders
+          </h1>
+
+          <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-white/72 md:text-xl">
+            Hindi sapat na maganda lang ang menu. Kailangan nitong marunong
+            mag-guide, mag-suggest, at mag-push ng better orders bago pa
+            dumating sa Messenger ang checkout.
+          </p>
+
+          <SocialProofStrip />
+        </div>
+
+        <div className="mt-14 grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+          <HeroReport />
+
+          <div className="rounded-[2rem] border border-white/10 bg-white/6 p-7 text-white shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-md md:p-8">
+            <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+              What we will map on the call
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {[
+                'Saan tumatagas ang average order value mo',
+                'Aling bundles at upgrades ang dapat mauna sa flow',
+                'How your menu should guide dine-in, pick-up, and delivery',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-3">
+                  <div
+                    className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: `${BRAND_RED}25` }}
+                  >
+                    <Check className="h-4 w-4" style={{ color: BRAND_RED }} />
+                  </div>
+                  <p className="text-base leading-relaxed text-white/80">{item}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8">
+              <PrimaryCTA />
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-xs text-white/45 sm:justify-start">
+              <span>No spam</span>
+              <span className="h-1 w-1 rounded-full bg-white/25" />
+              <span>No pressure</span>
+              <span className="h-1 w-1 rounded-full bg-white/25" />
+              <span>Messenger only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function TraditionalMenuCard() {
+  return (
+    <div className="rounded-[2rem] border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-[0.28em] text-[#8B7468]">
+          Static menu
+        </div>
+        <div className="rounded-full bg-[#F6E4DF] px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#A84432]">
+          Old way
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {[
+          ['Chicken Adobo', 'P150'],
+          ['Pork Sisig', 'P175'],
+          ['Pancit Canton', 'P120'],
+          ['Iced Tea', 'P45'],
+        ].map(([name, price]) => (
+          <div
+            key={name}
+            className="flex items-center justify-between border-b border-dashed border-[#E7D8C6] pb-3 text-[#5D4B41]"
+          >
+            <span>{name}</span>
+            <span>{price}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 space-y-2 text-sm text-[#8B7468]">
+        <div className="flex items-center gap-2">
+          <X className="h-4 w-4 text-[#B79C8D]" />
+          <span>No upsell guidance</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <X className="h-4 w-4 text-[#B79C8D]" />
+          <span>No bundles highlighted</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <X className="h-4 w-4 text-[#B79C8D]" />
+          <span>Customer decides alone</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SellingMenuCard() {
+  return (
+    <div className="rounded-[2rem] border border-black/10 bg-[#18120F] p-6 text-white shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-[0.28em] text-white/45">
+          Selling menu
+        </div>
+        <div
+          className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-white"
+          style={{ backgroundColor: BRAND_RED }}
+        >
+          Better way
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-3">
+        <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-black uppercase tracking-[0.1em]">
+                Chicken meal
+              </div>
+              <div className="mt-1 text-sm text-white/65">
+                Best margin + best seller
+              </div>
+            </div>
+            <div className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-white/80">
+              Star
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[1.4rem] border border-white/10 bg-[#231A16] p-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.26em] text-white/45">
+            Suggested next step
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-white">
+                Make it a meal
+              </div>
+              <div className="text-sm text-green-300">Add rice + iced tea</div>
+            </div>
+            <div
+              className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-white"
+              style={{ backgroundColor: BRAND_RED }}
+            >
+              Add
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-black uppercase tracking-[0.1em]">
+                Family bundle
+              </div>
+              <div className="mt-1 text-sm text-white/65">
+                Higher basket, clearer value
+              </div>
+            </div>
+            <div className="rounded-full bg-green-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-green-300">
+              Push
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-2 text-sm text-white/72">
+        <div className="flex items-center gap-2">
+          <Check className="h-4 w-4 text-green-300" />
+          <span>Clear order path</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Check className="h-4 w-4 text-green-300" />
+          <span>Bundle prompts at the right moment</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Check className="h-4 w-4 text-green-300" />
+          <span>Guided higher-value choices</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LetterSection() {
+  return (
+    <section
+      id="why-it-works"
+      className="relative py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: PAPER_BG }}
+    >
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.6 }}
+          >
+            <SectionTag>Why it works</SectionTag>
+
+            <h2 className="mt-6 max-w-3xl text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-[#1D1612] md:text-5xl">
+              Most menus are built like catalogs. Profitable menus behave like
+              sales funnels.
+            </h2>
+
+            <div className="mt-8 max-w-3xl space-y-6 text-lg leading-relaxed text-[#5F4C40]">
+              <p>
+                Dear food business owner, if your menu is only listing items and
+                prices, it is forcing your staff to do all the selling.
+              </p>
+              <p>
+                Ang problema, hindi consistent ang tao. Kapag rush hour, ang
+                team mo naka-focus sa bilis, hindi sa suggestive selling. Kaya
+                nawawala ang drinks, add-ons, meal upgrades, at bundles na
+                dapat sana kasama sa order.
+              </p>
+              <p>
+                The strongest food brands do not leave that to chance. They
+                design the menu so the next best decision is obvious. Iyon ang
+                ginagawa ng smart menu funnel: it guides attention, sets the
+                right default choices, and makes bigger orders feel natural.
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="flex flex-col gap-6"
+          >
+            <div className="rounded-[2rem] border border-black/10 bg-white p-7 shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#8B7468]">
+                Core idea
+              </div>
+              <p className="mt-5 text-2xl font-black uppercase leading-[0.96] tracking-[-0.04em] text-[#1E1713]">
+                The menu should do the persuasion before the customer asks what
+                else they can add.
+              </p>
+              <p className="mt-4 text-base leading-relaxed text-[#655347]">
+                Hindi lang dapat informative ang funnel. It should guide,
+                surface the profitable options, and remove the guesswork from
+                ordering.
+              </p>
+            </div>
+
+            <div
+              className="rounded-[2rem] p-7 text-white shadow-[0_24px_60px_rgba(0,0,0,0.16)]"
+              style={{
+                background: `linear-gradient(145deg, ${INK} 0%, #241A15 100%)`,
+              }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+                What changes
+              </div>
+              <div className="mt-5 space-y-4">
+                {[
+                  'Your high-margin items get seen earlier.',
+                  'Your bundles appear at the right decision points.',
+                  'Your ordering flow feels easier while the basket gets bigger.',
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-green-300" />
+                    <span className="text-base leading-relaxed text-white/78">
+                      {item}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        <div className="mt-16 grid gap-6 lg:grid-cols-2">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.55 }}
+          >
+            <TraditionalMenuCard />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.55, delay: 0.1 }}
+          >
+            <SellingMenuCard />
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ProblemSection() {
+  return (
+    <section
+      className="relative py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: DARK_BG }}
+    >
+      <div className="absolute inset-0 opacity-[0.04]">
+        <div
+          className="h-full w-full"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)',
             backgroundSize: '80px 80px',
           }}
         />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8 py-20 md:py-28 lg:py-32">
-        <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
-          {/* Left: Copy */}
-          <div className="text-center md:text-left">
-            {/* Social proof badges */}
-            <div className="mb-8 lg:mb-10">
-              <SocialProofBadges />
-            </div>
-
-            {/* Headline */}
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] tracking-tight"
-            >
-              Your Menu Should Be Your{' '}
-              <span className="relative inline-block">
-                <span
-                  className="bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage: `linear-gradient(135deg, ${BRAND_RED}, #FF6B61)`,
-                  }}
-                >
-                  Best Salesperson
-                </span>
-                {/* Underline accent */}
-                <motion.span
-                  initial={{ scaleX: 0 }}
-                  animate={{ scaleX: 1 }}
-                  transition={{ duration: 0.6, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute -bottom-2 left-0 right-0 h-1 rounded-full origin-left"
-                  style={{
-                    backgroundImage: `linear-gradient(90deg, ${BRAND_RED}, ${BRAND_RED}00)`,
-                  }}
-                />
-              </span>
-            </motion.h1>
-
-            {/* Subheadline */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.35 }}
-              className="mt-6 md:mt-8 text-xl md:text-2xl text-gray-300 leading-relaxed max-w-xl mx-auto md:mx-0"
-            >
-              Karamihan sa food businesses, nag-iiwan ng pera sa mesa sa bawat order.{' '}
-              <span className="text-white font-medium">We fix that.</span>
-            </motion.p>
-
-            {/* CTA */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="mt-10 md:mt-12 flex flex-col sm:flex-row items-center gap-4 md:justify-start justify-center"
-            >
-              <a
-                href={MESSENGER_LINK}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative inline-flex items-center gap-3 rounded-full px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.03] hover:shadow-xl hover:shadow-red-500/30 active:scale-[0.98]"
-                style={{ backgroundColor: BRAND_RED }}
-              >
-                {/* Button glow */}
-                <span
-                  className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"
-                  style={{ backgroundColor: BRAND_RED }}
-                />
-                <span className="relative flex items-center gap-3">
-                  <MessageCircle className="h-5 w-5" />
-                  Book Your Free 15-Min Strategy Call
-                  <ChevronRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-0.5" />
-                </span>
-              </a>
-
-              <span className="text-sm text-gray-500">
-                Free. No commitment.
-              </span>
-            </motion.div>
-          </div>
-
-          {/* Right: Phone Mockup */}
-          <div className="flex items-center justify-center">
-            <PhoneMockup />
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ── McDonald's Story Section ──────────────────────────────────────────
-
-function McDonaldsStorySection() {
-  return (
-    <section id="story" className="relative bg-white py-20 md:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Section Title */}
-        <motion.h2
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
-        >
-          What McDonald&apos;s Knows That
-          <br className="hidden sm:block" />
-          Most Food Businesses Don&apos;t
-        </motion.h2>
-
-        {/* Storytelling Body */}
+      <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.15 }}
-          className="mt-12 md:mt-16 max-w-3xl mx-auto space-y-6 text-lg md:text-xl text-gray-600 leading-relaxed"
-        >
-          <p>
-            Alam mo yung mga kiosk sa McDonald&apos;s? Karamihan ng tao akala nila,
-            pang-automate lang yun ng ordering — para mabawasan ang staff, para
-            mas mabilis.
-          </p>
-          <p className="text-gray-900 font-medium">
-            Pero hindi yun ang main reason.
-          </p>
-          <p>
-            Ang totoo?{' '}
-            <span className="font-bold" style={{ color: BRAND_RED }}>
-              The menu IS the salesperson.
-            </span>{' '}
-            Bawat screen, bawat &quot;Would you like to make it a meal?&quot;,
-            bawat suggestion na lumalabas — lahat yun, designed para mag-order ka
-            ng mas marami without you even noticing.
-          </p>
-          <p>
-            Hindi sila nag-rely sa cashier para mag-upsell.{' '}
-            <span className="text-gray-900 font-semibold">They built a system.</span>
-          </p>
-        </motion.div>
-
-        {/* Comparison Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.7, delay: 0.25 }}
-          className="mt-16 md:mt-20 grid md:grid-cols-2 gap-6 md:gap-8 max-w-5xl mx-auto"
-        >
-          {/* Traditional Menu Card */}
-          <div className="relative rounded-2xl border-2 border-gray-200 bg-gray-50 p-6 md:p-8 overflow-hidden">
-            <div className="absolute top-4 right-4 rounded-full bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Traditional
-            </div>
-            <h3 className="text-xl font-bold text-gray-400 mb-6">Traditional Menu</h3>
-            {/* Mock menu list */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
-                <span className="text-sm text-gray-400">Chicken Adobo</span>
-                <span className="text-sm text-gray-400">P150</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
-                <span className="text-sm text-gray-400">Pork Sinigang</span>
-                <span className="text-sm text-gray-400">P180</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
-                <span className="text-sm text-gray-400">Pancit Canton</span>
-                <span className="text-sm text-gray-400">P120</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-dashed border-gray-300 pb-2">
-                <span className="text-sm text-gray-400">Halo-Halo</span>
-                <span className="text-sm text-gray-400">P90</span>
-              </div>
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm text-gray-400">Iced Tea</span>
-                <span className="text-sm text-gray-400">P45</span>
-              </div>
-            </div>
-            <div className="mt-6 flex items-center gap-2 text-sm text-gray-400">
-              <X className="h-4 w-4 text-gray-300" />
-              <span>No suggestions</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
-              <X className="h-4 w-4 text-gray-300" />
-              <span>No upselling</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
-              <X className="h-4 w-4 text-gray-300" />
-              <span>Static list — walang nag-gu-guide</span>
-            </div>
-          </div>
-
-          {/* Smart Menu Card */}
-          <div className="relative rounded-2xl border-2 p-6 md:p-8 overflow-hidden shadow-xl" style={{ borderColor: BRAND_RED, backgroundColor: '#FFF5F5' }}>
-            <div className="absolute top-4 right-4 rounded-full px-3 py-1 text-xs font-bold text-white uppercase tracking-wider" style={{ backgroundColor: BRAND_RED }}>
-              Smart Menu
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-6">Smart Menu</h3>
-            {/* Mock smart menu */}
-            <div className="space-y-3">
-              {/* Item with star badge */}
-              <div className="rounded-xl bg-white border border-gray-100 p-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🍗</span>
-                    <span className="text-sm font-bold text-gray-900">Chicken Inasal Meal</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: BRAND_RED }}>★ STAR</span>
-                    <span className="text-sm font-bold" style={{ color: BRAND_RED }}>P189</span>
-                  </div>
-                </div>
-              </div>
-              {/* Upsell prompt */}
-              <div className="rounded-xl bg-gray-900 p-3">
-                <div className="text-[10px] font-bold text-white mb-1.5">🍟 Make it a meal?</div>
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 rounded-lg bg-orange-100 flex items-center justify-center text-xs shrink-0">🥤</div>
-                  <div className="flex-1">
-                    <div className="text-[10px] text-white font-medium">Add Iced Tea + Rice</div>
-                    <div className="text-[9px] text-green-400 font-semibold">Save P25!</div>
-                  </div>
-                  <div className="rounded-full px-2.5 py-1 text-[9px] font-bold text-white" style={{ backgroundColor: BRAND_RED }}>
-                    Add
-                  </div>
-                </div>
-              </div>
-              {/* Bundle highlight */}
-              <div className="rounded-xl bg-white border-2 p-3 shadow-sm" style={{ borderColor: `${BRAND_RED}40` }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🎁</span>
-                    <span className="text-sm font-bold text-gray-900">Family Bundle</span>
-                  </div>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Save 15%</span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-6 flex items-center gap-2 text-sm text-gray-700">
-              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
-              <span className="font-medium">Smart upsell prompts</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-700 mt-2">
-              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
-              <span className="font-medium">Bundle suggestions</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-700 mt-2">
-              <ChevronRight className="h-4 w-4" style={{ color: BRAND_RED }} />
-              <span className="font-medium">Highlighted bestsellers</span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Transition line */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.35 }}
-          className="mt-16 md:mt-20 text-center text-2xl md:text-3xl font-bold text-gray-900"
-        >
-          We built the same system — for your business.
-        </motion.p>
-      </div>
-    </section>
-  )
-}
-
-// ── Problem Section ───────────────────────────────────────────────────
-
-const PAIN_POINTS = [
-  {
-    icon: TrendingDown,
-    text: 'Yung customer mo, nag-o-order ng minimum kasi walang gumagabay sa kanila na mag-order ng more.',
-  },
-  {
-    icon: UserX,
-    text: 'Walang upselling system — busy yung staff mo, static yung menu mo. Walang nag-su-suggest.',
-  },
-  {
-    icon: DollarSign,
-    text: 'Every missed upsell is money that walks out the door. At nangyayari to sa bawat customer, araw-araw.',
-  },
-] as const
-
-function ProblemSection() {
-  return (
-    <section id="problem" className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={VIEWPORT}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight max-w-4xl mx-auto"
+          className="mx-auto max-w-4xl text-center"
         >
-          You&apos;re Not Losing Because of Foot Traffic.{' '}
-          <span style={{ color: BRAND_RED }}>
-            You&apos;re Losing Because Your Menu Isn&apos;t Selling.
-          </span>
-        </motion.h2>
+          <SectionTag dark>Where revenue leaks</SectionTag>
 
-        {/* Pain Point Cards */}
-        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-white md:text-5xl">
+            Static menus leak money a little bit at a time - on almost every
+            order.
+          </h2>
+
+          <p className="mt-6 text-lg leading-relaxed text-white/68">
+            Hindi mo kailangan ng mas maraming traffic para kumita nang mas
+            maayos. Kailangan mo ng menu na mas mahusay magbenta sa existing
+            traffic mo.
+          </p>
+        </motion.div>
+
+        <div className="mt-14 grid gap-6 md:grid-cols-3">
           {PAIN_POINTS.map((point, index) => {
             const Icon = point.icon
+
             return (
               <motion.div
-                key={index}
+                key={point.title}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.6, delay: index * 0.15 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-8"
+                viewport={VIEWPORT}
+                transition={{ duration: 0.55, delay: index * 0.08 }}
+                className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
               >
                 <div
-                  className="inline-flex items-center justify-center h-12 w-12 rounded-xl mb-6"
-                  style={{ backgroundColor: `${BRAND_RED}20` }}
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                  style={{ backgroundColor: `${BRAND_RED}18` }}
                 >
                   <Icon className="h-6 w-6" style={{ color: BRAND_RED }} />
                 </div>
-                <p className="text-lg text-gray-300 leading-relaxed">
+
+                <h3 className="mt-6 text-xl font-black uppercase leading-tight tracking-[-0.03em] text-white">
+                  {point.title}
+                </h3>
+
+                <p className="mt-4 text-base leading-relaxed text-white/68">
                   {point.text}
                 </p>
               </motion.div>
@@ -628,227 +868,242 @@ function ProblemSection() {
   )
 }
 
-// ── Solution Section ──────────────────────────────────────────────────
-
-const BLUEPRINT_CARDS = [
-  {
-    icon: LayoutGrid,
-    title: 'Menu Curation Blueprint',
-    description: 'Paano i-layout ang menu mo para ma-guide ang customer kung saan ka kumikita.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Menu Engineering Blueprint',
-    description: 'Alam mo ba kung aling item mo ang Star at aling item ang Dead Weight? Dito mo malalaman.',
-  },
-  {
-    icon: Smartphone,
-    title: 'App Selling System Blueprint',
-    description: 'Turn your menu into a conversion machine. Hindi lang basta menu — salesperson.',
-  },
-  {
-    icon: Package,
-    title: 'Bundling System',
-    description: "Yung 'Make it a Meal' na system ng McDonald's? Ganun din to — automated bundles na nagbo-boost ng AOV mo.",
-  },
-] as const
-
-function SolutionSection() {
+function SystemPreview() {
   return (
-    <section id="system" className="relative bg-white py-20 md:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight max-w-4xl mx-auto"
-        >
-          Introducing the Smart Menu{' '}
-          <span
-            className="bg-clip-text text-transparent"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${BRAND_RED}, #FF6B61)`,
-            }}
-          >
-            That Sells For You
-          </span>
-        </motion.h2>
+    <div className="relative mx-auto w-full max-w-[430px]">
+      <div
+        className="absolute -inset-6 rounded-[2.4rem] blur-3xl"
+        style={{ backgroundColor: `${BRAND_RED}18` }}
+      />
 
-        {/* Blueprint Cards */}
-        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-2 gap-8">
-          {BLUEPRINT_CARDS.map((card, index) => {
-            const Icon = card.icon
-            return (
-              <motion.div
-                key={card.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.6, delay: index * 0.12 }}
-                className="bg-white border border-gray-200 rounded-2xl p-8 hover:-translate-y-1 hover:shadow-lg transition-all"
-              >
-                <div
-                  className="inline-flex items-center justify-center h-12 w-12 rounded-xl mb-6"
-                  style={{ backgroundColor: `${BRAND_RED}15` }}
-                >
-                  <Icon className="h-6 w-6" style={{ color: BRAND_RED }} />
+      <div className="relative rounded-[2.4rem] border border-black/10 bg-[#17110E] p-4 shadow-[0_30px_70px_rgba(0,0,0,0.22)]">
+        <div className="rounded-[1.9rem] bg-white p-4">
+          <div className="flex items-center justify-between border-b border-[#EFE3D4] pb-4">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8B7468]">
+                Smart menu flow
+              </div>
+              <div className="mt-1 text-lg font-black uppercase tracking-[-0.03em] text-[#221A15]">
+                Kusina ni Maria
+              </div>
+            </div>
+            <div
+              className="rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-white"
+              style={{ backgroundColor: BRAND_RED }}
+            >
+              Live
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-[1.2rem] border border-[#EDE0D0] bg-[#FFF7ED] p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.26em] text-[#8B7468]">
+                Start here
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {['Dine-in', 'Pick-up', 'Delivery'].map((item, index) => (
+                  <div
+                    key={item}
+                    className={`rounded-xl border px-3 py-2 text-center text-sm font-semibold ${
+                      index === 0
+                        ? 'border-[#FF3B30] bg-[#FFF0ED] text-[#241A15]'
+                        : 'border-[#E9DCCD] text-[#6A564A]'
+                    }`}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-[#EDE0D0] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-black uppercase tracking-[-0.02em] text-[#211813]">
+                    Chicken Inasal Meal
+                  </div>
+                  <div className="mt-1 text-sm text-[#6C584C]">
+                    Best seller with strong margin
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">
-                  {card.title}
-                </h3>
-                <p className="text-lg text-gray-600 leading-relaxed">
-                  {card.description}
-                </p>
-              </motion.div>
-            )
-          })}
+                <div className="text-sm font-black text-[#FF3B30]">P189</div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] bg-[#17120F] p-4 text-white">
+              <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/45">
+                Suggested upgrade
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Add rice + iced tea</div>
+                  <div className="text-sm text-green-300">Increase basket value</div>
+                </div>
+                <div
+                  className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.2em]"
+                  style={{ backgroundColor: BRAND_RED }}
+                >
+                  Add
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-[#EDE0D0] bg-[#F7FBFF] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F0FF]">
+                  <MessageCircle className="h-5 w-5 text-[#2563EB]" />
+                </div>
+                <div>
+                  <div className="text-sm font-black uppercase tracking-[-0.02em] text-[#221A15]">
+                    Messenger handoff
+                  </div>
+                  <div className="text-sm text-[#6C584C]">
+                    Order lands directly in your inbox
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 
-// ── Smart Menu Ordering System Section ────────────────────────────────
-
-const SMART_MENU_FEATURES = [
-  'Handles Dine-in, Pick-up, at Delivery — isang system lang.',
-  'Never misses an upsell opportunity. Kahit wala kang staff na nag-su-suggest, yung menu mo mismo ang gagawa.',
-  'Lahat ng orders, diretso sa Messenger mo. No app needed para sa customers.',
-  'Automated bundling suggestions sa bawat order.',
-  'Works on any phone — walang need mag-install ng app.',
-  'Real-time notifications sa bawat bagong order.',
-] as const
-
-function SmartMenuSystemSection() {
+function OfferSection() {
   return (
-    <section className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
+    <section
+      id="what-you-get"
+      className="relative py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: PAPER_BG }}
+    >
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={VIEWPORT}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight max-w-4xl mx-auto mb-14 md:mb-20"
+          className="mx-auto max-w-4xl text-center"
         >
-          Plus: Your Very Own{' '}
-          <span
-            className="bg-clip-text text-transparent"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${BRAND_RED}, #FF6B61)`,
-            }}
-          >
-            Smart Menu Ordering System
-          </span>
-        </motion.h2>
+          <SectionTag>What you get</SectionTag>
 
-        {/* Content: Features + Mockup */}
-        <div className="flex flex-col lg:flex-row gap-12 items-center">
-          {/* Left: Feature Bullets */}
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.6, delay: 0.15 }}
-            className="flex-1 space-y-5"
-          >
-            {SMART_MENU_FEATURES.map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
-                className="flex items-start gap-4"
-              >
-                <div className="mt-1 shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-green-500/20">
-                  <Check className="h-4 w-4 text-green-400" />
-                </div>
-                <p className="text-lg text-gray-300 leading-relaxed">
-                  {feature}
-                </p>
-              </motion.div>
-            ))}
-          </motion.div>
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-[#1D1612] md:text-5xl">
+            This is not a reskin. It is a funnel redesign for the full ordering
+            experience.
+          </h2>
 
-          {/* Right: Phone/Tablet Mockup */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.6, delay: 0.25 }}
-            className="flex-1 flex items-center justify-center"
-          >
-            <div className="relative w-full max-w-[360px]">
-              {/* Glow */}
-              <div
-                className="absolute -inset-6 rounded-[2rem] opacity-20 blur-3xl"
-                style={{
-                  background: `radial-gradient(ellipse at center, ${BRAND_RED}40 0%, transparent 70%)`,
-                }}
-              />
+          <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-[#5F4C40]">
+            You are not buying a prettier menu. You are installing a guided
+            system that changes what customers notice, what they click next, and
+            what lands in the basket.
+          </p>
+        </motion.div>
 
-              {/* Device frame */}
-              <div className="relative rounded-[2rem] border border-white/15 bg-gradient-to-b from-gray-800 to-gray-900 p-4 shadow-2xl shadow-black/50">
-                <div className="rounded-[1.5rem] bg-white overflow-hidden">
-                  {/* Header */}
-                  <div className="px-5 py-4 border-b border-gray-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-7 w-7 rounded-lg" style={{ backgroundColor: BRAND_RED }} />
-                      <span className="text-sm font-bold text-gray-900">Your Restaurant</span>
-                    </div>
-                  </div>
+        <div className="mt-14 grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+          <div>
+            <div className="rounded-[2rem] border border-black/10 bg-white p-7 shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#8B7468]">
+                Inside the playbook
+              </div>
 
-                  {/* Order Type Selector */}
-                  <div className="p-4 space-y-3">
-                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                      How would you like your order?
-                    </div>
-
-                    {/* Order type cards */}
-                    {[
-                      { emoji: '🍽️', label: 'Dine-in', sublabel: 'Eat here' },
-                      { emoji: '🛍️', label: 'Pick-up', sublabel: 'Take away' },
-                      { emoji: '🛵', label: 'Delivery', sublabel: 'To your door' },
-                    ].map((orderType, i) => (
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {PLAYBOOK_ITEMS.map((item, index) => (
+                  <motion.div
+                    key={item}
+                    initial={{ opacity: 0, y: 24 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={VIEWPORT}
+                    transition={{ duration: 0.45, delay: index * 0.04 }}
+                    className="rounded-[1.4rem] border border-[#EEE2D3] bg-[#FFFAF5] p-4"
+                  >
+                    <div className="flex items-start gap-3">
                       <div
-                        key={orderType.label}
-                        className="flex items-center gap-3 rounded-xl border p-3.5 transition-all"
-                        style={{
-                          borderColor: i === 0 ? BRAND_RED : '#E5E7EB',
-                          backgroundColor: i === 0 ? `${BRAND_RED}08` : 'white',
-                        }}
+                        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                        style={{ backgroundColor: `${BRAND_RED}18` }}
                       >
-                        <span className="text-xl">{orderType.emoji}</span>
-                        <div className="flex-1">
-                          <div className="text-sm font-bold text-gray-900">{orderType.label}</div>
-                          <div className="text-xs text-gray-500">{orderType.sublabel}</div>
-                        </div>
-                        {i === 0 && (
-                          <div
-                            className="h-5 w-5 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: BRAND_RED }}
-                          >
-                            <Check className="h-3 w-3 text-white" />
-                          </div>
-                        )}
+                        <Check className="h-4 w-4" style={{ color: BRAND_RED }} />
                       </div>
-                    ))}
-
-                    {/* Messenger notification mock */}
-                    <div className="mt-2 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100 p-3 border border-blue-200">
-                      <div className="flex items-center gap-2">
-                        <MessageCircle className="h-4 w-4 text-blue-600 shrink-0" />
-                        <div>
-                          <div className="text-[10px] font-bold text-blue-900">New Order Received!</div>
-                          <div className="text-[9px] text-blue-700">Diretso sa Messenger mo</div>
-                        </div>
-                      </div>
+                      <p className="text-sm leading-relaxed text-[#5F4C40]">
+                        {item}
+                      </p>
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-5 md:grid-cols-2">
+              {BLUEPRINTS.map((item, index) => {
+                const Icon = item.icon
+
+                return (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 26 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={VIEWPORT}
+                    transition={{ duration: 0.45, delay: index * 0.06 }}
+                    className="rounded-[1.8rem] border border-black/10 bg-white p-6 shadow-[0_16px_45px_rgba(0,0,0,0.06)]"
+                  >
+                    <div
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                      style={{ backgroundColor: `${BRAND_RED}14` }}
+                    >
+                      <Icon className="h-5 w-5" style={{ color: BRAND_RED }} />
+                    </div>
+
+                    <h3 className="mt-5 text-xl font-black uppercase leading-tight tracking-[-0.03em] text-[#1F1713]">
+                      {item.title}
+                    </h3>
+
+                    <p className="mt-3 text-base leading-relaxed text-[#5F4C40]">
+                      {item.description}
+                    </p>
+
+                    <div className="mt-4 inline-flex rounded-full bg-[#F5E9D8] px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#7A6357]">
+                      {item.result}
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="flex flex-col justify-between gap-8"
+          >
+            <SystemPreview />
+
+            <div
+              className="rounded-[2rem] p-7 text-white shadow-[0_24px_60px_rgba(0,0,0,0.12)]"
+              style={{
+                background: `linear-gradient(145deg, ${INK} 0%, #241A15 100%)`,
+              }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+                Why this matters
+              </div>
+
+              <p className="mt-5 text-2xl font-black uppercase leading-[0.96] tracking-[-0.04em]">
+                Your menu starts selling even when your staff are busy.
+              </p>
+
+              <p className="mt-4 text-base leading-relaxed text-white/72">
+                The funnel handles the guidance. The prompts appear at the right
+                time. The order lands where your team already works. That is the
+                shift.
+              </p>
+
+              <div className="mt-6">
+                <PrimaryCTA
+                  compact
+                  mainText="See How This Fits My Menu"
+                  subText="Messenger us and we will map the best entry point for your current offer stack."
+                />
               </div>
             </div>
           </motion.div>
@@ -858,361 +1113,302 @@ function SmartMenuSystemSection() {
   )
 }
 
-// ── How It Works Section ──────────────────────────────────────────────
-
-const STEPS = [
-  {
-    number: 1,
-    title: 'Book a Call',
-    description: 'Pag-usapan natin yung business mo.',
-  },
-  {
-    number: 2,
-    title: 'We Set Up Your Smart Menu',
-    description: 'Kasama na lahat ng blueprints at system.',
-  },
-  {
-    number: 3,
-    title: 'Launch',
-    description: 'Panoorin mo na lang tumaas ang Average Order Value mo.',
-  },
-] as const
-
-function HowItWorksSection() {
+function ProcessAndPricingSection() {
   return (
-    <section id="process" className="relative bg-white py-20 md:py-28 lg:py-32">
+    <section
+      id="pricing"
+      className="relative py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: DARK_BG }}
+    >
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={VIEWPORT}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+          className="mx-auto max-w-4xl text-center"
         >
-          How It Works
-        </motion.h2>
+          <SectionTag dark>How it rolls out</SectionTag>
 
-        {/* Steps */}
-        <div className="mt-14 md:mt-20 flex flex-col md:flex-row gap-8 items-start">
-          {STEPS.map((step, index) => (
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-white md:text-5xl">
+            Three steps from price list to guided ordering system.
+          </h2>
+        </motion.div>
+
+        <div className="mt-14 grid gap-6 md:grid-cols-3">
+          {PROCESS_STEPS.map((step, index) => (
             <motion.div
               key={step.number}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, delay: index * 0.15 }}
-              className="flex-1 relative flex flex-col items-center text-center"
+              viewport={VIEWPORT}
+              transition={{ duration: 0.5, delay: index * 0.08 }}
+              className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
             >
-              {/* Connecting line on desktop (between steps, not after last) */}
-              {index < STEPS.length - 1 && (
-                <div className="hidden md:block absolute top-7 left-[calc(50%+2rem)] right-[calc(-50%+2rem)] border-t-2 border-dashed border-gray-300" />
-              )}
-
-              {/* Number circle */}
-              <div
-                className="relative z-10 flex items-center justify-center h-14 w-14 rounded-full text-2xl font-bold text-white shadow-lg"
-                style={{ backgroundColor: BRAND_RED }}
-              >
+              <div className="text-4xl font-black uppercase tracking-[-0.06em] text-white/24">
                 {step.number}
               </div>
-
-              {/* Step title */}
-              <h3 className="mt-6 text-xl font-bold text-gray-900">
+              <h3 className="mt-6 text-2xl font-black uppercase leading-tight tracking-[-0.03em]">
                 {step.title}
               </h3>
-
-              {/* Step description */}
-              <p className="mt-3 text-lg text-gray-600 leading-relaxed max-w-xs">
+              <p className="mt-4 text-base leading-relaxed text-white/68">
                 {step.description}
               </p>
             </motion.div>
           ))}
         </div>
-      </div>
-    </section>
-  )
-}
 
-// ── Value Stack Section ──────────────────────────────────────────────
-
-const VALUE_STACK_ITEMS = [
-  { name: 'Smart Menu Ordering System (Dine-in + Pick-up + Delivery)', value: '10,000' },
-  { name: 'Menu Curation Blueprint', value: '2,500' },
-  { name: 'Menu Engineering Blueprint', value: '2,500' },
-  { name: 'App Selling System Blueprint', value: '2,500' },
-  { name: 'Bundling System', value: '2,500' },
-] as const
-
-function ValueStackSection() {
-  return (
-    <section id="pricing" className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
-      <div className="mx-auto max-w-3xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center leading-tight tracking-tight"
-        >
-          Everything You Get
-        </motion.h2>
-
-        {/* Stack List */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.15 }}
-          className="mt-14 md:mt-20"
-        >
-          {VALUE_STACK_ITEMS.map((item, index) => (
-            <motion.div
-              key={item.name}
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.5, delay: 0.2 + index * 0.08 }}
-              className="flex items-center justify-between py-5 border-b border-white/10"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <Check className="h-5 w-5 shrink-0 text-green-400" />
-                <span className="text-base md:text-lg text-gray-300">{item.name}</span>
-              </div>
-              <span className="text-base md:text-lg text-gray-500 line-through ml-4 shrink-0">
-                ₱{item.value}
-              </span>
-            </motion.div>
-          ))}
-
-          {/* Total Value Row */}
+        <div className="mt-16 grid gap-8 lg:grid-cols-[0.92fr_1.08fr]">
           <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-            className="flex items-center justify-between pt-6 pb-2"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.55 }}
+            className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
           >
-            <span className="text-xl md:text-2xl font-bold text-white">Total Value:</span>
-            <span className="text-xl md:text-2xl font-bold text-white">₱20,000+</span>
-          </motion.div>
-        </motion.div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+              Built for actual ordering
+            </div>
 
-        {/* Price Reveal */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.7, delay: 0.3 }}
-          className="mt-16 md:mt-20 text-center"
-        >
-          <p className="text-2xl md:text-3xl text-gray-400 font-medium">
-            Pero hindi mo babayaran ng ganun.
-          </p>
-          <p
-            className="mt-4 text-5xl md:text-6xl font-bold"
-            style={{ color: BRAND_RED }}
-          >
-            ₱3,499 lang.
-          </p>
-        </motion.div>
+            <h3 className="mt-5 text-3xl font-black uppercase leading-[0.94] tracking-[-0.04em]">
+              The funnel is designed around how food customers really decide.
+            </h3>
 
-        {/* CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-          className="mt-12 flex flex-col items-center gap-4"
-        >
-          <a
-            href={MESSENGER_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group relative inline-flex items-center gap-3 rounded-full px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.03] hover:shadow-xl hover:shadow-red-500/30 active:scale-[0.98]"
-            style={{ backgroundColor: BRAND_RED }}
-          >
-            <span
-              className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"
-              style={{ backgroundColor: BRAND_RED }}
-            />
-            <span className="relative flex items-center gap-3">
-              <MessageCircle className="h-5 w-5" />
-              Book Your Free Strategy Call
-            </span>
-          </a>
-          <span className="text-sm text-gray-500">
-            One-time payment. Walang monthly fees.
-          </span>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
+            <div className="mt-6 space-y-4">
+              {[
+                'Fast choices first, better-value choices second.',
+                'Bundle logic that feels natural on mobile.',
+                'Messenger handoff so the team keeps one familiar workflow.',
+                'Offer presentation tuned for dine-in, pick-up, and delivery.',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-3">
+                  <Check className="mt-0.5 h-5 w-5 shrink-0 text-green-300" />
+                  <span className="text-base leading-relaxed text-white/72">
+                    {item}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-// ── Testimonials Section ──────────────────────────────────────────────
-
-interface Testimonial {
-  quote: string
-  name: string
-  business: string
-  aovBefore: string
-  aovAfter: string
-}
-
-const TESTIMONIALS: Testimonial[] = [
-  {
-    quote: "Akala ko dati okay na yung menu ko. Nung nakita ko yung data, dun ko na-realize kung magkano ang nami-miss ko.",
-    name: "Maria Santos",
-    business: "Restaurant Owner",
-    aovBefore: "₱180",
-    aovAfter: "₱250",
-  },
-  {
-    quote: "Yung bundling system nila, grabe. Tumaas ng 40% yung average order namin in 2 weeks.",
-    name: "Juan dela Cruz",
-    business: "Cafe Owner",
-    aovBefore: "₱120",
-    aovAfter: "₱168",
-  },
-  {
-    quote: "Hindi ko alam na ganun kadali. Setup lang, tapos yung menu na mismo ang nag-uupsell.",
-    name: "Ana Reyes",
-    business: "Food Truck Owner",
-    aovBefore: "₱95",
-    aovAfter: "₱145",
-  },
-]
-
-function TestimonialsSection() {
-  return (
-    <section id="testimonials" className="bg-white py-20 md:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
-        >
-          What Business Owners Say
-        </motion.h2>
-
-        {/* Cards */}
-        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
-          {TESTIMONIALS.map((t, index) => (
-            <motion.div
-              key={t.name}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, delay: index * 0.15 }}
-              className="rounded-2xl border bg-white p-8 shadow-sm"
-            >
-              {/* Stars */}
-              <div className="flex gap-1">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={i}
-                    className="h-5 w-5 fill-yellow-400 text-yellow-400"
-                  />
-                ))}
+            <div className="mt-8 rounded-[1.5rem] border border-white/10 bg-black/15 p-5">
+              <div className="text-sm font-bold uppercase tracking-[0.2em] text-white/45">
+                Payback logic
               </div>
-
-              {/* Quote */}
-              <p className="mt-5 text-lg italic text-gray-700 leading-relaxed">
-                &ldquo;{t.quote}&rdquo;
+              <p className="mt-3 text-base leading-relaxed text-white/72">
+                One or two stronger bundles can cover the setup quickly if the
+                funnel keeps steering customers toward better baskets.
               </p>
+            </div>
+          </motion.div>
 
-              {/* AOV metric */}
-              <div className="mt-6 flex items-center gap-2 text-sm font-medium">
-                <span className="text-gray-500">AOV:</span>
-                <span className="text-gray-400">{t.aovBefore}</span>
-                <ArrowRight className="h-4 w-4 text-green-500" />
-                <span className="font-bold text-green-600">{t.aovAfter}</span>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.55, delay: 0.08 }}
+            className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
+          >
+            <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+              Everything included
+            </div>
+
+            <div className="mt-6 divide-y divide-white/10">
+              {VALUE_STACK_ITEMS.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between gap-4 py-5"
+                >
+                  <div className="flex items-center gap-3">
+                    <Check className="h-5 w-5 shrink-0 text-green-300" />
+                    <span className="text-base text-white/78">{item.name}</span>
+                  </div>
+                  <span className="shrink-0 text-base text-white/40 line-through">
+                    P{item.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex items-center justify-between gap-4 border-t border-white/10 pt-6">
+              <span className="text-2xl font-black uppercase tracking-[-0.03em]">
+                Total value
+              </span>
+              <span className="text-2xl font-black uppercase tracking-[-0.03em]">
+                P20,000+
+              </span>
+            </div>
+
+            <div className="mt-10 rounded-[1.8rem] bg-white p-7 text-[#1D1612]">
+              <div className="text-sm font-medium text-[#7A6357]">
+                Pero hindi mo babayaran ng ganun.
+              </div>
+              <div className="mt-3 text-5xl font-black uppercase leading-none tracking-[-0.05em]">
+                <span style={{ color: BRAND_RED }}>P3,499</span>
+              </div>
+              <div className="mt-3 text-sm uppercase tracking-[0.22em] text-[#7A6357]">
+                One-time setup
               </div>
 
-              {/* Name + Business */}
-              <div className="mt-4">
-                <p className="font-bold text-gray-900">{t.name}</p>
-                <p className="text-sm text-gray-500">{t.business}</p>
+              <div className="mt-6">
+                <PrimaryCTA
+                  compact
+                  mainText="Book My Free Strategy Call"
+                  subText="We will walk through your current menu and show where the biggest funnel gains should come from."
+                />
               </div>
-            </motion.div>
-          ))}
+            </div>
+          </motion.div>
         </div>
       </div>
     </section>
   )
 }
 
-// ── FAQ Section ───────────────────────────────────────────────────────
+function OutcomesSection() {
+  return (
+    <section
+      className="relative py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: SAND_BG }}
+    >
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={VIEWPORT}
+          transition={{ duration: 0.6 }}
+          className="mx-auto max-w-4xl text-center"
+        >
+          <SectionTag>Expected outcomes</SectionTag>
 
-interface FAQItem {
-  q: string
-  a: string
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-[#1D1612] md:text-5xl">
+            What a smarter menu changes after launch.
+          </h2>
+
+          <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-[#5F4C40]">
+            The point of the redesign is simple: clearer decisions for the
+            customer, better basket quality for the business.
+          </p>
+        </motion.div>
+
+        <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {OUTCOMES.map((item, index) => {
+            const Icon = item.icon
+
+            return (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 26 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={VIEWPORT}
+                transition={{ duration: 0.45, delay: index * 0.06 }}
+                className="rounded-[2rem] border border-black/10 bg-white p-7 shadow-[0_18px_50px_rgba(0,0,0,0.08)]"
+              >
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{ backgroundColor: `${BRAND_RED}14` }}
+                >
+                  <Icon className="h-5 w-5" style={{ color: BRAND_RED }} />
+                </div>
+
+                <h3 className="mt-5 text-xl font-black uppercase leading-tight tracking-[-0.03em] text-[#1F1713]">
+                  {item.title}
+                </h3>
+
+                <p className="mt-3 text-base leading-relaxed text-[#5F4C40]">
+                  {item.text}
+                </p>
+              </motion.div>
+            )
+          })}
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 26 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.12 }}
+          className="mt-12 rounded-[2rem] border border-black/10 bg-[#1A1411] px-6 py-7 text-white shadow-[0_24px_60px_rgba(0,0,0,0.16)] md:px-8"
+        >
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/45">
+                Bottom line
+              </div>
+              <p className="mt-3 max-w-2xl text-xl font-black uppercase leading-[0.98] tracking-[-0.03em]">
+                The redesign is meant to increase the quality of each order, not
+                just the look of the page.
+              </p>
+            </div>
+
+            <div className="w-full md:w-auto">
+              <PrimaryCTA
+                compact
+                mainText="Review My Current Menu"
+                subText="Send us a message and we will map the biggest funnel opportunities first."
+              />
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  )
 }
 
-const FAQ_ITEMS: FAQItem[] = [
-  { q: "Para kanino to?", a: "Para sa lahat ng food business — restaurant, coffee shop, food truck, commissary. Basta may menu ka, pwede to." },
-  { q: "Kailangan ba ng technical skills?", a: "Hindi. We handle everything. Ikaw, mag-fo-focus ka lang sa food mo." },
-  { q: "Gaano katagal ang setup?", a: "Depende sa menu mo, pero usually 1-3 days ready na." },
-  { q: "Paano yung orders, saan napupunta?", a: "Diretso sa Messenger mo. Real-time. Walang missed orders." },
-  { q: "One-time payment lang ba talaga?", a: "Oo. ₱3,499 lang. Walang monthly fees, walang hidden charges." },
-  { q: "Pano kung marami akong menu items?", a: "Kahit gaano karami, kaya ng system. Categories, variations, add-ons — lahat supported." },
-]
-
 function FAQSection() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [openIndex, setOpenIndex] = useState<number | null>(0)
 
   return (
     <section id="faq" className="bg-white py-20 md:py-28 lg:py-32">
-      <div className="mx-auto max-w-3xl px-6 lg:px-8">
-        {/* Title */}
-        <motion.h2
+      <div className="mx-auto max-w-4xl px-6 lg:px-8">
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={VIEWPORT}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 text-center leading-tight tracking-tight"
+          className="text-center"
         >
-          Frequently Asked Questions
-        </motion.h2>
+          <SectionTag>FAQ</SectionTag>
 
-        {/* FAQ Items */}
-        <div className="mt-14 md:mt-20 divide-y divide-gray-200">
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.92] tracking-[-0.05em] text-[#1D1612] md:text-5xl">
+            Questions people ask before they rebuild the funnel.
+          </h2>
+        </motion.div>
+
+        <div className="mt-14 divide-y divide-[#E8D9C9] rounded-[2rem] border border-black/10 bg-[#FFF9F2] px-6 shadow-[0_16px_45px_rgba(0,0,0,0.05)] md:px-8">
           {FAQ_ITEMS.map((item, index) => (
             <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 20 }}
+              key={item.q}
+              initial={{ opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.5, delay: index * 0.08 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.42, delay: index * 0.04 }}
             >
               <button
+                type="button"
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
-                className="flex w-full items-center justify-between py-5 text-left"
+                className="flex w-full items-center justify-between gap-4 py-6 text-left"
+                aria-expanded={openIndex === index}
               >
-                <span className="text-lg font-bold text-gray-900 pr-4">
+                <span className="text-lg font-black uppercase leading-tight tracking-[-0.02em] text-[#1D1612]">
                   {item.q}
                 </span>
                 <ChevronDown
-                  className={`h-5 w-5 shrink-0 text-gray-500 transition-transform duration-300 ${
+                  className={`h-5 w-5 shrink-0 text-[#7A6357] transition-transform duration-200 ${
                     openIndex === index ? 'rotate-180' : ''
                   }`}
                 />
               </button>
+
               <AnimatePresence initial={false}>
                 {openIndex === index && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    transition={{ duration: 0.24, ease: 'easeInOut' }}
                     className="overflow-hidden"
                   >
-                    <p className="pb-5 text-lg text-gray-600 leading-relaxed">
+                    <p className="pb-6 text-base leading-relaxed text-[#5F4C40]">
                       {item.a}
                     </p>
                   </motion.div>
@@ -1226,117 +1422,102 @@ function FAQSection() {
   )
 }
 
-// ── Final CTA Section ─────────────────────────────────────────────────
-
 function FinalCTASection() {
   return (
-    <section className="relative py-20 md:py-28 lg:py-32" style={{ backgroundColor: DARK_BG }}>
-      <div className="mx-auto max-w-3xl px-6 lg:px-8 text-center">
-        {/* Title */}
-        <motion.h2
+    <section
+      className="relative overflow-hidden py-20 md:py-28 lg:py-32"
+      style={{ backgroundColor: DARK_BG }}
+    >
+      <div
+        className="absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.55) 1px, transparent 0)',
+          backgroundSize: '26px 26px',
+        }}
+      />
+
+      <div className="relative mx-auto max-w-5xl px-6 text-center lg:px-8">
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={VIEWPORT}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight tracking-tight"
         >
-          Stop Leaving Money on the Table
-        </motion.h2>
+          <SectionTag dark>Final CTA</SectionTag>
 
-        {/* Body */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.15 }}
-          className="mt-6 text-lg md:text-xl text-gray-400 leading-relaxed"
-        >
-          Bawat araw na walang Smart Menu ang business mo, may pera kang hindi nakukuha.
-          Hindi mo kailangan ng mas maraming customers — kailangan mo lang na mas malaki ang bili ng bawat isa.
-        </motion.p>
+          <h2 className="mt-6 text-4xl font-black uppercase leading-[0.9] tracking-[-0.06em] text-white md:text-6xl">
+            If your menu is not guiding the next best order, it is leaving
+            money behind.
+          </h2>
 
-        {/* CTA Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-12 flex flex-col items-center gap-4"
-        >
-          <a
-            href={MESSENGER_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group relative inline-flex items-center gap-3 rounded-full px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.03] hover:shadow-xl hover:shadow-red-500/30 active:scale-[0.98]"
-            style={{ backgroundColor: BRAND_RED }}
-          >
-            <span
-              className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl"
-              style={{ backgroundColor: BRAND_RED }}
-            />
-            <span className="relative flex items-center gap-3">
-              <MessageCircle className="h-5 w-5" />
-              Book Your Free 15-Min Strategy Call
-            </span>
-          </a>
-          <span className="text-sm text-gray-500">
-            Free consultation. Walang bayad. Walang commitment.
-          </span>
+          <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-white/68 md:text-xl">
+            Bawat araw na static lang ang menu mo, may upgrades at bundles na
+            hindi nangyayari. The opportunity is already in front of you. The
+            funnel just needs to be rebuilt to capture it.
+          </p>
+
+          <div className="mt-10 flex justify-center">
+            <PrimaryCTA />
+          </div>
+
+          <div className="mt-6 inline-flex flex-wrap items-center justify-center gap-4 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-xs font-medium uppercase tracking-[0.18em] text-white/45">
+            <span>Free strategy call</span>
+            <span className="h-1 w-1 rounded-full bg-white/20" />
+            <span>Messenger handoff</span>
+            <span className="h-1 w-1 rounded-full bg-white/20" />
+            <span>One-time setup offer</span>
+          </div>
         </motion.div>
       </div>
     </section>
   )
 }
 
-// ── Footer ────────────────────────────────────────────────────────────
-
 function Footer() {
   return (
-    <footer className="border-t border-white/10 py-8" style={{ backgroundColor: '#0B1120' }}>
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="flex flex-col items-center gap-4 md:flex-row md:justify-between">
-          {/* Logo + Copyright */}
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-md"
-              style={{ backgroundColor: BRAND_RED }}
-            >
-              <Menu className="h-4 w-4 text-white" />
+    <footer className="border-t border-white/8 bg-[#0C0908] py-8">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 text-center lg:flex-row lg:px-8 lg:text-left">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
+            style={{ backgroundColor: BRAND_RED }}
+          >
+            <Menu className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-sm font-black uppercase tracking-[0.18em] text-white">
+              WebNegosyo
             </div>
-            <span className="text-sm text-gray-400">
-              &copy; {new Date().getFullYear()} WebNegosyo. All rights reserved.
-            </span>
+            <div className="text-xs text-white/42">
+              Copyright {new Date().getFullYear()}
+            </div>
           </div>
+        </div>
 
-          {/* Links */}
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
-              Privacy Policy
-            </a>
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
-              Terms
-            </a>
-          </div>
+        <div className="flex items-center gap-5 text-sm text-white/45">
+          <a href="#" className="transition-colors duration-200 hover:text-white/75">
+            Privacy
+          </a>
+          <a href="#" className="transition-colors duration-200 hover:text-white/75">
+            Terms
+          </a>
         </div>
       </div>
     </footer>
   )
 }
 
-// ── Landing Page (exported) ────────────────────────────────────────────
-
 export function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
       <Navigation />
       <HeroSection />
-      <McDonaldsStorySection />
+      <LetterSection />
       <ProblemSection />
-      <SolutionSection />
-      <SmartMenuSystemSection />
-      <HowItWorksSection />
-      <ValueStackSection />
-      <TestimonialsSection />
+      <OfferSection />
+      <ProcessAndPricingSection />
+      <OutcomesSection />
       <FAQSection />
       <FinalCTASection />
       <Footer />

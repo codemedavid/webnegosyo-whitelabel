@@ -168,11 +168,35 @@ export type ElementProps =
   | CountdownProps
   | SocialProofProps
   | AnimatedBgProps
+  | RowProps
+  | ColumnProps
 
 /** Shorthand for the element kind string union */
 export type HeroElementType = ElementProps['kind']
 
 // ── Hero Element ────────────────────────────────────────────────────────────
+
+export interface RowProps {
+  kind: 'row'
+  gap: number
+  alignItems: 'flex-start' | 'center' | 'flex-end' | 'stretch'
+  justifyContent: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around'
+  wrap: boolean
+  backgroundColor: string
+  borderRadius: number
+  padding: number
+}
+
+export interface ColumnProps {
+  kind: 'column'
+  flex: number
+  alignItems: 'flex-start' | 'center' | 'flex-end' | 'stretch'
+  justifyContent: 'flex-start' | 'center' | 'flex-end' | 'space-between'
+  gap: number
+  backgroundColor: string
+  borderRadius: number
+  padding: number
+}
 
 export interface HeroElement {
   id: string
@@ -184,10 +208,16 @@ export interface HeroElement {
   desktop: ElementLayout
   mobile: ElementLayout
   props: ElementProps
+  /** Breakpoint-specific props for mobile (falls back to `props` if absent) */
+  mobileProps?: ElementProps
   animation: ElementAnimation
+  /** Parent container ID for elements inside rows/columns */
+  parentId?: string | null
 }
 
 // ── Canvas & Design ─────────────────────────────────────────────────────────
+
+export type HeroLayoutMode = 'fullscreen' | 'boxed'
 
 export interface CanvasConfig {
   desktop: { width: 1440; height: number }
@@ -195,7 +225,7 @@ export interface CanvasConfig {
 }
 
 export interface HeroDesign {
-  version: 1
+  version: 1 | 2
   canvas: CanvasConfig
   backgroundColor: string
   backgroundImage?: {
@@ -203,6 +233,8 @@ export interface HeroDesign {
     opacity: number
     objectFit: 'cover' | 'contain' | 'fill'
   }
+  /** Whether the hero spans the full viewport width or stays within the container */
+  layoutMode?: HeroLayoutMode
   elements: HeroElement[]
 }
 

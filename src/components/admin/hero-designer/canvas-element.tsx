@@ -11,6 +11,7 @@ import {
   Heart,
   type LucideIcon,
 } from 'lucide-react'
+import { getActiveProps } from '@/lib/hero-designer-defaults'
 import type {
   HeroElement,
   Breakpoint,
@@ -247,6 +248,54 @@ function renderElementContent(props: ElementProps): React.ReactNode {
         />
       )
 
+    case 'row':
+      return (
+        <div
+          className="h-full w-full"
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: props.gap,
+            alignItems: props.alignItems,
+            justifyContent: props.justifyContent,
+            flexWrap: props.wrap ? 'wrap' : 'nowrap',
+            backgroundColor: props.backgroundColor,
+            borderRadius: props.borderRadius,
+            padding: props.padding,
+            border: '2px dashed rgba(99, 102, 241, 0.4)',
+            minHeight: 40,
+          }}
+        >
+          <span className="absolute left-1 top-0.5 text-[10px] font-medium text-indigo-400 opacity-60">
+            Row
+          </span>
+        </div>
+      )
+
+    case 'column':
+      return (
+        <div
+          className="h-full w-full"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: props.gap,
+            alignItems: props.alignItems,
+            justifyContent: props.justifyContent,
+            backgroundColor: props.backgroundColor || 'rgba(99, 102, 241, 0.05)',
+            borderRadius: props.borderRadius,
+            padding: props.padding,
+            border: '1px dashed rgba(99, 102, 241, 0.3)',
+            flex: props.flex,
+            minHeight: 30,
+          }}
+        >
+          <span className="text-[10px] font-medium text-indigo-400 opacity-60">
+            Col
+          </span>
+        </div>
+      )
+
     default:
       return null
   }
@@ -267,6 +316,7 @@ export function CanvasElement({
   onLayoutChange,
 }: CanvasElementProps) {
   const layout = element[breakpoint]
+  const resolvedProps = getActiveProps(element, breakpoint)
   const elRef = useRef<HTMLDivElement>(null)
   const isDraggingRef = useRef(false)
 
@@ -386,7 +436,7 @@ export function CanvasElement({
         width: pxW ?? 'auto',
         height: pxH ?? 'auto',
         transform: layout.rotation ? `rotate(${layout.rotation}deg)` : undefined,
-        opacity: element.props.kind === 'image' ? element.props.opacity : undefined,
+        opacity: resolvedProps.kind === 'image' ? resolvedProps.opacity : undefined,
         zIndex: element.zIndex,
         padding: `${layout.padding.top}px ${layout.padding.right}px ${layout.padding.bottom}px ${layout.padding.left}px`,
         margin: `${layout.margin.top}px ${layout.margin.right}px ${layout.margin.bottom}px ${layout.margin.left}px`,
@@ -403,7 +453,7 @@ export function CanvasElement({
       }}
     >
       {/* Element content */}
-      {renderElementContent(element.props)}
+      {renderElementContent(resolvedProps)}
 
       {/* Lock overlay */}
       {element.locked && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState, useRef } from 'react'
+import { useCallback, useEffect, useId, useState, useRef } from 'react'
 import {
   GripVertical,
   Eye,
@@ -18,6 +18,10 @@ import {
   Timer,
   Award,
   Palette,
+  Rows3,
+  Columns3,
+  ChevronDown,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -51,6 +55,8 @@ const ICON_MAP: Record<HeroElementType, LucideIcon> = {
   countdown: Timer,
   'social-proof': Award,
   'animated-bg': Palette,
+  row: Rows3,
+  column: Columns3,
 }
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -235,6 +241,92 @@ function SortableLayerRow({
 
 // ── Main component ──────────────────────────────────────────────────────────
 
+function LayerTree({
+  elements,
+  allElements,
+  selectedElementId,
+  depth,
+  expandedIds,
+  onToggleExpand,
+  onSelectElement,
+  onToggleVisibility,
+  onToggleLock,
+  onRemoveElement,
+  onRenameElement,
+}: {
+  elements: HeroElement[]
+  allElements: HeroElement[]
+  selectedElementId: string | null
+  depth: number
+  expandedIds: Set<string>
+  onToggleExpand: (id: string) => void
+  onSelectElement: (id: string | null) => void
+  onToggleVisibility: (id: string) => void
+  onToggleLock: (id: string) => void
+  onRemoveElement: (id: string) => void
+  onRenameElement: (id: string, label: string) => void
+}) {
+  return (
+    <div className="space-y-0.5">
+      {elements.map((element) => {
+        const children = allElements.filter((el) => el.parentId === element.id)
+        const hasChildren = children.length > 0
+        const isExpanded = expandedIds.has(element.id)
+
+        return (
+          <div key={element.id}>
+            <div style={{ paddingLeft: depth * 16 }} className="flex items-center">
+              {hasChildren && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleExpand(element.id)
+                  }}
+                  className="mr-0.5 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3" />
+                  )}
+                </button>
+              )}
+              {!hasChildren && <span className="mr-0.5 w-4" />}
+              <div className="min-w-0 flex-1">
+                <SortableLayerRow
+                  element={element}
+                  isSelected={element.id === selectedElementId}
+                  onSelect={() => onSelectElement(element.id)}
+                  onToggleVisibility={() => onToggleVisibility(element.id)}
+                  onToggleLock={() => onToggleLock(element.id)}
+                  onRemove={() => onRemoveElement(element.id)}
+                  onRename={(label) => onRenameElement(element.id, label)}
+                />
+              </div>
+            </div>
+            {hasChildren && isExpanded && (
+              <LayerTree
+                elements={children}
+                allElements={allElements}
+                selectedElementId={selectedElementId}
+                depth={depth + 1}
+                expandedIds={expandedIds}
+                onToggleExpand={onToggleExpand}
+                onSelectElement={onSelectElement}
+                onToggleVisibility={onToggleVisibility}
+                onToggleLock={onToggleLock}
+                onRemoveElement={onRemoveElement}
+                onRenameElement={onRenameElement}
+              />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function LayersPanel({
   elements,
   selectedElementId,
@@ -246,10 +338,37 @@ export function LayersPanel({
   onRenameElement,
 }: LayersPanelProps) {
   const dndId = useId()
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  // Auto-expand containers on mount
+  useEffect(() => {
+    const containerIds = elements
+      .filter((el) => el.type === 'row' || el.type === 'column')
+      .map((el) => el.id)
+    if (containerIds.length > 0) {
+      setExpandedIds((prev) => {
+        const next = new Set(prev)
+        containerIds.forEach((id) => next.add(id))
+        return next
+      })
+    }
+  }, [elements])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
+
+  // Root elements (no parentId)
+  const rootElements = elements.filter((el) => !el.parentId)
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -281,20 +400,19 @@ export function LayersPanel({
         items={elements.map((el) => el.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-0.5">
-          {elements.map((element) => (
-            <SortableLayerRow
-              key={element.id}
-              element={element}
-              isSelected={element.id === selectedElementId}
-              onSelect={() => onSelectElement(element.id)}
-              onToggleVisibility={() => onToggleVisibility(element.id)}
-              onToggleLock={() => onToggleLock(element.id)}
-              onRemove={() => onRemoveElement(element.id)}
-              onRename={(label) => onRenameElement(element.id, label)}
-            />
-          ))}
-        </div>
+        <LayerTree
+          elements={rootElements}
+          allElements={elements}
+          selectedElementId={selectedElementId}
+          depth={0}
+          expandedIds={expandedIds}
+          onToggleExpand={toggleExpand}
+          onSelectElement={onSelectElement}
+          onToggleVisibility={onToggleVisibility}
+          onToggleLock={onToggleLock}
+          onRemoveElement={onRemoveElement}
+          onRenameElement={onRenameElement}
+        />
       </SortableContext>
     </DndContext>
   )

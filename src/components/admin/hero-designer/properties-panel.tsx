@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { getActiveProps } from '@/lib/hero-designer-defaults'
 import type {
   HeroElement,
   HeroDesign,
@@ -212,7 +213,8 @@ function ElementProperties({
   onUpdateMeta: PropertiesPanelProps['onUpdateMeta']
 }) {
   const layout = element[breakpoint]
-  const hasTypography = element.props.kind === 'text' || element.props.kind === 'button'
+  const resolvedProps = getActiveProps(element, breakpoint)
+  const hasTypography = resolvedProps.kind === 'text' || resolvedProps.kind === 'button'
 
   return (
     <div className="space-y-0">
@@ -226,6 +228,9 @@ function ElementProperties({
         />
         <p className="mt-0.5 text-xs text-zinc-500">
           {element.type} &middot; {breakpoint}
+          {breakpoint === 'mobile' && element.mobileProps && (
+            <span className="ml-1 text-blue-400">(mobile props)</span>
+          )}
         </p>
       </div>
 
@@ -242,7 +247,7 @@ function ElementProperties({
       {hasTypography && (
         <CollapsibleSection title="Typography">
           <TypographySection
-            props={element.props as Extract<ElementProps, { kind: 'text' | 'button' }>}
+            props={resolvedProps as Extract<ElementProps, { kind: 'text' | 'button' }>}
             onUpdate={onUpdateProps}
           />
         </CollapsibleSection>
@@ -262,9 +267,9 @@ function ElementProperties({
       </CollapsibleSection>
 
       {/* Element-Specific */}
-      {element.props.kind !== 'text' && (
-        <CollapsibleSection title={getSpecificSectionTitle(element.props.kind)}>
-          <ElementSpecificSection props={element.props} onUpdate={onUpdateProps} />
+      {resolvedProps.kind !== 'text' && (
+        <CollapsibleSection title={getSpecificSectionTitle(resolvedProps.kind)}>
+          <ElementSpecificSection props={resolvedProps} onUpdate={onUpdateProps} />
         </CollapsibleSection>
       )}
     </div>
@@ -282,6 +287,8 @@ function getSpecificSectionTitle(kind: string): string {
     countdown: 'Countdown Settings',
     'social-proof': 'Social Proof Settings',
     'animated-bg': 'Animated Background',
+    row: 'Row Settings',
+    column: 'Column Settings',
   }
   return titles[kind] ?? 'Settings'
 }

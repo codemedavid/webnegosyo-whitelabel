@@ -15,18 +15,21 @@ interface HeroDesignerWrapperProps {
   tenantId: string
   tenantSlug: string
   initialDesign: HeroDesign | null
+  initialHeroSectionEnabled: boolean
 }
 
 export function HeroDesignerWrapper({
   tenantId,
   tenantSlug,
   initialDesign,
+  initialHeroSectionEnabled,
 }: HeroDesignerWrapperProps) {
   return (
     <HeroDesigner
       tenantId={tenantId}
       tenantSlug={tenantSlug}
       initialDesign={initialDesign}
+      initialHeroSectionEnabled={initialHeroSectionEnabled}
     />
   )
 }

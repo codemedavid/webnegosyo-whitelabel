@@ -165,6 +165,30 @@ const animatedBgPropsSchema = z.object({
   parallax: z.boolean(),
 })
 
+// ── Container prop schemas ──────────────────────────────────────────────────
+
+const rowPropsSchema = z.object({
+  kind: z.literal('row'),
+  gap: z.number().min(0).max(200),
+  alignItems: z.enum(['flex-start', 'center', 'flex-end', 'stretch']),
+  justifyContent: z.enum(['flex-start', 'center', 'flex-end', 'space-between', 'space-around']),
+  wrap: z.boolean(),
+  backgroundColor: cssColorString(),
+  borderRadius: z.number().min(0).max(500),
+  padding: z.number().min(0).max(500),
+})
+
+const columnPropsSchema = z.object({
+  kind: z.literal('column'),
+  flex: z.number().min(0).max(12),
+  alignItems: z.enum(['flex-start', 'center', 'flex-end', 'stretch']),
+  justifyContent: z.enum(['flex-start', 'center', 'flex-end', 'space-between']),
+  gap: z.number().min(0).max(200),
+  backgroundColor: cssColorString(),
+  borderRadius: z.number().min(0).max(500),
+  padding: z.number().min(0).max(500),
+})
+
 // ── Discriminated union of element props ────────────────────────────────────
 
 const elementPropsSchema = z.discriminatedUnion('kind', [
@@ -178,6 +202,8 @@ const elementPropsSchema = z.discriminatedUnion('kind', [
   countdownPropsSchema,
   socialProofPropsSchema,
   animatedBgPropsSchema,
+  rowPropsSchema,
+  columnPropsSchema,
 ])
 
 // ── Hero Element ────────────────────────────────────────────────────────────
@@ -195,6 +221,8 @@ const heroElementSchema = z.object({
     'countdown',
     'social-proof',
     'animated-bg',
+    'row',
+    'column',
   ]),
   label: z.string().max(100),
   visible: z.boolean(),
@@ -203,7 +231,9 @@ const heroElementSchema = z.object({
   desktop: elementLayoutSchema,
   mobile: elementLayoutSchema,
   props: elementPropsSchema,
+  mobileProps: elementPropsSchema.optional(),
   animation: elementAnimationSchema,
+  parentId: z.string().uuid().nullable().optional(),
 })
 
 // ── Canvas & Design ─────────────────────────────────────────────────────────
@@ -220,7 +250,7 @@ const canvasConfigSchema = z.object({
 })
 
 export const heroDesignSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   canvas: canvasConfigSchema,
   backgroundColor: cssColorString(),
   backgroundImage: z
@@ -230,6 +260,7 @@ export const heroDesignSchema = z.object({
       objectFit: z.enum(['cover', 'contain', 'fill']),
     })
     .optional(),
+  layoutMode: z.enum(['fullscreen', 'boxed']).optional(),
   elements: z.array(heroElementSchema).max(50),
 })
 
@@ -256,5 +287,7 @@ export {
   countdownPropsSchema,
   socialProofPropsSchema,
   animatedBgPropsSchema,
+  rowPropsSchema,
+  columnPropsSchema,
   cssColorString,
 }

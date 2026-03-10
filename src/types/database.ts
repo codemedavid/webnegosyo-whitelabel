@@ -100,6 +100,8 @@ export interface Tenant {
   checkout_upsell_max_items?: number;
   // Bundles
   bundles_enabled?: boolean;
+  // Hero section
+  hero_section_enabled?: boolean;
   // Flash screen
   flash_screen_feature_enabled?: boolean;
   flash_screen_is_active?: boolean;
@@ -313,6 +315,9 @@ export interface OrderType {
   description?: string;
   note?: string;
   is_enabled: boolean;
+  service_charge_enabled: boolean;
+  service_charge_type: "percentage" | "fixed";
+  service_charge_value: number;
   order_index: number;
   created_at: string;
   updated_at: string;
@@ -390,6 +395,7 @@ export interface Order {
   payment_method_name?: string;
   payment_method_details?: string;
   payment_method_qr_code_url?: string;
+  service_charge_amount?: number;
   payment_status?: 'pending' | 'paid' | 'failed' | 'verified';
   created_at: string;
   updated_at: string;

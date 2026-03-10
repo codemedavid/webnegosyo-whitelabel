@@ -81,8 +81,10 @@ export const LayoutDefault = memo(function LayoutDefault({
     return (
         <div>
             {/* Hero Section */}
-            {tenant?.hero_design ? (
-                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-16" />
+            {tenant?.hero_section_enabled !== false && tenant?.hero_design ? (
+                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
+                    (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
+                } />
             ) : (
                 <div className="text-center mb-16">
                     <div className="inline-flex items-center gap-2 justify-center">
