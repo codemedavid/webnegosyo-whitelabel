@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -13,6 +13,7 @@ import {
   Menu,
   MessageCircle,
   Package,
+  Phone,
   ShoppingCart,
   Smartphone,
   TrendingDown,
@@ -20,14 +21,13 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { BookingPopup } from './booking-popup/booking-popup'
 
 const BRAND_RED = '#FF3B30'
 const INK = '#16110F'
 const DARK_BG = '#110D0B'
 const PAPER_BG = '#FFF7ED'
 const SAND_BG = '#F2E2CA'
-const MESSENGER_LINK =
-  'https://m.me/FACEBOOK_PAGE_ID?text=Hi%2C%20I%20want%20to%20learn%20more%20about%20the%20Smart%20Menu%20System'
 const PRIMARY_CTA = 'Book My Free 15-Min Menu Growth Call'
 const PRIMARY_SUBCTA =
   'We will show you where your menu is leaking upgrades, bundles, and average order value.'
@@ -221,9 +221,7 @@ function PrimaryCTA({
 }) {
   return (
     <a
-      href={MESSENGER_LINK}
-      target="_blank"
-      rel="noopener noreferrer"
+      href="#book"
       className={`group relative inline-flex w-full max-w-xl flex-col rounded-[1.75rem] text-white transition-transform duration-300 hover:-translate-y-0.5 ${
         compact ? 'px-6 py-4' : 'px-7 py-5'
       }`}
@@ -238,7 +236,7 @@ function PrimaryCTA({
           compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'
         }`}
       >
-        <MessageCircle className={compact ? 'h-4 w-4 shrink-0' : 'h-5 w-5 shrink-0'} />
+        <Phone className={compact ? 'h-4 w-4 shrink-0' : 'h-5 w-5 shrink-0'} />
         <span>{mainText}</span>
         <ChevronRight
           className={compact ? 'h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1' : 'h-5 w-5 shrink-0 transition-transform duration-200 group-hover:translate-x-1'}
@@ -292,13 +290,11 @@ function Navigation() {
 
         <div className="hidden md:block">
           <a
-            href={MESSENGER_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#book"
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white/10"
           >
-            <MessageCircle className="h-4 w-4" />
-            Message Us
+            <Phone className="h-4 w-4" />
+            Book a Call
           </a>
         </div>
 
@@ -334,14 +330,13 @@ function Navigation() {
                 </a>
               ))}
               <a
-                href={MESSENGER_LINK}
-                target="_blank"
-                rel="noopener noreferrer"
+                href="#book"
+                onClick={() => setIsOpen(false)}
                 className="mt-2 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white"
                 style={{ backgroundColor: BRAND_RED }}
               >
-                <MessageCircle className="h-4 w-4" />
-                Message Us
+                <Phone className="h-4 w-4" />
+                Book a Call
               </a>
             </div>
           </motion.div>
@@ -1509,6 +1504,20 @@ function Footer() {
 }
 
 export function LandingPage() {
+  const [bookingOpen, setBookingOpen] = useState(false)
+
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === '#book') {
+        setBookingOpen(true)
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+    }
+    window.addEventListener('hashchange', handleHash)
+    handleHash()
+    return () => window.removeEventListener('hashchange', handleHash)
+  }, [])
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
       <Navigation />
@@ -1521,6 +1530,7 @@ export function LandingPage() {
       <FAQSection />
       <FinalCTASection />
       <Footer />
+      <BookingPopup open={bookingOpen} onOpenChange={setBookingOpen} />
     </div>
   )
 }
