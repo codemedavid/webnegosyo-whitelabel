@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Save,
   Smartphone,
+  Tablet,
   Square,
   Undo2,
   ZoomIn,
@@ -119,11 +120,21 @@ export function DesignerToolbar({
           <Monitor className="h-4 w-4" />
         </button>
         <button
+          onClick={() => onSetBreakpoint('tablet')}
+          className={`rounded-md p-1.5 ${breakpoint === 'tablet' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+          title="Tablet (768px)"
+        >
+          <Tablet className="h-4 w-4" />
+        </button>
+        <button
           onClick={() => onSetBreakpoint('mobile')}
           className={`rounded-md p-1.5 ${breakpoint === 'mobile' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
         >
           <Smartphone className="h-4 w-4" />
         </button>
+        <span className="ml-1 text-xs text-gray-400">
+          {breakpoint === 'desktop' ? '1440px' : breakpoint === 'tablet' ? '768px' : '390px'}
+        </span>
 
         <div className="mx-1 h-6 border-l border-gray-200" />
 
