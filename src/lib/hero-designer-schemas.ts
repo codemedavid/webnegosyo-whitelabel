@@ -27,6 +27,12 @@ const spacingSchema = z.object({
   left: z.number().min(0).max(500),
 })
 
+const elementVisibilitySchema = z.object({
+  desktop: z.boolean(),
+  tablet: z.boolean(),
+  mobile: z.boolean(),
+})
+
 const elementLayoutSchema = z.object({
   x: z.number().min(-100).max(200),
   y: z.number().min(-100).max(200),
@@ -225,12 +231,15 @@ const heroElementSchema = z.object({
     'column',
   ]),
   label: z.string().max(100),
-  visible: z.boolean(),
+  visible: z.boolean().optional(), // deprecated, kept for v2 compat
+  visibility: elementVisibilitySchema,
   locked: z.boolean(),
   zIndex: z.number().int().min(0).max(1000),
   desktop: elementLayoutSchema,
+  tablet: elementLayoutSchema,
   mobile: elementLayoutSchema,
   props: elementPropsSchema,
+  tabletProps: elementPropsSchema.optional(),
   mobileProps: elementPropsSchema.optional(),
   animation: elementAnimationSchema,
   parentId: z.string().uuid().nullable().optional(),
@@ -243,6 +252,10 @@ const canvasConfigSchema = z.object({
     width: z.literal(1440),
     height: z.number().int().min(100).max(2000),
   }),
+  tablet: z.object({
+    width: z.literal(768),
+    height: z.number().int().min(100).max(2000),
+  }),
   mobile: z.object({
     width: z.literal(390),
     height: z.number().int().min(100).max(2000),
@@ -250,7 +263,7 @@ const canvasConfigSchema = z.object({
 })
 
 export const heroDesignSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   canvas: canvasConfigSchema,
   backgroundColor: cssColorString(),
   backgroundImage: z
@@ -271,6 +284,7 @@ export type ValidatedHeroDesign = z.infer<typeof heroDesignSchema>
 
 export {
   spacingSchema,
+  elementVisibilitySchema,
   elementLayoutSchema,
   animationTypeSchema,
   elementAnimationSchema,
