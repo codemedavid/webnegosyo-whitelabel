@@ -268,13 +268,13 @@ export function DesignerCanvas({
 
   // --- Sorted visible root elements (no parentId) -----------------------
   const sortedElements = [...design.elements]
-    .filter((el) => el.visible && !el.parentId)
+    .filter((el) => el.visibility[breakpoint] && !el.parentId)
     .sort((a, b) => a.zIndex - b.zIndex)
 
   // --- Build child map for containers ------------------------------------
   const childrenByParent = new Map<string, typeof design.elements>()
   for (const el of design.elements) {
-    if (el.parentId && el.visible) {
+    if (el.parentId && el.visibility[breakpoint]) {
       const siblings = childrenByParent.get(el.parentId) ?? []
       siblings.push(el)
       childrenByParent.set(el.parentId, siblings)
