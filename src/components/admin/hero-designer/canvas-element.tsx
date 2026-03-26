@@ -422,7 +422,7 @@ export function CanvasElement({
   )
 
   // --- Visibility -------------------------------------------------------
-  if (!element.visible) return null
+  if (!element.visibility[breakpoint]) return null
 
   return (
     <div
