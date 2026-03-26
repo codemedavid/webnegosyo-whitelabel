@@ -1,5 +1,10 @@
 import '@testing-library/jest-dom'
 
+// Polyfill structuredClone for jsdom environment (available in Node 17+ but not always exposed by jsdom)
+if (typeof globalThis.structuredClone === 'undefined') {
+  globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj))
+}
+
 // Mock Supabase SSR to prevent actual HTTP requests
 const mockFrom = jest.fn()
 const mockAuth = {

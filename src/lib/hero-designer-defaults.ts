@@ -12,6 +12,7 @@ import type {
   ElementAnimation,
   ElementLayout,
   ElementProps,
+  ElementVisibility,
   HeroDesign,
   HeroElement,
   HeroElementType,
@@ -56,16 +57,18 @@ function baseElement(
   type: HeroElementType,
   label: string,
   desktop: Partial<ElementLayout>,
+  tablet: Partial<ElementLayout>,
   mobile: Partial<ElementLayout>,
 ): Omit<HeroElement, 'props'> {
   return {
     id: crypto.randomUUID(),
     type,
     label,
-    visible: true,
+    visibility: { desktop: true, tablet: true, mobile: true } satisfies ElementVisibility,
     locked: false,
     zIndex: 0,
     desktop: defaultLayout(desktop),
+    tablet: defaultLayout(tablet),
     mobile: defaultLayout(mobile),
     animation: { ...NO_ANIMATION },
   }
@@ -94,7 +97,7 @@ export function createTextElement(
   }
 
   return {
-    ...baseElement('text', 'Text', { width: 50, height: -1 }, { x: 5, width: 90, height: -1 }),
+    ...baseElement('text', 'Text', { width: 50, height: -1 }, { x: 5, width: 80, height: -1 }, { x: 5, width: 90, height: -1 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -115,7 +118,7 @@ export function createImageElement(
   }
 
   return {
-    ...baseElement('image', 'Image', { width: 40, height: 50 }, { x: 5, width: 90, height: 40 }),
+    ...baseElement('image', 'Image', { width: 40, height: 50 }, { x: 5, width: 70, height: 45 }, { x: 5, width: 90, height: 40 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -142,7 +145,7 @@ export function createButtonElement(
   }
 
   return {
-    ...baseElement('button', 'Button', { width: 20, height: 6 }, { x: 10, width: 80, height: 8 }),
+    ...baseElement('button', 'Button', { width: 20, height: 6 }, { x: 10, width: 60, height: 7 }, { x: 10, width: 80, height: 8 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -164,7 +167,7 @@ export function createShapeElement(
   }
 
   return {
-    ...baseElement('shape', 'Shape', { width: 20, height: 20 }, { width: 40, height: 20 }),
+    ...baseElement('shape', 'Shape', { width: 20, height: 20 }, { width: 30, height: 20 }, { width: 40, height: 20 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -184,7 +187,7 @@ export function createDividerElement(
   }
 
   return {
-    ...baseElement('divider', 'Divider', { width: 60, height: 1 }, { x: 5, width: 90, height: 1 }),
+    ...baseElement('divider', 'Divider', { width: 60, height: 1 }, { x: 5, width: 80, height: 1 }, { x: 5, width: 90, height: 1 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -203,7 +206,7 @@ export function createIconElement(
   }
 
   return {
-    ...baseElement('icon', 'Icon', { width: 5, height: 8 }, { width: 10, height: 10 }),
+    ...baseElement('icon', 'Icon', { width: 5, height: 8 }, { width: 8, height: 9 }, { width: 10, height: 10 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -227,6 +230,7 @@ export function createVideoElement(
     ...baseElement(
       'video',
       'Video',
+      { x: 0, y: 0, width: 100, height: 100 },
       { x: 0, y: 0, width: 100, height: 100 },
       { x: 0, y: 0, width: 100, height: 100 },
     ),
@@ -260,6 +264,7 @@ export function createCountdownElement(
       'countdown',
       'Countdown',
       { width: 40, height: 10 },
+      { x: 5, width: 70, height: 10 },
       { x: 5, width: 90, height: 10 },
     ),
     props,
@@ -288,6 +293,7 @@ export function createSocialProofElement(
       'social-proof',
       'Social Proof',
       { width: 20, height: 5 },
+      { x: 10, width: 60, height: 5 },
       { x: 10, width: 80, height: 5 },
     ),
     props,
@@ -316,6 +322,7 @@ export function createAnimatedBgElement(
       'Animated Background',
       { x: 0, y: 0, width: 100, height: 100 },
       { x: 0, y: 0, width: 100, height: 100 },
+      { x: 0, y: 0, width: 100, height: 100 },
     ),
     props,
     mobileProps: structuredClone(props),
@@ -341,7 +348,7 @@ export function createRowElement(
   }
 
   const element: HeroElement = {
-    ...baseElement('row', 'Row', { x: 5, y: 10, width: 90, height: 30 }, { x: 2, y: 10, width: 96, height: 30 }),
+    ...baseElement('row', 'Row', { x: 5, y: 10, width: 90, height: 30 }, { x: 2, y: 10, width: 96, height: 30 }, { x: 2, y: 10, width: 96, height: 30 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -365,7 +372,7 @@ export function createColumnElement(
   }
 
   const element: HeroElement = {
-    ...baseElement('column', 'Column', { width: 30, height: -1 }, { width: 100, height: -1 }),
+    ...baseElement('column', 'Column', { width: 30, height: -1 }, { width: 50, height: -1 }, { width: 100, height: -1 }),
     props,
     mobileProps: structuredClone(props),
     ...omitProps(overrides),
@@ -377,26 +384,68 @@ export function createColumnElement(
 
 /** Returns the active props for the given breakpoint, with fallback to desktop `props`. */
 export function getActiveProps(element: HeroElement, breakpoint: Breakpoint): ElementProps {
-  if (breakpoint === 'mobile' && element.mobileProps) {
-    return element.mobileProps
+  if (breakpoint === 'mobile') {
+    return element.mobileProps ?? element.tabletProps ?? element.props
+  }
+  if (breakpoint === 'tablet') {
+    return element.tabletProps ?? element.props
   }
   return element.props
 }
 
+/** Returns true if the element has a breakpoint-specific props override. */
+export function hasPropsOverride(element: HeroElement, breakpoint: Breakpoint): boolean {
+  if (breakpoint === 'desktop') return false
+  if (breakpoint === 'tablet') return !!element.tabletProps
+  return !!element.mobileProps
+}
+
 // ── Migration helper ──────────────────────────────────────────────────────
 
-/** Migrate v1 designs to v2 by cloning props into mobileProps for each element. */
+/** Migrate v1/v2 designs to v3 (adds tablet breakpoint + converts visible → visibility). */
 export function migrateDesign(design: HeroDesign): HeroDesign {
-  if (design.version === 2) return design
-  return {
-    ...design,
-    version: 2,
-    elements: design.elements.map((el) => ({
-      ...el,
-      mobileProps: el.mobileProps ?? structuredClone(el.props),
-      parentId: el.parentId ?? null,
-    })),
+  if (design.version === 3) return design
+
+  // First ensure v2
+  let d = design
+  if (d.version === 1) {
+    d = {
+      ...d,
+      version: 2,
+      elements: d.elements.map((el) => ({
+        ...el,
+        mobileProps: el.mobileProps ?? structuredClone(el.props),
+        parentId: el.parentId ?? null,
+      })),
+    }
   }
+
+  // v2 → v3: add tablet, convert visible → visibility
+  const canvas = d.canvas as Record<string, { width: number; height: number }>
+  return {
+    ...d,
+    version: 3,
+    canvas: {
+      desktop: d.canvas.desktop,
+      tablet: canvas.tablet ?? { width: 768, height: d.canvas.mobile.height },
+      mobile: d.canvas.mobile,
+    },
+    elements: d.elements.map((el) => {
+      const oldVisible = (el as Record<string, unknown>).visible
+      const wasVisible = oldVisible !== false
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { visible: _v, ...rest } = el as HeroElement & { visible?: boolean }
+      return {
+        ...rest,
+        visibility: el.visibility ?? { desktop: wasVisible, tablet: wasVisible, mobile: wasVisible },
+        tablet: el.tablet ?? structuredClone(el.desktop),
+        tabletProps: el.tabletProps ?? undefined,
+        mobileProps: el.mobileProps ?? structuredClone(el.props),
+        parentId: el.parentId ?? null,
+      }
+    }),
+  } as HeroDesign
 }
 
 // ── Element type → factory map ─────────────────────────────────────────────
@@ -420,9 +469,10 @@ export const elementFactories: Record<HeroElementType, () => HeroElement> = {
 
 export function createBlankDesign(): HeroDesign {
   return {
-    version: 2,
+    version: 3,
     canvas: {
       desktop: { width: 1440, height: 600 },
+      tablet: { width: 768, height: 500 },
       mobile: { width: 390, height: 500 },
     },
     backgroundColor: '#ffffff',
@@ -442,3 +492,4 @@ function omitProps<T extends { props?: unknown }>(
   const { props: _props, ...rest } = obj
   return rest as Omit<T, 'props'>
 }
+
