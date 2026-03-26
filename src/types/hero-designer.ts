@@ -11,6 +11,12 @@ export interface Spacing {
   left: number
 }
 
+export interface ElementVisibility {
+  desktop: boolean
+  tablet: boolean
+  mobile: boolean
+}
+
 export interface ElementLayout {
   /** Percentage from left edge of canvas */
   x: number
@@ -202,12 +208,16 @@ export interface HeroElement {
   id: string
   type: HeroElementType
   label: string
-  visible: boolean
+  /** @deprecated Use visibility instead. Kept for v2 backward compat at read time. */
+  visible?: boolean
+  visibility: ElementVisibility
   locked: boolean
   zIndex: number
   desktop: ElementLayout
+  tablet: ElementLayout
   mobile: ElementLayout
   props: ElementProps
+  tabletProps?: ElementProps
   /** Breakpoint-specific props for mobile (falls back to `props` if absent) */
   mobileProps?: ElementProps
   animation: ElementAnimation
@@ -221,11 +231,12 @@ export type HeroLayoutMode = 'fullscreen' | 'boxed'
 
 export interface CanvasConfig {
   desktop: { width: 1440; height: number }
+  tablet: { width: 768; height: number }
   mobile: { width: 390; height: number }
 }
 
 export interface HeroDesign {
-  version: 1 | 2
+  version: 1 | 2 | 3
   canvas: CanvasConfig
   backgroundColor: string
   backgroundImage?: {
@@ -240,7 +251,7 @@ export interface HeroDesign {
 
 // ── Designer UI State ───────────────────────────────────────────────────────
 
-export type Breakpoint = 'desktop' | 'mobile'
+export type Breakpoint = 'desktop' | 'tablet' | 'mobile'
 
 export interface DesignerState {
   design: HeroDesign
