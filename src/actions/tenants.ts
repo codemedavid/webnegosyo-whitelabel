@@ -7,6 +7,7 @@ import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { convertToTenant } from '@/lib/leads/leads-service'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -38,7 +39,7 @@ async function verifySuperadmin() {
   return { user, supabase }
 }
 
-export async function createTenantAction(input: TenantInput) {
+export async function createTenantAction(input: TenantInput, leadId?: string) {
   try {
     // Verify superadmin access before proceeding
     const { supabase } = await verifySuperadmin()
@@ -169,6 +170,11 @@ export async function createTenantAction(input: TenantInput) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tenant = data as any
+
+    // If this creation came from a lead conversion, mark the lead as converted
+    if (leadId) {
+      await convertToTenant(leadId, tenant.id)
+    }
 
     // Redirect to the new tenant's menu
     // Note: redirect() throws a NEXT_REDIRECT error that Next.js handles

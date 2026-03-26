@@ -16,8 +16,15 @@ import { createTenantAction, updateTenantAction } from '@/actions/tenants'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { toast } from 'sonner'
 
+interface PrefillData {
+  leadId: string
+  name: string
+  email: string
+}
+
 interface TenantFormWrapperProps {
   tenant?: Tenant
+  prefill?: PrefillData
 }
 
 interface TenantFormData {
@@ -1132,12 +1139,12 @@ function ConvexMobileAppSection({
   )
 }
 
-export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
+export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
 
   const [formData, setFormData] = useState<TenantFormData>({
-    name: tenant?.name || '',
+    name: tenant?.name || prefill?.name || '',
     slug: tenant?.slug || '',
     domain: tenant?.domain || '',
     logo_url: tenant?.logo_url || '',
@@ -1192,7 +1199,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     convex_deployment_url: tenant?.convex_deployment_url || '',
     convex_deploy_key: tenant?.convex_deploy_key || '',
     // Email notifications
-    admin_email: tenant?.admin_email || '',
+    admin_email: tenant?.admin_email || prefill?.email || '',
     email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
   })
 
@@ -1271,7 +1278,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
         router.push('/superadmin/tenants')
       } else {
         // createTenantAction returns error or redirects on success
-        const result = await createTenantAction(input)
+        const result = await createTenantAction(input, prefill?.leadId)
         if (result?.error) {
           toast.error(result.error)
           return
