@@ -421,17 +421,17 @@ export function migrateDesign(design: HeroDesign): HeroDesign {
   }
 
   // v2 → v3: add tablet, convert visible → visibility
-  const canvas = d.canvas as Record<string, { width: number; height: number }>
+  const canvas = d.canvas as unknown as Record<string, { width: number; height: number }>
   return {
     ...d,
     version: 3,
     canvas: {
       desktop: d.canvas.desktop,
-      tablet: canvas.tablet ?? { width: 768, height: d.canvas.mobile.height },
+      tablet: canvas.tablet ?? { width: 768 as const, height: d.canvas.mobile.height },
       mobile: d.canvas.mobile,
     },
     elements: d.elements.map((el) => {
-      const oldVisible = (el as Record<string, unknown>).visible
+      const oldVisible = (el as unknown as Record<string, unknown>).visible
       const wasVisible = oldVisible !== false
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
