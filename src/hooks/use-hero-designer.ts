@@ -51,7 +51,7 @@ export type DesignerAction =
   | {
       type: 'UPDATE_ELEMENT_META'
       id: string
-      meta: Partial<Pick<HeroElement, 'label' | 'visible' | 'locked' | 'zIndex'>>
+      meta: Partial<Pick<HeroElement, 'label' | 'visibility' | 'locked' | 'zIndex'>>
     }
   | { type: 'REORDER_ELEMENTS'; orderedIds: string[] }
   | { type: 'SET_BREAKPOINT'; breakpoint: Breakpoint }
@@ -62,12 +62,16 @@ export type DesignerAction =
       updates: Partial<
         Pick<HeroDesign, 'backgroundColor' | 'backgroundImage' | 'layoutMode'> & {
           desktopHeight: number
+          tabletHeight: number
           mobileHeight: number
         }
       >
     }
   | { type: 'ADD_ROW_WITH_COLUMNS'; columnCount: number }
   | { type: 'MOVE_ELEMENT_TO_PARENT'; id: string; parentId: string | null }
+  | { type: 'TOGGLE_BREAKPOINT_VISIBILITY'; id: string; breakpoint: Breakpoint }
+  | { type: 'RESET_BREAKPOINT_PROPS'; id: string; breakpoint: Breakpoint }
+  | { type: 'RESET_BREAKPOINT_LAYOUT'; id: string; breakpoint: Breakpoint }
   | { type: 'UNDO' }
   | { type: 'REDO' }
 
@@ -178,11 +182,17 @@ function designerReducer(
           x: source.desktop.x + 2,
           y: source.desktop.y + 2,
         },
+        tablet: {
+          ...structuredClone(source.tablet),
+          x: source.tablet.x + 2,
+          y: source.tablet.y + 2,
+        },
         mobile: {
           ...structuredClone(source.mobile),
           x: source.mobile.x + 2,
           y: source.mobile.y + 2,
         },
+        tabletProps: source.tabletProps ? structuredClone(source.tabletProps) : undefined,
         mobileProps: source.mobileProps ? structuredClone(source.mobileProps) : undefined,
       }
 
@@ -217,7 +227,10 @@ function designerReducer(
 
     case 'UPDATE_ELEMENT_PROPS': {
       const stateWithHistory = pushHistory(state)
-      const targetField = action.breakpoint === 'mobile' ? 'mobileProps' : 'props'
+      const targetField =
+        action.breakpoint === 'mobile' ? 'mobileProps'
+        : action.breakpoint === 'tablet' ? 'tabletProps'
+        : 'props'
       return {
         ...stateWithHistory,
         design: updateElement(
@@ -225,8 +238,10 @@ function designerReducer(
           action.id,
           (el) => {
             const currentProps = targetField === 'mobileProps'
-              ? (el.mobileProps ?? el.props)
-              : el.props
+              ? (el.mobileProps ?? el.tabletProps ?? el.props)
+              : targetField === 'tabletProps'
+                ? (el.tabletProps ?? el.props)
+                : el.props
             return {
               ...el,
               [targetField]: { ...currentProps, ...action.props } as ElementProps,
@@ -258,7 +273,16 @@ function designerReducer(
         design: updateElement(
           stateWithHistory.design,
           action.id,
-          (el) => ({ ...el, ...action.meta }),
+          (el) => {
+            const updates = { ...action.meta }
+            if ('visibility' in updates && updates.visibility) {
+              (updates as Record<string, unknown>).visibility = {
+                ...el.visibility,
+                ...updates.visibility,
+              }
+            }
+            return { ...el, ...updates }
+          },
         ),
       }
     }
@@ -303,6 +327,12 @@ function designerReducer(
         design.canvas = {
           ...design.canvas,
           desktop: { ...design.canvas.desktop, height: action.updates.desktopHeight },
+        }
+      }
+      if (action.updates.tabletHeight !== undefined) {
+        design.canvas = {
+          ...design.canvas,
+          tablet: { ...design.canvas.tablet, height: action.updates.tabletHeight },
         }
       }
       if (action.updates.mobileHeight !== undefined) {
@@ -353,6 +383,54 @@ function designerReducer(
           stateWithHistory.design,
           action.id,
           (el) => ({ ...el, parentId: action.parentId }),
+        ),
+      }
+    }
+
+    case 'TOGGLE_BREAKPOINT_VISIBILITY': {
+      const stateWithHistory = pushHistory(state)
+      return {
+        ...stateWithHistory,
+        design: updateElement(
+          stateWithHistory.design,
+          action.id,
+          (el) => ({
+            ...el,
+            visibility: {
+              ...el.visibility,
+              [action.breakpoint]: !el.visibility[action.breakpoint],
+            },
+          }),
+        ),
+      }
+    }
+
+    case 'RESET_BREAKPOINT_PROPS': {
+      if (action.breakpoint === 'desktop') return state
+      const stateWithHistory = pushHistory(state)
+      const field = action.breakpoint === 'tablet' ? 'tabletProps' : 'mobileProps'
+      return {
+        ...stateWithHistory,
+        design: updateElement(
+          stateWithHistory.design,
+          action.id,
+          (el) => ({ ...el, [field]: undefined }),
+        ),
+      }
+    }
+
+    case 'RESET_BREAKPOINT_LAYOUT': {
+      if (action.breakpoint === 'desktop') return state
+      const stateWithHistory = pushHistory(state)
+      return {
+        ...stateWithHistory,
+        design: updateElement(
+          stateWithHistory.design,
+          action.id,
+          (el) => {
+            const source = action.breakpoint === 'tablet' ? el.desktop : el.tablet
+            return { ...el, [action.breakpoint]: structuredClone(source) }
+          },
         ),
       }
     }
