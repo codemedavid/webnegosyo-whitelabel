@@ -35,8 +35,8 @@ export async function createBooking(input: {
     name: parsed.data.name,
     email: parsed.data.email,
     phone: parsed.data.phone,
-    bookingDate: parsed.data.bookingDate,
-    bookingTime: parsed.data.bookingTime,
+    booking_date: parsed.data.bookingDate,
+    booking_time: parsed.data.bookingTime,
   })
 
   if (error) {

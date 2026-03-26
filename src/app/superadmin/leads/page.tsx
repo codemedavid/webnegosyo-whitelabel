@@ -23,8 +23,8 @@ export default async function LeadsPage() {
 
       <Suspense fallback={<div className="h-96 animate-pulse rounded bg-muted" />}>
         <LeadsTable
-          initialLeads={leadsResult.data}
-          initialCount={leadsResult.count}
+          initialLeads={leadsResult.data ?? []}
+          initialCount={leadsResult.count ?? 0}
         />
       </Suspense>
     </div>

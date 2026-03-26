@@ -103,8 +103,8 @@ export function LeadDetailPanel({
     try {
       const result = await fetchLeadDetail(leadId)
       setLead(result.lead ?? null)
-      setNotes(result.notes ?? [])
-      setHistory(result.history ?? [])
+      setNotes(result.notes.data ?? [])
+      setHistory(result.history.data ?? [])
     } finally {
       setIsLoading(false)
     }
