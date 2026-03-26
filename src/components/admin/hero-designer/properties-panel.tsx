@@ -196,7 +196,7 @@ function CanvasProperties({
       <CollapsibleSection title="Canvas Size">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-400">
-            Height ({breakpoint === 'desktop' ? 'Desktop' : 'Mobile'})
+            Height ({breakpoint === 'desktop' ? 'Desktop' : breakpoint === 'tablet' ? 'Tablet' : 'Mobile'})
           </span>
           <div className="flex items-center">
             <input
@@ -272,10 +272,13 @@ function ElementProperties({
             <label key={bp} className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={element.visibility[bp]}
-                onChange={() => onUpdateMeta({
-                  visibility: { ...element.visibility, [bp]: !element.visibility[bp] },
-                } as Partial<Pick<HeroElement, 'visibility'>>)}
+                checked={element.visibility?.[bp] ?? true}
+                onChange={() => {
+                  const vis = element.visibility ?? { desktop: true, tablet: true, mobile: true }
+                  onUpdateMeta({
+                    visibility: { ...vis, [bp]: !vis[bp] },
+                  } as Partial<Pick<HeroElement, 'visibility'>>)
+                }}
                 className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
               />
               <span className="text-xs text-zinc-300 capitalize">{bp}</span>

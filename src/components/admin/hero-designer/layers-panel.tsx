@@ -115,7 +115,7 @@ function SortableLayerRow({
     zIndex: isDragging ? 10 : undefined,
   }
 
-  const isVisibleOnBreakpoint = element.visibility[activeBreakpoint]
+  const isVisibleOnBreakpoint = element.visibility?.[activeBreakpoint] ?? element.visible !== false
 
   const Icon = ICON_MAP[element.type]
 
@@ -211,11 +211,11 @@ function SortableLayerRow({
         </button>
 
         {/* Breakpoint visibility dots — only show when visibility differs */}
-        {!(element.visibility.desktop === element.visibility.tablet && element.visibility.tablet === element.visibility.mobile) && (
-          <div className="flex items-center gap-0.5 ml-0.5" title={`D:${element.visibility.desktop ? '✓' : '✗'} T:${element.visibility.tablet ? '✓' : '✗'} M:${element.visibility.mobile ? '✓' : '✗'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.desktop ? 'bg-green-400' : 'bg-zinc-600'}`} />
-            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.tablet ? 'bg-green-400' : 'bg-zinc-600'}`} />
-            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.mobile ? 'bg-green-400' : 'bg-zinc-600'}`} />
+        {element.visibility && !(element.visibility.desktop === element.visibility.tablet && element.visibility.tablet === element.visibility.mobile) && (
+          <div className="flex items-center gap-0.5 ml-0.5" title={`D:${element.visibility?.desktop ? '✓' : '✗'} T:${element.visibility?.tablet ? '✓' : '✗'} M:${element.visibility?.mobile ? '✓' : '✗'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility?.desktop ? 'bg-green-400' : 'bg-zinc-600'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility?.tablet ? 'bg-green-400' : 'bg-zinc-600'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility?.mobile ? 'bg-green-400' : 'bg-zinc-600'}`} />
           </div>
         )}
 

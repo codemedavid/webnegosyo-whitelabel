@@ -87,7 +87,7 @@ describe('createTextElement', () => {
     expect(el.visibility).toEqual({ desktop: true, tablet: true, mobile: true })
     expect(el.tablet).toBeDefined()
     expect(el.tablet.x).toBeDefined()
-    expect((el as Record<string, unknown>).visible).toBeUndefined()
+    expect((el as unknown as Record<string, unknown>).visible).toBeUndefined()
   })
 })
 
