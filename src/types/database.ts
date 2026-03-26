@@ -459,3 +459,36 @@ export interface ComplementaryPairWithDetails extends ComplementaryPair {
 
 // Note: Database type is now auto-generated in ./supabase.ts and re-exported above.
 // Convenience type aliases above are kept for backward compatibility throughout the codebase.
+
+// Lead Management (platform-level, no tenant_id)
+export interface Lead {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  booking_date: string;
+  booking_time: string;
+  status: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+  source: string;
+  converted_tenant_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadStatusHistory {
+  id: string;
+  lead_id: string;
+  old_status: string | null;
+  new_status: string;
+  changed_by: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface LeadNote {
+  id: string;
+  lead_id: string;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+}
