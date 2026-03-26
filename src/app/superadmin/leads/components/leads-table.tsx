@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Lead, LeadStatus } from '@/lib/leads/types'
 import { LeadStatusBadge } from './lead-status-badge'
+import { LeadDetailPanel } from './lead-detail-panel'
 import { fetchLeads } from '@/app/actions/leads'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -282,9 +283,12 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
         </div>
       </div>
 
-      {/* LeadDetailPanel will be rendered here (Task 14) */}
-      {/* When Task 14 is ready: selectedLeadId && <LeadDetailPanel leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} /> */}
-      {selectedLeadId && null}
+      <LeadDetailPanel
+        leadId={selectedLeadId}
+        open={!!selectedLeadId}
+        onOpenChange={(open) => { if (!open) setSelectedLeadId(null) }}
+        onStatusChange={loadLeads}
+      />
     </div>
   )
 }
