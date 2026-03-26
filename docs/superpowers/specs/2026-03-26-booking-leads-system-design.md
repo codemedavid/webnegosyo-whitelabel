@@ -41,6 +41,9 @@ Superadmin /leads
 
 ### `leads` table
 
+> **Note:** This is a platform-level table (no `tenant_id`). Leads are pre-tenant sales prospects
+> captured from the platform landing page, not scoped to any tenant.
+
 ```sql
 CREATE TABLE leads (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -52,14 +55,13 @@ CREATE TABLE leads (
   status              text NOT NULL DEFAULT 'new'
                       CHECK (status IN ('new', 'contacted', 'qualified', 'converted', 'lost')),
   source              text DEFAULT 'landing_page',
-  notes               text,
   converted_tenant_id uuid REFERENCES tenants(id),
-  status_changed_at   timestamptz,
   created_at          timestamptz DEFAULT now(),
   updated_at          timestamptz DEFAULT now()
 );
 
--- RLS: superadmin only
+-- Platform-level table: no tenant_id. These are pre-tenant sales leads.
+-- No public RLS policy needed — server action uses admin client (service role) which bypasses RLS.
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "superadmin_all" ON leads
@@ -71,9 +73,14 @@ CREATE POLICY "superadmin_all" ON leads
     )
   );
 
--- Public insert policy for booking form (no auth required)
-CREATE POLICY "public_insert" ON leads
-  FOR INSERT WITH CHECK (true);
+-- Race condition prevention: only one booking per date+time slot
+CREATE UNIQUE INDEX idx_leads_unique_slot ON leads(booking_date, booking_time)
+  WHERE status != 'lost';
+
+-- Auto-update updated_at on row changes (uses existing set_updated_at() from 0001_initial.sql)
+CREATE TRIGGER leads_set_updated_at
+  BEFORE UPDATE ON leads
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 ```
 
 ### `lead_status_history` table
@@ -101,13 +108,42 @@ CREATE POLICY "superadmin_all" ON lead_status_history
   );
 ```
 
-### Index
+### `lead_notes` table
+
+```sql
+CREATE TABLE lead_notes (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id     uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  note        text NOT NULL,
+  created_by  uuid REFERENCES auth.users(id),
+  created_at  timestamptz DEFAULT now()
+);
+
+ALTER TABLE lead_notes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "superadmin_all" ON lead_notes
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM auth.users
+      WHERE auth.users.id = auth.uid()
+      AND auth.users.raw_user_meta_data->>'role' = 'superadmin'
+    )
+  );
+```
+
+> **Note:** All service layer operations on `leads`, `lead_status_history`, and `lead_notes` use the
+> Supabase admin client (service role), which bypasses RLS. RLS policies exist as a safety net for
+> any future direct-access patterns.
+
+### Indexes
 
 ```sql
 CREATE INDEX idx_leads_status ON leads(status);
 CREATE INDEX idx_leads_booking_date ON leads(booking_date);
 CREATE INDEX idx_leads_created_at ON leads(created_at DESC);
+CREATE INDEX idx_leads_email ON leads(email);
 CREATE INDEX idx_lead_status_history_lead_id ON lead_status_history(lead_id);
+CREATE INDEX idx_lead_notes_lead_id ON lead_notes(lead_id);
 ```
 
 ## 4. Module Structure
@@ -120,7 +156,7 @@ src/
 │   └── types.ts          # TimeSlot, BookingFormData, BookingStep
 │
 ├── lib/leads/
-│   ├── leads-service.ts  # CRUD: createLead, updateLeadStatus, getLeads, getLeadById, addNote
+│   ├── leads-service.ts  # CRUD: createLead, updateLeadStatus, getLeads, getLeadById, addNote, convertToTenant
 │   ├── leads-analytics.ts # Queries: getLeadStats, getConversionRate, getLeadsByWeek, getAvgResponseTime
 │   └── types.ts          # Lead, LeadStatus, LeadNote, LeadStats
 │
@@ -137,6 +173,7 @@ src/
 │
 └── app/superadmin/leads/
     ├── page.tsx           # Dashboard: analytics + table
+    ├── loading.tsx        # Skeleton loading state (matches existing superadmin pattern)
     └── components/
         ├── leads-table.tsx       # Filterable, sortable table
         ├── lead-detail-panel.tsx # Side sheet: status, notes, history, convert
@@ -219,14 +256,16 @@ interface TimeSlot {
 Input: { name, email, phone, bookingDate, bookingTime }
 
 1. Validate with bookingSchema (Zod)
-2. Check slot availability (race condition guard — query + insert in transaction-like check)
-3. Insert into leads table using Supabase admin client (service role, no auth required)
-4. Call captureBookingCreated() → PostHog
-5. Return { success: true, lead: { id, name, bookingDate, bookingTime } }
+2. Insert into leads table using Supabase admin client (service role, no auth required)
+   - The unique index `idx_leads_unique_slot` on (booking_date, booking_time) WHERE status != 'lost'
+     prevents double-booking atomically at the database level.
+   - On unique violation (code '23505'), return { success: false, error: 'slot_taken' }
+3. Call captureBookingCreated() → PostHog
+4. Return { success: true, lead: { id, name, bookingDate, bookingTime } }
 
 Error cases:
 - Validation failure → return { success: false, errors: ZodErrors }
-- Slot taken → return { success: false, error: 'slot_taken' }
+- Slot taken (unique violation) → return { success: false, error: 'slot_taken' }
 - DB error → return { success: false, error: 'server_error' }
 ```
 
@@ -249,6 +288,7 @@ captureBookingCreated(lead: {
 ```
 
 Event: `booking_created`
+Distinct ID: `lead_${email}` — uses email as the person identifier so PostHog Workflows can target them
 
 Properties:
 - `lead_id`, `name`, `email`, `phone`
@@ -274,7 +314,7 @@ Follows existing pattern: graceful degradation if `POSTHOG_API_KEY` or `POSTHOG_
 - Total Leads (with weekly new count)
 - Conversion Rate (percentage, vs last month delta)
 - Pending Calls (upcoming bookings count, today's count)
-- Avg Response Time (time from lead creation to first status change)
+- Avg Response Time (derived from `lead_status_history`: time from `leads.created_at` to the first non-`new` status entry)
 
 **Leads Table:**
 - Columns: Name (+ business hint if in notes), Contact (email + phone), Booking (date/time), Status (badge), Submitted (relative time), Actions (View →)
@@ -287,9 +327,13 @@ Follows existing pattern: graceful degradation if `POSTHOG_API_KEY` or `POSTHOG_
 - Avatar with initials + contact info
 - Status changer: clickable pill buttons, changes status immediately
 - Booking info card: date, time, call type
-- Notes: textarea + save button, appends note with timestamp
-- Status history: vertical timeline of all status changes with timestamps and who changed it
-- "Convert to Tenant" button: navigates to `/superadmin/tenants/new` with pre-filled name and email
+- Notes: textarea + save button, inserts into `lead_notes` table with timestamp and `created_by`
+- Status history: vertical timeline from `lead_status_history` table with timestamps and who changed it
+- "Convert to Tenant" button: navigates to `/superadmin/tenants/new?lead_id={id}&name={name}&email={email}`
+  - `TenantFormWrapper` reads `searchParams` and pre-fills name/email fields
+  - On tenant creation success, the `convertToTenant()` service function updates the lead:
+    sets `status` to `'converted'`, `converted_tenant_id` to the new tenant's ID,
+    and inserts a `lead_status_history` entry recording the conversion
 
 ### Analytics Queries (`src/lib/leads/leads-analytics.ts`)
 
@@ -334,7 +378,8 @@ const bookingStepOneSchema = z.object({
   name: z.string().min(2, 'Name is required').max(100),
   email: z.string().email('Invalid email address'),
   phone: z.string()
-    .regex(/^(\+63|0)\d{10}$/, 'Invalid Philippine phone number'),
+    .transform(val => val.replace(/[\s\-()]/g, ''))  // strip spaces, dashes, parens
+    .pipe(z.string().regex(/^(\+63|0)\d{9,11}$/, 'Invalid Philippine phone number')),
 });
 ```
 
@@ -368,7 +413,13 @@ const bookingSchema = bookingStepOneSchema.merge(bookingStepTwoSchema);
 - Input sanitization: Zod validation prevents injection. No raw SQL.
 - Phone/email: Stored as-is, rendered safely via React's default escaping (no raw HTML injection)
 
-## 14. Out of Scope
+## 14. Integration Points
+
+- **Superadmin sidebar**: Add "Leads" nav item to `sidebarItems` in `src/components/superadmin/superadmin-sidebar.tsx`
+- **TypeScript types**: After migration, update `src/types/database.ts` to include `leads`, `lead_status_history`, and `lead_notes` table types. If using auto-generated types, re-run `npx supabase gen types`.
+- **`updateLeadStatus()`** in `leads-service.ts` sets `status` on the lead AND inserts a `lead_status_history` row in the same operation (both via admin client)
+
+## 15. Out of Scope
 
 - Calendar integration (Google Calendar, Calendly)
 - Configurable availability (hardcoded Mon-Fri 9-5)
