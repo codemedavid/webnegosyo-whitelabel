@@ -40,7 +40,7 @@ import {
 } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { CSS } from '@dnd-kit/utilities'
-import type { HeroElement, HeroElementType } from '@/types/hero-designer'
+import type { Breakpoint, HeroElement, HeroElementType } from '@/types/hero-designer'
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,7 @@ const ICON_MAP: Record<HeroElementType, LucideIcon> = {
 interface LayersPanelProps {
   elements: HeroElement[]
   selectedElementId: string | null
+  activeBreakpoint: Breakpoint
   onSelectElement: (id: string | null) => void
   onToggleVisibility: (id: string) => void
   onToggleLock: (id: string) => void
@@ -77,6 +78,7 @@ interface LayersPanelProps {
 function SortableLayerRow({
   element,
   isSelected,
+  activeBreakpoint,
   onSelect,
   onToggleVisibility,
   onToggleLock,
@@ -85,6 +87,7 @@ function SortableLayerRow({
 }: {
   element: HeroElement
   isSelected: boolean
+  activeBreakpoint: Breakpoint
   onSelect: () => void
   onToggleVisibility: () => void
   onToggleLock: () => void
@@ -111,6 +114,8 @@ function SortableLayerRow({
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 10 : undefined,
   }
+
+  const isVisibleOnBreakpoint = element.visibility[activeBreakpoint]
 
   const Icon = ICON_MAP[element.type]
 
@@ -144,6 +149,8 @@ function SortableLayerRow({
       style={style}
       onClick={onSelect}
       className={`group flex items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
+        !isVisibleOnBreakpoint ? 'opacity-50' : ''
+      } ${
         isSelected
           ? 'border-blue-200 bg-blue-50'
           : 'border-transparent hover:bg-accent'
@@ -179,7 +186,7 @@ function SortableLayerRow({
       ) : (
         <span
           onDoubleClick={handleDoubleClick}
-          className="min-w-0 flex-1 truncate text-xs"
+          className={`min-w-0 flex-1 truncate text-xs ${!isVisibleOnBreakpoint ? 'line-through text-muted-foreground' : ''}`}
         >
           {element.label}
         </span>
@@ -194,14 +201,23 @@ function SortableLayerRow({
             onToggleVisibility()
           }}
           className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-          title={element.visible ? 'Hide' : 'Show'}
+          title={isVisibleOnBreakpoint ? 'Hide' : 'Show'}
         >
-          {element.visible ? (
+          {isVisibleOnBreakpoint ? (
             <Eye className="h-3.5 w-3.5" />
           ) : (
             <EyeOff className="h-3.5 w-3.5" />
           )}
         </button>
+
+        {/* Breakpoint visibility dots — only show when visibility differs */}
+        {!(element.visibility.desktop === element.visibility.tablet && element.visibility.tablet === element.visibility.mobile) && (
+          <div className="flex items-center gap-0.5 ml-0.5" title={`D:${element.visibility.desktop ? '✓' : '✗'} T:${element.visibility.tablet ? '✓' : '✗'} M:${element.visibility.mobile ? '✓' : '✗'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.desktop ? 'bg-green-400' : 'bg-zinc-600'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.tablet ? 'bg-green-400' : 'bg-zinc-600'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${element.visibility.mobile ? 'bg-green-400' : 'bg-zinc-600'}`} />
+          </div>
+        )}
 
         <button
           type="button"
@@ -245,6 +261,7 @@ function LayerTree({
   elements,
   allElements,
   selectedElementId,
+  activeBreakpoint,
   depth,
   expandedIds,
   onToggleExpand,
@@ -257,6 +274,7 @@ function LayerTree({
   elements: HeroElement[]
   allElements: HeroElement[]
   selectedElementId: string | null
+  activeBreakpoint: Breakpoint
   depth: number
   expandedIds: Set<string>
   onToggleExpand: (id: string) => void
@@ -297,6 +315,7 @@ function LayerTree({
                 <SortableLayerRow
                   element={element}
                   isSelected={element.id === selectedElementId}
+                  activeBreakpoint={activeBreakpoint}
                   onSelect={() => onSelectElement(element.id)}
                   onToggleVisibility={() => onToggleVisibility(element.id)}
                   onToggleLock={() => onToggleLock(element.id)}
@@ -310,6 +329,7 @@ function LayerTree({
                 elements={children}
                 allElements={allElements}
                 selectedElementId={selectedElementId}
+                activeBreakpoint={activeBreakpoint}
                 depth={depth + 1}
                 expandedIds={expandedIds}
                 onToggleExpand={onToggleExpand}
@@ -330,6 +350,7 @@ function LayerTree({
 export function LayersPanel({
   elements,
   selectedElementId,
+  activeBreakpoint,
   onSelectElement,
   onToggleVisibility,
   onToggleLock,
@@ -404,6 +425,7 @@ export function LayersPanel({
           elements={rootElements}
           allElements={elements}
           selectedElementId={selectedElementId}
+          activeBreakpoint={activeBreakpoint}
           depth={0}
           expandedIds={expandedIds}
           onToggleExpand={toggleExpand}
