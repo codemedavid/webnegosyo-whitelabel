@@ -89,4 +89,62 @@ describe('posthog client', () => {
       })
     )
   })
+
+  test('captureBookingCreated no-ops when client is null', async () => {
+    const { captureBookingCreated } = await import('@/lib/posthog')
+    await expect(
+      captureBookingCreated({
+        name: 'Maria Santos',
+        email: 'maria@email.com',
+        phone: '+639171234567',
+        bookingDate: '2026-04-01',
+        bookingTime: '10:00',
+        leadId: 'lead-1',
+        source: 'landing_page',
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  test('captureBookingCreated calls posthog.capture with correct event', async () => {
+    process.env.POSTHOG_API_KEY = 'phc_test_key'
+    process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+
+    const mockCapture = jest.fn()
+
+    jest.resetModules()
+    jest.mock('posthog-node', () => ({
+      PostHog: jest.fn().mockImplementation(() => ({
+        capture: mockCapture,
+        flush: jest.fn().mockResolvedValue(undefined),
+        shutdown: jest.fn().mockResolvedValue(undefined),
+      })),
+    }))
+
+    const { captureBookingCreated } = await import('@/lib/posthog')
+    await captureBookingCreated({
+      name: 'Maria Santos',
+      email: 'maria@email.com',
+      phone: '+639171234567',
+      bookingDate: '2026-04-01',
+      bookingTime: '10:00',
+      leadId: 'lead-1',
+      source: 'landing_page',
+    })
+
+    expect(mockCapture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: 'lead_maria@email.com',
+        event: 'booking_created',
+        properties: expect.objectContaining({
+          lead_id: 'lead-1',
+          booking_date: '2026-04-01',
+          booking_time: '10:00',
+          $set: expect.objectContaining({
+            email: 'maria@email.com',
+            name: 'Maria Santos',
+          }),
+        }),
+      })
+    )
+  })
 })

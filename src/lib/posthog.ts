@@ -99,3 +99,42 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
     console.error('[PostHog] Failed to capture order_created event:', error)
   }
 }
+
+export interface BookingEventData {
+  name: string
+  email: string
+  phone: string
+  bookingDate: string
+  bookingTime: string
+  leadId: string
+  source: string
+}
+
+export async function captureBookingCreated(data: BookingEventData): Promise<void> {
+  const posthog = getPostHogClient()
+  if (!posthog) return
+
+  try {
+    posthog.capture({
+      distinctId: `lead_${data.email}`,
+      event: 'booking_created',
+      properties: {
+        lead_id: data.leadId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        booking_date: data.bookingDate,
+        booking_time: data.bookingTime,
+        source: data.source,
+        $set: {
+          email: data.email,
+          name: data.name,
+          phone: data.phone,
+        },
+      },
+    })
+    await posthog.flush()
+  } catch (error) {
+    console.error('[PostHog] Failed to capture booking_created event:', error)
+  }
+}
