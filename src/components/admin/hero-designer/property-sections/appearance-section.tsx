@@ -1,9 +1,11 @@
 'use client'
 
-import type { HeroElement, ElementProps } from '@/types/hero-designer'
+import { getActiveProps } from '@/lib/hero-designer-defaults'
+import type { HeroElement, ElementProps, Breakpoint } from '@/types/hero-designer'
 
 interface AppearanceSectionProps {
   element: HeroElement
+  breakpoint: Breakpoint
   onUpdate: (props: Partial<ElementProps>) => void
 }
 
@@ -37,9 +39,9 @@ function ColorInput({
   )
 }
 
-export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps) {
-  const { props } = element
-  const kind = props.kind
+export function AppearanceSection({ element, breakpoint, onUpdate }: AppearanceSectionProps) {
+  const resolvedProps = getActiveProps(element, breakpoint)
+  const kind = resolvedProps.kind
 
   // Determine which fields to show based on kind
   const hasOpacity = kind === 'shape' || kind === 'image'
@@ -56,7 +58,7 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
           <div className="flex items-center justify-between">
             <span className="text-xs text-zinc-400">Opacity</span>
             <span className="text-xs text-zinc-500">
-              {('opacity' in props ? props.opacity : 1).toFixed(2)}
+              {('opacity' in resolvedProps ? resolvedProps.opacity : 1).toFixed(2)}
             </span>
           </div>
           <input
@@ -64,7 +66,7 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
             min={0}
             max={1}
             step={0.01}
-            value={'opacity' in props ? props.opacity : 1}
+            value={'opacity' in resolvedProps ? resolvedProps.opacity : 1}
             onChange={(e) => onUpdate({ opacity: Number(e.target.value) } as Partial<ElementProps>)}
             className="w-full accent-blue-500"
           />
@@ -77,7 +79,7 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
           <span className="text-xs text-zinc-400">Border Width</span>
           <input
             type="number"
-            value={'borderWidth' in props ? props.borderWidth : 0}
+            value={'borderWidth' in resolvedProps ? resolvedProps.borderWidth : 0}
             onChange={(e) =>
               onUpdate({ borderWidth: Number(e.target.value) } as Partial<ElementProps>)
             }
@@ -88,10 +90,10 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
       )}
 
       {/* Border Color */}
-      {hasBorder && 'borderColor' in props && (
+      {hasBorder && 'borderColor' in resolvedProps && (
         <ColorInput
           label="Border Color"
-          value={props.borderColor as string}
+          value={resolvedProps.borderColor as string}
           onChange={(v) => onUpdate({ borderColor: v } as Partial<ElementProps>)}
         />
       )}
@@ -102,7 +104,7 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
           <span className="text-xs text-zinc-400">Border Radius</span>
           <input
             type="number"
-            value={'borderRadius' in props ? props.borderRadius : 0}
+            value={'borderRadius' in resolvedProps ? resolvedProps.borderRadius : 0}
             onChange={(e) =>
               onUpdate({ borderRadius: Number(e.target.value) } as Partial<ElementProps>)
             }
@@ -113,19 +115,19 @@ export function AppearanceSection({ element, onUpdate }: AppearanceSectionProps)
       )}
 
       {/* Fill Color (shapes) */}
-      {hasFillColor && 'fillColor' in props && (
+      {hasFillColor && 'fillColor' in resolvedProps && (
         <ColorInput
           label="Fill Color"
-          value={props.fillColor as string}
+          value={resolvedProps.fillColor as string}
           onChange={(v) => onUpdate({ fillColor: v } as Partial<ElementProps>)}
         />
       )}
 
       {/* Background Color (buttons) */}
-      {hasBackgroundColor && 'backgroundColor' in props && (
+      {hasBackgroundColor && 'backgroundColor' in resolvedProps && (
         <ColorInput
           label="Background Color"
-          value={props.backgroundColor as string}
+          value={resolvedProps.backgroundColor as string}
           onChange={(v) => onUpdate({ backgroundColor: v } as Partial<ElementProps>)}
         />
       )}

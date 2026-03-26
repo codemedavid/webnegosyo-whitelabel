@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { getActiveProps } from '@/lib/hero-designer-defaults'
+import { getActiveProps, hasPropsOverride } from '@/lib/hero-designer-defaults'
 import type {
   HeroElement,
   HeroDesign,
@@ -24,7 +24,9 @@ interface PropertiesPanelProps {
   onUpdateLayout: (layout: Partial<ElementLayout>) => void
   onUpdateProps: (props: Partial<ElementProps>) => void
   onUpdateAnimation: (animation: Partial<ElementAnimation>) => void
-  onUpdateMeta: (meta: Partial<Pick<HeroElement, 'label' | 'visible' | 'locked' | 'zIndex'>>) => void
+  onUpdateMeta: (meta: Partial<Pick<HeroElement, 'label' | 'visibility' | 'locked' | 'zIndex'>>) => void
+  onResetBreakpointProps: () => void
+  onResetBreakpointLayout: () => void
   onUpdateCanvas: (updates: {
     backgroundColor?: string
     backgroundImage?: HeroDesign['backgroundImage']
@@ -35,10 +37,14 @@ interface PropertiesPanelProps {
 function CollapsibleSection({
   title,
   defaultOpen = true,
+  hasOverride,
+  onResetOverride,
   children,
 }: {
   title: string
   defaultOpen?: boolean
+  hasOverride?: boolean
+  onResetOverride?: () => void
   children: React.ReactNode
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
@@ -52,6 +58,21 @@ function CollapsibleSection({
       >
         {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         {title}
+        {hasOverride && (
+          <span className="ml-1 h-1.5 w-1.5 rounded-full bg-blue-400" title="Overridden for this breakpoint" />
+        )}
+        <span className="flex-1" />
+        {hasOverride && onResetOverride && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onResetOverride() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onResetOverride?.() } }}
+            className="text-[10px] text-zinc-500 hover:text-blue-400 normal-case tracking-normal font-normal"
+          >
+            Reset
+          </span>
+        )}
       </button>
       {isOpen && <div className="px-3 pb-3">{children}</div>}
     </div>
@@ -204,6 +225,8 @@ function ElementProperties({
   onUpdateProps,
   onUpdateAnimation,
   onUpdateMeta,
+  onResetBreakpointProps,
+  onResetBreakpointLayout,
 }: {
   element: HeroElement
   breakpoint: Breakpoint
@@ -211,10 +234,14 @@ function ElementProperties({
   onUpdateProps: PropertiesPanelProps['onUpdateProps']
   onUpdateAnimation: PropertiesPanelProps['onUpdateAnimation']
   onUpdateMeta: PropertiesPanelProps['onUpdateMeta']
+  onResetBreakpointProps: PropertiesPanelProps['onResetBreakpointProps']
+  onResetBreakpointLayout: PropertiesPanelProps['onResetBreakpointLayout']
 }) {
   const layout = element[breakpoint]
   const resolvedProps = getActiveProps(element, breakpoint)
   const hasTypography = resolvedProps.kind === 'text' || resolvedProps.kind === 'button'
+  const isOverridden = hasPropsOverride(element, breakpoint)
+  const isNonDesktop = breakpoint !== 'desktop'
 
   return (
     <div className="space-y-0">
@@ -228,14 +255,41 @@ function ElementProperties({
         />
         <p className="mt-0.5 text-xs text-zinc-500">
           {element.type} &middot; {breakpoint}
-          {breakpoint === 'mobile' && element.mobileProps && (
-            <span className="ml-1 text-blue-400">(mobile props)</span>
+          {breakpoint !== 'desktop' && !isOverridden && (
+            <span className="ml-1 text-zinc-600">(inherited from {breakpoint === 'mobile' && element.tabletProps ? 'tablet' : 'desktop'})</span>
+          )}
+          {breakpoint !== 'desktop' && isOverridden && (
+            <span className="ml-1 text-blue-400">(overridden)</span>
           )}
         </p>
       </div>
 
+      {/* Visibility per breakpoint */}
+      <div className="border-b border-zinc-800 px-3 py-2">
+        <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">Visibility</p>
+        <div className="flex items-center gap-3">
+          {(['desktop', 'tablet', 'mobile'] as const).map((bp) => (
+            <label key={bp} className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={element.visibility[bp]}
+                onChange={() => onUpdateMeta({
+                  visibility: { ...element.visibility, [bp]: !element.visibility[bp] },
+                } as Partial<Pick<HeroElement, 'visibility'>>)}
+                className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
+              />
+              <span className="text-xs text-zinc-300 capitalize">{bp}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* Position & Size */}
-      <CollapsibleSection title="Position & Size">
+      <CollapsibleSection
+        title="Position & Size"
+        hasOverride={isNonDesktop && isOverridden}
+        onResetOverride={isNonDesktop ? onResetBreakpointLayout : undefined}
+      >
         <PositionSection
           layout={layout}
           breakpoint={breakpoint}
@@ -245,7 +299,11 @@ function ElementProperties({
 
       {/* Typography (text & button only) */}
       {hasTypography && (
-        <CollapsibleSection title="Typography">
+        <CollapsibleSection
+          title="Typography"
+          hasOverride={isNonDesktop && isOverridden}
+          onResetOverride={isNonDesktop ? onResetBreakpointProps : undefined}
+        >
           <TypographySection
             props={resolvedProps as Extract<ElementProps, { kind: 'text' | 'button' }>}
             onUpdate={onUpdateProps}
@@ -254,8 +312,12 @@ function ElementProperties({
       )}
 
       {/* Appearance */}
-      <CollapsibleSection title="Appearance">
-        <AppearanceSection element={element} onUpdate={onUpdateProps} />
+      <CollapsibleSection
+        title="Appearance"
+        hasOverride={isNonDesktop && isOverridden}
+        onResetOverride={isNonDesktop ? onResetBreakpointProps : undefined}
+      >
+        <AppearanceSection element={element} breakpoint={breakpoint} onUpdate={onUpdateProps} />
       </CollapsibleSection>
 
       {/* Animation */}
@@ -268,7 +330,11 @@ function ElementProperties({
 
       {/* Element-Specific */}
       {resolvedProps.kind !== 'text' && (
-        <CollapsibleSection title={getSpecificSectionTitle(resolvedProps.kind)}>
+        <CollapsibleSection
+          title={getSpecificSectionTitle(resolvedProps.kind)}
+          hasOverride={isNonDesktop && isOverridden}
+          onResetOverride={isNonDesktop ? onResetBreakpointProps : undefined}
+        >
           <ElementSpecificSection props={resolvedProps} onUpdate={onUpdateProps} />
         </CollapsibleSection>
       )}
@@ -301,6 +367,8 @@ export function PropertiesPanel({
   onUpdateProps,
   onUpdateAnimation,
   onUpdateMeta,
+  onResetBreakpointProps,
+  onResetBreakpointLayout,
   onUpdateCanvas,
 }: PropertiesPanelProps) {
   return (
@@ -313,6 +381,8 @@ export function PropertiesPanel({
           onUpdateProps={onUpdateProps}
           onUpdateAnimation={onUpdateAnimation}
           onUpdateMeta={onUpdateMeta}
+          onResetBreakpointProps={onResetBreakpointProps}
+          onResetBreakpointLayout={onResetBreakpointLayout}
         />
       ) : (
         <CanvasProperties
