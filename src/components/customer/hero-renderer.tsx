@@ -578,7 +578,7 @@ function RenderColumn({
       }}
     >
       {childElements
-        .filter((el) => el.visible !== false)
+        .filter((el) => el.visibility?.[breakpoint] !== false)
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((child) => {
           const childProps = getActiveProps(child, breakpoint)
@@ -601,29 +601,29 @@ function CanvasView({
   breakpoint,
 }: {
   design: HeroDesign
-  breakpoint: 'desktop' | 'mobile'
+  breakpoint: Breakpoint
 }) {
-  const height = design.canvas[breakpoint].height
+  const height = design.canvas[breakpoint]?.height ?? design.canvas.desktop.height
 
   // Build child map for containers
   const childrenByParent = useMemo(() => {
     const map = new Map<string, HeroElement[]>()
     for (const el of design.elements) {
-      if (el.parentId && el.visible !== false) {
+      if (el.parentId && (el.visibility?.[breakpoint] !== false)) {
         const siblings = map.get(el.parentId) ?? []
         siblings.push(el)
         map.set(el.parentId, siblings)
       }
     }
     return map
-  }, [design.elements])
+  }, [design.elements, breakpoint])
 
   // Root elements (no parentId), sorted
   const sortedElements = useMemo(() => {
     return [...design.elements]
-      .filter((el) => el.visible !== false && !el.parentId)
+      .filter((el) => (el.visibility?.[breakpoint] !== false) && !el.parentId)
       .sort((a, b) => a.zIndex - b.zIndex)
-  }, [design.elements])
+  }, [design.elements, breakpoint])
 
   return (
     <div
@@ -706,12 +706,17 @@ export function HeroRenderer({ design, className }: HeroRendererProps) {
           : {}),
       }}
     >
-      {/* Desktop */}
-      <div className="hidden md:block">
+      {/* Desktop (≥1024px) */}
+      <div className="hidden lg:block">
         <CanvasView design={design} breakpoint="desktop" />
       </div>
 
-      {/* Mobile */}
+      {/* Tablet (768–1023px) */}
+      <div className="hidden md:block lg:hidden">
+        <CanvasView design={design} breakpoint="tablet" />
+      </div>
+
+      {/* Mobile (<768px) */}
       <div className="block md:hidden">
         <CanvasView design={design} breakpoint="mobile" />
       </div>
