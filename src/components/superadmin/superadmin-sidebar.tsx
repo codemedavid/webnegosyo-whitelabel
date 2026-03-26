@@ -11,6 +11,7 @@ import {
   Store,
   BarChart3,
   Shield,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,11 @@ const sidebarItems: SidebarItem[] = [
     label: 'Analytics',
     href: '/superadmin/analytics',
     icon: BarChart3,
+  },
+  {
+    label: 'Leads',
+    href: '/superadmin/leads',
+    icon: Users,
   },
   {
     label: 'Settings',
