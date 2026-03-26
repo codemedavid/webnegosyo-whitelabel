@@ -271,18 +271,16 @@ export function HeroDesigner({
               <LayersPanel
                 elements={state.design.elements}
                 selectedElementId={state.selectedElementId}
+                activeBreakpoint={state.activeBreakpoint}
                 onSelectElement={(id) =>
                   dispatch({ type: 'SELECT_ELEMENT', id })
                 }
                 onToggleVisibility={(id) => {
-                  const el = state.design.elements.find((e) => e.id === id)
-                  if (el) {
-                    dispatch({
-                      type: 'UPDATE_ELEMENT_META',
-                      id,
-                      meta: { visible: !el.visible },
-                    })
-                  }
+                  dispatch({
+                    type: 'TOGGLE_BREAKPOINT_VISIBILITY',
+                    id,
+                    breakpoint: state.activeBreakpoint,
+                  })
                 }}
                 onToggleLock={(id) => {
                   const el = state.design.elements.find((e) => e.id === id)
@@ -380,6 +378,22 @@ export function HeroDesigner({
                 meta,
               })
             }}
+            onResetBreakpointProps={() => {
+              if (!selectedElement) return
+              dispatch({
+                type: 'RESET_BREAKPOINT_PROPS',
+                id: selectedElement.id,
+                breakpoint: state.activeBreakpoint,
+              })
+            }}
+            onResetBreakpointLayout={() => {
+              if (!selectedElement) return
+              dispatch({
+                type: 'RESET_BREAKPOINT_LAYOUT',
+                id: selectedElement.id,
+                breakpoint: state.activeBreakpoint,
+              })
+            }}
             onUpdateCanvas={(updates) => {
               const canvasUpdates: Record<string, unknown> = {}
               if (updates.backgroundColor !== undefined) {
@@ -392,7 +406,9 @@ export function HeroDesigner({
                 const key =
                   updates.canvasHeight.breakpoint === 'desktop'
                     ? 'desktopHeight'
-                    : 'mobileHeight'
+                    : updates.canvasHeight.breakpoint === 'tablet'
+                      ? 'tabletHeight'
+                      : 'mobileHeight'
                 canvasUpdates[key] = updates.canvasHeight.height
               }
               dispatch({
