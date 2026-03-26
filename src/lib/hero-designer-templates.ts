@@ -34,14 +34,16 @@ export interface HeroTemplate {
 
 function design(
   desktopHeight: number,
+  tabletHeight: number,
   mobileHeight: number,
   bg: string,
   elements: HeroElement[],
 ): HeroDesign {
   return {
-    version: 2,
+    version: 3,
     canvas: {
       desktop: { width: 1440, height: desktopHeight },
+      tablet: { width: 768, height: tabletHeight },
       mobile: { width: 390, height: mobileHeight },
     },
     backgroundColor: bg,
@@ -57,7 +59,7 @@ function classicCentered(): HeroTemplate {
     name: 'Classic Centered',
     description: 'Centered heading, subtitle, and call-to-action button on a clean white background.',
     thumbnail: 'linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%)',
-    design: design(500, 450, '#ffffff', [
+    design: design(500, 475, 450, '#ffffff', [
       createTextElement({
         label: 'Heading',
         zIndex: 1,
@@ -121,7 +123,7 @@ function splitLayout(): HeroTemplate {
     name: 'Split Layout',
     description: 'Text content on the left with an image on the right. Stacks vertically on mobile.',
     thumbnail: 'linear-gradient(90deg, #ffffff 50%, #fef3c7 50%)',
-    design: design(550, 600, '#ffffff', [
+    design: design(550, 550, 600, '#ffffff', [
       createTextElement({
         label: 'Heading',
         zIndex: 1,
@@ -200,7 +202,7 @@ function fullScreenImage(): HeroTemplate {
     name: 'Full-Screen Image',
     description: 'Full-canvas background image with a dark overlay and white text content.',
     thumbnail: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
-    design: design(600, 500, '#000000', [
+    design: design(600, 550, 500, '#000000', [
       createImageElement({
         label: 'Background Image',
         zIndex: 0,
@@ -309,7 +311,7 @@ function minimalText(): HeroTemplate {
     name: 'Minimal Text',
     description: 'A single large heading on a clean white background. Pure simplicity.',
     thumbnail: 'linear-gradient(180deg, #fafafa 0%, #ffffff 100%)',
-    design: design(400, 350, '#ffffff', [
+    design: design(400, 375, 350, '#ffffff', [
       createTextElement({
         label: 'Heading',
         zIndex: 0,
@@ -344,7 +346,7 @@ function boldCta(): HeroTemplate {
     name: 'Bold CTA',
     description: 'Animated gradient background with a bold headline, subtext, CTA button, and social proof.',
     thumbnail: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    design: design(550, 500, '#1a1a2e', [
+    design: design(550, 525, 500, '#1a1a2e', [
       createAnimatedBgElement({
         label: 'Gradient Background',
         zIndex: 0,
@@ -455,7 +457,7 @@ function videoHero(): HeroTemplate {
     name: 'Video Hero',
     description: 'Background video with a dark overlay, bold heading, and call-to-action.',
     thumbnail: 'linear-gradient(180deg, #0f172a 0%, #334155 100%)',
-    design: design(600, 500, '#000000', [
+    design: design(600, 550, 500, '#000000', [
       createVideoElement({
         label: 'Background Video',
         zIndex: 0,
@@ -534,7 +536,7 @@ function restaurantShowcase(): HeroTemplate {
     name: 'Restaurant Showcase',
     description: 'Image background with a semi-transparent overlay featuring your restaurant name, tagline, and order button.',
     thumbnail: 'linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.7) 100%), linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
-    design: design(550, 450, '#1a1a1a', [
+    design: design(550, 500, 450, '#1a1a1a', [
       createImageElement({
         label: 'Background Image',
         zIndex: 0,
@@ -646,7 +648,7 @@ function promoCountdown(): HeroTemplate {
     name: 'Promo Countdown',
     description: 'Limited-time promotion with a countdown timer, bold heading, and call-to-action.',
     thumbnail: 'linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%)',
-    design: design(450, 400, '#fefefe', [
+    design: design(450, 425, 400, '#fefefe', [
       createTextElement({
         label: 'Heading',
         zIndex: 1,
