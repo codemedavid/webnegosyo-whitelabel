@@ -242,6 +242,34 @@ export interface Bundle {
   updated_at: string;
 }
 
+export interface BundleSlot {
+  id: string;
+  bundle_id: string;
+  name: string;
+  category_id: string;
+  pick_count: number;
+  sort_order: number;
+  created_at: string;
+  category?: Category;
+  items?: MenuItem[];
+  price_overrides?: BundleSlotPriceOverride[];
+}
+
+export interface BundleSlotPriceOverride {
+  id: string;
+  slot_id: string;
+  menu_item_id: string;
+  price_override: number;
+  created_at: string;
+}
+
+export type BundleWithSlots = Bundle & {
+  slots: BundleSlot[];
+};
+
+/** @deprecated Use BundleWithSlots instead */
+export type BundleWithItems = BundleWithSlots;
+
 export interface BundleItem {
   id: string;
   bundle_id: string;
@@ -259,11 +287,29 @@ export interface BundleItemCustomization {
   quantity: number;
 }
 
+export interface CartBundleSlotSelection {
+  slotId: string;
+  slotName: string;
+  menuItemId: string;
+  menuItemName: string;
+  menuItemImage: string | null;
+  menuItemPrice: number;
+  quantity: number;
+  selectedVariations?: { [variationTypeId: string]: VariationOption };
+  selectedVariation?: Variation;
+  selectedAddons: Addon[];
+  priceOverride: number;
+}
+
 export interface CartBundleItem {
   id: string;
-  bundle: Bundle;
-  customizations: BundleItemCustomization[];
+  bundleId: string;
+  bundleName: string;
+  slots: CartBundleSlotSelection[];
   quantity: number;
+  pricingType: 'fixed' | 'discount';
+  basePrice: number;
+  discountPercent?: number;
   subtotal: number;
 }
 
