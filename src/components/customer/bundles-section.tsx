@@ -4,11 +4,11 @@ import { memo } from 'react'
 import { Package } from 'lucide-react'
 import { BundleCard } from './bundle-card'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 
 interface BundlesSectionProps {
-    bundles: BundleWithItems[]
-    onBundleSelect: (bundle: BundleWithItems) => void
+    bundles: BundleWithSlots[]
+    onBundleSelect: (bundle: BundleWithSlots) => void
     branding: BrandingColors
     hideCurrencySymbol?: boolean
 }

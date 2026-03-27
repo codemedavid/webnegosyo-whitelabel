@@ -5,18 +5,18 @@ import { Package } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 
 interface BundleCardProps {
-    bundle: BundleWithItems
-    onSelect: (bundle: BundleWithItems) => void
+    bundle: BundleWithSlots
+    onSelect: (bundle: BundleWithSlots) => void
     branding: BrandingColors
     hideCurrencySymbol?: boolean
 }
 
 /**
  * Customer-facing bundle card — matches the visual language of menu item cards
- * with a distinct "bundle" identity (grouped item images, savings badge).
+ * with a distinct "bundle" identity (slot pills, savings badge).
  */
 export const BundleCard = memo(function BundleCard({
     bundle,
@@ -24,22 +24,28 @@ export const BundleCard = memo(function BundleCard({
     branding,
     hideCurrencySymbol,
 }: BundleCardProps) {
-    // Compute the sum of individual item prices
-    const originalTotal = (bundle.items ?? []).reduce(
-        (sum, bi) => sum + (bi.menu_item?.price ?? 0) * bi.quantity,
-        0
-    )
+    const slots = bundle.slots ?? []
+
+    // Compute cheapest item price per slot for a "Save up to X" calculation
+    const minSlotTotal = slots.reduce((sum, slot) => {
+        const items = slot.items ?? []
+        if (items.length === 0) return sum
+        const minPrice = Math.min(...items.map((i) => i.price ?? 0))
+        return sum + minPrice * (slot.pick_count ?? 1)
+    }, 0)
 
     const bundlePrice =
         bundle.pricing_type === 'fixed'
-            ? bundle.fixed_price ?? 0
-            : originalTotal * (1 - (bundle.discount_percent ?? 0) / 100)
+            ? (bundle.fixed_price ?? 0)
+            : minSlotTotal * (1 - (bundle.discount_percent ?? 0) / 100)
 
-    const savings = originalTotal - bundlePrice
+    const savings = bundle.pricing_type === 'fixed'
+        ? Math.max(0, minSlotTotal - bundlePrice)
+        : Math.max(0, minSlotTotal - bundlePrice)
 
-    // Show up to 4 item thumbnails
-    const thumbnailItems = (bundle.items ?? [])
-        .filter((bi) => bi.menu_item?.image_url)
+    // Show up to 4 slot category icons if no bundle image
+    const slotIcons = slots
+        .filter((s) => s.category?.icon)
         .slice(0, 4)
 
     return (
@@ -53,7 +59,7 @@ export const BundleCard = memo(function BundleCard({
             }}
             onClick={() => onSelect(bundle)}
         >
-            {/* Hero image or item thumbnails */}
+            {/* Hero image or slot category icons */}
             <div className="relative aspect-[4/3] overflow-hidden bg-muted">
                 {bundle.image_url ? (
                     <OptimizedImage
@@ -64,29 +70,25 @@ export const BundleCard = memo(function BundleCard({
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
                         loading="lazy"
                     />
-                ) : thumbnailItems.length > 0 ? (
+                ) : slotIcons.length > 0 ? (
                     <div className="grid grid-cols-2 h-full">
-                        {thumbnailItems.map((bi, idx) => (
-                            <div key={bi.menu_item_id ?? idx} className="relative overflow-hidden">
-                                <OptimizedImage
-                                    src={bi.menu_item!.image_url!}
-                                    alt={bi.menu_item!.name}
-                                    fill
-                                    className="object-cover"
-                                    sizes="(max-width: 768px) 25vw, 15vw"
-                                    loading="lazy"
-                                />
+                        {slotIcons.map((slot, idx) => (
+                            <div
+                                key={slot.id ?? idx}
+                                className="flex items-center justify-center text-3xl"
+                                style={{ backgroundColor: `${branding.primary}${idx % 2 === 0 ? '12' : '08'}` }}
+                            >
+                                {slot.category?.icon ?? '🍱'}
                             </div>
                         ))}
-                        {/* Fill remaining grid cells */}
-                        {thumbnailItems.length < 4 &&
-                            Array.from({ length: 4 - thumbnailItems.length }).map((_, i) => (
+                        {slotIcons.length < 4 &&
+                            Array.from({ length: 4 - slotIcons.length }).map((_, i) => (
                                 <div
                                     key={`placeholder-${i}`}
                                     className="flex items-center justify-center"
-                                    style={{ backgroundColor: `${branding.primary}10` }}
+                                    style={{ backgroundColor: `${branding.primary}08` }}
                                 >
-                                    <Package className="h-6 w-6" style={{ color: branding.primary }} />
+                                    <Package className="h-6 w-6 opacity-30" style={{ color: branding.primary }} />
                                 </div>
                             ))}
                     </div>
@@ -116,7 +118,7 @@ export const BundleCard = memo(function BundleCard({
                 {savings > 0 && (
                     <div className="absolute right-3 top-3 z-10">
                         <span className="rounded-full bg-green-500 px-2 py-1 text-xs font-bold text-white shadow-sm">
-                            Save {formatPrice(savings, { hideCurrencySymbol })}
+                            Save up to {formatPrice(savings, { hideCurrencySymbol })}
                         </span>
                     </div>
                 )}
@@ -143,44 +145,68 @@ export const BundleCard = memo(function BundleCard({
                     {bundle.name}
                 </h3>
 
-                {bundle.description && (
+                {/* Slot pills */}
+                {slots.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                        {slots.map((slot) => (
+                            <span
+                                key={slot.id}
+                                className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{
+                                    backgroundColor: `${branding.primary}15`,
+                                    color: branding.textSecondary,
+                                }}
+                            >
+                                {slot.pick_count > 1
+                                    ? `${slot.pick_count}× ${slot.category?.name || slot.name}`
+                                    : (slot.category?.name || slot.name)}
+                            </span>
+                        ))}
+                    </div>
+                )}
+
+                {/* Description (explicit or auto-generated from slots) */}
+                {(bundle.description || slots.length > 0) && (
                     <p
                         className="mb-2 text-sm line-clamp-2"
                         style={{ color: branding.cardDescription }}
                     >
-                        {bundle.description}
+                        {bundle.description ||
+                            slots
+                                .map((s) => (s.pick_count > 1 ? `${s.pick_count}× ${s.name}` : s.name))
+                                .join(' + ')}
                     </p>
                 )}
 
-                {/* Items list */}
-                <p
-                    className="mb-2 text-xs line-clamp-1"
-                    style={{ color: branding.textMuted }}
-                >
-                    {(bundle.items ?? [])
-                        .map((bi) => {
-                            const name = bi.menu_item?.name ?? 'Item'
-                            return bi.quantity > 1 ? `${bi.quantity}× ${name}` : name
-                        })
-                        .join(' + ')}
-                </p>
-
                 {/* Price */}
                 <div className="flex items-center gap-2">
-                    {savings > 0 && (
+                    {bundle.pricing_type === 'fixed' ? (
+                        <>
+                            {savings > 0 && (
+                                <span
+                                    className="text-sm line-through"
+                                    style={{ color: branding.textMuted }}
+                                >
+                                    {formatPrice(minSlotTotal, { hideCurrencySymbol })}
+                                </span>
+                            )}
+                            <span
+                                className="text-lg font-bold"
+                                style={{ color: branding.cardPrice }}
+                            >
+                                {formatPrice(bundlePrice, { hideCurrencySymbol })}
+                            </span>
+                        </>
+                    ) : (
                         <span
-                            className="text-sm line-through"
-                            style={{ color: branding.textMuted }}
+                            className="text-lg font-bold"
+                            style={{ color: branding.cardPrice }}
                         >
-                            {formatPrice(originalTotal, { hideCurrencySymbol })}
+                            {bundle.discount_percent
+                                ? `${bundle.discount_percent}% off`
+                                : 'Bundle Deal'}
                         </span>
                     )}
-                    <span
-                        className="text-lg font-bold"
-                        style={{ color: branding.cardPrice }}
-                    >
-                        {formatPrice(bundlePrice, { hideCurrencySymbol })}
-                    </span>
                 </div>
 
                 <div className="mt-2">
@@ -191,7 +217,7 @@ export const BundleCard = memo(function BundleCard({
                             color: branding.buttonSecondaryText,
                         }}
                     >
-                        {(bundle.items ?? []).reduce((s, bi) => s + bi.quantity, 0)} items included
+                        {slots.length} slot{slots.length !== 1 ? 's' : ''} included
                     </span>
                 </div>
             </div>
