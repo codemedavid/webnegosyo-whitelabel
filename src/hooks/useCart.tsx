@@ -1,13 +1,13 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
-import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption, CartBundleItem, BundleItemCustomization, Bundle } from '@/types/database'
+import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption, CartBundleItem } from '@/types/database'
 import {
   calculateCartItemSubtotal,
   calculateFullCartTotal,
   getFullCartItemCount,
   generateCartItemId,
-  calculateBundleSubtotal,
+  calculateSlotBundleSubtotal,
 } from '@/lib/cart-utils'
 
 interface CartContextType extends Cart {
@@ -32,7 +32,7 @@ interface CartContextType extends Cart {
   clearCart: () => void
   getItem: (cartItemId: string) => CartItem | undefined
   bundleItems: CartBundleItem[]
-  addBundleToCart: (bundle: Bundle, customizations: BundleItemCustomization[], quantity: number) => void
+  addBundleToCart: (bundleItem: Omit<CartBundleItem, 'id' | 'subtotal'>) => void
   removeBundleFromCart: (bundleCartId: string) => void
   updateBundleQuantity: (bundleCartId: string, quantity: number) => void
 }
@@ -186,12 +186,12 @@ function isValidBundleItems(items: unknown): items is CartBundleItem[] {
     const i = item as Record<string, unknown>
     return (
       typeof i.id === 'string' &&
+      typeof i.bundleId === 'string' &&
+      typeof i.bundleName === 'string' &&
+      Array.isArray(i.slots) &&
       typeof i.quantity === 'number' &&
       i.quantity > 0 &&
-      typeof i.subtotal === 'number' &&
-      i.bundle !== null &&
-      typeof i.bundle === 'object' &&
-      Array.isArray(i.customizations)
+      typeof i.subtotal === 'number'
     )
   })
 }
@@ -422,10 +422,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
 
       const bundleCartItems = latestBundleItems.map(bi => ({
-        name: `Bundle: ${bi.bundle.name}`,
+        name: `Bundle: ${bi.bundleName}`,
         quantity: bi.quantity,
         subtotal: bi.subtotal,
-        variation: bi.customizations.map(c => c.menu_item.name).join(', '),
+        variation: bi.slots.map(s => `${s.slotName}: ${s.menuItemName}`).join(', '),
       }))
       const allCartItems = [...cartItems, ...bundleCartItems]
 
@@ -598,16 +598,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   )
 
   const addBundleToCart = useCallback(
-    (bundle: Bundle, customizations: BundleItemCustomization[], quantity: number) => {
-      const bundleCartId = `bundle_${bundle.id}_${Date.now()}`
+    (bundleItem: Omit<CartBundleItem, 'id' | 'subtotal'>) => {
+      const bundleCartId = `bundle_${bundleItem.bundleId}_${Date.now()}`
       const newBundleItem: CartBundleItem = {
+        ...bundleItem,
         id: bundleCartId,
-        bundle,
-        customizations,
-        quantity,
         subtotal: 0,
       }
-      newBundleItem.subtotal = calculateBundleSubtotal(newBundleItem)
+      newBundleItem.subtotal = calculateSlotBundleSubtotal(newBundleItem)
       setBundleItems((prev) => [...prev, newBundleItem])
     },
     []
@@ -627,7 +625,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       prev.map((bi) => {
         if (bi.id === bundleCartId) {
           const updated = { ...bi, quantity: clampedQuantity }
-          updated.subtotal = calculateBundleSubtotal(updated)
+          updated.subtotal = calculateSlotBundleSubtotal(updated)
           return updated
         }
         return bi
