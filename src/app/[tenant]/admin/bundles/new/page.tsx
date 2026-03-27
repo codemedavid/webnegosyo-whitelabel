@@ -1,6 +1,6 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
+import { getMenuItemsByTenant, getCategoriesByTenant } from '@/lib/admin-service'
 import { BundleForm } from '@/components/admin/bundle-form'
 import type { Tenant } from '@/types/database'
 
@@ -21,8 +21,11 @@ export default async function NewBundlePage({
 
     const tenant: Tenant = tenantData
 
-    // Fetch menu items for the bundle item picker
-    const menuItems = await getMenuItemsByTenant(tenant.id)
+    // Fetch menu items and categories for the bundle form
+    const [menuItems, categories] = await Promise.all([
+        getMenuItemsByTenant(tenant.id),
+        getCategoriesByTenant(tenant.id),
+    ])
 
     const resolvedSearchParams = await searchParams
     const suggestedItemIds = resolvedSearchParams.suggestItems?.split(',') || []
@@ -31,7 +34,7 @@ export default async function NewBundlePage({
         : undefined
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <Breadcrumbs
                 items={[
                     { label: 'Dashboard', href: `/${tenantSlug}/admin` },
@@ -40,17 +43,11 @@ export default async function NewBundlePage({
                 ]}
             />
 
-            <div>
-                <h1 className="text-3xl font-bold">Create Bundle</h1>
-                <p className="text-muted-foreground">
-                    Group menu items together with special pricing
-                </p>
-            </div>
-
             <BundleForm
                 tenantId={tenant.id}
                 tenantSlug={tenantSlug}
                 menuItems={menuItems}
+                categories={categories}
                 suggestedItemIds={suggestedItemIds}
                 suggestedDiscount={suggestedDiscount}
             />

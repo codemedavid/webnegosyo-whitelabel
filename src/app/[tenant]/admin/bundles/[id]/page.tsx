@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
+import { getMenuItemsByTenant, getCategoriesByTenant } from '@/lib/admin-service'
 import { getBundleById } from '@/lib/bundles-service'
 import { BundleForm } from '@/components/admin/bundle-form'
 import type { Tenant } from '@/types/database'
@@ -28,10 +28,13 @@ export default async function EditBundlePage({
         notFound()
     }
 
-    const menuItems = await getMenuItemsByTenant(tenant.id)
+    const [menuItems, categories] = await Promise.all([
+        getMenuItemsByTenant(tenant.id),
+        getCategoriesByTenant(tenant.id),
+    ])
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <Breadcrumbs
                 items={[
                     { label: 'Dashboard', href: `/${tenantSlug}/admin` },
@@ -40,18 +43,12 @@ export default async function EditBundlePage({
                 ]}
             />
 
-            <div>
-                <h1 className="text-3xl font-bold">Edit Bundle</h1>
-                <p className="text-muted-foreground">
-                    Update bundle details and items
-                </p>
-            </div>
-
             <BundleForm
                 bundle={bundle}
                 tenantId={tenant.id}
                 tenantSlug={tenantSlug}
                 menuItems={menuItems}
+                categories={categories}
             />
         </div>
     )
