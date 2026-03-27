@@ -13,9 +13,10 @@ import {
     getMenuBundles,
     getUpsellBundles,
     type BundleInput,
+    type BundleWithSlots,
 } from '@/lib/bundles-service'
 
-export async function getBundlesAction(tenantId: string) {
+export async function getBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
         const bundles = await getBundlesByTenant(tenantId)
         return { success: true, data: bundles }
@@ -24,7 +25,7 @@ export async function getBundlesAction(tenantId: string) {
     }
 }
 
-export async function getBundleAction(bundleId: string, tenantId: string) {
+export async function getBundleAction(bundleId: string, tenantId: string): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await getBundleById(bundleId, tenantId)
         return { success: true, data: bundle }
@@ -33,7 +34,7 @@ export async function getBundleAction(bundleId: string, tenantId: string) {
     }
 }
 
-export async function createBundleAction(tenantId: string, tenantSlug: string, input: BundleInput) {
+export async function createBundleAction(tenantId: string, tenantSlug: string, input: BundleInput): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await createBundle(tenantId, input)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
@@ -58,7 +59,7 @@ export async function updateBundleAction(
     tenantId: string,
     tenantSlug: string,
     input: BundleInput
-) {
+): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await updateBundle(bundleId, tenantId, input)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
@@ -95,7 +96,7 @@ export async function toggleBundleActiveAction(
     tenantId: string,
     tenantSlug: string,
     isActive: boolean
-) {
+): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await toggleBundleActive(bundleId, tenantId, isActive)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
@@ -116,7 +117,7 @@ export async function reorderBundlesAction(tenantId: string, tenantSlug: string,
     }
 }
 
-export async function getMenuBundlesAction(tenantId: string) {
+export async function getMenuBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
         const bundles = await getMenuBundles(tenantId)
         return { success: true, data: bundles }
@@ -125,7 +126,7 @@ export async function getMenuBundlesAction(tenantId: string) {
     }
 }
 
-export async function getUpsellBundlesAction(tenantId: string) {
+export async function getUpsellBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
         const bundles = await getUpsellBundles(tenantId)
         return { success: true, data: bundles }
