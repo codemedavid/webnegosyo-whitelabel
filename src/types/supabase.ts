@@ -85,6 +85,90 @@ export type Database = {
           },
         ]
       }
+      bundle_slot_price_overrides: {
+        Row: {
+          created_at: string
+          id: string
+          menu_item_id: string
+          price_override: number
+          slot_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          price_override: number
+          slot_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          price_override?: number
+          slot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundle_slot_price_overrides_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bundle_slot_price_overrides_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "bundle_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bundle_slots: {
+        Row: {
+          bundle_id: string
+          category_id: string
+          created_at: string
+          id: string
+          name: string
+          pick_count: number
+          sort_order: number
+        }
+        Insert: {
+          bundle_id: string
+          category_id: string
+          created_at?: string
+          id?: string
+          name: string
+          pick_count?: number
+          sort_order?: number
+        }
+        Update: {
+          bundle_id?: string
+          category_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          pick_count?: number
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundle_slots_bundle_id_fkey"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "bundles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bundle_slots_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bundles: {
         Row: {
           created_at: string

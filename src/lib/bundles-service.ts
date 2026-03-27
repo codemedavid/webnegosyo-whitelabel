@@ -1,46 +1,63 @@
 /**
  * Server-side service layer for bundle operations
- * Uses server-side Supabase client with RLS policies
+ * Uses admin Supabase client (bypasses RLS) with slot-based model
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
-import type { Bundle, BundleItem, MenuItem } from '@/types/database'
 import { z } from 'zod'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { verifyTenantAdmin } from '@/lib/admin-service'
+import type { Bundle, BundleWithSlots, MenuItem, Category } from '@/types/database'
+
+// Re-export for backward compatibility with downstream consumers
+export type { BundleWithSlots }
+/** @deprecated Use BundleWithSlots instead */
+export type BundleWithItems = BundleWithSlots
 
 // ============================================
 // Types & Schemas
 // ============================================
 
-export const bundleItemInputSchema = z.object({
-    menu_item_id: z.string().uuid(),
-    quantity: z.number().int().min(1).default(1),
-    display_order: z.number().int().min(0).default(0),
+export const bundleSlotPriceOverrideInputSchema = z.object({
+  menu_item_id: z.string().uuid(),
+  price_override: z.number().min(0),
+})
+
+export const bundleSlotInputSchema = z.object({
+  name: z.string().min(1, 'Slot name is required'),
+  category_id: z.string().uuid('Must select a category'),
+  pick_count: z.number().int().min(1, 'Must pick at least 1 item').default(1),
+  sort_order: z.number().int().min(0).default(0),
+  price_overrides: z.array(bundleSlotPriceOverrideInputSchema).default([]),
 })
 
 export const bundleSchema = z.object({
-    name: z.string().min(2, 'Name must be at least 2 characters'),
-    description: z.string().optional().nullable(),
-    image_url: z.string().url('Must be a valid URL').or(z.literal('')),
-    pricing_type: z.enum(['fixed', 'discount']),
-    fixed_price: z.number().min(0).optional().nullable(),
-    discount_percent: z.number().min(1).max(100).optional().nullable(),
-    is_active: z.boolean().default(true),
-    show_on_menu: z.boolean().default(false),
-    show_as_upsell: z.boolean().default(false),
-    display_order: z.number().int().min(0).default(0),
-    items: z.array(bundleItemInputSchema).min(1, 'Bundle must contain at least one item'),
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  description: z.string().optional().nullable(),
+  image_url: z.string().url('Must be a valid URL').or(z.literal('')),
+  pricing_type: z.enum(['fixed', 'discount']),
+  fixed_price: z.number().min(0).optional().nullable(),
+  discount_percent: z.number().min(1).max(100).optional().nullable(),
+  is_active: z.boolean().default(true),
+  show_on_menu: z.boolean().default(false),
+  show_as_upsell: z.boolean().default(false),
+  display_order: z.number().int().min(0).default(0),
+  slots: z.array(bundleSlotInputSchema).min(1, 'Bundle must have at least one slot'),
 })
 
 export type BundleInput = z.infer<typeof bundleSchema>
 
 // ============================================
-// Bundle with items helper type
+// Query constant
 // ============================================
 
-export interface BundleWithItems extends Bundle {
-    items: (BundleItem & { menu_item: MenuItem })[]
-}
+const BUNDLE_SLOTS_QUERY = `
+  *,
+  slots:bundle_slots(
+    *,
+    category:categories(id, name, icon, icon_color),
+    price_overrides:bundle_slot_price_overrides(*)
+  )
+`
 
 // ============================================
 // Admin Operations (require auth)
@@ -49,222 +66,254 @@ export interface BundleWithItems extends Bundle {
 /**
  * Get all bundles for a tenant (admin view — includes inactive)
  */
-export async function getBundlesByTenant(tenantId: string): Promise<BundleWithItems[]> {
-    const supabase = await createClient()
+export async function getBundlesByTenant(tenantId: string): Promise<BundleWithSlots[]> {
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-        .from('bundles')
-        .select(`
-      *,
-      items:bundle_items(
-        *,
-        menu_item:menu_items(*)
-      )
-    `)
-        .eq('tenant_id', tenantId)
-        .order('display_order', { ascending: true })
+  const { data, error } = await supabase
+    .from('bundles')
+    .select(BUNDLE_SLOTS_QUERY)
+    .eq('tenant_id', tenantId)
+    .order('display_order', { ascending: true })
 
-    if (error) throw error
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]) ?? []
+  if (error) throw error
+  return (data as unknown as BundleWithSlots[]) ?? []
 }
 
 /**
- * Get a single bundle by ID with items
+ * Get a single bundle by ID with slots
  */
-export async function getBundleById(bundleId: string, tenantId: string): Promise<BundleWithItems> {
-    const supabase = await createClient()
+export async function getBundleById(bundleId: string, tenantId: string): Promise<BundleWithSlots> {
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-        .from('bundles')
-        .select(`
-      *,
-      items:bundle_items(
-        *,
-        menu_item:menu_items(*)
-      )
-    `)
-        .eq('id', bundleId)
-        .eq('tenant_id', tenantId)
-        .single()
+  const { data, error } = await supabase
+    .from('bundles')
+    .select(BUNDLE_SLOTS_QUERY)
+    .eq('id', bundleId)
+    .eq('tenant_id', tenantId)
+    .single()
 
-    if (error) throw error
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data as any
+  if (error) throw error
+  return data as unknown as BundleWithSlots
 }
 
 /**
- * Create a new bundle with items
+ * Create a new bundle with slots
  */
-export async function createBundle(tenantId: string, input: BundleInput): Promise<BundleWithItems> {
-    await verifyTenantAdmin(tenantId)
-    const validated = bundleSchema.parse(input)
-    const supabase = await createClient()
+export async function createBundle(tenantId: string, input: BundleInput): Promise<BundleWithSlots> {
+  await verifyTenantAdmin(tenantId)
+  const validated = bundleSchema.parse(input)
+  const supabase = createAdminClient()
 
-    const { items, ...bundleData } = validated
+  const { slots, ...bundleData } = validated
 
-    // Create the bundle
-    const { data: bundle, error: bundleError } = await supabase
-        .from('bundles')
-        .insert({
-            tenant_id: tenantId,
-            name: bundleData.name,
-            description: bundleData.description,
-            image_url: bundleData.image_url,
-            pricing_type: bundleData.pricing_type,
-            fixed_price: bundleData.pricing_type === 'fixed' ? bundleData.fixed_price : null,
-            discount_percent: bundleData.pricing_type === 'discount' ? bundleData.discount_percent : null,
-            is_active: bundleData.is_active,
-            show_on_menu: bundleData.show_on_menu,
-            show_as_upsell: bundleData.show_as_upsell,
-            display_order: bundleData.display_order,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any)
-        .select()
-        .single()
+  // Create the bundle
+  const { data: bundle, error: bundleError } = await supabase
+    .from('bundles')
+    .insert({
+      tenant_id: tenantId,
+      name: bundleData.name,
+      description: bundleData.description,
+      image_url: bundleData.image_url,
+      pricing_type: bundleData.pricing_type,
+      fixed_price: bundleData.pricing_type === 'fixed' ? bundleData.fixed_price : null,
+      discount_percent: bundleData.pricing_type === 'discount' ? bundleData.discount_percent : null,
+      is_active: bundleData.is_active,
+      show_on_menu: bundleData.show_on_menu,
+      show_as_upsell: bundleData.show_as_upsell,
+      display_order: bundleData.display_order,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .select()
+    .single()
 
-    if (bundleError) throw bundleError
+  if (bundleError) throw bundleError
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bundleRecord = bundle as any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bundleRecord = bundle as any
 
-    // Insert bundle items
-    const bundleItems = items.map((item, index) => ({
+  // Insert slots and their price overrides sequentially
+  for (const slot of slots) {
+    const { price_overrides, ...slotData } = slot
+
+    const { data: insertedSlot, error: slotError } = await supabase
+      .from('bundle_slots')
+      .insert({
         bundle_id: bundleRecord.id,
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        display_order: item.display_order ?? index,
-    }))
-
-    const { error: itemsError } = await supabase
-        .from('bundle_items')
+        name: slotData.name,
+        category_id: slotData.category_id,
+        pick_count: slotData.pick_count,
+        sort_order: slotData.sort_order,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(bundleItems as any)
+      } as any)
+      .select()
+      .single()
 
-    if (itemsError) throw itemsError
+    if (slotError) throw slotError
 
-    // Return the full bundle with items
-    return getBundleById(bundleRecord.id, tenantId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const slotRecord = insertedSlot as any
+
+    if (price_overrides.length > 0) {
+      const overrides = price_overrides.map((po) => ({
+        slot_id: slotRecord.id,
+        menu_item_id: po.menu_item_id,
+        price_override: po.price_override,
+      }))
+
+      const { error: overridesError } = await supabase
+        .from('bundle_slot_price_overrides')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(overrides as any)
+
+      if (overridesError) throw overridesError
+    }
+  }
+
+  return getBundleById(bundleRecord.id, tenantId)
 }
 
 /**
- * Update an existing bundle and its items
+ * Update an existing bundle and its slots
  */
 export async function updateBundle(
-    bundleId: string,
-    tenantId: string,
-    input: BundleInput
-): Promise<BundleWithItems> {
-    await verifyTenantAdmin(tenantId)
-    const validated = bundleSchema.parse(input)
-    const supabase = await createClient()
+  bundleId: string,
+  tenantId: string,
+  input: BundleInput
+): Promise<BundleWithSlots> {
+  await verifyTenantAdmin(tenantId)
+  const validated = bundleSchema.parse(input)
+  const supabase = createAdminClient()
 
-    const { items, ...bundleData } = validated
+  const { slots, ...bundleData } = validated
 
-    // Update the bundle
-    const { error: bundleError } = await supabase
-        .from('bundles')
-        .update({
-            name: bundleData.name,
-            description: bundleData.description,
-            image_url: bundleData.image_url,
-            pricing_type: bundleData.pricing_type,
-            fixed_price: bundleData.pricing_type === 'fixed' ? bundleData.fixed_price : null,
-            discount_percent: bundleData.pricing_type === 'discount' ? bundleData.discount_percent : null,
-            is_active: bundleData.is_active,
-            show_on_menu: bundleData.show_on_menu,
-            show_as_upsell: bundleData.show_as_upsell,
-            display_order: bundleData.display_order,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any)
-        .eq('id', bundleId)
-        .eq('tenant_id', tenantId)
+  // Update the bundle row
+  const { error: bundleError } = await supabase
+    .from('bundles')
+    .update({
+      name: bundleData.name,
+      description: bundleData.description,
+      image_url: bundleData.image_url,
+      pricing_type: bundleData.pricing_type,
+      fixed_price: bundleData.pricing_type === 'fixed' ? bundleData.fixed_price : null,
+      discount_percent: bundleData.pricing_type === 'discount' ? bundleData.discount_percent : null,
+      is_active: bundleData.is_active,
+      show_on_menu: bundleData.show_on_menu,
+      show_as_upsell: bundleData.show_as_upsell,
+      display_order: bundleData.display_order,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .eq('id', bundleId)
+    .eq('tenant_id', tenantId)
 
-    if (bundleError) throw bundleError
+  if (bundleError) throw bundleError
 
-    // Delete existing bundle items and re-insert
-    const { error: deleteError } = await supabase
-        .from('bundle_items')
-        .delete()
-        .eq('bundle_id', bundleId)
+  // Delete existing slots — cascades to bundle_slot_price_overrides
+  const { error: deleteError } = await supabase
+    .from('bundle_slots')
+    .delete()
+    .eq('bundle_id', bundleId)
 
-    if (deleteError) throw deleteError
+  if (deleteError) throw deleteError
 
-    const bundleItems = items.map((item, index) => ({
+  // Re-insert all slots and their price overrides
+  for (const slot of slots) {
+    const { price_overrides, ...slotData } = slot
+
+    const { data: insertedSlot, error: slotError } = await supabase
+      .from('bundle_slots')
+      .insert({
         bundle_id: bundleId,
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        display_order: item.display_order ?? index,
-    }))
-
-    const { error: itemsError } = await supabase
-        .from('bundle_items')
+        name: slotData.name,
+        category_id: slotData.category_id,
+        pick_count: slotData.pick_count,
+        sort_order: slotData.sort_order,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(bundleItems as any)
+      } as any)
+      .select()
+      .single()
 
-    if (itemsError) throw itemsError
+    if (slotError) throw slotError
 
-    return getBundleById(bundleId, tenantId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const slotRecord = insertedSlot as any
+
+    if (price_overrides.length > 0) {
+      const overrides = price_overrides.map((po) => ({
+        slot_id: slotRecord.id,
+        menu_item_id: po.menu_item_id,
+        price_override: po.price_override,
+      }))
+
+      const { error: overridesError } = await supabase
+        .from('bundle_slot_price_overrides')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(overrides as any)
+
+      if (overridesError) throw overridesError
+    }
+  }
+
+  return getBundleById(bundleId, tenantId)
 }
 
 /**
- * Delete a bundle
+ * Delete a bundle (cascades to bundle_slots and bundle_slot_price_overrides)
  */
 export async function deleteBundle(bundleId: string, tenantId: string): Promise<void> {
-    await verifyTenantAdmin(tenantId)
-    const supabase = await createClient()
+  await verifyTenantAdmin(tenantId)
+  const supabase = createAdminClient()
 
-    const { error } = await supabase
-        .from('bundles')
-        .delete()
-        .eq('id', bundleId)
-        .eq('tenant_id', tenantId)
+  const { error } = await supabase
+    .from('bundles')
+    .delete()
+    .eq('id', bundleId)
+    .eq('tenant_id', tenantId)
 
-    if (error) throw error
+  if (error) throw error
 }
 
 /**
  * Toggle bundle active status
  */
 export async function toggleBundleActive(
-    bundleId: string,
-    tenantId: string,
-    isActive: boolean
+  bundleId: string,
+  tenantId: string,
+  isActive: boolean
 ): Promise<Bundle> {
-    await verifyTenantAdmin(tenantId)
-    const supabase = await createClient()
+  await verifyTenantAdmin(tenantId)
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-        .from('bundles')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ is_active: isActive } as any)
-        .eq('id', bundleId)
-        .eq('tenant_id', tenantId)
-        .select()
-        .single()
-
-    if (error) throw error
+  const { data, error } = await supabase
+    .from('bundles')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data as any
+    .update({ is_active: isActive } as any)
+    .eq('id', bundleId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return data as any
 }
 
 /**
- * Reorder bundles
+ * Reorder bundles by setting display_order from array position
  */
 export async function reorderBundles(tenantId: string, bundleIds: string[]): Promise<void> {
-    await verifyTenantAdmin(tenantId)
-    const supabase = await createClient()
+  await verifyTenantAdmin(tenantId)
+  const supabase = createAdminClient()
 
-    const updates = bundleIds.map((id, index) =>
-        supabase
-            .from('bundles')
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .update({ display_order: index } as any)
-            .eq('id', id)
-            .eq('tenant_id', tenantId)
-    )
+  const updates = bundleIds.map((id, index) =>
+    supabase
+      .from('bundles')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update({ display_order: index } as any)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+  )
 
-    await Promise.all(updates)
+  await Promise.all(updates)
 }
 
 // ============================================
@@ -274,49 +323,72 @@ export async function reorderBundles(tenantId: string, bundleIds: string[]): Pro
 /**
  * Get active bundles visible on the menu for a tenant
  */
-export async function getMenuBundles(tenantId: string): Promise<BundleWithItems[]> {
-    const supabase = await createClient()
+export async function getMenuBundles(tenantId: string): Promise<BundleWithSlots[]> {
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-        .from('bundles')
-        .select(`
-      *,
-      items:bundle_items(
-        *,
-        menu_item:menu_items(*)
-      )
-    `)
-        .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .eq('show_on_menu', true)
-        .order('display_order', { ascending: true })
+  const { data, error } = await supabase
+    .from('bundles')
+    .select(BUNDLE_SLOTS_QUERY)
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .eq('show_on_menu', true)
+    .order('display_order', { ascending: true })
 
-    if (error) throw error
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]) ?? []
+  if (error) throw error
+
+  const bundles = (data as unknown as BundleWithSlots[]) ?? []
+  // Filter out bundles that have no slots
+  return bundles.filter((b) => b.slots && b.slots.length > 0)
 }
 
 /**
  * Get active bundles available as upsell suggestions
  */
-export async function getUpsellBundles(tenantId: string): Promise<BundleWithItems[]> {
-    const supabase = await createClient()
+export async function getUpsellBundles(tenantId: string): Promise<BundleWithSlots[]> {
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-        .from('bundles')
-        .select(`
-      *,
-      items:bundle_items(
-        *,
-        menu_item:menu_items(*)
-      )
-    `)
+  const { data, error } = await supabase
+    .from('bundles')
+    .select(BUNDLE_SLOTS_QUERY)
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .eq('show_as_upsell', true)
+    .order('display_order', { ascending: true })
+
+  if (error) throw error
+
+  const bundles = (data as unknown as BundleWithSlots[]) ?? []
+  // Filter out bundles that have no slots
+  return bundles.filter((b) => b.slots && b.slots.length > 0)
+}
+
+// ============================================
+// Slot helpers
+// ============================================
+
+/**
+ * Fetch the available menu items and category metadata for a given bundle slot
+ */
+export async function getSlotItems(
+  categoryId: string,
+  tenantId: string
+): Promise<{ items: MenuItem[]; category: Category }> {
+  const supabase = createAdminClient()
+
+  const [{ data: items, error: itemsError }, { data: category, error: catError }] =
+    await Promise.all([
+      supabase
+        .from('menu_items')
+        .select('*')
+        .eq('category_id', categoryId)
         .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .eq('show_as_upsell', true)
-        .order('display_order', { ascending: true })
+        .eq('is_available', true)
+        .order('order', { ascending: true }),
+      supabase.from('categories').select('*').eq('id', categoryId).single(),
+    ])
 
-    if (error) throw error
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]) ?? []
+  if (itemsError) throw new Error(`Failed to fetch slot items: ${itemsError.message}`)
+  if (catError) throw new Error(`Failed to fetch category: ${catError.message}`)
+
+  return { items: (items ?? []) as unknown as MenuItem[], category: category as unknown as Category }
 }
