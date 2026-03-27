@@ -1,4 +1,4 @@
-import type { CartItem, Variation, Addon, VariationOption, CartBundleItem, Bundle, BundleItemCustomization } from '@/types/database'
+import type { CartItem, Variation, Addon, VariationOption, CartBundleItem, CartBundleSlotSelection, Bundle, BundleItemCustomization } from '@/types/database'
 
 /**
  * Calculate the subtotal for a cart item including variations and add-ons
@@ -430,12 +430,15 @@ export function calculateBundleExtras(customizations: BundleItemCustomization[])
 
 /**
  * Calculate the full subtotal for a cart bundle item
+ * @deprecated Uses old CartBundleItem shape. Use calculateSlotBundleSubtotal instead.
  */
 export function calculateBundleSubtotal(bundleItem: CartBundleItem): number {
-  const originalTotal = calculateBundleOriginalTotal(bundleItem.customizations)
-  const basePrice = calculateBundleBasePrice(bundleItem.bundle, originalTotal)
-  const extras = calculateBundleExtras(bundleItem.customizations)
-  return (basePrice + extras) * bundleItem.quantity
+  // @ts-expect-error -- legacy shape (bundle + customizations) removed in Task 17
+  const legacy = bundleItem as { bundle: Bundle; customizations: BundleItemCustomization[]; quantity: number }
+  const originalTotal = calculateBundleOriginalTotal(legacy.customizations)
+  const basePrice = calculateBundleBasePrice(legacy.bundle, originalTotal)
+  const extras = calculateBundleExtras(legacy.customizations)
+  return (basePrice + extras) * legacy.quantity
 }
 
 /**
@@ -457,12 +460,12 @@ export function calculateFullCartTotal(items: CartItem[], bundleItems: CartBundl
 }
 
 /**
- * Get total item count including bundles
+ * Get total item count including bundles (uses new slot-based CartBundleItem shape)
  */
 export function getFullCartItemCount(items: CartItem[], bundleItems: CartBundleItem[]): number {
   const regularCount = items.reduce((count, item) => count + item.quantity, 0)
   const bundleCount = bundleItems.reduce((count, bi) => {
-    const itemsInBundle = bi.customizations.reduce((s, c) => s + c.quantity, 0)
+    const itemsInBundle = bi.slots.reduce((s, slot) => s + slot.quantity, 0)
     return count + itemsInBundle * bi.quantity
   }, 0)
   return regularCount + bundleCount
@@ -470,9 +473,77 @@ export function getFullCartItemCount(items: CartItem[], bundleItems: CartBundleI
 
 /**
  * Get total bundle savings across all bundles in cart
+ * @deprecated Uses old CartBundleItem shape. Use calculateTotalSlotBundleSavings instead.
  */
 export function calculateTotalBundleSavings(bundleItems: CartBundleItem[]): number {
   return bundleItems.reduce((total, bi) => {
-    return total + calculateBundleSavings(bi.bundle, bi.customizations) * bi.quantity
+    // @ts-expect-error -- legacy shape (bundle + customizations) removed in Task 17
+    const legacy = bi as { bundle: Bundle; customizations: BundleItemCustomization[]; quantity: number }
+    return total + calculateBundleSavings(legacy.bundle, legacy.customizations) * legacy.quantity
   }, 0)
+}
+
+// ---- New slot-based bundle pricing functions ----
+
+/**
+ * Calculate the base price of a slot-based bundle (before customization extras)
+ * - Fixed pricing: returns basePrice directly
+ * - Discount pricing: sums slot menuItemPrices and applies discountPercent
+ */
+export function calculateSlotBundleBasePrice(bundleItem: CartBundleItem): number {
+  if (bundleItem.pricingType === 'fixed') {
+    return bundleItem.basePrice
+  }
+  const originalTotal = bundleItem.slots.reduce(
+    (sum, s) => sum + s.menuItemPrice * s.quantity, 0
+  )
+  const discountPercent = Math.min(bundleItem.discountPercent ?? 0, 100)
+  return Math.max(0, Math.round(originalTotal * (1 - discountPercent / 100) * 100) / 100)
+}
+
+/**
+ * Calculate extras cost (price overrides + variation modifiers + addons) across all slots
+ */
+export function calculateSlotBundleExtras(slots: CartBundleSlotSelection[]): number {
+  return slots.reduce((sum, s) => {
+    let variationExtra = 0
+    if (s.selectedVariations) {
+      variationExtra = Object.values(s.selectedVariations).reduce(
+        (acc, opt) => acc + opt.price_modifier, 0
+      )
+    } else if (s.selectedVariation) {
+      variationExtra = s.selectedVariation.price_modifier || 0
+    }
+    const addonExtra = s.selectedAddons.reduce((acc, a) => acc + a.price, 0)
+    return sum + s.priceOverride + variationExtra + addonExtra
+  }, 0)
+}
+
+/**
+ * Calculate the full subtotal for a slot-based cart bundle item
+ */
+export function calculateSlotBundleSubtotal(bundleItem: CartBundleItem): number {
+  const base = calculateSlotBundleBasePrice(bundleItem)
+  const extras = calculateSlotBundleExtras(bundleItem.slots)
+  return Math.round((base + extras) * bundleItem.quantity * 100) / 100
+}
+
+/**
+ * Calculate savings from a slot-based bundle
+ */
+export function calculateSlotBundleSavings(bundleItem: CartBundleItem): number {
+  const originalTotal = bundleItem.slots.reduce(
+    (sum, s) => sum + s.menuItemPrice * s.quantity, 0
+  )
+  const base = calculateSlotBundleBasePrice(bundleItem)
+  return Math.max(0, Math.round((originalTotal - base) * 100) / 100)
+}
+
+/**
+ * Get total savings across all slot-based bundle items in the cart
+ */
+export function calculateTotalSlotBundleSavings(bundleItems: CartBundleItem[]): number {
+  return bundleItems.reduce(
+    (total, bi) => total + calculateSlotBundleSavings(bi) * bi.quantity, 0
+  )
 }
