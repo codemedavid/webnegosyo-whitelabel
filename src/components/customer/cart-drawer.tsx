@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, Minus, Plus, Trash2 } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, Package } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
   Sheet,
@@ -28,7 +28,7 @@ import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { CartItem } from '@/types/database'
+import type { CartItem, CartBundleItem } from '@/types/database'
 import Link from 'next/link'
 
 interface CartDrawerProps {
@@ -57,8 +57,9 @@ export function CartDrawer({
   checkoutUpsellMaxItems = 4,
 }: CartDrawerProps) {
   const router = useRouter()
-  const { items, total, updateQuantity, removeItem } = useCart()
+  const { items, total, updateQuantity, removeItem, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
+  const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
 
   const showInterstitial = menuEngineeringEnabled && checkoutUpsellEnabled && !!tenantId
@@ -99,6 +100,21 @@ export function CartDrawer({
     setItemToRemove(null)
   }
 
+  const handleDecreaseBundleQuantity = (bundle: CartBundleItem) => {
+    if (bundle.quantity <= 1) {
+      setBundleToRemove(bundle)
+    } else {
+      updateBundleQuantity(bundle.id, bundle.quantity - 1)
+    }
+  }
+
+  const handleConfirmBundleRemove = () => {
+    if (bundleToRemove) {
+      removeBundleFromCart(bundleToRemove.id)
+      setBundleToRemove(null)
+    }
+  }
+
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
@@ -113,12 +129,12 @@ export function CartDrawer({
               </div>
               <div>
                 <span className="text-gray-900">Your Cart</span>
-                <p className="text-[11px] font-normal text-gray-500 leading-tight">({items.length} items)</p>
+                <p className="text-[11px] font-normal text-gray-500 leading-tight">({items.length + bundleItems.length} items)</p>
               </div>
             </SheetTitle>
           </SheetHeader>
 
-          {items.length === 0 ? (
+          {items.length === 0 && bundleItems.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
               <EmptyState
                 icon={ShoppingCart}
@@ -240,6 +256,83 @@ export function CartDrawer({
                       </div>
                     </div>
                   ))}
+
+                  {bundleItems.map((bundleItem, index) => (
+                    <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                        {bundleItem.bundle.image_url || bundleItem.customizations[0]?.menu_item?.image_url ? (
+                          <OptimizedImage
+                            src={bundleItem.bundle.image_url || bundleItem.customizations[0]?.menu_item?.image_url || ''}
+                            alt={bundleItem.bundle.name}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform"
+                            sizes="64px"
+                            lazy={index > 1}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <Package className="h-6 w-6 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-1 flex-col min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
+                              {bundleItem.bundle.name}
+                            </h4>
+                            <Badge
+                              variant="outline"
+                              className="mt-1 text-xs"
+                              style={{
+                                borderColor: `${branding.primary}40`,
+                                color: branding.primary,
+                                backgroundColor: `${branding.primary}10`
+                              }}
+                            >
+                              {bundleItem.customizations.length} items
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
+                            onClick={() => setBundleToRemove(bundleItem)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              onClick={() => handleDecreaseBundleQuantity(bundleItem)}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="w-8 text-center text-sm font-bold text-gray-900">
+                              {bundleItem.quantity}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity + 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <span className="font-bold text-sm" style={{ color: branding.primary }}>
+                            {formatPrice(bundleItem.subtotal)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </ScrollArea>
 
@@ -279,7 +372,7 @@ export function CartDrawer({
                 </div>
 
                 <p className="text-xs text-center text-gray-500 pt-2 pb-10">
-                  {items.length} item{items.length !== 1 ? 's' : ''} in cart
+                  {items.length + bundleItems.length} item{items.length + bundleItems.length !== 1 ? 's' : ''} in cart
                 </p>
               </div>
             </>
@@ -303,6 +396,28 @@ export function CartDrawer({
             <AlertDialogAction
               className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl"
               onClick={handleConfirmRemove}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!bundleToRemove} onOpenChange={(open) => !open && setBundleToRemove(null)}>
+        <AlertDialogContent className="max-w-sm rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-center">Remove Bundle?</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Do you want to remove <span className="font-semibold text-gray-900">{bundleToRemove?.bundle.name}</span> from your cart?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-3 sm:justify-center">
+            <AlertDialogCancel className="flex-1 mt-0 rounded-xl">
+              Keep Bundle
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl"
+              onClick={handleConfirmBundleRemove}
             >
               Remove
             </AlertDialogAction>
