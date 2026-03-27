@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
-import { formatPrice, calculateBundleSavings, calculateBundleOriginalTotal, calculateTotalBundleSavings } from '@/lib/cart-utils'
+import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
@@ -297,15 +297,17 @@ export default function CartPage() {
 
                 {/* Bundle Items */}
                 {bundleItems.map((bundleItem) => {
-                  const savings = calculateBundleSavings(bundleItem.bundle, bundleItem.customizations)
-                  const originalTotal = calculateBundleOriginalTotal(bundleItem.customizations)
+                  const savings = calculateSlotBundleSavings(bundleItem)
+                  const originalTotal = bundleItem.slots.reduce(
+                    (sum, s) => sum + s.menuItemPrice * s.quantity, 0
+                  )
 
                   return (
                     <div key={bundleItem.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm border border-orange-100">
                       {/* Bundle header */}
                       <div className="flex items-center gap-2 mb-3">
                         <Package className="h-4 w-4 text-orange-500" />
-                        <span className="font-bold text-gray-900">{bundleItem.bundle.name}</span>
+                        <span className="font-bold text-gray-900">{bundleItem.bundleName}</span>
                         {savings > 0 && (
                           <Badge className="bg-green-100 text-green-700 text-xs">
                             Save {formatPrice(savings)}
@@ -313,30 +315,30 @@ export default function CartPage() {
                         )}
                       </div>
 
-                      {/* Bundle items list */}
+                      {/* Bundle slots list */}
                       <div className="space-y-2 mb-3 pl-6 border-l-2 border-orange-100">
-                        {bundleItem.customizations.map((cust, idx) => (
+                        {bundleItem.slots.map((slot, idx) => (
                           <div key={idx} className="text-sm">
                             <span className="font-medium text-gray-800">
-                              {cust.quantity > 1 ? `${cust.quantity}x ` : ''}{cust.menu_item.name}
+                              {slot.quantity > 1 ? `${slot.quantity}x ` : ''}{slot.menuItemName}
                             </span>
-                            {cust.selected_variations && Object.values(cust.selected_variations).length > 0 && (
+                            {slot.selectedVariations && Object.values(slot.selectedVariations).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-0.5">
-                                {Object.values(cust.selected_variations).map((opt, i) => (
+                                {Object.values(slot.selectedVariations).map((opt, i) => (
                                   <Badge key={i} variant="secondary" className="text-xs">
                                     {opt.name}
                                   </Badge>
                                 ))}
                               </div>
                             )}
-                            {cust.selected_variation && (
+                            {slot.selectedVariation && (
                               <Badge variant="secondary" className="text-xs mt-0.5">
-                                {cust.selected_variation.name}
+                                {slot.selectedVariation.name}
                               </Badge>
                             )}
-                            {cust.selected_addons.length > 0 && (
+                            {slot.selectedAddons.length > 0 && (
                               <p className="text-xs text-gray-500 mt-0.5">
-                                + {cust.selected_addons.map(a => a.name).join(', ')}
+                                + {slot.selectedAddons.map(a => a.name).join(', ')}
                               </p>
                             )}
                           </div>
@@ -393,10 +395,10 @@ export default function CartPage() {
                       <span className="font-semibold text-gray-900">{formatPrice(total)}</span>
                     </div>
 
-                    {calculateTotalBundleSavings(bundleItems) > 0 && (
+                    {calculateTotalSlotBundleSavings(bundleItems) > 0 && (
                       <div className="flex justify-between items-center text-green-600 text-sm">
                         <span>Bundle savings</span>
-                        <span>-{formatPrice(calculateTotalBundleSavings(bundleItems))}</span>
+                        <span>-{formatPrice(calculateTotalSlotBundleSavings(bundleItems))}</span>
                       </div>
                     )}
 

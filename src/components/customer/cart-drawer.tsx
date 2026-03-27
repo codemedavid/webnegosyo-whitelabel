@@ -260,10 +260,10 @@ export function CartDrawer({
                   {bundleItems.map((bundleItem, index) => (
                     <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                        {bundleItem.bundle.image_url || bundleItem.customizations[0]?.menu_item?.image_url ? (
+                        {bundleItem.slots[0]?.menuItemImage ? (
                           <OptimizedImage
-                            src={bundleItem.bundle.image_url || bundleItem.customizations[0]?.menu_item?.image_url || ''}
-                            alt={bundleItem.bundle.name}
+                            src={bundleItem.slots[0].menuItemImage}
+                            alt={bundleItem.bundleName}
                             fill
                             className="object-cover group-hover:scale-105 transition-transform"
                             sizes="64px"
@@ -280,7 +280,7 @@ export function CartDrawer({
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
                             <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
-                              {bundleItem.bundle.name}
+                              {bundleItem.bundleName}
                             </h4>
                             <Badge
                               variant="outline"
@@ -291,7 +291,7 @@ export function CartDrawer({
                                 backgroundColor: `${branding.primary}10`
                               }}
                             >
-                              {bundleItem.customizations.length} items
+                              {bundleItem.slots.length} items
                             </Badge>
                           </div>
                           <Button
@@ -408,7 +408,7 @@ export function CartDrawer({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-center">Remove Bundle?</AlertDialogTitle>
             <AlertDialogDescription className="text-center">
-              Do you want to remove <span className="font-semibold text-gray-900">{bundleToRemove?.bundle.name}</span> from your cart?
+              Do you want to remove <span className="font-semibold text-gray-900">{bundleToRemove?.bundleName}</span> from your cart?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row gap-3 sm:justify-center">

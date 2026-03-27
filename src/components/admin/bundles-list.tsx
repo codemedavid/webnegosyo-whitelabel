@@ -43,7 +43,7 @@ export function BundlesList({ bundles, tenantSlug, tenantId }: BundlesListProps)
 
     const handleToggleActive = async (bundleId: string, currentActive: boolean) => {
         const result = await toggleBundleActiveAction(bundleId, tenantId, tenantSlug, !currentActive)
-        if (result.error) {
+        if (!result.success) {
             toast.error(result.error)
         } else {
             toast.success(currentActive ? 'Bundle deactivated' : 'Bundle activated')

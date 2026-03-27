@@ -96,12 +96,12 @@ export async function toggleBundleActiveAction(
     tenantId: string,
     tenantSlug: string,
     isActive: boolean
-): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
+): Promise<{ success: true } | { success: false; error: string }> {
     try {
-        const bundle = await toggleBundleActive(bundleId, tenantId, isActive)
+        await toggleBundleActive(bundleId, tenantId, isActive)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/menu`)
-        return { success: true, data: bundle }
+        return { success: true }
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle bundle' }
     }

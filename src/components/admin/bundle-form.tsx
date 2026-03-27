@@ -514,7 +514,7 @@ export function BundleForm({
                     ? await updateBundleAction(bundle.id, tenantId, tenantSlug, input)
                     : await createBundleAction(tenantId, tenantSlug, input)
 
-                if (result.error) {
+                if (!result.success) {
                     toast.error(parseActionError(result.error))
                     return
                 }
