@@ -1,46 +1,34 @@
 import type { MenuItem } from '@/types/database'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/lib/bundles-service'
 
 export interface BundleMenuItem extends MenuItem {
   _isBundle: true
-  _bundleData: BundleWithItems
+  _bundleData: BundleWithSlots
 }
 
 /**
- * Map a BundleWithItems to a MenuItem-compatible shape for card rendering.
+ * Map a BundleWithSlots to a MenuItem-compatible shape for card rendering.
  * Attaches `_isBundle` and `_bundleData` for click handler detection.
  */
-export function bundleToMenuItem(bundle: BundleWithItems): BundleMenuItem {
-  const items = bundle.items ?? []
-
-  // Calculate original total from component items
-  const originalTotal = items.reduce(
-    (sum, bi) => sum + (bi.menu_item?.price ?? 0) * bi.quantity,
-    0
-  )
+export function bundleToMenuItem(bundle: BundleWithSlots): BundleMenuItem {
+  const slots = bundle.slots ?? []
 
   // Calculate bundle price
   let bundlePrice: number
   if (bundle.pricing_type === 'fixed') {
     bundlePrice = bundle.fixed_price ?? 0
   } else {
-    const discountPercent = Math.min(bundle.discount_percent ?? 0, 100)
-    bundlePrice = Math.max(0, Math.round(originalTotal * (1 - discountPercent / 100) * 100) / 100)
+    // For discount pricing, customer picks items — price determined at customization time
+    bundlePrice = 0
   }
 
-  // Auto-generate description from item names if none provided
-  const autoDescription = items
-    .map((bi) => {
-      const name = bi.menu_item?.name ?? 'Item'
-      return bi.quantity > 1 ? `${bi.quantity}× ${name}` : name
-    })
+  // Auto-generate description from slot names
+  const autoDescription = slots
+    .map((s) => (s.pick_count > 1 ? `${s.pick_count}× ${s.name}` : s.name))
     .join(' + ')
 
-  // Use bundle image, fall back to first item's image
-  const imageUrl =
-    bundle.image_url ||
-    items[0]?.menu_item?.image_url ||
-    ''
+  // Use bundle image
+  const imageUrl = bundle.image_url || ''
 
   return {
     id: `bundle_${bundle.id}`,
@@ -49,7 +37,7 @@ export function bundleToMenuItem(bundle: BundleWithItems): BundleMenuItem {
     name: bundle.name,
     description: bundle.description || autoDescription,
     price: bundlePrice,
-    discounted_price: originalTotal > bundlePrice ? originalTotal : undefined,
+    discounted_price: undefined,
     image_url: imageUrl,
     variation_types: [],
     variations: [],
