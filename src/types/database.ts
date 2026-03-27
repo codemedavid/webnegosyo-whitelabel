@@ -279,14 +279,6 @@ export interface BundleItem {
   menu_item?: MenuItem;
 }
 
-export interface BundleItemCustomization {
-  menu_item: MenuItem;
-  selected_variations?: { [variationTypeId: string]: VariationOption };
-  selected_variation?: Variation;
-  selected_addons: Addon[];
-  quantity: number;
-}
-
 export interface CartBundleSlotSelection {
   slotId: string;
   slotName: string;
