@@ -14,14 +14,14 @@ import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 
 interface MenuClientProps {
   tenant: Tenant | null
   categories: Category[]
   allMenuItems: MenuItem[]
-  bundles: BundleWithItems[]
+  bundles: BundleWithSlots[]
   tenantSlug: string
   isBrandAdmin: boolean
   error: string | null
@@ -46,8 +46,8 @@ const CheckoutUpsellModal = dynamic(
   () => import('@/components/customer/checkout-upsell-modal').then(mod => ({ default: mod.CheckoutUpsellModal })),
   { ssr: false }
 )
-const BundleCustomizationModal = dynamic(
-  () => import('@/components/customer/bundle-customization-modal').then(mod => ({ default: mod.BundleCustomizationModal })),
+const BundleWizard = dynamic(
+  () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
 )
 
@@ -88,7 +88,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
-  const [selectedBundle, setSelectedBundle] = useState<BundleWithItems | null>(null)
+  const [selectedBundle, setSelectedBundle] = useState<BundleWithSlots | null>(null)
   const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
   const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
 
@@ -714,13 +714,13 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         />
       )}
 
-      {/* Bundle Customization Modal */}
-      <BundleCustomizationModal
+      {/* Bundle Wizard */}
+      <BundleWizard
         open={!!selectedBundle}
         onClose={() => setSelectedBundle(null)}
         bundle={selectedBundle}
         branding={branding}
-        hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+        hideCurrencySymbol={tenant?.hide_currency_symbol}
       />
     </div>
   )

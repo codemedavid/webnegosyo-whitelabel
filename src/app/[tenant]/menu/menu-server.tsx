@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Tenant, Category, MenuItem } from '@/types/database'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { Tenant, Category, MenuItem, BundleWithSlots } from '@/types/database'
 
 export async function getMenuData(tenantSlug: string) {
   const supabase = await createClient()
@@ -38,7 +37,7 @@ export async function getMenuData(tenantSlug: string) {
     .maybeSingle()
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithItems[], isBrandAdmin: false, error: 'Restaurant not found' }
+    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin: false, error: 'Restaurant not found' }
   }
 
   const tenant = tenantData as unknown as Tenant
@@ -49,9 +48,10 @@ export async function getMenuData(tenantSlug: string) {
         .from('bundles')
         .select(`
           *,
-          items:bundle_items(
+          slots:bundle_slots(
             *,
-            menu_item:menu_items(*)
+            category:categories(id, name, icon, icon_color),
+            price_overrides:bundle_slot_price_overrides(*)
           )
         `)
         .eq('tenant_id', tenant.id)
@@ -92,12 +92,29 @@ export async function getMenuData(tenantSlug: string) {
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
       bundleResult.error?.message && `bundles: ${bundleResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithItems[], isBrandAdmin, error: `Failed to load menu data (${details})` }
+    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
-  const bundles = (!bundleResult.error && bundleResult.data
-    ? bundleResult.data as unknown as BundleWithItems[]
-    : []) as BundleWithItems[]
+  const bundlesData = (bundleResult.data as unknown as BundleWithSlots[] | null) ?? []
+
+  // Populate each slot's items from their category
+  if (bundlesData.length > 0) {
+    for (const bundle of bundlesData) {
+      for (const slot of bundle.slots ?? []) {
+        const { data: slotItems } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('category_id', slot.category_id)
+          .eq('tenant_id', tenant.id)
+          .eq('is_available', true)
+          .order('order', { ascending: true })
+        slot.items = (slotItems as unknown as MenuItem[]) ?? []
+      }
+    }
+  }
+
+  // Filter out bundles with no valid slots
+  const bundles = bundlesData.filter((b) => (b.slots ?? []).length > 0)
 
   return {
     tenant,
