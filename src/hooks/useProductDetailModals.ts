@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 
 interface UseProductDetailModalsOptions {
     tenantSlug: string
@@ -30,8 +30,8 @@ export function useProductDetailModals({
     const [isUpgradeScreenOpen, setIsUpgradeScreenOpen] = useState(false)
 
     // Bundle states
-    const [bundleUpsell, setBundleUpsell] = useState<BundleWithItems | null>(null)
-    const [bundleForCustomization, setBundleForCustomization] = useState<BundleWithItems | null>(null)
+    const [bundleUpsell, setBundleUpsell] = useState<BundleWithSlots | null>(null)
+    const [bundleForCustomization, setBundleForCustomization] = useState<BundleWithSlots | null>(null)
 
     // When true, navigating after upsell prompts goes to checkout instead of back to menu
     const buyNowIntentRef = useRef(false)

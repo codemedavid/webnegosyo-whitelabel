@@ -15,7 +15,7 @@ import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
 import { createClient } from '@/lib/supabase/server'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 
 interface Props {
     params: Promise<{ tenant: string; itemId: string }>
@@ -98,7 +98,7 @@ export default async function ProductDetailPage({ params }: Props) {
         let customization: ProductDetailSettings | null = null
         let complementaryUpsells: MenuItem[] = []
         let upgradeUpsells: UpgradeUpsell[] = []
-        let upsellBundles: BundleWithItems[] = []
+        let upsellBundles: BundleWithSlots[] = []
 
         try {
             const results = await Promise.allSettled([

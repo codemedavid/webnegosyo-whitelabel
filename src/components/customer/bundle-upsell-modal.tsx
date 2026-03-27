@@ -3,17 +3,16 @@
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Package, Sparkles } from 'lucide-react'
-import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 
 interface BundleUpsellModalProps {
     open: boolean
     onClose: () => void
-    onAccept: (bundle: BundleWithItems) => void
-    bundle: BundleWithItems | null
+    onAccept: (bundle: BundleWithSlots) => void
+    bundle: BundleWithSlots | null
     branding: BrandingColors
     tenantId?: string
     sourceItemId?: string
@@ -37,8 +36,9 @@ const modalVariants = {
 
 /**
  * Lightweight upsell modal suggesting a bundle upgrade when a customer
- * adds a single item that belongs to an active bundle.
- * Shows the bundle preview with savings and a one-tap "Upgrade to Bundle" CTA.
+ * adds a single item whose category matches a bundle slot.
+ * Shows the bundle slots as a preview with a one-tap "Upgrade to Bundle" CTA
+ * that opens the slot-based bundle wizard.
  */
 export const BundleUpsellModal = memo(function BundleUpsellModal({
     open,
@@ -95,19 +95,12 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
 
     if (!bundle) return null
 
-    const items = bundle.items ?? []
+    const slots = bundle.slots ?? []
 
-    const originalTotal = items.reduce(
-        (sum, bi) => sum + (bi.menu_item?.price ?? 0) * bi.quantity,
-        0
-    )
-
-    const bundlePrice =
-        bundle.pricing_type === 'fixed'
-            ? bundle.fixed_price ?? 0
-            : originalTotal * (1 - (bundle.discount_percent ?? 0) / 100)
-
-    const savings = originalTotal - bundlePrice
+    // For discount bundles, show the slot count as a teaser (no item prices available yet)
+    // For fixed bundles, just show the fixed price
+    const bundlePrice = bundle.pricing_type === 'fixed' ? (bundle.fixed_price ?? 0) : null
+    const discountPercent = bundle.pricing_type === 'discount' ? (bundle.discount_percent ?? 0) : null
 
     return (
         <AnimatePresence>
@@ -168,76 +161,61 @@ export const BundleUpsellModal = memo(function BundleUpsellModal({
                                 )}
                             </div>
 
-                            {/* Items preview */}
+                            {/* Slots preview */}
                             <div className="px-5 py-3 space-y-2">
-                                {items.slice(0, 4).map((bi, idx) => (
-                                    <div key={bi.menu_item_id ?? idx} className="flex items-center gap-3">
-                                        {bi.menu_item?.image_url ? (
-                                            <div className="relative h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                                                <OptimizedImage
-                                                    src={bi.menu_item.image_url}
-                                                    alt={bi.menu_item.name}
-                                                    fill
-                                                    className="object-cover"
-                                                    sizes="40px"
-                                                    loading="lazy"
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-lg flex-shrink-0"
-                                                style={{ backgroundColor: `${branding.primary}10` }}
-                                            >
-                                                <Package className="h-4 w-4" style={{ color: branding.primary }} />
-                                            </div>
-                                        )}
+                                {slots.slice(0, 4).map((slot, idx) => (
+                                    <div key={slot.id ?? idx} className="flex items-center gap-3">
+                                        <div
+                                            className="flex h-10 w-10 items-center justify-center rounded-lg flex-shrink-0"
+                                            style={{ backgroundColor: `${branding.primary}10` }}
+                                        >
+                                            <Package className="h-4 w-4" style={{ color: branding.primary }} />
+                                        </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium line-clamp-1" style={{ color: branding.textPrimary }}>
-                                                {bi.quantity > 1 && `${bi.quantity}× `}{bi.menu_item?.name ?? 'Item'}
+                                                {slot.name}
                                             </p>
+                                            {slot.category?.name && (
+                                                <p className="text-xs line-clamp-1" style={{ color: branding.textMuted }}>
+                                                    {slot.pick_count > 1
+                                                        ? `Choose ${slot.pick_count} from ${slot.category.name}`
+                                                        : `Choose 1 from ${slot.category.name}`}
+                                                </p>
+                                            )}
                                         </div>
-                                        <p className="text-sm" style={{ color: branding.textMuted }}>
-                                            {formatPrice((bi.menu_item?.price ?? 0) * bi.quantity, { hideCurrencySymbol })}
-                                        </p>
                                     </div>
                                 ))}
-                                {items.length > 4 && (
+                                {slots.length > 4 && (
                                     <p className="text-xs pl-13" style={{ color: branding.textMuted }}>
-                                        +{items.length - 4} more item{items.length - 4 > 1 ? 's' : ''}
+                                        +{slots.length - 4} more slot{slots.length - 4 > 1 ? 's' : ''}
                                     </p>
                                 )}
                             </div>
 
                             {/* CTA */}
                             <div className="px-5 pb-5 pt-2 space-y-3">
-                                {/* Price comparison */}
+                                {/* Price info */}
                                 <div
-                                    className="flex items-center justify-between rounded-xl px-4 py-3"
+                                    className="flex items-center justify-center rounded-xl px-4 py-3"
                                     style={{ backgroundColor: `${branding.success || '#16a34a'}10` }}
                                 >
-                                    <div>
-                                        <p className="text-xs" style={{ color: branding.textMuted }}>
-                                            Individual total
-                                        </p>
-                                        <p className="text-sm line-through" style={{ color: branding.textMuted }}>
-                                            {formatPrice(originalTotal, { hideCurrencySymbol })}
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs font-medium" style={{ color: branding.success || '#16a34a' }}>
-                                            Bundle price
-                                        </p>
-                                        <p className="text-lg font-bold" style={{ color: branding.success || '#16a34a' }}>
-                                            {formatPrice(bundlePrice, { hideCurrencySymbol })}
-                                        </p>
-                                    </div>
+                                    {bundlePrice !== null ? (
+                                        <div className="text-center">
+                                            <p className="text-xs font-medium" style={{ color: branding.success || '#16a34a' }}>
+                                                Bundle price
+                                            </p>
+                                            <p className="text-lg font-bold" style={{ color: branding.success || '#16a34a' }}>
+                                                {formatPrice(bundlePrice, { hideCurrencySymbol })}
+                                            </p>
+                                        </div>
+                                    ) : discountPercent !== null && discountPercent > 0 ? (
+                                        <div className="text-center">
+                                            <p className="text-lg font-bold" style={{ color: branding.success || '#16a34a' }}>
+                                                Save {discountPercent}% with this bundle!
+                                            </p>
+                                        </div>
+                                    ) : null}
                                 </div>
-
-                                {savings > 0 && (
-                                    <p className="text-center text-sm font-medium" style={{ color: branding.success || '#16a34a' }}>
-                                        Save {formatPrice(savings, { hideCurrencySymbol })} with this bundle!
-                                    </p>
-                                )}
 
                                 <motion.button
                                     whileHover={{ scale: 1.02 }}

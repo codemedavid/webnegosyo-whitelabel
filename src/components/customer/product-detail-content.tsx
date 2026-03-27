@@ -15,7 +15,7 @@ import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpse
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/types/database'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
 import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
 import dynamic from 'next/dynamic'
@@ -39,8 +39,8 @@ const BundleUpsellModal = dynamic(
   () => import('@/components/customer/bundle-upsell-modal').then((m) => ({ default: m.BundleUpsellModal })),
   { ssr: false }
 )
-const BundleCustomizationModal = dynamic(
-  () => import('@/components/customer/bundle-customization-modal').then((m) => ({ default: m.BundleCustomizationModal })),
+const BundleWizard = dynamic(
+  () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
 )
 const PairSuggestionSheet = dynamic(
@@ -59,7 +59,7 @@ interface ProductDetailContentProps {
     upgradeUpsells?: UpgradeUpsell[]
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
-    upsellBundles?: BundleWithItems[]
+    upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
     isBrandAdmin?: boolean
 }
@@ -310,7 +310,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         import('./pair-suggestion-sheet')
         import('./upsell-suggestion-modal')
         import('@/components/customer/bundle-upsell-modal')
-        import('@/components/customer/bundle-customization-modal')
+        import('@/components/customer/bundle-wizard')
         import('@/components/customer/checkout-upsell-modal')
     }, [])
 
@@ -544,10 +544,10 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 setIsPairSheetOpen(true)
                 return
             }
-            // Check for bundle upsell
+            // Check for bundle upsell — match by slot category
             if (bundlesEnabled && upsellBundles.length > 0) {
-                const matchingBundle = upsellBundles.find(b =>
-                    b.items?.some(bi => bi.menu_item_id === item.id)
+                const matchingBundle = upsellBundles.find((bundle) =>
+                    bundle.slots.some((slot) => slot.category_id === item.category_id)
                 )
                 if (matchingBundle) {
                     addCurrentItemToCart()
@@ -1013,22 +1013,20 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 />
             )}
 
-            {/* Bundle Customization Modal */}
-            {bundleForCustomization && (
-                <BundleCustomizationModal
-                    open={!!bundleForCustomization}
-                    onClose={() => {
-                        setBundleForCustomization(null)
-                        if (buyNowIntentRef.current) {
-                            buyNowIntentRef.current = false
-                            router.push(`/${tenant.slug}/cart`)
-                        }
-                    }}
-                    bundle={bundleForCustomization}
-                    branding={branding}
-                    hideCurrencySymbol={hideCurrencySymbol}
-                />
-            )}
+            {/* Bundle Wizard (replaces old BundleCustomizationModal) */}
+            <BundleWizard
+                open={!!bundleForCustomization}
+                onClose={() => {
+                    setBundleForCustomization(null)
+                    if (buyNowIntentRef.current) {
+                        buyNowIntentRef.current = false
+                        router.push(`/${tenant.slug}/cart`)
+                    }
+                }}
+                bundle={bundleForCustomization}
+                branding={branding}
+                hideCurrencySymbol={hideCurrencySymbol}
+            />
 
             {isBrandAdmin && (
                 <>
