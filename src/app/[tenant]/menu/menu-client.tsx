@@ -15,6 +15,7 @@ import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/databa
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 import type { BundleWithItems } from '@/lib/bundles-service'
+import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -50,12 +51,6 @@ const BundleCustomizationModal = dynamic(
   { ssr: false }
 )
 
-// BundlesSection is conditionally rendered and may not appear at all; lazy-load it
-// so it does not inflate the main bundle when bundles are not configured.
-const BundlesSection = dynamic(
-  () => import('@/components/customer/bundles-section').then(mod => ({ default: mod.BundlesSection })),
-  { ssr: false }
-)
 
 function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencilProps) {
   if (!visible) return null
@@ -132,9 +127,35 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
     return () => window.clearTimeout(timer)
   }, [flashScreenEnabled, tenant?.flash_screen_duration_ms, tenant?.id, tenantSlug])
 
+  // Virtual "Bundles" category + adapted bundle items
+  const { categoriesWithBundles, allItemsWithBundles } = useMemo(() => {
+    if (bundles.length === 0) {
+      return { categoriesWithBundles: categories, allItemsWithBundles: allMenuItems }
+    }
+
+    const bundleCategory: Category = {
+      id: 'bundles',
+      tenant_id: tenant?.id ?? '',
+      name: 'Bundles',
+      description: 'Special bundle deals',
+      order: -1,
+      is_active: true,
+      display_layout: 'grid' as const,
+      created_at: '',
+      updated_at: '',
+    }
+
+    const bundleMenuItems = bundles.map(bundleToMenuItem)
+
+    return {
+      categoriesWithBundles: [bundleCategory, ...categories],
+      allItemsWithBundles: [...bundleMenuItems, ...allMenuItems],
+    }
+  }, [bundles, categories, allMenuItems, tenant?.id])
+
   const filteredItems = useMemo(() => {
     const query = debouncedSearchQuery.trim().toLowerCase()
-    const items = allMenuItems.filter((item) => {
+    const items = allItemsWithBundles.filter((item) => {
       if (activeCategory && item.category_id !== activeCategory) {
         return false
       }
@@ -160,7 +181,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       }
       return a.order - b.order
     })
-  }, [allMenuItems, activeCategory, debouncedSearchQuery, tenant?.menu_engineering_enabled])
+  }, [allItemsWithBundles, activeCategory, debouncedSearchQuery, tenant?.menu_engineering_enabled])
 
   const baseBranding = useMemo(() => getTenantBranding(tenant), [tenant])
   const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
@@ -195,6 +216,10 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
 
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
+    if (isBundleMenuItem(item)) {
+      setSelectedBundle(item._bundleData)
+      return
+    }
     const hasCustomizations =
       item.variations.length > 0 ||
       (item.variation_types && item.variation_types.length > 0) ||
@@ -499,13 +524,13 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         </div>
       </header>
 
-      {categories.length > 0 && (
+      {categoriesWithBundles.length > 0 && (
         needsDualRender ? (
           <>
             {desktopLayout === 'default' && (
               <div className="hidden md:block">
                 <CategorySubmenu
-                  categories={categories}
+                  categories={categoriesWithBundles}
                   activeCategory={activeCategory}
                   onCategoryChange={setActiveCategory}
                   branding={branding}
@@ -517,7 +542,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
             {mobileLayout === 'default' && (
               <div className="md:hidden">
                 <CategorySubmenu
-                  categories={categories}
+                  categories={categoriesWithBundles}
                   activeCategory={activeCategory}
                   onCategoryChange={setActiveCategory}
                   branding={branding}
@@ -529,7 +554,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
           </>
         ) : desktopLayout === 'default' ? (
           <CategorySubmenu
-            categories={categories}
+            categories={categoriesWithBundles}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
             branding={branding}
@@ -570,18 +595,6 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
           ? 'container mx-auto px-4 pb-12'
           : 'container mx-auto px-4 py-12'
       }>
-        {/* Bundles section — shown at top when no active category filter */}
-        {bundles.length > 0 && !activeCategory && (
-          <div className="mb-12">
-            <BundlesSection
-              bundles={bundles}
-              onBundleSelect={setSelectedBundle}
-              branding={branding}
-              hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
-            />
-          </div>
-        )}
-
         {needsDualRender ? (
           <>
             <div className="md:hidden">
@@ -589,7 +602,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
                 layout={mobileLayout}
                 tenant={tenant}
                 tenantSlug={tenantSlug}
-                categories={categories}
+                categories={categoriesWithBundles}
                 filteredItems={filteredItems}
                 allMenuItems={allMenuItems}
                 activeCategory={activeCategory}
@@ -616,7 +629,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
                 layout={desktopLayout}
                 tenant={tenant}
                 tenantSlug={tenantSlug}
-                categories={categories}
+                categories={categoriesWithBundles}
                 filteredItems={filteredItems}
                 allMenuItems={allMenuItems}
                 activeCategory={activeCategory}
@@ -644,7 +657,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
             layout={desktopLayout}
             tenant={tenant}
             tenantSlug={tenantSlug}
-            categories={categories}
+            categories={categoriesWithBundles}
             filteredItems={filteredItems}
             allMenuItems={allMenuItems}
             activeCategory={activeCategory}
