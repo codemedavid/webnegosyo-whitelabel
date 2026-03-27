@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { X, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCart } from '@/hooks/useCart'
+import { useAnalyticsContext } from '@/components/customer/analytics-provider'
 import {
   calculateSlotBundleBasePrice,
   calculateSlotBundleExtras,
+  calculateSlotBundleSavings,
   formatPrice,
 } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -94,6 +96,7 @@ export function BundleWizard({
   hideCurrencySymbol,
 }: BundleWizardProps) {
   const { addBundleToCart } = useCart()
+  const { trackEvent } = useAnalyticsContext()
 
   const slots = useMemo(() => bundle?.slots ?? [], [bundle?.slots])
 
@@ -104,6 +107,18 @@ export function BundleWizard({
   )
 
   const totalSteps = slots.length + 1 // slots + review
+
+  // Track wizard open
+  useEffect(() => {
+    if (open && bundle) {
+      trackEvent('bundle_wizard_started', {
+        bundleId: bundle.id,
+        bundleName: bundle.name,
+        slotCount: slots.length,
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const progressIndex = useMemo(() => {
     if (step.type === 'review') return totalSteps - 1
@@ -121,10 +136,18 @@ export function BundleWizard({
   }, [bundle, slotSelections])
 
   const handleClose = useCallback(() => {
+    // Track abandonment if the wizard has progressed past the first slot
+    if (bundle && step.slotIndex > 0) {
+      trackEvent('bundle_wizard_abandoned', {
+        bundleId: bundle.id,
+        lastCompletedStep: step.slotIndex,
+        totalSteps,
+      })
+    }
     setStep({ type: 'slot-select', slotIndex: 0 })
     setSlotSelections(new Map())
     onClose()
-  }, [onClose])
+  }, [onClose, bundle, step.slotIndex, totalSteps, trackEvent])
 
   const handleBack = useCallback(() => {
     if (step.type === 'customize') {
@@ -151,6 +174,19 @@ export function BundleWizard({
         return next
       })
 
+      // Track each slot selection
+      if (bundle) {
+        selections.forEach((sel) => {
+          trackEvent('bundle_slot_selected', {
+            bundleId: bundle.id,
+            slotId: slot.id,
+            slotName: slot.name,
+            menuItemId: sel.menuItemId,
+            stepNumber: step.slotIndex + 1,
+          })
+        })
+      }
+
       const needsCustomize = slotNeedsCustomize(slot, selections)
       if (needsCustomize) {
         setStep({ type: 'customize', slotIndex: step.slotIndex })
@@ -163,7 +199,7 @@ export function BundleWizard({
         }
       }
     },
-    [step.slotIndex, slots]
+    [step.slotIndex, slots, bundle, trackEvent]
   )
 
   const handleCustomizeComplete = useCallback(
@@ -196,7 +232,7 @@ export function BundleWizard({
 
     const allSlotSels = Array.from(slotSelections.values()).flat()
 
-    addBundleToCart({
+    const cartItem: Omit<CartBundleItem, 'id' | 'subtotal'> = {
       bundleId: bundle.id,
       bundleName: bundle.name,
       slots: allSlotSels,
@@ -204,11 +240,24 @@ export function BundleWizard({
       pricingType: bundle.pricing_type,
       basePrice: bundle.pricing_type === 'fixed' ? (bundle.fixed_price ?? 0) : 0,
       discountPercent: bundle.discount_percent,
+    }
+
+    addBundleToCart(cartItem)
+
+    // Track analytics
+    const tempItem = buildTempCartBundleItem(bundle, slotSelections)
+    const totalPrice = calculateSlotBundleBasePrice(tempItem) + calculateSlotBundleExtras(allSlotSels)
+    const savingsAmount = calculateSlotBundleSavings(tempItem)
+    trackEvent('bundle_added_to_cart', {
+      bundleId: bundle.id,
+      bundleName: bundle.name,
+      totalPrice,
+      savingsAmount,
     })
 
     toast.success(`${bundle.name} added to cart!`)
     handleClose()
-  }, [bundle, slotSelections, addBundleToCart, handleClose])
+  }, [bundle, slotSelections, addBundleToCart, handleClose, trackEvent])
 
   if (!open || !bundle) return null
 
