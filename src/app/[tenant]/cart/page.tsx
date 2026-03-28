@@ -296,7 +296,7 @@ export default function CartPage() {
                 ))}
 
                 {/* Bundle Items */}
-                {bundleItems.map((bundleItem) => {
+                {bundleItems.filter(bi => Array.isArray(bi.slots)).map((bundleItem) => {
                   const savings = calculateSlotBundleSavings(bundleItem)
                   const originalTotal = bundleItem.slots.reduce(
                     (sum, s) => sum + s.menuItemPrice * s.quantity, 0
