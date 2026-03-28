@@ -7,8 +7,8 @@ import {
   calculateFullCartTotal,
   getFullCartItemCount,
   generateCartItemId,
-  calculateSlotBundleSubtotal,
 } from '@/lib/cart-utils'
+import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 
 interface CartContextType extends Cart {
   orderType: string | null

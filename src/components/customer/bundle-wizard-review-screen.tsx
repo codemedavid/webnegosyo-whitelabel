@@ -3,12 +3,12 @@
 import { useCallback } from 'react'
 import { ShoppingBag, Pencil } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
+import { formatPrice } from '@/lib/cart-utils'
 import {
-  formatPrice,
   calculateSlotBundleBasePrice,
   calculateSlotBundleExtras,
   calculateSlotBundleSavings,
-} from '@/lib/cart-utils'
+} from '@/lib/bundle-pricing'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type {
   BundleWithSlots,

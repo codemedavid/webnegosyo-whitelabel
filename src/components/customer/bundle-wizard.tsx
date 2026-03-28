@@ -5,12 +5,12 @@ import { X, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCart } from '@/hooks/useCart'
 import { useAnalyticsContext } from '@/components/customer/analytics-provider'
+import { formatPrice } from '@/lib/cart-utils'
 import {
   calculateSlotBundleBasePrice,
   calculateSlotBundleExtras,
   calculateSlotBundleSavings,
-  formatPrice,
-} from '@/lib/cart-utils'
+} from '@/lib/bundle-pricing'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type {
   BundleWithSlots,
