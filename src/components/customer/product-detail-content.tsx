@@ -27,6 +27,10 @@ const InlineUpgradeSection = dynamic(
 )
 
 // Upsell/checkout modals — not visible on initial render; lazy-load them.
+const PostAddUpsellScreen = dynamic(
+  () => import('@/components/customer/post-add-upsell-screen').then((m) => ({ default: m.PostAddUpsellScreen })),
+  { ssr: false }
+)
 const UpsellSuggestionModal = dynamic(
   () => import('./upsell-suggestion-modal').then((m) => ({ default: m.UpsellSuggestionModal })),
   { ssr: false }
@@ -35,16 +39,8 @@ const CheckoutUpsellModal = dynamic(
   () => import('./checkout-upsell-modal').then((m) => ({ default: m.CheckoutUpsellModal })),
   { ssr: false }
 )
-const BundleUpsellModal = dynamic(
-  () => import('@/components/customer/bundle-upsell-modal').then((m) => ({ default: m.BundleUpsellModal })),
-  { ssr: false }
-)
 const BundleWizard = dynamic(
   () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
-  { ssr: false }
-)
-const PairSuggestionSheet = dynamic(
-  () => import('./pair-suggestion-sheet').then((m) => ({ default: m.PairSuggestionSheet })),
   { ssr: false }
 )
 
@@ -278,17 +274,14 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const {
         setUpgradeDismissed,
         isImageModalOpen,
-        isUpsellModalOpen,
-        isPairSheetOpen,
-        setIsPairSheetOpen,
+        isPostAddUpsellOpen,
+        setIsPostAddUpsellOpen,
         isPopupPreviewOpen,
         setIsPopupPreviewOpen,
         isCheckoutPreviewOpen,
         setIsCheckoutPreviewOpen,
         isUpgradeScreenOpen,
         setIsUpgradeScreenOpen,
-        bundleUpsell,
-        setBundleUpsell,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,
@@ -296,7 +289,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         handleCloseImageModal,
         handleTogglePopupPreview,
         handleToggleCheckoutPreview,
-        handleUpsellClose,
+        handlePostAddUpsellClose,
     } = useProductDetailModals({
         tenantSlug: tenant.slug,
         menuEngineeringEnabled,
@@ -307,9 +300,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // Eager-preload upsell modal bundles so they're ready when triggered
     useEffect(() => {
         import('./inline-upgrade-section')
-        import('./pair-suggestion-sheet')
-        import('./upsell-suggestion-modal')
-        import('@/components/customer/bundle-upsell-modal')
+        import('./post-add-upsell-screen')
         import('@/components/customer/bundle-wizard')
         import('@/components/customer/checkout-upsell-modal')
     }, [])
@@ -525,6 +516,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         toast.success(`Added ${item.name} to cart`)
     }, [useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem])
 
+    const matchingBundle = useMemo(() => {
+        if (!bundlesEnabled || !upsellBundles?.length) return null
+        return upsellBundles.find((b) =>
+            b.slots.some((s) => s.category_id === item.category_id)
+        ) ?? null
+    }, [bundlesEnabled, upsellBundles, item.category_id])
+
     const handleAddToCart = useCallback((skipNavigation = false) => {
         // Check if required variation types have selections
         if (useNewVariations && item.variation_types) {
@@ -537,28 +535,20 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             }
         }
 
-        if (!skipNavigation) {
-            if (menuEngineeringEnabled && complementaryUpsells.length > 0) {
-                // Add to cart, then show pair suggestion sheet
-                addCurrentItemToCart()
-                setIsPairSheetOpen(true)
-                return
-            }
-            // Check for bundle upsell — match by slot category
-            if (bundlesEnabled && upsellBundles.length > 0) {
-                const matchingBundle = upsellBundles.find((bundle) =>
-                    bundle.slots.some((slot) => slot.category_id === item.category_id)
-                )
-                if (matchingBundle) {
-                    addCurrentItemToCart()
-                    setBundleUpsell(matchingBundle)
-                    return
-                }
-            }
+        // Add the item to cart
+        addCurrentItemToCart()
+
+        // Check if any upsell data exists
+        const hasSuggestions = menuEngineeringEnabled && complementaryUpsells && complementaryUpsells.length > 0
+        const hasBundle = bundlesEnabled && matchingBundle !== null
+
+        if (!skipNavigation && (hasSuggestions || hasBundle)) {
+            // Open unified upsell screen
+            setIsPostAddUpsellOpen(true)
+            return
         }
 
-        // Default: add to cart and navigate
-        addCurrentItemToCart()
+        // No upsells — navigate directly
         if (!skipNavigation) {
             if (buyNowIntentRef.current) {
                 buyNowIntentRef.current = false
@@ -567,7 +557,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, complementaryUpsells, bundlesEnabled, upsellBundles, tenant.slug, buyNowIntentRef, setBundleUpsell, setIsPairSheetOpen])
+    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -582,11 +572,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             toast.error('Failed to copy link')
         }
     }, [])
-
-    const handleUpsellAddItem = useCallback((upsellItem: MenuItem) => {
-        addItem(upsellItem, undefined, [], 1, undefined, 'suggestion', item.id)
-        toast.success(`Added ${upsellItem.name} to cart`)
-    }, [addItem, item.id])
 
     return (
         <motion.div
@@ -952,66 +937,32 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 />
             )}
 
-            {/* Pair Suggestion Sheet (replaces UpsellSuggestionModal for pair upsells) */}
-            {menuEngineeringEnabled && complementaryUpsells.length > 0 && (
-                <PairSuggestionSheet
-                    open={isPairSheetOpen}
-                    onClose={() => {
-                        setIsPairSheetOpen(false)
-                        // Wait for exit animation to complete before navigating
-                        setTimeout(() => {
-                            if (buyNowIntentRef.current) {
-                                buyNowIntentRef.current = false
-                                router.push(`/${tenant.slug}/cart`)
-                            } else {
-                                router.back()
-                            }
-                        }, 250)
-                    }}
-                    onAddItem={handleUpsellAddItem}
-                    suggestions={complementaryUpsells}
-                    triggerItemName={item.name}
-                    tenantId={tenant.id}
-                    sourceItemId={item.id}
-                    hideCurrencySymbol={hideCurrencySymbol}
-                />
-            )}
-
-            {/* Legacy Upsell Suggestion Modal (kept as fallback for admin preview) */}
-            {menuEngineeringEnabled && complementaryUpsells.length > 0 && (
-                <UpsellSuggestionModal
-                    open={isUpsellModalOpen}
-                    onClose={handleUpsellClose}
-                    onAddItem={handleUpsellAddItem}
-                    suggestions={complementaryUpsells}
-                    triggerItemName={item.name}
-                    tenantId={tenant.id}
-                    sourceItemId={item.id}
-                />
-            )}
-
-            {/* Bundle Upsell Modal */}
-            {bundleUpsell && (
-                <BundleUpsellModal
-                    open={!!bundleUpsell}
-                    onClose={() => {
-                        setBundleUpsell(null)
-                        if (buyNowIntentRef.current) {
-                            buyNowIntentRef.current = false
-                            router.push(`/${tenant.slug}/cart`)
-                        }
-                    }}
-                    bundle={bundleUpsell}
-                    branding={branding}
-                    tenantId={tenant.id}
-                    sourceItemId={item.id}
-                    hideCurrencySymbol={hideCurrencySymbol}
-                    onAccept={(bundle) => {
-                        setBundleForCustomization(bundle)
-                        setBundleUpsell(null)
-                    }}
-                />
-            )}
+            {/* Unified post-add upsell screen (replaces PairSuggestionSheet, UpsellSuggestionModal, BundleUpsellModal) */}
+            <PostAddUpsellScreen
+                open={isPostAddUpsellOpen}
+                onClose={handlePostAddUpsellClose}
+                onAddItem={(upsellItem) => {
+                    addItem(
+                        upsellItem,
+                        undefined,
+                        [],
+                        1,
+                        undefined,
+                        'suggestion',
+                        item.id
+                    )
+                }}
+                onAcceptBundle={(bundle) => {
+                    setIsPostAddUpsellOpen(false)
+                    setBundleForCustomization(bundle)
+                }}
+                suggestions={complementaryUpsells ?? []}
+                matchingBundle={matchingBundle}
+                triggerItemName={item.name}
+                tenantId={tenant.id}
+                sourceItemId={item.id}
+                hideCurrencySymbol={hideCurrencySymbol}
+            />
 
             {/* Bundle Wizard (replaces old BundleCustomizationModal) */}
             <BundleWizard
