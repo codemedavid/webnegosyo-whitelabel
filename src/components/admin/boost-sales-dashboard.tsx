@@ -31,6 +31,11 @@ const CheckoutUpsellSettingsTab = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
+const BoostSalesPerformanceTab = dynamic(
+  () => import('@/components/admin/boost-sales-performance-tab').then(mod => ({ default: mod.BoostSalesPerformanceTab })),
+  { ssr: false, loading: LoadingPlaceholder }
+)
+
 interface MenuItemWithCategory extends MenuItem {
   category: { id: string; name: string } | null
 }
@@ -62,7 +67,7 @@ export function BoostSalesDashboard({
   checkoutUpsellSubtitle,
   checkoutUpsellMaxItems,
   bundlesEnabled: _bundlesEnabled,
-  convexDeploymentUrl: _convexDeploymentUrl,
+  convexDeploymentUrl,
 }: BoostSalesDashboardProps) {
   const [showPreview, setShowPreview] = useState(false)
 
@@ -142,10 +147,10 @@ export function BoostSalesDashboard({
         </TabsContent>
 
         <TabsContent value="performance">
-          <div className="rounded-lg border p-8 text-center text-muted-foreground">
-            <p className="text-lg font-semibold mb-2">Performance Analytics</p>
-            <p className="text-sm">Coming in Task 11 — will show upsell acceptance rates, revenue impact, and channel breakdown.</p>
-          </div>
+          <BoostSalesPerformanceTab
+            tenantId={tenantId}
+            convexDeploymentUrl={convexDeploymentUrl}
+          />
         </TabsContent>
       </Tabs>
     </div>
