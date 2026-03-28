@@ -47,7 +47,7 @@ CREATE POLICY "Authenticated users can manage slots for their tenant bundles"
       SELECT 1 FROM bundles
       WHERE bundles.id = bundle_slots.bundle_id
         AND bundles.tenant_id IN (
-          SELECT tenant_id FROM users WHERE id = auth.uid()
+          SELECT tenant_id FROM app_users WHERE user_id = auth.uid()
         )
     )
   );
@@ -71,7 +71,7 @@ CREATE POLICY "Authenticated users can manage price overrides for their tenant"
       JOIN bundles ON bundles.id = bundle_slots.bundle_id
       WHERE bundle_slots.id = bundle_slot_price_overrides.slot_id
         AND bundles.tenant_id IN (
-          SELECT tenant_id FROM users WHERE id = auth.uid()
+          SELECT tenant_id FROM app_users WHERE user_id = auth.uid()
         )
     )
   );
