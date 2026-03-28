@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useTransition, useMemo, useCallback, useRef } from 'react'
 import {
   Save,
   ShoppingBag,
@@ -25,6 +25,7 @@ import {
 import {
   updateCheckoutUpsellSettingsAction,
   setCheckoutUpsellItemsAction,
+  getUpsellCoverageForItemAction,
 } from '@/app/actions/menu-engineering'
 import type { MenuItem } from '@/types/database'
 import { toast } from 'sonner'
@@ -64,8 +65,28 @@ export function CheckoutUpsellSettingsTab({
     () => new Set(menuItems.filter(i => i.show_in_checkout_upsell).map(i => i.id))
   )
   const [isSavingItems, setIsSavingItems] = useState(false)
+  const [coverageMap, setCoverageMap] = useState<Record<string, { pairCount: number; bundleCount: number }>>({})
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = useRef<string>(JSON.stringify([...selectedIds].sort()))
+
+  useEffect(() => {
+    async function fetchCoverage() {
+      const selected = menuItems.filter(i => i.show_in_checkout_upsell)
+      const entries: Record<string, { pairCount: number; bundleCount: number }> = {}
+      await Promise.all(
+        selected.map(async (item) => {
+          try {
+            const coverage = await getUpsellCoverageForItemAction(item.id, tenantId)
+            entries[item.id] = { pairCount: coverage.pairCount, bundleCount: coverage.bundleCount }
+          } catch {
+            // Ignore fetch errors
+          }
+        })
+      )
+      setCoverageMap(entries)
+    }
+    fetchCoverage()
+  }, [menuItems, tenantId])
 
   const handleSave = () => {
     startTransition(async () => {
@@ -343,6 +364,14 @@ export function CheckoutUpsellSettingsTab({
                         {item.category?.name || 'Uncategorized'}
                       </span>
                     </div>
+                    {isSelected && coverageMap[item.id] && (coverageMap[item.id].pairCount > 0 || coverageMap[item.id].bundleCount > 0) && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Also in: {[
+                          coverageMap[item.id].pairCount > 0 && `${coverageMap[item.id].pairCount} pair${coverageMap[item.id].pairCount > 1 ? 's' : ''}`,
+                          coverageMap[item.id].bundleCount > 0 && `${coverageMap[item.id].bundleCount} combo${coverageMap[item.id].bundleCount > 1 ? 's' : ''}`,
+                        ].filter(Boolean).join(', ')}
+                      </p>
+                    )}
                   </div>
 
                   {/* Check indicator */}
