@@ -4,6 +4,8 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   images: {
     // Cache optimized images longer to reduce repeated requests
+    
+    domains: ['images.unsplash.com', 'res.cloudinary.com', 'via.placeholder.com'],
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
     formats: ['image/webp', 'image/avif'], // Modern image formats
     deviceSizes: [640, 750, 828, 1080, 1200], // Optimize for common device sizes

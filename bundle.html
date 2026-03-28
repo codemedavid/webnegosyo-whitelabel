@@ -1,0 +1,1060 @@
+<!-- Create Bundle Dashboard -->
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style data-purpose="custom-styles">
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      background-color: #ffffff;
+      color: #1a1a1a;
+    }
+    
+    /* Custom dashed border for upload zone */
+    .upload-zone {
+      background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23d1d5db' stroke-width='2' stroke-dasharray='8%2c 8' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+      border-radius: 8px;
+    }
+
+    /* Custom sidebar link hover/active states */
+    .sidebar-link:hover {
+      background-color: #f3f4f6;
+    }
+    .sidebar-link.active {
+      background-color: #f3f4f6;
+      font-weight: 500;
+    }
+
+    /* Progress bar step active indicator */
+    .step-active::after {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 12px;
+      height: 12px;
+      background-color: #1a1a1a;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden antialiased">
+<!-- BEGIN: Sidebar -->
+<aside class="w-64 border-r border-gray-200 bg-white flex flex-col h-full flex-shrink-0" data-purpose="sidebar">
+<div class="p-4 border-b border-gray-100 flex justify-between items-center">
+<div>
+<h1 class="font-semibold text-gray-900">Dashboard</h1>
+<p class="text-xs text-gray-500">Cafe Juancho</p>
+</div>
+<button class="text-gray-400 hover:text-gray-600">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+<nav aria-label="Sidebar Navigation" class="flex-1 overflow-y-auto py-4">
+<ul class="space-y-1">
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Dashboard
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Menu Management
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Categories
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Order Types
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Payment Methods
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Menu Engineering
+          </a>
+</li>
+<li>
+<a class="sidebar-link active flex items-center px-4 py-2 text-sm text-gray-900 bg-gray-50 border-r-2 border-gray-900" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-900" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Bundles
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Hero Designer
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Orders
+          </a>
+</li>
+<li>
+<a class="sidebar-link flex items-center px-4 py-2 text-sm text-gray-700" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Settings
+          </a>
+</li>
+</ul>
+</nav>
+<div class="p-4 border-t border-gray-200">
+<button class="flex items-center text-sm text-red-600 hover:text-red-700 w-full">
+<div class="w-6 h-6 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-xs font-medium mr-2">N</div>
+        Logout
+      </button>
+</div>
+</aside>
+<!-- END: Sidebar -->
+<!-- BEGIN: Main Content -->
+<main class="flex-1 overflow-y-auto bg-white" data-purpose="main-content">
+<div class="max-w-5xl mx-auto px-8 py-8">
+<!-- BEGIN: Header & Progress -->
+<header class="mb-10">
+<h2 class="text-2xl font-bold text-gray-900 mb-1">Create Bundle</h2>
+<p class="text-sm text-gray-500 mb-8">Group menu items together with special pricing</p>
+<!-- Progress Indicator -->
+<div class="relative">
+<div class="flex items-center justify-between relative z-10 text-sm font-medium">
+<div class="w-1/4 text-center step-active relative text-gray-900">
+<span class="block mb-2">1. Basic Info</span>
+<div class="h-1 bg-gray-900 w-full absolute bottom-[-4px] left-0 rounded-full"><div class="h-1 bg-gray-900 w-full absolute bottom-[-4px] left-0 rounded-full"></div></div>
+</div>
+<div class="w-1/4 text-center text-gray-500 relative">
+<span class="block mb-2">2. Bundle Items</span>
+<div class="h-1 bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"><div class="h-[3px] bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"></div></div>
+</div>
+<div class="w-1/4 text-center text-gray-500 relative">
+<span class="block mb-2">3. Pricing</span>
+<div class="h-1 bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"><div class="h-[3px] bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"></div></div>
+</div>
+<div class="w-1/4 text-center text-gray-500 relative">
+<span class="block mb-2">4. Visibility &amp; Review</span>
+<div class="h-1 bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"><div class="h-[3px] bg-gray-200 w-full absolute bottom-[-4px] left-0 rounded-full"></div></div>
+</div>
+</div>
+<!-- Gray background line for progress -->
+<div class="absolute bottom-0 left-0 w-full h-1 bg-gray-100 rounded-full z-0"></div>
+</div>
+</header>
+<!-- END: Header & Progress -->
+<div class="flex gap-8">
+<!-- BEGIN: Form Section -->
+<div class="flex-1 max-w-2xl space-y-6">
+<!-- Basic Info Form -->
+<div>
+<label class="block text-sm font-medium text-gray-900 mb-1" for="bundle-name">Bundle Name *</label>
+<input class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm px-3 py-2 border" id="bundle-name" placeholder="e.g., Chicken Meal Deal" type="text"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-900 mb-1" for="bundle-description">Description</label>
+<textarea class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm px-3 py-2 border resize-y" id="bundle-description" placeholder="Describe your bundle..." rows="4"></textarea>
+</div>
+<!-- Image Upload -->
+<div>
+<label class="block text-sm font-medium text-gray-900 mb-2">Image Upload</label>
+<div class="upload-zone h-64 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+<div class="text-center">
+<svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+<path d="M12 11v6m0 0l-3-3m3 3l3-3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<p class="text-sm font-medium text-gray-900">Drag &amp; Drop or Click to Upload Image</p>
+</div>
+</div>
+<p class="mt-2 text-xs text-gray-500 flex items-start">
+<svg class="w-3 h-3 mr-1 mt-0.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Recommended: Square image (1:1 ratio), max 5MB<br/>Supported: PNG, JPG, WEBP, GIF</span>
+</p>
+</div>
+</div>
+<!-- END: Form Section -->
+<!-- BEGIN: Preview Section -->
+<aside class="w-80 flex-shrink-0" data-purpose="preview-card">
+<div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm sticky top-8">
+<div class="aspect-square bg-gray-200 rounded-lg mb-4 flex items-center justify-center">
+<span class="text-gray-500 text-sm">Bundle Preview</span>
+</div>
+<h3 class="font-bold text-gray-900 text-lg mb-1">Chicken Meal Deal</h3>
+<p class="text-sm text-gray-500 mb-4">Describe your bundle...</p>
+<div class="h-6 w-16 bg-gray-200 rounded-md"></div>
+</div>
+</aside>
+<!-- END: Preview Section -->
+</div>
+<!-- BEGIN: Action Buttons -->
+<div class="mt-12 flex justify-end gap-3 pb-8">
+<button class="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500" type="button">
+          Cancel
+        </button>
+<button class="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gray-900 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900" type="button">
+          Next: Bundle Items
+        </button>
+</div>
+<!-- END: Action Buttons -->
+</div>
+</main>
+<!-- END: Main Content -->
+</body></html>
+
+<!-- Create Bundle Dashboard -->
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle - Restaurant Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+<style data-purpose="custom-utilities">
+    /* Custom scrollbar for lists */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f1f1; 
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #d1d5db; 
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af; 
+    }
+  </style>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 h-screen font-sans text-gray-800 antialiased overflow-hidden">
+<!-- BEGIN: Main Layout -->
+<div class="flex h-full w-full max-w-[1400px] mx-auto bg-white shadow-xl overflow-hidden rounded-xl my-4 border border-gray-200" style="height: calc(100vh - 2rem);">
+<!-- BEGIN: Sidebar -->
+<aside class="w-64 bg-gray-50 border-r border-gray-200 flex flex-col justify-between shrink-0 h-full overflow-y-auto custom-scrollbar">
+<div>
+<!-- Sidebar Header -->
+<div class="p-4 border-b border-gray-200 flex justify-between items-center">
+<div>
+<h1 class="font-bold text-gray-900 leading-tight">Dashboard</h1>
+<p class="text-sm text-gray-500">Cafe Juancho</p>
+</div>
+<button class="text-gray-400 hover:text-gray-600">
+<i class="fa-solid fa-chevron-left text-xs"></i>
+</button>
+</div>
+<!-- Sidebar Navigation -->
+<nav class="p-2 space-y-1 mt-2">
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-chart-line w-5 text-center text-gray-400"></i> Dashboard
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-utensils w-5 text-center text-gray-400"></i> Menu Management
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-list w-5 text-center text-gray-400"></i> Categories
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-shop w-5 text-center text-gray-400"></i> Order Types
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-regular fa-credit-card w-5 text-center text-gray-400"></i> Payment Methods
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-arrow-trend-up w-5 text-center text-gray-400"></i> Menu Engineering
+          </a>
+<!-- Active Nav Item -->
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md bg-gray-200 text-gray-900 transition-colors relative" href="#">
+<i class="fa-solid fa-box-open w-5 text-center text-gray-600"></i> Bundles
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-gray-900 rounded-r-md"></div>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-wand-magic-sparkles w-5 text-center text-gray-400"></i> Hero Designer
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-receipt w-5 text-center text-gray-400"></i> Orders
+          </a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors" href="#">
+<i class="fa-solid fa-gear w-5 text-center text-gray-400"></i> Settings
+          </a>
+</nav>
+</div>
+<!-- Sidebar Footer (Logout) -->
+<div class="p-4 border-t border-gray-200">
+<a class="flex items-center gap-3 text-sm font-medium text-gray-700 hover:text-red-600 transition-colors" href="#">
+<div class="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs font-bold">
+            K
+          </div>
+          Logout
+        </a>
+</div>
+</aside>
+<!-- END: Sidebar -->
+<!-- BEGIN: Main Content Area -->
+<main class="flex-1 flex flex-col h-full bg-white overflow-hidden">
+<!-- Top Header Area -->
+<div class="px-8 pt-8 pb-4 shrink-0">
+<h2 class="text-2xl font-bold text-gray-900">Create Bundle</h2>
+<p class="text-sm text-gray-500 mt-1">Group menu items together with special pricing</p>
+<!-- Stepper -->
+<div class="mt-8">
+<div class="flex items-center justify-between relative">
+<!-- Connecting lines -->
+<div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 z-0 rounded-full hidden sm:block"></div>
+<!-- Step 1: Completed -->
+<div class="relative z-10 flex flex-col items-center flex-1">
+<div class="w-full h-1 bg-gray-900 absolute left-0 top-1/2 -translate-y-1/2 -z-10 rounded-full"></div>
+<div class="w-6 h-6 rounded-full bg-gray-900 text-white flex items-center justify-center border-2 border-white shadow-sm ring-2 ring-transparent ring-offset-2">
+<i class="fa-solid fa-check text-[10px]"></i>
+</div>
+<span class="text-xs font-semibold text-gray-900 mt-2">1. Basic Info</span>
+</div>
+<!-- Step 2: Active -->
+<div class="relative z-10 flex flex-col items-center flex-1">
+<div class="w-1/2 h-1 bg-gray-900 absolute left-0 top-1/2 -translate-y-1/2 -z-10"></div>
+<div class="w-6 h-6 rounded-full bg-gray-900 border-4 border-white shadow-sm ring-2 ring-gray-900 ring-offset-1 flex items-center justify-center"></div>
+<span class="text-xs font-bold text-gray-900 mt-2">2. Bundle Items</span>
+</div>
+<!-- Step 3: Upcoming -->
+<div class="relative z-10 flex flex-col items-center flex-1">
+<div class="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center mt-1"></div>
+<span class="text-xs font-medium text-gray-400 mt-2">3. Pricing</span>
+</div>
+<!-- Step 4: Upcoming -->
+<div class="relative z-10 flex flex-col items-center flex-1">
+<div class="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center mt-1"></div>
+<span class="text-xs font-medium text-gray-400 mt-2">4. Visibility &amp; Review</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Content Columns -->
+<div class="flex-1 overflow-hidden px-8 pb-8 flex gap-6">
+<!-- Column 1: Select Menu Items -->
+<div class="flex-1 flex flex-col min-w-[280px] max-w-[350px]">
+<h3 class="text-base font-bold text-gray-900 mb-3">Select Menu Items</h3>
+<!-- Search -->
+<div class="relative mb-4 shrink-0">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<i class="fa-solid fa-magnifying-glass text-gray-400 text-sm"></i>
+</div>
+<input class="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-gray-900 focus:border-gray-900 sm:text-sm transition duration-150 ease-in-out" placeholder="Search items..." type="text"/>
+</div>
+<!-- Items List -->
+<div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+<!-- Item -->
+<div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors group">
+<div class="flex items-center gap-3">
+<img alt="Grilled Chicken" class="w-12 h-12 rounded-md object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnqZy93P8H27TTAp2TXTv167AKKDfIoaY45RvLx_jAP27SSRwdf3J56KcUvMXWaolIdeq5ynRD2AHtkw1Qh_HN85hIfxHJtfRnmDoeIEzRAjqtdk_uZ41B6YDptmJGMbkeJgYFP2K55OvvOcD8XNkMhxYJHflq4U69a8ae7F_OrNF0tqHts9j_wJQezjeGlPDTomf0fY3meoq85A_O89AdOy8rHHvez3nA1QgOLEDTWd4fvcXUnI5QwzejA7oAB9Zd0NpWnh37h0U"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Grilled Chicken</p>
+<p class="text-sm text-gray-600">₱12.00</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full border border-gray-300 text-gray-500 flex items-center justify-center hover:bg-gray-100 transition-colors">
+<i class="fa-solid fa-plus text-sm"></i>
+</button>
+</div>
+<!-- Item -->
+<div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors group">
+<div class="flex items-center gap-3">
+<img alt="Fries" class="w-12 h-12 rounded-md object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAWjN3MogS-o2eb6Qfjkk352gEfcAsafUFTOjo2TPWS0qMM2Y8eHU59_8tAd7NKyOz_nN6tWbGxwXr4L_8VwqYLJxmXcGJMSfHp5ZJY1qBvbhgaPXMMgXbQ7B_jr7TfnrnNzVXmCCPVFQCewXuf433w5mo5M0o4lFOViiQ202O48BugGP5gCycf7em36LAPfIwA6voyIslls6jptrJ0KndzMpoJWdXo1_e-_j37KP5Oqrkp9e4Ew9aQy0aBFZxOxR9K0D-rvFcnrE"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Fries</p>
+<p class="text-sm text-gray-600">₱4.00</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full border border-gray-300 text-gray-500 flex items-center justify-center hover:bg-gray-100 transition-colors">
+<i class="fa-solid fa-plus text-sm"></i>
+</button>
+</div>
+<!-- Item -->
+<div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors group">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-md bg-black flex items-center justify-center border border-gray-200">
+<img alt="Coke" class="h-10 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkUYkBoN0QkvhHn2zfDsxJZS2b-6WkAyDS-FMz2k8N4EFwMi7YwWSXqTw9Kc6wdFuEvRAsq4ZSuvo52KqEgC-dc7m3Ndav9JOTMLkbIKBJqsWg4W0NmPcGztuD6kAyonFmjomE-qAgHcqPyeWlgNs5qoZnAffIKKLPJ1NJ49ulXfqDjt5GTE4OBcC4gwjBiQBcySLXj_kR2VVAzERNIckLr3yWfvx-Lx5cAjb9cSO1CIQE3Ux6FbMHGixslRqoNNsGijCEf7lufRI"/>
+</div>
+<div>
+<p class="text-sm font-semibold text-gray-900">Coke</p>
+<p class="text-sm text-gray-600">₱2.50</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full border border-gray-300 text-gray-500 flex items-center justify-center hover:bg-gray-100 transition-colors">
+<i class="fa-solid fa-plus text-sm"></i>
+</button>
+</div>
+<!-- Item -->
+<div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors group">
+<div class="flex items-center gap-3">
+<img alt="Grilled Chicken" class="w-12 h-12 rounded-md object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_M6KARQPH0FuL-s4hcwWa2lN6w21WMTn0V8xGW4vRzjQpjpfiAWsivfDiGyoa0E7WjyDzLUKePFVgjiSSUU49d-blMlOyV2xQ5C9Wa3oOd9xD9u4kpxTYnzu9ldT9e2hxQFmxu9rok5LMqGITYkKbIx7BC7mxxgf2tBJAfN7SsvKiCPOJ3w-ae7xy-WeSeW-cr-jZJU_CNJBfJbZ6Q6Q9lhrBDKKTFA0be_ji8M1NlgfD4ew8D1wm_8iv1n_Mr6w4evUkiJsl6fE"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Grilled Chicken</p>
+<p class="text-sm text-gray-600">₱4.00</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full border border-gray-300 text-gray-500 flex items-center justify-center hover:bg-gray-100 transition-colors">
+<i class="fa-solid fa-plus text-sm"></i>
+</button>
+</div>
+<!-- Item -->
+<div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors group">
+<div class="flex items-center gap-3">
+<img alt="Green Salad" class="w-12 h-12 rounded-md object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4zVkmxOEIMG7WMJSnjQyivN8XxGMnYObhzQFiMzD6KRIyEds5tmoAFM-KnCUi7iCsP_oMpVXtQAAhI4Se1mHkK2eh0Ry1q9nFsRbq8UWIw3rtHV15CqShBVQraPZpDBi1Qe54C8lpfhrRCLdGwWh9Rs-HiuO2VbgrEg9ouP5jL_XmPh6Lzzw1noj8UJIkPc5tW2ab8mO-knZ7gRXW9FNhn3u3VCFCjmkmE5OW97qAb_5UoVkYucw0BA018vG8WCq8p6sonPJwabE"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Green Salad</p>
+<p class="text-sm text-gray-600">₱2.50</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full border border-gray-300 text-gray-500 flex items-center justify-center hover:bg-gray-100 transition-colors">
+<i class="fa-solid fa-plus text-sm"></i>
+</button>
+</div>
+</div>
+</div>
+<!-- Column 2: Added to Bundle -->
+<div class="flex-1 flex flex-col min-w-[300px] max-w-[350px]">
+<h3 class="text-base font-bold text-gray-900 mb-3">Added to Bundle</h3>
+<div class="flex-1 border border-gray-200 rounded-xl bg-white flex flex-col overflow-hidden">
+<div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+<!-- Added Item -->
+<div class="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
+<img alt="Grilled Chicken" class="w-14 h-14 rounded-md object-cover border border-gray-200 shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2XLL_ZI3TraiGuGJLRz6OMBfUQR6XoPXVnCo73RBSHrAnG4vIJxFZXZ0tDQTHjNBxdkD2ZhXwLAWmuVb0LNlAaLQpYaYsR4R2V5m7S7kE-kT-TAFIz8vnxob9S05gI1O8nTxZ4T-LyCiatLmlYldQErWHsz5LdhjpIG_gvNItf5e60Dx1D8tdbGZXegGQYcR_zz37fn9UOVlmOLcP8ZTsC1WYt8-gX_7UFf24Kxn9Qh2iU1QCkHeG9qP5KontwimXmiNzKO5QNyg"/>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<p class="text-sm font-semibold text-gray-900 truncate pr-2">Grilled Chicken</p>
+<p class="text-sm font-semibold text-gray-900 shrink-0">₱12.00</p>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white shadow-sm">
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+<i class="fa-solid fa-minus text-[10px]"></i>
+</button>
+<span class="w-8 text-center text-sm font-medium text-gray-900">1</span>
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors border-l border-gray-200">
+<i class="fa-solid fa-plus text-[10px]"></i>
+</button>
+</div>
+<p class="text-xs text-gray-500">x ₱12.00</p>
+</div>
+</div>
+</div>
+<!-- Added Item -->
+<div class="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
+<img alt="Fries" class="w-14 h-14 rounded-md object-cover border border-gray-200 shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3-vFAvR1GcyVph1f459DbJOlfkwbOlKgifrP-_HAomW9gIvRU21TYi8VtAqKvc_FOL89mj50hOQqiZ8A3QvQ5BQtJt2LPX_GN8_BFyHiTBFa8Eweh6Ogg8jnlIaig8lXC5f7kj6zcwVzJeaRhDnkPNDmuHeAotLh99w1LpRR1okLjIcCNnXjDfGBh6ATDMPU77e8PhRSEZbhuxkVHTmCVmReK5HeZU33YweNSNIX15bnZizYaLKXnmhoMtQmMR6hQtlEI0gxRuQs"/>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<p class="text-sm font-semibold text-gray-900 truncate pr-2">Fries</p>
+<p class="text-sm font-semibold text-gray-900 shrink-0">₱4.00</p>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white shadow-sm">
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+<i class="fa-solid fa-minus text-[10px]"></i>
+</button>
+<span class="w-8 text-center text-sm font-medium text-gray-900">1</span>
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors border-l border-gray-200">
+<i class="fa-solid fa-plus text-[10px]"></i>
+</button>
+</div>
+<p class="text-xs text-gray-500">x ₱4.00</p>
+</div>
+</div>
+</div>
+<!-- Added Item -->
+<div class="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
+<div class="w-14 h-14 rounded-md bg-black flex items-center justify-center border border-gray-200 shrink-0">
+<img alt="Coke" class="h-10 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCO_x6DeBl5vZLzWjetgK-RIhwnHjYgxB-fQwcIns_bLnIC_fLQzD2Bh3ZMVoswWoQnprsdYH2sviXVA2asIrqtUjXffTG_ozyhus0V_Hi8uZquBUnkzSlC37DAwIoVW8Xm3eR6-dHzpPRiL1tSzRQzHMCBCubOrlIp2M3QC_pgK-gN9R0u-PGvZq3_n4Y9VdqLoJ_5IhM_vZfJPSaVxMuW9NIWfqnHIBYfvKFMF9U_5G0wAqWDja2dbFL6RKE_GE_j8OilXX32aDg"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<p class="text-sm font-semibold text-gray-900 truncate pr-2">Coke</p>
+<p class="text-sm font-semibold text-gray-900 shrink-0">₱2.50</p>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white shadow-sm">
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+<i class="fa-solid fa-minus text-[10px]"></i>
+</button>
+<span class="w-8 text-center text-sm font-medium text-gray-900">1</span>
+<button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors border-l border-gray-200">
+<i class="fa-solid fa-plus text-[10px]"></i>
+</button>
+</div>
+<p class="text-xs text-gray-500">x ₱2.50</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Subtotal -->
+<div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
+<span class="text-sm font-medium text-gray-600">Subtotal:</span>
+<span class="text-base font-bold text-gray-900">₱12.00</span>
+</div>
+</div>
+</div>
+<!-- Column 3: Bundle Preview -->
+<div class="flex-1 min-w-[320px] max-w-[400px] ml-auto h-full flex flex-col pt-9">
+<div class="border border-gray-200 rounded-xl bg-white shadow-sm flex flex-col h-full overflow-hidden">
+<div class="flex-1 overflow-y-auto custom-scrollbar p-4">
+<!-- Large Image Placeholder -->
+<div class="w-full h-56 bg-gray-200 rounded-lg flex items-center justify-center mb-6">
+<span class="text-gray-500 font-medium text-sm">Bundle Preview</span>
+</div>
+<h3 class="text-xl font-bold text-gray-900 mb-1">Chicken Meal Deal</h3>
+<p class="text-sm text-gray-500 mb-6">Describe your bundle...</p>
+<!-- Preview Items List -->
+<div class="space-y-4">
+<div class="flex items-center gap-3">
+<img alt="Grilled Chicken" class="w-12 h-12 rounded-md object-cover border border-gray-200 shrink-0 shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxkw0bs6N-fXJa-QX_j09rjoi9pNjvr1yo_RaTzrvx7Qm-09EpveKL87kA1vnY1zAh5uIF0OqOKjjYmbMfXJ3Sxq5RHEfwxsiurPtnG7xiFuyyXTg8ZSgxUOMaEfueqQNdP91zpPEpZkSkh1wb-ts5ocb9OK3TVp4OoTG-TMK-jDyT7wSxdcQYst0bwAhTsXC7CVcsVO0tPLxOSCSrBWsE--tbXUprZgoC_uf8xzR0TkikfRx6C_t9tZu3csjOZujMzzD-QVQWTDQ"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Grilled Chicken</p>
+<p class="text-sm text-gray-600">₱12.00</p>
+</div>
+</div>
+<hr class="border-gray-100"/>
+<div class="flex items-center gap-3">
+<img alt="Fries" class="w-12 h-12 rounded-md object-cover border border-gray-200 shrink-0 shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnfHpY4IKWJH63OQy1dc36uJ5nRKf5BRrNjXVQNcTrJ6wHWZbFfK1C3NpA66dtFIfFtyGeNTNFt3bK1it-tQJJRPg7R0qe4bKHEopcCMneMOJ3tctfjPHYxMSajly88PdVmSzM6Bt_G1El4S80D8Z23NREtmtyLJz2X6X_ZFTAJFSAssdgnwaFwluLoMZjACiqix6_jX_MyvZO4z5VwCoLzG9E09Vtxp0TxQ6H1CAdNEHapL8KFpROv68jG_5rkAwxUUA8m_0pj_o"/>
+<div>
+<p class="text-sm font-semibold text-gray-900">Fries</p>
+<p class="text-sm text-gray-600">₱4.00</p>
+</div>
+</div>
+<hr class="border-gray-100"/>
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-md bg-black flex items-center justify-center border border-gray-200 shrink-0 shadow-sm">
+<img alt="Coke" class="h-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKcM06CoOJB0TNT9ubZfsI9-kyzcZojJbhY_OsfMkU9A7Cr5tO2K9M1QJ7q5KYTYazAiaBLqYJFs_x2OigE0C0rlK-F0r13wfq1Qit2u-kOaRqUu3eiOcpZ-nzvpdm0I4IhIuapN2JnGTaQ6kIcohvh7i8Zqs3Ur9_8k5cFN_eO-LVzBDYwX1xrFU6joyDjrSjnBqB_cNHrOW8v_fUtY-E8Ibau9rxPhy9Jc6UCZyHJgBYsSCsq9i0VQl_cnyUgv-j_42vFMT7A8Q"/>
+</div>
+<div>
+<p class="text-sm font-semibold text-gray-900">Coke</p>
+<p class="text-sm text-gray-600">₱2.50</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Buttons Footer -->
+<div class="px-8 py-4 border-t border-gray-200 shrink-0 flex justify-end gap-3 bg-white">
+<button class="px-5 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
+          Back: Basic Info
+        </button>
+<button class="px-5 py-2 bg-gray-900 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
+          Next: Pricing
+        </button>
+</div>
+</main>
+<!-- END: Main Content Area -->
+</div>
+<!-- END: Main Layout -->
+</body></html>
+
+<!-- Create Bundle Pricing -->
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Phosphor Icons -->
+<script src="https://unpkg.com/@phosphor-icons/web"></script>
+<style data-purpose="custom-fonts">
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sidebar: '#F9FAFB',
+            'sidebar-hover': '#F3F4F6',
+            'sidebar-active': '#F3F4F6',
+            'border-light': '#E5E7EB',
+            'text-main': '#111827',
+            'text-muted': '#6B7280',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-white text-text-main antialiased h-screen flex overflow-hidden">
+<!-- BEGIN: Sidebar -->
+<aside class="w-64 bg-sidebar border-r border-border-light flex flex-col justify-between h-full flex-shrink-0">
+<div class="flex flex-col h-full">
+<!-- Sidebar Header -->
+<div class="p-4 border-b border-border-light flex justify-between items-center">
+<div>
+<h1 class="font-bold text-sm text-text-main">Dashboard</h1>
+<p class="text-xs text-text-muted">Cafe Juancho</p>
+</div>
+<button class="text-text-muted hover:text-text-main">
+<i class="ph ph-caret-left text-sm"></i>
+</button>
+</div>
+<!-- Sidebar Navigation -->
+<nav class="flex-1 overflow-y-auto py-4">
+<ul class="space-y-1 px-3">
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-squares-four mr-3 text-lg text-text-muted"></i>
+              Dashboard
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-fork-knife mr-3 text-lg text-text-muted"></i>
+              Menu Management
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-list-dashes mr-3 text-lg text-text-muted"></i>
+              Categories
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-shopping-bag mr-3 text-lg text-text-muted"></i>
+              Order Types
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-credit-card mr-3 text-lg text-text-muted"></i>
+              Payment Methods
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-chart-line-up mr-3 text-lg text-text-muted"></i>
+              Menu Engineering
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md bg-sidebar-active text-text-main transition-colors" href="#">
+<i class="ph ph-package mr-3 text-lg text-text-main"></i>
+              Bundles
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-paint-brush mr-3 text-lg text-text-muted"></i>
+              Hero Designer
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-receipt mr-3 text-lg text-text-muted"></i>
+              Orders
+            </a>
+</li>
+<li>
+<a class="flex items-center px-3 py-2 text-sm font-medium rounded-md text-text-main hover:bg-sidebar-hover transition-colors" href="#">
+<i class="ph ph-gear mr-3 text-lg text-text-muted"></i>
+              Settings
+            </a>
+</li>
+</ul>
+</nav>
+</div>
+<!-- Sidebar Footer (Logout) -->
+<div class="p-4 border-t border-border-light">
+<button class="flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 transition-colors">
+<div class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center mr-3 text-white text-xs font-bold">K</div>
+        Logout
+      </button>
+</div>
+</aside>
+<!-- END: Sidebar -->
+<!-- BEGIN: Main Content -->
+<main class="flex-1 flex flex-col overflow-hidden bg-white">
+<!-- Top Padding / Header Area -->
+<div class="pt-8 px-8 lg:px-12 max-w-5xl mx-auto w-full flex-shrink-0">
+<h1 class="text-3xl font-bold text-text-main mb-1">Create Bundle</h1>
+<p class="text-sm text-text-muted mb-8">Group menu items together with special pricing</p>
+<!-- Step Progress Bar -->
+<div class="relative mb-12">
+<div aria-hidden="true" class="absolute inset-0 flex items-center">
+<div class="w-full border-t-[3px] border-gray-200"></div>
+<!-- Active Line Progress -->
+<div class="absolute border-t-[3px] border-black w-3/4"></div>
+</div>
+<div class="relative flex justify-between">
+<!-- Step 1 -->
+<div class="flex flex-col items-center">
+<div class="w-4 h-4 bg-black rounded-full mb-2 z-10"></div>
+<span class="text-xs font-semibold text-text-main bg-white px-2">1. Basic Info</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center">
+<div class="w-4 h-4 bg-black rounded-full mb-2 z-10"></div>
+<span class="text-xs font-semibold text-text-main bg-white px-2">2. Bundle Items</span>
+</div>
+<!-- Step 3 (Active) -->
+<div class="flex flex-col items-center">
+<div class="w-4 h-4 bg-black rounded-full mb-2 z-10 shadow-[0_0_0_4px_white]"></div>
+<span class="text-xs font-semibold text-text-main bg-white px-2">3. Pricing</span>
+</div>
+<!-- Step 4 -->
+<div class="flex flex-col items-center">
+<div class="w-4 h-4 bg-gray-200 rounded-full mb-2 z-10"></div>
+<span class="text-xs font-medium text-text-muted bg-white px-2">4. Visibility &amp; Review</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Scrollable Content Area -->
+<div class="flex-1 overflow-y-auto px-8 lg:px-12 pb-24">
+<div class="max-w-5xl mx-auto flex flex-col lg:flex-row gap-12">
+<!-- Left Column: Form -->
+<div class="flex-1">
+<!-- Pricing Type Toggle -->
+<div class="flex rounded-full border border-gray-300 p-1 mb-8 bg-white">
+<button class="flex-1 py-2 px-4 rounded-full bg-black text-white text-sm font-semibold transition-colors">
+              Fixed Price
+            </button>
+<button class="flex-1 py-2 px-4 rounded-full text-text-main hover:bg-gray-50 text-sm font-medium transition-colors">
+              Discount Percentage
+            </button>
+</div>
+<!-- Bundle Price Input -->
+<div class="mb-8">
+<label class="block text-sm font-semibold text-text-main mb-2" for="bundlePrice">
+              Bundle Price <span class="text-red-500">*</span>
+</label>
+<div class="relative rounded-md shadow-sm">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="text-gray-500 sm:text-lg">₱</span>
+</div>
+<input class="block w-full pl-8 pr-12 py-3 sm:text-lg border-2 border-gray-800 rounded-lg focus:ring-black focus:border-black" id="bundlePrice" name="bundlePrice" placeholder="0.00" type="text" value="0.00"/>
+</div>
+</div>
+<!-- Savings Calculator -->
+<div>
+<h3 class="text-sm font-semibold text-text-main mb-2">Savings Calculator</h3>
+<div class="bg-gray-100 rounded-lg p-4 space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-text-main font-medium">Total Value of Individual Items:</span>
+<span class="text-text-main font-semibold">₱0.00</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-text-main font-medium">Your Savings:</span>
+<span class="text-text-main font-semibold">₱0.00</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Preview Card -->
+<div class="w-full lg:w-80 flex-shrink-0 pt-2 lg:pt-0">
+<div class="border border-gray-200 rounded-xl p-4 shadow-sm bg-white">
+<!-- Image Placeholder -->
+<div class="aspect-square bg-gray-200 rounded-lg mb-4 flex items-center justify-center">
+<span class="text-sm text-gray-500 font-medium">Bundle Preview</span>
+</div>
+<!-- Details -->
+<div class="flex justify-between items-start mb-2">
+<h4 class="font-bold text-lg text-text-main leading-tight">Chicken Meal Deal</h4>
+<span class="font-bold text-lg text-text-main">₱0.00</span>
+</div>
+<p class="text-sm text-text-muted mb-4">Describe your bundle...</p>
+<!-- Bottom Row -->
+<div class="flex justify-between items-center">
+<div class="w-12 h-6 bg-gray-200 rounded"></div>
+<span class="text-xs text-text-main font-medium">Savings: ₱0.00</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Fixed Footer Actions -->
+<div class="fixed bottom-0 right-0 left-64 bg-white border-t border-gray-200 p-4 px-8 lg:px-12 flex justify-end gap-3 z-20">
+<button class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-text-main bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black">
+        Back: Bundle Items
+      </button>
+<button class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black">
+        Next: Visibility
+      </button>
+</div>
+</main>
+<!-- END: Main Content -->
+</body></html>
+
+<!-- Create Bundle Dashboard -->
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle: Final Review</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style data-purpose="typography">
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #fafafa;
+    }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-900">
+<!-- BEGIN: Sidebar -->
+<aside class="w-64 flex-shrink-0 bg-[#f7f7f7] border-r border-gray-200 flex flex-col justify-between">
+<div>
+<!-- Sidebar Header -->
+<div class="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
+<div>
+<h1 class="font-bold text-sm">Dashboard</h1>
+<p class="text-xs text-gray-500">Cafe Juancho</p>
+</div>
+<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<!-- Navigation -->
+<nav class="mt-4 px-3 space-y-1 text-sm font-medium">
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Dashboard
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Menu Management
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Categories
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Order Types
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Payment Methods
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Menu Engineering
+        </a>
+<a class="flex items-center px-3 py-2 bg-gray-200 text-gray-900 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-600" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Bundles
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Hero Designer
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Orders
+        </a>
+<a class="flex items-center px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-md" href="#">
+<svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Settings
+        </a>
+</nav>
+</div>
+<!-- Logout -->
+<div class="p-4 border-t border-gray-200">
+<a class="flex items-center text-sm font-medium text-gray-700 hover:text-gray-900" href="#">
+<div class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center mr-3 text-xs text-white">N</div>
+        Logout
+      </a>
+</div>
+</aside>
+<!-- END: Sidebar -->
+<!-- BEGIN: Main Content -->
+<main class="flex-1 overflow-y-auto p-10 bg-white">
+<div class="max-w-4xl mx-auto">
+<!-- Header -->
+<header class="mb-10">
+<h2 class="text-2xl font-bold mb-1">Create Bundle: Final Review &amp; Publish</h2>
+<p class="text-sm text-gray-500">Group menu items together with special pricing</p>
+</header>
+<!-- Progress Bar -->
+<div class="mb-12 relative">
+<div aria-hidden="true" class="absolute top-2 left-10 right-10 h-1 bg-gray-200"></div>
+<div aria-hidden="true" class="absolute top-2 left-10 w-[75%] h-1 bg-[#333]"></div>
+<div class="relative flex justify-between">
+<div class="flex flex-col items-center w-1/4">
+<div class="w-5 h-5 bg-[#333] rounded-full mb-2 z-10"></div>
+<span class="text-sm font-semibold text-gray-900">1. Basic Info</span>
+</div>
+<div class="flex flex-col items-center w-1/4">
+<div class="w-5 h-5 bg-[#333] rounded-full mb-2 z-10"></div>
+<span class="text-sm font-semibold text-gray-900">2. Bundle Items</span>
+</div>
+<div class="flex flex-col items-center w-1/4">
+<div class="w-5 h-5 bg-[#333] rounded-full mb-2 z-10"></div>
+<span class="text-sm font-semibold text-gray-900">3. Pricing</span>
+</div>
+<div class="flex flex-col items-center w-1/4">
+<div class="w-5 h-5 bg-gray-200 rounded-full mb-2 z-10"></div>
+<span class="text-sm font-semibold text-gray-900">4. Visibility &amp; Review</span>
+</div>
+</div>
+</div>
+<!-- Content Grid -->
+<div class="grid grid-cols-12 gap-12">
+<!-- Left Column: Settings -->
+<div class="col-span-7 space-y-8">
+<!-- Visibility Settings -->
+<section>
+<h3 class="text-lg font-bold mb-6">Visibility Settings</h3>
+<div class="space-y-6">
+<div class="flex items-start">
+<button aria-checked="true" class="bg-[#111] relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none" role="switch" type="button">
+<span aria-hidden="true" class="translate-x-5 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+<div class="ml-4">
+<span class="block text-sm font-semibold text-gray-900">Active</span>
+<span class="block text-sm text-gray-500">Inactive bundles are hidden from customers</span>
+</div>
+</div>
+<div class="flex items-start">
+<button aria-checked="true" class="bg-[#111] relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none" role="switch" type="button">
+<span aria-hidden="true" class="translate-x-5 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+<div class="ml-4">
+<span class="block text-sm font-semibold text-gray-900">Show on menu</span>
+<span class="block text-sm text-gray-500">Display this bundle on the customer-facing menu</span>
+</div>
+</div>
+<div class="flex items-start">
+<button aria-checked="true" class="bg-[#111] relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none" role="switch" type="button">
+<span aria-hidden="true" class="translate-x-5 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+<div class="ml-4">
+<span class="block text-sm font-semibold text-gray-900">Show as upsell</span>
+<span class="block text-sm text-gray-500">Suggest this bundle as an upsell during checkout</span>
+</div>
+</div>
+</div>
+</section>
+<hr class="border-gray-200"/>
+<!-- Schedule Settings -->
+<section>
+<h3 class="text-lg font-bold mb-6">Schedule</h3>
+<div class="flex items-center mb-6">
+<button aria-checked="false" class="bg-gray-200 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none" role="switch" type="button">
+<span aria-hidden="true" class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+<span class="ml-4 text-sm font-semibold text-gray-900">Limited Time Only</span>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-700 mb-1" for="start-date">Start Date</label>
+<div class="relative rounded-md shadow-sm">
+<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<input class="block w-full rounded-md border-gray-300 pl-10 pr-10 focus:border-gray-500 focus:ring-gray-500 sm:text-sm py-2" disabled="" id="start-date" name="start-date" placeholder="Start Date" type="text"/>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-700 mb-1" for="end-date">End Date</label>
+<div class="relative rounded-md shadow-sm">
+<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<input class="block w-full rounded-md border-gray-300 pl-10 pr-10 focus:border-gray-500 focus:ring-gray-500 sm:text-sm py-2" disabled="" id="end-date" name="end-date" placeholder="End Date" type="text"/>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Preview & Summary -->
+<div class="col-span-5 flex flex-col items-center">
+<!-- Card Preview -->
+<div class="w-full max-w-[320px] bg-white rounded-xl border border-gray-200 overflow-hidden shadow-md mb-8">
+<img alt="Chicken Meal Deal" class="w-full h-48 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_Dt76wfMp4eJY-phV0Gj9EuH9SPv_2UB6-z3K_f8D_yNQyeuyDihkadVSozHkI1W7uHE3Jvr7kChscof_138Zr1c9FmJyrpQoBJgv9U4tbnSq6m8Xk2m030tmWhm2d1BoRC7G8zY0kTo-RovWJGz85cr7cGpUd8gUbxECKQdR_kAj-bsI5NMP30HrSMtHi6Cb59xQGSoNOZd43IKMYCwl2su-DOkonr6YOgracrevNQ8gc7liEAuv7guUdfy2dHokK6CHrBPS8ik"/>
+<div class="p-4">
+<h4 class="font-bold text-base mb-1">Chicken Meal Deal</h4>
+<p class="text-sm text-gray-500 mb-3 line-clamp-2">Delicious chicken with sides and drink.</p>
+<p class="font-bold text-base">₱12.99</p>
+</div>
+</div>
+<!-- Summary -->
+<div class="w-full max-w-[320px]">
+<h3 class="text-lg font-bold mb-4">Bundle Summary</h3>
+<dl class="space-y-2 text-sm">
+<div class="grid grid-cols-3 gap-2">
+<dt class="font-semibold text-gray-900">Items:</dt>
+<dd class="col-span-2 text-gray-700">2 pieces Chicken, Regular Fries, Large Soda</dd>
+</div>
+<div class="grid grid-cols-3 gap-2">
+<dt class="font-semibold text-gray-900">Price:</dt>
+<dd class="col-span-2 text-gray-700">₱12.99 (Fixed)</dd>
+</div>
+<div class="grid grid-cols-3 gap-2">
+<dt class="font-semibold text-gray-900">Visibility:</dt>
+<dd class="col-span-2 text-gray-700">Mobile, Web, Delivery</dd>
+</div>
+<div class="grid grid-cols-3 gap-2">
+<dt class="font-semibold text-gray-900">Schedule:</dt>
+<dd class="col-span-2 text-gray-700">Always Available</dd>
+</div>
+</dl>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="mt-12 flex justify-end space-x-3 max-w-[800px]">
+<button class="px-4 py-2 border border-[#ccc] rounded-lg shadow-sm text-sm font-medium text-gray-900 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900" type="button">
+          Back: Pricing
+        </button>
+<button class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#111] hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900" type="button">
+          Publish Bundle
+        </button>
+</div>
+</div>
+</main>
+<!-- END: Main Content -->
+</body></html>

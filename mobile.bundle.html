@@ -1,0 +1,805 @@
+<!-- Bundle: Basic Info (Mobile) -->
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle - Basic Info</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-secondary-fixed": "#1b1c1c",
+                        "secondary-fixed": "#c7c6c6",
+                        "on-primary-fixed-variant": "#e2e2e2",
+                        "surface-variant": "#e2e2e2",
+                        "tertiary-fixed-dim": "#454747",
+                        "tertiary-fixed": "#5d5f5f",
+                        "inverse-on-surface": "#f1f1f1",
+                        "surface-dim": "#dadada",
+                        "on-secondary-container": "#1b1c1c",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed-variant": "#3b3b3c",
+                        "inverse-surface": "#2f3131",
+                        "on-primary": "#e2e2e2",
+                        "background": "#f9f9f9",
+                        "on-primary-fixed": "#ffffff",
+                        "secondary": "#5e5e5e",
+                        "on-tertiary-fixed": "#ffffff",
+                        "on-tertiary-container": "#ffffff",
+                        "inverse-primary": "#c6c6c6",
+                        "outline-variant": "#c6c6c6",
+                        "on-surface-variant": "#474747",
+                        "secondary-fixed-dim": "#acabab",
+                        "surface-bright": "#f9f9f9",
+                        "surface": "#f9f9f9",
+                        "on-surface": "#1a1c1c",
+                        "on-error-container": "#410002",
+                        "tertiary": "#3a3c3c",
+                        "on-tertiary": "#e2e2e2",
+                        "surface-container-highest": "#e2e2e2",
+                        "on-tertiary-fixed-variant": "#e2e2e2",
+                        "secondary-container": "#d5d4d4",
+                        "surface-tint": "#5e5e5e",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#737575",
+                        "surface-container": "#eeeeee",
+                        "on-background": "#1a1c1c",
+                        "outline": "#777777",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#f3f3f3",
+                        "primary-container": "#3b3b3b",
+                        "surface-container-high": "#e8e8e8",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-fixed-dim": "#474747",
+                        "on-primary-container": "#ffffff",
+                        "primary-fixed": "#5e5e5e",
+                        "on-secondary": "#ffffff",
+                        "primary": "#000000"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-shift-bg {
+            background-color: rgba(249, 249, 249, 0.8);
+        }
+        @media (prefers-color-scheme: dark) {
+            .tonal-shift-bg {
+                background-color: rgba(0, 0, 0, 0.8);
+            }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-black/80 backdrop-blur-md">
+<div class="flex items-center px-6 h-16 w-full max-w-screen-xl mx-auto">
+<button class="mr-4 text-black dark:text-white hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="font-manrope font-bold text-lg tracking-tight text-black dark:text-white">Create Bundle</h1>
+</div>
+</header>
+<main class="pt-24 pb-32 px-6 max-w-md mx-auto">
+<!-- Step Indicator -->
+<div class="mb-10">
+<div class="flex justify-between items-end mb-3">
+<h2 class="font-headline font-extrabold text-3xl text-primary tracking-tight">Basic Info</h2>
+<span class="font-label text-sm font-bold text-on-surface-variant">Step 1 of 4</span>
+</div>
+<div class="flex gap-1 h-1 w-full">
+<div class="flex-1 bg-primary"></div>
+<div class="flex-1 bg-outline-variant/30"></div>
+<div class="flex-1 bg-outline-variant/30"></div>
+<div class="flex-1 bg-outline-variant/30"></div>
+</div>
+</div>
+<div class="space-y-8">
+<!-- Image Upload Visual Zone -->
+<section>
+<label class="block font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Bundle Hero Image</label>
+<div class="relative group cursor-pointer aspect-video bg-surface-container-low rounded-xl overflow-hidden flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/40 hover:border-primary transition-colors duration-300">
+<img class="absolute inset-0 w-full h-full object-cover opacity-10 group-hover:opacity-20 transition-opacity" data-alt="high-end editorial food photography of a chef's curated degustation menu on a minimalist dark stone table with soft overhead spotlighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoCk2f--tgWbZW30qREnkEk2jPeC3RLsMbAxBSjbH-Bvy0xgey9RcaafYvWSdejP1Fbac1fC7uMRoNTx5jsM4_tfRLky8cjssLNNIEStBf1Y5y9A9IfoTPc1yL25JcpypP7HoniYbzHJ3AnE8WLmuxT7EyIusvG4H3pmLn30wh7AGtJhU_CR6IBk05kruJwAAsjZiQbI3zw_sgJt1j2373vfagkGEggmt_RQsu3o5uNDyHOSjDAhE2Z-BizNnptcH-QiUbqaIpORU"/>
+<div class="relative z-10 flex flex-col items-center">
+<span class="material-symbols-outlined text-primary text-4xl mb-2">add_a_photo</span>
+<p class="font-body text-sm font-medium text-primary">Upload Cover Photo</p>
+<p class="font-body text-[10px] text-on-surface-variant mt-1">Recommended: 16:9 Aspect Ratio</p>
+</div>
+</div>
+</section>
+<!-- Bundle Name Input -->
+<section>
+<label class="block font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2" for="bundle-name">Bundle Name</label>
+<div class="relative">
+<input class="w-full bg-surface-container-lowest border-none focus:ring-0 px-0 py-3 text-lg font-headline font-bold text-primary placeholder:text-outline-variant/60 border-b-2 border-outline-variant/20 focus:border-primary transition-all duration-300" id="bundle-name" placeholder="e.g. Weekend Degustation ₱2,500" type="text"/>
+</div>
+<p class="mt-2 text-[11px] text-on-surface-variant italic">The ₱ symbol will be automatically formatted in pricing displays.</p>
+</section>
+<!-- Description Text Area -->
+<section>
+<label class="block font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2" for="description">Description</label>
+<div class="p-4 bg-surface-container-low rounded-xl">
+<textarea class="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-body text-on-surface placeholder:text-outline-variant/60 resize-none leading-relaxed" id="description" placeholder="Tell your guests the story behind this culinary collection..." rows="5"></textarea>
+</div>
+</section>
+<!-- Bundle Meta Card (Editorial Detail) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex items-center gap-4">
+<div class="h-12 w-12 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">restaurant_menu</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-sm">Curation Tip</h4>
+<p class="font-body text-xs text-on-surface-variant">Bundles with clear descriptions and ₱ pricing highlights see 40% higher engagement.</p>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Customized for Creation Flow) -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-between items-center px-6 py-4 bg-white dark:bg-black shadow-[0_-12px_24px_rgba(0,0,0,0.04)] border-t border-gray-100 dark:border-gray-900 z-50">
+<!-- Inactive Back Action -->
+<button class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-8 py-3 w-1/3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined">chevron_left</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest mt-1">Back</span>
+</button>
+<!-- Active Next Action -->
+<button class="flex flex-col items-center justify-center bg-black dark:bg-white text-white dark:text-black rounded-sm px-8 py-3 w-2/3 active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">chevron_right</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest mt-1">Next</span>
+</button>
+</nav>
+</body></html>
+
+<!-- Bundle: Item Selection (Mobile) -->
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Bundle - Item Selection</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#1b1c1c",
+              "secondary-fixed": "#c7c6c6",
+              "on-primary-fixed-variant": "#e2e2e2",
+              "surface-variant": "#e2e2e2",
+              "tertiary-fixed-dim": "#454747",
+              "tertiary-fixed": "#5d5f5f",
+              "inverse-on-surface": "#f1f1f1",
+              "surface-dim": "#dadada",
+              "on-secondary-container": "#1b1c1c",
+              "error": "#ba1a1a",
+              "on-secondary-fixed-variant": "#3b3b3c",
+              "inverse-surface": "#2f3131",
+              "on-primary": "#e2e2e2",
+              "background": "#f9f9f9",
+              "on-primary-fixed": "#ffffff",
+              "secondary": "#5e5e5e",
+              "on-tertiary-fixed": "#ffffff",
+              "on-tertiary-container": "#ffffff",
+              "inverse-primary": "#c6c6c6",
+              "outline-variant": "#c6c6c6",
+              "on-surface-variant": "#474747",
+              "secondary-fixed-dim": "#acabab",
+              "surface-bright": "#f9f9f9",
+              "surface": "#f9f9f9",
+              "on-surface": "#1a1c1c",
+              "on-error-container": "#410002",
+              "tertiary": "#3a3c3c",
+              "on-tertiary": "#e2e2e2",
+              "surface-container-highest": "#e2e2e2",
+              "on-tertiary-fixed-variant": "#e2e2e2",
+              "secondary-container": "#d5d4d4",
+              "surface-tint": "#5e5e5e",
+              "error-container": "#ffdad6",
+              "tertiary-container": "#737575",
+              "surface-container": "#eeeeee",
+              "on-background": "#1a1c1c",
+              "outline": "#777777",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f3f3f3",
+              "primary-container": "#3b3b3b",
+              "surface-container-high": "#e8e8e8",
+              "surface-container-lowest": "#ffffff",
+              "primary-fixed-dim": "#474747",
+              "on-primary-container": "#ffffff",
+              "primary-fixed": "#5e5e5e",
+              "on-secondary": "#ffffff",
+              "primary": "#000000"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+        .glass-header {
+            background: rgba(249, 249, 249, 0.8);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface min-h-screen pb-40">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 glass-header">
+<div class="flex items-center px-6 h-16 w-full max-w-screen-xl mx-auto">
+<button class="mr-4 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined text-black dark:text-white" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-manrope font-bold text-lg tracking-tight text-black dark:text-white">Create Bundle</h1>
+</div>
+</header>
+<main class="pt-20 px-6 max-w-screen-xl mx-auto">
+<!-- Step Indicator -->
+<div class="mb-8">
+<div class="flex justify-between items-end mb-2">
+<span class="font-label font-bold text-[0.65rem] uppercase tracking-[0.2em] text-on-surface-variant">Step 2 of 4</span>
+<span class="font-label font-bold text-xs text-primary">50% Complete</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-1/2"></div>
+</div>
+</div>
+<div class="mb-8">
+<h2 class="text-3xl font-extrabold tracking-tight mb-2">Add Items to Bundle</h2>
+<p class="text-on-surface-variant text-sm leading-relaxed">Select the culinary highlights to include in your curated collection.</p>
+</div>
+<!-- Search Bar -->
+<div class="relative mb-10">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline" data-icon="search">search</span>
+</div>
+<input class="w-full h-14 pl-12 pr-4 bg-surface-container-lowest border-none focus:ring-0 focus:border-b-2 focus:border-primary rounded-xl text-sm transition-all shadow-sm" placeholder="Search menu items..." type="text"/>
+</div>
+<!-- Bento-ish Grid for Items -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Item Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden flex flex-col group">
+<div class="relative h-48 w-full">
+<img class="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" data-alt="Close-up of a vibrant healthy salad bowl with roasted vegetables, avocado slices, and fresh seeds in an editorial food photography style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBX01Bei8gnzyu3a2sYP7Vn4oAtRg0H4hKEp3LIDcbX1cRhqlMT3s5bCm-FupxhYOstW4cgXk0ISn3HFeaYHz6JC6ZsVj5oCh6bxyjkVUJFH4YYPoYNdeNXbplj8yL8dlZ3W5sUTF8ndCXIAz7a9dlZOW7_iDeF6oB-kMoois_AnbbHPPJjQaj-t8Sg44eSiVAoB8sRrWrFOYTco-X8-GPeo6QlqD_e3xjcbJwMYIbbT8JVnzzZjd56b_QDDmxSFy1lvcEw85l7K6U"/>
+<div class="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full shadow-sm">
+<span class="font-bold text-sm">₱450</span>
+</div>
+</div>
+<div class="p-5 flex justify-between items-start">
+<div class="space-y-1">
+<h3 class="font-bold text-lg leading-tight">Artisan Harvest Bowl</h3>
+<p class="text-on-surface-variant text-xs font-medium uppercase tracking-wider">Mains</p>
+</div>
+<button class="w-10 h-10 bg-primary text-white flex items-center justify-center rounded-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+<!-- Item Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden flex flex-col group">
+<div class="relative h-48 w-full">
+<img class="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" data-alt="Exquisite thin-crust pizza topped with fresh basil and mozzarella on a rustic dark surface with atmospheric lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCO2zgdGesQ7PXitWE6drE20ZyC5TDCfzd_cWC6fKLLb6eAXC11Gfbj7glfrxC2Fl85mh1l88XlhaBshpEn-304Sov7mCJS-frI-DJ-9Mrw75Xev4oyEEJAFmDSXQg7P0L0bKyIztgoMkzzaKrvgtl5QdkQ_PgAZcLK7aEnlOcVQc96iij-ygcfA-nw0IRHfVUPKgOIS93JTUo4KJNp_C69dMYRvhq9BcSbXfAvbh2ADNIFs_AuK1CnPc9QpbAtL-KFYgCx0jS7xPY"/>
+<div class="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full shadow-sm">
+<span class="font-bold text-sm">₱620</span>
+</div>
+</div>
+<div class="p-5 flex justify-between items-start">
+<div class="space-y-1">
+<h3 class="font-bold text-lg leading-tight">Truffle Marguerita</h3>
+<p class="text-on-surface-variant text-xs font-medium uppercase tracking-wider">Stone Oven</p>
+</div>
+<button class="w-10 h-10 bg-surface-container-highest text-primary flex items-center justify-center rounded-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+<!-- Item Card 3 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden flex flex-col group">
+<div class="relative h-48 w-full">
+<img class="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" data-alt="Gourmet glazed donut with dark chocolate and gold leaf garnish on a minimalist white ceramic plate" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCLe9tpa5_Dqfb3qKUrWheH_C3EuYcsRcSSlo0quxY0745U-md0xV_AJdFnWftoHdmmV_dQcJ1ZlR3CftKdTbMixsZJsoEnMKh7OS3Ym4u2E3PtpB6kYtB7QIpv5UNWB6bbs82XZ39kPJWVUp-iCQOe7jj-a971TGPIRvFf8M74tcscbGy2t23jrkCvYrzX5_RSMeL6XTYNTixi0rAc-g4Y2z-EGLt7E3YqujyQJCpijfCNqgLImLwVkpZyxqBf1UcGMzkBpDXgNwY"/>
+<div class="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full shadow-sm">
+<span class="font-bold text-sm">₱210</span>
+</div>
+</div>
+<div class="p-5 flex justify-between items-start">
+<div class="space-y-1">
+<h3 class="font-bold text-lg leading-tight">Dark Velvet Glaze</h3>
+<p class="text-on-surface-variant text-xs font-medium uppercase tracking-wider">Desserts</p>
+</div>
+<button class="w-10 h-10 bg-primary text-white flex items-center justify-center rounded-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+<!-- Item Card 4 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden flex flex-col group">
+<div class="relative h-48 w-full">
+<img class="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" data-alt="Sophisticated sparkling cocktail in a tall glass with a citrus twist garnish and soft bokeh city lights background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwHx8S-eSMwXu3PnV_Tz72q0lLfQRA-CTzToXkHHcHBtzJQjq8gkSCc2Fvks7g8WGNZDqi6AL7PYdy--ILnYvqS0qfxoTzCrKPp6rkfohqFdiZ6x_v0HcD_rO4Srp4M-8psvijBwQp2710TYihW7wxnd31DmzEkJvLqZqCxuY9jGfIy9h8VUVyjN2YJh0ALsAVQq97B8rgtvCoN-HoS5hNYMTKpUL-gw0_E9usBfW0_HQ4HWbm8y2zKatlNgXHkOxI4gZ66TGp8VI"/>
+<div class="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full shadow-sm">
+<span class="font-bold text-sm">₱340</span>
+</div>
+</div>
+<div class="p-5 flex justify-between items-start">
+<div class="space-y-1">
+<h3 class="font-bold text-lg leading-tight">Citrus Bloom Fizz</h3>
+<p class="text-on-surface-variant text-xs font-medium uppercase tracking-wider">Beverages</p>
+</div>
+<button class="w-10 h-10 bg-surface-container-highest text-primary flex items-center justify-center rounded-lg active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating "Added Items" Summary -->
+<div class="fixed bottom-24 left-6 right-6 z-40">
+<div class="bg-black text-white p-4 rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.15)] flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="flex -space-x-3 overflow-hidden">
+<div class="w-8 h-8 rounded-full border-2 border-black bg-white flex items-center justify-center">
+<span class="text-[10px] text-black font-bold">2</span>
+</div>
+</div>
+<div>
+<p class="text-xs font-bold leading-none">2 Items Added</p>
+<p class="text-[10px] opacity-60">₱660 Total Value</p>
+</div>
+</div>
+<button class="text-xs uppercase font-bold tracking-widest flex items-center gap-1 hover:opacity-70">
+                View List
+                <span class="material-symbols-outlined text-sm" data-icon="keyboard_arrow_up">keyboard_arrow_up</span>
+</button>
+</div>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-between items-center px-6 py-4 bg-white dark:bg-black z-50 border-t border-gray-100 dark:border-gray-900 shadow-[0_-12px_24px_rgba(0,0,0,0.04)]">
+<button class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-8 py-3 w-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined mb-1" data-icon="chevron_left">chevron_left</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Back</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-black dark:bg-white text-white dark:text-black rounded-sm px-8 py-3 w-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined mb-1" data-icon="chevron_right">chevron_right</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Next</span>
+</button>
+</nav>
+</body></html>
+
+<!-- Bundle: Pricing (Mobile) -->
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#1b1c1c",
+              "secondary-fixed": "#c7c6c6",
+              "on-primary-fixed-variant": "#e2e2e2",
+              "surface-variant": "#e2e2e2",
+              "tertiary-fixed-dim": "#454747",
+              "tertiary-fixed": "#5d5f5f",
+              "inverse-on-surface": "#f1f1f1",
+              "surface-dim": "#dadada",
+              "on-secondary-container": "#1b1c1c",
+              "error": "#ba1a1a",
+              "on-secondary-fixed-variant": "#3b3b3c",
+              "inverse-surface": "#2f3131",
+              "on-primary": "#e2e2e2",
+              "background": "#f9f9f9",
+              "on-primary-fixed": "#ffffff",
+              "secondary": "#5e5e5e",
+              "on-tertiary-fixed": "#ffffff",
+              "on-tertiary-container": "#ffffff",
+              "inverse-primary": "#c6c6c6",
+              "outline-variant": "#c6c6c6",
+              "on-surface-variant": "#474747",
+              "secondary-fixed-dim": "#acabab",
+              "surface-bright": "#f9f9f9",
+              "surface": "#f9f9f9",
+              "on-surface": "#1a1c1c",
+              "on-error-container": "#410002",
+              "tertiary": "#3a3c3c",
+              "on-tertiary": "#e2e2e2",
+              "surface-container-highest": "#e2e2e2",
+              "on-tertiary-fixed-variant": "#e2e2e2",
+              "secondary-container": "#d5d4d4",
+              "surface-tint": "#5e5e5e",
+              "error-container": "#ffdad6",
+              "tertiary-container": "#737575",
+              "surface-container": "#eeeeee",
+              "on-background": "#1a1c1c",
+              "outline": "#777777",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f3f3f3",
+              "primary-container": "#3b3b3b",
+              "surface-container-high": "#e8e8e8",
+              "surface-container-lowest": "#ffffff",
+              "primary-fixed-dim": "#474747",
+              "on-primary-container": "#ffffff",
+              "primary-fixed": "#5e5e5e",
+              "on-secondary": "#ffffff",
+              "primary": "#000000"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-shift-bg {
+            background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(249,249,249,0.8) 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background font-body text-on-surface min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-black/80 backdrop-blur-md tonal-shift-bg">
+<div class="flex items-center px-6 h-16 w-full max-w-screen-xl mx-auto">
+<button class="mr-4 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined text-black dark:text-white">arrow_back</span>
+</button>
+<h1 class="font-manrope font-bold text-lg tracking-tight text-black dark:text-white">Create Bundle</h1>
+</div>
+</header>
+<main class="pt-20 px-6 max-w-md mx-auto">
+<!-- Step Indicator -->
+<div class="mb-8">
+<div class="flex justify-between items-end mb-3">
+<span class="font-headline font-extrabold text-sm uppercase tracking-widest text-primary">Step 3 of 4</span>
+<span class="font-label text-xs text-on-surface-variant">Pricing Strategy</span>
+</div>
+<div class="flex gap-1 h-1">
+<div class="flex-1 bg-primary"></div>
+<div class="flex-1 bg-primary"></div>
+<div class="flex-1 bg-primary"></div>
+<div class="flex-1 bg-outline-variant/30"></div>
+</div>
+</div>
+<section class="mb-10">
+<h2 class="font-headline font-bold text-2xl mb-2 text-primary">Bundle Pricing</h2>
+<p class="text-on-surface-variant body-md mb-6">Define how you want to price this curated collection.</p>
+<!-- Pricing Toggle (Asymmetric Bento Style) -->
+<div class="grid grid-cols-2 gap-3 mb-8">
+<button class="flex flex-col p-4 bg-surface-container-lowest rounded-xl border-b-2 border-primary text-left transition-all active:scale-[0.98]">
+<span class="material-symbols-outlined text-primary mb-3" style="font-variation-settings: 'FILL' 1;">sell</span>
+<span class="font-headline font-bold text-sm text-primary">Fixed Price</span>
+<span class="text-[10px] text-on-surface-variant uppercase tracking-tighter mt-1">Set total amount</span>
+</button>
+<button class="flex flex-col p-4 bg-surface-container-low rounded-xl text-left transition-all hover:bg-surface-container-highest active:scale-[0.98]">
+<span class="material-symbols-outlined text-on-surface-variant mb-3">percent</span>
+<span class="font-headline font-bold text-sm text-on-surface-variant">Percentage</span>
+<span class="text-[10px] text-on-surface-variant uppercase tracking-tighter mt-1">Discount total</span>
+</button>
+</div>
+<!-- Input Field -->
+<div class="bg-surface-container-lowest p-6 rounded-xl mb-8 group">
+<label class="font-label font-bold text-[10px] uppercase tracking-widest text-on-surface-variant mb-2 block">Set Bundle Price</label>
+<div class="flex items-center border-b-2 border-outline-variant/20 group-focus-within:border-primary transition-colors py-2">
+<span class="font-headline font-bold text-3xl mr-2 text-primary">₱</span>
+<input class="bg-transparent border-none focus:ring-0 w-full font-headline font-bold text-4xl p-0 placeholder:text-outline-variant/40" placeholder="0.00" type="number" value="899"/>
+</div>
+</div>
+<!-- Live Preview Card (Editorial Style) -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-sm mb-10">
+<div class="h-32 bg-gray-200 relative overflow-hidden">
+<img class="w-full h-full object-cover opacity-90" data-alt="Gourmet fusion platter with artisanal dips and grilled vegetables on a rustic dark wooden table with overhead lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAteF9I2jOZ1YKaLvvCiuZPGuShnTgI31gmu2o8BZJ5sTdF28lo7YIQuQWerFnCFTQRB5weQjMVQQ8jXWDT1A_cbQfLHJbU9aR5AOTev8h-XsuCeAwZGlZn5ksXl6-LuEXp74zf6f0kGyHcj3Rsk2lZZJ4r3753Io05PpXGoQTN0iFfkZb2Ok0YrOXh-A4R7aBZ3KXvS1bJrRv0ieVOZw5OOx72NzWY740v5BYZ4aVy_IfCWCx8_oheIZ4boziZdoTsiptGTGiHREw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+<div class="absolute bottom-3 left-4">
+<span class="bg-white text-black font-label font-bold text-[10px] px-2 py-1 rounded-sm uppercase tracking-widest">Live Preview</span>
+</div>
+</div>
+<div class="p-5">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-headline font-bold text-lg text-primary">Weekend Feast Bundle</h3>
+<div class="text-right">
+<span class="block text-[10px] text-on-surface-variant line-through opacity-60">₱1,240.00</span>
+<span class="font-headline font-extrabold text-xl text-primary">₱899.00</span>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant">3 Items Included • Serves 2-3</p>
+</div>
+</div>
+<!-- Savings Calculator (Glassmorphism inspired well) -->
+<div class="bg-surface-container-low p-6 rounded-xl border border-white/40">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary text-sm">calculate</span>
+<h4 class="font-headline font-bold text-xs uppercase tracking-widest text-primary">Savings Calculator</h4>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-surface-variant">Total Value of Items</span>
+<span class="font-headline font-bold text-sm text-on-surface">₱1,240.00</span>
+</div>
+<div class="flex justify-between items-center text-primary">
+<span class="text-sm font-bold">Bundle Price</span>
+<span class="font-headline font-bold text-sm">- ₱899.00</span>
+</div>
+<div class="pt-4 border-t border-outline-variant/30 flex justify-between items-end">
+<div>
+<span class="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Customer Saves</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline font-extrabold text-2xl text-primary">₱341.00</span>
+<span class="text-xs font-bold text-primary">(27%)</span>
+</div>
+</div>
+<div class="bg-primary/5 px-3 py-1 rounded-full">
+<span class="text-[10px] font-bold text-primary uppercase tracking-tighter">High Conversion</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-between items-center px-6 py-4 bg-white dark:bg-black border-t border-gray-100 dark:border-gray-900 z-50 shadow-[0_-12px_24px_rgba(0,0,0,0.04)]">
+<button class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-8 py-3 w-1/2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined mb-1">chevron_left</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Back</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-black dark:bg-white text-white dark:text-black rounded-sm px-8 py-3 w-1/2 hover:opacity-90 transition-opacity active:translate-y-0.5 duration-150">
+<span class="material-symbols-outlined mb-1">chevron_right</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Next</span>
+</button>
+</nav>
+</body></html>
+
+<!-- Bundle: Review (Mobile) -->
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#1b1c1c",
+              "secondary-fixed": "#c7c6c6",
+              "on-primary-fixed-variant": "#e2e2e2",
+              "surface-variant": "#e2e2e2",
+              "tertiary-fixed-dim": "#454747",
+              "tertiary-fixed": "#5d5f5f",
+              "inverse-on-surface": "#f1f1f1",
+              "surface-dim": "#dadada",
+              "on-secondary-container": "#1b1c1c",
+              "error": "#ba1a1a",
+              "on-secondary-fixed-variant": "#3b3b3c",
+              "inverse-surface": "#2f3131",
+              "on-primary": "#e2e2e2",
+              "background": "#f9f9f9",
+              "on-primary-fixed": "#ffffff",
+              "secondary": "#5e5e5e",
+              "on-tertiary-fixed": "#ffffff",
+              "on-tertiary-container": "#ffffff",
+              "inverse-primary": "#c6c6c6",
+              "outline-variant": "#c6c6c6",
+              "on-surface-variant": "#474747",
+              "secondary-fixed-dim": "#acabab",
+              "surface-bright": "#f9f9f9",
+              "surface": "#f9f9f9",
+              "on-surface": "#1a1c1c",
+              "on-error-container": "#410002",
+              "tertiary": "#3a3c3c",
+              "on-tertiary": "#e2e2e2",
+              "surface-container-highest": "#e2e2e2",
+              "on-tertiary-fixed-variant": "#e2e2e2",
+              "secondary-container": "#d5d4d4",
+              "surface-tint": "#5e5e5e",
+              "error-container": "#ffdad6",
+              "tertiary-container": "#737575",
+              "surface-container": "#eeeeee",
+              "on-background": "#1a1c1c",
+              "outline": "#777777",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f3f3f3",
+              "primary-container": "#3b3b3b",
+              "surface-container-high": "#e8e8e8",
+              "surface-container-lowest": "#ffffff",
+              "primary-fixed-dim": "#474747",
+              "on-primary-container": "#ffffff",
+              "primary-fixed": "#5e5e5e",
+              "on-secondary": "#ffffff",
+              "primary": "#000000"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-shift-bg {
+            background-color: rgba(249, 249, 249, 0.8);
+        }
+        @supports (backdrop-filter: blur(12px)) {
+            .tonal-shift-bg {
+                backdrop-filter: blur(12px);
+            }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background font-body antialiased">
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-black/80 backdrop-blur-md">
+<div class="flex items-center px-6 h-16 w-full max-w-screen-xl mx-auto">
+<span class="material-symbols-outlined text-black dark:text-white mr-4 active:scale-95 duration-200 cursor-pointer" data-icon="arrow_back">arrow_back</span>
+<h1 class="font-manrope font-bold text-lg tracking-tight text-black dark:text-white">Create Bundle</h1>
+</div>
+</header>
+<main class="pt-20 pb-32 px-6 max-w-md mx-auto">
+<section class="mb-8">
+<div class="flex justify-between items-end mb-2">
+<h2 class="font-headline font-extrabold text-2xl text-primary tracking-tight">Review &amp; Publish</h2>
+<span class="font-label font-bold text-xs text-on-surface-variant uppercase tracking-widest mb-1">Step 4 of 4</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="w-full h-full bg-primary"></div>
+</div>
+</section>
+<section class="mb-10">
+<h3 class="font-label font-bold text-xs uppercase tracking-widest text-on-surface-variant mb-4">Final Preview</h3>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.04)]">
+<div class="relative h-56 w-full">
+<img class="w-full h-full object-cover" data-alt="top-down high-end restaurant photography of a curated tasting menu platter with vibrant colors and minimalist plating" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3iqy9yYURcWsuV-jEi_IqIRdfVnindx9XvMMKY2bL-mv0iMGj53IJS7QT9Il_FMHQ0VqjS3mEYVk0Xw6_6rK4jId1SGvOdC4m-cRQ6x60mRca1HfGG4UzR4XfKtBwZ5rs-G-OwMQ5DgpHqJ1bczDW9OqxICcYJNhM5CJvSOUXnsBuKGn3lPg4oeuNVa1cZL-XU5Nic5n8h2E2l3aReojx-cHTn_1q-xhXuR3GVjnIzmjW9n5TwTqPqcTdiNLccx0AZe82InlT6ts"/>
+<div class="absolute top-4 right-4 bg-primary text-white px-3 py-1 rounded-sm">
+<span class="font-headline font-bold text-sm tracking-tight">₱ 1,450</span>
+</div>
+</div>
+<div class="p-6">
+<h4 class="font-headline font-bold text-xl text-primary mb-2">The Curated Gastronomic Set</h4>
+<p class="text-on-surface-variant text-sm mb-4 leading-relaxed">A seasonal selection of our chef's signature pairings, designed for a complete sensory experience.</p>
+<div class="space-y-2">
+<div class="flex items-center text-xs font-medium text-on-surface">
+<span class="material-symbols-outlined text-sm mr-2" data-icon="restaurant_menu">restaurant_menu</span>
+<span>Truffle Infused Risotto</span>
+</div>
+<div class="flex items-center text-xs font-medium text-on-surface">
+<span class="material-symbols-outlined text-sm mr-2" data-icon="local_bar">local_bar</span>
+<span>Estate Reserve Red Wine</span>
+</div>
+<div class="flex items-center text-xs font-medium text-on-surface">
+<span class="material-symbols-outlined text-sm mr-2" data-icon="icecream">icecream</span>
+<span>Dark Chocolate Fondant</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="space-y-4 mb-12">
+<h3 class="font-label font-bold text-xs uppercase tracking-widest text-on-surface-variant mb-4">Visibility &amp; Logic</h3>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg">
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="visibility">visibility</span>
+</div>
+<div>
+<p class="font-bold text-sm text-primary">Active Status</p>
+<p class="text-xs text-on-surface-variant">Visible to staff and customers</p>
+</div>
+</div>
+<button class="relative inline-flex h-6 w-11 items-center rounded-full bg-primary">
+<span class="inline-block h-4 w-4 transform translate-x-6 rounded-full bg-white transition duration-200 ease-in-out"></span>
+</button>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg">
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="menu_book">menu_book</span>
+</div>
+<div>
+<p class="font-bold text-sm text-primary">Show on Menu</p>
+<p class="text-xs text-on-surface-variant">List under 'Bundle Specials'</p>
+</div>
+</div>
+<button class="relative inline-flex h-6 w-11 items-center rounded-full bg-primary">
+<span class="inline-block h-4 w-4 transform translate-x-6 rounded-full bg-white transition duration-200 ease-in-out"></span>
+</button>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg">
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="shopping_cart_checkout">shopping_cart_checkout</span>
+</div>
+<div>
+<p class="font-bold text-sm text-primary">Show as Upsell</p>
+<p class="text-xs text-on-surface-variant">Suggest at checkout stage</p>
+</div>
+</div>
+<button class="relative inline-flex h-6 w-11 items-center rounded-full bg-surface-container-highest">
+<span class="inline-block h-4 w-4 transform translate-x-1 rounded-full bg-white transition duration-200 ease-in-out"></span>
+</button>
+</div>
+</section>
+<button class="w-full bg-primary text-white py-4 rounded-md font-manrope font-bold text-lg shadow-[0_12px_24px_rgba(0,0,0,0.1)] active:scale-95 duration-150 mb-12">
+            Publish Bundle
+        </button>
+</main>
+<nav class="fixed bottom-0 left-0 w-full flex justify-between items-center px-6 py-4 bg-white dark:bg-black border-t border-gray-100 dark:border-gray-900 z-50 shadow-[0_-12px_24px_rgba(0,0,0,0.04)]">
+<a class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-8 py-3 w-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:translate-y-0.5 duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="chevron_left">chevron_left</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Back</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-black dark:bg-white text-white dark:text-black rounded-sm px-8 py-3 w-full hover:opacity-90 transition-colors active:translate-y-0.5 duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="chevron_right">chevron_right</span>
+<span class="font-inter font-bold text-xs uppercase tracking-widest">Next</span>
+</a>
+</nav>
+</body></html>
