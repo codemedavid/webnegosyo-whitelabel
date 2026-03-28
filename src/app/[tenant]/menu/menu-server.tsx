@@ -86,13 +86,17 @@ export async function getMenuData(tenantSlug: string) {
     // Silently ignore auth errors — default to non-admin
   }
 
-  if (catsResult.error || itemsResult.error || bundleResult.error) {
+  if (catsResult.error || itemsResult.error) {
     const details = [
       catsResult.error?.message && `categories: ${catsResult.error.message}`,
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
-      bundleResult.error?.message && `bundles: ${bundleResult.error.message}`,
     ].filter(Boolean).join('; ')
     return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin, error: `Failed to load menu data (${details})` }
+  }
+
+  // Bundle query errors are non-fatal — menu items should still show
+  if (bundleResult.error) {
+    console.warn('[menu-server] Bundle query failed (migration may not be applied yet):', bundleResult.error.message)
   }
 
   const bundlesData = (bundleResult.data as unknown as BundleWithSlots[] | null) ?? []
