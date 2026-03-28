@@ -27,10 +27,22 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 interface OrderItem {
   menuItemName: string;
   variation?: string;
+  variationSelections?: { typeName: string; optionName: string; priceAdjustment: number }[];
   addons?: { name: string; price: number }[];
   specialInstructions?: string;
   quantity: number;
   subtotal: number;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
+}
+
+interface BundleGroup {
+  bundleId: string;
+  bundleName: string;
+  items: OrderItem[];
+  total: number;
 }
 
 interface OrderDetail {
@@ -114,6 +126,163 @@ function formatFieldLabel(key: string): string {
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+function groupBundleItems(items: OrderItem[]): { regularItems: OrderItem[]; bundles: BundleGroup[] } {
+  const regularItems: OrderItem[] = [];
+  const bundleMap = new Map<string, BundleGroup>();
+
+  for (const item of items) {
+    if (item.isBundleItem && item.bundleId) {
+      const existing = bundleMap.get(item.bundleId);
+      if (existing) {
+        existing.items.push(item);
+        existing.total += item.subtotal;
+      } else {
+        bundleMap.set(item.bundleId, {
+          bundleId: item.bundleId,
+          bundleName: item.bundleName ?? "Bundle",
+          items: [item],
+          total: item.subtotal,
+        });
+      }
+    } else {
+      regularItems.push(item);
+    }
+  }
+
+  return { regularItems, bundles: Array.from(bundleMap.values()) };
+}
+
+function BundleCard({ bundle }: { bundle: BundleGroup }) {
+  const [expanded, setExpanded] = React.useState(true);
+
+  return (
+    <View style={bundleStyles.container}>
+      <TouchableOpacity
+        style={bundleStyles.header}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        <View style={bundleStyles.headerLeft}>
+          <Text style={bundleStyles.icon}>📦</Text>
+          <View>
+            <Text style={bundleStyles.bundleName}>{bundle.bundleName}</Text>
+            <Text style={bundleStyles.itemCount}>
+              {bundle.items.length} item{bundle.items.length !== 1 ? "s" : ""}
+            </Text>
+          </View>
+        </View>
+        <View style={bundleStyles.headerRight}>
+          <Text style={bundleStyles.bundleTotal}>₱{bundle.total.toFixed(2)}</Text>
+          <Text style={bundleStyles.chevron}>{expanded ? "▲" : "▼"}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={bundleStyles.itemList}>
+          {bundle.items.map((item, i) => (
+            <View key={i} style={[bundleStyles.item, i < bundle.items.length - 1 && bundleStyles.itemBorder]}>
+              <View style={{ flex: 1 }}>
+                {item.slotName && (
+                  <Text style={bundleStyles.slotLabel}>{item.slotName}</Text>
+                )}
+                <Text style={styles.itemName}>{item.menuItemName}</Text>
+                {item.variationSelections && item.variationSelections.length > 0 ? (
+                  item.variationSelections.map((v, vi) => (
+                    <Text key={vi} style={styles.itemDetail}>{v.typeName}: {v.optionName}</Text>
+                  ))
+                ) : item.variation ? (
+                  <Text style={styles.itemDetail}>Variation: {item.variation}</Text>
+                ) : null}
+                {item.addons && item.addons.length > 0 && (
+                  <Text style={styles.itemDetail}>Add-ons: {item.addons.map(a => a.name).join(", ")}</Text>
+                )}
+                {item.specialInstructions && (
+                  <Text style={styles.itemDetail}>Note: {item.specialInstructions}</Text>
+                )}
+              </View>
+              <View style={styles.itemRight}>
+                <Text style={styles.itemQty}>x{item.quantity}</Text>
+                <Text style={styles.itemPrice}>₱{item.subtotal.toFixed(2)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bundleStyles = StyleSheet.create({
+  container: {
+    backgroundColor: `${colors.primary}08`,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${colors.primary}20`,
+    marginVertical: spacing.xs,
+    overflow: "hidden",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: spacing.sm,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  icon: {
+    fontSize: 20,
+  },
+  bundleName: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  itemCount: {
+    ...typography.small,
+    color: colors.textTertiary,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  bundleTotal: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  chevron: {
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  itemList: {
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderTopWidth: 0.5,
+    borderTopColor: `${colors.primary}20`,
+  },
+  item: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+  },
+  itemBorder: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.separator,
+  },
+  slotLabel: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "600",
+    marginBottom: 2,
+    textTransform: "uppercase",
+  },
+});
 
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -213,24 +382,40 @@ export default function OrderDetailScreen() {
       )}
 
       <Card title={`Items (${order.items?.length ?? 0})`} style={styles.section}>
-        {order.items?.map((item, i) => (
-          <View key={i} style={[styles.itemRow, i < (order.items?.length ?? 0) - 1 && styles.itemBorder]}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.menuItemName}</Text>
-              {item.variation && <Text style={styles.itemDetail}>Variation: {item.variation}</Text>}
-              {item.addons && item.addons.length > 0 && (
-                <Text style={styles.itemDetail}>Add-ons: {item.addons.map((a) => a.name).join(", ")}</Text>
-              )}
-              {item.specialInstructions && (
-                <Text style={styles.itemDetail}>Note: {item.specialInstructions}</Text>
-              )}
-            </View>
-            <View style={styles.itemRight}>
-              <Text style={styles.itemQty}>x{item.quantity}</Text>
-              <Text style={styles.itemPrice}>₱{item.subtotal.toFixed(2)}</Text>
-            </View>
-          </View>
-        ))}
+        {(() => {
+          const { regularItems, bundles } = groupBundleItems(order.items ?? []);
+          return (
+            <>
+              {regularItems.map((item, i) => (
+                <View key={i} style={[styles.itemRow, i < regularItems.length - 1 && styles.itemBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemName}>{item.menuItemName}</Text>
+                    {item.variationSelections && item.variationSelections.length > 0 ? (
+                      item.variationSelections.map((v, vi) => (
+                        <Text key={vi} style={styles.itemDetail}>{v.typeName}: {v.optionName}</Text>
+                      ))
+                    ) : item.variation ? (
+                      <Text style={styles.itemDetail}>Variation: {item.variation}</Text>
+                    ) : null}
+                    {item.addons && item.addons.length > 0 && (
+                      <Text style={styles.itemDetail}>Add-ons: {item.addons.map(a => a.name).join(", ")}</Text>
+                    )}
+                    {item.specialInstructions && (
+                      <Text style={styles.itemDetail}>Note: {item.specialInstructions}</Text>
+                    )}
+                  </View>
+                  <View style={styles.itemRight}>
+                    <Text style={styles.itemQty}>x{item.quantity}</Text>
+                    <Text style={styles.itemPrice}>₱{item.subtotal.toFixed(2)}</Text>
+                  </View>
+                </View>
+              ))}
+              {bundles.map((bundle) => (
+                <BundleCard key={bundle.bundleId} bundle={bundle} />
+              ))}
+            </>
+          );
+        })()}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>₱{order.total.toFixed(2)}</Text>
