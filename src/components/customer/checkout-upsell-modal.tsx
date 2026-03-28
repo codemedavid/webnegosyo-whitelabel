@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Check, ShoppingBag } from 'lucide-react'
-import { OptimizedImage } from '@/components/shared/optimized-image'
+import { motion } from 'framer-motion'
+import { ShoppingBag } from 'lucide-react'
+import { UpsellFullScreenLayout } from '@/components/customer/upsell-full-screen-layout'
+import { UpsellItemCard } from '@/components/customer/upsell-item-card'
+import { useImagePreload } from '@/hooks/useImagePreload'
 import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { useCart } from '@/hooks/useCart'
@@ -38,38 +40,10 @@ interface CheckoutUpsellModalProps {
   hideCurrencySymbol?: boolean
 }
 
-const backdropVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.15 } },
-  exit: { opacity: 0, transition: { duration: 0.15 } },
-}
-
-const sheetVariants = {
-  hidden: { y: '100%' },
-  visible: {
-    y: 0,
-    transition: { type: 'spring' as const, damping: 28, stiffness: 350 },
-  },
-  exit: {
-    y: '100%',
-    transition: { type: 'tween' as const, duration: 0.2, ease: 'easeOut' as const },
-  },
-}
-
 const gridVariants = {
-  hidden: { opacity: 0 },
+  hidden: {},
   visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.03, delayChildren: 0 },
-  },
-}
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: 'tween' as const, duration: 0.15 },
+    transition: { staggerChildren: 0.03 },
   },
 }
 
@@ -85,89 +59,6 @@ function SkeletonCard() {
   )
 }
 
-const ItemCard = memo(function ItemCard({
-  item,
-  onTap,
-  hideCurrencySymbol,
-  eagerImage = false,
-}: {
-  item: MenuItem
-  onTap: () => void
-  hideCurrencySymbol?: boolean
-  eagerImage?: boolean
-}) {
-  const [isAdded, setIsAdded] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    }
-  }, [])
-
-  const handleTap = () => {
-    if (isAdded) return
-    onTap()
-    setIsAdded(true)
-    timeoutRef.current = setTimeout(() => {
-      setIsAdded(false)
-      timeoutRef.current = null
-    }, 1200)
-  }
-
-  const displayPrice = item.discounted_price && item.discounted_price < item.price
-    ? item.discounted_price
-    : item.price
-
-  return (
-    <motion.button
-      type="button"
-      variants={cardVariants}
-      onClick={handleTap}
-      className="relative border border-gray-200 bg-white text-left transition-colors active:bg-gray-50"
-    >
-      {/* Added overlay */}
-      <div
-        className={`absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/95 transition-all duration-150 ${isAdded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-      >
-        <div className={`transition-transform duration-150 ${isAdded ? 'scale-100' : 'scale-0'}`}>
-          <Check className="h-10 w-10 text-green-500" strokeWidth={2.5} />
-        </div>
-        <span className="text-sm font-semibold text-green-600 mt-1">Added!</span>
-      </div>
-
-      {/* Image */}
-      <div className="relative aspect-square bg-white p-4">
-        {item.image_url ? (
-          <OptimizedImage
-            src={item.image_url}
-            alt={item.name}
-            fill
-            className="object-contain"
-            sizes="(max-width: 640px) 45vw, 220px"
-            lazy={!eagerImage}
-            fetchPriority={eagerImage ? 'high' : 'auto'}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <ShoppingBag className="h-12 w-12 text-gray-200" />
-          </div>
-        )}
-      </div>
-
-      {/* Name + Price */}
-      <div className="px-3 pb-3">
-        <p className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
-          {item.name}
-        </p>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {formatPrice(displayPrice, { hideCurrencySymbol })}
-        </p>
-      </div>
-    </motion.button>
-  )
-})
-
 export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   open,
   onContinue,
@@ -179,7 +70,8 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   prefetchedItems,
   previewSuggestions,
   previewColors,
-  zIndexClass = 'z-50',
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  zIndexClass: _zIndexClass = 'z-50',
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   cartTotal: _cartTotal,
   hideCurrencySymbol,
@@ -197,7 +89,8 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   const initialSuggestionsCountRef = useRef(suggestions.length)
 
   // Keep colors for backward compat (used by preview mode)
-  const colors: CheckoutModalColors = useMemo(() => previewColors ?? {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _colors: CheckoutModalColors = useMemo(() => previewColors ?? {
     background: branding.checkoutModalBackground,
     title: branding.checkoutModalTitle,
     description: branding.checkoutModalDescription,
@@ -207,8 +100,18 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     border: branding.checkoutModalBorder,
   }, [previewColors, branding])
 
-  // Use white for the kiosk aesthetic, but allow preview colors to override
-  const bgColor = previewColors ? colors.background : '#ffffff'
+  // Preload suggestion images
+  const imageUrls = useMemo(
+    () => suggestions.map((s) => s.image_url).filter(Boolean) as string[],
+    [suggestions]
+  )
+  useImagePreload(imageUrls)
+
+  // Compute live cart total
+  const liveCartTotal = useMemo(
+    () => cartItems.reduce((sum, ci) => sum + (ci.menu_item.discounted_price ?? ci.menu_item.price) * ci.quantity, 0),
+    [cartItems]
+  )
 
   useEffect(() => {
     if (open) {
@@ -218,13 +121,6 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
       upsellAddedCountRef.current = 0
     }
   }, [open, suggestions.length])
-
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-      return () => { document.body.style.overflow = '' }
-    }
-  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -268,7 +164,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefetchedItems, previewSuggestions])
 
-  const handleTapItem = useCallback(
+  const handleAddItem = useCallback(
     (item: MenuItem) => {
       if (isPreview) return
       addItem(item, undefined, [], 1, undefined, 'checkout_modal')
@@ -280,7 +176,10 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         itemName: item.name,
         price: item.price,
       })
-      setSuggestions((prev) => prev.filter((s) => s.id !== item.id))
+      // Remove item from suggestions after checkmark animation (1200ms)
+      setTimeout(() => {
+        setSuggestions((prev) => prev.filter((s) => s.id !== item.id))
+      }, 1200)
     },
     [addItem, isPreview, tenantId]
   )
@@ -296,95 +195,73 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     onContinue()
   }, [isPreview, tenantId, onContinue])
 
+  const footerContent = (
+    <div className="space-y-3">
+      {/* Cart total */}
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-gray-500">Cart total</span>
+        <span className="font-semibold text-gray-900">
+          {formatPrice(liveCartTotal, { hideCurrencySymbol })}
+        </span>
+      </div>
+
+      {/* Primary CTA */}
+      <button
+        onClick={handleDismiss}
+        className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
+        type="button"
+      >
+        Continue to Checkout
+      </button>
+
+      {/* Ghost link */}
+      <button
+        onClick={handleDismiss}
+        className="w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors"
+        type="button"
+      >
+        No thanks, checkout
+      </button>
+    </div>
+  )
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-black/50"
-            variants={backdropVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-          />
-
-          {/* Sheet */}
-          <motion.div
-            className={`fixed inset-0 ${zIndexClass} flex flex-col`}
-            style={{ backgroundColor: bgColor }}
-            variants={sheetVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-          >
-            {/* Centered content wrapper */}
-            <div className="flex-1 flex flex-col items-center justify-center overflow-y-auto px-8 py-10 sm:px-12 sm:py-14">
-              <div className="w-full max-w-md">
-                {/* Title + Subtitle */}
-                <motion.h1
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-xl sm:text-2xl font-bold text-gray-900 text-center leading-snug"
-                >
-                  {title}
-                </motion.h1>
-                {subtitle && (
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-sm text-gray-400 text-center mt-2 mb-8"
-                  >
-                    {subtitle}
-                  </motion.p>
-                )}
-                {!subtitle && <div className="mb-8" />}
-
-                {/* Grid */}
-                {isLoading ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {Array.from({ length: Math.min(maxItems, 4) }).map((_, i) => (
-                      <SkeletonCard key={i} />
-                    ))}
-                  </div>
-                ) : suggestions.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <ShoppingBag className="h-14 w-14 text-gray-200 mb-3" />
-                    <p className="text-sm text-gray-400">No suggestions right now</p>
-                  </div>
-                ) : (
-                  <motion.div
-                    className="grid grid-cols-2 gap-4"
-                    variants={gridVariants}
-                    initial="hidden"
-                    animate="visible"
-                  >
-                    {suggestions.map((item, i) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                        onTap={() => handleTapItem(item)}
-                        hideCurrencySymbol={hideCurrencySymbol}
-                        eagerImage={i < 4}
-                      />
-                    ))}
-                  </motion.div>
-                )}
-
-                {/* "Not Today" button */}
-                <div className="mt-10">
-                  <button
-                    onClick={handleDismiss}
-                    className="w-full h-12 border border-gray-300 text-sm font-medium text-gray-500 transition-colors active:bg-gray-50 hover:bg-gray-50"
-                  >
-                    Not Today
-                  </button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </>
+    <UpsellFullScreenLayout
+      open={open}
+      onClose={handleDismiss}
+      title={title}
+      subtitle={subtitle}
+      footer={footerContent}
+    >
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: Math.min(maxItems, 4) }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : suggestions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <ShoppingBag className="h-14 w-14 text-gray-200 mb-3" />
+          <p className="text-sm text-gray-400">No suggestions right now</p>
+        </div>
+      ) : (
+        <motion.div
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+          variants={gridVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {suggestions.map((item, index) => (
+            <UpsellItemCard
+              key={item.id}
+              item={item}
+              onAdd={handleAddItem}
+              hideCurrencySymbol={hideCurrencySymbol}
+              index={index}
+            />
+          ))}
+        </motion.div>
       )}
-    </AnimatePresence>
+    </UpsellFullScreenLayout>
   )
 })
