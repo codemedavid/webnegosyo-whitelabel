@@ -337,3 +337,56 @@ export async function bulkAcceptPairSuggestionsAction(
     throw error
   }
 }
+
+// ============================================
+// Boost Sales Actions
+// ============================================
+
+export async function getItemsNotInAnyUpsellAction(tenantId: string) {
+  try {
+    const { getItemsNotInAnyUpsell } = await import('@/lib/menu-engineering-service')
+    return await getItemsNotInAnyUpsell(tenantId)
+  } catch (error) {
+    console.error('Failed to get items not in any upsell:', error)
+    return []
+  }
+}
+
+export async function getUpsellCoverageForItemAction(itemId: string, tenantId: string) {
+  try {
+    const { getUpsellCoverageForItem } = await import('@/lib/menu-engineering-service')
+    return await getUpsellCoverageForItem(itemId, tenantId)
+  } catch (error) {
+    console.error('Failed to get upsell coverage:', error)
+    return { pairCount: 0, bundleCount: 0, isCheckoutPick: false }
+  }
+}
+
+export async function getRecommendedPlacementAction(itemId: string, tenantId: string) {
+  try {
+    const { getRecommendedPlacement } = await import('@/lib/menu-engineering-service')
+    return await getRecommendedPlacement(itemId, tenantId)
+  } catch (error) {
+    console.error('Failed to get recommended placement:', error)
+    return { placement: 'checkout_pick' as const, reason: 'Unable to analyze — defaulting to checkout pick' }
+  }
+}
+
+export async function setBoostPriorityAction(
+  itemId: string,
+  tenantId: string,
+  tenantSlug: string,
+  priority: number
+) {
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('menu_items')
+    .update({ boost_priority: priority })
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+
+  if (error) throw error
+  revalidatePath(`/${tenantSlug}/admin/boost-sales`)
+}

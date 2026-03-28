@@ -351,7 +351,7 @@ export async function getManualUpsellItems(tenantId: string, limit: number = 8):
 export async function getSmartUpgradeSuggestions(
   itemId: string,
   tenantId: string
-): Promise<{ bundles: Array<{ id: string; name: string; items: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
+): Promise<{ bundles: Array<{ id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
   const supabase = createAdminClient()
 
   // Get the source item to know its category and price
@@ -364,18 +364,18 @@ export async function getSmartUpgradeSuggestions(
 
   if (!sourceItem) return { bundles: [], categoryUpgrades: [] }
 
-  // 1. Find bundles containing this item
-  const { data: bundleItems } = await supabase
-    .from('bundle_items')
+  // 1. Find bundles containing this item's category via bundle_slots
+  const { data: bundleSlots } = await supabase
+    .from('bundle_slots')
     .select('bundle_id')
-    .eq('menu_item_id', itemId)
+    .eq('category_id', sourceItem.category_id!)
 
-  let bundles: Array<{ id: string; name: string; items: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }> = []
-  if (bundleItems && bundleItems.length > 0) {
-    const bundleIds = bundleItems.map((bi: { bundle_id: string }) => bi.bundle_id)
+  let bundles: Array<{ id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }> = []
+  if (bundleSlots && bundleSlots.length > 0) {
+    const bundleIds = [...new Set(bundleSlots.map((bs: { bundle_id: string }) => bs.bundle_id))]
     const { data: bundleData } = await supabase
       .from('bundles')
-      .select('*, items:bundle_items(*, menu_item:menu_items(*))')
+      .select('*, slots:bundle_slots(*, category:categories(id, name, icon, icon_color), price_overrides:bundle_slot_price_overrides(*))')
       .in('id', bundleIds)
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
@@ -612,4 +612,196 @@ export async function updateCheckoutUpsellSettings(
 
   if (error) throw error
   return data
+}
+
+// ============================================
+// Boost Sales — Coverage & Recommendations
+// ============================================
+
+/**
+ * Returns menu items that are not part of any upsell flow:
+ * - Not in any upsell_pairs (as source or target)
+ * - Not in any bundle_slots (via included_item_ids)
+ * - Not marked as show_in_checkout_upsell
+ */
+export async function getItemsNotInAnyUpsell(tenantId: string): Promise<MenuItem[]> {
+  const supabase = createAdminClient()
+
+  // Get all item IDs that appear in upsell_pairs
+  const { data: upsellPairItems } = await supabase
+    .from('upsell_pairs')
+    .select('source_item_id, target_item_id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+
+  const upsellItemIds = new Set<string>()
+  for (const pair of upsellPairItems || []) {
+    upsellItemIds.add(pair.source_item_id)
+    upsellItemIds.add(pair.target_item_id)
+  }
+
+  // Get all item IDs that appear in bundle slot included_item_ids
+  const { data: bundleSlots } = await supabase
+    .from('bundle_slots')
+    .select('included_item_ids, bundle_id')
+    .not('included_item_ids', 'is', null)
+
+  for (const slot of bundleSlots || []) {
+    if (slot.included_item_ids) {
+      for (const id of slot.included_item_ids) {
+        upsellItemIds.add(id)
+      }
+    }
+  }
+
+  // Get all menu items for this tenant that are NOT in any upsell
+  const { data: allItems, error } = await supabase
+    .from('menu_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_available', true)
+    .eq('show_in_checkout_upsell', false)
+    .order('name')
+
+  if (error) throw error
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  return (allItems || [])
+    .filter((item: any) => !upsellItemIds.has(item.id))
+    .map((item: any) => ({
+      ...item,
+      variations: item.variations || [],
+      variation_types: item.variation_types || [],
+      addons: item.addons || [],
+    })) as MenuItem[]
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * Returns which upsell types an item appears in.
+ * Used by the cross-reference indicator in Checkout Picks tab.
+ */
+export async function getUpsellCoverageForItem(
+  itemId: string,
+  tenantId: string
+): Promise<{ pairCount: number; bundleCount: number; isCheckoutPick: boolean }> {
+  const supabase = createAdminClient()
+
+  // Count upsell pairs where this item is source or target
+  const { count: pairCount } = await supabase
+    .from('upsell_pairs')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .or(`source_item_id.eq.${itemId},target_item_id.eq.${itemId}`)
+
+  // Get item's category and checkout status
+  const { data: item } = await supabase
+    .from('menu_items')
+    .select('category_id, show_in_checkout_upsell')
+    .eq('id', itemId)
+    .single()
+
+  let bundleCount = 0
+  if (item?.category_id) {
+    const { count } = await supabase
+      .from('bundle_slots')
+      .select('id', { count: 'exact', head: true })
+      .eq('category_id', item.category_id)
+
+    bundleCount = count ?? 0
+  }
+
+  return {
+    pairCount: pairCount ?? 0,
+    bundleCount,
+    isCheckoutPick: item?.show_in_checkout_upsell ?? false,
+  }
+}
+
+type RecommendedPlacement = 'upgrade' | 'complementary' | 'checkout_pick' | 'bundle'
+
+/**
+ * Analyzes an item and recommends the best upsell placement.
+ */
+export async function getRecommendedPlacement(
+  itemId: string,
+  tenantId: string
+): Promise<{ placement: RecommendedPlacement; reason: string; suggestedTargets?: MenuItem[] }> {
+  const supabase = createAdminClient()
+
+  // Get the item with its category
+  const { data: item } = await supabase
+    .from('menu_items')
+    .select('*, category:categories(id, name)')
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (!item) throw new Error('Item not found')
+
+  // Check if item's category is in any bundle slot
+  const { count: bundleSlotCount } = await supabase
+    .from('bundle_slots')
+    .select('id', { count: 'exact', head: true })
+    .eq('category_id', item.category_id)
+
+  // Get category average price
+  const { data: categoryItems } = await supabase
+    .from('menu_items')
+    .select('price')
+    .eq('tenant_id', tenantId)
+    .eq('category_id', item.category_id)
+    .eq('is_available', true)
+
+  const categoryAvg = categoryItems && categoryItems.length > 0
+    ? categoryItems.reduce((sum: number, i: { price: number }) => sum + i.price, 0) / categoryItems.length
+    : item.price
+
+  // Get higher-priced items in same category for upgrade suggestions
+  const { data: higherItems } = await supabase
+    .from('menu_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('category_id', item.category_id)
+    .eq('is_available', true)
+    .gt('price', item.price)
+    .order('price', { ascending: true })
+    .limit(3)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const suggestedTargets = (higherItems || []).map((i: any) => ({
+    ...i,
+    variations: i.variations || [],
+    variation_types: i.variation_types || [],
+    addons: i.addons || [],
+  })) as MenuItem[]
+
+  // Decision logic
+  if ((bundleSlotCount ?? 0) > 0 && suggestedTargets.length > 0) {
+    return {
+      placement: 'upgrade',
+      reason: 'This item has higher-priced alternatives in its category — great for "Upgrade to Meal" prompts',
+      suggestedTargets,
+    }
+  }
+
+  if (item.price < categoryAvg * 0.7) {
+    return {
+      placement: 'complementary',
+      reason: 'This is a lower-priced item — works well as a "Goes well with" suggestion alongside mains',
+    }
+  }
+
+  if ((bundleSlotCount ?? 0) > 0) {
+    return {
+      placement: 'bundle',
+      reason: 'This item\'s category is already in a bundle — consider adding it to more combos',
+    }
+  }
+
+  return {
+    placement: 'checkout_pick',
+    reason: 'This standalone item works well as a last-chance checkout suggestion',
+  }
 }
