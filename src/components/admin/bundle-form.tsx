@@ -11,10 +11,12 @@ import {
     ImagePlus,
     Package2,
     Plus,
+    Search,
     Trash2,
     X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -43,6 +45,7 @@ interface BundleSlotEntry {
     category_id: string
     pick_count: number
     sort_order: number
+    included_item_ids: string[]
 }
 
 interface PriceOverrideEntry {
@@ -295,9 +298,12 @@ export function BundleForm({
                 category_id: s.category_id,
                 pick_count: s.pick_count,
                 sort_order: s.sort_order,
+                included_item_ids: s.included_item_ids?.length
+                    ? s.included_item_ids
+                    : menuItems.filter((mi) => mi.category_id === s.category_id).map((mi) => mi.id),
             }))
         }
-        return [{ id: crypto.randomUUID(), name: '', category_id: '', pick_count: 1, sort_order: 0 }]
+        return [{ id: crypto.randomUUID(), name: '', category_id: '', pick_count: 1, sort_order: 0, included_item_ids: [] }]
     })
 
     // Step 3: Price Overrides
@@ -324,8 +330,8 @@ export function BundleForm({
     )
 
     // Step 5: Visibility
-    const [showOnMenu, setShowOnMenu] = useState(bundle?.show_on_menu ?? false)
-    const [showAsUpsell, setShowAsUpsell] = useState(bundle?.show_as_upsell ?? false)
+    const [showOnMenu, setShowOnMenu] = useState(bundle?.show_on_menu ?? true)
+    const [showAsUpsell, setShowAsUpsell] = useState(bundle?.show_as_upsell ?? true)
 
     const fixedPriceNumber = parseNumericInput(fixedPrice)
     const discountPercentNumber = parseNumericInput(discountPercent)
@@ -347,6 +353,7 @@ export function BundleForm({
                 category_id: '',
                 pick_count: 1,
                 sort_order: prev.length,
+                included_item_ids: [],
             },
         ])
     }
@@ -362,7 +369,25 @@ export function BundleForm({
 
     const updateSlot = (slotId: string, changes: Partial<BundleSlotEntry>) => {
         setSlotEntries((prev) =>
-            prev.map((s) => (s.id === slotId ? { ...s, ...changes } : s))
+            prev.map((s) => {
+                if (s.id !== slotId) return s
+                const updated = { ...s, ...changes }
+
+                // When category changes, rebuild included_item_ids
+                if (changes.category_id !== undefined && changes.category_id !== s.category_id) {
+                    const oldCatIds = new Set(
+                        menuItems.filter((mi) => mi.category_id === s.category_id).map((mi) => mi.id)
+                    )
+                    const newCatItemIds = menuItems
+                        .filter((mi) => mi.category_id === changes.category_id)
+                        .map((mi) => mi.id)
+                    // Keep manually added items from other categories, replace category items
+                    const kept = s.included_item_ids.filter((id) => !oldCatIds.has(id))
+                    updated.included_item_ids = [...kept, ...newCatItemIds]
+                }
+
+                return updated
+            })
         )
         // If category changed, clear price overrides for that slot
         if (changes.category_id !== undefined) {
@@ -395,7 +420,57 @@ export function BundleForm({
         })
     }
 
-    /* ─── Validation ──────────────────────────────────────────────── */
+    /* ─── Item selection helpers ────────────���───────────────────────── */
+
+    const toggleItemInSlot = (slotId: string, menuItemId: string) => {
+        setSlotEntries((prev) =>
+            prev.map((s) => {
+                if (s.id !== slotId) return s
+                const included = new Set(s.included_item_ids)
+                if (included.has(menuItemId)) {
+                    included.delete(menuItemId)
+                } else {
+                    included.add(menuItemId)
+                }
+                return { ...s, included_item_ids: Array.from(included) }
+            })
+        )
+        // Also remove price override if item is removed
+        setPriceOverrides((prev) =>
+            prev.filter((po) => !(po.slot_id === slotId && po.menu_item_id === menuItemId && !slotEntries.find((s) => s.id === slotId)?.included_item_ids.includes(menuItemId)))
+        )
+    }
+
+    const addItemToSlot = (slotId: string, menuItemId: string) => {
+        setSlotEntries((prev) =>
+            prev.map((s) => {
+                if (s.id !== slotId) return s
+                if (s.included_item_ids.includes(menuItemId)) return s
+                return { ...s, included_item_ids: [...s.included_item_ids, menuItemId] }
+            })
+        )
+    }
+
+    // Add-item-picker category per slot
+    const [addPickerCategory, setAddPickerCategory] = useState<Record<string, string>>({})
+    const [addPickerSearch, setAddPickerSearch] = useState<Record<string, string>>({})
+
+    // Track which premium inputs are expanded (even without value yet)
+    const [expandedPremiums, setExpandedPremiums] = useState<Set<string>>(() => {
+        const keys = new Set<string>()
+        if (bundle?.slots) {
+            for (const s of bundle.slots) {
+                for (const po of (s.price_overrides ?? [])) {
+                    if (po.price_override > 0) {
+                        keys.add(`${s.id}:${po.menu_item_id}`)
+                    }
+                }
+            }
+        }
+        return keys
+    })
+
+    /* ���── Validation ─────────────────────────────────────────────��── */
 
     const validateStep = (stepIndex: number) => {
         if (stepIndex === 0) {
@@ -502,6 +577,7 @@ export function BundleForm({
                 category_id: slot.category_id,
                 pick_count: slot.pick_count,
                 sort_order: i,
+                included_item_ids: slot.included_item_ids.length > 0 ? slot.included_item_ids : null,
                 price_overrides: priceOverrides
                     .filter((po) => po.slot_id === slot.id && po.price_override > 0)
                     .map((po) => ({ menu_item_id: po.menu_item_id, price_override: po.price_override })),
@@ -703,104 +779,290 @@ export function BundleForm({
         <div className="flex gap-8">
             <div className="max-w-2xl flex-1 space-y-4">
                 <p className="text-sm text-gray-500">
-                    Each slot represents a choice the customer makes. Assign a category and how many items they can pick from it.
+                    Each slot represents a choice the customer makes. Assign a category, then refine which items are available.
                 </p>
 
-                {slotEntries.map((slot, index) => (
-                    <div
-                        key={slot.id}
-                        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-                    >
-                        {/* Slot header */}
-                        <div className="mb-4 flex items-center gap-3">
-                            <div className="flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md bg-gray-100 text-gray-400 active:cursor-grabbing">
-                                <GripVertical className="h-4 w-4" />
-                            </div>
-                            <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
-                                Slot {index + 1}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => removeSlot(slot.id)}
-                                disabled={isPending || slotEntries.length <= 1}
-                                className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                                title="Remove slot"
-                            >
-                                <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
+                {slotEntries.map((slot, index) => {
+                    const categoryItems = menuItems.filter((mi) => mi.category_id === slot.category_id)
+                    const includedSet = new Set(slot.included_item_ids)
+                    const selectedCount = slot.included_item_ids.length
 
-                        <div className="space-y-4">
-                            {/* Slot name */}
-                            <div>
-                                <Label htmlFor={`slot-name-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
-                                    Slot Name <span className="text-red-500">*</span>
-                                </Label>
-                                <Input
-                                    id={`slot-name-${slot.id}`}
-                                    value={slot.name}
-                                    onChange={(e) => updateSlot(slot.id, { name: e.target.value })}
-                                    placeholder="e.g., Main Dish, Side, Drink"
-                                    disabled={isPending}
-                                    className="h-10 rounded-md border-gray-300 text-sm"
-                                />
-                            </div>
+                    // Items from other categories that were manually added
+                    const extraItems = slot.included_item_ids
+                        .map((id) => menuItems.find((mi) => mi.id === id))
+                        .filter((mi): mi is MenuItem => !!mi && mi.category_id !== slot.category_id)
 
-                            {/* Category + Pick Count side by side */}
-                            <div className="grid grid-cols-[1fr_auto] gap-3">
-                                <div>
-                                    <Label htmlFor={`slot-category-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
-                                        Category <span className="text-red-500">*</span>
-                                    </Label>
-                                    <Select
-                                        value={slot.category_id}
-                                        onValueChange={(value) => updateSlot(slot.id, { category_id: value })}
-                                        disabled={isPending}
-                                    >
-                                        <SelectTrigger id={`slot-category-${slot.id}`} className="h-10 rounded-md border-gray-300 text-sm">
-                                            <SelectValue placeholder="Select category..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {categories.length === 0 ? (
-                                                <SelectItem value="_none" disabled>No categories found</SelectItem>
-                                            ) : (
-                                                categories.map((cat) => {
-                                                    const itemCount = menuItems.filter((mi) => mi.category_id === cat.id).length
-                                                    return (
-                                                        <SelectItem key={cat.id} value={cat.id}>
-                                                            {cat.name}
-                                                            <span className="ml-1 text-xs text-gray-400">({itemCount})</span>
-                                                        </SelectItem>
-                                                    )
-                                                })
-                                            )}
-                                        </SelectContent>
-                                    </Select>
+                    // Add-from-other-category picker state
+                    const pickerCatId = addPickerCategory[slot.id] || ''
+                    const pickerSearch = addPickerSearch[slot.id] || ''
+                    const pickerItems = pickerCatId
+                        ? menuItems
+                            .filter((mi) => mi.category_id === pickerCatId && !includedSet.has(mi.id))
+                            .filter((mi) => !pickerSearch || mi.name.toLowerCase().includes(pickerSearch.toLowerCase()))
+                        : []
+
+                    return (
+                        <div
+                            key={slot.id}
+                            className="rounded-xl border border-gray-200 bg-white shadow-sm"
+                        >
+                            {/* Slot header */}
+                            <div className="flex items-center gap-3 p-4 pb-0">
+                                <div className="flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md bg-gray-100 text-gray-400 active:cursor-grabbing">
+                                    <GripVertical className="h-4 w-4" />
                                 </div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
+                                    Slot {index + 1}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => removeSlot(slot.id)}
+                                    disabled={isPending || slotEntries.length <= 1}
+                                    className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Remove slot"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
 
-                                <div className="w-28">
-                                    <Label htmlFor={`slot-pick-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
-                                        Pick Count
+                            <div className="space-y-4 p-4">
+                                {/* Slot name */}
+                                <div>
+                                    <Label htmlFor={`slot-name-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
+                                        Slot Name <span className="text-red-500">*</span>
                                     </Label>
                                     <Input
-                                        id={`slot-pick-${slot.id}`}
-                                        type="number"
-                                        min="1"
-                                        value={slot.pick_count}
-                                        onChange={(e) => {
-                                            const v = parseInt(e.target.value, 10)
-                                            if (!isNaN(v) && v >= 1) {
-                                                updateSlot(slot.id, { pick_count: v })
-                                            }
-                                        }}
+                                        id={`slot-name-${slot.id}`}
+                                        value={slot.name}
+                                        onChange={(e) => updateSlot(slot.id, { name: e.target.value })}
+                                        placeholder="e.g., Main Dish, Side, Drink"
                                         disabled={isPending}
-                                        className="h-10 rounded-md border-gray-300 text-center text-sm"
+                                        className="h-10 rounded-md border-gray-300 text-sm"
                                     />
                                 </div>
+
+                                {/* Category + Pick Count side by side */}
+                                <div className="grid grid-cols-[1fr_auto] gap-3">
+                                    <div>
+                                        <Label htmlFor={`slot-category-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
+                                            Category <span className="text-red-500">*</span>
+                                        </Label>
+                                        <Select
+                                            value={slot.category_id}
+                                            onValueChange={(value) => updateSlot(slot.id, { category_id: value })}
+                                            disabled={isPending}
+                                        >
+                                            <SelectTrigger id={`slot-category-${slot.id}`} className="h-10 rounded-md border-gray-300 text-sm">
+                                                <SelectValue placeholder="Select category..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {categories.length === 0 ? (
+                                                    <SelectItem value="_none" disabled>No categories found</SelectItem>
+                                                ) : (
+                                                    categories.map((cat) => {
+                                                        const itemCount = menuItems.filter((mi) => mi.category_id === cat.id).length
+                                                        return (
+                                                            <SelectItem key={cat.id} value={cat.id}>
+                                                                {cat.name}
+                                                                <span className="ml-1 text-xs text-gray-400">({itemCount})</span>
+                                                            </SelectItem>
+                                                        )
+                                                    })
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="w-28">
+                                        <Label htmlFor={`slot-pick-${slot.id}`} className="mb-1.5 block text-xs font-semibold text-gray-700">
+                                            Pick Count
+                                        </Label>
+                                        <Input
+                                            id={`slot-pick-${slot.id}`}
+                                            type="number"
+                                            min="1"
+                                            value={slot.pick_count}
+                                            onChange={(e) => {
+                                                const v = parseInt(e.target.value, 10)
+                                                if (!isNaN(v) && v >= 1) {
+                                                    updateSlot(slot.id, { pick_count: v })
+                                                }
+                                            }}
+                                            disabled={isPending}
+                                            className="h-10 rounded-md border-gray-300 text-center text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* ─── Item selection ─── */}
+                                {slot.category_id && (
+                                    <div className="rounded-lg border border-gray-100 bg-gray-50/50">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                            <span className="text-xs font-semibold text-gray-700">
+                                                Items ({selectedCount} selected)
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">Uncheck to remove</span>
+                                        </div>
+
+                                        <div className="border-t border-gray-100">
+                                                {/* Category items */}
+                                                {categoryItems.length === 0 ? (
+                                                    <p className="px-3 py-4 text-center text-xs text-gray-400">No items in this category</p>
+                                                ) : (
+                                                    <div className="max-h-64 divide-y divide-gray-50 overflow-y-auto">
+                                                        {categoryItems.map((item) => {
+                                                            const isIncluded = includedSet.has(item.id)
+                                                            return (
+                                                                <label
+                                                                    key={item.id}
+                                                                    className={cn(
+                                                                        'flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50',
+                                                                        !isIncluded && 'opacity-50'
+                                                                    )}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isIncluded}
+                                                                        onChange={() => toggleItemInSlot(slot.id, item.id)}
+                                                                        disabled={isPending}
+                                                                        className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                                                                    />
+                                                                    <MenuItemThumbnail
+                                                                        menuItem={item}
+                                                                        className="h-8 w-8 shrink-0 rounded border border-gray-200"
+                                                                    />
+                                                                    <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{item.name}</span>
+                                                                    <span className="shrink-0 text-xs text-gray-500">{formatPrice(item.price)}</span>
+                                                                </label>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Extra items from other categories */}
+                                                {extraItems.length > 0 && (
+                                                    <div className="border-t border-gray-200">
+                                                        <p className="px-3 pt-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                                            From other categories
+                                                        </p>
+                                                        <div className="divide-y divide-gray-50">
+                                                            {extraItems.map((item) => {
+                                                                const cat = categories.find((c) => c.id === item.category_id)
+                                                                return (
+                                                                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                                                                        <MenuItemThumbnail
+                                                                            menuItem={item}
+                                                                            className="h-8 w-8 shrink-0 rounded border border-gray-200"
+                                                                        />
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="truncate text-sm text-gray-900">{item.name}</p>
+                                                                            {cat && <p className="text-[10px] text-gray-400">{cat.name}</p>}
+                                                                        </div>
+                                                                        <span className="shrink-0 text-xs text-gray-500">{formatPrice(item.price)}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleItemInSlot(slot.id, item.id)}
+                                                                            disabled={isPending}
+                                                                            className="ml-1 text-gray-400 transition-colors hover:text-red-500"
+                                                                            title="Remove"
+                                                                        >
+                                                                            <X className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Add from other category */}
+                                                <div className="border-t border-gray-200 p-3">
+                                                    <p className="mb-2 text-xs font-semibold text-gray-600">Add from another category</p>
+                                                    <div className="flex gap-2">
+                                                        <Select
+                                                            value={pickerCatId}
+                                                            onValueChange={(value) => {
+                                                                setAddPickerCategory((prev) => ({ ...prev, [slot.id]: value }))
+                                                                setAddPickerSearch((prev) => ({ ...prev, [slot.id]: '' }))
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="h-8 flex-1 rounded-md border-gray-300 text-xs">
+                                                                <SelectValue placeholder="Pick a category..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {categories
+                                                                    .filter((c) => c.id !== slot.category_id)
+                                                                    .map((cat) => (
+                                                                        <SelectItem key={cat.id} value={cat.id}>
+                                                                            {cat.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {pickerCatId && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setAddPickerCategory((prev) => ({ ...prev, [slot.id]: '' }))
+                                                                    setAddPickerSearch((prev) => ({ ...prev, [slot.id]: '' }))
+                                                                }}
+                                                                className="text-gray-400 hover:text-gray-600"
+                                                            >
+                                                                <X className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {pickerCatId && (
+                                                        <div className="mt-2">
+                                                            {/* Search within picker */}
+                                                            <div className="relative mb-2">
+                                                                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                                                                <Input
+                                                                    value={pickerSearch}
+                                                                    onChange={(e) =>
+                                                                        setAddPickerSearch((prev) => ({ ...prev, [slot.id]: e.target.value }))
+                                                                    }
+                                                                    placeholder="Search items..."
+                                                                    className="h-8 rounded-md border-gray-200 pl-7 text-xs"
+                                                                />
+                                                            </div>
+                                                            {pickerItems.length === 0 ? (
+                                                                <p className="py-2 text-center text-xs text-gray-400">
+                                                                    {pickerSearch ? 'No matching items' : 'All items already added'}
+                                                                </p>
+                                                            ) : (
+                                                                <div className="max-h-40 divide-y divide-gray-50 overflow-y-auto rounded-md border border-gray-100">
+                                                                    {pickerItems.map((item) => (
+                                                                        <button
+                                                                            key={item.id}
+                                                                            type="button"
+                                                                            onClick={() => addItemToSlot(slot.id, item.id)}
+                                                                            disabled={isPending}
+                                                                            className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-gray-50"
+                                                                        >
+                                                                            <MenuItemThumbnail
+                                                                                menuItem={item}
+                                                                                className="h-7 w-7 shrink-0 rounded border border-gray-200"
+                                                                            />
+                                                                            <span className="min-w-0 flex-1 truncate text-xs text-gray-900">{item.name}</span>
+                                                                            <span className="shrink-0 text-[10px] text-gray-500">{formatPrice(item.price)}</span>
+                                                                            <Plus className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
 
                 <button
                     type="button"
@@ -830,7 +1092,11 @@ export function BundleForm({
                 </p>
 
                 {slotEntries.map((slot, slotIndex) => {
-                    const slotItems = menuItems.filter((mi) => mi.category_id === slot.category_id)
+                    // Show only items that are included in this slot
+                    const includedIds = new Set(slot.included_item_ids)
+                    const slotItems = slot.included_item_ids.length > 0
+                        ? menuItems.filter((mi) => includedIds.has(mi.id))
+                        : menuItems.filter((mi) => mi.category_id === slot.category_id)
 
                     return (
                         <div key={slot.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -850,13 +1116,19 @@ export function BundleForm({
                             {slotItems.length === 0 ? (
                                 <div className="px-4 py-6 text-center text-sm text-gray-500">
                                     {slot.category_id
-                                        ? 'No items in this category.'
+                                        ? 'No items selected for this slot.'
                                         : 'Select a category for this slot first.'}
                                 </div>
                             ) : (
                                 <div className="divide-y divide-gray-50">
                                     {slotItems.map((item) => {
                                         const override = getPriceOverride(slot.id, item.id)
+                                        const premiumKey = `${slot.id}:${item.id}`
+                                        const isPremiumExpanded = expandedPremiums.has(premiumKey) || override > 0
+                                        const cat = item.category_id !== slot.category_id
+                                            ? categories.find((c) => c.id === item.category_id)
+                                            : null
+
                                         return (
                                             <div key={item.id} className="flex items-center gap-3 px-4 py-3">
                                                 <MenuItemThumbnail
@@ -865,27 +1137,38 @@ export function BundleForm({
                                                 />
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-sm font-medium text-gray-900">{item.name}</p>
-                                                    <p className="text-xs text-gray-500">{formatPrice(item.price)}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {formatPrice(item.price)}
+                                                        {cat && <span className="ml-1 text-gray-400">({cat.name})</span>}
+                                                    </p>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
-                                                    {override > 0 ? (
+                                                    {isPremiumExpanded ? (
                                                         <div className="flex items-center gap-1">
                                                             <span className="text-xs text-gray-500">+₱</span>
                                                             <Input
                                                                 type="number"
                                                                 step="0.01"
                                                                 min="0"
-                                                                value={override}
+                                                                value={override > 0 ? override : ''}
                                                                 onChange={(e) => {
                                                                     const v = parseFloat(e.target.value)
                                                                     setPriceOverride(slot.id, item.id, isNaN(v) ? 0 : v)
                                                                 }}
+                                                                placeholder="0.00"
                                                                 disabled={isPending}
                                                                 className="h-8 w-20 rounded-md border-gray-300 text-right text-sm"
                                                             />
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setPriceOverride(slot.id, item.id, 0)}
+                                                                onClick={() => {
+                                                                    setPriceOverride(slot.id, item.id, 0)
+                                                                    setExpandedPremiums((prev) => {
+                                                                        const next = new Set(prev)
+                                                                        next.delete(premiumKey)
+                                                                        return next
+                                                                    })
+                                                                }}
                                                                 disabled={isPending}
                                                                 className="ml-1 text-gray-400 transition-colors hover:text-red-500"
                                                             >
@@ -899,7 +1182,9 @@ export function BundleForm({
                                                             </span>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setPriceOverride(slot.id, item.id, 0.01)}
+                                                                onClick={() => {
+                                                                    setExpandedPremiums((prev) => new Set([...prev, premiumKey]))
+                                                                }}
                                                                 disabled={isPending}
                                                                 className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-500 transition-colors hover:border-gray-500 hover:text-gray-800"
                                                             >
@@ -1073,22 +1358,25 @@ export function BundleForm({
                     <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500 md:mb-6 md:text-lg md:font-bold md:normal-case md:tracking-normal md:text-gray-900">
                         Visibility & Logic
                     </h3>
-                    <div className="space-y-3 md:space-y-5">
-                        {/* Show on menu */}
-                        <div className="flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-4 md:rounded-none md:bg-transparent md:p-0">
-                            <div>
-                                <p className="text-sm font-semibold text-gray-900">Show on menu</p>
-                                <p className="text-xs text-gray-500">Display this bundle on the customer-facing menu</p>
-                            </div>
-                            <Switch checked={showOnMenu} onCheckedChange={setShowOnMenu} disabled={isPending} />
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <p className="text-sm font-medium">Where should this combo appear?</p>
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="show_on_menu"
+                                checked={showOnMenu}
+                                onCheckedChange={(checked) => setShowOnMenu(!!checked)}
+                                disabled={isPending}
+                            />
+                            <Label htmlFor="show_on_menu" className="text-sm font-normal">Show on menu (customers browse it directly)</Label>
                         </div>
-                        {/* Show as upsell */}
-                        <div className="flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-4 md:rounded-none md:bg-transparent md:p-0">
-                            <div>
-                                <p className="text-sm font-semibold text-gray-900">Show as upsell</p>
-                                <p className="text-xs text-gray-500">Suggest this bundle as an upsell during checkout</p>
-                            </div>
-                            <Switch checked={showAsUpsell} onCheckedChange={setShowAsUpsell} disabled={isPending} />
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="show_as_upsell"
+                                checked={showAsUpsell}
+                                onCheckedChange={(checked) => setShowAsUpsell(!!checked)}
+                                disabled={isPending}
+                            />
+                            <Label htmlFor="show_as_upsell" className="text-sm font-normal">Suggest when customer adds a matching item</Label>
                         </div>
                     </div>
                 </section>
