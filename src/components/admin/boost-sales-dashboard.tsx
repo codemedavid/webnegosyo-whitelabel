@@ -36,6 +36,11 @@ const BoostSalesPerformanceTab = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
+const UpsellPreviewPanel = dynamic(
+  () => import('@/components/admin/upsell-preview-panel').then(mod => ({ default: mod.UpsellPreviewPanel })),
+  { ssr: false, loading: LoadingPlaceholder }
+)
+
 interface MenuItemWithCategory extends MenuItem {
   category: { id: string; name: string } | null
 }
@@ -109,6 +114,17 @@ export function BoostSalesDashboard({
           Preview Customer Experience
         </Button>
       </div>
+
+      {/* Preview panel */}
+      {showPreview && (
+        <UpsellPreviewPanel
+          menuItems={menuItems}
+          upsellPairs={upsellPairs}
+          bundles={bundles}
+          tenantId={tenantId}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
 
       {/* Tab Navigation */}
       <Tabs defaultValue="bundles" className="space-y-6">
