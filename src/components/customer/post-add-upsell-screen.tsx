@@ -9,6 +9,7 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { useImagePreload } from '@/hooks/useImagePreload'
 import { formatPrice } from '@/lib/cart-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
+import { useUpsellOrchestrator } from '@/lib/upsell-orchestrator'
 import type { MenuItem, BundleWithSlots } from '@/types/database'
 
 export type UpsellMode = 'pairs_only' | 'bundle_only' | 'pairs_and_bundle'
@@ -60,22 +61,30 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
 }: PostAddUpsellScreenProps) {
   const shownTrackedRef = useRef(false)
   const addedCountRef = useRef(0)
+  const orchestrator = useUpsellOrchestrator()
 
-  const mode = getUpsellMode(suggestions, matchingBundle)
+  const filteredSuggestions = orchestrator.filterSuggestedItems(suggestions)
+  const mode = getUpsellMode(filteredSuggestions, matchingBundle)
   const imageUrls = useMemo(
-    () => suggestions.map((s) => s.image_url).filter(Boolean) as string[],
-    [suggestions]
+    () => filteredSuggestions.map((s) => s.image_url).filter(Boolean) as string[],
+    [filteredSuggestions]
   )
   useImagePreload(imageUrls)
 
   // Track upsell_shown once per open, reset on close
   useEffect(() => {
     if (open && !shownTrackedRef.current && mode) {
+      const upsellType = mode === 'bundle_only' ? 'bundle' : 'pair'
+      if (!orchestrator.canShowUpsell(upsellType)) {
+        onClose()
+        return
+      }
       shownTrackedRef.current = true
+      orchestrator.recordShown(upsellType, sourceItemId)
       trackAnalyticsEventAction(tenantId, 'upsell_shown', {
         source: 'post_add',
         mode,
-        itemCount: suggestions.length,
+        itemCount: filteredSuggestions.length,
         sourceItemId,
         bundleId: matchingBundle?.id ?? null,
       })
@@ -84,7 +93,7 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
       shownTrackedRef.current = false
       addedCountRef.current = 0
     }
-  }, [open, mode, tenantId, suggestions.length, sourceItemId, matchingBundle?.id])
+  }, [open, mode, tenantId, filteredSuggestions.length, sourceItemId, matchingBundle?.id, orchestrator, onClose])
 
   const handleAddItem = useCallback(
     (item: MenuItem) => {
@@ -103,15 +112,16 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
   )
 
   const handleClose = useCallback(() => {
+    orchestrator.recordDismissed()
     trackAnalyticsEventAction(tenantId, 'upsell_dismissed', {
       source: 'post_add',
       mode,
-      suggestionsShown: suggestions.length,
+      suggestionsShown: filteredSuggestions.length,
       itemsAdded: addedCountRef.current,
       sourceItemId,
     })
     onClose()
-  }, [onClose, tenantId, mode, suggestions.length, sourceItemId])
+  }, [onClose, tenantId, mode, filteredSuggestions.length, sourceItemId, orchestrator])
 
   const handleAcceptBundle = useCallback(() => {
     if (!matchingBundle) return
@@ -170,7 +180,7 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
           initial="hidden"
           animate="visible"
         >
-          {suggestions.map((item, index) => (
+          {filteredSuggestions.map((item, index) => (
             <UpsellItemCard
               key={item.id}
               item={item}

@@ -6,6 +6,7 @@ import { X, Check } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
+import { useUpsellOrchestrator } from '@/lib/upsell-orchestrator'
 import type { MenuItem } from '@/types/database'
 
 interface UpsellSuggestionModalProps {
@@ -189,10 +190,16 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
   zIndexClass = 'z-50',
 }: UpsellSuggestionModalProps) {
   const shownTrackedRef = useRef(false)
+  const orchestrator = useUpsellOrchestrator()
 
   useEffect(() => {
     if (open && tenantId && suggestions.length > 0 && !shownTrackedRef.current) {
+      if (!orchestrator.canShowUpsell('pair')) {
+        onClose()
+        return
+      }
       shownTrackedRef.current = true
+      orchestrator.recordShown('pair', sourceItemId ?? '')
       trackAnalyticsEventAction(tenantId, 'upsell_shown', {
         source: 'suggestion',
         itemCount: suggestions.length,
@@ -202,7 +209,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
     if (!open) {
       shownTrackedRef.current = false
     }
-  }, [open, tenantId, suggestions.length, sourceItemId])
+  }, [open, tenantId, suggestions.length, sourceItemId, orchestrator, onClose])
 
   const addedCountRef = useRef(0)
 
@@ -227,6 +234,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
   }
 
   const handleDismiss = useCallback(() => {
+    orchestrator.recordDismissed()
     if (tenantId) {
       trackAnalyticsEventAction(tenantId, 'upsell_dismissed', {
         source: 'suggestion',
@@ -236,7 +244,7 @@ export const UpsellSuggestionModal = memo(function UpsellSuggestionModal({
       })
     }
     onClose()
-  }, [tenantId, suggestions.length, sourceItemId, onClose])
+  }, [tenantId, suggestions.length, sourceItemId, onClose, orchestrator])
 
   if (suggestions.length === 0) return null
 

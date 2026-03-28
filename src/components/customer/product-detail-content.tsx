@@ -18,6 +18,7 @@ import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
 import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import { UpsellOrchestratorProvider } from '@/lib/upsell-orchestrator'
 import dynamic from 'next/dynamic'
 import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
 import { motion } from 'framer-motion'
@@ -574,6 +575,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [])
 
     return (
+        <UpsellOrchestratorProvider>
         <motion.div
             animate={isPageTransitioning ? { x: '-100%', opacity: 0 } : { x: 0, opacity: 1 }}
             transition={{ type: 'tween' as const, duration: 0.25, ease: 'easeInOut' as const }}
@@ -1156,5 +1158,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 />
             )}
         </motion.div>
+        </UpsellOrchestratorProvider>
     )
 })

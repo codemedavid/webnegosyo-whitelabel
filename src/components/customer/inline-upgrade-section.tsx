@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { formatPrice } from '@/lib/cart-utils'
+import { useUpsellOrchestrator } from '@/lib/upsell-orchestrator'
 import type { MenuItem, UpgradeUpsell } from '@/types/database'
 import type { BundleWithItems } from '@/lib/bundles-service'
 
@@ -50,16 +51,19 @@ export const InlineUpgradeSection = memo(function InlineUpgradeSection({
     tenantId,
 }: InlineUpgradeSectionProps) {
     const trackedRef = useRef(false)
+    const orchestrator = useUpsellOrchestrator()
 
     useEffect(() => {
         if (!open) { trackedRef.current = false; return }
+        if (!orchestrator.canShowUpsell('upgrade')) { onDismiss(); return }
         if (trackedRef.current || !tenantId || (upgrades.length === 0 && bundles.length === 0)) return
         trackedRef.current = true
+        orchestrator.recordShown('upgrade', sourceItem.id)
         trackAnalyticsEventAction(tenantId, 'upsell_shown', {
             source: 'inline_upgrade', sourceItemId: sourceItem.id,
             upgradeCount: upgrades.length, bundleCount: bundles.length,
         })
-    }, [open, tenantId, sourceItem.id, upgrades.length, bundles.length])
+    }, [open, tenantId, sourceItem.id, upgrades.length, bundles.length, orchestrator, onDismiss])
 
     useEffect(() => {
         if (open) { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = '' } }
@@ -89,6 +93,7 @@ export const InlineUpgradeSection = memo(function InlineUpgradeSection({
     }
 
     const handleDismiss = () => {
+        orchestrator.recordDismissed()
         if (tenantId) trackAnalyticsEventAction(tenantId, 'upsell_dismissed', { source: 'inline_upgrade', sourceItemId: sourceItem.id })
         onDismiss()
     }
