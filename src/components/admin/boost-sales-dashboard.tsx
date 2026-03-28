@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import type { Category, UpsellPairWithItems } from '@/types/database'
 import type { MenuItem } from '@/types/database'
 import type { BundleWithSlots } from '@/lib/bundles-service'
 import { BoostSalesStatsBar } from '@/components/admin/boost-sales-stats-bar'
+import { PushItemFlow } from '@/components/admin/push-item-flow'
 
 const LoadingPlaceholder = () => (
   <div className="p-8 text-center text-muted-foreground animate-pulse">Loading...</div>
@@ -65,6 +66,18 @@ export function BoostSalesDashboard({
 }: BoostSalesDashboardProps) {
   const [showPreview, setShowPreview] = useState(false)
 
+  const itemsNotInUpsellIds = useMemo(() => {
+    const inUpsell = new Set<string>()
+    for (const pair of upsellPairs) {
+      inUpsell.add(pair.source_item_id)
+      inUpsell.add(pair.target_item_id)
+    }
+    for (const item of menuItems) {
+      if (item.show_in_checkout_upsell) inUpsell.add(item.id)
+    }
+    return menuItems.filter((i) => !inUpsell.has(i.id)).map((i) => i.id)
+  }, [menuItems, upsellPairs])
+
   return (
     <div className="space-y-6">
       <BoostSalesStatsBar
@@ -73,7 +86,12 @@ export function BoostSalesDashboard({
         bundles={bundles}
       />
 
-      {/* Push Item Flow — will be added in Task 7 */}
+      <PushItemFlow
+        menuItems={menuItems}
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        itemsNotInUpsell={itemsNotInUpsellIds}
+      />
 
       {/* Preview button */}
       <div className="flex items-center justify-end">
