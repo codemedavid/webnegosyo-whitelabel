@@ -23,14 +23,12 @@ export function useProductDetailModals({
 
     // Modal open states
     const [isImageModalOpen, setIsImageModalOpen] = useState(false)
-    const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false)
-    const [isPairSheetOpen, setIsPairSheetOpen] = useState(false)
+    const [isPostAddUpsellOpen, setIsPostAddUpsellOpen] = useState(false)
     const [isPopupPreviewOpen, setIsPopupPreviewOpen] = useState(false)
     const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
     const [isUpgradeScreenOpen, setIsUpgradeScreenOpen] = useState(false)
 
     // Bundle states
-    const [bundleUpsell, setBundleUpsell] = useState<BundleWithSlots | null>(null)
     const [bundleForCustomization, setBundleForCustomization] = useState<BundleWithSlots | null>(null)
 
     // When true, navigating after upsell prompts goes to checkout instead of back to menu
@@ -64,9 +62,9 @@ export function useProductDetailModals({
         setIsCheckoutPreviewOpen(prev => !prev)
     }, [])
 
-    // Upsell modal handler
-    const handleUpsellClose = useCallback(() => {
-        setIsUpsellModalOpen(false)
+    // Post-add upsell handler
+    const handlePostAddUpsellClose = useCallback(() => {
+        setIsPostAddUpsellOpen(false)
         if (buyNowIntentRef.current) {
             buyNowIntentRef.current = false
             router.push(`/${tenantSlug}/cart`)
@@ -90,18 +88,14 @@ export function useProductDetailModals({
         upgradeDismissed,
         setUpgradeDismissed,
         isImageModalOpen,
-        isUpsellModalOpen,
-        setIsUpsellModalOpen,
-        isPairSheetOpen,
-        setIsPairSheetOpen,
+        isPostAddUpsellOpen,
+        setIsPostAddUpsellOpen,
         isPopupPreviewOpen,
         setIsPopupPreviewOpen,
         isCheckoutPreviewOpen,
         setIsCheckoutPreviewOpen,
         isUpgradeScreenOpen,
         setIsUpgradeScreenOpen,
-        bundleUpsell,
-        setBundleUpsell,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,
@@ -111,7 +105,7 @@ export function useProductDetailModals({
         handleCloseImageModal,
         handleTogglePopupPreview,
         handleToggleCheckoutPreview,
-        handleUpsellClose,
+        handlePostAddUpsellClose,
         navigateAfterBuyNow,
     }
 }
