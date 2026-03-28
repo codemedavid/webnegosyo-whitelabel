@@ -6,6 +6,10 @@ interface ReceiptOrderItem {
   variationSelections?: { typeName: string; optionName: string }[];
   addons?: { name: string; price: number }[];
   specialInstructions?: string;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
 }
 
 interface ReceiptOrder {
@@ -70,11 +74,35 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
   lines.push(leftRight("Qty  Item", "Amount", w));
   lines.push(line("-", w));
 
-  let subtotal = 0;
+  // Separate regular and bundle items
+  const regularItems: ReceiptOrderItem[] = [];
+  const bundleMap = new Map<string, { name: string; items: ReceiptOrderItem[]; total: number }>();
+
   for (const item of order.items ?? []) {
+    if (item.isBundleItem && item.bundleId) {
+      const existing = bundleMap.get(item.bundleId);
+      if (existing) {
+        existing.items.push(item);
+        existing.total += item.subtotal;
+      } else {
+        bundleMap.set(item.bundleId, {
+          name: item.bundleName ?? "Bundle",
+          items: [item],
+          total: item.subtotal,
+        });
+      }
+    } else {
+      regularItems.push(item);
+    }
+  }
+
+  let subtotal = 0;
+
+  // Print regular items
+  for (const item of regularItems) {
+    subtotal += item.subtotal;
     const qtyStr = ` ${item.quantity}`;
     const priceStr = `P${item.subtotal.toFixed(2)}`;
-    // Clamp nameMaxLen to prevent negative-length slices
     const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 3);
     let name: string;
     if (nameMaxLen === 0) {
@@ -86,9 +114,7 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
     }
 
     lines.push(leftRight(`${qtyStr}  ${name}`, priceStr, w));
-    subtotal += item.subtotal;
 
-    // Variation details
     if (item.variationSelections && item.variationSelections.length > 0) {
       for (const sel of item.variationSelections) {
         lines.push(`     - ${sel.optionName}`);
@@ -97,17 +123,60 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
       lines.push(`     - ${item.variation}`);
     }
 
-    // Addons
     if (item.addons && item.addons.length > 0) {
       for (const addon of item.addons) {
         lines.push(`     + ${addon.name}`);
       }
     }
 
-    // Special instructions
     if (item.specialInstructions) {
       lines.push(`     Note: ${item.specialInstructions}`);
     }
+  }
+
+  // Print bundle groups
+  for (const [, bundle] of bundleMap) {
+    subtotal += bundle.total;
+    lines.push("");
+    lines.push(`*** BUNDLE: ${bundle.name} ***`);
+
+    for (const item of bundle.items) {
+      const slotPrefix = item.slotName ? `[${item.slotName}] ` : "";
+      const qtyStr = ` ${item.quantity}`;
+      const priceStr = `P${item.subtotal.toFixed(2)}`;
+      const fullName = `${slotPrefix}${item.menuItemName}`;
+      const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 3);
+      let name: string;
+      if (nameMaxLen === 0) {
+        name = "";
+      } else if (fullName.length > nameMaxLen) {
+        name = nameMaxLen > 1 ? fullName.slice(0, nameMaxLen - 1) + "." : fullName.slice(0, nameMaxLen);
+      } else {
+        name = fullName;
+      }
+
+      lines.push(leftRight(`${qtyStr}  ${name}`, priceStr, w));
+
+      if (item.variationSelections && item.variationSelections.length > 0) {
+        for (const sel of item.variationSelections) {
+          lines.push(`     - ${sel.optionName}`);
+        }
+      } else if (item.variation) {
+        lines.push(`     - ${item.variation}`);
+      }
+
+      if (item.addons && item.addons.length > 0) {
+        for (const addon of item.addons) {
+          lines.push(`     + ${addon.name}`);
+        }
+      }
+
+      if (item.specialInstructions) {
+        lines.push(`     Note: ${item.specialInstructions}`);
+      }
+    }
+
+    lines.push(leftRight("  Bundle Total:", `P${bundle.total.toFixed(2)}`, w));
   }
 
   // Totals — validate computed subtotal against order.total
