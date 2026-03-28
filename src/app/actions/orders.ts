@@ -68,6 +68,8 @@ export async function createOrderAction(
     isUpsellItem?: boolean
     isBundleItem?: boolean
     bundleId?: string
+    bundleName?: string
+    slotName?: string
   }>,
   customerInfo?: {
     name?: string

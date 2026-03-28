@@ -541,6 +541,8 @@ export async function createOrderConvex(
     isUpsellItem?: boolean
     isBundleItem?: boolean
     bundleId?: string
+    bundleName?: string
+    slotName?: string
   }>,
   customerInfo?: { name?: string; contact?: string },
   orderTypeId?: string,
@@ -581,6 +583,8 @@ export async function createOrderConvex(
       ...(item.isUpsellItem ? { isUpsellItem: true } : {}),
       ...(item.isBundleItem ? { isBundleItem: true } : {}),
       ...(item.bundleId ? { bundleId: item.bundleId } : {}),
+      ...(item.bundleName ? { bundleName: item.bundleName } : {}),
+      ...(item.slotName ? { slotName: item.slotName } : {}),
     })),
   }
 
