@@ -37,7 +37,7 @@ export default function CheckoutPage() {
   const params = useParams()
   const router = useRouter()
   const tenantSlug = params.tenant as string
-  const { items, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
+  const { items, bundleItems, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
 
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
@@ -452,6 +452,7 @@ export default function CheckoutPage() {
 
       // Snapshot cart data before clearing
       const snapshotItems = [...items]
+      const snapshotBundleItems = [...bundleItems]
       const snapshotTotal = total
       const snapshotCustomerData = { ...customerData }
 
@@ -478,7 +479,21 @@ export default function CheckoutPage() {
 
       // ── PHASE 4: Save order to DB in background (non-blocking) ───────────
       if (tenant.enable_order_management) {
-        const orderItems = snapshotItems.map(item => {
+        const orderItems: Array<{
+          menu_item_id: string
+          menu_item_name: string
+          variation?: string
+          addons: string[]
+          quantity: number
+          price: number
+          subtotal: number
+          special_instructions?: string
+          isUpsellItem?: boolean
+          isBundleItem?: boolean
+          bundleId?: string
+          bundleName?: string
+          slotName?: string
+        }> = snapshotItems.map(item => {
           let itemPrice = item.menu_item.price
           if (item.selected_variation) {
             itemPrice += item.selected_variation.price_modifier
@@ -509,6 +524,43 @@ export default function CheckoutPage() {
             ...(item.upsellSource ? { isUpsellItem: true } : {}),
           }
         })
+
+        // Flatten bundle items into order items
+        for (const bundle of snapshotBundleItems) {
+          for (const slot of bundle.slots) {
+            let slotPrice = slot.priceOverride
+            let variationText = ''
+
+            if (slot.selectedVariation) {
+              slotPrice += slot.selectedVariation.price_modifier
+              variationText = slot.selectedVariation.name
+            } else if (slot.selectedVariations) {
+              const modifierSum = Object.values(slot.selectedVariations).reduce(
+                (sum, option) => sum + option.price_modifier, 0
+              )
+              slotPrice += modifierSum
+              variationText = Object.values(slot.selectedVariations).map(opt => opt.name).join(', ')
+            }
+
+            const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price, 0)
+            const itemTotal = (slotPrice + addonTotal) * slot.quantity * bundle.quantity
+
+            orderItems.push({
+              menu_item_id: slot.menuItemId,
+              menu_item_name: slot.menuItemName,
+              variation: variationText || undefined,
+              addons: slot.selectedAddons.map(a => a.name),
+              quantity: slot.quantity * bundle.quantity,
+              price: slotPrice + addonTotal,
+              subtotal: itemTotal,
+              special_instructions: undefined,
+              isBundleItem: true,
+              bundleId: bundle.bundleId,
+              bundleName: bundle.bundleName,
+              slotName: slot.slotName,
+            })
+          }
+        }
 
         const customerInfo = {
           name: snapshotCustomerData.customer_name || undefined,
