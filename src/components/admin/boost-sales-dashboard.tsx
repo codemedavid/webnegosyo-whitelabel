@@ -8,6 +8,7 @@ import { Eye } from 'lucide-react'
 import type { Category, UpsellPairWithItems } from '@/types/database'
 import type { MenuItem } from '@/types/database'
 import type { BundleWithSlots } from '@/lib/bundles-service'
+import { BoostSalesStatsBar } from '@/components/admin/boost-sales-stats-bar'
 
 const LoadingPlaceholder = () => (
   <div className="p-8 text-center text-muted-foreground animate-pulse">Loading...</div>
@@ -51,7 +52,7 @@ interface BoostSalesDashboardProps {
 export function BoostSalesDashboard({
   menuItems,
   categories: _categories,
-  upsellPairs: _upsellPairs,
+  upsellPairs,
   bundles,
   tenantId,
   tenantSlug,
@@ -66,7 +67,11 @@ export function BoostSalesDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Quick Stats Bar — will be added in Task 6 */}
+      <BoostSalesStatsBar
+        menuItems={menuItems}
+        upsellPairs={upsellPairs}
+        bundles={bundles}
+      />
 
       {/* Push Item Flow — will be added in Task 7 */}
 
