@@ -14,7 +14,6 @@ import {
   ShoppingBag,
   CreditCard,
   TrendingUp,
-  Package,
   Paintbrush,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -47,11 +46,7 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
     : items
 
   if (menuEngineeringEnabled === false || menuEngineeringEnabled === undefined) {
-    filteredItems = filteredItems.filter(item => !item.href.includes('/menu-engineering'))
-  }
-
-  if (bundlesEnabled === false || bundlesEnabled === undefined) {
-    filteredItems = filteredItems.filter(item => !item.href.includes('/bundles'))
+    filteredItems = filteredItems.filter(item => !item.href.includes('/boost-sales'))
   }
 
   return (
@@ -151,14 +146,9 @@ export const adminSidebarItems: SidebarItem[] = [
     icon: CreditCard,
   },
   {
-    label: 'Menu Engineering',
-    href: '/admin/menu-engineering',
+    label: 'Boost Sales',
+    href: '/admin/boost-sales',
     icon: TrendingUp,
-  },
-  {
-    label: 'Bundles',
-    href: '/admin/bundles',
-    icon: Package,
   },
   {
     label: 'Hero Designer',
