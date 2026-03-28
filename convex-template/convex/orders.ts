@@ -53,6 +53,8 @@ export const createOrder = mutation({
         isUpsellItem: v.optional(v.boolean()),
         isBundleItem: v.optional(v.boolean()),
         bundleId: v.optional(v.string()),
+        bundleName: v.optional(v.string()),
+        slotName: v.optional(v.string()),
       })
     ),
   },
