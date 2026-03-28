@@ -67,6 +67,8 @@ export default defineSchema({
     isUpsellItem: v.optional(v.boolean()),
     isBundleItem: v.optional(v.boolean()),
     bundleId: v.optional(v.string()),
+    bundleName: v.optional(v.string()),
+    slotName: v.optional(v.string()),
   }).index("by_order", ["orderId"]),
 
   analyticsEvents: defineTable({
