@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useRef, useCallback } from 'react'
+import { memo, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Package, Sparkles } from 'lucide-react'
 import { UpsellFullScreenLayout } from '@/components/customer/upsell-full-screen-layout'
@@ -62,26 +62,29 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
   const addedCountRef = useRef(0)
 
   const mode = getUpsellMode(suggestions, matchingBundle)
-  const imageUrls = suggestions.map((s) => s.image_url).filter(Boolean) as string[]
+  const imageUrls = useMemo(
+    () => suggestions.map((s) => s.image_url).filter(Boolean) as string[],
+    [suggestions]
+  )
   useImagePreload(imageUrls)
 
-  // Track upsell_shown once per open
-  if (open && !shownTrackedRef.current && mode) {
-    shownTrackedRef.current = true
-    trackAnalyticsEventAction(tenantId, 'upsell_shown', {
-      source: 'post_add',
-      mode,
-      itemCount: suggestions.length,
-      sourceItemId,
-      bundleId: matchingBundle?.id ?? null,
-    })
-  }
-
-  // Reset tracking when closed
-  if (!open && shownTrackedRef.current) {
-    shownTrackedRef.current = false
-    addedCountRef.current = 0
-  }
+  // Track upsell_shown once per open, reset on close
+  useEffect(() => {
+    if (open && !shownTrackedRef.current && mode) {
+      shownTrackedRef.current = true
+      trackAnalyticsEventAction(tenantId, 'upsell_shown', {
+        source: 'post_add',
+        mode,
+        itemCount: suggestions.length,
+        sourceItemId,
+        bundleId: matchingBundle?.id ?? null,
+      })
+    }
+    if (!open && shownTrackedRef.current) {
+      shownTrackedRef.current = false
+      addedCountRef.current = 0
+    }
+  }, [open, mode, tenantId, suggestions.length, sourceItemId, matchingBundle?.id])
 
   const handleAddItem = useCallback(
     (item: MenuItem) => {
@@ -140,13 +143,23 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
       title={title}
       subtitle={subtitle}
       footer={
-        <button
-          onClick={handleClose}
-          className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
-          type="button"
-        >
-          Continue
-        </button>
+        mode === 'bundle_only' ? (
+          <button
+            onClick={handleClose}
+            className="w-full py-3 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+            type="button"
+          >
+            No thanks, continue
+          </button>
+        ) : (
+          <button
+            onClick={handleClose}
+            className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
+            type="button"
+          >
+            Continue
+          </button>
+        )
       }
     >
       {/* Pairs grid - shown in pairs_only and pairs_and_bundle modes */}
@@ -240,7 +253,7 @@ function BundlePromoCard({ bundle, onAccept, hideCurrencySymbol, isHero }: Bundl
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-gray-900">{bundle.name}</h3>
-              <Sparkles className="h-4 w-4 text-amber-500" />
+              <Sparkles className="h-4 w-4 text-amber-500" aria-hidden />
             </div>
             {bundle.description && (
               <p className="mt-0.5 text-sm text-gray-500">{bundle.description}</p>
