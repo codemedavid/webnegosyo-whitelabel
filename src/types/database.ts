@@ -203,6 +203,7 @@ export interface MenuItem {
   bcg_classification?: BcgClassification;
   badge_text?: string;
   show_in_checkout_upsell?: boolean;
+  boost_priority?: number;
   order: number;
   created_at: string;
   updated_at: string;
@@ -249,6 +250,7 @@ export interface BundleSlot {
   category_id: string;
   pick_count: number;
   sort_order: number;
+  included_item_ids?: string[] | null;
   created_at: string;
   category?: Category;
   items?: MenuItem[];
