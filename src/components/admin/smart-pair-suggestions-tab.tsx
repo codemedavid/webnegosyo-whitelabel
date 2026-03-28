@@ -22,6 +22,7 @@ import {
   acceptPairSuggestionAction,
   bulkAcceptPairSuggestionsAction,
 } from '@/app/actions/menu-engineering'
+import { STRATEGY_MERCHANT_LABELS } from '@/lib/bcg-labels'
 import type { MenuItem } from '@/types/database'
 
 interface PairSuggestion {
@@ -36,26 +37,10 @@ interface SmartPairSuggestionsTabProps {
   tenantSlug: string
 }
 
-const strategyConfig: Record<string, { label: string; description: string; color: string; icon: string }> = {
-  plowhorse_to_star: {
-    label: 'Boost Margin',
-    description: 'Pair popular low-margin items with high-margin stars',
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
-    icon: 'boost',
-  },
-  star_to_star: {
-    label: 'Max AOV',
-    description: 'Pair top-performing items to maximize order value',
-    color: 'bg-amber-100 text-amber-800 border-amber-200',
-    icon: 'aov',
-  },
-  puzzle_to_plowhorse: {
-    label: 'Drive Discovery',
-    description: 'Use bestsellers to promote hidden gems',
-    color: 'bg-purple-100 text-purple-800 border-purple-200',
-    icon: 'discover',
-  },
-}
+// Build strategyConfig dynamically from bcg-labels
+const strategyConfig: Record<string, { label: string; description: string; color: string }> = Object.fromEntries(
+  Object.entries(STRATEGY_MERCHANT_LABELS).map(([key, val]) => [key, { label: val.label, description: val.description, color: val.color }])
+)
 
 export function SmartPairSuggestionsTab({
   tenantId,
@@ -136,7 +121,7 @@ export function SmartPairSuggestionsTab({
     return groups
   }, [visibleSuggestions])
 
-  // Estimated AOV lift
+  // Estimated extra revenue per order
   const estimatedAovLift = useMemo(() => {
     return pendingSuggestions.reduce((sum, s) => {
       const diff = Math.abs(s.targetItem.price - s.sourceItem.price)
@@ -204,7 +189,7 @@ export function SmartPairSuggestionsTab({
                 ) : (
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
-                {hasGenerated ? 'Regenerate' : 'Generate Suggestions'}
+                {hasGenerated ? 'Regenerate' : 'Find new pairings'}
               </Button>
             </div>
           </div>
@@ -238,7 +223,7 @@ export function SmartPairSuggestionsTab({
               </p>
               <Button onClick={handleGenerate} className="mt-4" disabled={isGenerating}>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate Suggestions
+                Find new pairings
               </Button>
             </div>
           )}
@@ -263,7 +248,7 @@ export function SmartPairSuggestionsTab({
               <span className="text-sm text-green-700 dark:text-green-400">
                 <strong>{pendingSuggestions.length}</strong> pending pair{pendingSuggestions.length !== 1 ? 's' : ''}
                 {estimatedAovLift > 0 && (
-                  <> with estimated AOV lift of <strong>{formatPrice(estimatedAovLift)}</strong></>
+                  <> — up to <strong>{formatPrice(estimatedAovLift)}</strong> extra revenue per order</>
                 )}
               </span>
               {acceptedIds.size > 0 && (
@@ -283,11 +268,10 @@ export function SmartPairSuggestionsTab({
           {!isGenerating && visibleSuggestions.length > 0 && (
             <div className="space-y-6">
               {Object.entries(groupedSuggestions).map(([strategy, strategySuggestions]) => {
-                const config = strategyConfig[strategy] || {
+                const config = strategyConfig[strategy] ?? {
                   label: strategy,
                   description: '',
                   color: 'bg-gray-100 text-gray-800 border-gray-200',
-                  icon: 'default',
                 }
 
                 return (
