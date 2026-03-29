@@ -298,8 +298,6 @@ export const computeAnalytics = internalAction({
       const periodOrders = activeOrders.filter(
         (o: { _creationTime: number }) => o._creationTime >= cutoff
       );
-      const orderIds = new Set(periodOrders.map((o: { _id: string }) => o._id));
-
       // Get all order items and filter by period orders
       // We need to get items for each order
       const itemMap = new Map<
@@ -357,7 +355,7 @@ export const computeAnalytics = internalAction({
       const costMap = new Map(allCosts.map((c: CostData) => [c.menuItemId, c.costPrice]));
 
       // Determine trend (only for 7d period by comparing with previous 7d)
-      let trendMap = new Map<string, string>();
+      const trendMap = new Map<string, string>();
       if (period === "7d") {
         const prevCutoff = now - 14 * 24 * 60 * 60 * 1000;
         const prevOrders = activeOrders.filter(
