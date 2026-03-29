@@ -53,7 +53,7 @@ export function ProductMiniPerformance({ menuItemId }: ProductMiniPerformancePro
             <ChevronDown className="h-4 w-4" />
           )}
           <span className="ml-1 text-xs">
-            {isExpanded ? 'Hide' : 'Details'}
+            {isExpanded ? 'Hide' : 'View Performance'}
           </span>
         </Button>
       </div>

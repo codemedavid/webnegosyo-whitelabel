@@ -73,7 +73,7 @@ export function ProductCostField({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="cost_price">Cost Price ($)</Label>
+          <Label htmlFor="cost_price">Cost Price (₱)</Label>
           <Input
             id="cost_price"
             type="number"
