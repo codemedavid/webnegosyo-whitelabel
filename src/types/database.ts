@@ -100,6 +100,8 @@ export interface Tenant {
   checkout_upsell_max_items?: number;
   // Bundles
   bundles_enabled?: boolean;
+  // Pairing rules
+  pairing_rules_enabled?: boolean;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen
@@ -531,4 +533,64 @@ export interface LeadNote {
   note: string;
   created_by: string | null;
   created_at: string;
+}
+
+// ============================================================
+// Pairing Rules Types
+// ============================================================
+
+export interface TagDefinition {
+  id: string;
+  tenant_id: string | null;
+  group_name: string;
+  tag_value: string;
+  is_preset: boolean;
+  created_at: string;
+}
+
+export interface MenuItemTag {
+  menu_item_id: string;
+  tag_definition_id: string;
+  tenant_id: string;
+}
+
+export interface PairingRule {
+  id: string;
+  tenant_id: string | null;
+  name: string;
+  source_type: 'category' | 'tag';
+  source_category_id: string | null;
+  source_tag_id: string | null;
+  max_suggestions: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PairingRuleTarget {
+  id: string;
+  rule_id: string;
+  target_type: 'category' | 'tag';
+  target_category_id: string | null;
+  target_tag_id: string | null;
+  selection_mode: 'handpick' | 'any';
+  display_order: number;
+}
+
+export interface PairingRuleTargetItem {
+  target_id: string;
+  menu_item_id: string;
+  display_order: number;
+}
+
+export interface PairingRuleWithDetails extends PairingRule {
+  source_category?: Category;
+  source_tag?: TagDefinition;
+  targets: PairingRuleTargetWithDetails[];
+}
+
+export interface PairingRuleTargetWithDetails extends PairingRuleTarget {
+  target_category?: Category;
+  target_tag?: TagDefinition;
+  items: MenuItem[];
 }
