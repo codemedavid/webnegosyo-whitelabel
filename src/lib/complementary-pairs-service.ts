@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
+import { resolveRuleBasedSuggestions } from '@/lib/pairing-rules-service'
 
 /**
  * Get complementary items for a menu item.
@@ -8,7 +9,8 @@ import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
 export async function getComplementaryItems(
   itemId: string,
   categoryId: string,
-  tenantId: string
+  tenantId: string,
+  options?: { pairingRulesEnabled?: boolean; cartItemIds?: string[] }
 ): Promise<MenuItem[]> {
   const supabase = createAdminClient()
 
@@ -52,6 +54,17 @@ export async function getComplementaryItems(
     return categoryPairs
       .map((p: Record<string, unknown>) => p.target_item as MenuItem)
       .filter((item: MenuItem) => item && item.is_available)
+  }
+
+  // --- Tiers 2 & 3: Category + Tag pairing rules ---
+  if (options?.pairingRulesEnabled) {
+    const ruleItems = await resolveRuleBasedSuggestions(
+      itemId,
+      categoryId,
+      tenantId,
+      options.cartItemIds
+    )
+    if (ruleItems.length > 0) return ruleItems
   }
 
   return []
