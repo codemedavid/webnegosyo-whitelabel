@@ -107,4 +107,32 @@ export default defineSchema({
     platform: v.union(v.literal("ios"), v.literal("android")),
   })
     .index("by_user", ["userId"]),
+
+  productCosts: defineTable({
+    menuItemId: v.string(),
+    costPrice: v.number(),
+    costNotes: v.optional(v.string()),
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_item", ["menuItemId"]),
+
+  productAnalytics: defineTable({
+    menuItemId: v.string(),
+    period: v.string(),
+    totalUnitsSold: v.number(),
+    totalRevenue: v.number(),
+    totalCost: v.number(),
+    totalProfit: v.number(),
+    marginPercent: v.optional(v.number()),
+    avgDailyUnits: v.number(),
+    revenueTrend: v.string(),
+    bcgClassification: v.string(),
+    recommendation: v.string(),
+    pairingRecommendation: v.optional(v.string()),
+    pairingItemId: v.optional(v.string()),
+    pairingReason: v.optional(v.string()),
+    lastOrderDate: v.optional(v.number()),
+    computedAt: v.number(),
+  })
+    .index("by_item_period", ["menuItemId", "period"]),
 });
