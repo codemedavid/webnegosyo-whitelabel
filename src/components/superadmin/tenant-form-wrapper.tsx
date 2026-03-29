@@ -67,6 +67,8 @@ interface TenantFormData {
   flash_screen_feature_enabled: boolean
   // Bundles
   bundles_enabled: boolean
+  // Pairing rules
+  pairing_rules_enabled: boolean
   // Restaurant address for Lalamove pickup
   restaurant_address: string
   restaurant_latitude: string
@@ -784,6 +786,51 @@ function BundlesFeatureSection({
   )
 }
 
+// Pairing Rules Feature Toggle Section
+function PairingRulesFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pairing Rules</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Enable tag-based pairing rules for automated complementary item suggestions
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="pairing_rules_enabled">Enable Pairing Rules</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the system uses tag-based rules to automatically suggest complementary items to customers
+            </p>
+          </div>
+          <Switch
+            id="pairing_rules_enabled"
+            checked={formData.pairing_rules_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, pairing_rules_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.pairing_rules_enabled && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Disabled:</strong> Tag-based pairing rules will not be evaluated and no automatic complementary suggestions will be generated from rules.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Restaurant Address Section (for Lalamove pickup)
 function RestaurantAddressSection({
   formData,
@@ -1184,6 +1231,8 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    // Pairing rules
+    pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // Restaurant address
     restaurant_address: tenant?.restaurant_address || '',
     restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
@@ -1247,6 +1296,8 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Bundles
       bundles_enabled: formData.bundles_enabled,
+      // Pairing rules
+      pairing_rules_enabled: formData.pairing_rules_enabled,
       // Restaurant address
       restaurant_address: formData.restaurant_address || undefined,
       restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
@@ -1355,6 +1406,12 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
       />
 
       <BundlesFeatureSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <PairingRulesFeatureSection
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}

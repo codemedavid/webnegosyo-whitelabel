@@ -54,6 +54,7 @@ export interface SelectedTenant {
     checkout_upsell_subtitle?: string | null
     checkout_upsell_max_items?: number | null
     bundles_enabled?: boolean
+    pairing_rules_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
     convex_deployment_url?: string | null
     convex_schema_version?: number
@@ -115,6 +116,7 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
                 checkout_upsell_subtitle,
                 checkout_upsell_max_items,
                 bundles_enabled,
+                pairing_rules_enabled,
                 convex_deployment_url,
                 convex_schema_version
             `)
