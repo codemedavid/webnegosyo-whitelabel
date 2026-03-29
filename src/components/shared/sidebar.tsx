@@ -15,6 +15,7 @@ import {
   CreditCard,
   TrendingUp,
   Paintbrush,
+  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -46,7 +47,7 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
     : items
 
   if (menuEngineeringEnabled === false || menuEngineeringEnabled === undefined) {
-    filteredItems = filteredItems.filter(item => !item.href.includes('/boost-sales'))
+    filteredItems = filteredItems.filter(item => !item.href.includes('/boost-sales') && !item.href.includes('/product-analytics'))
   }
 
   return (
@@ -149,6 +150,11 @@ export const adminSidebarItems: SidebarItem[] = [
     label: 'Boost Sales',
     href: '/admin/boost-sales',
     icon: TrendingUp,
+  },
+  {
+    label: 'Product Analytics',
+    href: '/admin/product-analytics',
+    icon: BarChart3,
   },
   {
     label: 'Hero Designer',
