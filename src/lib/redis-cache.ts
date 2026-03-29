@@ -28,6 +28,9 @@ export const CACHE_TTL = {
   TENANT: 1800,
   CATEGORIES: 600,
   MENU_ITEMS: 300,
+  UPSELL_PAIRS: 300,   // 5 min — complementary pairs, upgrade upsells
+  BUNDLES: 300,         // 5 min — menu/upsell bundles
+  CHECKOUT_UPSELL: 300, // 5 min — manual picks, star items
 } as const
 
 type CacheFetcher<T> = () => Promise<T>

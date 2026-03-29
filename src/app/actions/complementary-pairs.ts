@@ -7,6 +7,7 @@ import {
   createComplementaryPairs,
   deleteComplementaryPair,
   deleteComplementaryPairsForSource,
+  invalidateComplementaryPairsCache,
 } from '@/lib/complementary-pairs-service'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
 
@@ -34,6 +35,7 @@ export async function createComplementaryPairsAction(
   const result = await createComplementaryPairs(tenantId, sourceType, sourceId, targetItemIds)
 
   if (result.success) {
+    await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`, 'layout')
   }
@@ -49,6 +51,7 @@ export async function deleteComplementaryPairAction(
   const result = await deleteComplementaryPair(id, tenantId)
 
   if (result.success) {
+    await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`, 'layout')
   }
@@ -66,6 +69,8 @@ export async function updateComplementaryPairsAction(
   // Delete existing pairs for this source, then create new ones
   const deleteResult = await deleteComplementaryPairsForSource(tenantId, sourceType, sourceId)
   if (!deleteResult.success) return deleteResult
+
+  await invalidateComplementaryPairsCache(tenantId)
 
   if (targetItemIds.length === 0) {
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)

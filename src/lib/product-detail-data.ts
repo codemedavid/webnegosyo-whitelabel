@@ -279,7 +279,8 @@ export const getCachedRelatedItems = cache(async (categoryId: string, tenantId: 
 export const getCachedUpsellsForItem = cache(async (
     itemId: string,
     tenantId: string,
-    categoryId?: string
+    categoryId?: string,
+    options?: { pairingRulesEnabled?: boolean }
 ): Promise<{ complementary: MenuItem[]; upgrades: UpgradeUpsell[] }> => {
     try {
         const supabase = await createClient()
@@ -288,7 +289,9 @@ export const getCachedUpsellsForItem = cache(async (
         const [complementary, upgradesResult] = await Promise.all([
             // Complementary pairs from dedicated table (item-level overrides category-level)
             categoryId
-                ? getComplementaryItems(itemId, categoryId, tenantId)
+                ? getComplementaryItems(itemId, categoryId, tenantId, {
+                    pairingRulesEnabled: options?.pairingRulesEnabled,
+                  })
                 : Promise.resolve([]),
             // Upgrade pairs still from upsell_pairs
             supabase

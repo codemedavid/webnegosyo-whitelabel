@@ -28,10 +28,10 @@ import {
 import { formatPrice } from '@/lib/cart-utils'
 import { toggleBundleActiveAction, deleteBundleAction } from '@/app/actions/bundles'
 import { toast } from 'sonner'
-import type { BundleWithItems } from '@/lib/bundles-service'
+import type { BundleWithSlots } from '@/lib/bundles-service'
 
 interface BundlesListProps {
-    bundles: BundleWithItems[]
+    bundles: BundleWithSlots[]
     tenantSlug: string
     tenantId: string
 }
@@ -134,10 +134,10 @@ export function BundlesList({ bundles, tenantSlug, tenantId }: BundlesListProps)
                                         </p>
                                     )}
 
-                                    {/* Items summary */}
+                                    {/* Slots summary */}
                                     <div className="flex items-center gap-2 mt-2">
                                         <span className="text-sm text-muted-foreground">
-                                            {bundle.items?.length || 0} item{(bundle.items?.length || 0) !== 1 ? 's' : ''}
+                                            {bundle.slots?.length || 0} slot{(bundle.slots?.length || 0) !== 1 ? 's' : ''}
                                         </span>
                                         <span className="text-muted-foreground">·</span>
                                         <span className="text-sm font-medium">
@@ -147,11 +147,11 @@ export function BundlesList({ bundles, tenantSlug, tenantId }: BundlesListProps)
                                         </span>
                                     </div>
 
-                                    {/* Item names */}
-                                    {bundle.items && bundle.items.length > 0 && (
+                                    {/* Slot names */}
+                                    {bundle.slots && bundle.slots.length > 0 && (
                                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                                            {bundle.items
-                                                .map((item) => item.menu_item?.name || 'Unknown item')
+                                            {bundle.slots
+                                                .map((slot) => slot.name || slot.category?.name || 'Unknown slot')
                                                 .join(', ')}
                                         </p>
                                     )}

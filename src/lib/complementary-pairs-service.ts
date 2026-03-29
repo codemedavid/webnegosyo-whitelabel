@@ -1,10 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
 import { resolveRuleBasedSuggestions } from '@/lib/pairing-rules-service'
 
 /**
  * Get complementary items for a menu item.
  * Resolution: item-level pairs override category-level pairs, max 4 items.
+ * Results are cached in Redis for 5 min (keyed by tenant+item+category).
  */
 export async function getComplementaryItems(
   itemId: string,
@@ -12,9 +14,32 @@ export async function getComplementaryItems(
   tenantId: string,
   options?: { pairingRulesEnabled?: boolean; cartItemIds?: string[] }
 ): Promise<MenuItem[]> {
+  // When cart-aware filtering is active, skip Redis (results vary per cart state)
+  if (options?.cartItemIds && options.cartItemIds.length > 0) {
+    return fetchComplementaryItems(itemId, categoryId, tenantId, options)
+  }
+
+  const cacheKey = generateCacheKey(
+    'complementary',
+    `${tenantId}:${itemId}:${categoryId}:rules=${!!options?.pairingRulesEnabled}`
+  )
+
+  return getCachedOrFetch(
+    cacheKey,
+    () => fetchComplementaryItems(itemId, categoryId, tenantId, options),
+    CACHE_TTL.UPSELL_PAIRS
+  )
+}
+
+async function fetchComplementaryItems(
+  itemId: string,
+  categoryId: string,
+  tenantId: string,
+  options?: { pairingRulesEnabled?: boolean; cartItemIds?: string[] }
+): Promise<MenuItem[]> {
   const supabase = createAdminClient()
 
-  // 1. Try item-level pairs first
+  // Tier 1: Manual item-level pairs (always highest priority)
   const { data: itemPairs, error: itemError } = await supabase
     .from('complementary_pairs')
     .select('target_item_id, display_order, target_item:menu_items!target_item_id(*)')
@@ -35,7 +60,18 @@ export async function getComplementaryItems(
       .filter((item: MenuItem) => item && item.is_available)
   }
 
-  // 2. Fall back to category-level pairs
+  // Tier 2 & 3: Pairing rules (when enabled, override old category-level manual pairs)
+  if (options?.pairingRulesEnabled) {
+    const ruleItems = await resolveRuleBasedSuggestions(
+      itemId,
+      categoryId,
+      tenantId,
+      options.cartItemIds
+    )
+    if (ruleItems.length > 0) return ruleItems
+  }
+
+  // Tier 4: Fall back to category-level manual pairs
   const { data: categoryPairs, error: categoryError } = await supabase
     .from('complementary_pairs')
     .select('target_item_id, display_order, target_item:menu_items!target_item_id(*)')
@@ -56,18 +92,15 @@ export async function getComplementaryItems(
       .filter((item: MenuItem) => item && item.is_available)
   }
 
-  // --- Tiers 2 & 3: Category + Tag pairing rules ---
-  if (options?.pairingRulesEnabled) {
-    const ruleItems = await resolveRuleBasedSuggestions(
-      itemId,
-      categoryId,
-      tenantId,
-      options.cartItemIds
-    )
-    if (ruleItems.length > 0) return ruleItems
-  }
-
   return []
+}
+
+/**
+ * Invalidate complementary pairs cache for a tenant.
+ * Call after any pair create/delete/update.
+ */
+export async function invalidateComplementaryPairsCache(tenantId: string): Promise<void> {
+  await invalidateCache(`complementary:${tenantId}:*`)
 }
 
 /**

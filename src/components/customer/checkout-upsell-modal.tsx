@@ -165,9 +165,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   }, [open, prefetchedItems, previewSuggestions])
 
   const handleAddItem = useCallback(
-    (item: MenuItem) => {
+    (item: MenuItem, quantity: number) => {
       if (isPreview) return
-      addItem(item, undefined, [], 1, undefined, 'checkout_modal')
+      addItem(item, undefined, [], quantity, undefined, 'checkout_modal')
       toast.success(`Added ${item.name}`)
       upsellAddedCountRef.current += 1
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {

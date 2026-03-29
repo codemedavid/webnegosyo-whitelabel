@@ -36,6 +36,11 @@ const BoostSalesPerformanceTab = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
+const UpsellPairsTab = dynamic(
+  () => import('@/components/admin/upsell-pairs-tab').then(mod => ({ default: mod.UpsellPairsTab })),
+  { ssr: false, loading: LoadingPlaceholder }
+)
+
 const PairingRulesTab = dynamic(
   () => import('@/components/admin/pairing-rules-tab').then(mod => ({ default: mod.PairingRulesTab })),
   { ssr: false, loading: LoadingPlaceholder }
@@ -137,6 +142,7 @@ export function BoostSalesDashboard({
       <Tabs defaultValue="bundles" className="space-y-6">
         <TabsList>
           <TabsTrigger value="bundles">Combos &amp; Bundles</TabsTrigger>
+          <TabsTrigger value="upgrades">Upgrade Pairs</TabsTrigger>
           <TabsTrigger value="pairs">Pair Suggestions</TabsTrigger>
           {pairingRulesEnabled && (
             <TabsTrigger value="rules">Pairing Rules</TabsTrigger>
@@ -148,6 +154,15 @@ export function BoostSalesDashboard({
         <TabsContent value="bundles">
           <BundlesList
             bundles={bundles}
+            tenantId={tenantId}
+            tenantSlug={tenantSlug}
+          />
+        </TabsContent>
+
+        <TabsContent value="upgrades">
+          <UpsellPairsTab
+            menuItems={menuItems}
+            upsellPairs={upsellPairs}
             tenantId={tenantId}
             tenantSlug={tenantSlug}
           />

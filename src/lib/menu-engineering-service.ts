@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { BcgClassification, MenuItem, UpsellPair, UpsellPairWithItems } from '@/types/database'
 import { z } from 'zod'
 
@@ -293,48 +294,69 @@ export async function getUpsellsForCart(
 }
 
 export async function getStarItems(tenantId: string, limit: number = 4): Promise<MenuItem[]> {
-  const supabase = await createClient()
+  const cacheKey = generateCacheKey('checkout:stars', `${tenantId}:${limit}`)
 
-  const { data, error } = await supabase
-    .from('menu_items')
-    .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
-    .eq('tenant_id', tenantId)
-    .eq('bcg_classification', 'star')
-    .eq('is_available', true)
-    .limit(limit)
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
+        .eq('tenant_id', tenantId)
+        .eq('bcg_classification', 'star')
+        .eq('is_available', true)
+        .limit(limit)
 
-  if (error) throw error
+      if (error) throw error
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data || []).map((item: any) => ({
-    ...item,
-    variations: item.variations || [],
-    variation_types: item.variation_types || [],
-    addons: item.addons || [],
-  })) as MenuItem[]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data || []).map((item: any) => ({
+        ...item,
+        variations: item.variations || [],
+        variation_types: item.variation_types || [],
+        addons: item.addons || [],
+      })) as MenuItem[]
+    },
+    CACHE_TTL.CHECKOUT_UPSELL
+  )
 }
 
 /** Items manually marked by admin to appear in the checkout upsell */
 export async function getManualUpsellItems(tenantId: string, limit: number = 8): Promise<MenuItem[]> {
-  const supabase = await createClient()
+  const cacheKey = generateCacheKey('checkout:manual', `${tenantId}:${limit}`)
 
-  const { data, error } = await supabase
-    .from('menu_items')
-    .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
-    .eq('tenant_id', tenantId)
-    .eq('show_in_checkout_upsell', true)
-    .eq('is_available', true)
-    .limit(limit)
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
+        .eq('tenant_id', tenantId)
+        .eq('show_in_checkout_upsell', true)
+        .eq('is_available', true)
+        .limit(limit)
 
-  if (error) throw error
+      if (error) throw error
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data || []).map((item: any) => ({
-    ...item,
-    variations: item.variations || [],
-    variation_types: item.variation_types || [],
-    addons: item.addons || [],
-  })) as MenuItem[]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data || []).map((item: any) => ({
+        ...item,
+        variations: item.variations || [],
+        variation_types: item.variation_types || [],
+        addons: item.addons || [],
+      })) as MenuItem[]
+    },
+    CACHE_TTL.CHECKOUT_UPSELL
+  )
+}
+
+/**
+ * Invalidate checkout upsell caches for a tenant.
+ */
+export async function invalidateCheckoutUpsellCache(tenantId: string): Promise<void> {
+  await invalidateCache(`checkout:*${tenantId}*`)
 }
 
 
@@ -354,7 +376,7 @@ export async function getSmartUpgradeSuggestions(
 ): Promise<{ bundles: Array<{ id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
   const supabase = createAdminClient()
 
-  // Get the source item to know its category and price
+  // Get the source item first (needed for category_id and price filters)
   const { data: sourceItem } = await supabase
     .from('menu_items')
     .select('id, category_id, price, name')
@@ -364,13 +386,28 @@ export async function getSmartUpgradeSuggestions(
 
   if (!sourceItem) return { bundles: [], categoryUpgrades: [] }
 
-  // 1. Find bundles containing this item's category via bundle_slots
-  const { data: bundleSlots } = await supabase
-    .from('bundle_slots')
-    .select('bundle_id')
-    .eq('category_id', sourceItem.category_id!)
+  // Fetch bundle slots and category upgrades in parallel
+  const [bundleSlotsResult, categoryUpgradesResult] = await Promise.all([
+    supabase
+      .from('bundle_slots')
+      .select('bundle_id')
+      .eq('category_id', sourceItem.category_id!),
+    supabase
+      .from('menu_items')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('category_id', sourceItem.category_id!)
+      .eq('is_available', true)
+      .gt('price', sourceItem.price!)
+      .neq('id', itemId)
+      .order('price', { ascending: true })
+      .limit(5),
+  ])
 
-  let bundles: Array<{ id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }> = []
+  // Resolve bundles from slots (only if slots were found)
+  type BundleSuggestion = { id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }
+  let bundles: BundleSuggestion[] = []
+  const bundleSlots = bundleSlotsResult.data
   if (bundleSlots && bundleSlots.length > 0) {
     const bundleIds = [...new Set(bundleSlots.map((bs: { bundle_id: string }) => bs.bundle_id))]
     const { data: bundleData } = await supabase
@@ -380,24 +417,12 @@ export async function getSmartUpgradeSuggestions(
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
 
-    bundles = (bundleData || []) as typeof bundles
+    bundles = (bundleData || []) as BundleSuggestion[]
   }
-
-  // 2. Higher-priced items in the same category
-  const { data: categoryUpgrades } = await supabase
-    .from('menu_items')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('category_id', sourceItem.category_id!)
-    .eq('is_available', true)
-    .gt('price', sourceItem.price!)
-    .neq('id', itemId)
-    .order('price', { ascending: true })
-    .limit(5)
 
   return {
     bundles,
-    categoryUpgrades: (categoryUpgrades || []) as unknown as MenuItem[],
+    categoryUpgrades: (categoryUpgradesResult.data || []) as unknown as MenuItem[],
   }
 }
 

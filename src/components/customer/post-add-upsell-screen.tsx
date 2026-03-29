@@ -30,12 +30,13 @@ export function getUpsellMode(
 interface PostAddUpsellScreenProps {
   open: boolean
   onClose: () => void
-  onAddItem: (item: MenuItem) => void
+  onAddItem: (item: MenuItem, quantity: number) => void
   onAcceptBundle: (bundle: BundleWithSlots) => void
   suggestions: MenuItem[]
   matchingBundle: BundleWithSlots | null
   triggerItemName: string
   tenantId: string
+  tenantSlug: string
   sourceItemId: string
   hideCurrencySymbol?: boolean
 }
@@ -56,6 +57,7 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
   matchingBundle,
   triggerItemName,
   tenantId,
+  tenantSlug,
   sourceItemId,
   hideCurrencySymbol,
 }: PostAddUpsellScreenProps) {
@@ -96,15 +98,16 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
   }, [open, mode, tenantId, filteredSuggestions.length, sourceItemId, matchingBundle?.id, orchestrator, onClose])
 
   const handleAddItem = useCallback(
-    (item: MenuItem) => {
+    (item: MenuItem, quantity: number) => {
       addedCountRef.current += 1
-      onAddItem(item)
+      onAddItem(item, quantity)
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
         source: 'post_add',
         mode,
         itemId: item.id,
         itemName: item.name,
         price: item.discounted_price ?? item.price,
+        quantity,
         sourceItemId,
       })
     },
@@ -187,6 +190,7 @@ export const PostAddUpsellScreen = memo(function PostAddUpsellScreen({
               onAdd={handleAddItem}
               hideCurrencySymbol={hideCurrencySymbol}
               index={index}
+              tenantSlug={tenantSlug}
             />
           ))}
         </motion.div>
