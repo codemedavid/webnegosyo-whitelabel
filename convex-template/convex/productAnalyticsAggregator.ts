@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "./_generated/server";
+import { action, internalAction, internalMutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 
 const QUERY_LIMIT = 10000;
@@ -92,18 +92,18 @@ function classifyProducts(
     ) {
       product.bcgClassification = "unclassified";
     } else if (
-      product.avgDailyUnits > medianSales &&
-      product.marginPercent > medianMargin
+      product.avgDailyUnits >= medianSales &&
+      product.marginPercent >= medianMargin
     ) {
       product.bcgClassification = "star";
     } else if (
-      product.avgDailyUnits > medianSales &&
-      product.marginPercent <= medianMargin
+      product.avgDailyUnits >= medianSales &&
+      product.marginPercent < medianMargin
     ) {
       product.bcgClassification = "plowhorse";
     } else if (
-      product.avgDailyUnits <= medianSales &&
-      product.marginPercent > medianMargin
+      product.avgDailyUnits < medianSales &&
+      product.marginPercent >= medianMargin
     ) {
       product.bcgClassification = "puzzle";
     } else {
@@ -175,25 +175,24 @@ function generatePairingRecommendation(
 
   switch (product.bcgClassification) {
     case "star": {
-      // Pair with highest-margin Puzzle
+      // Promote alongside highest-margin Puzzle to boost its visibility
       const puzzles = others.filter((p) => p.bcgClassification === "puzzle");
       target = puzzles.sort(
         (a, b) => (b.marginPercent ?? 0) - (a.marginPercent ?? 0)
       )[0];
       if (!target) {
-        // Fallback: any highest-margin item
         target = others.sort(
           (a, b) => (b.marginPercent ?? 0) - (a.marginPercent ?? 0)
         )[0];
       }
       reason = target
-        ? `Pair with ${target.menuItemName} (${target.bcgClassification}, ${target.marginPercent?.toFixed(1)}% margin) as an upsell — your Star's popularity will boost its visibility.`
+        ? `Promote alongside ${target.menuItemName} (${target.bcgClassification}, ${target.marginPercent?.toFixed(1)}% margin) — suggest it as an add-on when customers order this best-seller.`
         : "";
       break;
     }
 
     case "plowhorse": {
-      // Pair with highest-margin Star or Puzzle
+      // Cross-promote with highest-margin Star or Puzzle to lift margins
       const highMargin = others.filter(
         (p) => p.bcgClassification === "star" || p.bcgClassification === "puzzle"
       );
@@ -206,13 +205,13 @@ function generatePairingRecommendation(
         )[0];
       }
       reason = target
-        ? `Bundle with ${target.menuItemName} (${target.bcgClassification}, ${target.marginPercent?.toFixed(1)}% margin) as a meal deal to improve combined margin.`
+        ? `Cross-promote with ${target.menuItemName} (${target.bcgClassification}, ${target.marginPercent?.toFixed(1)}% margin) — suggest it as an add-on to lift combined margins on this high-traffic item.`
         : "";
       break;
     }
 
     case "puzzle": {
-      // Pair with highest-sales Star or Plowhorse
+      // Feature alongside highest-traffic item to gain visibility
       const highSales = others.filter(
         (p) =>
           p.bcgClassification === "star" || p.bcgClassification === "plowhorse"
@@ -222,13 +221,13 @@ function generatePairingRecommendation(
         target = others.sort((a, b) => b.avgDailyUnits - a.avgDailyUnits)[0];
       }
       reason = target
-        ? `Pair with ${target.menuItemName} (${target.bcgClassification}, ${target.avgDailyUnits.toFixed(1)} units/day) — its traffic will expose customers to this high-margin item.`
+        ? `Feature alongside ${target.menuItemName} (${target.bcgClassification}, ${target.avgDailyUnits.toFixed(1)} units/day) — leverage its traffic to get this profitable item more visibility.`
         : "";
       break;
     }
 
     case "dog": {
-      // Pair with highest-sales Star
+      // Promote alongside popular item to move inventory
       const stars = others.filter((p) => p.bcgClassification === "star");
       target = stars.sort((a, b) => b.avgDailyUnits - a.avgDailyUnits)[0];
       if (!target) {
@@ -243,7 +242,7 @@ function generatePairingRecommendation(
         target = others.sort((a, b) => b.avgDailyUnits - a.avgDailyUnits)[0];
       }
       reason = target
-        ? `If keeping, bundle with ${target.menuItemName} (${target.bcgClassification}) as a combo deal to move inventory.`
+        ? `If keeping, promote alongside ${target.menuItemName} (${target.bcgClassification}) — leverage its popularity to move this underperformer.`
         : "";
       break;
     }
@@ -252,7 +251,7 @@ function generatePairingRecommendation(
   if (!target || !reason) return null;
 
   return {
-    recommendation: `Consider pairing with ${target.menuItemName}.`,
+    recommendation: `Cross-promote with ${target.menuItemName}.`,
     itemId: target.menuItemId,
     reason,
   };
@@ -412,6 +411,7 @@ export const computeAnalytics = internalAction({
           internal.productAnalyticsAggregator.upsertAnalytics,
           {
             menuItemId: product.menuItemId,
+            menuItemName: product.menuItemName,
             period,
             totalUnitsSold: product.totalUnitsSold,
             totalRevenue: Math.round(product.totalRevenue * 100) / 100,
@@ -438,6 +438,7 @@ export const computeAnalytics = internalAction({
 export const upsertAnalytics = internalMutation({
   args: {
     menuItemId: v.string(),
+    menuItemName: v.optional(v.string()),
     period: v.string(),
     totalUnitsSold: v.number(),
     totalRevenue: v.number(),
@@ -471,7 +472,7 @@ export const upsertAnalytics = internalMutation({
 });
 
 // Manual refresh — callable from admin UI
-export const refreshAnalytics = internalAction({
+export const refreshAnalytics = action({
   handler: async (ctx) => {
     await ctx.runAction(internal.productAnalyticsAggregator.computeAnalytics, {});
   },

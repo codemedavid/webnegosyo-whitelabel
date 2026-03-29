@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { FunctionReference } from "convex/server";
 
 // String-based function references (same pattern as use-convex-orders.ts)
@@ -10,6 +10,7 @@ const getAllCostsRef = "productCosts:getAllCosts" as unknown as FunctionReferenc
 const getAllAnalyticsRef = "productAnalytics:getAll" as unknown as FunctionReference<"query">;
 const getByItemRef = "productAnalytics:getByItem" as unknown as FunctionReference<"query">;
 const getPortfolioSummaryRef = "productAnalytics:getPortfolioSummary" as unknown as FunctionReference<"query">;
+const refreshAnalyticsRef = "productAnalyticsAggregator:refreshAnalytics" as unknown as FunctionReference<"action">;
 
 export function useProductCost(menuItemId: string) {
   return useQuery(getCostRef, { menuItemId });
@@ -33,4 +34,8 @@ export function useProductAnalyticsByItem(menuItemId: string, period?: string) {
 
 export function usePortfolioSummary(period?: string) {
   return useQuery(getPortfolioSummaryRef, { period: period ?? "30d" });
+}
+
+export function useRefreshAnalytics() {
+  return useAction(refreshAnalyticsRef);
 }

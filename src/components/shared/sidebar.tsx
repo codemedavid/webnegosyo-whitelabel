@@ -1,5 +1,5 @@
 'use client'
-
+// sidebar navigation with collapsible groups
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -18,6 +18,7 @@ import {
   Paintbrush,
   BarChart3,
   Cog,
+  Box,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -240,7 +241,7 @@ export const adminSidebarItems: SidebarEntry[] = [
     children: [
       { label: 'Menu Management', href: '/admin/menu', icon: UtensilsCrossed },
       { label: 'Categories', href: '/admin/categories', icon: FolderTree },
-      { label: 'Bundles', href: '/admin/bundles', icon: Package },
+      { label: 'Bundles', href: '/admin/bundles', icon: Box },
     ],
   },
   {

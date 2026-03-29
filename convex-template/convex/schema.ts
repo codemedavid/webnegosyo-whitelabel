@@ -118,6 +118,7 @@ export default defineSchema({
 
   productAnalytics: defineTable({
     menuItemId: v.string(),
+    menuItemName: v.optional(v.string()),
     period: v.string(),
     totalUnitsSold: v.number(),
     totalRevenue: v.number(),
