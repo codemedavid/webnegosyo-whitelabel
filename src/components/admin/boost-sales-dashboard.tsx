@@ -36,6 +36,11 @@ const BoostSalesPerformanceTab = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
+const PairingRulesTab = dynamic(
+  () => import('@/components/admin/pairing-rules-tab').then(mod => ({ default: mod.PairingRulesTab })),
+  { ssr: false, loading: LoadingPlaceholder }
+)
+
 const UpsellPreviewPanel = dynamic(
   () => import('@/components/admin/upsell-preview-panel').then(mod => ({ default: mod.UpsellPreviewPanel })),
   { ssr: false, loading: LoadingPlaceholder }
@@ -58,11 +63,12 @@ interface BoostSalesDashboardProps {
   checkoutUpsellMaxItems: number
   bundlesEnabled: boolean
   convexDeploymentUrl: string | null
+  pairingRulesEnabled: boolean
 }
 
 export function BoostSalesDashboard({
   menuItems,
-  categories: _categories,
+  categories,
   upsellPairs,
   bundles,
   tenantId,
@@ -73,6 +79,7 @@ export function BoostSalesDashboard({
   checkoutUpsellMaxItems,
   bundlesEnabled: _bundlesEnabled,
   convexDeploymentUrl,
+  pairingRulesEnabled,
 }: BoostSalesDashboardProps) {
   const [showPreview, setShowPreview] = useState(false)
 
@@ -131,6 +138,9 @@ export function BoostSalesDashboard({
         <TabsList>
           <TabsTrigger value="bundles">Combos &amp; Bundles</TabsTrigger>
           <TabsTrigger value="pairs">Pair Suggestions</TabsTrigger>
+          {pairingRulesEnabled && (
+            <TabsTrigger value="rules">Pairing Rules</TabsTrigger>
+          )}
           <TabsTrigger value="checkout">Checkout Picks</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
@@ -149,6 +159,17 @@ export function BoostSalesDashboard({
             tenantSlug={tenantSlug}
           />
         </TabsContent>
+
+        {pairingRulesEnabled && (
+          <TabsContent value="rules">
+            <PairingRulesTab
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              categories={categories}
+              menuItems={menuItems}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="checkout">
           <CheckoutUpsellSettingsTab
