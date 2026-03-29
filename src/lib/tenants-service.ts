@@ -78,6 +78,7 @@ export const tenantSchema = z.object({
   hide_currency_symbol: z.boolean().default(false),
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
+  pairing_rules_enabled: z.boolean().default(false),
   // Flash screen
   flash_screen_feature_enabled: z.boolean().optional(),
   flash_screen_is_active: z.boolean().optional(),
@@ -221,6 +222,7 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     hide_currency_symbol: parsed.hide_currency_symbol,
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
+    pairing_rules_enabled: parsed.pairing_rules_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -330,6 +332,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     hide_currency_symbol: parsed.hide_currency_symbol,
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
+    pairing_rules_enabled: parsed.pairing_rules_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
