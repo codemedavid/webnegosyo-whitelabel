@@ -328,7 +328,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="price">Price ($) *</Label>
+              <Label htmlFor="price">Price (₱) *</Label>
               <Input
                 id="price"
                 type="number"
@@ -348,7 +348,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="discounted_price">Discounted Price ($)</Label>
+              <Label htmlFor="discounted_price">Discounted Price (₱)</Label>
               <Input
                 id="discounted_price"
                 type="number"
