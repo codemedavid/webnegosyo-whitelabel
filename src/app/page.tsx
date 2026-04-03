@@ -8,12 +8,12 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export const metadata: Metadata = {
-  title: 'WebNegosyo - Your Menu Should Be Your Best Salesperson',
-  description: 'Smart Menu System na nagbo-boost ng Average Order Value para sa food businesses. Menu Engineering, Bundling System, at Upsell Automation. P3,499 one-time.',
-  keywords: ['smart menu', 'restaurant menu engineering', 'upsell system', 'food business Philippines', 'online ordering', 'messenger ordering', 'average order value'],
+  title: 'WebNegosyo - You Can Sell More With Smart Menu',
+  description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses. One-time ₱3,899.',
+  keywords: ['smart menu', 'restaurant menu engineering', 'upsell system', 'food business Philippines', 'online ordering', 'bundle system', 'average order value'],
   openGraph: {
-    title: 'WebNegosyo - Your Menu Should Be Your Best Salesperson',
-    description: 'Smart Menu System na nagbo-boost ng Average Order Value para sa food businesses.',
+    title: 'WebNegosyo - You Can Sell More With Smart Menu',
+    description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses.',
     type: 'website',
   },
   robots: {
