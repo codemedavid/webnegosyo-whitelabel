@@ -62,7 +62,6 @@ export default async function BoostSalesPage({
         checkoutUpsellSubtitle={tenant.checkout_upsell_subtitle ?? 'You might also enjoy these items'}
         checkoutUpsellMaxItems={tenant.checkout_upsell_max_items ?? 4}
         bundlesEnabled={tenant.bundles_enabled ?? false}
-        convexDeploymentUrl={tenant.convex_deployment_url ?? null}
         pairingRulesEnabled={tenant.pairing_rules_enabled ?? false}
         initialPairingRules={pairingRules}
         initialTagDefinitions={tagDefinitions}
