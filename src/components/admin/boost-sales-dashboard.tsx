@@ -103,11 +103,20 @@ export function BoostSalesDashboard({
         inUpsell.add(pair.target_item_id)
       }
     }
+    for (const bundle of bundles) {
+      if (bundle.is_active) {
+        for (const slot of bundle.slots) {
+          if (slot.included_item_ids) {
+            for (const id of slot.included_item_ids) inUpsell.add(id)
+          }
+        }
+      }
+    }
     for (const item of menuItems) {
       if (item.show_in_checkout_upsell) inUpsell.add(item.id)
     }
     return menuItems.filter((i) => !inUpsell.has(i.id)).map((i) => i.id)
-  }, [menuItems, upsellPairs])
+  }, [menuItems, upsellPairs, bundles])
 
   const tabStats = useMemo(() => {
     const activeBundles = bundles.filter(b => b.is_active).length
@@ -190,7 +199,7 @@ export function BoostSalesDashboard({
 
       {/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="border-b border-border overflow-x-auto no-scrollbar">
+        <div className="border-b border-border overflow-x-auto scrollbar-hide">
           <div className="flex items-center gap-8 min-w-max">
             {visibleTabs.map((tab) => {
               const Icon = tab.icon
