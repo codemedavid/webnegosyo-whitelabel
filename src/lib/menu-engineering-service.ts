@@ -373,7 +373,7 @@ export async function invalidateCheckoutUpsellCache(tenantId: string): Promise<v
 export async function getSmartUpgradeSuggestions(
   itemId: string,
   tenantId: string
-): Promise<{ bundles: Array<{ id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
+): Promise<{ bundles: Array<{ id: string; name: string; slots: unknown[]; items?: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }>; categoryUpgrades: MenuItem[] }> {
   const supabase = createAdminClient()
 
   // Get the source item first (needed for category_id and price filters)
@@ -405,7 +405,7 @@ export async function getSmartUpgradeSuggestions(
   ])
 
   // Resolve bundles from slots (only if slots were found)
-  type BundleSuggestion = { id: string; name: string; slots: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }
+  type BundleSuggestion = { id: string; name: string; slots: unknown[]; items?: unknown[]; pricing_type: string; fixed_price?: number; discount_percent?: number; image_url: string; description?: string }
   let bundles: BundleSuggestion[] = []
   const bundleSlots = bundleSlotsResult.data
   if (bundleSlots && bundleSlots.length > 0) {
@@ -769,14 +769,14 @@ export async function getRecommendedPlacement(
   const { count: bundleSlotCount } = await supabase
     .from('bundle_slots')
     .select('id', { count: 'exact', head: true })
-    .eq('category_id', item.category_id)
+    .eq('category_id', item.category_id!)
 
   // Get category average price
   const { data: categoryItems } = await supabase
     .from('menu_items')
     .select('price')
     .eq('tenant_id', tenantId)
-    .eq('category_id', item.category_id)
+    .eq('category_id', item.category_id!)
     .eq('is_available', true)
 
   const categoryAvg = categoryItems && categoryItems.length > 0
@@ -788,7 +788,7 @@ export async function getRecommendedPlacement(
     .from('menu_items')
     .select('*')
     .eq('tenant_id', tenantId)
-    .eq('category_id', item.category_id)
+    .eq('category_id', item.category_id!)
     .eq('is_available', true)
     .gt('price', item.price)
     .order('price', { ascending: true })

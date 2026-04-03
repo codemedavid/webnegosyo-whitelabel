@@ -409,7 +409,7 @@ async function resolveRuleTargets(
           .eq('is_available', true)
           .limit(maxSuggestions)
 
-        items = (catItems || []) as MenuItem[]
+        items = (catItems || []) as unknown as MenuItem[]
       } else if (t.target_type === 'tag' && t.target_tag_id) {
         const { data: taggedItems } = await supabase
           .from('menu_item_tags')

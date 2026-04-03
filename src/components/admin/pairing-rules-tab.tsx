@@ -57,6 +57,8 @@ interface PairingRulesTabProps {
   tenantSlug: string
   categories: Category[]
   menuItems: MenuItem[]
+  initialRules?: PairingRuleWithDetails[]
+  initialTags?: TagDefinition[]
 }
 
 export function PairingRulesTab({
@@ -64,10 +66,13 @@ export function PairingRulesTab({
   tenantSlug,
   categories,
   menuItems,
+  initialRules,
+  initialTags,
 }: PairingRulesTabProps) {
-  const [rules, setRules] = useState<PairingRuleWithDetails[]>([])
-  const [tags, setTags] = useState<TagDefinition[]>([])
+  const [rules, setRules] = useState<PairingRuleWithDetails[]>(initialRules ?? [])
+  const [tags, setTags] = useState<TagDefinition[]>(initialTags ?? [])
   const [isPending, startTransition] = useTransition()
+  const [hasLoaded, setHasLoaded] = useState(!!initialRules)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<PairingRuleWithDetails | null>(null)
 
@@ -91,10 +96,14 @@ export function PairingRulesTab({
       ])
       if (rulesResult.success) setRules(rulesResult.data)
       if (tagsResult.success) setTags(tagsResult.data)
+      setHasLoaded(true)
     })
   }, [tenantId])
 
-  useEffect(() => { loadData() }, [loadData])
+  // Only fetch on mount if no initial data was provided
+  useEffect(() => {
+    if (!initialRules) loadData()
+  }, [loadData, initialRules])
 
   const resetForm = () => {
     setName('')
@@ -226,6 +235,37 @@ export function PairingRulesTab({
   const platformRules = rules.filter((r) => r.tenant_id === null)
   const tenantRules = rules.filter((r) => r.tenant_id !== null)
 
+  // Show skeleton while loading (no initial data and fetch in progress)
+  if (!hasLoaded && isPending) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Pairing Rules</h3>
+            <p className="text-xs text-muted-foreground">Automatic suggestions based on category and tags</p>
+          </div>
+          <div className="h-9 w-24 bg-muted animate-pulse rounded-md" />
+        </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-muted animate-pulse" />
+                <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+              </div>
+              <div className="h-6 w-16 bg-muted animate-pulse rounded" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-5 w-28 bg-muted animate-pulse rounded-full" />
+              <div className="h-3 w-3 bg-muted animate-pulse rounded" />
+              <div className="h-5 w-24 bg-muted animate-pulse rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -278,7 +318,7 @@ export function PairingRulesTab({
         </div>
       )}
 
-      {rules.length === 0 && !isPending && (
+      {rules.length === 0 && hasLoaded && (
         <div className="text-center py-8 text-sm text-muted-foreground">
           No pairing rules yet. Add one to automatically suggest items when customers shop.
         </div>

@@ -130,6 +130,7 @@ export type Database = {
           category_id: string
           created_at: string
           id: string
+          included_item_ids: string[] | null
           name: string
           pick_count: number
           sort_order: number
@@ -139,6 +140,7 @@ export type Database = {
           category_id: string
           created_at?: string
           id?: string
+          included_item_ids?: string[] | null
           name: string
           pick_count?: number
           sort_order?: number
@@ -148,6 +150,7 @@ export type Database = {
           category_id?: string
           created_at?: string
           id?: string
+          included_item_ids?: string[] | null
           name?: string
           pick_count?: number
           sort_order?: number
@@ -461,6 +464,7 @@ export type Database = {
           addons: Json
           badge_text: string | null
           bcg_classification: string | null
+          boost_priority: number
           category_id: string | null
           created_at: string
           description: string
@@ -482,6 +486,7 @@ export type Database = {
           addons?: Json
           badge_text?: string | null
           bcg_classification?: string | null
+          boost_priority?: number
           category_id?: string | null
           created_at?: string
           description: string
@@ -503,6 +508,7 @@ export type Database = {
           addons?: Json
           badge_text?: string | null
           bcg_classification?: string | null
+          boost_priority?: number
           category_id?: string | null
           created_at?: string
           description?: string
@@ -1309,6 +1315,7 @@ export type Database = {
           modal_title_color: string | null
           name: string
           page_layout: string | null
+          pairing_rules_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
@@ -1419,6 +1426,7 @@ export type Database = {
           modal_title_color?: string | null
           name: string
           page_layout?: string | null
+          pairing_rules_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -1529,6 +1537,7 @@ export type Database = {
           modal_title_color?: string | null
           name?: string
           page_layout?: string | null
+          pairing_rules_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -1742,6 +1751,227 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tag_definitions: {
+        Row: {
+          id: string
+          tenant_id: string | null
+          group_name: string
+          tag_value: string
+          is_preset: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id?: string | null
+          group_name: string
+          tag_value: string
+          is_preset?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string | null
+          group_name?: string
+          tag_value?: string
+          is_preset?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_item_tags: {
+        Row: {
+          menu_item_id: string
+          tag_definition_id: string
+          tenant_id: string
+        }
+        Insert: {
+          menu_item_id: string
+          tag_definition_id: string
+          tenant_id: string
+        }
+        Update: {
+          menu_item_id?: string
+          tag_definition_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_tags_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_tags_tag_definition_id_fkey"
+            columns: ["tag_definition_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_tags_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rules: {
+        Row: {
+          id: string
+          tenant_id: string | null
+          name: string
+          source_type: string
+          source_category_id: string | null
+          source_tag_id: string | null
+          max_suggestions: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id?: string | null
+          name: string
+          source_type: string
+          source_category_id?: string | null
+          source_tag_id?: string | null
+          max_suggestions?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string | null
+          name?: string
+          source_type?: string
+          source_category_id?: string | null
+          source_tag_id?: string | null
+          max_suggestions?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rules_source_category_id_fkey"
+            columns: ["source_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rules_source_tag_id_fkey"
+            columns: ["source_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rule_targets: {
+        Row: {
+          id: string
+          rule_id: string
+          target_type: string
+          target_category_id: string | null
+          target_tag_id: string | null
+          selection_mode: string
+          display_order: number
+        }
+        Insert: {
+          id?: string
+          rule_id: string
+          target_type: string
+          target_category_id?: string | null
+          target_tag_id?: string | null
+          selection_mode?: string
+          display_order?: number
+        }
+        Update: {
+          id?: string
+          rule_id?: string
+          target_type?: string
+          target_category_id?: string | null
+          target_tag_id?: string | null
+          selection_mode?: string
+          display_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rule_targets_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "pairing_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_targets_target_category_id_fkey"
+            columns: ["target_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_targets_target_tag_id_fkey"
+            columns: ["target_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rule_target_items: {
+        Row: {
+          target_id: string
+          menu_item_id: string
+          display_order: number
+        }
+        Insert: {
+          target_id: string
+          menu_item_id: string
+          display_order?: number
+        }
+        Update: {
+          target_id?: string
+          menu_item_id?: string
+          display_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rule_target_items_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "pairing_rule_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_target_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
             referencedColumns: ["id"]
           },
         ]

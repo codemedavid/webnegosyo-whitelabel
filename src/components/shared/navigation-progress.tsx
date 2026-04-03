@@ -67,8 +67,12 @@ export function NavigationProgress({ color = '#111111' }: NavigationProgressProp
     const originalPushState = history.pushState.bind(history)
     const originalReplaceState = history.replaceState.bind(history)
 
+    // Defer start() to avoid calling setState inside useInsertionEffect
+    // (React 19 / Next.js 15.5+ syncs router state via useInsertionEffect which calls pushState/replaceState)
+    const deferredStart = () => setTimeout(start, 0)
+
     history.pushState = function (...args) {
-      start()
+      deferredStart()
       return originalPushState(...args)
     }
 
@@ -76,13 +80,13 @@ export function NavigationProgress({ color = '#111111' }: NavigationProgressProp
       // Only trigger for actual navigations (different URL), not React state updates
       const newUrl = args[2]
       if (newUrl && newUrl !== window.location.href && newUrl !== window.location.pathname + window.location.search) {
-        start()
+        deferredStart()
       }
       return originalReplaceState(...args)
     }
 
     // Also detect back/forward navigation
-    const handlePopState = () => start()
+    const handlePopState = () => deferredStart()
     window.addEventListener('popstate', handlePopState)
 
     // Intercept <a> clicks for Link components
@@ -103,7 +107,7 @@ export function NavigationProgress({ color = '#111111' }: NavigationProgressProp
         const url = new URL(anchor.href)
         if (url.origin !== window.location.origin) return
         if (url.pathname + url.search === window.location.pathname + window.location.search) return
-        start()
+        deferredStart()
       } catch {
         // Ignore invalid URLs
       }

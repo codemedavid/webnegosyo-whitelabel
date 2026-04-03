@@ -24,13 +24,13 @@ const contentVariants = {
   hidden: { y: '100%' },
   visible: {
     y: 0,
-    transition: { type: 'spring', damping: 28, stiffness: 350 },
+    transition: { type: 'spring' as const, damping: 28, stiffness: 350 },
   },
   exit: {
     y: '100%',
-    transition: { type: 'tween', duration: 0.2 },
+    transition: { type: 'tween' as const, duration: 0.2 },
   },
-}
+} as const
 
 export function UpsellFullScreenLayout({
   open,

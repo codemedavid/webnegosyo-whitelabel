@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { NavigationProgress } from '@/components/shared/navigation-progress'
 
@@ -35,7 +36,9 @@ export default async function TenantLayout({ params, children }: Props) {
 
     return (
         <>
-            <NavigationProgress color={primaryColor} />
+            <Suspense fallback={null}>
+                <NavigationProgress color={primaryColor} />
+            </Suspense>
             {children}
         </>
     )
