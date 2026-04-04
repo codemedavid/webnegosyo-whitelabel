@@ -40,6 +40,7 @@ export interface LeadStats {
   pendingCalls: number
   pendingToday: number
   avgResponseTimeHours: number
+  statusBreakdown: Record<LeadStatus, number>
 }
 
 export interface WeeklyLeadData {
