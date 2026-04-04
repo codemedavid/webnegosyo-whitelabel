@@ -31,7 +31,9 @@ const convexVersion = convexPkg.version;
 
 /**
  * Compile a single TypeScript file to JavaScript using esbuild.
- * Keeps convex/* and _generated/* imports external (resolved by Convex runtime).
+ * Keeps convex/* imports external (resolved by Convex runtime).
+ * _generated/* imports are inlined so we don't push raw _generated files
+ * (the Convex runtime rejects bare "convex/server" specifiers in raw modules).
  */
 async function compileModule(filePath) {
   const result = await build({
@@ -41,7 +43,7 @@ async function compileModule(filePath) {
     format: "esm",
     target: "esnext",
     platform: "browser",
-    external: ["convex", "convex/*", "./_generated/*", "../_generated/*"],
+    external: ["convex", "convex/*"],
     sourcemap: "external",
     outfile: "out.js",
     logLevel: "silent",
@@ -83,30 +85,15 @@ async function main() {
     console.log(`  Compiled: ${file} -> ${jsName}`);
   }
 
-  // 2. Include _generated/ JavaScript files as-is
-  const generatedDir = join(CONVEX_DIR, "_generated");
-  const generatedFiles = readdirSync(generatedDir).filter((f) =>
-    f.endsWith(".js")
-  );
+  // _generated/ files are NOT included as separate modules — they get inlined
+  // into each user module by esbuild. The Convex runtime rejects bare
+  // "convex/server" specifiers in raw module files.
 
-  for (const file of generatedFiles) {
-    const filePath = join(generatedDir, file);
-    const source = readFileSync(filePath, "utf-8");
-
-    modules.push({
-      path: `_generated/${file}`,
-      source,
-      environment: "isolate",
-    });
-
-    console.log(`  Included: _generated/${file}`);
-  }
-
-  // 3. Separate schema module from function modules
+  // 2. Separate schema module from function modules
   const schemaModule = modules.find((m) => m.path === "schema.js") || null;
   const functionModules = modules.filter((m) => m.path !== "schema.js");
 
-  // 4. Build the push bundle (matches Convex startPushRequest format)
+  // 3. Build the push bundle (matches Convex startPushRequest format)
   const bundle = {
     functions: "convex",
     appDefinition: {
