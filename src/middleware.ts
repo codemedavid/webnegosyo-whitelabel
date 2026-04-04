@@ -112,6 +112,7 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute =
     (pathname.match(/^\/[^/]+\/menu(\/|$)/) && !pathname.match(/^\/[^/]+\/admin\//)) ||
     pathname === '/' ||
+    pathname.startsWith('/privacy') ||
     pathname.includes('/login') ||
     pathname.startsWith('/superadmin/login')
 
