@@ -1976,6 +1976,139 @@ export type Database = {
           },
         ]
       }
+      platform_payment_methods: {
+        Row: {
+          id: string
+          name: string
+          type: string
+          details: string | null
+          qr_code_url: string | null
+          is_active: boolean
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: string
+          details?: string | null
+          qr_code_url?: string | null
+          is_active?: boolean
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: string
+          details?: string | null
+          qr_code_url?: string | null
+          is_active?: boolean
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      checkout_leads: {
+        Row: {
+          id: string
+          reference_number: string
+          name: string
+          email: string
+          phone: string
+          business_name: string
+          notes: string | null
+          selected_payment_method_id: string | null
+          status: string
+          payment_proof_url: string | null
+          payment_proof_uploaded_at: string | null
+          amount: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          reference_number: string
+          name: string
+          email: string
+          phone: string
+          business_name: string
+          notes?: string | null
+          selected_payment_method_id?: string | null
+          status?: string
+          payment_proof_url?: string | null
+          payment_proof_uploaded_at?: string | null
+          amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          reference_number?: string
+          name?: string
+          email?: string
+          phone?: string
+          business_name?: string
+          notes?: string | null
+          selected_payment_method_id?: string | null
+          status?: string
+          payment_proof_url?: string | null
+          payment_proof_uploaded_at?: string | null
+          amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_leads_selected_payment_method_id_fkey"
+            columns: ["selected_payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "platform_payment_methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checkout_lead_status_history: {
+        Row: {
+          id: string
+          checkout_lead_id: string
+          old_status: string | null
+          new_status: string
+          changed_by: string | null
+          note: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          checkout_lead_id: string
+          old_status?: string | null
+          new_status: string
+          changed_by?: string | null
+          note?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          checkout_lead_id?: string
+          old_status?: string | null
+          new_status?: string
+          changed_by?: string | null
+          note?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_lead_status_history_checkout_lead_id_fkey"
+            columns: ["checkout_lead_id"]
+            isOneToOne: false
+            referencedRelation: "checkout_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

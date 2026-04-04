@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
 
