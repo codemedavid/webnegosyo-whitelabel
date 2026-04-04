@@ -168,18 +168,14 @@ function HeroSection() {
           mag-suggest, at mag-push ng bigger orders &mdash; automatically.
         </p>
 
-        <div className="relative mx-auto mt-8 w-full max-w-[580px] overflow-hidden rounded-2xl border border-white/8" style={{ aspectRatio: '16/9', backgroundColor: '#1a1528' }}>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="flex h-16 w-16 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${BRAND_PURPLE}e6`, boxShadow: `0 0 30px ${BRAND_PURPLE}66` }}
-            >
-              <div className="ml-1 h-0 w-0 border-y-[13px] border-l-[22px] border-y-transparent border-l-white" />
-            </div>
-          </div>
-          <div className="absolute bottom-3 left-3 rounded-lg bg-black/70 px-3 py-1.5 text-[11px] text-white/60">
-            See how Smart Menu works
-          </div>
+        <div className="relative mx-auto mt-8 w-full max-w-[580px] overflow-hidden rounded-2xl border border-white/8" style={{ aspectRatio: '16/9' }}>
+          <iframe
+            src="https://www.youtube.com/embed/q1GZEDwFLv8?rel=0"
+            title="Smart Menu System"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 h-full w-full"
+          />
         </div>
 
         <p className="mx-auto mt-7 max-w-lg text-sm leading-relaxed text-white/40">

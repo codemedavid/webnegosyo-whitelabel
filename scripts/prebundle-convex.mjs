@@ -31,9 +31,10 @@ const convexVersion = convexPkg.version;
 
 /**
  * Compile a single TypeScript file to JavaScript using esbuild.
- * Keeps convex/* imports external (resolved by Convex runtime).
- * _generated/* imports are inlined so we don't push raw _generated files
- * (the Convex runtime rejects bare "convex/server" specifiers in raw modules).
+ * ALL dependencies (including convex/server, convex/values, _generated/*)
+ * are fully bundled into each module — the Convex runtime rejects bare
+ * specifiers like "convex/server". This matches the official Convex CLI
+ * bundler behavior (externalPackagesAllowList defaults to []).
  */
 async function compileModule(filePath) {
   const result = await build({
@@ -43,7 +44,6 @@ async function compileModule(filePath) {
     format: "esm",
     target: "esnext",
     platform: "browser",
-    external: ["convex", "convex/*"],
     sourcemap: "external",
     outfile: "out.js",
     logLevel: "silent",
