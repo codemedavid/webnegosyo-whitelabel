@@ -89,6 +89,7 @@ function MarginBadge({ margin }: { margin: number | undefined }) {
 export function ProductAnalyticsContent() {
   const [period, setPeriod] = useState('30d')
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [filterClass, setFilterClass] = useState<string | null>(null)
   const [sortField, setSortField] = useState<string>('totalRevenue')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -117,6 +118,10 @@ export function ProductAnalyticsContent() {
         return sortDir === 'desc' ? bVal - aVal : aVal - bVal
       })
     : []
+
+  const filtered = filterClass
+    ? sorted.filter(item => item.bcgClassification === filterClass)
+    : sorted
 
   const selectedItem = sorted.find(i => i.menuItemId === selectedItemId) ?? null
 
@@ -185,8 +190,16 @@ export function ProductAnalyticsContent() {
             {(['star', 'puzzle', 'plowhorse', 'dog'] as const).map((cls) => {
               const config = bcgConfig[cls]
               const count = summary.counts[cls]
+              const isActive = filterClass === cls
               return (
-                <Card key={cls} className={`${config.bgColor} ${config.borderColor} border`}>
+                <Card
+                  key={cls}
+                  className={cn(
+                    `${config.bgColor} ${config.borderColor} border cursor-pointer transition-all`,
+                    isActive ? 'ring-2 ring-offset-1 ring-current shadow-md scale-[1.02]' : 'hover:shadow-sm'
+                  )}
+                  onClick={() => setFilterClass(isActive ? null : cls)}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       {config.icon}
@@ -237,11 +250,36 @@ export function ProductAnalyticsContent() {
               )
             }
 
+            const totalRev = sorted.reduce((s, i) => s + i.totalRevenue, 0)
+            const classRevenue = (['star', 'puzzle', 'plowhorse', 'dog'] as const).map((cls) => {
+              const rev = sorted.filter(i => i.bcgClassification === cls).reduce((s, i) => s + i.totalRevenue, 0)
+              const pct = totalRev > 0 ? Math.round((rev / totalRev) * 1000) / 10 : 0
+              return { cls, rev, pct }
+            })
+
+            const visibleRevenue = filterClass
+              ? classRevenue.filter(r => r.cls === filterClass)
+              : classRevenue
+
             return (
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-muted-foreground">
-                  {summary.starRevenuePercent}% of revenue comes from Stars
-                </span>
+              <div className="space-y-2">
+                <div className={cn(
+                  'grid gap-3 text-sm',
+                  visibleRevenue.length === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-4'
+                )}>
+                  {visibleRevenue.map(({ cls, rev, pct }) => {
+                    const config = bcgConfig[cls]
+                    return (
+                      <div key={cls} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                        <span className={`text-lg font-bold ${config.textColor}`}>{pct}%</span>
+                        <div className="text-xs text-muted-foreground leading-tight">
+                          <div>from {config.label}</div>
+                          <div>₱{Math.round(rev).toLocaleString()}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
                 {summary.lowMarginPlowhorses.length > 0 && (
                   <Badge variant="destructive" className="gap-1">
                     <AlertTriangle className="h-3 w-3" />
@@ -259,15 +297,19 @@ export function ProductAnalyticsContent() {
         {/* Table */}
         <Card className={cn('transition-all', selectedItem ? 'flex-1 min-w-0' : 'w-full')}>
           <CardHeader>
-            <CardTitle>All Products</CardTitle>
+            <CardTitle>
+              {filterClass ? bcgConfig[filterClass]?.label ?? 'Products' : 'All Products'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            {sorted.length === 0 ? (
+            {filtered.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p>No analytics data yet.</p>
-                <p className="text-sm mt-1">
-                  Add cost prices to your menu items and wait for orders to flow in.
-                </p>
+                <p>{filterClass ? `No ${bcgConfig[filterClass]?.label ?? ''} products.` : 'No analytics data yet.'}</p>
+                {!filterClass && (
+                  <p className="text-sm mt-1">
+                    Add cost prices to your menu items and wait for orders to flow in.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="w-full overflow-auto">
@@ -284,7 +326,7 @@ export function ProductAnalyticsContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map((item) => {
+                    {filtered.map((item) => {
                       const bcg = bcgConfig[item.bcgClassification]
                       const isSelected = selectedItemId === item.menuItemId
 
