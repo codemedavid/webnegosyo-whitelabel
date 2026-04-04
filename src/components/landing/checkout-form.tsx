@@ -1,116 +1,111 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { z } from 'zod'
+import { toast } from 'sonner'
+import { Loader2, CreditCard, QrCode, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { toast } from 'sonner'
-import { MessageCircle, CreditCard } from 'lucide-react'
-import { z } from 'zod'
+import { submitCheckoutForm, fetchActivePlatformPaymentMethods } from '@/app/actions/checkout-leads'
+import type { PlatformPaymentMethod } from '@/types/database'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
-  phone: z.string().min(10, 'Phone number must be at least 10 digits').regex(/^[0-9]+$/, 'Phone number must contain only digits'),
+  phone: z
+    .string()
+    .min(10, 'Phone number must be at least 10 digits')
+    .regex(/^[0-9]+$/, 'Phone number must contain only digits'),
   businessName: z.string().min(2, 'Business name must be at least 2 characters'),
-  paymentMethod: z.enum(['gcash', 'bpi'], {
-    message: 'Please select a payment method',
-  }),
+  paymentMethodId: z.string().min(1, 'Please select a payment method'),
   notes: z.string().optional(),
 })
 
 type FormData = z.infer<typeof checkoutFormSchema>
-type FormErrors = Partial<Record<keyof FormData, string>>
 
-const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
-const PRODUCT_NAME = 'Smart Menu System'
-const PRODUCT_PRICE = 3899
+const PAYMENT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  qr_code: QrCode,
+  bank_transfer: Building2,
+  other: CreditCard,
+}
 
 export function CheckoutForm() {
+  const router = useRouter()
+  const [paymentMethods, setPaymentMethods] = useState<PlatformPaymentMethod[]>([])
+  const [isLoadingMethods, setIsLoadingMethods] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
     phone: '',
     businessName: '',
-    paymentMethod: 'gcash',
+    paymentMethodId: '',
     notes: '',
   })
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
 
-  const validateForm = (): boolean => {
-    try {
-      checkoutFormSchema.parse(formData)
-      setErrors({})
-      return true
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: FormErrors = {}
-        error.issues.forEach((err) => {
-          const path = err.path[0] as keyof FormData
-          if (path) {
-            newErrors[path] = err.message
-          }
-        })
-        setErrors(newErrors)
-
-        const firstError = error.issues[0]
-        if (firstError) {
-          toast.error(`${firstError.path.join('.')}: ${firstError.message}`)
-        }
+  useEffect(() => {
+    fetchActivePlatformPaymentMethods().then((methods) => {
+      setPaymentMethods(methods)
+      if (methods.length === 1) {
+        setFormData((prev) => ({ ...prev, paymentMethodId: methods[0].id }))
       }
-      return false
+      setIsLoadingMethods(false)
+    })
+  }, [])
+
+  const handleChange = (field: keyof FormData, value: string) => {
+    const newValue = field === 'phone' ? value.replace(/\D/g, '') : value
+    setFormData((prev) => ({ ...prev, [field]: newValue }))
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }))
     }
   }
 
-  const formatMessage = (data: FormData): string => {
-    const paymentMethodName = data.paymentMethod === 'gcash' ? 'GCash' : 'BPI'
-
-    return `Hello! I'd like to purchase the ${PRODUCT_NAME} (₱${PRODUCT_PRICE.toLocaleString()}).
-
-Here are my details:
-📋 Name: ${data.name}
-📧 Email: ${data.email}
-📱 Phone: ${data.phone}
-🏢 Business Name: ${data.businessName}
-💳 Payment Method: ${paymentMethodName}
-${data.notes ? `📝 Additional Notes: ${data.notes}` : ''}
-
-Please let me know the next steps to complete my purchase. Thank you!`
+  const validateForm = (): boolean => {
+    const result = checkoutFormSchema.safeParse(formData)
+    if (!result.success) {
+      const fieldErrors: Partial<Record<keyof FormData, string>> = {}
+      for (const issue of result.error.issues) {
+        const field = issue.path[0] as keyof FormData
+        if (!fieldErrors[field]) {
+          fieldErrors[field] = issue.message
+        }
+      }
+      setErrors(fieldErrors)
+      return false
+    }
+    setErrors({})
+    return true
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!validateForm()) {
-      return
-    }
+    if (!validateForm()) return
 
     setIsSubmitting(true)
-
     try {
-      const message = formatMessage(formData)
-      const encodedMessage = encodeURIComponent(message)
-      const messengerUrl = `https://m.me/${FACEBOOK_PAGE_USERNAME}?text=${encodedMessage}`
+      const result = await submitCheckoutForm({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        business_name: formData.businessName,
+        selected_payment_method_id: formData.paymentMethodId,
+        notes: formData.notes || undefined,
+      })
 
-      window.open(messengerUrl, '_blank')
-      toast.success('Opening Messenger... Please send the pre-filled message to complete your order.')
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
 
-      setTimeout(() => {
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          businessName: '',
-          paymentMethod: 'gcash',
-          notes: '',
-        })
-        setErrors({})
-      }, 2000)
-    } catch (error) {
-      console.error('Error submitting form:', error)
+      if (result.data) {
+        router.push(`/checkout/confirmation/${result.data.reference_number}`)
+      }
+    } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {
       setIsSubmitting(false)
@@ -120,142 +115,153 @@ Please let me know the next steps to complete my purchase. Thank you!`
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Name */}
-      <div className="space-y-1.5">
-        <Label htmlFor="name" className="text-sm text-white/70">
-          Full Name <span className="text-purple-400">*</span>
-        </Label>
+      <div className="space-y-2">
+        <Label htmlFor="name">Full Name</Label>
         <Input
           id="name"
-          type="text"
-          placeholder="Juan dela Cruz"
           value={formData.name}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-          aria-invalid={!!errors.name}
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500"
+          onChange={(e) => handleChange('name', e.target.value)}
+          placeholder="Juan dela Cruz"
         />
-        {errors.name && <p className="text-sm text-red-400">{errors.name}</p>}
+        {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
       </div>
 
       {/* Email */}
-      <div className="space-y-1.5">
-        <Label htmlFor="email" className="text-sm text-white/70">
-          Email Address <span className="text-purple-400">*</span>
-        </Label>
+      <div className="space-y-2">
+        <Label htmlFor="email">Email Address</Label>
         <Input
           id="email"
           type="email"
-          placeholder="juan@example.com"
           value={formData.email}
-          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-          aria-invalid={!!errors.email}
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500"
+          onChange={(e) => handleChange('email', e.target.value)}
+          placeholder="juan@example.com"
         />
-        {errors.email && <p className="text-sm text-red-400">{errors.email}</p>}
+        {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
       </div>
 
       {/* Phone */}
-      <div className="space-y-1.5">
-        <Label htmlFor="phone" className="text-sm text-white/70">
-          Phone Number <span className="text-purple-400">*</span>
-        </Label>
+      <div className="space-y-2">
+        <Label htmlFor="phone">Phone Number</Label>
         <Input
           id="phone"
-          type="tel"
-          placeholder="09123456789"
           value={formData.phone}
-          onChange={(e) => {
-            const value = e.target.value.replace(/\D/g, '')
-            setFormData(prev => ({ ...prev, phone: value }))
-          }}
-          maxLength={11}
-          aria-invalid={!!errors.phone}
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500"
+          onChange={(e) => handleChange('phone', e.target.value)}
+          placeholder="09XXXXXXXXX"
         />
-        {errors.phone && <p className="text-sm text-red-400">{errors.phone}</p>}
+        {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
       </div>
 
       {/* Business Name */}
-      <div className="space-y-1.5">
-        <Label htmlFor="businessName" className="text-sm text-white/70">
-          Business Name <span className="text-purple-400">*</span>
-        </Label>
+      <div className="space-y-2">
+        <Label htmlFor="businessName">Business Name</Label>
         <Input
           id="businessName"
-          type="text"
-          placeholder="My Restaurant"
           value={formData.businessName}
-          onChange={(e) => setFormData(prev => ({ ...prev, businessName: e.target.value }))}
-          aria-invalid={!!errors.businessName}
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500"
+          onChange={(e) => handleChange('businessName', e.target.value)}
+          placeholder="Juan's Kitchen"
         />
-        {errors.businessName && <p className="text-sm text-red-400">{errors.businessName}</p>}
+        {errors.businessName && <p className="text-sm text-red-500">{errors.businessName}</p>}
       </div>
 
-      {/* Payment Method */}
-      <div className="space-y-1.5">
-        <Label htmlFor="paymentMethod" className="text-sm text-white/70">
-          Payment Method <span className="text-purple-400">*</span>
-        </Label>
-        <Select
-          value={formData.paymentMethod}
-          onValueChange={(value) => setFormData(prev => ({ ...prev, paymentMethod: value as 'gcash' | 'bpi' }))}
-        >
-          <SelectTrigger id="paymentMethod" className="w-full bg-white/5 border-white/10 text-white" aria-invalid={!!errors.paymentMethod}>
-            <SelectValue placeholder="Select payment method" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="gcash">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                <span>GCash</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="bpi">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                <span>BPI</span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        {errors.paymentMethod && <p className="text-sm text-red-400">{errors.paymentMethod}</p>}
+      {/* Payment Method - Radio Cards */}
+      <div className="space-y-2">
+        <Label>Payment Method</Label>
+        {isLoadingMethods ? (
+          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading payment methods...
+          </div>
+        ) : paymentMethods.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">
+            No payment methods available. Please contact us on Messenger.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            {paymentMethods.map((method) => {
+              const Icon = PAYMENT_TYPE_ICONS[method.type] ?? CreditCard
+              const isSelected = formData.paymentMethodId === method.id
+              return (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => handleChange('paymentMethodId', method.id)}
+                  className={`flex items-center gap-3 rounded-lg border-2 p-4 text-left transition-all ${
+                    isSelected
+                      ? 'border-orange-500 bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                      isSelected ? 'bg-orange-100' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Icon
+                      className={`h-5 w-5 ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}
+                    />
+                  </div>
+                  <div>
+                    <p className="font-medium">{method.name}</p>
+                    {method.details && (
+                      <p className="text-sm text-muted-foreground">{method.details}</p>
+                    )}
+                  </div>
+                  <div className="ml-auto">
+                    <div
+                      className={`h-5 w-5 rounded-full border-2 ${
+                        isSelected
+                          ? 'border-orange-500 bg-orange-500'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {isSelected && (
+                        <svg viewBox="0 0 20 20" fill="white" className="h-full w-full p-0.5">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {errors.paymentMethodId && (
+          <p className="text-sm text-red-500">{errors.paymentMethodId}</p>
+        )}
       </div>
 
       {/* Notes */}
-      <div className="space-y-1.5">
-        <Label htmlFor="notes" className="text-sm text-white/70">
-          Additional Notes (Optional)
-        </Label>
+      <div className="space-y-2">
+        <Label htmlFor="notes">Additional Notes (Optional)</Label>
         <Textarea
           id="notes"
-          placeholder="Any special requests or questions..."
           value={formData.notes}
-          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+          onChange={(e) => handleChange('notes', e.target.value)}
+          placeholder="Any special requests or questions..."
           rows={3}
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500"
         />
       </div>
 
       {/* Submit */}
       <Button
         type="submit"
-        size="lg"
-        className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold text-base"
-        disabled={isSubmitting}
+        disabled={isSubmitting || isLoadingMethods}
+        className="w-full bg-orange-500 py-6 text-lg font-bold text-white hover:bg-orange-600"
       >
         {isSubmitting ? (
-          'Processing...'
-        ) : (
           <>
-            <MessageCircle className="mr-2 h-4 w-4" />
-            Continue to Messenger
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Processing...
           </>
+        ) : (
+          'Complete Purchase — P3,899'
         )}
       </Button>
-
-      <p className="text-xs text-center text-white/30">
-        You&apos;ll be redirected to Messenger to complete your order. We&apos;ll process your request within 48 hours.
-      </p>
     </form>
   )
 }
