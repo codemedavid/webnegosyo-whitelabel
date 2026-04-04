@@ -9,7 +9,7 @@ import { getTenants } from '@/lib/queries/tenants-server'
 import { TenantSearch } from '@/components/superadmin/tenant-search'
 
 async function TenantList() {
-  const tenants = await getTenants()
+  const { data: tenants, count } = await getTenants()
 
   if (tenants.length === 0) {
     return (
@@ -22,7 +22,7 @@ async function TenantList() {
 
   return (
     <>
-      <TenantSearch initialTenants={tenants} />
+      <TenantSearch initialTenants={tenants} initialCount={count} />
     </>
   )
 }

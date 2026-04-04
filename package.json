@@ -14,7 +14,8 @@
     "test:superadmin": "node scripts/test-superadmin.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "db:check": "node scripts/check-database.mjs",
-    "db:create-test-tenant": "node scripts/create-test-tenant.mjs"
+    "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
+    "convex:prebundle": "node scripts/prebundle-convex.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

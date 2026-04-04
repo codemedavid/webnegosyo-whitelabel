@@ -1,18 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
+import Image from 'next/image'
 import {
   Check,
   ChevronDown,
   ChevronRight,
-  ShoppingCart,
-  TrendingDown,
-  DollarSign,
-  Utensils,
-  ArrowUpRight,
-  Target,
+  Play,
 } from 'lucide-react'
 
 const CHECKOUT_URL = '/checkout'
@@ -22,61 +18,12 @@ const HERO_BG = '#0F0B1A'
 const ALT_BG = '#111111'
 const VIEWPORT = { once: true, amount: 0.2 } as const
 
-const PAIN_POINTS = [
-  {
-    icon: ShoppingCart,
-    title: 'Ordering Friction',
-    text: 'Ang daming steps, walang guidance. Nag-ba-browse lang ang customer, naco-confuse, at nag-o-order ng pinaka-obvious. Tapos umalis na.',
-  },
-  {
-    icon: TrendingDown,
-    title: 'No Upsell System',
-    text: 'Walang nag-su-suggest ng upgrade, walang "add drinks?" prompt, walang "make it a meal?" Bawat order — bare minimum lang.',
-  },
-  {
-    icon: DollarSign,
-    title: 'Margin Gets Buried',
-    text: 'Ang best items mo at bundles, nakatago sa baba ng menu. Hindi napapansin kasi pare-pareho lang ang presentation.',
-  },
-] as const
-
-const SOLUTION_FEATURES = [
-  {
-    icon: Utensils,
-    title: 'Smart Bundles & Combos',
-    text: '\u201cMake it a meal?\u201d \u2014 automatic bundle prompts na nagpapataas ng basket size. Customer feels like may deal, ikaw naman kumikita pa rin.',
-  },
-  {
-    icon: ArrowUpRight,
-    title: 'Upgrade Pairs',
-    text: 'Side-by-side comparison ng ala carte vs. upgrade. Nakikita agad ng customer ang value difference \u2014 at 40%+ ang nag-u-upgrade.',
-  },
-  {
-    icon: ShoppingCart,
-    title: 'Checkout Upsells',
-    text: '\u201cBefore you go...\u201d \u2014 last-minute suggestions bago mag-checkout. Hindi nakakainis, pero napaka-effective sa dagdag na items.',
-  },
-  {
-    icon: Target,
-    title: 'Menu Engineering',
-    text: 'Alam mo na kung alin ang star items, hidden gems, at slow movers. I-push ang tama, i-hide ang hindi \u2014 data-driven ang menu mo.',
-  },
-] as const
-
-const SOCIAL_PROOF_STATS = [
-  { value: '100', suffix: '+', label: 'Restaurant funnels observed' },
-  { value: '10,000', suffix: '+', label: 'Customer orders processed' },
-  { value: '3', suffix: 'x', label: 'Average order value increase' },
-] as const
 
 const PRICING_FEATURES = [
-  'Smart Bundles & Combo System',
-  'Upgrade Pairs Engine',
-  'Checkout Upsell Prompts',
-  'Menu Engineering Dashboard',
-  '12 Menu Card Templates',
-  '6 Page Layouts',
-  'Custom Hero Designer',
+'Website Ordering - This is your smart menu',
+'Upselling System',
+'Bundles System',
+'Product Management System',
   'Dine-in, Pick-up & Delivery',
   'Mobile-First Ordering Flow',
   'Lifetime Updates',
@@ -252,158 +199,114 @@ function HeroSection() {
 }
 
 /* ====================================================================
- * Section 2: Problem
+ * Section 2: Testimonials
  * ==================================================================== */
 
-function ProblemSection() {
+function TestimonialSection() {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  function handlePlayClick() {
+    const video = videoRef.current
+    if (!video) return
+    if (isPlaying) {
+      video.pause()
+      setIsPlaying(false)
+    } else {
+      video.play()
+      setIsPlaying(true)
+    }
+  }
+
   return (
-    <section id="problem" className="py-20 md:py-28" style={{ backgroundColor: DARK_BG }}>
-      <div className="mx-auto max-w-4xl px-6">
-        <motion.div
+    <section className="py-20 md:py-28" style={{ backgroundColor: DARK_BG }}>
+      <div className="mx-auto max-w-5xl px-6">
+        <motion.h2
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={VIEWPORT}
           transition={{ duration: 0.5 }}
+          className="text-center text-[clamp(1.75rem,5vw,2.8rem)] font-black leading-[1.1] tracking-[-0.03em] text-white"
         >
-          <SectionTag>The Problem</SectionTag>
-          <h2 className="text-[clamp(1.75rem,5vw,2.6rem)] font-black uppercase leading-[1.05] tracking-[-0.04em] text-white">
-            Your Menu Is Leaving
-            <br />
-            Money on the Table
-          </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-white/50">
-            Karamihan ng food businesses, ganito ang nangyayari sa online ordering
-            nila &mdash; at hindi nila alam kung magkano ang nawawala.
-          </p>
-        </motion.div>
+          What people are saying:
+        </motion.h2>
 
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
-          {PAIN_POINTS.map((point, i) => {
-            const Icon = point.icon
-            return (
-              <motion.div
-                key={point.title}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={VIEWPORT}
-                transition={{ duration: 0.45, delay: i * 0.08 }}
-                className="rounded-2xl border border-white/8 bg-white/[0.03] p-7"
+        {/* Video */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="relative mx-auto mt-12 w-full max-w-[640px] cursor-pointer overflow-hidden rounded-2xl border border-white/10"
+          onClick={handlePlayClick}
+        >
+          <video
+            ref={videoRef}
+            src="/testimonial.mp4"
+            className="block w-full"
+            style={{ aspectRatio: '1/1', objectFit: 'cover' }}
+            playsInline
+            onEnded={() => setIsPlaying(false)}
+          />
+          {!isPlaying && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+              <div
+                className="flex h-[72px] w-[72px] items-center justify-center rounded-full transition-transform duration-200 hover:scale-110"
+                style={{ backgroundColor: `${BRAND_PURPLE}e6`, boxShadow: `0 0 40px ${BRAND_PURPLE}66` }}
               >
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10">
-                  <Icon className="h-5 w-5 text-red-400" />
-                </div>
-                <h3 className="text-[17px] font-extrabold text-white">{point.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/45">{point.text}</p>
-              </motion.div>
-            )
-          })}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ====================================================================
- * Section 3: Solution
- * ==================================================================== */
-
-function SolutionSection() {
-  return (
-    <section id="solution" className="py-20 md:py-28" style={{ backgroundColor: ALT_BG }}>
-      <div className="mx-auto max-w-4xl px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.5 }}
-        >
-          <SectionTag>The Solution</SectionTag>
-          <h2 className="text-[clamp(1.75rem,5vw,2.6rem)] font-black uppercase leading-[1.05] tracking-[-0.04em] text-white">
-            Smart Menu Does the
-            <br />
-            Selling for You
-          </h2>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-white/50">
-            Every feature is designed para tumaas ang average order value &mdash;
-            without being pushy. Parang invisible na salesperson sa bawat order.
-          </p>
-        </motion.div>
-
-        <div className="mt-12 grid gap-5 md:grid-cols-2">
-          {SOLUTION_FEATURES.map((feat, i) => {
-            const Icon = feat.icon
-            return (
-              <motion.div
-                key={feat.title}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={VIEWPORT}
-                transition={{ duration: 0.45, delay: i * 0.06 }}
-                className="rounded-2xl border border-purple-500/15 bg-purple-500/[0.04] p-7"
-              >
-                <div
-                  className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${BRAND_PURPLE}26` }}
-                >
-                  <Icon className="h-5 w-5" style={{ color: BRAND_PURPLE }} />
-                </div>
-                <h3 className="text-[17px] font-extrabold text-white">{feat.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/45">{feat.text}</p>
-                <span
-                  className="mt-3 inline-block rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em]"
-                  style={{ backgroundColor: `${BRAND_PURPLE}1a`, color: BRAND_PURPLE }}
-                >
-                  Dine-in &bull; Pick-up &bull; Delivery
-                </span>
-              </motion.div>
-            )
-          })}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ====================================================================
- * Section 4: Social Proof
- * ==================================================================== */
-
-function SocialProofSection() {
-  return (
-    <section className="py-20 text-center md:py-28" style={{ backgroundColor: DARK_BG }}>
-      <div className="mx-auto max-w-4xl px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.5 }}
-        >
-          <SectionTag>Trusted by Restaurant Owners</SectionTag>
-          <h2 className="text-[clamp(1.75rem,5vw,2.6rem)] font-black uppercase leading-[1.05] tracking-[-0.04em] text-white">
-            The Numbers
-            <br />
-            Speak for Themselves
-          </h2>
-        </motion.div>
-
-        <div className="mt-12 flex flex-wrap items-start justify-center gap-12 md:gap-16">
-          {SOCIAL_PROOF_STATS.map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={VIEWPORT}
-              transition={{ duration: 0.4, delay: i * 0.1 }}
-              className="text-center"
-            >
-              <div className="text-[clamp(2.5rem,6vw,3.2rem)] font-black tracking-[-0.03em] text-white">
-                {stat.value}
-                <span style={{ color: BRAND_PURPLE }}>{stat.suffix}</span>
+                <Play className="ml-1 h-8 w-8 fill-white text-white" />
               </div>
-              <div className="mt-1 text-[13px] text-white/40">{stat.label}</div>
-            </motion.div>
-          ))}
+            </div>
+          )}
+        </motion.div>
+
+        {/* Testimonial cards — scattered layout like acquisition.com */}
+        <div className="relative mx-auto flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-center md:gap-8">
+          {/* Card 1 — chat screenshot */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.45, delay: 0.05 }}
+            className="w-full max-w-[320px] overflow-hidden rounded-xl bg-white shadow-2xl md:-rotate-3"
+          >
+            <Image
+              src="/testimonial1.jpg"
+              alt="Client testimonial — praising the hero banner feature"
+              width={320}
+              height={400}
+              className="h-auto w-full"
+            />
+          </motion.div>
+
+          {/* Card 2 — Facebook review screenshot */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.45, delay: 0.15 }}
+            className="w-full max-w-[320px] overflow-hidden rounded-xl bg-white shadow-2xl md:mt-10 md:rotate-2"
+          >
+            <Image
+              src="/testimonial2.png"
+              alt="Facebook review from Kenya Mendoza recommending WebNegosyo"
+              width={320}
+              height={120}
+              className="h-auto w-full"
+            />
+          </motion.div>
         </div>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="mx-auto mt-10 max-w-xl text-center text-[11px] leading-relaxed text-white/25"
+        >
+          Individual experiences presented here may not be typical.
+          Their background, education, effort, and application affected their experience.
+        </motion.p>
       </div>
     </section>
   )
@@ -598,23 +501,7 @@ export function LandingPage() {
       <AnnouncementBanner />
       <HeroSection />
 
-      <CTAStrip subText="Smart Menu automates what your staff can&apos;t do consistently">
-        Fix Your Menu Now &mdash; &#8369;3,899
-      </CTAStrip>
-
-      <ProblemSection />
-
-      <CTAStrip subText="Smart Menu automates what your staff can&apos;t do consistently">
-        Fix Your Menu Now &mdash; &#8369;3,899
-      </CTAStrip>
-
-      <SolutionSection />
-
-      <CTAStrip subText="Works for dine-in, pick-up, and delivery orders">
-        Start Selling Smarter &mdash; &#8369;3,899
-      </CTAStrip>
-
-      <SocialProofSection />
+      <TestimonialSection />
 
       <CTAStrip subText="One-time investment. Lifetime returns.">
         Join 100+ Restaurants &mdash; &#8369;3,899

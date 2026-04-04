@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useMemo, memo, useCallback } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import Link from 'next/link'
 import { Edit, Eye, MoreVertical, Trash2, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { SearchBar } from '@/components/customer/search-bar'
+import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,11 +25,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useDeleteTenant } from '@/lib/queries/tenants'
+import { fetchTenants } from '@/app/actions/tenants'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
 
+const PAGE_SIZE = 20
+
 interface TenantSearchProps {
   initialTenants: Tenant[]
+  initialCount: number
 }
 
 interface TenantCardProps {
@@ -131,19 +135,43 @@ const TenantCard = memo(({ tenant, onDelete }: TenantCardProps) => (
 
 TenantCard.displayName = 'TenantCard'
 
-export function TenantSearch({ initialTenants }: TenantSearchProps) {
+export function TenantSearch({ initialTenants, initialCount }: TenantSearchProps) {
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [count, setCount] = useState(initialCount)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [isLoading, setIsLoading] = useState(false)
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null)
   const deleteMutation = useDeleteTenant()
 
-  const filteredTenants = useMemo(
-    () => tenants.filter((tenant) =>
-      tenant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tenant.slug.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-    [tenants, searchQuery]
-  )
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const loadTenants = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const result = await fetchTenants({
+        search: debouncedSearch || undefined,
+        page,
+      })
+      setTenants(result.data)
+      setCount(result.count)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [debouncedSearch, page])
+
+  useEffect(() => {
+    loadTenants()
+  }, [loadTenants])
+
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
 
   const handleDelete = useCallback(() => {
     if (!tenantToDelete) return
@@ -152,6 +180,7 @@ export function TenantSearch({ initialTenants }: TenantSearchProps) {
 
     // Optimistic: remove from list immediately
     setTenants((prev) => prev.filter((t) => t.id !== deletedTenant.id))
+    setCount((prev) => prev - 1)
     setTenantToDelete(null)
 
     deleteMutation.mutate(deletedTenant.id, {
@@ -161,6 +190,7 @@ export function TenantSearch({ initialTenants }: TenantSearchProps) {
       onError: (error) => {
         // Rollback on error
         setTenants((prev) => [...prev, deletedTenant])
+        setCount((prev) => prev + 1)
         const message = error instanceof Error ? error.message : 'Failed to delete tenant'
         toast.error(message)
       },
@@ -169,14 +199,16 @@ export function TenantSearch({ initialTenants }: TenantSearchProps) {
 
   return (
     <>
-      <SearchBar
-        value={searchQuery}
-        onChange={setSearchQuery}
+      <Input
+        type="search"
         placeholder="Search tenants..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-md"
       />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTenants.map((tenant) => (
+      <div className={`grid gap-4 md:grid-cols-2 lg:grid-cols-3 ${isLoading ? 'opacity-50' : ''}`}>
+        {tenants.map((tenant) => (
           <TenantCard
             key={tenant.id}
             tenant={tenant}
@@ -185,11 +217,39 @@ export function TenantSearch({ initialTenants }: TenantSearchProps) {
         ))}
       </div>
 
-      {filteredTenants.length === 0 && searchQuery && (
+      {tenants.length === 0 && (
         <div className="text-center py-8 text-muted-foreground">
-          No tenants matching &quot;{searchQuery}&quot;
+          {isLoading ? 'Loading...' : debouncedSearch ? `No tenants matching "${debouncedSearch}"` : 'No tenants found.'}
         </div>
       )}
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          Page {page} of {totalPages}
+          {count > 0 && (
+            <span className="ml-2 opacity-60">({count} total)</span>
+          )}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || isLoading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages || isLoading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
