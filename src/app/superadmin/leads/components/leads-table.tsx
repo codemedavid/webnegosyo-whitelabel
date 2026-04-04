@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { Lead, LeadStatus } from '@/lib/leads/types'
 import { LeadStatusBadge } from './lead-status-badge'
 import { LeadDetailPanel } from './lead-detail-panel'
 import { fetchLeads } from '@/app/actions/leads'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 const PAGE_SIZE = 20
 
@@ -18,6 +20,20 @@ const STATUS_FILTERS: { label: string; value: LeadStatus | 'all' }[] = [
   { label: 'Converted', value: 'converted' },
   { label: 'Lost', value: 'lost' },
 ]
+
+const AVATAR_COLORS: Record<LeadStatus, string> = {
+  new: 'bg-blue-50 text-blue-600',
+  contacted: 'bg-amber-50 text-amber-600',
+  qualified: 'bg-purple-50 text-purple-600',
+  converted: 'bg-green-50 text-green-600',
+  lost: 'bg-zinc-100 text-zinc-500',
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? '?'
+  return ((parts[0][0] ?? '') + (parts[parts.length - 1][0] ?? '')).toUpperCase()
+}
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr)
@@ -73,9 +89,10 @@ function leadsToCSV(leads: Lead[]): string {
 interface LeadsTableProps {
   initialLeads: Lead[]
   initialCount: number
+  statusBreakdown?: Record<LeadStatus, number>
 }
 
-export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
+export function LeadsTable({ initialLeads, initialCount, statusBreakdown }: LeadsTableProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [count, setCount] = useState(initialCount)
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
@@ -85,7 +102,6 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
 
-  // Debounce search input by 300ms
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
@@ -94,7 +110,6 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
     return () => clearTimeout(timer)
   }, [search])
 
-  // Reset page when filter changes
   useEffect(() => {
     setPage(1)
   }, [statusFilter])
@@ -132,53 +147,56 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <Card className="overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Status filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {STATUS_FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setStatusFilter(filter.value)}
-              className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                statusFilter === filter.value
-                  ? 'bg-amber-500 text-zinc-900'
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_FILTERS.map((filter) => {
+            const filterCount = filter.value === 'all'
+              ? undefined
+              : statusBreakdown?.[filter.value]
+            return (
+              <button
+                key={filter.value}
+                onClick={() => setStatusFilter(filter.value)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  statusFilter === filter.value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                {filter.label}
+                {filterCount !== undefined && (
+                  <span className={`ml-1.5 ${statusFilter === filter.value ? 'opacity-70' : 'opacity-50'}`}>
+                    {filterCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
 
-        {/* Search + Export */}
         <div className="flex items-center gap-2">
           <Input
             type="search"
             placeholder="Search leads..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-52 border-zinc-700 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-amber-500"
+            className="w-52"
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            className="border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
-          >
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             Export CSV
           </Button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-zinc-800">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 bg-zinc-900/50">
+            <tr className="border-b bg-muted/50">
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Name
+                Lead
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Contact
@@ -192,15 +210,13 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Submitted
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Actions
-              </th>
+              <th className="w-10 px-4 py-3" />
             </tr>
           </thead>
           <tbody className={isLoading ? 'opacity-50' : ''}>
             {leads.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                   {isLoading ? 'Loading...' : 'No leads found.'}
                 </td>
               </tr>
@@ -208,43 +224,42 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
               leads.map((lead) => (
                 <tr
                   key={lead.id}
-                  className="border-b border-zinc-800/50 transition-colors hover:bg-zinc-800/30"
+                  onClick={() => setSelectedLeadId(lead.id)}
+                  className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50"
                 >
-                  {/* Name + source */}
                   <td className="px-4 py-3">
-                    <div className="font-medium text-zinc-100">{lead.name}</div>
-                    <div className="mt-0.5 text-xs text-zinc-500">{lead.source}</div>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${AVATAR_COLORS[lead.status]}`}
+                      >
+                        {getInitials(lead.name)}
+                      </div>
+                      <div>
+                        <div className="font-medium">{lead.name}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">{lead.source}</div>
+                      </div>
+                    </div>
                   </td>
 
-                  {/* Email + phone */}
                   <td className="px-4 py-3">
-                    <div className="text-zinc-200">{lead.email}</div>
-                    <div className="mt-0.5 text-xs text-zinc-400">{lead.phone}</div>
+                    <div>{lead.email}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{lead.phone}</div>
                   </td>
 
-                  {/* Booking date/time */}
-                  <td className="px-4 py-3 text-zinc-300">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {formatBooking(lead.booking_date, lead.booking_time)}
                   </td>
 
-                  {/* Status badge */}
                   <td className="px-4 py-3">
                     <LeadStatusBadge status={lead.status} />
                   </td>
 
-                  {/* Submitted relative time */}
-                  <td className="px-4 py-3 text-zinc-400">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {timeAgo(lead.created_at)}
                   </td>
 
-                  {/* View action */}
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => setSelectedLeadId(lead.id)}
-                      className="text-amber-500 hover:text-amber-400 transition-colors font-medium"
-                    >
-                      View →
-                    </button>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </td>
                 </tr>
               ))
@@ -254,11 +269,11 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-zinc-400">
+      <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         <span>
           Page {page} of {totalPages}
           {count > 0 && (
-            <span className="ml-2 text-zinc-500">({count} total)</span>
+            <span className="ml-2 opacity-60">({count} total)</span>
           )}
         </span>
         <div className="flex items-center gap-2">
@@ -267,7 +282,6 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
             size="sm"
             disabled={page <= 1 || isLoading}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 disabled:opacity-40"
           >
             Previous
           </Button>
@@ -276,7 +290,6 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
             size="sm"
             disabled={page >= totalPages || isLoading}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 disabled:opacity-40"
           >
             Next
           </Button>
@@ -289,6 +302,6 @@ export function LeadsTable({ initialLeads, initialCount }: LeadsTableProps) {
         onOpenChange={(open) => { if (!open) setSelectedLeadId(null) }}
         onStatusChange={loadLeads}
       />
-    </div>
+    </Card>
   )
 }
