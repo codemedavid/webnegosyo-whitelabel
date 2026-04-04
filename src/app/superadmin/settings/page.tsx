@@ -4,6 +4,7 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { ChangePasswordForm } from '@/components/superadmin/change-password-form'
+import { TagPresetsManager } from '@/components/superadmin/tag-presets'
 
 interface EnvCheck {
   label: string
@@ -151,6 +152,8 @@ export default function SuperAdminSettingsPage() {
       </div>
 
       <ChangePasswordForm />
+
+      <TagPresetsManager />
 
       <Suspense fallback={<SettingsSkeleton />}>
         <SystemStatus />

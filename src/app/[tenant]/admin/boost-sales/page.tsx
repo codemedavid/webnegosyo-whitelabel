@@ -3,6 +3,8 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemsByBcgClassification, getUpsellPairsByTenant } from '@/lib/menu-engineering-service'
 import { getBundlesByTenant } from '@/lib/bundles-service'
+import { getPairingRules } from '@/lib/pairing-rules-service'
+import { getTagDefinitions } from '@/lib/tags-service'
 import { BoostSalesDashboard } from '@/components/admin/boost-sales-dashboard'
 
 export default async function BoostSalesPage({
@@ -22,27 +24,30 @@ export default async function BoostSalesPage({
     redirect(`/${tenantSlug}/admin`)
   }
 
-  const [menuItems, categories, upsellPairs, bundles] = await Promise.all([
+  const [menuItems, categories, upsellPairs, bundles, pairingRules, tagDefinitions] = await Promise.all([
     getMenuItemsByBcgClassification(tenant.id),
     getCachedCategoriesByTenant(tenant.id),
     getUpsellPairsByTenant(tenant.id),
     getBundlesByTenant(tenant.id),
+    tenant.pairing_rules_enabled ? getPairingRules(tenant.id) : Promise.resolve([]),
+    tenant.pairing_rules_enabled ? getTagDefinitions(tenant.id) : Promise.resolve([]),
   ])
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-          { label: 'Boost Sales' },
-        ]}
-      />
-
-      <div>
-        <h1 className="text-3xl font-bold">Boost Sales</h1>
-        <p className="text-muted-foreground">
-          Push your best items, create combos, and track what&apos;s working
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Breadcrumbs
+            items={[
+              { label: 'Dashboard', href: `/${tenantSlug}/admin` },
+              { label: 'Boost Sales' },
+            ]}
+          />
+          <h1 className="text-2xl font-bold mt-2">Boost Sales</h1>
+          <p className="text-sm text-muted-foreground">
+            Push your best items, create combos, and track what&apos;s working
+          </p>
+        </div>
       </div>
 
       <BoostSalesDashboard
@@ -57,7 +62,9 @@ export default async function BoostSalesPage({
         checkoutUpsellSubtitle={tenant.checkout_upsell_subtitle ?? 'You might also enjoy these items'}
         checkoutUpsellMaxItems={tenant.checkout_upsell_max_items ?? 4}
         bundlesEnabled={tenant.bundles_enabled ?? false}
-        convexDeploymentUrl={tenant.convex_deployment_url ?? null}
+        pairingRulesEnabled={tenant.pairing_rules_enabled ?? false}
+        initialPairingRules={pairingRules}
+        initialTagDefinitions={tagDefinitions}
       />
     </div>
   )

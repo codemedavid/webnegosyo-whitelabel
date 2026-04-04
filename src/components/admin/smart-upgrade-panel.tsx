@@ -22,7 +22,7 @@ interface SmartUpgradePanelProps {
 interface BundleSuggestion {
   id: string
   name: string
-  items: unknown[]
+  slots: unknown[]
   pricing_type: string
   fixed_price?: number
   discount_percent?: number

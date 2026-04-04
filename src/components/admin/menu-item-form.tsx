@@ -13,6 +13,7 @@ import { ImageUpload } from '@/components/shared/image-upload'
 import type { MenuItem, Category, VariationType, VariationOption, BcgClassification } from '@/types/database'
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
+import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -434,6 +435,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           </div>
 
           {menuEngineeringEnabled && (
+            <>
             <div className="grid gap-4 sm:grid-cols-2 border-t pt-4 mt-2">
               <div className="space-y-2">
                 <Label htmlFor="bcg_classification">BCG Classification</Label>
@@ -471,6 +473,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
                 </p>
               </div>
             </div>
+            <TagManager
+              itemId={item?.id ?? null}
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+            />
+            </>
           )}
         </CardContent>
       </Card>

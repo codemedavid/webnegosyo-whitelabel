@@ -12,6 +12,7 @@ import {
     reorderBundles,
     getMenuBundles,
     getUpsellBundles,
+    invalidateBundlesCache,
     type BundleInput,
     type BundleWithSlots,
 } from '@/lib/bundles-service'
@@ -37,6 +38,7 @@ export async function getBundleAction(bundleId: string, tenantId: string): Promi
 export async function createBundleAction(tenantId: string, tenantSlug: string, input: BundleInput): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await createBundle(tenantId, input)
+        await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/menu`)
         return { success: true, data: bundle }
@@ -62,6 +64,7 @@ export async function updateBundleAction(
 ): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
         const bundle = await updateBundle(bundleId, tenantId, input)
+        await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/admin/bundles/${bundleId}`)
         revalidatePath(`/${tenantSlug}/menu`)
@@ -83,6 +86,7 @@ export async function updateBundleAction(
 export async function deleteBundleAction(bundleId: string, tenantId: string, tenantSlug: string) {
     try {
         await deleteBundle(bundleId, tenantId)
+        await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/menu`)
         return { success: true }
@@ -99,6 +103,7 @@ export async function toggleBundleActiveAction(
 ): Promise<{ success: true } | { success: false; error: string }> {
     try {
         await toggleBundleActive(bundleId, tenantId, isActive)
+        await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/menu`)
         return { success: true }
@@ -110,6 +115,7 @@ export async function toggleBundleActiveAction(
 export async function reorderBundlesAction(tenantId: string, tenantSlug: string, bundleIds: string[]) {
     try {
         await reorderBundles(tenantId, bundleIds)
+        await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         return { success: true }
     } catch (error) {

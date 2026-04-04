@@ -115,9 +115,11 @@ export default async function ProductDetailPage({ params }: Props) {
                 // Product detail settings
                 getCachedProductDetailSettings(tenant.id),
 
-                // Upsell suggestions (only when menu engineering enabled)
-                tenant.menu_engineering_enabled
-                    ? getCachedUpsellsForItem(item.id, tenant.id, item.category_id)
+                // Upsell suggestions (menu engineering OR pairing rules)
+                (tenant.menu_engineering_enabled || tenant.pairing_rules_enabled)
+                    ? getCachedUpsellsForItem(item.id, tenant.id, item.category_id, {
+                        pairingRulesEnabled: !!tenant.pairing_rules_enabled,
+                      })
                     : Promise.resolve({ complementary: [], upgrades: [] }),
 
                 // Bundle upsell suggestions (only when bundles enabled)
@@ -199,6 +201,7 @@ export default async function ProductDetailPage({ params }: Props) {
                     complementaryUpsells={complementaryUpsells}
                     upgradeUpsells={upgradeUpsells}
                     menuEngineeringEnabled={tenant.menu_engineering_enabled}
+                    pairingRulesEnabled={!!tenant.pairing_rules_enabled}
                     hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
                     upsellBundles={upsellBundles}
                     bundlesEnabled={!!tenant.bundles_enabled}

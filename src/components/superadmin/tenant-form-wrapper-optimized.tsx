@@ -63,6 +63,7 @@ interface TenantFormData {
   email_notifications_enabled: boolean
   hide_currency_symbol: boolean
   bundles_enabled: boolean
+  pairing_rules_enabled: boolean
 }
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
@@ -511,6 +512,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
     email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -564,6 +566,7 @@ export function TenantFormWrapper({ tenant }: TenantFormWrapperProps) {
       email_notifications_enabled: formData.email_notifications_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      pairing_rules_enabled: formData.pairing_rules_enabled,
     }
 
     startTransition(async () => {

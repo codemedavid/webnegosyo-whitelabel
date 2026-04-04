@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
+import { NavigationProgress } from '@/components/shared/navigation-progress'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -27,6 +29,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     }
 }
 
-export default function TenantLayout({ children }: { children: React.ReactNode }) {
-    return children
+export default async function TenantLayout({ params, children }: Props) {
+    const { tenant: tenantSlug } = await params
+    const tenant = await getCachedTenantBySlug(tenantSlug)
+    const primaryColor = (tenant?.primary_color as string) || undefined
+
+    return (
+        <>
+            <Suspense fallback={null}>
+                <NavigationProgress color={primaryColor} />
+            </Suspense>
+            {children}
+        </>
+    )
 }

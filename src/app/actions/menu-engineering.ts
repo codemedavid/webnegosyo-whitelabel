@@ -16,9 +16,11 @@ import {
   generateSmartPairSuggestions,
   acceptPairSuggestion,
   bulkAcceptPairSuggestions,
+  invalidateCheckoutUpsellCache,
   type UpsellPairInput,
   type CheckoutUpsellSettingsInput,
 } from '@/lib/menu-engineering-service'
+import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
 import { toggleMenuItemAvailability } from '@/lib/admin-service'
 import type { BcgClassification, MenuItem } from '@/types/database'
 
@@ -34,6 +36,8 @@ export async function updateBcgClassificationAction(
 ) {
   try {
     const data = await updateBcgClassification(itemId, tenantId, classification)
+    // Star classification changes affect checkout upsell star-items tier
+    await invalidateCheckoutUpsellCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
@@ -50,6 +54,7 @@ export async function bulkUpdateBcgAction(
 ) {
   try {
     const data = await bulkUpdateBcgClassification(tenantId, updates)
+    await invalidateCheckoutUpsellCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
@@ -140,8 +145,13 @@ export async function createUpsellPairAction(
 ) {
   try {
     const data = await createUpsellPair(tenantId, input)
+    // Invalidate Redis caches for complementary pairs and checkout upsells
+    await Promise.all([
+      invalidateComplementaryPairsCache(tenantId),
+      invalidateCheckoutUpsellCache(tenantId),
+    ])
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    // Revalidate product detail pages so ISR cache picks up new upsell pairs
+    revalidatePath(`/${tenantSlug}/admin/boost-sales`)
     revalidatePath(`/${tenantSlug}/menu/item/${input.source_item_id}`)
     revalidatePath(`/${tenantSlug}/menu`)
     return { success: true, data }
@@ -157,8 +167,12 @@ export async function deleteUpsellPairAction(
 ) {
   try {
     await deleteUpsellPair(pairId, tenantId)
+    await Promise.all([
+      invalidateComplementaryPairsCache(tenantId),
+      invalidateCheckoutUpsellCache(tenantId),
+    ])
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    // Revalidate product pages so removed upsell pairs don't show stale data
+    revalidatePath(`/${tenantSlug}/admin/boost-sales`)
     revalidatePath(`/${tenantSlug}/menu`, 'layout')
     return { success: true }
   } catch (error) {
@@ -185,6 +199,16 @@ export async function getCheckoutUpsellsAction(
   maxItems: number = 4
 ) {
   try {
+    // Fetch all 3 tiers in parallel (each is Redis-cached individually)
+    const [manualItems, complementary, stars] = await Promise.all([
+      getManualUpsellItems(tenantId, maxItems),
+      cartItemIds.length > 0
+        ? getUpsellsForCart(cartItemIds, tenantId).catch(() => [] as MenuItem[])
+        : Promise.resolve([] as MenuItem[]),
+      getStarItems(tenantId, maxItems).catch(() => [] as MenuItem[]),
+    ])
+
+    // Merge with priority: manual > complementary > stars
     const collectedItems: MenuItem[] = []
     const seenIds = new Set(cartItemIds)
 
@@ -197,29 +221,9 @@ export async function getCheckoutUpsellsAction(
       }
     }
 
-    // Tier 1: Manually-flagged items
-    const manualItems = await getManualUpsellItems(tenantId, maxItems)
     addUnique(manualItems)
-
-    // Tier 2: Complementary pairs for items in cart
-    if (collectedItems.length < maxItems && cartItemIds.length > 0) {
-      try {
-        const complementary = await getUpsellsForCart(cartItemIds, tenantId)
-        addUnique(complementary)
-      } catch {
-        // Complementary pairs may not exist, continue to next tier
-      }
-    }
-
-    // Tier 3: BCG star items
-    if (collectedItems.length < maxItems) {
-      try {
-        const stars = await getStarItems(tenantId, maxItems)
-        addUnique(stars)
-      } catch {
-        // Star items may not be classified yet, continue
-      }
-    }
+    addUnique(complementary)
+    addUnique(stars)
 
     return { success: true, data: collectedItems.slice(0, maxItems) }
   } catch (error) {
@@ -271,6 +275,7 @@ export async function setCheckoutUpsellItemsAction(
       if (setError) throw setError
     }
 
+    await invalidateCheckoutUpsellCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`)
     return { success: true }
@@ -317,6 +322,7 @@ export async function acceptPairSuggestionAction(
 ) {
   try {
     await acceptPairSuggestion(tenantId, sourceItemId, targetItemId, strategy)
+    await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
   } catch (error) {
     console.error('Failed to accept pair suggestion:', error)
@@ -331,6 +337,7 @@ export async function bulkAcceptPairSuggestionsAction(
 ) {
   try {
     await bulkAcceptPairSuggestions(tenantId, suggestions)
+    await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
   } catch (error) {
     console.error('Failed to bulk accept pair suggestions:', error)

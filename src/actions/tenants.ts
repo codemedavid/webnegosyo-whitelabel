@@ -119,6 +119,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       hide_currency_symbol: parsed.hide_currency_symbol,
       checkout_upsell_enabled: parsed.checkout_upsell_enabled,
       bundles_enabled: parsed.bundles_enabled,
+      pairing_rules_enabled: parsed.pairing_rules_enabled,
       // Flash screen
       flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
       flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,
@@ -261,6 +262,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     hide_currency_symbol: parsed.hide_currency_symbol,
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
+    pairing_rules_enabled: parsed.pairing_rules_enabled,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
     flash_screen_is_active: parsed.flash_screen_is_active ?? undefined,

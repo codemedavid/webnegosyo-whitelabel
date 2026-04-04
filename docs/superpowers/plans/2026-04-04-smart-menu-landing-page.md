@@ -1,3 +1,62 @@
+# Smart Menu Landing Page Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the existing 1,536-line landing page with a simplified, conversion-focused sales funnel — Acquisition.com-style dark hero + streamlined TSL with direct-to-checkout CTAs.
+
+**Architecture:** Complete rewrite of `src/components/landing/landing-page.tsx`. Same file, same export, same `'use client'` directive. Uses framer-motion for scroll animations (already a dependency). Removes BookingPopup import and all booking-call references. All CTAs link to `/checkout`.
+
+**Tech Stack:** Next.js 15 App Router, React, Tailwind CSS, framer-motion, Lucide icons
+
+---
+
+### Task 1: Update root page metadata
+
+**Files:**
+- Modify: `src/app/page.tsx:10-22`
+
+- [ ] **Step 1: Update metadata to match new theme**
+
+Change the title, description, and OpenGraph metadata to reflect "You Can Sell More With Smart Menu" theme and P3,899 pricing:
+
+```tsx
+export const metadata: Metadata = {
+  title: 'WebNegosyo - You Can Sell More With Smart Menu',
+  description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses. One-time ₱3,899.',
+  keywords: ['smart menu', 'restaurant menu engineering', 'upsell system', 'food business Philippines', 'online ordering', 'bundle system', 'average order value'],
+  openGraph: {
+    title: 'WebNegosyo - You Can Sell More With Smart Menu',
+    description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses.',
+    type: 'website',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/app/page.tsx
+git commit -m "feat: update landing page metadata for Smart Menu theme"
+```
+
+---
+
+### Task 2: Write the new landing page — constants and shared components
+
+**Files:**
+- Modify: `src/components/landing/landing-page.tsx` (full rewrite, lines 1-1536)
+
+This task rewrites the top of the file: imports, constants, and small reusable components (CTAButton, Navigation). The existing file is 1,536 lines — we replace the entire content.
+
+- [ ] **Step 1: Write the imports, constants, and shared sub-components**
+
+Replace the entire file content with the new landing page. Start with imports, constants, and the small reusable pieces:
+
+```tsx
 'use client'
 
 import { useState } from 'react'
@@ -7,11 +66,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Menu,
   ShoppingCart,
   TrendingDown,
   DollarSign,
+  X,
   Utensils,
   ArrowUpRight,
+  BarChart3,
   Target,
 } from 'lucide-react'
 
@@ -21,6 +83,13 @@ const DARK_BG = '#0a0a0a'
 const HERO_BG = '#0F0B1A'
 const ALT_BG = '#111111'
 const VIEWPORT = { once: true, amount: 0.2 } as const
+
+const NAV_LINKS = [
+  { label: 'Problem', href: '#problem' },
+  { label: 'Solution', href: '#solution' },
+  { label: 'Pricing', href: '#pricing' },
+  { label: 'FAQ', href: '#faq' },
+] as const
 
 const PAIN_POINTS = [
   {
@@ -44,22 +113,22 @@ const SOLUTION_FEATURES = [
   {
     icon: Utensils,
     title: 'Smart Bundles & Combos',
-    text: '\u201cMake it a meal?\u201d \u2014 automatic bundle prompts na nagpapataas ng basket size. Customer feels like may deal, ikaw naman kumikita pa rin.',
+    text: '"Make it a meal?" — automatic bundle prompts na nagpapataas ng basket size. Customer feels like may deal, ikaw naman kumikita pa rin.',
   },
   {
     icon: ArrowUpRight,
     title: 'Upgrade Pairs',
-    text: 'Side-by-side comparison ng ala carte vs. upgrade. Nakikita agad ng customer ang value difference \u2014 at 40%+ ang nag-u-upgrade.',
+    text: 'Side-by-side comparison ng ala carte vs. upgrade. Nakikita agad ng customer ang value difference — at 40%+ ang nag-u-upgrade.',
   },
   {
     icon: ShoppingCart,
     title: 'Checkout Upsells',
-    text: '\u201cBefore you go...\u201d \u2014 last-minute suggestions bago mag-checkout. Hindi nakakainis, pero napaka-effective sa dagdag na items.',
+    text: '"Before you go..." — last-minute suggestions bago mag-checkout. Hindi nakakainis, pero napaka-effective sa dagdag na items.',
   },
   {
     icon: Target,
     title: 'Menu Engineering',
-    text: 'Alam mo na kung alin ang star items, hidden gems, at slow movers. I-push ang tama, i-hide ang hindi \u2014 data-driven ang menu mo.',
+    text: 'Alam mo na kung alin ang star items, hidden gems, at slow movers. I-push ang tama, i-hide ang hindi — data-driven ang menu mo.',
   },
 ] as const
 
@@ -89,11 +158,11 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Pang-dine-in lang ba ito?',
-    a: 'Hindi \u2014 gumagana ang Smart Menu para sa dine-in, pick-up, at delivery. Lahat ng upsell features, nandoon sa lahat ng order type.',
+    a: 'Hindi — gumagana ang Smart Menu para sa dine-in, pick-up, at delivery. Lahat ng upsell features, nandoon sa lahat ng order type.',
   },
   {
     q: 'May monthly fee ba?',
-    a: 'Wala. One-time payment lang ang \u20b13,899. Kasama na ang lifetime updates at lahat ng features.',
+    a: 'Wala. One-time payment lang ang ₱3,899. Kasama na ang lifetime updates at lahat ng features.',
   },
   {
     q: 'Gaano kabilis ma-setup?',
@@ -101,7 +170,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Paano kung hindi gumana sa business ko?',
-    a: 'Every food business na may menu \u2014 gumana ang Smart Menu. Bundles, upgrades, at upsells work across cuisines and order types.',
+    a: 'Every food business na may menu — gumana ang Smart Menu. Bundles, upgrades, at upsells work across cuisines and order types.',
   },
 ] as const
 
@@ -131,7 +200,7 @@ function CTAButton({
       className={`group inline-flex items-center justify-center gap-2 rounded-xl font-extrabold uppercase tracking-[0.06em] text-white transition-transform duration-200 hover:-translate-y-0.5 ${sizeClasses} ${fullWidth ? 'w-full' : ''} ${className}`}
       style={{
         background: `linear-gradient(135deg, ${BRAND_PURPLE}, #6d28d9)`,
-        boxShadow: '0 8px 30px rgba(124, 58, 237, 0.3)',
+        boxShadow: `0 8px 30px rgba(124, 58, 237, 0.3)`,
       }}
     >
       {children}
@@ -170,21 +239,103 @@ function SectionTag({ children }: { children: React.ReactNode }) {
   )
 }
 
-function AnnouncementBanner() {
+function Navigation() {
+  const [isOpen, setIsOpen] = useState(false)
+
   return (
-    <div className="fixed inset-x-0 top-0 z-50 border-b border-white/6 py-3 text-center" style={{ backgroundColor: DARK_BG }}>
-      <Link
-        href={CHECKOUT_URL}
-        className="inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.12em] text-white/80 transition-colors hover:text-white"
-      >
-        <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
-        <span>Smart Menu System &mdash; One-Time &#8369;3,899 &bull; No Monthly Fees</span>
-        <ChevronRight className="h-3.5 w-3.5 text-white/40" />
-      </Link>
-    </div>
+    <header
+      className="fixed inset-x-0 top-0 z-50 border-b border-white/6"
+      style={{ backgroundColor: `${DARK_BG}e6`, backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+    >
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
+        <Link href="/" className="text-base font-black text-white tracking-[-0.02em]">
+          Web<span style={{ color: BRAND_PURPLE }}>Negosyo</span>
+        </Link>
+
+        <nav className="hidden items-center gap-6 md:flex">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="text-[13px] text-white/50 transition-colors duration-200 hover:text-white"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        <Link
+          href={CHECKOUT_URL}
+          className="hidden rounded-lg px-5 py-2 text-xs font-bold uppercase tracking-[0.06em] text-white md:inline-block"
+          style={{ backgroundColor: BRAND_PURPLE }}
+        >
+          Get Smart Menu
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => setIsOpen((o) => !o)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-white md:hidden"
+          aria-expanded={isOpen}
+          aria-label="Toggle menu"
+        >
+          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden border-t border-white/10 md:hidden"
+          >
+            <div className="flex flex-col gap-1 px-6 py-4">
+              {NAV_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-lg px-3 py-3 text-sm text-white/80 hover:bg-white/5"
+                >
+                  {link.label}
+                </a>
+              ))}
+              <Link
+                href={CHECKOUT_URL}
+                onClick={() => setIsOpen(false)}
+                className="mt-2 rounded-lg px-5 py-3 text-center text-sm font-bold uppercase text-white"
+                style={{ backgroundColor: BRAND_PURPLE }}
+              >
+                Get Smart Menu
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </header>
   )
 }
+```
 
+Do NOT save the file yet — continue to the next steps to add the remaining sections, then save everything at once in Task 3.
+
+- [ ] **Step 2: Commit placeholder** — skip, we save the full file in Task 3.
+
+---
+
+### Task 3: Write the new landing page — section components and main export
+
+**Files:**
+- Modify: `src/components/landing/landing-page.tsx` (continuation from Task 2)
+
+- [ ] **Step 1: Add all section components and the main LandingPage export**
+
+Append these after the Navigation component from Task 2 (all in the same file). This includes HeroSection, ProblemSection, SolutionSection, SocialProofSection, PricingSection, FAQSection, FinalCTASection, Footer, and the main `LandingPage` export:
+
+```tsx
 /* ====================================================================
  * Section 1: Hero
  * ==================================================================== */
@@ -192,13 +343,15 @@ function AnnouncementBanner() {
 function HeroSection() {
   return (
     <section
-      className="relative overflow-hidden pb-20 pt-24 md:pb-24 md:pt-32"
+      className="relative overflow-hidden pb-20 pt-32 md:pb-24 md:pt-40"
       style={{ backgroundColor: HERO_BG }}
     >
+      {/* Glow */}
       <div
         className="pointer-events-none absolute left-1/2 top-[-120px] h-[400px] w-[700px] -translate-x-1/2 rounded-full blur-3xl"
         style={{ backgroundColor: `${BRAND_PURPLE}2e` }}
       />
+      {/* Dot grid */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.04]"
         style={{
@@ -206,21 +359,35 @@ function HeroSection() {
           backgroundSize: '24px 24px',
         }}
       />
+      {/* Bottom fade */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-32"
         style={{ background: `linear-gradient(180deg, transparent, ${HERO_BG})` }}
       />
 
       <div className="relative mx-auto max-w-3xl px-6 text-center">
+        {/* Pill badge */}
+        <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2">
+          <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/80">
+            Smart Menu System &bull; Para sa Food Business Owners
+          </span>
+        </div>
+
+        {/* Headline */}
         <h1 className="text-[clamp(2.5rem,8vw,5rem)] font-black uppercase leading-[0.95] tracking-[-0.05em] text-white">
-          You Can Sell More With Smart Menu
+          You Can Sell More
+          <br />
+          With Smart Menu
         </h1>
 
+        {/* Subtitle */}
         <p className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2vw,1.2rem)] leading-relaxed text-white/55">
           Hindi sapat na maganda lang ang menu mo. Kailangan nitong mag-guide,
-          mag-suggest, at mag-push ng bigger orders &mdash; automatically.
+          mag-suggest, at mag-push ng bigger orders — automatically.
         </p>
 
+        {/* Video placeholder */}
         <div className="relative mx-auto mt-8 w-full max-w-[580px] overflow-hidden rounded-2xl border border-white/8" style={{ aspectRatio: '16/9', backgroundColor: '#1a1528' }}>
           <div className="absolute inset-0 flex items-center justify-center">
             <div
@@ -235,13 +402,15 @@ function HeroSection() {
           </div>
         </div>
 
+        {/* Supporting copy */}
         <p className="mx-auto mt-7 max-w-lg text-sm leading-relaxed text-white/40">
-          Isang system na nag-a-automate ng upsells, bundles, at upgrades &mdash; para
+          Isang system na nag-a-automate ng upsells, bundles, at upgrades — para
           every order, mas malaki ang value.
         </p>
 
+        {/* CTA */}
         <div className="mt-7">
-          <CTAButton size="large">Get Smart Menu Now &mdash; &#8369;3,899</CTAButton>
+          <CTAButton size="large">Get Smart Menu Now — ₱3,899</CTAButton>
         </div>
         <p className="mt-3 text-[11px] text-white/30">
           One-time payment &bull; No monthly fees &bull; Lifetime access
@@ -273,7 +442,7 @@ function ProblemSection() {
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-white/50">
             Karamihan ng food businesses, ganito ang nangyayari sa online ordering
-            nila &mdash; at hindi nila alam kung magkano ang nawawala.
+            nila — at hindi nila alam kung magkano ang nawawala.
           </p>
         </motion.div>
 
@@ -324,7 +493,7 @@ function SolutionSection() {
             Selling for You
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-white/50">
-            Every feature is designed para tumaas ang average order value &mdash;
+            Every feature is designed para tumaas ang average order value —
             without being pushy. Parang invisible na salesperson sa bawat order.
           </p>
         </motion.div>
@@ -430,7 +599,7 @@ function PricingSection() {
             Everything Included.
           </h2>
           <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-white/50">
-            Walang monthly fees, walang hidden charges. Isang bayad lang &mdash;
+            Walang monthly fees, walang hidden charges. Isang bayad lang —
             lifetime access sa buong Smart Menu system.
           </p>
         </motion.div>
@@ -453,7 +622,7 @@ function PricingSection() {
             Smart Menu System
           </div>
           <div className="mt-4 text-[3.2rem] font-black tracking-[-0.03em] text-white">
-            &#8369;3,899
+            ₱3,899
           </div>
           <p className="text-sm text-white/40">One-time payment &bull; Lifetime access</p>
 
@@ -535,7 +704,7 @@ function FAQSection() {
         </div>
 
         <div className="mt-10 text-center">
-          <CTAButton>Get Started &mdash; &#8369;3,899</CTAButton>
+          <CTAButton>Get Started — ₱3,899</CTAButton>
         </div>
       </div>
     </section>
@@ -549,6 +718,7 @@ function FAQSection() {
 function FinalCTASection() {
   return (
     <section className="relative overflow-hidden py-24 text-center md:py-32" style={{ background: `linear-gradient(180deg, ${DARK_BG}, ${HERO_BG})` }}>
+      {/* Glow */}
       <div
         className="pointer-events-none absolute bottom-[-100px] left-1/2 h-[300px] w-[600px] -translate-x-1/2 rounded-full blur-3xl"
         style={{ backgroundColor: `${BRAND_PURPLE}33` }}
@@ -566,7 +736,7 @@ function FinalCTASection() {
           system. I-start mo ngayon.
         </p>
         <div className="mt-8">
-          <CTAButton size="large">Get Smart Menu Now &mdash; &#8369;3,899</CTAButton>
+          <CTAButton size="large">Get Smart Menu Now — ₱3,899</CTAButton>
         </div>
         <p className="mt-3 text-[11px] text-white/30">
           One-time payment &bull; No monthly fees &bull; 48-hour setup
@@ -595,29 +765,29 @@ function Footer() {
 export function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
-      <AnnouncementBanner />
+      <Navigation />
       <HeroSection />
 
-      <CTAStrip subText="Smart Menu automates what your staff can&apos;t do consistently">
-        Fix Your Menu Now &mdash; &#8369;3,899
+      <CTAStrip subText="Smart Menu automates what your staff can't do consistently">
+        Fix Your Menu Now — ₱3,899
       </CTAStrip>
 
       <ProblemSection />
 
-      <CTAStrip subText="Smart Menu automates what your staff can&apos;t do consistently">
-        Fix Your Menu Now &mdash; &#8369;3,899
+      <CTAStrip subText="Smart Menu automates what your staff can't do consistently">
+        Fix Your Menu Now — ₱3,899
       </CTAStrip>
 
       <SolutionSection />
 
       <CTAStrip subText="Works for dine-in, pick-up, and delivery orders">
-        Start Selling Smarter &mdash; &#8369;3,899
+        Start Selling Smarter — ₱3,899
       </CTAStrip>
 
       <SocialProofSection />
 
       <CTAStrip subText="One-time investment. Lifetime returns.">
-        Join 100+ Restaurants &mdash; &#8369;3,899
+        Join 100+ Restaurants — ₱3,899
       </CTAStrip>
 
       <PricingSection />
@@ -627,3 +797,121 @@ export function LandingPage() {
     </div>
   )
 }
+```
+
+- [ ] **Step 2: Save the complete file**
+
+The file should contain everything from Task 2 Step 1 (imports through Navigation) plus all the section components and main export from this step. Write the entire thing as a single file to `src/components/landing/landing-page.tsx`.
+
+- [ ] **Step 3: Run lint**
+
+```bash
+npm run lint
+```
+
+Expected: No errors in `landing-page.tsx`. Fix any warnings that appear.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/components/landing/landing-page.tsx
+git commit -m "feat: rewrite landing page with Smart Menu theme and direct checkout CTAs"
+```
+
+---
+
+### Task 4: Verify build and visual check
+
+**Files:**
+- No new files
+
+- [ ] **Step 1: Run production build**
+
+```bash
+npm run build
+```
+
+Expected: Build succeeds with no errors. The landing page is a client component so it should bundle correctly.
+
+- [ ] **Step 2: Run dev server and visually verify**
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000` and verify:
+1. Navigation is fixed at top with purple "Get Smart Menu" button
+2. Hero section shows pill badge, headline, video placeholder, CTA
+3. CTA strips appear between sections
+4. Problem section shows 3 cards (ordering friction, no upsell, buried margin)
+5. Solution section shows 4 cards with "Dine-in - Pick-up - Delivery" tags
+6. Social proof shows 3 stats
+7. Pricing card shows P3,899 with 10 features
+8. FAQ items are collapsible
+9. Final CTA section has glow effect
+10. All CTA buttons link to `/checkout`
+11. Page is responsive on mobile (check via browser dev tools)
+
+- [ ] **Step 3: Commit any fixes**
+
+If any visual issues were found and fixed:
+
+```bash
+git add src/components/landing/landing-page.tsx
+git commit -m "fix: landing page visual polish"
+```
+
+---
+
+### Task 5: Clean up unused booking popup files
+
+**Files:**
+- Delete: `src/components/landing/booking-popup/booking-popup.tsx`
+- Delete: `src/components/landing/booking-popup/step-one.tsx`
+- Delete: `src/components/landing/booking-popup/step-two.tsx`
+- Delete: `src/components/landing/booking-popup/confirmation.tsx`
+
+The booking popup was used by the old landing page for "Book a Call" flow. Since all CTAs now go to `/checkout`, these files are unused.
+
+- [ ] **Step 1: Verify no other imports reference booking-popup**
+
+Search for any imports of `booking-popup` outside of the old landing page:
+
+```bash
+grep -r "booking-popup" src/ --include="*.tsx" --include="*.ts" -l
+```
+
+Expected: No results (the old import was removed in Task 3).
+
+- [ ] **Step 2: Delete the booking popup directory**
+
+```bash
+rm -rf src/components/landing/booking-popup/
+```
+
+- [ ] **Step 3: Check if checkout-form.tsx is still used**
+
+```bash
+grep -r "checkout-form" src/ --include="*.tsx" --include="*.ts" -l
+```
+
+If no results, also delete it:
+
+```bash
+rm src/components/landing/checkout-form.tsx
+```
+
+- [ ] **Step 4: Run build to confirm nothing broke**
+
+```bash
+npm run build
+```
+
+Expected: Build succeeds.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "chore: remove unused booking popup components"
+```

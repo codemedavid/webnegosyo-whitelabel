@@ -55,6 +55,7 @@ interface ProductDetailContentProps {
     complementaryUpsells?: MenuItem[]
     upgradeUpsells?: UpgradeUpsell[]
     menuEngineeringEnabled?: boolean
+    pairingRulesEnabled?: boolean
     hideCurrencySymbol?: boolean
     upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
@@ -260,6 +261,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     complementaryUpsells = [],
     upgradeUpsells = [],
     menuEngineeringEnabled = false,
+    pairingRulesEnabled = false,
     hideCurrencySymbol,
     upsellBundles = [],
     bundlesEnabled = false,
@@ -540,7 +542,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         addCurrentItemToCart()
 
         // Check if any upsell data exists
-        const hasSuggestions = menuEngineeringEnabled && complementaryUpsells && complementaryUpsells.length > 0
+        const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells && complementaryUpsells.length > 0
         const hasBundle = bundlesEnabled && matchingBundle !== null
 
         if (!skipNavigation && (hasSuggestions || hasBundle)) {
@@ -558,7 +560,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen])
+    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -943,17 +945,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             <PostAddUpsellScreen
                 open={isPostAddUpsellOpen}
                 onClose={handlePostAddUpsellClose}
-                onAddItem={(upsellItem) => {
+                onAddItem={(upsellItem, qty) => {
                     addItem(
                         upsellItem,
                         undefined,
                         [],
-                        1,
+                        qty,
                         undefined,
                         'suggestion',
                         item.id
                     )
                 }}
+                tenantSlug={tenant.slug}
                 onAcceptBundle={(bundle) => {
                     setIsPostAddUpsellOpen(false)
                     setBundleForCustomization(bundle)

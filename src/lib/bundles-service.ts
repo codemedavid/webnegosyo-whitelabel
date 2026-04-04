@@ -6,6 +6,7 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { Bundle, BundleWithSlots, MenuItem, Category } from '@/types/database'
 
 // Re-export for backward compatibility with downstream consumers
@@ -27,6 +28,7 @@ export const bundleSlotInputSchema = z.object({
   category_id: z.string().uuid('Must select a category'),
   pick_count: z.number().int().min(1, 'Must pick at least 1 item').default(1),
   sort_order: z.number().int().min(0).default(0),
+  included_item_ids: z.array(z.string().uuid()).optional().nullable(),
   price_overrides: z.array(bundleSlotPriceOverrideInputSchema).default([]),
 })
 
@@ -143,6 +145,7 @@ export async function createBundle(tenantId: string, input: BundleInput): Promis
         category_id: slotData.category_id,
         pick_count: slotData.pick_count,
         sort_order: slotData.sort_order,
+        included_item_ids: slotData.included_item_ids ?? null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any)
       .select()
@@ -227,6 +230,7 @@ export async function updateBundle(
         category_id: slotData.category_id,
         pick_count: slotData.pick_count,
         sort_order: slotData.sort_order,
+        included_item_ids: slotData.included_item_ids ?? null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any)
       .select()
@@ -321,45 +325,66 @@ export async function reorderBundles(tenantId: string, bundleIds: string[]): Pro
 // ============================================
 
 /**
- * Get active bundles visible on the menu for a tenant
+ * Get active bundles visible on the menu for a tenant (Redis-cached, 5 min TTL)
  */
 export async function getMenuBundles(tenantId: string): Promise<BundleWithSlots[]> {
-  const supabase = createAdminClient()
+  const cacheKey = generateCacheKey('bundles:menu', tenantId)
 
-  const { data, error } = await supabase
-    .from('bundles')
-    .select(BUNDLE_SLOTS_QUERY)
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .eq('show_on_menu', true)
-    .order('display_order', { ascending: true })
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      const supabase = createAdminClient()
+      const { data, error } = await supabase
+        .from('bundles')
+        .select(BUNDLE_SLOTS_QUERY)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('show_on_menu', true)
+        .order('display_order', { ascending: true })
 
-  if (error) throw error
-
-  const bundles = (data as unknown as BundleWithSlots[]) ?? []
-  // Filter out bundles that have no slots
-  return bundles.filter((b) => b.slots && b.slots.length > 0)
+      if (error) throw error
+      const bundles = (data as unknown as BundleWithSlots[]) ?? []
+      return bundles.filter((b) => b.slots && b.slots.length > 0)
+    },
+    CACHE_TTL.BUNDLES
+  )
 }
 
 /**
- * Get active bundles available as upsell suggestions
+ * Get active bundles available as upsell suggestions (Redis-cached, 5 min TTL)
  */
 export async function getUpsellBundles(tenantId: string): Promise<BundleWithSlots[]> {
-  const supabase = createAdminClient()
+  const cacheKey = generateCacheKey('bundles:upsell', tenantId)
 
-  const { data, error } = await supabase
-    .from('bundles')
-    .select(BUNDLE_SLOTS_QUERY)
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .eq('show_as_upsell', true)
-    .order('display_order', { ascending: true })
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      const supabase = createAdminClient()
+      const { data, error } = await supabase
+        .from('bundles')
+        .select(BUNDLE_SLOTS_QUERY)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('show_as_upsell', true)
+        .order('display_order', { ascending: true })
 
-  if (error) throw error
+      if (error) throw error
+      const bundles = (data as unknown as BundleWithSlots[]) ?? []
+      return bundles.filter((b) => b.slots && b.slots.length > 0)
+    },
+    CACHE_TTL.BUNDLES
+  )
+}
 
-  const bundles = (data as unknown as BundleWithSlots[]) ?? []
-  // Filter out bundles that have no slots
-  return bundles.filter((b) => b.slots && b.slots.length > 0)
+/**
+ * Invalidate all bundle caches for a tenant.
+ * Call after any bundle create/update/delete/toggle.
+ */
+export async function invalidateBundlesCache(tenantId: string): Promise<void> {
+  await Promise.all([
+    invalidateCache(generateCacheKey('bundles:menu', tenantId)),
+    invalidateCache(generateCacheKey('bundles:upsell', tenantId)),
+  ])
 }
 
 // ============================================
@@ -367,23 +392,36 @@ export async function getUpsellBundles(tenantId: string): Promise<BundleWithSlot
 // ============================================
 
 /**
- * Fetch the available menu items and category metadata for a given bundle slot
+ * Fetch the available menu items and category metadata for a given bundle slot.
+ * When includedItemIds is provided, returns only those specific items (may span categories).
+ * Otherwise falls back to all items from the category.
  */
 export async function getSlotItems(
   categoryId: string,
-  tenantId: string
+  tenantId: string,
+  includedItemIds?: string[] | null
 ): Promise<{ items: MenuItem[]; category: Category }> {
   const supabase = createAdminClient()
 
-  const [{ data: items, error: itemsError }, { data: category, error: catError }] =
-    await Promise.all([
-      supabase
+  const itemsQuery = includedItemIds && includedItemIds.length > 0
+    ? supabase
+        .from('menu_items')
+        .select('*')
+        .in('id', includedItemIds)
+        .eq('tenant_id', tenantId)
+        .eq('is_available', true)
+        .order('order', { ascending: true })
+    : supabase
         .from('menu_items')
         .select('*')
         .eq('category_id', categoryId)
         .eq('tenant_id', tenantId)
         .eq('is_available', true)
-        .order('order', { ascending: true }),
+        .order('order', { ascending: true })
+
+  const [{ data: items, error: itemsError }, { data: category, error: catError }] =
+    await Promise.all([
+      itemsQuery,
       supabase.from('categories').select('*').eq('id', categoryId).single(),
     ])
 

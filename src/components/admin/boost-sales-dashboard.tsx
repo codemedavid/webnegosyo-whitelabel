@@ -2,27 +2,27 @@
 
 import { useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye } from 'lucide-react'
-import type { Category, UpsellPairWithItems } from '@/types/database'
+import {
+  LayoutGrid,
+  ArrowUpRight,
+  GitBranch,
+  ShoppingCart,
+  AlertCircle,
+  Eye,
+} from 'lucide-react'
+import type { Category, UpsellPairWithItems, TagDefinition, PairingRuleWithDetails } from '@/types/database'
 import type { MenuItem } from '@/types/database'
 import type { BundleWithSlots } from '@/lib/bundles-service'
-import { BoostSalesStatsBar } from '@/components/admin/boost-sales-stats-bar'
-import { PushItemFlow } from '@/components/admin/push-item-flow'
+import { UncoveredItemsDialog } from '@/components/admin/push-item-flow'
 
 const LoadingPlaceholder = () => (
   <div className="p-8 text-center text-muted-foreground animate-pulse">Loading...</div>
 )
 
-// Lazy-load tab components
 const BundlesList = dynamic(
   () => import('@/components/admin/bundles-list').then(mod => ({ default: mod.BundlesList })),
-  { ssr: false, loading: LoadingPlaceholder }
-)
-
-const SmartPairSuggestionsTab = dynamic(
-  () => import('@/components/admin/smart-pair-suggestions-tab').then(mod => ({ default: mod.SmartPairSuggestionsTab })),
   { ssr: false, loading: LoadingPlaceholder }
 )
 
@@ -31,8 +31,13 @@ const CheckoutUpsellSettingsTab = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
-const BoostSalesPerformanceTab = dynamic(
-  () => import('@/components/admin/boost-sales-performance-tab').then(mod => ({ default: mod.BoostSalesPerformanceTab })),
+const UpsellPairsTab = dynamic(
+  () => import('@/components/admin/upsell-pairs-tab').then(mod => ({ default: mod.UpsellPairsTab })),
+  { ssr: false, loading: LoadingPlaceholder }
+)
+
+const PairingRulesTab = dynamic(
+  () => import('@/components/admin/pairing-rules-tab').then(mod => ({ default: mod.PairingRulesTab })),
   { ssr: false, loading: LoadingPlaceholder }
 )
 
@@ -57,12 +62,22 @@ interface BoostSalesDashboardProps {
   checkoutUpsellSubtitle: string
   checkoutUpsellMaxItems: number
   bundlesEnabled: boolean
-  convexDeploymentUrl: string | null
+  pairingRulesEnabled: boolean
+  initialPairingRules: PairingRuleWithDetails[]
+  initialTagDefinitions: TagDefinition[]
+}
+
+interface TabDef {
+  value: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  badge?: string
+  hidden?: boolean
 }
 
 export function BoostSalesDashboard({
   menuItems,
-  categories: _categories,
+  categories,
   upsellPairs,
   bundles,
   tenantId,
@@ -72,48 +87,104 @@ export function BoostSalesDashboard({
   checkoutUpsellSubtitle,
   checkoutUpsellMaxItems,
   bundlesEnabled: _bundlesEnabled,
-  convexDeploymentUrl,
+  pairingRulesEnabled,
+  initialPairingRules,
+  initialTagDefinitions,
 }: BoostSalesDashboardProps) {
   const [showPreview, setShowPreview] = useState(false)
+  const [showUncovered, setShowUncovered] = useState(false)
+  const [activeTab, setActiveTab] = useState('bundles')
 
-  const itemsNotInUpsellIds = useMemo(() => {
+  const uncoveredItemIds = useMemo(() => {
     const inUpsell = new Set<string>()
     for (const pair of upsellPairs) {
-      inUpsell.add(pair.source_item_id)
-      inUpsell.add(pair.target_item_id)
+      if (pair.is_active) {
+        inUpsell.add(pair.source_item_id)
+        inUpsell.add(pair.target_item_id)
+      }
+    }
+    for (const bundle of bundles) {
+      if (bundle.is_active) {
+        for (const slot of bundle.slots) {
+          if (slot.included_item_ids) {
+            for (const id of slot.included_item_ids) inUpsell.add(id)
+          }
+        }
+      }
     }
     for (const item of menuItems) {
       if (item.show_in_checkout_upsell) inUpsell.add(item.id)
     }
     return menuItems.filter((i) => !inUpsell.has(i.id)).map((i) => i.id)
-  }, [menuItems, upsellPairs])
+  }, [menuItems, upsellPairs, bundles])
+
+  const tabStats = useMemo(() => {
+    const activeBundles = bundles.filter(b => b.is_active).length
+    const upgradePairs = upsellPairs.filter(p => p.pair_type === 'upgrade').length
+    const checkoutPicks = menuItems.filter(i => i.show_in_checkout_upsell).length
+    return { activeBundles, upgradePairs, checkoutPicks }
+  }, [bundles, upsellPairs, menuItems])
+
+  const tabs: TabDef[] = [
+    {
+      value: 'bundles',
+      label: 'Combos & Bundles',
+      icon: LayoutGrid,
+      badge: tabStats.activeBundles > 0 ? `${tabStats.activeBundles} active` : undefined,
+    },
+    {
+      value: 'upgrades',
+      label: 'Upgrade Pairs',
+      icon: ArrowUpRight,
+      badge: tabStats.upgradePairs > 0 ? `${tabStats.upgradePairs} pairs` : undefined,
+    },
+    {
+      value: 'rules',
+      label: 'Pairing Rules',
+      icon: GitBranch,
+      hidden: !pairingRulesEnabled,
+    },
+    {
+      value: 'checkout',
+      label: 'Checkout Picks',
+      icon: ShoppingCart,
+      badge: tabStats.checkoutPicks > 0 ? `${tabStats.checkoutPicks} selected` : undefined,
+    },
+  ]
+
+  const visibleTabs = tabs.filter(t => !t.hidden)
 
   return (
     <div className="space-y-6">
-      <BoostSalesStatsBar
-        menuItems={menuItems}
-        upsellPairs={upsellPairs}
-        bundles={bundles}
-      />
-
-      <PushItemFlow
-        menuItems={menuItems}
-        tenantId={tenantId}
-        tenantSlug={tenantSlug}
-        itemsNotInUpsell={itemsNotInUpsellIds}
-      />
-
-      {/* Preview button */}
-      <div className="flex items-center justify-end">
+      {/* Action buttons */}
+      <div className="flex items-center gap-3">
+        {uncoveredItemIds.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowUncovered(true)}
+          >
+            <AlertCircle className="mr-2 h-4 w-4" />
+            {uncoveredItemIds.length} uncovered items
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
           onClick={() => setShowPreview(!showPreview)}
         >
           <Eye className="mr-2 h-4 w-4" />
-          Preview Customer Experience
+          {showPreview ? 'Hide Preview' : 'Preview CX'}
         </Button>
       </div>
+
+      {/* Uncovered items dialog */}
+      <UncoveredItemsDialog
+        open={showUncovered}
+        onOpenChange={setShowUncovered}
+        menuItems={menuItems}
+        uncoveredItemIds={uncoveredItemIds}
+      />
 
       {/* Preview panel */}
       {showPreview && (
@@ -127,13 +198,40 @@ export function BoostSalesDashboard({
       )}
 
       {/* Tab Navigation */}
-      <Tabs defaultValue="bundles" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="bundles">Combos &amp; Bundles</TabsTrigger>
-          <TabsTrigger value="pairs">Pair Suggestions</TabsTrigger>
-          <TabsTrigger value="checkout">Checkout Picks</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <div className="border-b border-border overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-8 min-w-max">
+            {visibleTabs.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeTab === tab.value
+              return (
+                <button
+                  key={tab.value}
+                  onClick={() => setActiveTab(tab.value)}
+                  className={`flex items-center gap-2 pb-4 border-b-2 transition-all ${
+                    isActive
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-semibold">{tab.label}</span>
+                  {tab.badge && (
+                    <span
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         <TabsContent value="bundles">
           <BundlesList
@@ -143,12 +241,27 @@ export function BoostSalesDashboard({
           />
         </TabsContent>
 
-        <TabsContent value="pairs">
-          <SmartPairSuggestionsTab
+        <TabsContent value="upgrades">
+          <UpsellPairsTab
+            menuItems={menuItems}
+            upsellPairs={upsellPairs}
             tenantId={tenantId}
             tenantSlug={tenantSlug}
           />
         </TabsContent>
+
+        {pairingRulesEnabled && (
+          <TabsContent value="rules">
+            <PairingRulesTab
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              categories={categories}
+              menuItems={menuItems}
+              initialRules={initialPairingRules}
+              initialTags={initialTagDefinitions}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="checkout">
           <CheckoutUpsellSettingsTab
@@ -159,13 +272,6 @@ export function BoostSalesDashboard({
             initialSubtitle={checkoutUpsellSubtitle}
             initialMaxItems={checkoutUpsellMaxItems}
             menuItems={menuItems}
-          />
-        </TabsContent>
-
-        <TabsContent value="performance">
-          <BoostSalesPerformanceTab
-            tenantId={tenantId}
-            convexDeploymentUrl={convexDeploymentUrl}
           />
         </TabsContent>
       </Tabs>
