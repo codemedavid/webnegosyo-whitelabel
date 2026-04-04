@@ -461,6 +461,7 @@ export type Database = {
           addons: Json
           badge_text: string | null
           bcg_classification: string | null
+          boost_priority: number | null
           category_id: string | null
           created_at: string
           description: string
@@ -482,6 +483,7 @@ export type Database = {
           addons?: Json
           badge_text?: string | null
           bcg_classification?: string | null
+          boost_priority?: number | null
           category_id?: string | null
           created_at?: string
           description: string
@@ -503,6 +505,7 @@ export type Database = {
           addons?: Json
           badge_text?: string | null
           bcg_classification?: string | null
+          boost_priority?: number | null
           category_id?: string | null
           created_at?: string
           description?: string
