@@ -1,73 +1,106 @@
 import { CheckoutForm } from '@/components/landing/checkout-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Check, Shield } from 'lucide-react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 
 export const metadata = {
-  title: 'Checkout - WebNegosyo',
-  description: 'Complete your purchase and get started with WebNegosyo Smart Menu System',
+  title: 'Checkout - WebNegosyo Smart Menu System',
+  description: 'Complete your purchase of the Smart Menu System. One-time ₱3,899.',
 }
 
-export default async function CheckoutPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ plan?: string }>
-}) {
-  const params = await searchParams
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      <div className="container mx-auto px-4 py-8">
-        <Link href="/#pricing">
-          <Button variant="ghost" size="sm" className="mb-6">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Pricing
-          </Button>
-        </Link>
+const INCLUDED_FEATURES = [
+  'Smart Bundles & Combo System',
+  'Upgrade Pairs Engine',
+  'Checkout Upsell Prompts',
+  'Menu Engineering Dashboard',
+  '12 Menu Card Templates',
+  '6 Page Layouts',
+  'Custom Hero Designer',
+  'Dine-in, Pick-up & Delivery',
+  'Mobile-First Ordering Flow',
+  'Lifetime Updates',
+]
 
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">Complete Your Purchase</h1>
-            <p className="text-muted-foreground">
-              Fill out the form below and we&apos;ll contact you via Messenger to complete your order
-            </p>
+export default async function CheckoutPage() {
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#0a0a0a' }}>
+      {/* Top bar */}
+      <div className="border-b border-white/6 py-4 px-6">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Link>
+          <span className="text-sm font-black text-white tracking-[-0.02em]">
+            Web<span style={{ color: '#7c3aed' }}>Negosyo</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl md:text-4xl font-black uppercase tracking-[-0.04em] text-white">
+            Complete Your Purchase
+          </h1>
+          <p className="mt-2 text-white/45">
+            Fill out the form below and we&apos;ll contact you via Messenger to finalize
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-5 gap-10">
+          {/* Form — left side */}
+          <div className="md:col-span-3">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-8">
+              <h2 className="text-lg font-bold text-white mb-6">Your Details</h2>
+              <CheckoutForm />
+            </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="md:col-span-2">
-              <CheckoutForm planParam={params.plan} />
-            </div>
+          {/* Order summary — right side */}
+          <div className="md:col-span-2">
+            <div className="sticky top-8 space-y-6">
+              {/* Pricing card */}
+              <div
+                className="rounded-2xl border-2 p-8"
+                style={{
+                  borderColor: 'rgba(124, 58, 237, 0.3)',
+                  background: 'linear-gradient(145deg, rgba(124,58,237,0.1), rgba(124,58,237,0.03))',
+                }}
+              >
+                <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: '#7c3aed' }}>
+                  Smart Menu System
+                </div>
+                <div className="mt-3 text-4xl font-black tracking-[-0.03em] text-white">
+                  &#8369;3,899
+                </div>
+                <p className="mt-1 text-sm text-white/40">One-time payment</p>
 
-            <div className="md:col-span-1">
-              <Card className="sticky top-8">
-                <CardHeader>
-                  <CardTitle>Order Summary</CardTitle>
-                  <CardDescription>
-                    Review your selected plan
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Plan</span>
-                      <span className="font-semibold" id="plan-display">Loading...</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Price</span>
-                      <span className="font-semibold text-lg" id="price-display">Loading...</span>
-                    </div>
-                    <div className="pt-4 border-t">
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold">Total</span>
-                        <span className="font-bold text-xl" id="total-display">Loading...</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        One-time payment
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                <div className="mt-6 pt-6 border-t border-white/8">
+                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-white/50 mb-3">
+                    What&apos;s included
+                  </p>
+                  <ul className="space-y-2">
+                    {INCLUDED_FEATURES.map((feat) => (
+                      <li key={feat} className="flex items-start gap-2 text-sm text-white/60">
+                        <Check className="h-4 w-4 shrink-0 text-green-500 mt-0.5" />
+                        {feat}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Trust badges */}
+              <div className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] px-5 py-4">
+                <Shield className="h-5 w-5 shrink-0 text-green-500" />
+                <div>
+                  <p className="text-sm font-semibold text-white/80">No monthly fees</p>
+                  <p className="text-xs text-white/35">One-time payment. Lifetime access. 48-hour setup.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -75,4 +108,3 @@ export default async function CheckoutPage({
     </div>
   )
 }
-

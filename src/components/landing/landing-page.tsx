@@ -7,11 +7,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Menu,
   ShoppingCart,
   TrendingDown,
   DollarSign,
-  X,
   Utensils,
   ArrowUpRight,
   Target,
@@ -23,13 +21,6 @@ const DARK_BG = '#0a0a0a'
 const HERO_BG = '#0F0B1A'
 const ALT_BG = '#111111'
 const VIEWPORT = { once: true, amount: 0.2 } as const
-
-const NAV_LINKS = [
-  { label: 'Problem', href: '#problem' },
-  { label: 'Solution', href: '#solution' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'FAQ', href: '#faq' },
-] as const
 
 const PAIN_POINTS = [
   {
@@ -179,83 +170,18 @@ function SectionTag({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Navigation() {
-  const [isOpen, setIsOpen] = useState(false)
-
+function AnnouncementBanner() {
   return (
-    <header
-      className="fixed inset-x-0 top-0 z-50 border-b border-white/6"
-      style={{ backgroundColor: `${DARK_BG}e6`, backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-    >
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
-        <Link href="/" className="text-base font-black text-white tracking-[-0.02em]">
-          Web<span style={{ color: BRAND_PURPLE }}>Negosyo</span>
-        </Link>
-
-        <nav className="hidden items-center gap-6 md:flex">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="text-[13px] text-white/50 transition-colors duration-200 hover:text-white"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-
-        <Link
-          href={CHECKOUT_URL}
-          className="hidden rounded-lg px-5 py-2 text-xs font-bold uppercase tracking-[0.06em] text-white md:inline-block"
-          style={{ backgroundColor: BRAND_PURPLE }}
-        >
-          Get Smart Menu
-        </Link>
-
-        <button
-          type="button"
-          onClick={() => setIsOpen((o) => !o)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-white md:hidden"
-          aria-expanded={isOpen}
-          aria-label="Toggle menu"
-        >
-          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden border-t border-white/10 md:hidden"
-          >
-            <div className="flex flex-col gap-1 px-6 py-4">
-              {NAV_LINKS.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsOpen(false)}
-                  className="rounded-lg px-3 py-3 text-sm text-white/80 hover:bg-white/5"
-                >
-                  {link.label}
-                </a>
-              ))}
-              <Link
-                href={CHECKOUT_URL}
-                onClick={() => setIsOpen(false)}
-                className="mt-2 rounded-lg px-5 py-3 text-center text-sm font-bold uppercase text-white"
-                style={{ backgroundColor: BRAND_PURPLE }}
-              >
-                Get Smart Menu
-              </Link>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </header>
+    <div className="fixed inset-x-0 top-0 z-50 border-b border-white/6 py-3 text-center" style={{ backgroundColor: DARK_BG }}>
+      <Link
+        href={CHECKOUT_URL}
+        className="inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.12em] text-white/80 transition-colors hover:text-white"
+      >
+        <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
+        <span>Smart Menu System &mdash; One-Time &#8369;3,899 &bull; No Monthly Fees</span>
+        <ChevronRight className="h-3.5 w-3.5 text-white/40" />
+      </Link>
+    </div>
   )
 }
 
@@ -266,7 +192,7 @@ function Navigation() {
 function HeroSection() {
   return (
     <section
-      className="relative overflow-hidden pb-20 pt-32 md:pb-24 md:pt-40"
+      className="relative overflow-hidden pb-20 pt-24 md:pb-24 md:pt-32"
       style={{ backgroundColor: HERO_BG }}
     >
       <div
@@ -286,17 +212,8 @@ function HeroSection() {
       />
 
       <div className="relative mx-auto max-w-3xl px-6 text-center">
-        <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2">
-          <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/80">
-            Smart Menu System &bull; Para sa Food Business Owners
-          </span>
-        </div>
-
         <h1 className="text-[clamp(2.5rem,8vw,5rem)] font-black uppercase leading-[0.95] tracking-[-0.05em] text-white">
-          You Can Sell More
-          <br />
-          With Smart Menu
+          You Can Sell More With Smart Menu
         </h1>
 
         <p className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2vw,1.2rem)] leading-relaxed text-white/55">
@@ -678,7 +595,7 @@ function Footer() {
 export function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
-      <Navigation />
+      <AnnouncementBanner />
       <HeroSection />
 
       <CTAStrip subText="Smart Menu automates what your staff can&apos;t do consistently">
