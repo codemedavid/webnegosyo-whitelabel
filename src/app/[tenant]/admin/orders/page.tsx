@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import { Info } from 'lucide-react'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrdersByTenant } from '@/lib/orders-service'
@@ -106,6 +107,14 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
       <div>
         <h1 className="text-3xl font-bold">Orders</h1>
         <p className="text-muted-foreground">Manage customer orders</p>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <div>
+          <p className="font-medium">Limited Mode</p>
+          <p className="text-blue-700">Real-time order management with analytics requires Convex setup. Contact support to enable full features.</p>
+        </div>
       </div>
 
       <Suspense fallback={<OrdersSkeleton />}>
