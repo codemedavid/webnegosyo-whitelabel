@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Sidebar, adminSidebarItems } from '@/components/shared/sidebar'
+import { Sidebar, adminSidebarItems, type SidebarEntry } from '@/components/shared/sidebar'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
@@ -36,13 +36,21 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
   }
 
   const basePath = `/${tenantSlug}`
-  const itemsWithBasePath = adminSidebarItems.map((item) => ({
-    ...item,
-    href: `${basePath}${item.href}`,
-  }))
+  const itemsWithBasePath: SidebarEntry[] = adminSidebarItems.map((entry) => {
+    if ('children' in entry) {
+      return {
+        ...entry,
+        children: entry.children.map((child) => ({
+          ...child,
+          href: `${basePath}${child.href}`,
+        })),
+      }
+    }
+    return { ...entry, href: `${basePath}${entry.href}` }
+  })
 
   return (
-    <div className="flex h-screen">
+    <div className="flex min-h-screen bg-background">
       <Sidebar
         items={itemsWithBasePath}
         basePath={basePath}
@@ -52,7 +60,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
         bundlesEnabled={tenant.bundles_enabled}
       />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1">
         <div className="container mx-auto p-6">{children}</div>
       </main>
     </div>

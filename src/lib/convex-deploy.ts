@@ -4,7 +4,7 @@ import convexPushBundle from "./convex-push-bundle.json";
 
 const brotliCompress = promisify(zlib.brotliCompress);
 
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

@@ -16,6 +16,10 @@ import { AddonEditor } from '@/components/admin/addon-editor'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { ConvexProvider } from 'convex/react'
+import { getConvexClient } from '@/lib/convex/client'
+import { ProductCostField } from '@/components/admin/product-cost-field'
+import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -23,6 +27,7 @@ interface MenuItemFormProps {
   tenantId: string
   tenantSlug: string
   menuEngineeringEnabled?: boolean
+  convexUrl?: string
 }
 
 // Client-side validation schema (matches server-side schema)
@@ -51,7 +56,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: item?.name || '',
@@ -324,7 +329,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="price">Price ($) *</Label>
+              <Label htmlFor="price">Price (₱) *</Label>
               <Input
                 id="price"
                 type="number"
@@ -344,7 +349,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="discounted_price">Discounted Price ($)</Label>
+              <Label htmlFor="discounted_price">Discounted Price (₱)</Label>
               <Input
                 id="discounted_price"
                 type="number"
@@ -362,6 +367,22 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               )}
             </div>
           </div>
+
+          {convexUrl && (() => {
+            const client = getConvexClient(convexUrl)
+            return (
+              <ConvexProvider client={client}>
+                <ProductCostField
+                  menuItemId={item?.id || ''}
+                  currentPrice={parseFloat(formData.price) || 0}
+                  discountedPrice={parseFloat(formData.discounted_price) || undefined}
+                />
+                {item?.id && (
+                  <ProductMiniPerformance menuItemId={item.id} />
+                )}
+              </ConvexProvider>
+            )
+          })()}
 
           <div className="space-y-2">
             <Label htmlFor="category">Category *</Label>
