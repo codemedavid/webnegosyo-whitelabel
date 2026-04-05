@@ -216,7 +216,7 @@ export default function PrivacyPolicyPage() {
             <p className="mt-3">
               <strong>WebNegosyo</strong>
               <br />
-              Email: support@webnegosyo.com
+              Email: webnogosyo3@gmail.com
             </p>
           </section>
         </div>

@@ -16,6 +16,7 @@ import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 import type { BundleWithSlots } from '@/types/database'
 import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
+import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -721,6 +722,13 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         bundle={selectedBundle}
         branding={branding}
         hideCurrencySymbol={tenant?.hide_currency_symbol}
+      />
+
+      {/* Active Order Banner */}
+      <ActiveOrderBanner
+        tenantSlug={tenantSlug}
+        primaryColor={branding.buttonPrimary}
+        primaryTextColor={branding.buttonPrimaryText}
       />
     </div>
   )
