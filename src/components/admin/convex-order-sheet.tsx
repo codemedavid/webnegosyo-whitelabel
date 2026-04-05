@@ -191,12 +191,12 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange }: ConvexOrderShe
                           {item.variation && (
                             <span className="text-xs text-muted-foreground">{item.variation}</span>
                           )}
-                          {item.variationSelections && (
+                          {item.variationSelections != null && (
                             <span className="text-xs text-muted-foreground">
                               {formatVariationSelections(item.variationSelections)}
                             </span>
                           )}
-                          {item.addons && (
+                          {item.addons != null && (
                             <span className="text-xs text-muted-foreground">
                               + {formatAddons(item.addons)}
                             </span>
