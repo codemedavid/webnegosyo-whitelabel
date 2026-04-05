@@ -17,7 +17,6 @@ interface UpsellPreviewPanelProps {
   menuItems: MenuItemWithCategory[]
   upsellPairs: UpsellPairWithItems[]
   bundles: BundleWithSlots[]
-  tenantId: string
   onClose: () => void
 }
 
@@ -33,7 +32,6 @@ export function UpsellPreviewPanel({
   menuItems,
   upsellPairs,
   bundles,
-  tenantId: _tenantId,
   onClose,
 }: UpsellPreviewPanelProps) {
   const [search, setSearch] = useState('')

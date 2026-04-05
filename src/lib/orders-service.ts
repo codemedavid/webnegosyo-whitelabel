@@ -552,7 +552,6 @@ export async function createOrderConvex(
   paymentMethodId?: string,
   paymentMethodName?: string,
   paymentMethodDetails?: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   paymentMethodQrCodeUrl?: string,
   serviceChargeAmount?: number
 ) {

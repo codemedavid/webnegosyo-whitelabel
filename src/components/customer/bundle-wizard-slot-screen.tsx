@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Check } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
@@ -24,7 +24,7 @@ export function BundleWizardSlotScreen({
   hideCurrencySymbol,
   onComplete,
 }: BundleWizardSlotScreenProps) {
-  const items: MenuItem[] = slot.items ?? []
+  const items: MenuItem[] = useMemo(() => slot.items ?? [], [slot.items])
 
   const [selectedIds, setSelectedIds] = useState<string[]>(() =>
     existingSelections.map((s) => s.menuItemId)

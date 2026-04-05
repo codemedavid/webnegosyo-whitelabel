@@ -192,7 +192,6 @@ export function BoostSalesDashboard({
           menuItems={menuItems}
           upsellPairs={upsellPairs}
           bundles={bundles}
-          tenantId={tenantId}
           onClose={() => setShowPreview(false)}
         />
       )}
