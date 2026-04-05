@@ -16,6 +16,8 @@ import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 import type { BundleWithSlots } from '@/types/database'
 import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
+import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
+import type { HeroBlockDesign } from '@/types/hero-block-designer'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -589,6 +591,16 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
           onToggleCheckoutPreview={() => setIsCheckoutPreviewOpen(prev => !prev)}
         />
       )}
+
+      {/* Block Hero (v4) — rendered at the top level, above <main> content */}
+      {(() => {
+        const heroDesign = tenant?.hero_design as Record<string, unknown> | null
+        const isBlockDesign = heroDesign && heroDesign.version === 4
+        if (tenant?.hero_section_enabled !== false && heroDesign && isBlockDesign) {
+          return <BlockHeroRenderer design={heroDesign as unknown as HeroBlockDesign} />
+        }
+        return null
+      })()}
 
       <main className={
         tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).layoutMode === 'fullscreen'

@@ -1,34 +1,35 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import type { HeroDesign } from '@/types/hero-designer'
+import type { HeroBlockDesign } from '@/types/hero-block-designer'
 
-const HeroDesigner = dynamic(
-  () =>
-    import('@/components/admin/hero-designer/hero-designer').then(
-      (m) => m.HeroDesigner,
-    ),
+const HeroBlockDesigner = dynamic(
+  () => import('@/components/admin/hero-block-designer/hero-block-designer').then(m => m.HeroBlockDesigner),
   { ssr: false },
 )
 
 interface HeroDesignerWrapperProps {
   tenantId: string
   tenantSlug: string
-  initialDesign: HeroDesign | null
+  initialDesign: HeroBlockDesign | null
   initialHeroSectionEnabled: boolean
 }
 
-export function HeroDesignerWrapper({
+export default function HeroDesignerWrapper({
   tenantId,
   tenantSlug,
   initialDesign,
   initialHeroSectionEnabled,
 }: HeroDesignerWrapperProps) {
+  const blockDesign = initialDesign && typeof initialDesign === 'object' && 'version' in initialDesign && (initialDesign as { version: number }).version === 4
+    ? initialDesign as HeroBlockDesign
+    : null
+
   return (
-    <HeroDesigner
+    <HeroBlockDesigner
       tenantId={tenantId}
       tenantSlug={tenantSlug}
-      initialDesign={initialDesign}
+      initialDesign={blockDesign}
       initialHeroSectionEnabled={initialHeroSectionEnabled}
     />
   )

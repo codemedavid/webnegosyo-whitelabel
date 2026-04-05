@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { heroDesignSchema } from '@/lib/hero-designer-schemas'
+import { heroBlockDesignSchema } from '@/lib/hero-block-schemas'
 import { z } from 'zod'
 import type { HeroDesign } from '@/types/hero-designer'
 
@@ -35,7 +36,13 @@ export async function saveHeroDesignAction(
     await verifyTenantAdmin(tenantId)
 
     // Validate input (null means "reset to default")
-    if (design !== null) {
+    if (design && typeof design === 'object' && 'version' in design && (design as { version: number }).version === 4) {
+      const blockResult = heroBlockDesignSchema.safeParse(design)
+      if (!blockResult.success) {
+        return { success: false, error: `Validation failed: ${blockResult.error.issues[0]?.message}` }
+      }
+      // Skip v3 validation, proceed to save
+    } else if (design !== null) {
       heroDesignSchema.parse(design)
     }
 

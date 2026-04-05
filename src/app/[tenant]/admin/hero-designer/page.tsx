@@ -1,7 +1,7 @@
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { redirect } from 'next/navigation'
-import type { HeroDesign } from '@/types/hero-designer'
-import { HeroDesignerWrapper } from './hero-designer-wrapper'
+import type { HeroBlockDesign } from '@/types/hero-block-designer'
+import HeroDesignerWrapper from './hero-designer-wrapper'
 
 export default async function HeroDesignerPage({
   params,
@@ -19,7 +19,7 @@ export default async function HeroDesignerPage({
         tenantId={tenantData.id}
         tenantSlug={tenantSlug}
         initialDesign={
-          (tenantData.hero_design as unknown as HeroDesign) ?? null
+          (tenantData.hero_design as unknown as HeroBlockDesign) ?? null
         }
         initialHeroSectionEnabled={tenantData.hero_section_enabled !== false}
       />
