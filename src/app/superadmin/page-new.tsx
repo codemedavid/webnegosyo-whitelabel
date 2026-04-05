@@ -7,7 +7,7 @@ import { getTenants } from '@/lib/queries/tenants-server'
 
 // Server Component - renders on server, NO client bundle
 async function DashboardStats() {
-  const tenants = await getTenants()
+  const { data: tenants } = await getTenants({ pageSize: 1000 })
   const totalTenants = tenants.length
   const activeTenants = tenants.filter((t) => t.is_active).length
 
@@ -64,7 +64,7 @@ async function DashboardStats() {
 }
 
 async function RecentTenants() {
-  const tenants = await getTenants()
+  const { data: tenants } = await getTenants({ pageSize: 8 })
 
   return (
     <Card>

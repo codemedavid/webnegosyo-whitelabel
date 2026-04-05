@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { LeadStats, WeeklyLeadData } from '@/lib/leads/types'
+import type { LeadStats, LeadStatus, WeeklyLeadData } from '@/lib/leads/types'
 
 /**
  * Returns high-level statistics for the leads pipeline.
@@ -30,6 +30,7 @@ export async function getLeadStats(): Promise<LeadStats> {
     pendingCallsResult,
     pendingTodayResult,
     historyResult,
+    statusBreakdownResult,
   ] = await Promise.all([
     // 1. Total leads
     supabase.from('leads').select('id', { count: 'exact', head: true }),
@@ -74,6 +75,11 @@ export async function getLeadStats(): Promise<LeadStats> {
       .select('lead_id, created_at')
       .neq('new_status', 'new')
       .order('created_at', { ascending: true }),
+
+    // 8. Status breakdown — count per status
+    supabase
+      .from('leads')
+      .select('status'),
   ])
 
   // ----- Process results -----
@@ -110,6 +116,21 @@ export async function getLeadStats(): Promise<LeadStats> {
   // 5 & 6. Pending calls
   const pendingCalls = pendingCallsResult.count ?? 0
   const pendingToday = pendingTodayResult.count ?? 0
+
+  // 8. Status breakdown
+  const statusRows: { status: string }[] = (statusBreakdownResult.data as { status: string }[] | null) ?? []
+  const statusBreakdown: Record<LeadStatus, number> = {
+    new: 0,
+    contacted: 0,
+    qualified: 0,
+    converted: 0,
+    lost: 0,
+  }
+  for (const row of statusRows) {
+    if (row.status in statusBreakdown) {
+      statusBreakdown[row.status as LeadStatus]++
+    }
+  }
 
   // 7. Average response time
   // Group history rows by lead_id; keep only the earliest entry per lead.
@@ -167,6 +188,7 @@ export async function getLeadStats(): Promise<LeadStats> {
     pendingCalls,
     pendingToday,
     avgResponseTimeHours,
+    statusBreakdown,
   }
 }
 

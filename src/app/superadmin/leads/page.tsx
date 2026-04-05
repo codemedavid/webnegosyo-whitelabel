@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { getLeadStats } from '@/lib/leads/leads-analytics'
 import { getLeads } from '@/lib/leads/leads-service'
 import { LeadAnalytics } from './components/lead-analytics'
+import { LeadStatusPipeline } from './components/lead-status-pipeline'
 import { LeadsTable } from './components/leads-table'
 
 export default async function LeadsPage() {
@@ -21,10 +22,13 @@ export default async function LeadsPage() {
 
       <LeadAnalytics stats={stats} />
 
-      <Suspense fallback={<div className="h-96 animate-pulse rounded bg-muted" />}>
+      <LeadStatusPipeline statusBreakdown={stats.statusBreakdown} />
+
+      <Suspense fallback={<div className="h-96 animate-pulse rounded-lg bg-muted" />}>
         <LeadsTable
           initialLeads={leadsResult.data ?? []}
           initialCount={leadsResult.count ?? 0}
+          statusBreakdown={stats.statusBreakdown}
         />
       </Suspense>
     </div>

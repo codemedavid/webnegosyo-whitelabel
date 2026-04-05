@@ -1,11 +1,12 @@
-import { exec } from "child_process";
 import { promisify } from "util";
-import path from "path";
+import * as zlib from "zlib";
+import convexPushBundle from "./convex-push-bundle.json";
 
-const execAsync = promisify(exec);
+const brotliCompress = promisify(zlib.brotliCompress);
 
-const CONVEX_TEMPLATE_DIR = path.join(process.cwd(), "convex-template");
 const CURRENT_SCHEMA_VERSION = 4;
+const SCHEMA_POLL_TIMEOUT_MS = 10_000;
+const MAX_SCHEMA_WAIT_MS = 120_000;
 
 interface DeployResult {
   success: boolean;
@@ -13,35 +14,146 @@ interface DeployResult {
   schemaVersion: number;
 }
 
+interface ModuleConfig {
+  path: string;
+  source: string;
+  sourceMap?: string;
+  environment: "isolate" | "node";
+}
+
+interface PushBundle {
+  functions: string;
+  appDefinition: {
+    definition: null;
+    dependencies: string[];
+    schema: ModuleConfig | null;
+    changedModules: ModuleConfig[];
+    unchangedModuleHashes: never[];
+    udfServerVersion: string;
+  };
+  componentDefinitions: never[];
+  nodeDependencies: never[];
+}
+
+/**
+ * Make an authenticated request to the Convex deployment API.
+ */
+async function convexFetch(
+  deploymentUrl: string,
+  adminKey: string,
+  endpoint: string,
+  body: unknown,
+  options?: { compress?: boolean }
+): Promise<Response> {
+  const jsonBody = JSON.stringify(body);
+  const headers: Record<string, string> = {
+    Authorization: `Convex ${adminKey}`,
+    "Content-Type": "application/json",
+  };
+
+  let requestBody: Uint8Array | string;
+  if (options?.compress) {
+    const compressed = await brotliCompress(jsonBody, {
+      params: {
+        [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT,
+        [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
+      },
+    });
+    requestBody = new Uint8Array(compressed);
+    headers["Content-Encoding"] = "br";
+  } else {
+    requestBody = jsonBody;
+  }
+
+  return fetch(`${deploymentUrl}${endpoint}`, {
+    method: "POST",
+    headers,
+    body: requestBody as BodyInit,
+  });
+}
+
+/**
+ * Load the pre-built Convex push bundle.
+ *
+ * This JSON is generated at build time by scripts/prebundle-convex.mjs.
+ * The static import ensures Next.js includes it in the serverless function bundle.
+ */
+function loadPushBundle(): PushBundle {
+  return convexPushBundle as unknown as PushBundle;
+}
+
+/**
+ * Deploy the Convex schema and functions to a tenant's deployment
+ * using the Convex HTTP push API (no CLI required).
+ */
 export async function deployConvexSchema(
-  deployKey: string
+  deployKey: string,
+  deploymentUrl: string
 ): Promise<DeployResult> {
   try {
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-    const supabaseIssuer = supabaseUrl
-      ? `${supabaseUrl}/auth/v1`
-      : "";
-    const supabaseJwks = supabaseUrl
-      ? `${supabaseUrl}/auth/v1/.well-known/jwks.json`
-      : "";
+    // 1. Load the pre-built bundle
+    const bundle = await loadPushBundle();
 
-    const { stderr } = await execAsync(
-      `npx convex deploy --cmd 'echo deployed'`,
-      {
-        cwd: CONVEX_TEMPLATE_DIR,
-        timeout: 120000,
-        env: {
-          ...process.env,
-          CONVEX_DEPLOY_KEY: deployKey,
-          SUPABASE_ISSUER: supabaseIssuer,
-          SUPABASE_JWKS: supabaseJwks,
-        },
-      }
+    // 2. Construct the push request with the tenant's deploy key
+    const startPushRequest = {
+      adminKey: deployKey,
+      dryRun: false,
+      functions: bundle.functions,
+      appDefinition: bundle.appDefinition,
+      componentDefinitions: bundle.componentDefinitions,
+      nodeDependencies: bundle.nodeDependencies,
+    };
+
+    // 3. Start the push (upload functions)
+    const startResponse = await convexFetch(
+      deploymentUrl,
+      deployKey,
+      "/api/deploy2/start_push",
+      startPushRequest,
+      { compress: true }
     );
 
-    if (stderr && stderr.toLowerCase().includes("error")) {
-      return { success: false, error: stderr, schemaVersion: 0 };
+    if (!startResponse.ok) {
+      const errorText = await startResponse.text();
+      return {
+        success: false,
+        error: `Push failed (${startResponse.status}): ${errorText}`,
+        schemaVersion: 0,
+      };
+    }
+
+    const startPushResult = await startResponse.json();
+
+    // 4. Wait for schema validation
+    const schemaResult = await waitForSchema(
+      deploymentUrl,
+      deployKey,
+      startPushResult
+    );
+    if (!schemaResult.success) {
+      return { success: false, error: schemaResult.error, schemaVersion: 0 };
+    }
+
+    // 5. Finish the push
+    const finishResponse = await convexFetch(
+      deploymentUrl,
+      deployKey,
+      "/api/deploy2/finish_push",
+      {
+        adminKey: deployKey,
+        startPush: startPushResult,
+        dryRun: false,
+      },
+      { compress: true }
+    );
+
+    if (!finishResponse.ok) {
+      const errorText = await finishResponse.text();
+      return {
+        success: false,
+        error: `Finish push failed (${finishResponse.status}): ${errorText}`,
+        schemaVersion: 0,
+      };
     }
 
     return { success: true, schemaVersion: CURRENT_SCHEMA_VERSION };
@@ -50,6 +162,67 @@ export async function deployConvexSchema(
       error instanceof Error ? error.message : "Unknown deployment error";
     return { success: false, error: message, schemaVersion: 0 };
   }
+}
+
+/**
+ * Poll the Convex API until schema validation completes.
+ */
+async function waitForSchema(
+  deploymentUrl: string,
+  adminKey: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  startPushResult: any
+): Promise<{ success: boolean; error?: string }> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < MAX_SCHEMA_WAIT_MS) {
+    const response = await convexFetch(
+      deploymentUrl,
+      adminKey,
+      "/api/deploy2/wait_for_schema",
+      {
+        adminKey,
+        schemaChange: startPushResult.schemaChange,
+        timeoutMs: SCHEMA_POLL_TIMEOUT_MS,
+        dryRun: false,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Schema validation request failed (${response.status}): ${errorText}`,
+      };
+    }
+
+    const status = await response.json();
+
+    switch (status.type) {
+      case "complete":
+        return { success: true };
+      case "failed":
+        return {
+          success: false,
+          error: `Schema validation failed: ${status.error}`,
+        };
+      case "raceDetected":
+        return {
+          success: false,
+          error: "Schema was overwritten by another push",
+        };
+      case "inProgress":
+        // Continue polling
+        break;
+      default:
+        return {
+          success: false,
+          error: `Unknown schema status: ${JSON.stringify(status)}`,
+        };
+    }
+  }
+
+  return { success: false, error: "Schema validation timed out" };
 }
 
 export async function validateConvexCredentials(

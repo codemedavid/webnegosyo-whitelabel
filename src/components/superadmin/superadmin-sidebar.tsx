@@ -12,6 +12,7 @@ import {
   BarChart3,
   Shield,
   Users,
+  ShoppingCart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,11 @@ const sidebarItems: SidebarItem[] = [
     label: 'Leads',
     href: '/superadmin/leads',
     icon: Users,
+  },
+  {
+    label: 'Checkout Leads',
+    href: '/superadmin/checkout-leads',
+    icon: ShoppingCart,
   },
   {
     label: 'Settings',

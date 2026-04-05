@@ -74,7 +74,10 @@ export async function deployConvexToTenantAction(tenantId: string) {
   }
 
   // Deploy schema + functions
-  const deployResult = await deployConvexSchema(tenant.convex_deploy_key);
+  const deployResult = await deployConvexSchema(
+    tenant.convex_deploy_key,
+    tenant.convex_deployment_url
+  );
 
   if (!deployResult.success) {
     return {

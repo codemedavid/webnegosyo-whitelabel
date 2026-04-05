@@ -10,23 +10,40 @@ import type { Tenant } from '@/types/database'
 // 4. Can be used in Server Components
 // 5. Enhanced caching with longer stale times
 
-export const getTenants = cache(async (): Promise<Tenant[]> => {
+const TENANTS_PAGE_SIZE = 20
+
+export const getTenants = cache(async (options?: {
+  search?: string
+  page?: number
+  pageSize?: number
+}): Promise<{ data: Tenant[]; count: number }> => {
+  const { search, page = 1, pageSize = TENANTS_PAGE_SIZE } = options ?? {}
   const supabase = await createClient()
-  
-  const { data, error } = await supabase
+
+  let query = supabase
     .from('tenants')
     .select(
-      'id, name, slug, is_active, primary_color, domain, created_at, logo_url, menu_engineering_enabled, bundles_enabled, lalamove_enabled, app_enabled'
+      'id, name, slug, is_active, primary_color, domain, created_at, logo_url, menu_engineering_enabled, bundles_enabled, lalamove_enabled, app_enabled',
+      { count: 'exact' }
     )
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`)
+  }
+
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const { data, count, error } = await query
     .order('created_at', { ascending: false })
-    .limit(100)
-  
+    .range(from, to)
+
   if (error) {
     console.error('Error fetching tenants:', error)
-    return []
+    return { data: [], count: 0 }
   }
-  
-  return (data as unknown as Tenant[]) || []
+
+  return { data: (data as unknown as Tenant[]) || [], count: count ?? 0 }
 })
 
 export const getTenant = cache(async (id: string): Promise<Tenant | null> => {

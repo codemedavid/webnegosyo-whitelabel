@@ -48,7 +48,7 @@ describe('getLeadStats', () => {
     expect(typeof stats).toBe('object')
     expect(stats).not.toBeNull()
 
-    const expectedKeys: (keyof LeadStats)[] = [
+    const numericKeys: (keyof LeadStats)[] = [
       'totalLeads',
       'newThisWeek',
       'conversionRate',
@@ -58,9 +58,17 @@ describe('getLeadStats', () => {
       'avgResponseTimeHours',
     ]
 
-    expectedKeys.forEach(key => {
+    numericKeys.forEach(key => {
       expect(stats).toHaveProperty(key)
       expect(typeof stats[key]).toBe('number')
+    })
+
+    // statusBreakdown is a Record<LeadStatus, number>
+    expect(stats).toHaveProperty('statusBreakdown')
+    expect(typeof stats.statusBreakdown).toBe('object')
+    const statuses = ['new', 'contacted', 'qualified', 'converted', 'lost']
+    statuses.forEach(s => {
+      expect(typeof stats.statusBreakdown[s as keyof typeof stats.statusBreakdown]).toBe('number')
     })
   })
 
@@ -79,7 +87,12 @@ describe('getLeadStats', () => {
   test('returns numbers (not NaN or Infinity) when data is empty', async () => {
     const stats = await getLeadStats()
 
-    Object.values(stats).forEach(value => {
+    const { statusBreakdown, ...numericStats } = stats
+    Object.values(numericStats).forEach(value => {
+      expect(Number.isFinite(value)).toBe(true)
+    })
+    // statusBreakdown values should all be finite numbers
+    Object.values(statusBreakdown).forEach(value => {
       expect(Number.isFinite(value)).toBe(true)
     })
   })
@@ -92,7 +105,11 @@ describe('getLeadStats', () => {
     await expect(getLeadStats()).resolves.toBeDefined()
 
     const stats = await getLeadStats()
-    Object.values(stats).forEach(value => {
+    const { statusBreakdown, ...numericStats } = stats
+    Object.values(numericStats).forEach(value => {
+      expect(Number.isFinite(value)).toBe(true)
+    })
+    Object.values(statusBreakdown).forEach(value => {
       expect(Number.isFinite(value)).toBe(true)
     })
   })

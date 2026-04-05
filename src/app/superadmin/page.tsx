@@ -11,8 +11,8 @@ import { BulkDeployButton } from '@/components/superadmin/bulk-deploy-button'
 export const revalidate = 60
 
 async function DashboardStats() {
-  const [tenants, orders7d, orders3d] = await Promise.all([
-    getTenants(),
+  const [{ data: tenants }, orders7d, orders3d] = await Promise.all([
+    getTenants({ pageSize: 1000 }),
     getTotalOrders('7d'),
     getTotalOrders('3d'),
   ])
@@ -84,9 +84,8 @@ async function DashboardStats() {
 }
 
 async function RecentTenants() {
-  const tenants = await getTenants()
-  // Show the 8 most recent tenants
-  const recentTenants = tenants.slice(0, 8)
+  const { data: tenants } = await getTenants({ pageSize: 8 })
+  const recentTenants = tenants
 
   return (
     <Card>

@@ -594,3 +594,49 @@ export interface PairingRuleTargetWithDetails extends PairingRuleTarget {
   target_tag?: TagDefinition;
   items: MenuItem[];
 }
+
+// Checkout Leads (platform-level, not tenant-scoped)
+export type CheckoutLeadStatus = 'initiated' | 'paid' | 'setup_in_progress' | 'live' | 'cancelled'
+
+export interface CheckoutLead {
+  id: string
+  reference_number: string
+  name: string
+  email: string
+  phone: string
+  business_name: string
+  notes: string | null
+  selected_payment_method_id: string | null
+  status: CheckoutLeadStatus
+  payment_proof_url: string | null
+  payment_proof_uploaded_at: string | null
+  amount: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CheckoutLeadWithPaymentMethod extends CheckoutLead {
+  platform_payment_methods: PlatformPaymentMethod | null
+}
+
+export interface CheckoutLeadStatusHistory {
+  id: string
+  checkout_lead_id: string
+  old_status: string | null
+  new_status: string
+  changed_by: string | null
+  note: string | null
+  created_at: string
+}
+
+export interface PlatformPaymentMethod {
+  id: string
+  name: string
+  type: 'qr_code' | 'bank_transfer' | 'other'
+  details: string | null
+  qr_code_url: string | null
+  is_active: boolean
+  order_index: number
+  created_at: string
+  updated_at: string
+}

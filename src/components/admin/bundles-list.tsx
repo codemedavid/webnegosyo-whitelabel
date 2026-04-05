@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Edit, Trash2, Eye, Package, MoreVertical } from 'lucide-react'
+import { Edit, Trash2, Eye, Package, MoreVertical, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -86,6 +86,17 @@ export function BundlesList({ bundles, tenantSlug, tenantId }: BundlesListProps)
 
     return (
         <>
+            <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-muted-foreground">
+                    {bundles.length} bundle{bundles.length !== 1 ? 's' : ''}
+                </p>
+                <Link href={`/${tenantSlug}/admin/bundles/new`}>
+                    <Button size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Bundle
+                    </Button>
+                </Link>
+            </div>
             <div className="space-y-4">
                 {bundles.map((bundle) => (
                     <Card key={bundle.id} className={!bundle.is_active ? 'opacity-60' : ''}>

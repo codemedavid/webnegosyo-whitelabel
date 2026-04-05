@@ -16,19 +16,19 @@ interface LeadDetailPanelProps {
 }
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string; activeClass: string }[] = [
-  { value: 'new', label: 'New', activeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/40' },
-  { value: 'contacted', label: 'Contacted', activeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
-  { value: 'qualified', label: 'Qualified', activeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/40' },
-  { value: 'converted', label: 'Converted', activeClass: 'bg-green-500/20 text-green-400 border-green-500/40' },
-  { value: 'lost', label: 'Lost', activeClass: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/40' },
+  { value: 'new', label: 'New', activeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'contacted', label: 'Contacted', activeClass: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'qualified', label: 'Qualified', activeClass: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { value: 'converted', label: 'Converted', activeClass: 'bg-green-50 text-green-700 border-green-200' },
+  { value: 'lost', label: 'Lost', activeClass: 'bg-zinc-100 text-zinc-500 border-zinc-200' },
 ]
 
 const AVATAR_COLORS: Record<LeadStatus, string> = {
-  new: 'bg-blue-500/20 text-blue-300',
-  contacted: 'bg-amber-500/20 text-amber-300',
-  qualified: 'bg-purple-500/20 text-purple-300',
-  converted: 'bg-green-500/20 text-green-300',
-  lost: 'bg-zinc-700 text-zinc-300',
+  new: 'bg-blue-50 text-blue-600',
+  contacted: 'bg-amber-50 text-amber-600',
+  qualified: 'bg-purple-50 text-purple-600',
+  converted: 'bg-green-50 text-green-600',
+  lost: 'bg-zinc-100 text-zinc-500',
 }
 
 function getInitials(name: string): string {
@@ -144,15 +144,14 @@ export function LeadDetailPanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex flex-col gap-0 overflow-y-auto border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-md"
+        className="flex flex-col gap-0 overflow-y-auto p-0 sm:max-w-md"
       >
         {isLoading || !lead ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-zinc-500">{isLoading ? 'Loading...' : 'No lead selected.'}</div>
+            <div className="text-muted-foreground">{isLoading ? 'Loading...' : 'No lead selected.'}</div>
           </div>
         ) : (
           <div className="flex flex-col gap-6 p-6">
-            {/* Hidden title for accessibility */}
             <SheetHeader className="p-0">
               <SheetTitle className="sr-only">{lead.name} — Lead Detail</SheetTitle>
             </SheetHeader>
@@ -165,10 +164,10 @@ export function LeadDetailPanel({
                 {getInitials(lead.name)}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-lg font-semibold text-zinc-100">{lead.name}</div>
-                <div className="mt-0.5 truncate text-sm text-zinc-400">
+                <div className="truncate text-lg font-semibold">{lead.name}</div>
+                <div className="mt-0.5 truncate text-sm text-muted-foreground">
                   {lead.email}
-                  {lead.phone ? <span className="mx-1 text-zinc-600">·</span> : null}
+                  {lead.phone ? <span className="mx-1 opacity-40">·</span> : null}
                   {lead.phone && <span>{lead.phone}</span>}
                 </div>
               </div>
@@ -176,7 +175,7 @@ export function LeadDetailPanel({
 
             {/* 2. Status changer */}
             <div>
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Status
               </div>
               <div className="flex flex-wrap gap-2">
@@ -190,7 +189,7 @@ export function LeadDetailPanel({
                       className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                         isActive
                           ? opt.activeClass
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                          : 'border-border bg-muted text-muted-foreground hover:bg-muted/80'
                       }`}
                     >
                       {opt.label}
@@ -202,51 +201,50 @@ export function LeadDetailPanel({
 
             {/* 3. Booking info */}
             {lead.booking_date && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="rounded-lg border bg-muted p-4">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Booking
                 </div>
-                <div className="text-sm font-medium text-zinc-200">
+                <div className="text-sm font-medium">
                   {formatDate(lead.booking_date)}
                 </div>
                 {lead.booking_time && (
-                  <div className="mt-0.5 text-sm text-zinc-400">
+                  <div className="mt-0.5 text-sm text-muted-foreground">
                     {formatTime(lead.booking_time)}
                   </div>
                 )}
-                <div className="mt-2 text-xs text-zinc-600">15-minute growth call</div>
+                <div className="mt-2 text-xs text-muted-foreground opacity-60">15-minute growth call</div>
               </div>
             )}
 
             {/* 4. Notes */}
             <div>
-              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Notes
               </div>
               {notes.length > 0 ? (
                 <ul className="mb-4 space-y-3">
                   {notes.map((n) => (
-                    <li key={n.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                      <p className="text-sm text-zinc-200">{n.note}</p>
-                      <p className="mt-1 text-xs text-zinc-500">{timeAgo(n.created_at)}</p>
+                    <li key={n.id} className="rounded-lg border bg-muted p-3">
+                      <p className="text-sm">{n.note}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{timeAgo(n.created_at)}</p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mb-4 text-sm text-zinc-600">No notes yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground">No notes yet.</p>
               )}
               <Textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Add a note..."
                 rows={3}
-                className="border-zinc-700 bg-zinc-900 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-amber-500"
               />
               <Button
                 size="sm"
                 disabled={!noteText.trim() || isSavingNote}
                 onClick={handleSaveNote}
-                className="mt-2 bg-amber-500 text-zinc-900 hover:bg-amber-400 disabled:opacity-40"
+                className="mt-2"
               >
                 {isSavingNote ? 'Saving...' : 'Save Note'}
               </Button>
@@ -255,20 +253,20 @@ export function LeadDetailPanel({
             {/* 5. Status history */}
             {history.length > 0 && (
               <div>
-                <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Status History
                 </div>
-                <div className="border-l-2 border-zinc-800 pl-4 space-y-4">
+                <div className="border-l-2 border-border pl-4 space-y-4">
                   {history.map((entry) => (
                     <div key={entry.id}>
-                      <p className="text-sm text-zinc-300">
+                      <p className="text-sm">
                         Status changed to{' '}
                         <span className="font-semibold capitalize">{entry.new_status}</span>
                       </p>
                       {entry.note && (
-                        <p className="mt-0.5 text-xs text-zinc-500">{entry.note}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{entry.note}</p>
                       )}
-                      <p className="mt-0.5 text-xs text-zinc-600">{timeAgo(entry.created_at)}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground opacity-60">{timeAgo(entry.created_at)}</p>
                     </div>
                   ))}
                 </div>
@@ -280,7 +278,7 @@ export function LeadDetailPanel({
               <div className="pt-2">
                 <Link
                   href={`/superadmin/tenants/new?lead_id=${lead.id}&name=${encodeURIComponent(lead.name)}&email=${encodeURIComponent(lead.email)}`}
-                  className="inline-flex w-full items-center justify-center rounded-md border border-green-600 bg-transparent px-4 py-2 text-sm font-medium text-green-500 transition-colors hover:bg-green-600/10 hover:text-green-400"
+                  className="inline-flex w-full items-center justify-center rounded-md border border-green-600 bg-transparent px-4 py-2 text-sm font-medium text-green-600 transition-colors hover:bg-green-50"
                 >
                   Convert to Tenant
                 </Link>
