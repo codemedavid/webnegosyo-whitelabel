@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Component, type ReactNode, type ErrorInfo } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -16,8 +16,7 @@ import { AddonEditor } from '@/components/admin/addon-editor'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { ConvexProvider } from 'convex/react'
-import { getConvexClient } from '@/lib/convex/client'
+import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductCostField } from '@/components/admin/product-cost-field'
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
 
@@ -54,13 +53,6 @@ type FormErrors = {
   discounted_price?: string
   image_url?: string
   category_id?: string
-}
-
-class ConvexErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false }
-  static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(_: Error, info: ErrorInfo) { console.warn('Convex section failed:', _, info) }
-  render() { return this.state.hasError ? null : this.props.children }
 }
 
 export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, convexUrl }: MenuItemFormProps) {
@@ -381,16 +373,11 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             discountedPrice={parseFloat(formData.discounted_price) || undefined}
           />
 
-          {convexUrl && item?.id && (() => {
-            const client = getConvexClient(convexUrl)
-            return (
-              <ConvexErrorBoundary>
-                <ConvexProvider client={client}>
-                  <ProductMiniPerformance menuItemId={item.id} />
-                </ConvexProvider>
-              </ConvexErrorBoundary>
-            )
-          })()}
+          {convexUrl && item?.id && (
+            <SafeConvexProvider url={convexUrl}>
+              <ProductMiniPerformance menuItemId={item.id} />
+            </SafeConvexProvider>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="category">Category *</Label>

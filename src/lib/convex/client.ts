@@ -1,10 +1,10 @@
+// Convex client is now created per-component via SafeConvexProvider.
+// This file is kept for backward compatibility but the cached singleton
+// pattern has been removed to prevent stale WebSocket connections from
+// throwing errors after navigation.
+
 import { ConvexReactClient } from "convex/react";
 
-const clientCache = new Map<string, ConvexReactClient>();
-
 export function getConvexClient(deploymentUrl: string): ConvexReactClient {
-  if (!clientCache.has(deploymentUrl)) {
-    clientCache.set(deploymentUrl, new ConvexReactClient(deploymentUrl));
-  }
-  return clientCache.get(deploymentUrl)!;
+  return new ConvexReactClient(deploymentUrl);
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import React, { createContext, useContext } from "react";
-import { ConvexProvider } from "convex/react";
-import { getConvexClient } from "@/lib/convex/client";
+import { SafeConvexProvider } from "@/components/shared/safe-convex-provider";
 import { useAnalytics } from "@/hooks/use-analytics";
 
 interface AnalyticsContextValue {
@@ -40,11 +39,9 @@ export function AnalyticsProvider({ convexUrl, children }: AnalyticsProviderProp
     );
   }
 
-  const client = getConvexClient(convexUrl);
-
   return (
-    <ConvexProvider client={client}>
+    <SafeConvexProvider url={convexUrl}>
       <AnalyticsInner>{children}</AnalyticsInner>
-    </ConvexProvider>
+    </SafeConvexProvider>
   );
 }

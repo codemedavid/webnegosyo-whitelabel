@@ -1,28 +1,7 @@
 "use client";
 
-import { Component, type ReactNode, type ErrorInfo } from "react";
-import { ConvexProvider } from "convex/react";
-import { getConvexClient } from "@/lib/convex/client";
+import { SafeConvexProvider } from "@/components/shared/safe-convex-provider";
 import { useConvexOrders, useConvexDashboardStats } from "@/hooks/use-convex-orders";
-
-class ConvexErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err: Error, info: ErrorInfo) { console.warn("Convex orders error:", err, info); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>Real-time orders unavailable. Showing Supabase data instead.</p>
-          <button className="text-primary underline mt-2 text-sm" onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 interface ConvexOrder {
   _id: string;
@@ -113,13 +92,16 @@ function ConvexOrdersContent({ tenantSlug }: { tenantSlug: string }) {
 }
 
 export function ConvexOrdersWrapper({ convexUrl, tenantSlug }: ConvexOrdersWrapperProps) {
-  const client = getConvexClient(convexUrl);
-
   return (
-    <ConvexErrorBoundary>
-      <ConvexProvider client={client}>
-        <ConvexOrdersContent tenantSlug={tenantSlug} />
-      </ConvexProvider>
-    </ConvexErrorBoundary>
+    <SafeConvexProvider
+      url={convexUrl}
+      fallback={
+        <div className="text-center py-12 text-muted-foreground">
+          <p>Real-time orders unavailable.</p>
+        </div>
+      }
+    >
+      <ConvexOrdersContent tenantSlug={tenantSlug} />
+    </SafeConvexProvider>
   );
 }

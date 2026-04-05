@@ -86,7 +86,8 @@ export function BoostSalesDashboard({
   checkoutUpsellTitle,
   checkoutUpsellSubtitle,
   checkoutUpsellMaxItems,
-  bundlesEnabled: _bundlesEnabled,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  bundlesEnabled,
   pairingRulesEnabled,
   initialPairingRules,
   initialTagDefinitions,
