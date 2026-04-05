@@ -218,8 +218,8 @@ export function ProductAnalyticsContent() {
           {/* Health summary or setup guidance */}
           {(() => {
             const totalClassified = summary.counts.star + summary.counts.puzzle + summary.counts.plowhorse + summary.counts.dog
-            const productsWithMargin = analytics?.filter(a => a.marginPercent !== undefined).length ?? 0
-            const productsWithEnoughOrders = analytics?.filter(a => a.totalUnitsSold >= 5).length ?? 0
+            const productsWithMargin = analytics?.filter((a: { marginPercent?: number }) => a.marginPercent !== undefined).length ?? 0
+            const productsWithEnoughOrders = analytics?.filter((a: { totalUnitsSold: number }) => a.totalUnitsSold >= 5).length ?? 0
 
             if (totalClassified === 0) {
               const needs: string[] = []
