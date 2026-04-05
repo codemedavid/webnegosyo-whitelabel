@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  GripVertical,
   ImageIcon,
   Play,
   Star,
@@ -15,6 +16,8 @@ import {
   Clock,
   type LucideIcon,
 } from 'lucide-react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { getActiveWidgetProps } from '@/lib/hero-block-defaults'
 import type { BlockWidget, BlockBackground, Breakpoint, WidgetProps } from '@/types/hero-block-designer'
 
@@ -53,6 +56,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 interface BlockCanvasWidgetProps {
   widget: BlockWidget
+  sectionId: string
+  columnId: string
   isSelected: boolean
   breakpoint: Breakpoint
   onSelect: () => void
@@ -319,6 +324,8 @@ function renderWidgetContent(props: WidgetProps): React.ReactNode {
 
 export function BlockCanvasWidget({
   widget,
+  sectionId,
+  columnId,
   isSelected,
   breakpoint,
   onSelect,
@@ -326,15 +333,35 @@ export function BlockCanvasWidget({
   const resolvedProps = getActiveWidgetProps(widget, breakpoint)
   const isHidden = !widget.visibility[breakpoint]
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: widget.id,
+    data: { type: 'widget', sectionId, columnId, widgetId: widget.id },
+  })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : isHidden ? 0.3 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
   return (
     <div
+      ref={setNodeRef}
       role="button"
       tabIndex={0}
-      className={`relative select-none transition-all ${
+      className={`group/widget relative select-none transition-all ${
         isSelected
           ? 'ring-2 ring-blue-500 ring-offset-1'
           : 'hover:outline hover:outline-1 hover:outline-dashed hover:outline-blue-300'
-      } ${isHidden ? 'opacity-30' : ''}`}
+      }`}
       style={{
         alignSelf: resolveAlignSelf(widget.alignment),
         width: resolveWidth(widget.width),
@@ -345,6 +372,7 @@ export function BlockCanvasWidget({
         paddingBottom: widget.padding.bottom,
         paddingLeft: widget.padding.left,
         ...resolveBlockBackgroundStyles(widget.background),
+        ...sortableStyle,
       }}
       onClick={(e) => {
         e.stopPropagation()
@@ -354,6 +382,15 @@ export function BlockCanvasWidget({
         if (e.key === 'Enter' || e.key === ' ') onSelect()
       }}
     >
+      {/* Drag handle — appears on hover */}
+      <div
+        className="absolute -left-1 top-1/2 z-30 -translate-x-full -translate-y-1/2 cursor-grab rounded bg-blue-500 p-0.5 text-white opacity-0 shadow transition-opacity group-hover/widget:opacity-100 active:cursor-grabbing"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-3 w-3" />
+      </div>
+
       {/* Hidden overlay with striped pattern */}
       {isHidden && (
         <div

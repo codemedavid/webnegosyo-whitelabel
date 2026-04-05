@@ -2,6 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { CSS } from '@dnd-kit/utilities'
+import {
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -25,6 +40,7 @@ import {
 import type { BlockDesignerAction } from '@/hooks/use-hero-block-designer'
 import type {
   BlockSelection,
+  BlockWidget,
   BlockWidgetType,
   Breakpoint,
   HeroBlockDesign,
@@ -87,6 +103,174 @@ function DeleteButton({ onConfirm }: { onConfirm: () => void }) {
   )
 }
 
+// ── Sortable section row ────────────────────────────────────────────────────
+
+interface SortableSectionRowProps {
+  sectionId: string
+  label: string
+  columnCount: number
+  isExpanded: boolean
+  isSelected: boolean
+  onSelect: () => void
+  onToggle: () => void
+  onDelete: () => void
+}
+
+function SortableSectionRow({
+  sectionId,
+  label,
+  columnCount,
+  isExpanded,
+  isSelected,
+  onSelect,
+  onToggle,
+  onDelete,
+}: SortableSectionRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: sectionId,
+    data: { type: 'section', sectionId },
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: 'relative' as const,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={`group flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
+        isSelected
+          ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
+          : 'border-transparent hover:bg-accent'
+      }`}
+    >
+      {/* Drag handle */}
+      <span
+        className="cursor-grab p-0.5 text-muted-foreground active:cursor-grabbing"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </span>
+
+      {/* Expand/collapse chevron */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggle()
+        }}
+        className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+      </button>
+
+      {/* Section icon + label */}
+      <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-xs font-medium">
+        {label}
+      </span>
+
+      {/* Section info */}
+      <span className="shrink-0 text-[10px] text-muted-foreground">
+        {columnCount} col{columnCount !== 1 ? 's' : ''}
+      </span>
+
+      {/* Delete */}
+      <DeleteButton onConfirm={onDelete} />
+    </div>
+  )
+}
+
+// ── Sortable widget row ─────────────────────────────────────────────────────
+
+interface SortableWidgetRowProps {
+  widget: BlockWidget
+  sectionId: string
+  columnId: string
+  isSelected: boolean
+  onSelect: () => void
+  onDelete: () => void
+}
+
+function SortableWidgetRow({
+  widget,
+  sectionId,
+  columnId,
+  isSelected,
+  onSelect,
+  onDelete,
+}: SortableWidgetRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: `layer-widget-${widget.id}`,
+    data: { type: 'widget', sectionId, columnId, widgetId: widget.id },
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: 'relative' as const,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
+  const WidgetIcon = WIDGET_ICON_MAP[widget.type]
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={`group flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
+        isSelected
+          ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
+          : 'border-transparent hover:bg-accent'
+      }`}
+    >
+      {/* Drag handle */}
+      <span
+        className="cursor-grab p-0.5 text-muted-foreground active:cursor-grabbing"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-3 w-3" />
+      </span>
+
+      <WidgetIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-xs">
+        {widget.label}
+      </span>
+
+      {/* Delete widget */}
+      <DeleteButton onConfirm={onDelete} />
+    </div>
+  )
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export function BlockLayersPanel({
@@ -97,6 +281,12 @@ export function BlockLayersPanel({
   dispatch,
 }: BlockLayersPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  )
 
   // Auto-expand all sections on mount and when sections change
   useEffect(() => {
@@ -143,6 +333,57 @@ export function BlockLayersPanel({
     selection.columnId === columnId &&
     selection.widgetId === widgetId
 
+  // --- Section drag end ---
+  const handleSectionDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+
+      const sectionIds = design.sections.map((s) => s.id)
+      const oldIndex = sectionIds.indexOf(active.id as string)
+      const newIndex = sectionIds.indexOf(over.id as string)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reordered = [...sectionIds]
+      reordered.splice(oldIndex, 1)
+      reordered.splice(newIndex, 0, active.id as string)
+      dispatch({ type: 'REORDER_SECTIONS', sectionIds: reordered })
+    },
+    [design.sections, dispatch],
+  )
+
+  // --- Widget drag end (within a column) ---
+  const handleWidgetDragEnd = useCallback(
+    (sectionId: string, columnId: string) => (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+
+      const section = design.sections.find((s) => s.id === sectionId)
+      const column = section?.columns.find((c) => c.id === columnId)
+      if (!column) return
+
+      // Strip the `layer-widget-` prefix to get the actual widget IDs
+      const activeWidgetId = (active.id as string).replace('layer-widget-', '')
+      const overWidgetId = (over.id as string).replace('layer-widget-', '')
+
+      const widgetIds = column.widgets.map((w) => w.id)
+      const oldIndex = widgetIds.indexOf(activeWidgetId)
+      const newIndex = widgetIds.indexOf(overWidgetId)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reordered = [...widgetIds]
+      reordered.splice(oldIndex, 1)
+      reordered.splice(newIndex, 0, activeWidgetId)
+      dispatch({
+        type: 'REORDER_WIDGETS',
+        sectionId,
+        columnId,
+        widgetIds: reordered,
+      })
+    },
+    [design.sections, dispatch],
+  )
+
   if (design.sections.length === 0) {
     return (
       <div className="py-6 text-center text-xs text-muted-foreground">
@@ -151,151 +392,133 @@ export function BlockLayersPanel({
     )
   }
 
+  const sectionIds = design.sections.map((s) => s.id)
+
   return (
-    <div className="space-y-0.5">
-      {design.sections.map((section) => {
-        const isExpanded = expandedSections.has(section.id)
-        const sectionSelected = isSectionSelected(section.id)
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={handleSectionDragEnd}
+    >
+      <SortableContext
+        items={sectionIds}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-0.5">
+          {design.sections.map((section) => {
+            const isExpanded = expandedSections.has(section.id)
+            const sectionSelected = isSectionSelected(section.id)
 
-        return (
-          <div key={section.id}>
-            {/* Section row */}
-            <div
-              onClick={() =>
-                selectBlock({ type: 'section', sectionId: section.id })
-              }
-              className={`group flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
-                sectionSelected
-                  ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
-                  : 'border-transparent hover:bg-accent'
-              }`}
-            >
-              {/* Grip handle (for future drag) */}
-              <span className="p-0.5 text-muted-foreground">
-                <GripVertical className="h-3.5 w-3.5" />
-              </span>
+            return (
+              <div key={section.id}>
+                {/* Sortable section row */}
+                <SortableSectionRow
+                  sectionId={section.id}
+                  label={section.label}
+                  columnCount={section.columns.length}
+                  isExpanded={isExpanded}
+                  isSelected={sectionSelected}
+                  onSelect={() =>
+                    selectBlock({ type: 'section', sectionId: section.id })
+                  }
+                  onToggle={() => toggleSection(section.id)}
+                  onDelete={() =>
+                    dispatch({ type: 'REMOVE_SECTION', sectionId: section.id })
+                  }
+                />
 
-              {/* Expand/collapse chevron */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleSection(section.id)
-                }}
-                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="h-3 w-3" />
-                ) : (
-                  <ChevronRight className="h-3 w-3" />
-                )}
-              </button>
+                {/* Columns + widgets */}
+                {isExpanded && (
+                  <div className="ml-4 space-y-0.5">
+                    {section.columns.map((column) => {
+                      const columnSelected = isColumnSelected(section.id, column.id)
+                      const widgetSortableIds = column.widgets.map(
+                        (w) => `layer-widget-${w.id}`,
+                      )
 
-              {/* Section icon + label */}
-              <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                {section.label}
-              </span>
+                      return (
+                        <div key={column.id}>
+                          {/* Column row */}
+                          <div
+                            onClick={() =>
+                              selectBlock({
+                                type: 'column',
+                                sectionId: section.id,
+                                columnId: column.id,
+                              })
+                            }
+                            className={`flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
+                              columnSelected
+                                ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
+                                : 'border-transparent hover:bg-accent'
+                            }`}
+                          >
+                            <Columns3 className="ml-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              Column ({column.width}%)
+                            </span>
+                          </div>
 
-              {/* Section info */}
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                {section.columns.length} col{section.columns.length !== 1 ? 's' : ''}
-              </span>
-
-              {/* Delete */}
-              <DeleteButton
-                onConfirm={() =>
-                  dispatch({ type: 'REMOVE_SECTION', sectionId: section.id })
-                }
-              />
-            </div>
-
-            {/* Columns + widgets */}
-            {isExpanded && (
-              <div className="ml-4 space-y-0.5">
-                {section.columns.map((column) => {
-                  const columnSelected = isColumnSelected(section.id, column.id)
-
-                  return (
-                    <div key={column.id}>
-                      {/* Column row */}
-                      <div
-                        onClick={() =>
-                          selectBlock({
-                            type: 'column',
-                            sectionId: section.id,
-                            columnId: column.id,
-                          })
-                        }
-                        className={`flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
-                          columnSelected
-                            ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
-                            : 'border-transparent hover:bg-accent'
-                        }`}
-                      >
-                        <Columns3 className="ml-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate text-xs">
-                          Column ({column.width}%)
-                        </span>
-                      </div>
-
-                      {/* Widget rows */}
-                      {column.widgets.length > 0 && (
-                        <div className="ml-5 space-y-0.5">
-                          {column.widgets.map((widget) => {
-                            const widgetSelected = isWidgetSelected(
-                              section.id,
-                              column.id,
-                              widget.id,
-                            )
-                            const WidgetIcon = WIDGET_ICON_MAP[widget.type]
-
-                            return (
-                              <div
-                                key={widget.id}
-                                onClick={() =>
-                                  selectBlock({
-                                    type: 'widget',
-                                    sectionId: section.id,
-                                    columnId: column.id,
-                                    widgetId: widget.id,
-                                  })
-                                }
-                                className={`group flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-1 text-sm transition-colors ${
-                                  widgetSelected
-                                    ? 'border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30'
-                                    : 'border-transparent hover:bg-accent'
-                                }`}
+                          {/* Sortable widget rows */}
+                          {column.widgets.length > 0 && (
+                            <DndContext
+                              sensors={sensors}
+                              collisionDetection={closestCenter}
+                              modifiers={[restrictToVerticalAxis]}
+                              onDragEnd={handleWidgetDragEnd(
+                                section.id,
+                                column.id,
+                              )}
+                            >
+                              <SortableContext
+                                items={widgetSortableIds}
+                                strategy={verticalListSortingStrategy}
                               >
-                                <WidgetIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span className="min-w-0 flex-1 truncate text-xs">
-                                  {widget.label}
-                                </span>
-
-                                {/* Delete widget */}
-                                <DeleteButton
-                                  onConfirm={() =>
-                                    dispatch({
-                                      type: 'REMOVE_WIDGET',
-                                      sectionId: section.id,
-                                      columnId: column.id,
-                                      widgetId: widget.id,
-                                    })
-                                  }
-                                />
-                              </div>
-                            )
-                          })}
+                                <div className="ml-5 space-y-0.5">
+                                  {column.widgets.map((widget) => (
+                                    <SortableWidgetRow
+                                      key={widget.id}
+                                      widget={widget}
+                                      sectionId={section.id}
+                                      columnId={column.id}
+                                      isSelected={isWidgetSelected(
+                                        section.id,
+                                        column.id,
+                                        widget.id,
+                                      )}
+                                      onSelect={() =>
+                                        selectBlock({
+                                          type: 'widget',
+                                          sectionId: section.id,
+                                          columnId: column.id,
+                                          widgetId: widget.id,
+                                        })
+                                      }
+                                      onDelete={() =>
+                                        dispatch({
+                                          type: 'REMOVE_WIDGET',
+                                          sectionId: section.id,
+                                          columnId: column.id,
+                                          widgetId: widget.id,
+                                        })
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
+            )
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   )
 }

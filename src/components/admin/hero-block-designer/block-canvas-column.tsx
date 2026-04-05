@@ -1,5 +1,7 @@
 'use client'
 
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { getActiveColumnSettings } from '@/lib/hero-block-defaults'
 import type { BlockColumn, BlockBackground, Breakpoint } from '@/types/hero-block-designer'
 import { BlockCanvasWidget } from './block-canvas-widget'
@@ -11,6 +13,7 @@ import { InsertionPoint, EmptyColumnDropZone } from './insertion-point'
 
 interface BlockCanvasColumnProps {
   column: BlockColumn
+  sectionId: string
   isSelected: boolean
   selectedWidgetId: string | null
   breakpoint: Breakpoint
@@ -76,6 +79,7 @@ function resolveBlockBackgroundStyles(bg: BlockBackground): React.CSSProperties 
 
 export function BlockCanvasColumn({
   column,
+  sectionId,
   isSelected,
   selectedWidgetId,
   breakpoint,
@@ -86,15 +90,25 @@ export function BlockCanvasColumn({
   const settings = getActiveColumnSettings(column, breakpoint)
 
   const hasWidgets = column.widgets.length > 0
+  const widgetIds = column.widgets.map((w) => w.id)
+
+  // Make column a droppable target for cross-column widget moves
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: `column-${sectionId}-${column.id}`,
+    data: { type: 'column-droppable', sectionId, columnId: column.id },
+  })
 
   return (
     <div
+      ref={setDroppableRef}
       role="button"
       tabIndex={0}
       className={`relative flex flex-col ${
         isSelected
           ? 'ring-2 ring-blue-500'
-          : 'hover:outline hover:outline-1 hover:outline-dashed hover:outline-indigo-300'
+          : isOver
+            ? 'outline outline-2 outline-blue-400'
+            : 'hover:outline hover:outline-1 hover:outline-dashed hover:outline-indigo-300'
       }`}
       style={{
         flex: column.width,
@@ -125,7 +139,10 @@ export function BlockCanvasColumn({
       </span>
 
       {hasWidgets ? (
-        <>
+        <SortableContext
+          items={widgetIds}
+          strategy={verticalListSortingStrategy}
+        >
           {/* Insertion point before first widget */}
           <InsertionPoint
             onClick={() => onAddWidget(column.id, 0)}
@@ -136,6 +153,8 @@ export function BlockCanvasColumn({
             <div key={widget.id} className="flex w-full flex-col">
               <BlockCanvasWidget
                 widget={widget}
+                sectionId={sectionId}
+                columnId={column.id}
                 isSelected={selectedWidgetId === widget.id}
                 breakpoint={breakpoint}
                 onSelect={() => onSelectWidget(widget.id)}
@@ -148,7 +167,7 @@ export function BlockCanvasColumn({
               />
             </div>
           ))}
-        </>
+        </SortableContext>
       ) : (
         <EmptyColumnDropZone onClick={() => onAddWidget(column.id)} />
       )}

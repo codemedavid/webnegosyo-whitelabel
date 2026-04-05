@@ -1,6 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import type {
   HeroBlockDesign,
   Breakpoint,
@@ -63,6 +77,14 @@ export function BlockCanvas({
 }: BlockCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+
+  // DnD sensors — 8px activation distance so clicks still work
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  )
 
   // Measure container with ResizeObserver
   useEffect(() => {
@@ -155,7 +177,122 @@ export function BlockCanvas({
     [dispatch],
   )
 
+  // --- DnD handlers ---
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string)
+  }, [])
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveDragId(null)
+
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+
+      const activeData = active.data.current as
+        | { type: 'section'; sectionId: string }
+        | { type: 'widget'; sectionId: string; columnId: string; widgetId: string }
+        | undefined
+      const overData = over.data.current as
+        | { type: 'section'; sectionId: string }
+        | { type: 'widget'; sectionId: string; columnId: string; widgetId: string }
+        | { type: 'column-droppable'; sectionId: string; columnId: string }
+        | undefined
+
+      if (!activeData) return
+
+      // --- Section reorder ---
+      if (activeData.type === 'section') {
+        const sectionIds = design.sections.map((s) => s.id)
+        const oldIndex = sectionIds.indexOf(activeData.sectionId)
+        const overSectionId =
+          overData?.type === 'section'
+            ? (overData as { sectionId: string }).sectionId
+            : (over.id as string)
+        const newIndex = sectionIds.indexOf(overSectionId)
+        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+        const reordered = [...sectionIds]
+        reordered.splice(oldIndex, 1)
+        reordered.splice(newIndex, 0, activeData.sectionId)
+        dispatch({ type: 'REORDER_SECTIONS', sectionIds: reordered })
+        return
+      }
+
+      // --- Widget reorder / move ---
+      if (activeData.type === 'widget') {
+        // Determine target column info
+        let targetSectionId: string | undefined
+        let targetColumnId: string | undefined
+        let targetWidgetId: string | undefined
+
+        if (overData?.type === 'widget') {
+          targetSectionId = overData.sectionId
+          targetColumnId = overData.columnId
+          targetWidgetId = overData.widgetId
+        } else if (overData?.type === 'column-droppable') {
+          targetSectionId = overData.sectionId
+          targetColumnId = overData.columnId
+        }
+
+        if (!targetSectionId || !targetColumnId) return
+
+        const sameColumn =
+          activeData.sectionId === targetSectionId &&
+          activeData.columnId === targetColumnId
+
+        if (sameColumn) {
+          // Reorder within column
+          const section = design.sections.find((s) => s.id === targetSectionId)
+          const column = section?.columns.find((c) => c.id === targetColumnId)
+          if (!column) return
+
+          const widgetIds = column.widgets.map((w) => w.id)
+          const oldIndex = widgetIds.indexOf(activeData.widgetId)
+          const newIndex = targetWidgetId
+            ? widgetIds.indexOf(targetWidgetId)
+            : widgetIds.length
+          if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+          const reordered = [...widgetIds]
+          reordered.splice(oldIndex, 1)
+          reordered.splice(newIndex, 0, activeData.widgetId)
+          dispatch({
+            type: 'REORDER_WIDGETS',
+            sectionId: targetSectionId,
+            columnId: targetColumnId,
+            widgetIds: reordered,
+          })
+        } else {
+          // Move to different column
+          const targetSection = design.sections.find(
+            (s) => s.id === targetSectionId,
+          )
+          const targetColumn = targetSection?.columns.find(
+            (c) => c.id === targetColumnId,
+          )
+          const toIndex = targetWidgetId && targetColumn
+            ? targetColumn.widgets.findIndex((w) => w.id === targetWidgetId)
+            : (targetColumn?.widgets.length ?? 0)
+
+          dispatch({
+            type: 'MOVE_WIDGET',
+            fromSectionId: activeData.sectionId,
+            fromColumnId: activeData.columnId,
+            widgetId: activeData.widgetId,
+            toSectionId: targetSectionId,
+            toColumnId: targetColumnId,
+            toIndex: toIndex === -1 ? 0 : toIndex,
+          })
+        }
+      }
+    },
+    [design, dispatch],
+  )
+
   const hasSections = design.sections.length > 0
+  const sectionIds = design.sections.map((s) => s.id)
 
   return (
     <div
@@ -183,48 +320,59 @@ export function BlockCanvas({
         onClick={handleCanvasClick}
       >
         {hasSections ? (
-          <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={activeDragId && sectionIds.includes(activeDragId) ? [restrictToVerticalAxis] : undefined}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
             {/* Insertion point before first section */}
             <InsertionPoint
               onClick={() => handleAddSection(-1)}
               label="Add section"
             />
 
-            {design.sections.map((section, index) => (
-              <div key={section.id}>
-                <BlockCanvasSection
-                  section={section}
-                  isSelected={
-                    selection?.type === 'section' &&
-                    selection.sectionId === section.id
-                  }
-                  selectedColumnId={
-                    selection?.sectionId === section.id
-                      ? selection?.columnId ?? null
-                      : null
-                  }
-                  selectedWidgetId={
-                    selection?.sectionId === section.id
-                      ? selection?.widgetId ?? null
-                      : null
-                  }
-                  breakpoint={breakpoint}
-                  onSelectSection={() => handleSelectSection(section.id)}
-                  onSelectColumn={(columnId) =>
-                    handleSelectColumn(section.id, columnId)
-                  }
-                  onSelectWidget={handleSelectWidget}
-                  onAddWidget={handleAddWidget}
-                />
+            <SortableContext
+              items={sectionIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {design.sections.map((section, index) => (
+                <div key={section.id}>
+                  <BlockCanvasSection
+                    section={section}
+                    isSelected={
+                      selection?.type === 'section' &&
+                      selection.sectionId === section.id
+                    }
+                    selectedColumnId={
+                      selection?.sectionId === section.id
+                        ? selection?.columnId ?? null
+                        : null
+                    }
+                    selectedWidgetId={
+                      selection?.sectionId === section.id
+                        ? selection?.widgetId ?? null
+                        : null
+                    }
+                    breakpoint={breakpoint}
+                    onSelectSection={() => handleSelectSection(section.id)}
+                    onSelectColumn={(columnId) =>
+                      handleSelectColumn(section.id, columnId)
+                    }
+                    onSelectWidget={handleSelectWidget}
+                    onAddWidget={handleAddWidget}
+                  />
 
-                {/* Insertion point after each section */}
-                <InsertionPoint
-                  onClick={() => handleAddSection(index)}
-                  label="Add section"
-                />
-              </div>
-            ))}
-          </>
+                  {/* Insertion point after each section */}
+                  <InsertionPoint
+                    onClick={() => handleAddSection(index)}
+                    label="Add section"
+                  />
+                </div>
+              ))}
+            </SortableContext>
+          </DndContext>
         ) : (
           /* Empty state */
           <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 text-muted-foreground">

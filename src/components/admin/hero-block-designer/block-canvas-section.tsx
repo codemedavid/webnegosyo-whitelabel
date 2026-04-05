@@ -1,5 +1,8 @@
 'use client'
 
+import { GripVertical } from 'lucide-react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { getActiveSectionSettings } from '@/lib/hero-block-defaults'
 import type { BlockSection, Breakpoint } from '@/types/hero-block-designer'
 import { BlockCanvasColumn } from './block-canvas-column'
@@ -87,8 +90,29 @@ export function BlockCanvasSection({
 
   const minHeight = settings.minHeight > 0 ? settings.minHeight : undefined
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: section.id,
+    data: { type: 'section', sectionId: section.id },
+  })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: 'relative' as const,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
   return (
     <div
+      ref={setNodeRef}
       role="button"
       tabIndex={0}
       className={`group/section relative ${
@@ -103,6 +127,7 @@ export function BlockCanvasSection({
         marginTop: settings.margin.top,
         marginBottom: settings.margin.bottom,
         minHeight,
+        ...sortableStyle,
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -114,8 +139,15 @@ export function BlockCanvasSection({
         if (e.key === 'Enter' || e.key === ' ') onSelectSection()
       }}
     >
-      {/* Section label on hover */}
-      <div className="pointer-events-none absolute left-0 top-0 z-10 rounded-br bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/section:opacity-100">
+      {/* Section drag handle + label on hover */}
+      <div className="pointer-events-none absolute left-0 top-0 z-10 flex items-center gap-0.5 rounded-br bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/section:opacity-100">
+        <span
+          className="pointer-events-auto cursor-grab active:cursor-grabbing"
+          {...listeners}
+          {...attributes}
+        >
+          <GripVertical className="h-3 w-3" />
+        </span>
         {section.label}
       </div>
 
@@ -139,6 +171,7 @@ export function BlockCanvasSection({
           <BlockCanvasColumn
             key={column.id}
             column={column}
+            sectionId={section.id}
             isSelected={selectedColumnId === column.id}
             selectedWidgetId={selectedWidgetId}
             breakpoint={breakpoint}
