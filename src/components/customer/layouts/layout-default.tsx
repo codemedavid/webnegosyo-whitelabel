@@ -81,7 +81,7 @@ export const LayoutDefault = memo(function LayoutDefault({
     return (
         <div>
             {/* Hero Section */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design ? (
+            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
                 <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
                     (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
                 } />

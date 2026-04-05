@@ -89,7 +89,7 @@ export const LayoutList = memo(function LayoutList({
     return (
         <div className="max-w-2xl mx-auto">
             {/* Minimal Header */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design ? (
+            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
                 <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-8" />
             ) : (
                 <div className="mb-8">

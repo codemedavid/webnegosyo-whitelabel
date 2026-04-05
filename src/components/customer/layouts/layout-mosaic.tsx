@@ -88,7 +88,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
     return (
         <div>
             {/* Header */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design ? (
+            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
                 <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-10" />
             ) : (
                 <div className="text-center mb-10">
