@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Component, type ReactNode, type ErrorInfo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,13 @@ type FormErrors = {
   discounted_price?: string
   image_url?: string
   category_id?: string
+}
+
+class ConvexErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(_: Error, info: ErrorInfo) { console.warn('Convex section failed:', _, info) }
+  render() { return this.state.hasError ? null : this.props.children }
 }
 
 export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, convexUrl }: MenuItemFormProps) {
@@ -371,14 +378,16 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           {convexUrl && item?.id && (() => {
             const client = getConvexClient(convexUrl)
             return (
-              <ConvexProvider client={client}>
-                <ProductCostField
-                  menuItemId={item.id}
-                  currentPrice={parseFloat(formData.price) || 0}
-                  discountedPrice={parseFloat(formData.discounted_price) || undefined}
-                />
-                <ProductMiniPerformance menuItemId={item.id} />
-              </ConvexProvider>
+              <ConvexErrorBoundary>
+                <ConvexProvider client={client}>
+                  <ProductCostField
+                    menuItemId={item.id}
+                    currentPrice={parseFloat(formData.price) || 0}
+                    discountedPrice={parseFloat(formData.discounted_price) || undefined}
+                  />
+                  <ProductMiniPerformance menuItemId={item.id} />
+                </ConvexProvider>
+              </ConvexErrorBoundary>
             )
           })()}
 
