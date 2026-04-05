@@ -368,18 +368,16 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
           </div>
 
-          {convexUrl && (() => {
+          {convexUrl && item?.id && (() => {
             const client = getConvexClient(convexUrl)
             return (
               <ConvexProvider client={client}>
                 <ProductCostField
-                  menuItemId={item?.id || ''}
+                  menuItemId={item.id}
                   currentPrice={parseFloat(formData.price) || 0}
                   discountedPrice={parseFloat(formData.discounted_price) || undefined}
                 />
-                {item?.id && (
-                  <ProductMiniPerformance menuItemId={item.id} />
-                )}
+                <ProductMiniPerformance menuItemId={item.id} />
               </ConvexProvider>
             )
           })()}
