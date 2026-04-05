@@ -1,7 +1,7 @@
 'use client'
 
 import { getActiveColumnSettings } from '@/lib/hero-block-defaults'
-import type { BlockColumn, Breakpoint } from '@/types/hero-block-designer'
+import type { BlockColumn, BlockBackground, Breakpoint } from '@/types/hero-block-designer'
 import { BlockCanvasWidget } from './block-canvas-widget'
 import { InsertionPoint, EmptyColumnDropZone } from './insertion-point'
 
@@ -50,6 +50,26 @@ function resolveAlignItems(horizontalAlign: string): string {
   }
 }
 
+function resolveBlockBackgroundStyles(bg: BlockBackground): React.CSSProperties {
+  switch (bg.type) {
+    case 'color':
+      return { backgroundColor: bg.color || undefined }
+    case 'image':
+      if (!bg.image?.url) return {}
+      return {
+        backgroundImage: `url(${bg.image.url})`,
+        backgroundSize: bg.image.objectFit === 'fill' ? '100% 100%' : bg.image.objectFit,
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        ...(bg.image.opacity < 1 ? { opacity: bg.image.opacity } : {}),
+      }
+    case 'gradient':
+      return { backgroundImage: bg.gradient || undefined }
+    default:
+      return {}
+  }
+}
+
 // ---------------------------------------------------------------------------
 // BlockCanvasColumn
 // ---------------------------------------------------------------------------
@@ -85,10 +105,7 @@ export function BlockCanvasColumn({
         paddingRight: settings.padding.right,
         paddingBottom: settings.padding.bottom,
         paddingLeft: settings.padding.left,
-        backgroundColor:
-          settings.background && settings.background !== 'none'
-            ? settings.background
-            : undefined,
+        ...resolveBlockBackgroundStyles(settings.background),
         borderRadius: settings.borderRadius,
         minHeight: 60,
       }}

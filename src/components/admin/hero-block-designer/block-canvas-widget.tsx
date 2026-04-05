@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { getActiveWidgetProps } from '@/lib/hero-block-defaults'
-import type { BlockWidget, Breakpoint, WidgetProps } from '@/types/hero-block-designer'
+import type { BlockWidget, BlockBackground, Breakpoint, WidgetProps } from '@/types/hero-block-designer'
 
 // ---------------------------------------------------------------------------
 // Icon map for icon widget rendering
@@ -86,6 +86,26 @@ function resolveWidth(width: string): string {
   return 'auto'
 }
 
+function resolveBlockBackgroundStyles(bg: BlockBackground): React.CSSProperties {
+  switch (bg.type) {
+    case 'color':
+      return { backgroundColor: bg.color || undefined }
+    case 'image':
+      if (!bg.image?.url) return {}
+      return {
+        backgroundImage: `url(${bg.image.url})`,
+        backgroundSize: bg.image.objectFit === 'fill' ? '100% 100%' : bg.image.objectFit,
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        ...(bg.image.opacity < 1 ? { opacity: bg.image.opacity } : {}),
+      }
+    case 'gradient':
+      return { backgroundImage: bg.gradient || undefined }
+    default:
+      return {}
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Widget content renderer (switch on kind)
 // ---------------------------------------------------------------------------
@@ -121,8 +141,8 @@ function renderWidgetContent(props: WidgetProps): React.ReactNode {
           src={props.src}
           alt={props.alt}
           style={{
-            width: '100%',
-            height: 'auto',
+            width: props.width ? `${props.width}px` : '100%',
+            height: props.height ? `${props.height}px` : 'auto',
             objectFit: props.objectFit,
             borderRadius: props.borderRadius,
             opacity: props.opacity,
@@ -324,6 +344,7 @@ export function BlockCanvasWidget({
         paddingRight: widget.padding.right,
         paddingBottom: widget.padding.bottom,
         paddingLeft: widget.padding.left,
+        ...resolveBlockBackgroundStyles(widget.background),
       }}
       onClick={(e) => {
         e.stopPropagation()

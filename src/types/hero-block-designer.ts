@@ -69,6 +69,8 @@ export interface ImageWidgetProps {
   objectFit: 'cover' | 'contain' | 'fill'
   borderRadius: number
   opacity: number
+  width?: number
+  height?: number
 }
 
 export interface ButtonWidgetProps {
@@ -196,10 +198,24 @@ export interface BlockWidget {
   width: string
   margin: MarginValue
   padding: SpacingValue
+  background: BlockBackground
   props: WidgetProps
   animation: ElementAnimation
   visibility: ElementVisibility
   responsiveOverrides?: Partial<Record<Breakpoint, WidgetOverrides>>
+}
+
+// ── Block Background (shared by columns & widgets) ───────────────────────
+
+export interface BlockBackground {
+  type: 'none' | 'color' | 'image' | 'gradient'
+  color?: string
+  image?: {
+    url: string
+    opacity: number
+    objectFit: 'cover' | 'contain' | 'fill'
+  }
+  gradient?: string
 }
 
 // ── Column ────────────────────────────────────────────────────────────────
@@ -208,7 +224,7 @@ export interface ColumnSettings {
   verticalAlign: 'top' | 'center' | 'bottom'
   horizontalAlign: 'left' | 'center' | 'right'
   padding: SpacingValue
-  background: string
+  background: BlockBackground
   borderRadius: number
 }
 

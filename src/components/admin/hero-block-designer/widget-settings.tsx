@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type {
   BlockWidget,
+  BlockBackground,
   Breakpoint,
   WidgetProps,
 } from '@/types/hero-block-designer'
@@ -98,7 +99,7 @@ export function WidgetSettingsPanel({
   const updateSettings = useCallback(
     (
       settings: Partial<
-        Pick<BlockWidget, 'alignment' | 'width' | 'margin' | 'padding' | 'visibility'>
+        Pick<BlockWidget, 'alignment' | 'width' | 'margin' | 'padding' | 'background' | 'visibility'>
       >,
     ) => {
       dispatch({
@@ -278,6 +279,14 @@ export function WidgetSettingsPanel({
         </div>
       </CollapsibleSection>
 
+      {/* Background */}
+      <CollapsibleSection title="Background" defaultOpen={false}>
+        <WidgetBackgroundControls
+          background={widget.background}
+          onChange={(background) => updateSettings({ background })}
+        />
+      </CollapsibleSection>
+
       {/* Typography (text & button only) */}
       {TYPOGRAPHY_KINDS.has(widget.type) && (
         <CollapsibleSection title="Typography">
@@ -320,6 +329,159 @@ export function WidgetSettingsPanel({
             onUpdate={(partial) => updateProps(partial as Partial<WidgetProps>)}
           />
         </CollapsibleSection>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// WidgetBackgroundControls — Background controls for widgets
+// ---------------------------------------------------------------------------
+
+function WidgetBackgroundControls({
+  background,
+  onChange,
+}: {
+  background: BlockBackground
+  onChange: (bg: BlockBackground) => void
+}) {
+  const bgType = background.type
+
+  const updateBackground = (updates: Partial<BlockBackground>) => {
+    onChange({ ...background, ...updates })
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Mode tabs */}
+      <div className="flex gap-1">
+        {(['none', 'color', 'image', 'gradient'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => {
+              if (mode === 'none') {
+                onChange({ type: 'none' })
+              } else if (mode === 'color') {
+                onChange({ type: 'color', color: background.color || '#1a1a2e' })
+              } else if (mode === 'image') {
+                onChange({
+                  type: 'image',
+                  image: background.image || { url: '', opacity: 1, objectFit: 'cover' },
+                })
+              } else {
+                onChange({
+                  type: 'gradient',
+                  gradient: background.gradient || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                })
+              }
+            }}
+            className={`flex-1 rounded px-2 py-1 text-xs capitalize ${
+              bgType === mode
+                ? 'bg-blue-600 text-white'
+                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+            }`}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+
+      {/* Color controls */}
+      {bgType === 'color' && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">Color</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={background.color || '#000000'}
+              onChange={(e) => updateBackground({ color: e.target.value })}
+              className="h-7 w-7 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            />
+            <input
+              type="text"
+              value={background.color || ''}
+              onChange={(e) => updateBackground({ color: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+        </label>
+      )}
+
+      {/* Image controls */}
+      {bgType === 'image' && (
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-400">Image URL</span>
+            <input
+              type="text"
+              value={background.image?.url || ''}
+              onChange={(e) =>
+                updateBackground({
+                  image: { ...background.image!, url: e.target.value },
+                })
+              }
+              placeholder="https://..."
+              className={inputClass}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-zinc-400">Opacity</span>
+              <span className="text-xs text-zinc-500">
+                {(background.image?.opacity ?? 1).toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={background.image?.opacity ?? 1}
+              onChange={(e) =>
+                updateBackground({
+                  image: { ...background.image!, opacity: Number(e.target.value) },
+                })
+              }
+              className="w-full accent-blue-500"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-400">Object Fit</span>
+            <select
+              value={background.image?.objectFit || 'cover'}
+              onChange={(e) =>
+                updateBackground({
+                  image: {
+                    ...background.image!,
+                    objectFit: e.target.value as 'cover' | 'contain' | 'fill',
+                  },
+                })
+              }
+              className={inputClass}
+            >
+              <option value="cover">Cover</option>
+              <option value="contain">Contain</option>
+              <option value="fill">Fill</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {/* Gradient controls */}
+      {bgType === 'gradient' && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">CSS Gradient</span>
+          <input
+            type="text"
+            value={background.gradient || ''}
+            onChange={(e) => updateBackground({ gradient: e.target.value })}
+            placeholder="linear-gradient(135deg, #667eea, #764ba2)"
+            className={inputClass}
+          />
+        </label>
       )}
     </div>
   )

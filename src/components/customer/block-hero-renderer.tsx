@@ -39,6 +39,7 @@ import type {
   BlockSection,
   BlockColumn,
   BlockWidget,
+  BlockBackground,
   WidgetProps,
   TextWidgetProps,
   ImageWidgetProps,
@@ -182,6 +183,30 @@ function getActiveWidgetLayout(widget: BlockWidget, breakpoint: Breakpoint): Res
 }
 
 // ---------------------------------------------------------------------------
+// Block background style resolver (columns & widgets)
+// ---------------------------------------------------------------------------
+
+function resolveBlockBackgroundStyles(bg: BlockBackground): React.CSSProperties {
+  switch (bg.type) {
+    case 'color':
+      return { backgroundColor: bg.color || undefined }
+    case 'image':
+      if (!bg.image?.url) return {}
+      return {
+        backgroundImage: `url(${bg.image.url})`,
+        backgroundSize: bg.image.objectFit === 'fill' ? '100% 100%' : bg.image.objectFit,
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        ...(bg.image.opacity < 1 ? { opacity: bg.image.opacity } : {}),
+      }
+    case 'gradient':
+      return { backgroundImage: bg.gradient || undefined }
+    default:
+      return {}
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Widget sub-renderers
 // ---------------------------------------------------------------------------
 
@@ -216,8 +241,8 @@ function RenderImage({ props }: { props: ImageWidgetProps }) {
       alt={props.alt}
       loading="lazy"
       style={{
-        width: '100%',
-        height: 'auto',
+        width: props.width ? `${props.width}px` : '100%',
+        height: props.height ? `${props.height}px` : 'auto',
         objectFit: props.objectFit,
         borderRadius: props.borderRadius,
         opacity: props.opacity,
@@ -535,6 +560,8 @@ function WidgetWrapper({
     widthValue = `${layout.width}%`
   }
 
+  const bgStyles = widget.background ? resolveBlockBackgroundStyles(widget.background) : {}
+
   const wrapperStyle: React.CSSProperties = {
     alignSelf: alignSelfMap[layout.alignment] ?? 'center',
     width: widthValue,
@@ -544,6 +571,7 @@ function WidgetWrapper({
     paddingRight: layout.padding.right,
     paddingBottom: layout.padding.bottom,
     paddingLeft: layout.padding.left,
+    ...bgStyles,
   }
 
   const anim = widget.animation
@@ -607,6 +635,8 @@ function ColumnRenderer({
     right: 'flex-end',
   }
 
+  const bgStyles = resolveBlockBackgroundStyles(settings.background)
+
   const columnStyle: React.CSSProperties = {
     flex: column.width,
     display: 'flex',
@@ -617,7 +647,7 @@ function ColumnRenderer({
     paddingRight: settings.padding.right,
     paddingBottom: settings.padding.bottom,
     paddingLeft: settings.padding.left,
-    background: settings.background !== 'none' ? settings.background : undefined,
+    ...bgStyles,
     borderRadius: settings.borderRadius > 0 ? settings.borderRadius : undefined,
   }
 
