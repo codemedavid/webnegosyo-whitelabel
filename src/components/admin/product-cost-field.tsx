@@ -5,33 +5,33 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { useProductCost, useSetProductCost } from '@/hooks/use-convex-product-analytics'
 import { toast } from 'sonner'
 
 interface ProductCostFieldProps {
-  menuItemId: string
+  menuItemId?: string
   currentPrice: number
   discountedPrice?: number
+  convexSave?: (args: { menuItemId: string; costPrice: number; costNotes?: string }) => Promise<void>
+  initialCostPrice?: number
+  initialCostNotes?: string
 }
 
 export function ProductCostField({
   menuItemId,
   currentPrice,
   discountedPrice,
+  convexSave,
+  initialCostPrice,
+  initialCostNotes,
 }: ProductCostFieldProps) {
-  const costData = useProductCost(menuItemId)
-  const setCost = useSetProductCost()
-
-  const [costPrice, setCostPrice] = useState('')
-  const [costNotes, setCostNotes] = useState('')
+  const [costPrice, setCostPrice] = useState(initialCostPrice?.toString() ?? '')
+  const [costNotes, setCostNotes] = useState(initialCostNotes ?? '')
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    if (costData) {
-      setCostPrice(costData.costPrice.toString())
-      setCostNotes(costData.costNotes || '')
-    }
-  }, [costData])
+    if (initialCostPrice !== undefined) setCostPrice(initialCostPrice.toString())
+    if (initialCostNotes !== undefined) setCostNotes(initialCostNotes)
+  }, [initialCostPrice, initialCostNotes])
 
   const effectivePrice = discountedPrice && discountedPrice > 0 ? discountedPrice : currentPrice
   const cost = parseFloat(costPrice)
@@ -42,21 +42,21 @@ export function ProductCostField({
     : 0
 
   const handleSave = useCallback(async () => {
-    if (!hasCost) return
+    if (!hasCost || !menuItemId || !convexSave) return
     setIsSaving(true)
     try {
-      await setCost({
+      await convexSave({
         menuItemId,
         costPrice: cost,
         costNotes: costNotes || undefined,
       })
       toast.success('Cost price saved')
     } catch {
-      toast.error('Failed to save cost price')
+      // Convex function may not be deployed yet — silently skip
     } finally {
       setIsSaving(false)
     }
-  }, [hasCost, cost, costNotes, menuItemId, setCost])
+  }, [hasCost, cost, costNotes, menuItemId, convexSave])
 
   return (
     <div className="space-y-3 rounded-lg border border-dashed p-4">

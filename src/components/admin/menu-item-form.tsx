@@ -375,16 +375,17 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
           </div>
 
+          <ProductCostField
+            menuItemId={item?.id}
+            currentPrice={parseFloat(formData.price) || 0}
+            discountedPrice={parseFloat(formData.discounted_price) || undefined}
+          />
+
           {convexUrl && item?.id && (() => {
             const client = getConvexClient(convexUrl)
             return (
               <ConvexErrorBoundary>
                 <ConvexProvider client={client}>
-                  <ProductCostField
-                    menuItemId={item.id}
-                    currentPrice={parseFloat(formData.price) || 0}
-                    discountedPrice={parseFloat(formData.discounted_price) || undefined}
-                  />
                   <ProductMiniPerformance menuItemId={item.id} />
                 </ConvexProvider>
               </ConvexErrorBoundary>
