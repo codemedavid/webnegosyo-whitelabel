@@ -31,3 +31,28 @@ Sentry.init({
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+
+// Suppress Convex "function not found" errors that fire asynchronously via
+// WebSocket. These are NOT catchable by React error boundaries because they
+// originate outside the React render cycle. The SafeConvexProvider error
+// boundary handles the render-time re-throw; this handler prevents the
+// initial async throw from crashing the entire Next.js app.
+if (typeof window !== "undefined") {
+    const isConvexFunctionNotFound = (msg: string) =>
+        msg.includes("Could not find public function");
+
+    window.addEventListener("error", (event) => {
+        if (isConvexFunctionNotFound(event.message ?? "")) {
+            event.preventDefault();
+            console.warn("[Convex] Function not deployed, suppressed:", event.message);
+        }
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+        const msg = event.reason?.message ?? String(event.reason ?? "");
+        if (isConvexFunctionNotFound(msg)) {
+            event.preventDefault();
+            console.warn("[Convex] Function not deployed, suppressed:", msg);
+        }
+    });
+}
