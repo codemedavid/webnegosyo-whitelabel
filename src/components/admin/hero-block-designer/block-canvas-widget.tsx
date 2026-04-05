@@ -371,7 +371,7 @@ export function BlockCanvasWidget({
         paddingRight: widget.padding.right,
         paddingBottom: widget.padding.bottom,
         paddingLeft: widget.padding.left,
-        ...resolveBlockBackgroundStyles(widget.background),
+        ...(widget.background ? resolveBlockBackgroundStyles(widget.background) : {}),
         ...sortableStyle,
       }}
       onClick={(e) => {

@@ -119,7 +119,7 @@ export function BlockCanvasColumn({
         paddingRight: settings.padding.right,
         paddingBottom: settings.padding.bottom,
         paddingLeft: settings.padding.left,
-        ...resolveBlockBackgroundStyles(settings.background),
+        ...(settings.background && typeof settings.background === 'object' ? resolveBlockBackgroundStyles(settings.background) : {}),
         borderRadius: settings.borderRadius,
         minHeight: 60,
       }}

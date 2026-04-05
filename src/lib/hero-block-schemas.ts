@@ -274,7 +274,7 @@ export const widgetSchema = z.object({
   width: widthSchema,
   margin: marginSchema,
   padding: spacingSchema,
-  background: blockBackgroundSchema,
+  background: blockBackgroundSchema.optional().default({ type: 'none' }),
   props: widgetPropsSchema,
   animation: animationSchema,
   visibility: visibilitySchema,
@@ -287,7 +287,9 @@ export const columnSettingsSchema = z.object({
   verticalAlign: z.enum(['top', 'center', 'bottom']),
   horizontalAlign: z.enum(['left', 'center', 'right']),
   padding: spacingSchema,
-  background: blockBackgroundSchema,
+  background: z.union([blockBackgroundSchema, z.string()]).transform((val) =>
+    typeof val === 'string' ? { type: 'none' as const } : val
+  ).default({ type: 'none' }),
   borderRadius: z.number().min(0).max(500),
 })
 

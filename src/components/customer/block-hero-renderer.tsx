@@ -635,7 +635,9 @@ function ColumnRenderer({
     right: 'flex-end',
   }
 
-  const bgStyles = resolveBlockBackgroundStyles(settings.background)
+  const bgStyles = settings.background && typeof settings.background === 'object'
+    ? resolveBlockBackgroundStyles(settings.background)
+    : {}
 
   const columnStyle: React.CSSProperties = {
     flex: column.width,
