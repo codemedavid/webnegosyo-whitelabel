@@ -9,4 +9,10 @@ crons.daily(
   internal.statsAggregator.aggregateToday
 );
 
+crons.daily(
+  "aggregate product analytics",
+  { hourUTC: 16, minuteUTC: 0 },
+  internal.productAnalyticsAggregator.computeAnalytics
+);
+
 export default crons;

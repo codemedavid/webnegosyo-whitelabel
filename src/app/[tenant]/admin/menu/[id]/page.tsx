@@ -60,6 +60,7 @@ export default async function EditMenuItemPage({
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
+        convexUrl={tenant.convex_deployment_url ?? undefined}
       />
     </div>
   )

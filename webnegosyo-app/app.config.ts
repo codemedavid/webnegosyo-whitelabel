@@ -4,6 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "WebNegosyo",
   slug: "webnegosyo-app",
+  owner: "itscodemedavid",
   scheme: "webnegosyo-admin",
   version: "1.0.0",
   orientation: "portrait",
@@ -25,6 +26,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.webnegosyo.admin",
   },
   extra: {
+    eas: {
+      projectId: "e4af765d-36fe-4248-990d-e0589d1a6c50",
+    },
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   },
