@@ -146,7 +146,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       updated_at: '',
     }
 
-    const bundleMenuItems = bundles.map(bundleToMenuItem)
+    const bundleMenuItems = bundles.map((b) => bundleToMenuItem(b, allMenuItems))
 
     return {
       categoriesWithBundles: [bundleCategory, ...categories],

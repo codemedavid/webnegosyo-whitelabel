@@ -235,6 +235,7 @@ export function BundleWizard({
     const cartItem: Omit<CartBundleItem, 'id' | 'subtotal'> = {
       bundleId: bundle.id,
       bundleName: bundle.name,
+      bundleImageUrl: bundle.image_url || undefined,
       slots: allSlotSels,
       quantity: 1,
       pricingType: bundle.pricing_type,

@@ -260,9 +260,9 @@ export function CartDrawer({
                   {bundleItems.filter(bi => Array.isArray(bi.slots)).map((bundleItem, index) => (
                     <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                        {bundleItem.slots?.[0]?.menuItemImage ? (
+                        {(bundleItem.bundleImageUrl || bundleItem.slots?.[0]?.menuItemImage) ? (
                           <OptimizedImage
-                            src={bundleItem.slots[0].menuItemImage}
+                            src={bundleItem.bundleImageUrl || bundleItem.slots[0].menuItemImage!}
                             alt={bundleItem.bundleName}
                             fill
                             className="object-cover group-hover:scale-105 transition-transform"
