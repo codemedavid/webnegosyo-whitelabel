@@ -100,17 +100,61 @@ export function BundleWizard({
 
   const slots = useMemo(() => bundle?.slots ?? [], [bundle?.slots])
 
-  const [step, setStep] = useState<WizardStep>({ type: 'slot-select', slotIndex: 0 })
+  // Check if every slot has no choice (items <= pick_count) — skip straight to review
+  const canAutoSelect = useMemo(() => {
+    return slots.length > 0 && slots.every((slot) => {
+      const items = slot.items ?? []
+      return items.length > 0 && items.length <= slot.pick_count
+    })
+  }, [slots])
+
+  const buildAutoSelections = useCallback(() => {
+    const map = new Map<string, CartBundleSlotSelection[]>()
+    for (const slot of slots) {
+      const items = slot.items ?? []
+      const selections: CartBundleSlotSelection[] = items.map((item) => {
+        const override = getPriceOverride(slot, item.id)
+        return {
+          slotId: slot.id,
+          slotName: slot.name,
+          menuItemId: item.id,
+          menuItemName: item.name,
+          menuItemImage: item.image_url ?? null,
+          menuItemPrice: item.price,
+          quantity: 1,
+          selectedAddons: [],
+          priceOverride: override?.price_override ?? 0,
+        }
+      })
+      map.set(slot.id, selections)
+    }
+    return map
+  }, [slots])
+
+  const [step, setStep] = useState<WizardStep>(() =>
+    canAutoSelect ? { type: 'review', slotIndex: 0 } : { type: 'slot-select', slotIndex: 0 }
+  )
   // Map of slot.id -> CartBundleSlotSelection[]
   const [slotSelections, setSlotSelections] = useState<Map<string, CartBundleSlotSelection[]>>(
-    () => new Map()
+    () => canAutoSelect ? buildAutoSelections() : new Map()
   )
 
   const totalSteps = slots.length + 1 // slots + review
 
-  // Track wizard open
+  // Track wizard open + reset state when bundle changes
   useEffect(() => {
     if (open && bundle) {
+      const autoSelect = slots.length > 0 && slots.every((slot) => {
+        const items = slot.items ?? []
+        return items.length > 0 && items.length <= slot.pick_count
+      })
+      if (autoSelect) {
+        setSlotSelections(buildAutoSelections())
+        setStep({ type: 'review', slotIndex: 0 })
+      } else {
+        setStep({ type: 'slot-select', slotIndex: 0 })
+        setSlotSelections(new Map())
+      }
       trackEvent('bundle_wizard_started', {
         bundleId: bundle.id,
         bundleName: bundle.name,
@@ -160,10 +204,15 @@ export function BundleWizard({
         setStep({ type: 'slot-select', slotIndex: step.slotIndex - 1 })
       }
     } else if (step.type === 'review') {
-      // Go back to the last slot's slot-select
-      setStep({ type: 'slot-select', slotIndex: slots.length - 1 })
+      if (canAutoSelect) {
+        // All slots were auto-selected — back means close
+        handleClose()
+      } else {
+        // Go back to the last slot's slot-select
+        setStep({ type: 'slot-select', slotIndex: slots.length - 1 })
+      }
     }
-  }, [step, slots.length, handleClose])
+  }, [step, slots.length, handleClose, canAutoSelect])
 
   const handleSlotComplete = useCallback(
     (selections: CartBundleSlotSelection[]) => {
