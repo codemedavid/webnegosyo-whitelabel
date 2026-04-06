@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ConvexProvider } from "convex/react";
-import { getConvexClient } from "@/lib/convex/client";
+import { SafeConvexProvider } from "@/components/shared/safe-convex-provider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConvexOrdersTab } from "@/components/admin/convex-orders-tab";
 import { ConvexDashboardTab } from "@/components/admin/convex-dashboard-tab";
@@ -80,11 +79,16 @@ function ConvexOrdersContent({ _tenantSlug }: { _tenantSlug: string }) {
 }
 
 export function ConvexOrdersWrapper({ convexUrl, tenantSlug }: ConvexOrdersWrapperProps) {
-  const client = getConvexClient(convexUrl);
-
   return (
-    <ConvexProvider client={client}>
+    <SafeConvexProvider
+      url={convexUrl}
+      fallback={
+        <div className="text-center py-12 text-muted-foreground">
+          <p>Real-time orders unavailable.</p>
+        </div>
+      }
+    >
       <ConvexOrdersContent _tenantSlug={tenantSlug} />
-    </ConvexProvider>
+    </SafeConvexProvider>
   );
 }

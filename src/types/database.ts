@@ -301,6 +301,7 @@ export interface CartBundleItem {
   id: string;
   bundleId: string;
   bundleName: string;
+  bundleImageUrl?: string;
   slots: CartBundleSlotSelection[];
   quantity: number;
   pricingType: 'fixed' | 'discount';

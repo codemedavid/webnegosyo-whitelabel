@@ -1,4 +1,4 @@
-import type { CartItem, Variation, Addon, VariationOption, CartBundleItem, CartBundleSlotSelection } from '@/types/database'
+import type { CartItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
 
 /**
  * Calculate the subtotal for a cart item including variations and add-ons

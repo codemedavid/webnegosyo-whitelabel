@@ -18,6 +18,7 @@ import type { BundleWithSlots } from '@/types/database'
 import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
+import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -147,7 +148,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       updated_at: '',
     }
 
-    const bundleMenuItems = bundles.map(bundleToMenuItem)
+    const bundleMenuItems = bundles.map((b) => bundleToMenuItem(b, allMenuItems))
 
     return {
       categoriesWithBundles: [bundleCategory, ...categories],
@@ -733,6 +734,13 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         bundle={selectedBundle}
         branding={branding}
         hideCurrencySymbol={tenant?.hide_currency_symbol}
+      />
+
+      {/* Active Order Banner */}
+      <ActiveOrderBanner
+        tenantSlug={tenantSlug}
+        primaryColor={branding.buttonPrimary}
+        primaryTextColor={branding.buttonPrimaryText}
       />
     </div>
   )

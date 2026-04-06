@@ -211,7 +211,14 @@ export function BundleWizardReviewScreen({
             style={{ borderColor: branding.border }}
           >
             <span style={{ color: branding.textPrimary }}>Total</span>
-            <span style={{ color: branding.textPrimary }}>{formatPrice(grandTotal, { hideCurrencySymbol })}</span>
+            <span className="flex items-center gap-2">
+              {savings > 0 && (
+                <span className="text-sm font-normal line-through" style={{ color: branding.textMuted }}>
+                  {formatPrice(grandTotal + savings, { hideCurrencySymbol })}
+                </span>
+              )}
+              <span style={{ color: branding.textPrimary }}>{formatPrice(grandTotal, { hideCurrencySymbol })}</span>
+            </span>
           </div>
         </div>
       </div>

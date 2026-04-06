@@ -86,7 +86,8 @@ export function BoostSalesDashboard({
   checkoutUpsellTitle,
   checkoutUpsellSubtitle,
   checkoutUpsellMaxItems,
-  bundlesEnabled: _bundlesEnabled,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  bundlesEnabled,
   pairingRulesEnabled,
   initialPairingRules,
   initialTagDefinitions,
@@ -192,7 +193,6 @@ export function BoostSalesDashboard({
           menuItems={menuItems}
           upsellPairs={upsellPairs}
           bundles={bundles}
-          tenantId={tenantId}
           onClose={() => setShowPreview(false)}
         />
       )}

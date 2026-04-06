@@ -17,6 +17,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.webnegosyo.admin",
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -24,13 +27,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#111111",
     },
     package: "com.webnegosyo.admin",
+    googleServicesFile: "./google-services.json",
   },
   extra: {
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
     eas: {
       projectId: "e4af765d-36fe-4248-990d-e0589d1a6c50",
     },
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   },
   plugins: [
     "expo-router",
@@ -42,6 +46,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     "expo-audio",
   ],
+  updates: {
+    url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",
+  },
+  runtimeVersion: {
+    policy: "appVersion",
+  },
   experiments: {
     typedRoutes: true,
   },

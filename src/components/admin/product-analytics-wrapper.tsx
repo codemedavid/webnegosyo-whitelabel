@@ -1,7 +1,6 @@
 'use client'
 
-import { ConvexProvider } from 'convex/react'
-import { getConvexClient } from '@/lib/convex/client'
+import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductAnalyticsContent } from '@/components/admin/product-analytics-content'
 
 interface ProductAnalyticsWrapperProps {
@@ -9,10 +8,16 @@ interface ProductAnalyticsWrapperProps {
 }
 
 export function ProductAnalyticsWrapper({ convexUrl }: ProductAnalyticsWrapperProps) {
-  const client = getConvexClient(convexUrl)
   return (
-    <ConvexProvider client={client}>
+    <SafeConvexProvider
+      url={convexUrl}
+      fallback={
+        <div className="text-center py-12 text-muted-foreground">
+          <p>Analytics data is temporarily unavailable.</p>
+        </div>
+      }
+    >
       <ProductAnalyticsContent />
-    </ConvexProvider>
+    </SafeConvexProvider>
   )
 }

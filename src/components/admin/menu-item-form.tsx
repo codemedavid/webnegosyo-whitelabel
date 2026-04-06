@@ -16,8 +16,7 @@ import { AddonEditor } from '@/components/admin/addon-editor'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { ConvexProvider } from 'convex/react'
-import { getConvexClient } from '@/lib/convex/client'
+import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductCostField } from '@/components/admin/product-cost-field'
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
 
@@ -368,21 +367,17 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
           </div>
 
-          {convexUrl && (() => {
-            const client = getConvexClient(convexUrl)
-            return (
-              <ConvexProvider client={client}>
-                <ProductCostField
-                  menuItemId={item?.id || ''}
-                  currentPrice={parseFloat(formData.price) || 0}
-                  discountedPrice={parseFloat(formData.discounted_price) || undefined}
-                />
-                {item?.id && (
-                  <ProductMiniPerformance menuItemId={item.id} />
-                )}
-              </ConvexProvider>
-            )
-          })()}
+          <ProductCostField
+            menuItemId={item?.id}
+            currentPrice={parseFloat(formData.price) || 0}
+            discountedPrice={parseFloat(formData.discounted_price) || undefined}
+          />
+
+          {convexUrl && item?.id && (
+            <SafeConvexProvider url={convexUrl}>
+              <ProductMiniPerformance menuItemId={item.id} />
+            </SafeConvexProvider>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="category">Category *</Label>

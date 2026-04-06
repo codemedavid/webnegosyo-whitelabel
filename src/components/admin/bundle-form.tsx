@@ -335,10 +335,20 @@ export function BundleForm({
 
     const fixedPriceNumber = parseNumericInput(fixedPrice)
     const discountPercentNumber = parseNumericInput(discountPercent)
+
+    const minSlotTotal = slotEntries.reduce((sum, slot) => {
+        const items = menuItems.filter((mi) => slot.included_item_ids.includes(mi.id))
+        if (items.length === 0) return sum
+        const minPrice = Math.min(...items.map((i) => i.price ?? 0))
+        return sum + minPrice * slot.pick_count
+    }, 0)
+
     const previewPrice =
         pricingType === 'fixed'
             ? Number.isFinite(fixedPriceNumber) ? fixedPriceNumber : 0
-            : 0
+            : Number.isFinite(discountPercentNumber)
+                ? Math.round(minSlotTotal * (1 - Math.min(discountPercentNumber, 100) / 100) * 100) / 100
+                : minSlotTotal
 
     const cloudinaryPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
 

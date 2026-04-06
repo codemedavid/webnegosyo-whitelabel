@@ -10,6 +10,7 @@ import {
   createOrderConvex,
 } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { generateTrackingToken } from '@/lib/tracking-token'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -210,7 +211,9 @@ export async function createOrderAction(
         serviceChargeAmount
       )
       await firePostHogNotification(result.order.id, items)
-      return { success: true, data: result.order, orderToken: result.orderToken }
+      let trackingToken: string | undefined
+      try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
     }
 
     // Otherwise, continue with existing Supabase flow
@@ -230,7 +233,9 @@ export async function createOrderAction(
     )
     // Return both order and token for secure public API access
     await firePostHogNotification(result.order.id, items)
-    return { success: true, data: result.order, orderToken: result.orderToken }
+    let trackingToken: string | undefined
+    try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
   } catch (error) {
     console.error('[createOrderAction] Order creation failed:', error)
     return { success: false, error: 'Failed to create order' }

@@ -10,16 +10,29 @@ export interface BundleMenuItem extends MenuItem {
  * Map a BundleWithSlots to a MenuItem-compatible shape for card rendering.
  * Attaches `_isBundle` and `_bundleData` for click handler detection.
  */
-export function bundleToMenuItem(bundle: BundleWithSlots): BundleMenuItem {
+export function bundleToMenuItem(bundle: BundleWithSlots, allMenuItems?: MenuItem[]): BundleMenuItem {
   const slots = bundle.slots ?? []
 
-  // Calculate bundle price
+  // Calculate min slot total from items (resolve from allMenuItems via included_item_ids)
+  const minSlotTotal = slots.reduce((sum, slot) => {
+    const items = slot.items?.length
+      ? slot.items
+      : allMenuItems
+        ? (slot.included_item_ids ?? []).map((id) => allMenuItems.find((mi) => mi.id === id)).filter(Boolean) as MenuItem[]
+        : []
+    if (items.length === 0) return sum
+    const minPrice = Math.min(...items.map((i) => i.price ?? 0))
+    return sum + minPrice * (slot.pick_count ?? 1)
+  }, 0)
+
   let bundlePrice: number
+  let originalPrice: number | undefined
   if (bundle.pricing_type === 'fixed') {
     bundlePrice = bundle.fixed_price ?? 0
+    originalPrice = minSlotTotal > bundlePrice ? minSlotTotal : undefined
   } else {
-    // For discount pricing, customer picks items — price determined at customization time
-    bundlePrice = 0
+    bundlePrice = Math.round(minSlotTotal * (1 - (bundle.discount_percent ?? 0) / 100) * 100) / 100
+    originalPrice = minSlotTotal > bundlePrice ? minSlotTotal : undefined
   }
 
   // Auto-generate description from slot names
@@ -36,8 +49,8 @@ export function bundleToMenuItem(bundle: BundleWithSlots): BundleMenuItem {
     category_id: 'bundles',
     name: bundle.name,
     description: bundle.description || autoDescription,
-    price: bundlePrice,
-    discounted_price: undefined,
+    price: originalPrice ?? bundlePrice,
+    discounted_price: originalPrice ? bundlePrice : undefined,
     image_url: imageUrl,
     variation_types: [],
     variations: [],

@@ -48,6 +48,8 @@ export default function CheckoutPage() {
   const [checkoutComplete, setCheckoutComplete] = useState(false)
   const checkoutCompleteRef = useRef(false) // Sync ref to prevent race with cart empty useEffect
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
+  const [trackingToken, setTrackingToken] = useState<string | null>(null)
 
   // Lalamove delivery fee state
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
@@ -608,6 +610,24 @@ export default function CheckoutPage() {
                 }),
               }).catch(error => console.warn('[Checkout] Proactive send error:', error))
             }
+
+            // Save tracking data for order status page
+            if (result.data?.id && result.trackingToken) {
+              setTrackingOrderId(result.data.id)
+              setTrackingToken(result.trackingToken)
+              try {
+                const storageKey = `active_orders_${tenantSlug}`
+                const existing = JSON.parse(localStorage.getItem(storageKey) || '[]')
+                if (!existing.some((o: { orderId: string }) => o.orderId === result.data!.id)) {
+                  existing.push({
+                    orderId: result.data.id,
+                    trackingToken: result.trackingToken,
+                    createdAt: new Date().toISOString(),
+                  })
+                  localStorage.setItem(storageKey, JSON.stringify(existing))
+                }
+              } catch { /* ignore localStorage errors */ }
+            }
           } else {
             console.warn('[Checkout] Background order save failed:', result.error)
           }
@@ -881,8 +901,18 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Footer */}
-            <div className="pb-8">
+            {/* Track Order + Back to Menu */}
+            <div className="pb-8 space-y-3">
+              {trackingOrderId && trackingToken && (
+                <Button
+                  size="lg"
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full"
+                  onClick={() => router.push(`/${tenantSlug}/order/${trackingOrderId}?t=${trackingToken}`)}
+                >
+                  <Package className="mr-2 h-5 w-5" />
+                  Track Your Order
+                </Button>
+              )}
               <Button
                 size="lg"
                 variant="ghost"
