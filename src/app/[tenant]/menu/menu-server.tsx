@@ -101,17 +101,21 @@ export async function getMenuData(tenantSlug: string) {
 
   const bundlesData = (bundleResult.data as unknown as BundleWithSlots[] | null) ?? []
 
-  // Populate each slot's items from their category
+  // Populate each slot's items — filter by included_item_ids when set
   if (bundlesData.length > 0) {
     for (const bundle of bundlesData) {
       for (const slot of bundle.slots ?? []) {
-        const { data: slotItems } = await supabase
+        let query = supabase
           .from('menu_items')
           .select('*')
           .eq('category_id', slot.category_id)
           .eq('tenant_id', tenant.id)
           .eq('is_available', true)
           .order('order', { ascending: true })
+        if (slot.included_item_ids && slot.included_item_ids.length > 0) {
+          query = query.in('id', slot.included_item_ids)
+        }
+        const { data: slotItems } = await query
         slot.items = (slotItems as unknown as MenuItem[]) ?? []
       }
     }
