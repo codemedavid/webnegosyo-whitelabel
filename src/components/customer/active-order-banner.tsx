@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Package, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getStorageKey } from '@/hooks/use-order-tracking'
+import { getStorageKey, isOrderFresh } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 
 interface ActiveOrderBannerProps {
@@ -12,8 +12,6 @@ interface ActiveOrderBannerProps {
   primaryColor?: string
   primaryTextColor?: string
 }
-
-const MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }: ActiveOrderBannerProps) {
   const router = useRouter()
@@ -36,8 +34,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
         return
       }
 
-      const now = Date.now()
-      const fresh = orders.filter(o => now - new Date(o.createdAt).getTime() < MAX_AGE_MS)
+      const fresh = orders.filter(o => isOrderFresh(o))
       if (fresh.length === 0) {
         setLatestOrder(null)
         return
@@ -64,6 +61,12 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
     const onFocus = () => checkOrders()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
+  }, [checkOrders])
+
+  // Re-check every 30s so the banner auto-hides when a stage expires
+  useEffect(() => {
+    const interval = setInterval(checkOrders, 30_000)
+    return () => clearInterval(interval)
   }, [checkOrders])
 
   const handleDismiss = useCallback(() => {

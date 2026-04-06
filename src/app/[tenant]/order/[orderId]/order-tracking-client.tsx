@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
-import { getStorageKey } from '@/hooks/use-order-tracking'
+import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
 
@@ -71,12 +71,13 @@ export function OrderTrackingClient({
     } catch { /* ignore */ }
   }, [tenantSlug, orderId])
 
-  // If initial data is already terminal, clean up localStorage
+  // Sync initial status to localStorage
   useEffect(() => {
+    updateActiveOrderStatus(tenantSlug, orderId, initialData.status)
     if (initialData.isTerminal) {
       setTimeout(cleanupLocalStorage, 3000)
     }
-  }, [initialData.isTerminal, cleanupLocalStorage])
+  }, [initialData.isTerminal, initialData.status, tenantSlug, orderId, cleanupLocalStorage])
 
   // Poll for status updates
   const fetchStatus = useCallback(async () => {
@@ -91,6 +92,9 @@ export function OrderTrackingClient({
 
       const data: TrackingData = await res.json()
       setTrackingData(data)
+
+      // Sync status to localStorage so the banner knows the current stage
+      updateActiveOrderStatus(tenantSlug, orderId, data.status)
 
       if (data.isTerminal) {
         isTerminalRef.current = true
