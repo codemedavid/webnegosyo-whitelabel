@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { SearchBar } from '@/components/customer/search-bar'
+import { CategoryIcon } from '@/components/shared/category-icon'
 import {
   Select,
   SelectContent,
@@ -58,27 +59,36 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
     if (!itemToDelete) return
 
     setIsDeleting(true)
-    const result = await deleteMenuItemAction(itemToDelete, tenantId, tenantSlug)
+    try {
+      const result = await deleteMenuItemAction(itemToDelete, tenantId, tenantSlug)
 
-    if (result.success) {
-      toast.success('Menu item deleted successfully')
-      setDeleteDialogOpen(false)
-      setItemToDelete(null)
-      router.refresh()
-    } else {
-      toast.error(result.error || 'Failed to delete menu item')
+      if (result.success) {
+        toast.success('Menu item deleted successfully')
+        setDeleteDialogOpen(false)
+        setItemToDelete(null)
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to delete menu item')
+      }
+    } catch {
+      toast.error('Failed to delete menu item')
+    } finally {
+      setIsDeleting(false)
     }
-    setIsDeleting(false)
   }
 
   const handleToggleAvailability = async (itemId: string, currentAvailability: boolean) => {
-    const result = await toggleAvailabilityAction(itemId, tenantId, tenantSlug, !currentAvailability)
+    try {
+      const result = await toggleAvailabilityAction(itemId, tenantId, tenantSlug, !currentAvailability)
 
-    if (result.success) {
-      toast.success(`Menu item ${!currentAvailability ? 'enabled' : 'disabled'}`)
-      router.refresh()
-    } else {
-      toast.error(result.error || 'Failed to update availability')
+      if (result.success) {
+        toast.success(`Menu item ${!currentAvailability ? 'enabled' : 'disabled'}`)
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to update availability')
+      }
+    } catch {
+      toast.error('Failed to update availability')
     }
   }
 
@@ -100,7 +110,10 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
             <SelectItem value="all">All Categories</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.id} value={category.id}>
-                {category.icon} {category.name}
+                <span className="flex items-center gap-2">
+                  <CategoryIcon icon={category.icon} color={category.icon_color} size="sm" />
+                  {category.name}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

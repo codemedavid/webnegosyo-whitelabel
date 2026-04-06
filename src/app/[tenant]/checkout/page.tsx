@@ -15,9 +15,18 @@ import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client
 import { createOrderAction } from '@/app/actions/orders'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
-import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { createClient } from '@/lib/supabase/client'
+import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import type { Tenant, OrderType, CustomerFormField, PaymentMethod, CartItem } from '@/types/database'
+
+const MapboxAddressAutocomplete = dynamic(
+  () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
+  {
+    loading: () => <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Loading address field..." disabled />,
+    ssr: false,
+  }
+)
 
 interface CompletedOrderData {
   items: CartItem[]
@@ -95,20 +104,18 @@ export default function CheckoutPage() {
   // Ref to track if we've initialized the default order type
   const hasInitializedOrderType = useRef(false)
 
-  // Load tenant data and order types from Supabase
+  // Load all checkout data: tenant → order types → form fields + payment methods
+  // Consolidated into one effect to eliminate waterfall from separate render cycles
   useEffect(() => {
-    // Prevent duplicate fetches
     if (isLoadingRef.current) return
     isLoadingRef.current = true
 
-    const loadData = async () => {
-      try {
-        // Parallelize tenant and order types fetching
-        // We need tenant first to get tenant.id, but we can optimize by fetching order types
-        // for common tenant slugs or fetch them in parallel if we have tenant slug pattern
-        const tenantPromise = getTenantBySlugClient(tenantSlug)
+    let isCancelled = false
 
-        const { data, error: fetchError } = await tenantPromise
+    const loadAllData = async () => {
+      try {
+        const { data, error: fetchError } = await getTenantBySlugClient(tenantSlug)
+        if (isCancelled) return
         if (fetchError || !data) {
           toast.error('Restaurant not found')
           router.push('/')
@@ -116,22 +123,55 @@ export default function CheckoutPage() {
         }
         setTenant(data)
 
-        // Now fetch order types in parallel with any other operations
-        // Since we need tenant.id, we fetch after tenant, but this is still faster
-        // than the previous sequential approach
         const enabledOrderTypes = await getEnabledOrderTypesByTenantClient(data.id)
+        if (isCancelled) return
         setOrderTypes(enabledOrderTypes)
 
-        // Set default order type if none selected (only set once on initial load)
+        // Determine the active order type for form fields fetch
+        let activeOrderType = orderType
         if (!hasInitializedOrderType.current && enabledOrderTypes.length > 0) {
-          // Check current orderType value without including it in dependencies
-          // This only runs once on mount
           if (!orderType) {
+            activeOrderType = enabledOrderTypes[0].id
             setOrderType(enabledOrderTypes[0].id)
           }
           hasInitializedOrderType.current = true
         }
+
+        // Immediately fetch form fields + payment methods (no waiting for re-render)
+        if (activeOrderType) {
+          const [fieldsResult, methodsResult] = await Promise.allSettled([
+            getCustomerFormFieldsByOrderTypeClient(activeOrderType, data.id),
+            getPaymentMethodsByOrderTypeClient(activeOrderType, data.id)
+          ])
+
+          if (isCancelled) return
+
+          if (fieldsResult.status === 'fulfilled') {
+            const fields = fieldsResult.value
+            setFormFields(fields)
+            const initialData: Record<string, string> = {}
+            fields.forEach(field => { initialData[field.field_name] = '' })
+            setCustomerData(initialData)
+          } else {
+            console.error('Failed to load form fields:', fieldsResult.reason)
+            toast.error('Failed to load form fields')
+          }
+
+          if (methodsResult.status === 'fulfilled') {
+            const methods = methodsResult.value || []
+            setPaymentMethods(methods)
+            if (methods.length === 1) {
+              setSelectedPaymentMethod(methods[0].id)
+            } else {
+              setSelectedPaymentMethod(null)
+            }
+          } else {
+            setPaymentMethods([])
+            setSelectedPaymentMethod(null)
+          }
+        }
       } catch {
+        if (isCancelled) return
         toast.error('Failed to load restaurant')
         router.push('/')
       } finally {
@@ -140,61 +180,51 @@ export default function CheckoutPage() {
       }
     }
 
-    loadData()
+    loadAllData()
 
-    // Cleanup function to reset loading ref on unmount
     return () => {
+      isCancelled = true
       isLoadingRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSlug, router, setOrderType])
 
-  // Load form fields and payment methods when order type changes
+  // Reload form fields and payment methods when order type changes (after initial load)
   useEffect(() => {
+    // Skip during initial load — the consolidated effect handles it
+    if (isLoading || !tenant || !orderType) return
+
     let isCancelled = false
 
     const loadFormFields = async () => {
-      if (!tenant || !orderType) return
-
       try {
-        // Load form fields and payment methods in parallel
         const [fieldsResult, methodsResult] = await Promise.allSettled([
           getCustomerFormFieldsByOrderTypeClient(orderType, tenant.id),
           getPaymentMethodsByOrderTypeClient(orderType, tenant.id)
         ])
 
-        // Check if component was unmounted or order type changed
         if (isCancelled) return
 
-        // Handle form fields
         if (fieldsResult.status === 'fulfilled') {
           const fields = fieldsResult.value
           setFormFields(fields)
-
-          // Initialize customer data with empty values
           const initialData: Record<string, string> = {}
-          fields.forEach(field => {
-            initialData[field.field_name] = ''
-          })
+          fields.forEach(field => { initialData[field.field_name] = '' })
           setCustomerData(initialData)
         } else {
           console.error('Failed to load form fields:', fieldsResult.reason)
           toast.error('Failed to load form fields')
         }
 
-        // Handle payment methods (optional - may not be configured yet)
         if (methodsResult.status === 'fulfilled') {
           const methods = methodsResult.value || []
           setPaymentMethods(methods)
-
-          // Auto-select first payment method if only one available
           if (methods.length === 1) {
             setSelectedPaymentMethod(methods[0].id)
           } else {
             setSelectedPaymentMethod(null)
           }
         } else {
-          // Payment methods not configured yet - this is okay, checkout can proceed without them
           setPaymentMethods([])
           setSelectedPaymentMethod(null)
         }
@@ -207,11 +237,9 @@ export default function CheckoutPage() {
 
     loadFormFields()
 
-    // Cleanup function to cancel pending operations
-    return () => {
-      isCancelled = true
-    }
-  }, [tenant, orderType])
+    return () => { isCancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderType])
 
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
@@ -411,7 +439,6 @@ export default function CheckoutPage() {
 
       if (tenant.facebook_page_id) {
         try {
-          const { createClient } = await import('@/lib/supabase/client')
           const supabase = createClient()
           const { data: facebookPage, error: pageError } = await supabase
             .from('facebook_pages')

@@ -54,6 +54,8 @@ export function CheckoutForm() {
         setFormData((prev) => ({ ...prev, paymentMethodId: methods[0].id }))
       }
       setIsLoadingMethods(false)
+    }).catch(() => {
+      setIsLoadingMethods(false)
     })
   }, [])
 
@@ -116,63 +118,67 @@ export function CheckoutForm() {
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Name */}
       <div className="space-y-2">
-        <Label htmlFor="name">Full Name</Label>
+        <Label htmlFor="name" className="text-white/70">Full Name</Label>
         <Input
           id="name"
           value={formData.name}
           onChange={(e) => handleChange('name', e.target.value)}
           placeholder="Juan dela Cruz"
+          className="border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-white/25 focus-visible:ring-white/10"
         />
         {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
       </div>
 
       {/* Email */}
       <div className="space-y-2">
-        <Label htmlFor="email">Email Address</Label>
+        <Label htmlFor="email" className="text-white/70">Email Address</Label>
         <Input
           id="email"
           type="email"
           value={formData.email}
           onChange={(e) => handleChange('email', e.target.value)}
           placeholder="juan@example.com"
+          className="border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-white/25 focus-visible:ring-white/10"
         />
         {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
       </div>
 
       {/* Phone */}
       <div className="space-y-2">
-        <Label htmlFor="phone">Phone Number</Label>
+        <Label htmlFor="phone" className="text-white/70">Phone Number</Label>
         <Input
           id="phone"
           value={formData.phone}
           onChange={(e) => handleChange('phone', e.target.value)}
           placeholder="09XXXXXXXXX"
+          className="border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-white/25 focus-visible:ring-white/10"
         />
         {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
       </div>
 
       {/* Business Name */}
       <div className="space-y-2">
-        <Label htmlFor="businessName">Business Name</Label>
+        <Label htmlFor="businessName" className="text-white/70">Business Name</Label>
         <Input
           id="businessName"
           value={formData.businessName}
           onChange={(e) => handleChange('businessName', e.target.value)}
           placeholder="Juan's Kitchen"
+          className="border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-white/25 focus-visible:ring-white/10"
         />
         {errors.businessName && <p className="text-sm text-red-500">{errors.businessName}</p>}
       </div>
 
       {/* Payment Method - Radio Cards */}
       <div className="space-y-2">
-        <Label>Payment Method</Label>
+        <Label className="text-white/70">Payment Method</Label>
         {isLoadingMethods ? (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 py-3 text-sm text-white/40">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading payment methods...
           </div>
         ) : paymentMethods.length === 0 ? (
-          <p className="py-3 text-sm text-muted-foreground">
+          <p className="py-3 text-sm text-white/40">
             No payment methods available. Please contact us on Messenger.
           </p>
         ) : (
@@ -187,23 +193,23 @@ export function CheckoutForm() {
                   onClick={() => handleChange('paymentMethodId', method.id)}
                   className={`flex items-center gap-3 rounded-lg border-2 p-4 text-left transition-all ${
                     isSelected
-                      ? 'border-orange-500 bg-orange-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-orange-500 bg-orange-500/10'
+                      : 'border-white/10 hover:border-white/20'
                   }`}
                 >
                   <div
                     className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                      isSelected ? 'bg-orange-100' : 'bg-gray-100'
+                      isSelected ? 'bg-orange-500/20' : 'bg-white/5'
                     }`}
                   >
                     <Icon
-                      className={`h-5 w-5 ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}
+                      className={`h-5 w-5 ${isSelected ? 'text-orange-500' : 'text-white/40'}`}
                     />
                   </div>
                   <div>
-                    <p className="font-medium">{method.name}</p>
+                    <p className="font-medium text-white">{method.name}</p>
                     {method.details && (
-                      <p className="text-sm text-muted-foreground">{method.details}</p>
+                      <p className="text-sm text-white/40">{method.details}</p>
                     )}
                   </div>
                   <div className="ml-auto">
@@ -211,7 +217,7 @@ export function CheckoutForm() {
                       className={`h-5 w-5 rounded-full border-2 ${
                         isSelected
                           ? 'border-orange-500 bg-orange-500'
-                          : 'border-gray-300'
+                          : 'border-white/20'
                       }`}
                     >
                       {isSelected && (
@@ -237,13 +243,14 @@ export function CheckoutForm() {
 
       {/* Notes */}
       <div className="space-y-2">
-        <Label htmlFor="notes">Additional Notes (Optional)</Label>
+        <Label htmlFor="notes" className="text-white/70">Additional Notes (Optional)</Label>
         <Textarea
           id="notes"
           value={formData.notes}
           onChange={(e) => handleChange('notes', e.target.value)}
           placeholder="Any special requests or questions..."
           rows={3}
+          className="border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-white/25 focus-visible:ring-white/10"
         />
       </div>
 

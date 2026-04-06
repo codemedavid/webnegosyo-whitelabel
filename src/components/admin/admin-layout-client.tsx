@@ -1,10 +1,11 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Sidebar, adminSidebarItems, type SidebarEntry } from '@/components/shared/sidebar'
+import { Sidebar, MobileSidebar, adminSidebarItems, type SidebarEntry } from '@/components/shared/sidebar'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
+import { useMemo } from 'react'
 
 interface AdminLayoutClientProps {
   children: React.ReactNode
@@ -36,34 +37,46 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
   }
 
   const basePath = `/${tenantSlug}`
-  const itemsWithBasePath: SidebarEntry[] = adminSidebarItems.map((entry) => {
-    if ('children' in entry) {
-      return {
-        ...entry,
-        children: entry.children.map((child) => ({
-          ...child,
-          href: `${basePath}${child.href}`,
-        })),
-      }
-    }
-    return { ...entry, href: `${basePath}${entry.href}` }
-  })
+  const itemsWithBasePath: SidebarEntry[] = useMemo(
+    () =>
+      adminSidebarItems.map((entry) => {
+        if ('children' in entry) {
+          return {
+            ...entry,
+            children: entry.children.map((child) => ({
+              ...child,
+              href: `${basePath}${child.href}`,
+            })),
+          }
+        }
+        return { ...entry, href: `${basePath}${entry.href}` }
+      }),
+    [basePath]
+  )
+
+  const sidebarProps = {
+    items: itemsWithBasePath,
+    basePath,
+    onLogout: handleLogout,
+    tenantName: tenant.name,
+    enableOrderManagement: tenant.enable_order_management,
+    menuEngineeringEnabled: tenant.menu_engineering_enabled,
+    bundlesEnabled: tenant.bundles_enabled,
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar
-        items={itemsWithBasePath}
-        basePath={basePath}
-        onLogout={handleLogout}
-        tenantName={tenant.name}
-        enableOrderManagement={tenant.enable_order_management}
-        menuEngineeringEnabled={tenant.menu_engineering_enabled}
-        bundlesEnabled={tenant.bundles_enabled}
-      />
-      <main className="flex-1">
-        <div className="container mx-auto p-6">{children}</div>
-      </main>
+      {/* Desktop sidebar — hidden on mobile via internal `hidden md:flex` */}
+      <Sidebar {...sidebarProps} />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile header + sheet — visible only below md */}
+        <MobileSidebar {...sidebarProps} />
+
+        <main className="flex-1">
+          <div className="container mx-auto p-4 md:p-6">{children}</div>
+        </main>
+      </div>
     </div>
   )
 }
-

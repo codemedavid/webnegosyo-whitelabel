@@ -1,5 +1,5 @@
 'use client'
-// sidebar navigation with collapsible groups
+
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -19,10 +19,24 @@ import {
   BarChart3,
   Cog,
   Box,
+  Menu,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { useState, useEffect } from 'react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 
 interface SidebarItem {
   label: string
@@ -42,6 +56,88 @@ function isGroup(entry: SidebarEntry): entry is SidebarGroup {
   return 'children' in entry
 }
 
+// ─── Shared filtering logic ───────────────────────────────────────────────────
+
+function useFilteredItems(
+  items: SidebarEntry[],
+  enableOrderManagement?: boolean,
+  menuEngineeringEnabled?: boolean,
+  bundlesEnabled?: boolean,
+) {
+  const hiddenPaths = useMemo(() => {
+    const paths = new Set<string>()
+    if (enableOrderManagement === false) paths.add('/orders')
+    if (!menuEngineeringEnabled) {
+      paths.add('/boost-sales')
+      paths.add('/product-analytics')
+    }
+    if (!bundlesEnabled) paths.add('/bundles')
+    return paths
+  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled])
+
+  const shouldHide = useCallback(
+    (href: string) => Array.from(hiddenPaths).some((p) => href.includes(p)),
+    [hiddenPaths]
+  )
+
+  return useMemo(
+    () =>
+      items
+        .map((entry) => {
+          if (isGroup(entry)) {
+            const children = entry.children.filter((child) => !shouldHide(child.href))
+            if (children.length === 0) return null
+            return { ...entry, children }
+          }
+          return shouldHide(entry.href) ? null : entry
+        })
+        .filter(Boolean) as SidebarEntry[],
+    [items, shouldHide]
+  )
+}
+
+// ─── Section builder ──────────────────────────────────────────────────────────
+
+function buildSections(filteredItems: SidebarEntry[]) {
+  const sections: { type: 'item' | 'group'; entries: SidebarEntry[] }[] = []
+  let currentBatch: SidebarEntry[] = []
+  let currentType: 'item' | 'group' | null = null
+
+  for (const entry of filteredItems) {
+    const type = isGroup(entry) ? 'group' : 'item'
+    if (currentType !== null && currentType !== type) {
+      sections.push({ type: currentType, entries: currentBatch })
+      currentBatch = []
+    }
+    currentType = type
+    currentBatch.push(entry)
+  }
+  if (currentBatch.length > 0 && currentType !== null) {
+    sections.push({ type: currentType, entries: currentBatch })
+  }
+  return sections
+}
+
+// ─── Active page title ────────────────────────────────────────────────────────
+
+function useActivePageTitle(filteredItems: SidebarEntry[]) {
+  const pathname = usePathname()
+  for (const entry of filteredItems) {
+    if (isGroup(entry)) {
+      for (const child of entry.children) {
+        if (pathname === child.href || pathname.startsWith(child.href + '/')) {
+          return child.label
+        }
+      }
+    } else if (pathname === entry.href || pathname.startsWith(entry.href + '/')) {
+      return entry.label
+    }
+  }
+  return 'Dashboard'
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface SidebarProps {
   items: SidebarEntry[]
   basePath: string
@@ -52,33 +148,14 @@ interface SidebarProps {
   bundlesEnabled?: boolean
 }
 
+// ─── Desktop Sidebar ──────────────────────────────────────────────────────────
+
 export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  // Filter entries based on feature flags
-  const hiddenPaths = new Set<string>()
-  if (enableOrderManagement === false) hiddenPaths.add('/orders')
-  if (!menuEngineeringEnabled) {
-    hiddenPaths.add('/boost-sales')
-    hiddenPaths.add('/product-analytics')
-  }
-  if (!bundlesEnabled) hiddenPaths.add('/bundles')
-
-  const shouldHide = (href: string) =>
-    Array.from(hiddenPaths).some((p) => href.includes(p))
-
-  const filteredItems = items
-    .map((entry) => {
-      if (isGroup(entry)) {
-        const children = entry.children.filter((child) => !shouldHide(child.href))
-        if (children.length === 0) return null
-        return { ...entry, children }
-      }
-      return shouldHide(entry.href) ? null : entry
-    })
-    .filter(Boolean) as SidebarEntry[]
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled)
 
   // Auto-expand group containing active route
   useEffect(() => {
@@ -98,76 +175,123 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
-  const toggleGroup = (label: string) => {
+  const toggleGroup = useCallback((label: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev)
       if (next.has(label)) next.delete(label)
       else next.add(label)
       return next
     })
-  }
+  }, [])
+
+  const isActive = useCallback(
+    (href: string) => pathname === href || pathname.startsWith(href + '/'),
+    [pathname]
+  )
 
   const renderItem = (item: SidebarItem, indented = false) => {
     const Icon = item.icon
-    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    const active = isActive(item.href)
 
-    return (
-      <Link key={item.href} href={item.href}>
+    const button = (
+      <Link key={item.href} href={item.href} prefetch={true}>
         <Button
-          variant={isActive ? 'secondary' : 'ghost'}
+          variant="ghost"
           className={cn(
-            'w-full justify-start',
-            collapsed && 'justify-center px-2',
-            indented && !collapsed && 'pl-9'
+            'w-full justify-start gap-3 font-medium transition-colors',
+            collapsed && 'justify-center gap-0 px-2',
+            indented && !collapsed && 'pl-10 gap-2.5',
+            active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+            !active && 'text-muted-foreground hover:text-foreground hover:bg-muted',
           )}
           size={indented ? 'sm' : 'default'}
         >
-          <Icon className={cn('h-5 w-5 shrink-0', !collapsed && 'mr-3', indented && 'h-4 w-4')} />
-          {!collapsed && <span>{item.label}</span>}
+          <Icon
+            className={cn(
+              'shrink-0 transition-colors',
+              indented ? 'h-4 w-4' : 'h-[18px] w-[18px]',
+              active && 'text-primary',
+            )}
+          />
+          {!collapsed && <span className="truncate">{item.label}</span>}
+          {active && !collapsed && (
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+          )}
         </Button>
       </Link>
     )
+
+    if (collapsed) {
+      return (
+        <Tooltip key={item.href} delayDuration={0}>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12}>
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return button
   }
 
   const renderGroup = (group: SidebarGroup) => {
     const Icon = group.icon
     const isExpanded = expandedGroups.has(group.label)
-    const hasActive = group.children.some(
-      (child) => pathname === child.href || pathname.startsWith(child.href + '/')
+    const hasActive = group.children.some((child) => isActive(child.href))
+
+    const groupButton = (
+      <Button
+        variant="ghost"
+        className={cn(
+          'w-full justify-start gap-3 font-medium transition-colors',
+          collapsed && 'justify-center gap-0 px-2',
+          hasActive && !isExpanded && 'text-primary',
+          !hasActive && 'text-muted-foreground hover:text-foreground',
+        )}
+        onClick={() => {
+          if (collapsed) {
+            setCollapsed(false)
+            setExpandedGroups((prev) => new Set(prev).add(group.label))
+          } else {
+            toggleGroup(group.label)
+          }
+        }}
+      >
+        <Icon
+          className={cn(
+            'h-[18px] w-[18px] shrink-0 transition-colors',
+            hasActive && 'text-primary',
+          )}
+        />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left truncate">{group.label}</span>
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200',
+                isExpanded && 'rotate-180'
+              )}
+            />
+          </>
+        )}
+      </Button>
     )
 
     return (
       <div key={group.label}>
-        <Button
-          variant={hasActive && !isExpanded ? 'secondary' : 'ghost'}
-          className={cn(
-            'w-full justify-start',
-            collapsed && 'justify-center px-2'
-          )}
-          onClick={() => {
-            if (collapsed) {
-              setCollapsed(false)
-              setExpandedGroups((prev) => new Set(prev).add(group.label))
-            } else {
-              toggleGroup(group.label)
-            }
-          }}
-        >
-          <Icon className={cn('h-5 w-5 shrink-0', !collapsed && 'mr-3')} />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">{group.label}</span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 shrink-0 transition-transform duration-200',
-                  isExpanded && 'rotate-180'
-                )}
-              />
-            </>
-          )}
-        </Button>
+        {collapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>{groupButton}</TooltipTrigger>
+            <TooltipContent side="right" sideOffset={12}>
+              {group.label}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          groupButton
+        )}
         {!collapsed && isExpanded && (
-          <div className="mt-0.5 space-y-0.5">
+          <div className="mt-0.5 ml-[13px] border-l border-border/60 space-y-0.5 py-0.5">
             {group.children.map((child) => renderItem(child, true))}
           </div>
         )}
@@ -175,60 +299,321 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
     )
   }
 
+  const sections = buildSections(filteredItems)
+
   return (
-    <aside
-      className={cn(
-        'sticky top-0 flex h-screen flex-col border-r bg-muted/40 transition-all duration-300',
-        collapsed ? 'w-16' : 'w-64'
-      )}
-    >
-      <div className="flex h-16 items-center justify-between border-b px-4">
-        {!collapsed && (
-          <div className="flex flex-col">
-            <span className="font-semibold">Dashboard</span>
-            {tenantName && <span className="text-xs text-muted-foreground truncate">{tenantName}</span>}
+    <TooltipProvider>
+      <aside
+        className={cn(
+          'hidden md:flex sticky top-0 h-screen flex-col border-r bg-muted/30 transition-all duration-300',
+          collapsed ? 'w-[68px]' : 'w-64'
+        )}
+      >
+        {/* Header */}
+        <div className="flex h-14 items-center border-b px-3">
+          {!collapsed && (
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-sm font-semibold truncate">Dashboard</span>
+              {tenantName && (
+                <span className="text-[11px] text-muted-foreground truncate leading-tight">
+                  {tenantName}
+                </span>
+              )}
+            </div>
+          )}
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCollapsed(!collapsed)}
+                className={cn(
+                  'h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground',
+                  collapsed && 'mx-auto'
+                )}
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={12}>
+              {collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
+        {/* Navigation */}
+        <ScrollArea className="flex-1">
+          <nav className="p-2 space-y-1">
+            {sections.map((section, sIdx) => (
+              <div key={sIdx}>
+                {sIdx > 0 && (
+                  <div className="my-2 mx-2">
+                    <div className="h-px bg-border/60" />
+                  </div>
+                )}
+                {section.type === 'group' && !collapsed && (
+                  <div className="px-3 pt-2 pb-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                      Manage
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  {section.entries.map((entry) =>
+                    isGroup(entry) ? renderGroup(entry) : renderItem(entry)
+                  )}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </ScrollArea>
+
+        {/* Logout */}
+        {onLogout && (
+          <div className="border-t p-2">
+            {collapsed ? (
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-center px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={onLogout}
+                  >
+                    <LogOut className="h-[18px] w-[18px]" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={12}>
+                  Logout
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={onLogout}
+              >
+                <LogOut className="h-[18px] w-[18px]" />
+                <span>Logout</span>
+              </Button>
+            )}
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto"
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-
-      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-        {filteredItems.map((entry) =>
-          isGroup(entry) ? renderGroup(entry) : renderItem(entry)
-        )}
-      </nav>
-
-      {onLogout && (
-        <div className="border-t p-2">
-          <Button
-            variant="ghost"
-            className={cn(
-              'w-full justify-start text-destructive hover:text-destructive',
-              collapsed && 'justify-center px-2'
-            )}
-            onClick={onLogout}
-          >
-            <LogOut className={cn('h-5 w-5', !collapsed && 'mr-3')} />
-            {!collapsed && <span>Logout</span>}
-          </Button>
-        </div>
-      )}
-    </aside>
+      </aside>
+    </TooltipProvider>
   )
 }
 
-// Predefined sidebar configurations
+// ─── Mobile Header + Sheet ────────────────────────────────────────────────────
+
+export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled }: SidebarProps) {
+  const pathname = usePathname()
+  const [open, setOpen] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled)
+  const pageTitle = useActivePageTitle(filteredItems)
+
+  // Auto-expand active group on open
+  useEffect(() => {
+    if (!open) return
+    for (const entry of filteredItems) {
+      if (isGroup(entry)) {
+        const hasActive = entry.children.some(
+          (child) => pathname === child.href || pathname.startsWith(child.href + '/')
+        )
+        if (hasActive) {
+          setExpandedGroups((prev) => {
+            if (prev.has(entry.label)) return prev
+            return new Set(prev).add(entry.label)
+          })
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pathname])
+
+  // Close sheet on navigation
+  useEffect(() => {
+    setOpen(false)
+  }, [pathname])
+
+  const toggleGroup = useCallback((label: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }, [])
+
+  const isActive = useCallback(
+    (href: string) => pathname === href || pathname.startsWith(href + '/'),
+    [pathname]
+  )
+
+  const renderMobileItem = (item: SidebarItem, indented = false) => {
+    const Icon = item.icon
+    const active = isActive(item.href)
+
+    return (
+      <Link key={item.href} href={item.href} prefetch={true}>
+        <Button
+          variant="ghost"
+          className={cn(
+            'w-full justify-start gap-3 font-medium transition-colors h-11',
+            indented && 'pl-10 gap-2.5',
+            active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+            !active && 'text-muted-foreground hover:text-foreground hover:bg-muted',
+          )}
+          size={indented ? 'sm' : 'default'}
+        >
+          <Icon
+            className={cn(
+              'shrink-0',
+              indented ? 'h-4 w-4' : 'h-[18px] w-[18px]',
+              active && 'text-primary',
+            )}
+          />
+          <span className="truncate">{item.label}</span>
+          {active && (
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+          )}
+        </Button>
+      </Link>
+    )
+  }
+
+  const renderMobileGroup = (group: SidebarGroup) => {
+    const Icon = group.icon
+    const isExpanded = expandedGroups.has(group.label)
+    const hasActive = group.children.some((child) => isActive(child.href))
+
+    return (
+      <div key={group.label}>
+        <Button
+          variant="ghost"
+          className={cn(
+            'w-full justify-start gap-3 font-medium transition-colors h-11',
+            hasActive && !isExpanded && 'text-primary',
+            !hasActive && 'text-muted-foreground hover:text-foreground',
+          )}
+          onClick={() => toggleGroup(group.label)}
+        >
+          <Icon
+            className={cn(
+              'h-[18px] w-[18px] shrink-0 transition-colors',
+              hasActive && 'text-primary',
+            )}
+          />
+          <span className="flex-1 text-left truncate">{group.label}</span>
+          <ChevronDown
+            className={cn(
+              'h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200',
+              isExpanded && 'rotate-180'
+            )}
+          />
+        </Button>
+        {isExpanded && (
+          <div className="mt-0.5 ml-[13px] border-l border-border/60 space-y-0.5 py-0.5">
+            {group.children.map((child) => renderMobileItem(child, true))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const sections = buildSections(filteredItems)
+
+  return (
+    <>
+      {/* Fixed mobile top bar */}
+      <header className="sticky top-0 z-40 flex md:hidden h-14 items-center gap-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={() => setOpen(true)}
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-sm font-semibold truncate">{pageTitle}</span>
+          {tenantName && (
+            <span className="text-[11px] text-muted-foreground truncate leading-tight">
+              {tenantName}
+            </span>
+          )}
+        </div>
+      </header>
+
+      {/* Sheet drawer */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-72 p-0">
+          <SheetHeader className="border-b px-4 py-3">
+            <SheetTitle className="text-sm">
+              <span className="block">Dashboard</span>
+              {tenantName && (
+                <span className="block text-[11px] font-normal text-muted-foreground truncate leading-tight mt-0.5">
+                  {tenantName}
+                </span>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 h-[calc(100vh-8rem)]">
+            <nav className="p-2 space-y-1">
+              {sections.map((section, sIdx) => (
+                <div key={sIdx}>
+                  {sIdx > 0 && (
+                    <div className="my-2 mx-2">
+                      <div className="h-px bg-border/60" />
+                    </div>
+                  )}
+                  {section.type === 'group' && (
+                    <div className="px-3 pt-2 pb-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                        Manage
+                      </span>
+                    </div>
+                  )}
+                  <div className="space-y-0.5">
+                    {section.entries.map((entry) =>
+                      isGroup(entry) ? renderMobileGroup(entry) : renderMobileItem(entry)
+                    )}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </ScrollArea>
+
+          {onLogout && (
+            <div className="absolute bottom-0 left-0 right-0 border-t bg-background p-2">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10 h-11"
+                onClick={() => {
+                  setOpen(false)
+                  onLogout()
+                }}
+              >
+                <LogOut className="h-[18px] w-[18px]" />
+                <span>Logout</span>
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
+  )
+}
+
+// ─── Predefined sidebar configurations ────────────────────────────────────────
+
 export const adminSidebarItems: SidebarEntry[] = [
   {
     label: 'Dashboard',

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
+import { CategoryIcon } from '@/components/shared/category-icon'
 import type { MenuItem, Category, VariationType, VariationOption, BcgClassification } from '@/types/database'
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
@@ -394,7 +395,10 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               <SelectContent>
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
-                    {category.icon} {category.name}
+                    <span className="flex items-center gap-2">
+                      <CategoryIcon icon={category.icon} color={category.icon_color} size="sm" />
+                      {category.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -562,7 +566,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
                       step="0.01"
                       placeholder="Price modifier"
                       value={variation.price_modifier}
-                      onChange={(e) => updateVariation(index, 'price_modifier', parseFloat(e.target.value))}
+                      onChange={(e) => updateVariation(index, 'price_modifier', parseFloat(e.target.value) || 0)}
                     />
                     <Button
                       type="button"

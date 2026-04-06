@@ -27,13 +27,9 @@ import {
   setCheckoutUpsellItemsAction,
   getUpsellCoverageForItemAction,
 } from '@/app/actions/menu-engineering'
-import type { MenuItem } from '@/types/database'
+import type { MenuItemWithCategory } from '@/types/database'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/cart-utils'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
 
 export interface CheckoutUpsellSettingsTabProps {
   tenantId: string

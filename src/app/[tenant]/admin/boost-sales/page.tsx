@@ -45,7 +45,7 @@ export default async function BoostSalesPage({
           />
           <h1 className="text-2xl font-bold mt-2">Boost Sales</h1>
           <p className="text-sm text-muted-foreground">
-            Push your best items, create combos, and track what&apos;s working
+            Set up upsell moments across your customer&apos;s ordering journey
           </p>
         </div>
       </div>

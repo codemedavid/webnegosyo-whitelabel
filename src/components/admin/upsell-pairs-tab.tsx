@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useCallback, useTransition } from 'react'
 import {
   Trash2,
   Plus,
@@ -14,15 +14,22 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { deleteUpsellPairAction } from '@/app/actions/menu-engineering'
-import type { MenuItem, UpsellPairWithItems } from '@/types/database'
+import type { MenuItemWithCategory, UpsellPairWithItems } from '@/types/database'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/cart-utils'
 import { UpgradePairWizard } from '@/components/admin/upgrade-pair-wizard'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
 
 export interface UpsellPairsTabProps {
   menuItems: MenuItemWithCategory[]
@@ -42,26 +49,34 @@ export function UpsellPairsTab({
   const [wizardOpen, setWizardOpen] = useState(false)
   const [editingPair, setEditingPair] = useState<UpsellPairWithItems | null>(null)
 
-  const handleDeletePair = (pairId: string) => {
-    startTransition(async () => {
-      const result = await deleteUpsellPairAction(pairId, tenantId, tenantSlug)
-      if (result.success) {
-        toast.success('Upsell pair deleted')
-      } else {
-        toast.error(result.error || 'Failed to delete pair')
-      }
-    })
-  }
+  const handleDeletePair = useCallback(
+    (pairId: string) => {
+      startTransition(async () => {
+        const result = await deleteUpsellPairAction(pairId, tenantId, tenantSlug)
+        if (result.success) {
+          toast.success('Upsell pair deleted')
+        } else {
+          toast.error(result.error || 'Failed to delete pair')
+        }
+      })
+    },
+    [tenantId, tenantSlug]
+  )
 
-  const handleOpenWizard = (pair?: UpsellPairWithItems) => {
+  const handleOpenWizard = useCallback((pair?: UpsellPairWithItems) => {
     setEditingPair(pair ?? null)
     setWizardOpen(true)
-  }
+  }, [])
 
-  const handleCloseWizard = () => {
+  const handleCloseWizard = useCallback(() => {
     setWizardOpen(false)
     setEditingPair(null)
-  }
+  }, [])
+
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => setPairSearchQuery(e.target.value),
+    []
+  )
 
   const upgradePairs = useMemo(
     () => upsellPairs.filter((p) => p.pair_type === 'upgrade'),
@@ -116,7 +131,7 @@ export function UpsellPairsTab({
                 <Input
                   placeholder="Search pairs..."
                   value={pairSearchQuery}
-                  onChange={(e) => setPairSearchQuery(e.target.value)}
+                  onChange={handleSearchChange}
                   className="h-8 w-48 pl-8 text-xs"
                 />
               </div>
@@ -159,6 +174,8 @@ export function UpsellPairsTab({
                           <img
                             src={pair.source_item.image_url}
                             alt={pair.source_item.name}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -187,6 +204,8 @@ export function UpsellPairsTab({
                           <img
                             src={pair.target_item.image_url}
                             alt={pair.target_item.name}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -232,16 +251,39 @@ export function UpsellPairsTab({
                       <Pencil className="h-4 w-4" />
                     </Button>
 
-                    {/* Delete */}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive shrink-0"
-                      onClick={() => handleDeletePair(pair.id)}
-                      disabled={isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {/* Delete with confirmation */}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive shrink-0"
+                          disabled={isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete upgrade pair?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will remove the upgrade suggestion from{' '}
+                            <strong>{pair.source_item?.name}</strong> to{' '}
+                            <strong>{pair.target_item?.name}</strong>. Customers will no
+                            longer see this upgrade prompt.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeletePair(pair.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 )
               })}

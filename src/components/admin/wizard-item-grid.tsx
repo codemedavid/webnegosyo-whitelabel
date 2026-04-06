@@ -1,15 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, memo } from 'react'
 import { Search, ShoppingBag } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { formatPrice } from '@/lib/cart-utils'
 import { cn } from '@/lib/utils'
-import type { MenuItem } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItemWithCategory } from '@/types/database'
 
 export interface PriceBadge {
   label: string
@@ -25,6 +21,97 @@ export interface WizardItemGridProps {
   getPriceBadge?: (item: MenuItemWithCategory) => PriceBadge | null
 }
 
+interface GridItemProps {
+  item: MenuItemWithCategory
+  isSelected: boolean
+  isDisabled: boolean
+  disabledLabel: string
+  badge: PriceBadge | null
+  onSelect: (itemId: string) => void
+}
+
+const GridItem = memo(function GridItem({
+  item,
+  isSelected,
+  isDisabled,
+  disabledLabel,
+  badge,
+  onSelect,
+}: GridItemProps) {
+  return (
+    <button
+      type="button"
+      disabled={isDisabled}
+      onClick={() => onSelect(item.id)}
+      className={cn(
+        'relative overflow-hidden rounded-xl border text-left transition-all',
+        isDisabled && 'cursor-not-allowed opacity-35',
+        isSelected &&
+          'border-primary ring-2 ring-primary/20 shadow-sm',
+        !isSelected && !isDisabled && 'border-border hover:border-primary/40 hover:shadow-sm',
+      )}
+    >
+      {/* Selection checkmark */}
+      {isSelected && (
+        <div className="absolute right-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      )}
+
+      {/* Price badge */}
+      {badge && !isDisabled && (
+        <div
+          className={cn(
+            'absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[11px] font-bold text-white',
+            badge.variant === 'positive' && 'bg-green-500',
+            badge.variant === 'negative' && 'bg-amber-500',
+            badge.variant === 'neutral' && 'bg-muted-foreground',
+          )}
+        >
+          {badge.label}
+        </div>
+      )}
+
+      {/* Image */}
+      <div className="aspect-[4/3] w-full bg-muted">
+        {item.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.image_url}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-2.5">
+        {isDisabled ? (
+          <>
+            <p className="text-xs font-medium truncate">{item.name}</p>
+            <p className="text-[11px] text-muted-foreground">{disabledLabel}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium truncate">{item.name}</p>
+            <p className="text-xs font-semibold text-green-600 mt-0.5">
+              {formatPrice(item.price)}
+            </p>
+          </>
+        )}
+      </div>
+    </button>
+  )
+})
+
 export function WizardItemGrid({
   items,
   selectedItemId,
@@ -35,6 +122,11 @@ export function WizardItemGrid({
 }: WizardItemGridProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value),
+    []
+  )
 
   const categories = useMemo(() => {
     const cats = new Map<string, string>()
@@ -67,7 +159,7 @@ export function WizardItemGrid({
           <Input
             placeholder="Search menu items..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             className="pl-9"
           />
         </div>
@@ -108,83 +200,17 @@ export function WizardItemGrid({
 
       {/* Item Grid */}
       <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:px-5">
-        {filteredItems.map((item) => {
-          const isDisabled = item.id === disabledItemId
-          const isSelected = item.id === selectedItemId
-          const badge = getPriceBadge?.(item)
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              disabled={isDisabled}
-              onClick={() => onSelect(item.id)}
-              className={cn(
-                'relative overflow-hidden rounded-xl border text-left transition-all',
-                isDisabled && 'cursor-not-allowed opacity-35',
-                isSelected &&
-                  'border-primary ring-2 ring-primary/20 shadow-sm',
-                !isSelected && !isDisabled && 'border-border hover:border-primary/40 hover:shadow-sm',
-              )}
-            >
-              {/* Selection checkmark */}
-              {isSelected && (
-                <div className="absolute right-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
-
-              {/* Price badge */}
-              {badge && !isDisabled && (
-                <div
-                  className={cn(
-                    'absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[11px] font-bold text-white',
-                    badge.variant === 'positive' && 'bg-green-500',
-                    badge.variant === 'negative' && 'bg-amber-500',
-                    badge.variant === 'neutral' && 'bg-muted-foreground',
-                  )}
-                >
-                  {badge.label}
-                </div>
-              )}
-
-              {/* Image */}
-              <div className="aspect-[4/3] w-full bg-muted">
-                {item.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.image_url}
-                    alt={item.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
-                  </div>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="p-2.5">
-                {isDisabled ? (
-                  <>
-                    <p className="text-xs font-medium truncate">{item.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{disabledLabel}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs font-medium truncate">{item.name}</p>
-                    <p className="text-xs font-semibold text-green-600 mt-0.5">
-                      {formatPrice(item.price)}
-                    </p>
-                  </>
-                )}
-              </div>
-            </button>
-          )
-        })}
+        {filteredItems.map((item) => (
+          <GridItem
+            key={item.id}
+            item={item}
+            isSelected={item.id === selectedItemId}
+            isDisabled={item.id === disabledItemId}
+            disabledLabel={disabledLabel}
+            badge={getPriceBadge?.(item) ?? null}
+            onSelect={onSelect}
+          />
+        ))}
 
         {filteredItems.length === 0 && (
           <div className="col-span-full py-12 text-center">

@@ -113,8 +113,8 @@ export function ProductAnalyticsContent() {
 
   const sorted = analytics
     ? [...analytics].sort((a, b) => {
-        const aVal = (a as Record<string, unknown>)[sortField] as number ?? 0
-        const bVal = (b as Record<string, unknown>)[sortField] as number ?? 0
+        const aVal = Number(a[sortField]) || 0
+        const bVal = Number(b[sortField]) || 0
         return sortDir === 'desc' ? bVal - aVal : aVal - bVal
       })
     : []
@@ -295,7 +295,7 @@ export function ProductAnalyticsContent() {
       {/* Product Table + Detail Panel */}
       <div className="flex gap-4">
         {/* Table */}
-        <Card className={cn('transition-all', selectedItem ? 'flex-1 min-w-0' : 'w-full')}>
+        <Card className={cn('transition-all min-w-0', selectedItem ? 'flex-[3]' : 'w-full')}>
           <CardHeader>
             <CardTitle>
               {filterClass ? bcgConfig[filterClass]?.label ?? 'Products' : 'All Products'}
@@ -380,7 +380,7 @@ export function ProductAnalyticsContent() {
 
         {/* Detail Panel */}
         {selectedItem && (
-          <Card className="w-[360px] shrink-0 self-start sticky top-4">
+          <Card className="flex-[2] min-w-[320px] max-w-[480px] shrink-0 self-start sticky top-4">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">

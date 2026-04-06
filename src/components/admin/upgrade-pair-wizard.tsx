@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useCallback, useTransition } from 'react'
 import { X, ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WizardStepSource } from '@/components/admin/wizard-step-source'
@@ -13,11 +13,7 @@ import {
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import type { MenuItem, UpsellPairWithItems } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItemWithCategory, UpsellPairWithItems } from '@/types/database'
 
 export interface UpgradePairWizardProps {
   menuItems: MenuItemWithCategory[]
@@ -41,7 +37,11 @@ export function UpgradePairWizard({
   onClose,
 }: UpgradePairWizardProps) {
   const isEditing = !!existingPair
-  const [currentStep, setCurrentStep] = useState(0)
+  const [currentStep, setCurrentStep] = useState(() => {
+    // When editing, skip straight to customize if both items are pre-selected
+    if (existingPair?.source_item_id && existingPair?.target_item_id) return 2
+    return 0
+  })
   const [sourceItemId, setSourceItemId] = useState<string | null>(
     existingPair?.source_item_id ?? null
   )
@@ -78,15 +78,26 @@ export function UpgradePairWizard({
     (currentStep === 1 && targetItemId !== null) ||
     currentStep === 2
 
-  const handleNext = () => {
-    if (currentStep < 2) setCurrentStep(currentStep + 1)
-  }
+  const handleNext = useCallback(() => {
+    if (currentStep < 2) setCurrentStep((s) => s + 1)
+  }, [currentStep])
 
-  const handleBack = () => {
-    if (currentStep > 0) setCurrentStep(currentStep - 1)
-  }
+  const handleBack = useCallback(() => {
+    if (currentStep > 0) setCurrentStep((s) => s - 1)
+  }, [currentStep])
 
-  const handleSubmit = () => {
+  const handleSourceSelect = useCallback((itemId: string) => {
+    setSourceItemId(itemId)
+    // Clear target if source changes to avoid invalid pair
+    setTargetItemId((prev) => (prev === itemId ? null : prev))
+  }, [])
+
+  const handleTargetSelect = useCallback(
+    (itemId: string) => setTargetItemId(itemId),
+    []
+  )
+
+  const handleSubmit = useCallback(() => {
     if (!sourceItemId || !targetItemId) return
 
     startTransition(async () => {
@@ -116,37 +127,29 @@ export function UpgradePairWizard({
         toast.success(isEditing ? 'Upgrade pair updated' : 'Upgrade pair created')
         onClose()
       } else {
-        toast.error(result.error || 'Failed to create pair')
+        // If this was an edit and create failed, the old pair is already deleted.
+        // Warn the user so they can recreate it.
+        if (isEditing) {
+          toast.error(
+            'Failed to save updated pair. The old pair was removed — please recreate it.'
+          )
+        } else {
+          toast.error(result.error || 'Failed to create pair')
+        }
       }
     })
-  }
-
-  // Footer selected item summary
-  const footerSummary = () => {
-    if (currentStep === 0 && sourceItem) {
-      return (
-        <span className="text-xs text-muted-foreground">
-          Selected:{' '}
-          <strong className="text-primary">{sourceItem.name} ({formatPrice(sourceItem.price)})</strong>
-        </span>
-      )
-    }
-    if (currentStep === 1 && targetItem && sourceItem) {
-      const diff = targetItem.price - sourceItem.price
-      return (
-        <span className="text-xs text-muted-foreground">
-          Upgrade:{' '}
-          <strong className="text-primary">{targetItem.name} ({formatPrice(targetItem.price)})</strong>
-          {diff > 0 && (
-            <span className="ml-1 font-semibold text-green-600">
-              +{formatPrice(diff)}/order
-            </span>
-          )}
-        </span>
-      )
-    }
-    return null
-  }
+  }, [
+    sourceItemId,
+    targetItemId,
+    isEditing,
+    existingPair,
+    tenantId,
+    tenantSlug,
+    upgradeHeader,
+    sourceLabel,
+    targetLabel,
+    onClose,
+  ])
 
   return (
     <div className="overflow-hidden rounded-xl border bg-background shadow-sm">
@@ -212,7 +215,7 @@ export function UpgradePairWizard({
           <WizardStepSource
             items={availableItems}
             selectedItemId={sourceItemId}
-            onSelect={setSourceItemId}
+            onSelect={handleSourceSelect}
           />
         )}
         {currentStep === 1 && sourceItem && (
@@ -220,7 +223,7 @@ export function UpgradePairWizard({
             items={availableItems}
             sourceItem={sourceItem}
             selectedItemId={targetItemId}
-            onSelect={setTargetItemId}
+            onSelect={handleTargetSelect}
           />
         )}
         {currentStep === 2 && sourceItem && targetItem && (
@@ -255,7 +258,25 @@ export function UpgradePairWizard({
           )}
         </Button>
 
-        <div className="hidden sm:block">{footerSummary()}</div>
+        <div className="hidden sm:block">
+          {currentStep === 0 && sourceItem && (
+            <span className="text-xs text-muted-foreground">
+              Selected:{' '}
+              <strong className="text-primary">{sourceItem.name} ({formatPrice(sourceItem.price)})</strong>
+            </span>
+          )}
+          {currentStep === 1 && targetItem && sourceItem && (
+            <span className="text-xs text-muted-foreground">
+              Upgrade:{' '}
+              <strong className="text-primary">{targetItem.name} ({formatPrice(targetItem.price)})</strong>
+              {targetItem.price - sourceItem.price > 0 && (
+                <span className="ml-1 font-semibold text-green-600">
+                  +{formatPrice(targetItem.price - sourceItem.price)}/order
+                </span>
+              )}
+            </span>
+          )}
+        </div>
 
         {currentStep < 2 ? (
           <Button size="sm" onClick={handleNext} disabled={!canGoNext}>

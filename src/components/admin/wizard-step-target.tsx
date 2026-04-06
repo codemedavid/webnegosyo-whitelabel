@@ -1,14 +1,11 @@
 'use client'
 
+import { memo, useCallback } from 'react'
 import { Lightbulb, ShoppingBag } from 'lucide-react'
 import { WizardItemGrid } from '@/components/admin/wizard-item-grid'
 import { formatPrice } from '@/lib/cart-utils'
-import type { MenuItem } from '@/types/database'
+import type { MenuItemWithCategory } from '@/types/database'
 import type { PriceBadge } from '@/components/admin/wizard-item-grid'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
 
 export interface WizardStepTargetProps {
   items: MenuItemWithCategory[]
@@ -17,18 +14,21 @@ export interface WizardStepTargetProps {
   onSelect: (itemId: string) => void
 }
 
-export function WizardStepTarget({
+export const WizardStepTarget = memo(function WizardStepTarget({
   items,
   sourceItem,
   selectedItemId,
   onSelect,
 }: WizardStepTargetProps) {
-  const getPriceBadge = (item: MenuItemWithCategory): PriceBadge | null => {
-    const diff = item.price - sourceItem.price
-    if (diff > 0) return { label: `+${formatPrice(diff)}`, variant: 'positive' }
-    if (diff < 0) return { label: `-${formatPrice(Math.abs(diff))}`, variant: 'negative' }
-    return null
-  }
+  const getPriceBadge = useCallback(
+    (item: MenuItemWithCategory): PriceBadge | null => {
+      const diff = item.price - sourceItem.price
+      if (diff > 0) return { label: `+${formatPrice(diff)}`, variant: 'positive' }
+      if (diff < 0) return { label: `-${formatPrice(Math.abs(diff))}`, variant: 'negative' }
+      return null
+    },
+    [sourceItem.price]
+  )
 
   return (
     <div>
@@ -90,4 +90,4 @@ export function WizardStepTarget({
       />
     </div>
   )
-}
+})

@@ -1,15 +1,12 @@
 'use client'
 
+import { memo, useCallback } from 'react'
 import { Pencil, Eye, ShoppingBag } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
-import type { MenuItem } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItem, MenuItemWithCategory } from '@/types/database'
 
 export interface WizardStepCustomizeProps {
   sourceItem: MenuItemWithCategory
@@ -32,6 +29,8 @@ function ItemImage({ item, size = 'md' }: { item: MenuItem; size?: 'sm' | 'md' }
         <img
           src={item.image_url}
           alt={item.name}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
         />
       ) : (
@@ -43,7 +42,7 @@ function ItemImage({ item, size = 'md' }: { item: MenuItem; size?: 'sm' | 'md' }
   )
 }
 
-export function WizardStepCustomize({
+export const WizardStepCustomize = memo(function WizardStepCustomize({
   sourceItem,
   targetItem,
   upgradeHeader,
@@ -57,6 +56,19 @@ export function WizardStepCustomize({
   const displayHeader = upgradeHeader || `Upgrade your ${sourceItem.name}?`
   const displaySourceLabel = sourceLabel || 'Ala Carte'
   const displayTargetLabel = targetLabel || 'Meal'
+
+  const handleHeaderChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => onUpgradeHeaderChange(e.target.value),
+    [onUpgradeHeaderChange]
+  )
+  const handleSourceLabelChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => onSourceLabelChange(e.target.value),
+    [onSourceLabelChange]
+  )
+  const handleTargetLabelChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => onTargetLabelChange(e.target.value),
+    [onTargetLabelChange]
+  )
 
   return (
     <div className="space-y-0">
@@ -125,7 +137,7 @@ export function WizardStepCustomize({
               id="wiz-header"
               placeholder="e.g. Want to make it a meal?"
               value={upgradeHeader}
-              onChange={(e) => onUpgradeHeaderChange(e.target.value)}
+              onChange={handleHeaderChange}
               maxLength={100}
             />
             <p className="text-[11px] text-muted-foreground">
@@ -142,7 +154,7 @@ export function WizardStepCustomize({
                 id="wiz-source-label"
                 placeholder="e.g. Ala Carte"
                 value={sourceLabel}
-                onChange={(e) => onSourceLabelChange(e.target.value)}
+                onChange={handleSourceLabelChange}
                 maxLength={50}
               />
             </div>
@@ -154,7 +166,7 @@ export function WizardStepCustomize({
                 id="wiz-target-label"
                 placeholder="e.g. Meal"
                 value={targetLabel}
-                onChange={(e) => onTargetLabelChange(e.target.value)}
+                onChange={handleTargetLabelChange}
                 maxLength={50}
               />
             </div>
@@ -190,6 +202,8 @@ export function WizardStepCustomize({
                   <img
                     src={sourceItem.image_url}
                     alt={sourceItem.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -222,6 +236,8 @@ export function WizardStepCustomize({
                   <img
                     src={targetItem.image_url}
                     alt={targetItem.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -245,4 +261,4 @@ export function WizardStepCustomize({
       </div>
     </div>
   )
-}
+})

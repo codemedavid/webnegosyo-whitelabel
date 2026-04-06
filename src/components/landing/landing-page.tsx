@@ -4,18 +4,15 @@ import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
 import Image from 'next/image'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Play,
-} from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Play, UtensilsCrossed } from 'lucide-react'
 
 const CHECKOUT_URL = '/checkout'
-const BRAND_PURPLE = '#7c3aed'
-const DARK_BG = '#0a0a0a'
-const HERO_BG = '#0F0B1A'
-const ALT_BG = '#111111'
+const BRAND = '#ea580c'
+const BRAND_DEEP = '#9a3412'
+const BRAND_GOLD = '#f59e0b'
+const DARK_BG = '#0c0a07'
+const HERO_BG = '#14100b'
+const ALT_BG = '#110e09'
 const VIEWPORT = { once: true, amount: 0.2 } as const
 
 
@@ -77,8 +74,8 @@ function CTAButton({
       href={CHECKOUT_URL}
       className={`group inline-flex items-center justify-center gap-2 rounded-xl font-extrabold uppercase tracking-[0.06em] text-white transition-transform duration-200 hover:-translate-y-0.5 ${sizeClasses} ${fullWidth ? 'w-full' : ''} ${className}`}
       style={{
-        background: `linear-gradient(135deg, ${BRAND_PURPLE}, #6d28d9)`,
-        boxShadow: '0 8px 30px rgba(124, 58, 237, 0.3)',
+        background: `linear-gradient(135deg, ${BRAND}, ${BRAND_DEEP})`,
+        boxShadow: '0 8px 30px rgba(234, 88, 12, 0.3)',
       }}
     >
       {children}
@@ -87,31 +84,10 @@ function CTAButton({
   )
 }
 
-function CTAStrip({
-  children,
-  subText,
-}: {
-  children: React.ReactNode
-  subText: string
-}) {
-  return (
-    <div
-      className="py-12 text-center"
-      style={{
-        backgroundColor: HERO_BG,
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-      }}
-    >
-      <CTAButton>{children}</CTAButton>
-      <p className="mt-3 text-xs text-white/30">{subText}</p>
-    </div>
-  )
-}
 
 function SectionTag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mb-3 inline-block text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: BRAND_PURPLE }}>
+    <span className="mb-3 inline-block text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: BRAND }}>
       {children}
     </span>
   )
@@ -142,17 +118,29 @@ function HeroSection() {
       className="relative overflow-hidden pb-20 pt-24 md:pb-24 md:pt-32"
       style={{ backgroundColor: HERO_BG }}
     >
+      {/* Warm primary glow */}
       <div
         className="pointer-events-none absolute left-1/2 top-[-120px] h-[400px] w-[700px] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ backgroundColor: `${BRAND_PURPLE}2e` }}
+        style={{ backgroundColor: `${BRAND}2e` }}
       />
+      {/* Secondary warm gold glow */}
+      <div
+        className="pointer-events-none absolute right-[-100px] top-[200px] h-[250px] w-[350px] rounded-full blur-3xl"
+        style={{ backgroundColor: `${BRAND_GOLD}12` }}
+      />
+      {/* Warm dot pattern */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.04]"
         style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.6) 1px, transparent 0)',
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(234,88,12,0.4) 1px, transparent 0)',
           backgroundSize: '24px 24px',
         }}
       />
+      {/* Subtle utensils decoration */}
+      <div className="pointer-events-none absolute right-[8%] top-[12%] opacity-[0.03]">
+        <UtensilsCrossed className="h-52 w-52 text-white" strokeWidth={0.5} />
+      </div>
+      {/* Bottom gradient fade */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-32"
         style={{ background: `linear-gradient(180deg, transparent, ${HERO_BG})` }}
@@ -163,7 +151,7 @@ function HeroSection() {
           You Can Sell More With Smart Menu
         </h1>
 
-        <p className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2vw,1.2rem)] leading-relaxed text-white/55">
+        <p className="mx-auto mt-5 max-w-xl text-[clamp(0.85rem,2vw,1rem)] leading-relaxed text-white/55">
           Hindi sapat na maganda lang ang menu mo. Kailangan nitong mag-guide,
           mag-suggest, at mag-push ng bigger orders &mdash; automatically.
         </p>
@@ -248,7 +236,7 @@ function TestimonialSection() {
             <div className="absolute inset-0 flex items-center justify-center bg-black/30">
               <div
                 className="flex h-[72px] w-[72px] items-center justify-center rounded-full transition-transform duration-200 hover:scale-110"
-                style={{ backgroundColor: `${BRAND_PURPLE}e6`, boxShadow: `0 0 40px ${BRAND_PURPLE}66` }}
+                style={{ backgroundColor: `${BRAND}e6`, boxShadow: `0 0 40px ${BRAND}66` }}
               >
                 <Play className="ml-1 h-8 w-8 fill-white text-white" />
               </div>
@@ -314,8 +302,17 @@ function TestimonialSection() {
 
 function PricingSection() {
   return (
-    <section id="pricing" className="py-20 text-center md:py-28" style={{ backgroundColor: ALT_BG }}>
-      <div className="mx-auto max-w-4xl px-6">
+    <section id="pricing" className="relative py-20 text-center md:py-28" style={{ backgroundColor: ALT_BG }}>
+      {/* Subtle plate-ring decoration */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{
+          width: '520px',
+          height: '520px',
+          border: '2px dashed rgba(234, 88, 12, 0.05)',
+        }}
+      />
+      <div className="relative mx-auto max-w-4xl px-6">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -341,13 +338,13 @@ function PricingSection() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="mx-auto mt-12 max-w-md rounded-3xl border-2 p-10"
           style={{
-            borderColor: `${BRAND_PURPLE}40`,
-            background: `linear-gradient(145deg, ${BRAND_PURPLE}14, ${BRAND_PURPLE}08)`,
+            borderColor: `${BRAND}40`,
+            background: `linear-gradient(145deg, ${BRAND}14, ${BRAND}08)`,
           }}
         >
           <div
             className="text-[13px] font-bold uppercase tracking-[0.1em]"
-            style={{ color: BRAND_PURPLE }}
+            style={{ color: BRAND }}
           >
             Smart Menu System
           </div>
@@ -450,8 +447,12 @@ function FinalCTASection() {
     <section className="relative overflow-hidden py-24 text-center md:py-32" style={{ background: `linear-gradient(180deg, ${DARK_BG}, ${HERO_BG})` }}>
       <div
         className="pointer-events-none absolute bottom-[-100px] left-1/2 h-[300px] w-[600px] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ backgroundColor: `${BRAND_PURPLE}33` }}
+        style={{ backgroundColor: `${BRAND}33` }}
       />
+      {/* Subtle utensils decoration */}
+      <div className="pointer-events-none absolute left-[6%] bottom-[15%] opacity-[0.03]">
+        <UtensilsCrossed className="h-40 w-40 rotate-[-15deg] text-white" strokeWidth={0.5} />
+      </div>
 
       <div className="relative mx-auto max-w-2xl px-6">
         <SectionTag>Last Chance</SectionTag>
@@ -499,9 +500,24 @@ export function LandingPage() {
 
       <TestimonialSection />
 
-      <CTAStrip subText="One-time investment. Lifetime returns.">
-        Join 100+ Restaurants &mdash; &#8369;3,899
-      </CTAStrip>
+      <div
+        className="py-12 text-center"
+        style={{
+          backgroundColor: HERO_BG,
+          borderTop: '1px solid rgba(234, 88, 12, 0.08)',
+          borderBottom: '1px solid rgba(234, 88, 12, 0.08)',
+        }}
+      >
+        <Image
+          src="/product.png"
+          alt="Smart Menu product preview"
+          width={580}
+          height={420}
+          className="mx-auto mb-8 px-4 h-auto w-full max-w-[580px] rounded-2xl"
+        />
+        <CTAButton>Join 100+ Restaurants &mdash; &#8369;3,899</CTAButton>
+        <p className="mt-3 text-xs text-white/30">One-time investment. Lifetime returns.</p>
+      </div>
 
       <PricingSection />
       <FAQSection />
