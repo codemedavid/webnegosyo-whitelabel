@@ -142,19 +142,23 @@ function renderWidgetContent(props: WidgetProps): React.ReactNode {
 
     case 'image':
       return props.src ? (
-        <img
-          src={props.src}
-          alt={props.alt}
-          style={{
-            width: props.width ? `${props.width}px` : '100%',
-            height: props.height ? `${props.height}px` : 'auto',
-            objectFit: props.objectFit,
-            borderRadius: props.borderRadius,
-            opacity: props.opacity,
-            display: 'block',
-          }}
-          draggable={false}
-        />
+        <>
+          {/* Designer canvas needs arbitrary remote/local image URLs without Next image optimization constraints. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={props.src}
+            alt={props.alt}
+            style={{
+              width: props.width ? `${props.width}px` : '100%',
+              height: props.height ? `${props.height}px` : 'auto',
+              objectFit: props.objectFit,
+              borderRadius: props.borderRadius,
+              opacity: props.opacity,
+              display: 'block',
+            }}
+            draggable={false}
+          />
+        </>
       ) : (
         <div className="flex h-40 w-full items-center justify-center rounded bg-muted">
           <ImageIcon className="h-8 w-8 text-muted-foreground" />

@@ -107,18 +107,22 @@ function renderElementContent(props: ElementProps): React.ReactNode {
 
     case 'image':
       return props.src ? (
-        <img
-          src={props.src}
-          alt={props.alt}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: props.objectFit,
-            borderRadius: props.borderRadius,
-            opacity: props.opacity,
-          }}
-          draggable={false}
-        />
+        <>
+          {/* Canvas editing supports arbitrary asset URLs, so raw img rendering is intentional here. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={props.src}
+            alt={props.alt}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: props.objectFit,
+              borderRadius: props.borderRadius,
+              opacity: props.opacity,
+            }}
+            draggable={false}
+          />
+        </>
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-muted">
           <ImageIcon className="h-8 w-8 text-muted-foreground" />

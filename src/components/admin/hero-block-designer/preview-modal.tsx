@@ -88,16 +88,20 @@ function StaticWidget({ widget }: { widget: BlockWidget }) {
         )
       }
       return (
-        <img
-          src={p.src}
-          alt={p.alt}
-          style={{
-            objectFit: p.objectFit,
-            borderRadius: p.borderRadius,
-            opacity: p.opacity,
-            width: '100%',
-          }}
-        />
+        <>
+          {/* Preview renders arbitrary admin-selected asset URLs and intentionally skips Next image optimization. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={p.src}
+            alt={p.alt}
+            style={{
+              objectFit: p.objectFit,
+              borderRadius: p.borderRadius,
+              opacity: p.opacity,
+              width: '100%',
+            }}
+          />
+        </>
       )
     }
 

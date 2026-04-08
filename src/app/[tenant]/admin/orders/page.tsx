@@ -89,7 +89,6 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
 
         <ConvexOrdersWrapper
           convexUrl={tenant.convex_deployment_url}
-          tenantSlug={tenantSlug}
         />
       </div>
     )
@@ -129,4 +128,3 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
     </div>
   )
 }
-

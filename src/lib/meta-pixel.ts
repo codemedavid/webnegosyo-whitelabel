@@ -4,15 +4,17 @@ export type MetaEventName =
   | 'InitiateCheckout'
   | 'Lead'
 
+type MetaPixelFunction = ((...args: unknown[]) => void) & {
+  callMethod?: (...args: unknown[]) => void
+  queue?: unknown[][]
+  loaded?: boolean
+  version?: string
+  push?: (...args: unknown[]) => void
+}
+
 declare global {
   interface Window {
-    fbq?: ((...args: unknown[]) => void) & {
-      callMethod?: (...args: unknown[]) => void
-      queue?: unknown[][]
-      loaded?: boolean
-      version?: string
-      push?: (...args: unknown[]) => void
-    }
+    fbq?: MetaPixelFunction
     _fbq?: Window['fbq']
   }
 }
@@ -31,7 +33,7 @@ function injectMetaPixelScript() {
 function installMetaPixelStub() {
   if (window.fbq) return
 
-  const fbq = function (...args: unknown[]) {
+  const fbq: MetaPixelFunction = function (...args: unknown[]) {
     if (fbq.callMethod) {
       fbq.callMethod(...args)
       return
@@ -39,7 +41,7 @@ function installMetaPixelStub() {
 
     fbq.queue = fbq.queue || []
     fbq.queue.push(args)
-  } as Window['fbq']
+  }
 
   fbq.queue = []
   fbq.loaded = true

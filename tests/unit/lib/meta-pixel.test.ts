@@ -42,4 +42,15 @@ describe('meta-pixel', () => {
     const script = document.querySelector('script[src="https://connect.facebook.net/en_US/fbevents.js"]')
     expect(script).not.toBeNull()
   })
+
+  it('installs a queueing stub before the Meta Pixel script finishes loading', () => {
+    initMetaPixel('123456789')
+
+    expect(window.fbq).toBeDefined()
+    expect(window._fbq).toBe(window.fbq)
+    expect(window.fbq?.queue).toEqual([
+      ['init', '123456789'],
+      ['track', 'PageView'],
+    ])
+  })
 })

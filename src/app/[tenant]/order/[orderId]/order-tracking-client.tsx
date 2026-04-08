@@ -103,7 +103,7 @@ export function OrderTrackingClient({
     } catch {
       // Silently ignore poll failures — we already have data from SSR
     }
-  }, [orderId, trackingToken, tenantId, cleanupLocalStorage])
+  }, [orderId, trackingToken, tenantId, tenantSlug, cleanupLocalStorage])
 
   useEffect(() => {
     if (isTerminalRef.current) return

@@ -17,10 +17,9 @@ import {
 
 interface ConvexOrdersWrapperProps {
   convexUrl: string;
-  tenantSlug: string;
 }
 
-function ConvexOrdersContent({ _tenantSlug }: { _tenantSlug: string }) {
+function ConvexOrdersContent() {
   const [sheetOrderId, setSheetOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -78,7 +77,7 @@ function ConvexOrdersContent({ _tenantSlug }: { _tenantSlug: string }) {
   );
 }
 
-export function ConvexOrdersWrapper({ convexUrl, tenantSlug }: ConvexOrdersWrapperProps) {
+export function ConvexOrdersWrapper({ convexUrl }: ConvexOrdersWrapperProps) {
   return (
     <SafeConvexProvider
       url={convexUrl}
@@ -88,7 +87,7 @@ export function ConvexOrdersWrapper({ convexUrl, tenantSlug }: ConvexOrdersWrapp
         </div>
       }
     >
-      <ConvexOrdersContent _tenantSlug={tenantSlug} />
+      <ConvexOrdersContent />
     </SafeConvexProvider>
   );
 }
