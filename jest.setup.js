@@ -5,6 +5,21 @@ if (typeof globalThis.structuredClone === 'undefined') {
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj))
 }
 
+let uuidCounter = 0
+
+// `uuid@13` resolves to an ESM entrypoint that Jest does not transpile in this setup.
+// Mock it with deterministic RFC4122-shaped IDs so schema tests still exercise UUID validation.
+jest.mock('uuid', () => ({
+  v4: jest.fn(() => {
+    uuidCounter += 1
+    return `00000000-0000-4000-8000-${uuidCounter.toString(16).padStart(12, '0')}`
+  }),
+}))
+
+beforeEach(() => {
+  uuidCounter = 0
+})
+
 // Mock Supabase SSR to prevent actual HTTP requests
 const mockFrom = jest.fn()
 const mockAuth = {

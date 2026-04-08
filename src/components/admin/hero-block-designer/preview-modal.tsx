@@ -20,6 +20,8 @@ import type {
   BlockWidget,
   BlockColumn,
   BlockSection,
+  BlockBackground,
+  SectionBackground,
 } from '@/types/hero-block-designer'
 
 // ---------------------------------------------------------------------------
@@ -280,6 +282,8 @@ function StaticWidget({ widget }: { widget: BlockWidget }) {
 }
 
 function StaticColumn({ column }: { column: BlockColumn }) {
+  const backgroundStyle = resolveBackgroundStyles(column.settings.background)
+
   return (
     <div
       style={{
@@ -299,10 +303,7 @@ function StaticColumn({ column }: { column: BlockColumn }) {
               ? 'flex-end'
               : 'flex-start',
         padding: `${column.settings.padding.top}px ${column.settings.padding.right}px ${column.settings.padding.bottom}px ${column.settings.padding.left}px`,
-        background:
-          column.settings.background !== 'none'
-            ? column.settings.background
-            : undefined,
+        ...backgroundStyle,
         borderRadius: column.settings.borderRadius,
         gap: 8,
       }}
@@ -334,20 +335,47 @@ function StaticColumn({ column }: { column: BlockColumn }) {
   )
 }
 
-function StaticSection({ section }: { section: BlockSection }) {
-  const bg = section.settings.background
-  let backgroundStyle: React.CSSProperties = {}
-  if (bg.type === 'color' && bg.color && bg.color !== 'none') {
-    backgroundStyle = { backgroundColor: bg.color }
-  } else if (bg.type === 'gradient' && bg.gradient) {
-    backgroundStyle = { background: bg.gradient }
-  } else if (bg.type === 'image' && bg.image) {
-    backgroundStyle = {
-      backgroundImage: `url(${bg.image})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-    }
+function resolveBackgroundStyles(
+  bg: BlockBackground | SectionBackground,
+): React.CSSProperties {
+  switch (bg.type) {
+    case 'color':
+      return bg.color && bg.color !== 'none'
+        ? { backgroundColor: bg.color }
+        : {}
+    case 'gradient':
+      return bg.gradient
+        ? { backgroundImage: bg.gradient }
+        : {}
+    case 'image':
+      if (!bg.image) {
+        return {}
+      }
+
+      if (typeof bg.image === 'string') {
+        return {
+          backgroundImage: `url(${bg.image})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }
+      }
+
+      return {
+        backgroundImage: `url(${bg.image.url})`,
+        backgroundSize: bg.image.objectFit === 'fill' ? '100% 100%' : bg.image.objectFit,
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
+    case 'video':
+      return { backgroundColor: '#1a1a2e' }
+    default:
+      return {}
   }
+}
+
+function StaticSection({ section }: { section: BlockSection }) {
+  const backgroundStyle = resolveBackgroundStyles(section.settings.background)
 
   return (
     <div

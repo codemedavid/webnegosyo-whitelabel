@@ -1,6 +1,32 @@
 import { describe, test, expect } from '@jest/globals'
 import { bookingStepOneSchema, bookingStepTwoSchema } from '@/lib/booking/validation'
 
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
+
+function getNextWeekdayDate(): string {
+  const date = new Date()
+  date.setUTCHours(0, 0, 0, 0)
+
+  do {
+    date.setUTCDate(date.getUTCDate() + 1)
+  } while (date.getUTCDay() === 0 || date.getUTCDay() === 6)
+
+  return formatDate(date)
+}
+
+function getNextSaturdayDate(): string {
+  const date = new Date()
+  date.setUTCHours(0, 0, 0, 0)
+
+  do {
+    date.setUTCDate(date.getUTCDate() + 1)
+  } while (date.getUTCDay() !== 6)
+
+  return formatDate(date)
+}
+
 describe('bookingStepOneSchema', () => {
   test('accepts valid input', () => {
     const result = bookingStepOneSchema.safeParse({
@@ -63,7 +89,7 @@ describe('bookingStepOneSchema', () => {
 describe('bookingStepTwoSchema', () => {
   test('accepts valid date and time', () => {
     const result = bookingStepTwoSchema.safeParse({
-      bookingDate: '2026-04-01',
+      bookingDate: getNextWeekdayDate(),
       bookingTime: '09:00',
     })
     expect(result.success).toBe(true)
@@ -71,7 +97,7 @@ describe('bookingStepTwoSchema', () => {
 
   test('rejects invalid time format', () => {
     const result = bookingStepTwoSchema.safeParse({
-      bookingDate: '2026-04-01',
+      bookingDate: getNextWeekdayDate(),
       bookingTime: '9am',
     })
     expect(result.success).toBe(false)
@@ -79,7 +105,7 @@ describe('bookingStepTwoSchema', () => {
 
   test('rejects weekend date', () => {
     const result = bookingStepTwoSchema.safeParse({
-      bookingDate: '2026-03-28', // Saturday
+      bookingDate: getNextSaturdayDate(),
       bookingTime: '09:00',
     })
     expect(result.success).toBe(false)
