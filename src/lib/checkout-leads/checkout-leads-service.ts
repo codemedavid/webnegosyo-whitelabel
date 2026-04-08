@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendMetaConversionEvent } from '@/lib/meta-conversions'
 import { generateReferenceNumber } from './reference-number'
 import type {
   CheckoutLead,
@@ -15,6 +16,13 @@ export interface CreateCheckoutLeadInput {
   notes?: string
   selected_payment_method_id: string
   amount?: number
+  meta?: {
+    eventId?: string
+    fbp?: string
+    fbc?: string
+    eventSourceUrl?: string
+    clientUserAgent?: string
+  }
 }
 
 interface MutationResult {
@@ -52,6 +60,29 @@ export async function createCheckoutLead(
         continue
       }
       return { data: null, error: error.message }
+    }
+
+    if (input.meta?.eventId) {
+      void sendMetaConversionEvent({
+        eventName: 'Lead',
+        eventId: input.meta.eventId,
+        eventSourceUrl: input.meta.eventSourceUrl,
+        userData: {
+          email: input.email,
+          phone: input.phone,
+          fbp: input.meta.fbp,
+          fbc: input.meta.fbc,
+          clientUserAgent: input.meta.clientUserAgent,
+        },
+        customData: {
+          content_name: 'Smart Menu System',
+          currency: 'PHP',
+          value: data.amount ?? input.amount ?? 3899,
+          reference_number: data.reference_number,
+        },
+      }).catch((metaError) => {
+        console.error('[Meta CAPI] Lead event dispatch failed', metaError)
+      })
     }
 
     return { data: data as CheckoutLead, error: null }

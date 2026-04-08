@@ -52,6 +52,13 @@ export async function submitCheckoutForm(input: {
   business_name: string
   notes?: string
   selected_payment_method_id: string
+  meta?: {
+    eventId?: string
+    fbp?: string
+    fbc?: string
+    eventSourceUrl?: string
+    clientUserAgent?: string
+  }
 }) {
   const result = await createCheckoutLead(input)
 

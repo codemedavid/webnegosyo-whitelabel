@@ -83,6 +83,12 @@ FACEBOOK_APP_SECRET=your_app_secret_here
 # Enable "Places API" for your project
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 
+# Meta Pixel / Conversions API (Optional - for landing page and checkout tracking)
+NEXT_PUBLIC_META_PIXEL_ID=your_meta_pixel_id_here
+META_PIXEL_ID=your_meta_pixel_id_here
+META_CONVERSIONS_API_TOKEN=your_meta_capi_access_token_here
+META_TEST_EVENT_CODE=your_test_event_code_here
+
 ========================================
   FACEBOOK MESSENGER BOT SETUP
 ========================================
@@ -138,4 +144,3 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 Note: Google Places has better coverage of commercial establishments,
 shopping malls, and landmarks in Philippines. Use as fallback when
 Mapbox doesn't find specific places.
-

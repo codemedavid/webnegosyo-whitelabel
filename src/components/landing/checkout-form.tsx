@@ -11,6 +11,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { submitCheckoutForm, fetchActivePlatformPaymentMethods } from '@/app/actions/checkout-leads'
 import type { PlatformPaymentMethod } from '@/types/database'
+import {
+  createMetaEventId,
+  getMetaBrowserData,
+  initMetaPixel,
+  trackMetaEvent,
+} from '@/lib/meta-pixel'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -31,6 +37,7 @@ const PAYMENT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: strin
   bank_transfer: Building2,
   other: CreditCard,
 }
+const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
 export function CheckoutForm() {
   const router = useRouter()
@@ -56,6 +63,17 @@ export function CheckoutForm() {
       setIsLoadingMethods(false)
     }).catch(() => {
       setIsLoadingMethods(false)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!META_PIXEL_ID) return
+
+    initMetaPixel(META_PIXEL_ID)
+    trackMetaEvent('InitiateCheckout', {
+      content_name: 'Smart Menu System',
+      currency: 'PHP',
+      value: 3899,
     })
   }, [])
 
@@ -90,6 +108,7 @@ export function CheckoutForm() {
 
     setIsSubmitting(true)
     try {
+      const eventId = createMetaEventId('lead')
       const result = await submitCheckoutForm({
         name: formData.name,
         email: formData.email,
@@ -97,6 +116,10 @@ export function CheckoutForm() {
         business_name: formData.businessName,
         selected_payment_method_id: formData.paymentMethodId,
         notes: formData.notes || undefined,
+        meta: {
+          eventId,
+          ...getMetaBrowserData(),
+        },
       })
 
       if (result.error) {
@@ -105,6 +128,15 @@ export function CheckoutForm() {
       }
 
       if (result.data) {
+        trackMetaEvent(
+          'Lead',
+          {
+            content_name: 'Smart Menu System',
+            currency: 'PHP',
+            value: result.data.amount ?? 3899,
+          },
+          eventId
+        )
         router.push(`/checkout/confirmation/${result.data.reference_number}`)
       }
     } catch {
