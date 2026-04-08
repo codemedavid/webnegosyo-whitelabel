@@ -14,7 +14,6 @@ import type { PlatformPaymentMethod } from '@/types/database'
 import {
   createMetaEventId,
   getMetaBrowserData,
-  initMetaPixel,
   trackMetaEvent,
 } from '@/lib/meta-pixel'
 
@@ -69,7 +68,6 @@ export function CheckoutForm() {
   useEffect(() => {
     if (!META_PIXEL_ID) return
 
-    initMetaPixel(META_PIXEL_ID)
     trackMetaEvent('InitiateCheckout', {
       content_name: 'Smart Menu System',
       currency: 'PHP',

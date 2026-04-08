@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
 import Image from 'next/image'
 import { Check, ChevronDown, ChevronRight, Play, UtensilsCrossed } from 'lucide-react'
-import { MetaPixelPageView } from '@/components/tracking/meta-pixel-page-view'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 
 const CHECKOUT_URL = '/checkout'
@@ -16,9 +15,6 @@ const DARK_BG = '#0c0a07'
 const HERO_BG = '#14100b'
 const ALT_BG = '#110e09'
 const VIEWPORT = { once: true, amount: 0.2 } as const
-const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
-
-
 const PRICING_FEATURES = [
 'Website Ordering - This is your smart menu',
 'Upselling System',
@@ -505,7 +501,6 @@ function Footer() {
 export function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: DARK_BG }}>
-      <MetaPixelPageView pixelId={META_PIXEL_ID} />
       <AnnouncementBanner />
       <HeroSection />
 
