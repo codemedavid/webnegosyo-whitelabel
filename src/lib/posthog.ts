@@ -100,6 +100,35 @@ export async function captureOrderCreated(data: OrderEventData): Promise<void> {
   }
 }
 
+export interface CheckoutLeadEventData {
+  name: string
+  email: string
+  phone: string
+  businessName: string
+  referenceNumber: string
+  amount: number
+}
+
+export async function captureCheckoutLeadCreated(data: CheckoutLeadEventData): Promise<void> {
+  const posthog = getPostHogClient()
+  if (!posthog) return
+
+  try {
+    posthog.capture({
+      distinctId: `lead_${data.referenceNumber}`,
+      event: 'checkout_lead_created',
+      properties: {
+        reference_number: data.referenceNumber,
+        business_name: data.businessName,
+        amount: `₱${data.amount.toFixed(2)}`,
+      },
+    })
+    await posthog.flush()
+  } catch (error) {
+    console.error('[PostHog] Failed to capture checkout_lead_created event:', error)
+  }
+}
+
 export interface BookingEventData {
   name: string
   email: string
@@ -116,21 +145,13 @@ export async function captureBookingCreated(data: BookingEventData): Promise<voi
 
   try {
     posthog.capture({
-      distinctId: `lead_${data.email}`,
+      distinctId: `lead_${data.leadId}`,
       event: 'booking_created',
       properties: {
         lead_id: data.leadId,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
         booking_date: data.bookingDate,
         booking_time: data.bookingTime,
         source: data.source,
-        $set: {
-          email: data.email,
-          name: data.name,
-          phone: data.phone,
-        },
       },
     })
     await posthog.flush()

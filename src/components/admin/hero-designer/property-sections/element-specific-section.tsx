@@ -188,6 +188,22 @@ function ImageControls({
           { value: 'fill', label: 'Fill' },
         ]}
       />
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="Width (px)"
+          value={props.width ?? 0}
+          onChange={(v) => onUpdate({ width: v || undefined } as Partial<ElementProps>)}
+          min={0}
+          max={4000}
+        />
+        <NumberField
+          label="Height (px)"
+          value={props.height ?? 0}
+          onChange={(v) => onUpdate({ height: v || undefined } as Partial<ElementProps>)}
+          min={0}
+          max={4000}
+        />
+      </div>
       <NumberField
         label="Border Radius"
         value={props.borderRadius}

@@ -211,6 +211,10 @@ export interface MenuItem {
   updated_at: string;
 }
 
+export interface MenuItemWithCategory extends MenuItem {
+  category: { id: string; name: string } | null;
+}
+
 export interface CartItem {
   id: string; // Unique ID for cart item
   menu_item: MenuItem;

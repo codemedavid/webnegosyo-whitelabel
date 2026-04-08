@@ -77,6 +77,8 @@ export interface ImageProps {
   objectFit: 'cover' | 'contain' | 'fill'
   borderRadius: number
   opacity: number
+  width?: number
+  height?: number
 }
 
 export interface ButtonProps {

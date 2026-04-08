@@ -9,34 +9,25 @@ import { useImagePreload } from '@/hooks/useImagePreload'
 import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { useCart } from '@/hooks/useCart'
-import { toast } from 'sonner'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
-
-interface CheckoutModalColors {
-  background: string
-  title: string
-  description: string
-  price: string
-  button: string
-  buttonText: string
-  border: string
-}
 
 interface CheckoutUpsellModalProps {
   open: boolean
   onContinue: () => void
   tenantId: string
-  branding: BrandingColors
+  /** Kept for backward compat with callers; not used internally */
+  branding?: BrandingColors
   title: string
   subtitle: string
   maxItems: number
   prefetchedItems?: MenuItem[]
   previewSuggestions?: MenuItem[]
-  previewColors?: CheckoutModalColors
+  /** Admin preview colors — passed from branding editor */
+  previewColors?: Record<string, string>
+  /** Override z-index class for layered preview modals */
   zIndexClass?: string
-  cartTotal?: number
   hideCurrencySymbol?: boolean
 }
 
@@ -47,10 +38,13 @@ const gridVariants = {
   },
 }
 
+// Stable skeleton indices to avoid re-creating arrays on each render
+const SKELETON_INDICES = [0, 1, 2, 3] as const
+
 function SkeletonCard() {
   return (
-    <div className="border border-gray-200 bg-white">
-      <div className="aspect-square bg-gray-100 animate-pulse" />
+    <div className="border border-gray-200 bg-white rounded-xl overflow-hidden">
+      <div className="aspect-[4/3] bg-gray-100 animate-pulse" />
       <div className="p-3 space-y-2">
         <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse" />
         <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse" />
@@ -63,17 +57,11 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   open,
   onContinue,
   tenantId,
-  branding,
   title,
   subtitle,
   maxItems,
   prefetchedItems,
   previewSuggestions,
-  previewColors,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  zIndexClass: _zIndexClass = 'z-50',
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  cartTotal: _cartTotal,
   hideCurrencySymbol,
 }: CheckoutUpsellModalProps) {
   const { items: cartItems, addItem } = useCart()
@@ -88,19 +76,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
   const upsellAddedCountRef = useRef(0)
   const initialSuggestionsCountRef = useRef(suggestions.length)
 
-  // Keep colors for backward compat (used by preview mode)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _colors: CheckoutModalColors = useMemo(() => previewColors ?? {
-    background: branding.checkoutModalBackground,
-    title: branding.checkoutModalTitle,
-    description: branding.checkoutModalDescription,
-    price: branding.checkoutModalPrice,
-    button: branding.checkoutModalButton,
-    buttonText: branding.checkoutModalButtonText,
-    border: branding.checkoutModalBorder,
-  }, [previewColors, branding])
-
-  // Preload suggestion images
+  // Preload suggestion images via <link rel="preload"> for instant rendering
   const imageUrls = useMemo(
     () => suggestions.map((s) => s.image_url).filter(Boolean) as string[],
     [suggestions]
@@ -113,6 +89,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     [cartItems]
   )
 
+  // Track initial suggestion count when modal opens; reset refs on close
   useEffect(() => {
     if (open) {
       initialSuggestionsCountRef.current = suggestions.length
@@ -120,7 +97,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
       shownTrackedRef.current = false
       upsellAddedCountRef.current = 0
     }
-  }, [open, suggestions.length])
+    // Only respond to open/close transitions, not suggestion count changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -144,10 +123,13 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
       return
     }
 
+    // On-demand fetch as fallback when no prefetched items available
+    let cancelled = false
     setIsLoading(true)
     const cartItemIds = cartItems.map((ci) => ci.menu_item.id)
     getCheckoutUpsellsAction(cartItemIds, tenantId, maxItems)
       .then((result) => {
+        if (cancelled) return
         if (result.success && result.data) {
           setSuggestions(result.data)
           if (result.data.length > 0 && !shownTrackedRef.current) {
@@ -160,7 +142,9 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
         }
       })
       .catch(() => {})
-      .finally(() => { setIsLoading(false) })
+      .finally(() => { if (!cancelled) setIsLoading(false) })
+
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefetchedItems, previewSuggestions])
 
@@ -168,7 +152,6 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     (item: MenuItem, quantity: number) => {
       if (isPreview) return
       addItem(item, undefined, [], quantity, undefined, 'checkout_modal')
-      toast.success(`Added ${item.name}`)
       upsellAddedCountRef.current += 1
       trackAnalyticsEventAction(tenantId, 'upsell_clicked', {
         source: 'checkout_modal',
@@ -235,7 +218,7 @@ export const CheckoutUpsellModal = memo(function CheckoutUpsellModal({
     >
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: Math.min(maxItems, 4) }).map((_, i) => (
+          {SKELETON_INDICES.slice(0, Math.min(maxItems, 4)).map((i) => (
             <SkeletonCard key={i} />
           ))}
         </div>

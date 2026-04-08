@@ -11,11 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatPrice } from '@/lib/cart-utils'
-import type { MenuItem } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItemWithCategory } from '@/types/database'
 
 interface UncoveredItemsDialogProps {
   open: boolean

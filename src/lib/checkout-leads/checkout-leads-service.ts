@@ -153,9 +153,13 @@ export async function getCheckoutLeads(
   }
 
   if (search) {
-    query = query.or(
-      `name.ilike.%${search}%,email.ilike.%${search}%,business_name.ilike.%${search}%,reference_number.ilike.%${search}%`
-    )
+    // Sanitize search input to prevent PostgREST filter injection
+    const sanitized = search.replace(/[%_,.()"'\\]/g, '')
+    if (sanitized) {
+      query = query.or(
+        `name.ilike.%${sanitized}%,email.ilike.%${sanitized}%,business_name.ilike.%${sanitized}%,reference_number.ilike.%${sanitized}%`
+      )
+    }
   }
 
   const from = (page - 1) * pageSize

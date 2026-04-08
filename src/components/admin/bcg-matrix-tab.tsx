@@ -28,12 +28,8 @@ import {
   promoteItemAction,
   hideItemAction,
 } from '@/app/actions/menu-engineering'
-import type { MenuItem, Category, BcgClassification } from '@/types/database'
+import type { MenuItemWithCategory, Category, BcgClassification } from '@/types/database'
 import { toast } from 'sonner'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
 
 export interface BcgMatrixTabProps {
   menuItems: MenuItemWithCategory[]

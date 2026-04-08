@@ -10,10 +10,12 @@ import {
   GitBranch,
   ShoppingCart,
   AlertCircle,
-  Eye,
+  Eye as EyeIcon,
+  ShoppingBag,
+  CreditCard,
+  ChevronRight,
 } from 'lucide-react'
-import type { Category, UpsellPairWithItems, TagDefinition, PairingRuleWithDetails } from '@/types/database'
-import type { MenuItem } from '@/types/database'
+import type { Category, UpsellPairWithItems, TagDefinition, PairingRuleWithDetails, MenuItemWithCategory } from '@/types/database'
 import type { BundleWithSlots } from '@/lib/bundles-service'
 import { UncoveredItemsDialog } from '@/components/admin/push-item-flow'
 
@@ -46,10 +48,6 @@ const UpsellPreviewPanel = dynamic(
   { ssr: false, loading: LoadingPlaceholder }
 )
 
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
-
 interface BoostSalesDashboardProps {
   menuItems: MenuItemWithCategory[]
   categories: Category[]
@@ -70,6 +68,7 @@ interface BoostSalesDashboardProps {
 interface TabDef {
   value: string
   label: string
+  subtitle?: string
   icon: React.ComponentType<{ className?: string }>
   badge?: string
   hidden?: boolean
@@ -122,9 +121,34 @@ export function BoostSalesDashboard({
   const tabStats = useMemo(() => {
     const activeBundles = bundles.filter(b => b.is_active).length
     const upgradePairs = upsellPairs.filter(p => p.pair_type === 'upgrade').length
+    const activeRules = initialPairingRules.filter(r => r.is_active).length
     const checkoutPicks = menuItems.filter(i => i.show_in_checkout_upsell).length
-    return { activeBundles, upgradePairs, checkoutPicks }
-  }, [bundles, upsellPairs, menuItems])
+    return { activeBundles, upgradePairs, activeRules, checkoutPicks }
+  }, [bundles, upsellPairs, initialPairingRules, menuItems])
+
+  const funnelSteps = [
+    {
+      icon: EyeIcon,
+      title: 'Product Page',
+      subtitle: 'Suggest an upgrade before they order',
+      count: tabStats.upgradePairs,
+      unit: 'active pair',
+    },
+    {
+      icon: ShoppingBag,
+      title: 'After Add to Cart',
+      subtitle: 'Recommend items that go well together',
+      count: tabStats.activeRules,
+      unit: 'active rule',
+    },
+    {
+      icon: CreditCard,
+      title: 'Checkout',
+      subtitle: 'Last chance to add more items',
+      count: tabStats.checkoutPicks,
+      unit: 'item',
+    },
+  ]
 
   const tabs: TabDef[] = [
     {
@@ -135,19 +159,22 @@ export function BoostSalesDashboard({
     },
     {
       value: 'upgrades',
-      label: 'Upgrade Pairs',
+      label: 'Upgrade Prompts',
+      subtitle: 'Suggest a bigger option',
       icon: ArrowUpRight,
       badge: tabStats.upgradePairs > 0 ? `${tabStats.upgradePairs} pairs` : undefined,
     },
     {
       value: 'rules',
-      label: 'Pairing Rules',
+      label: 'Pair Suggestions',
+      subtitle: 'Recommend items that go together',
       icon: GitBranch,
       hidden: !pairingRulesEnabled,
     },
     {
       value: 'checkout',
-      label: 'Checkout Picks',
+      label: 'Checkout Offers',
+      subtitle: 'Last-chance items before payment',
       icon: ShoppingCart,
       badge: tabStats.checkoutPicks > 0 ? `${tabStats.checkoutPicks} selected` : undefined,
     },
@@ -157,6 +184,46 @@ export function BoostSalesDashboard({
 
   return (
     <div className="space-y-6">
+      {/* Hero Funnel */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-foreground">
+            Your customers see upsells at 3 key moments
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Set up each touchpoint to increase your average order value.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-3">
+          {funnelSteps.map((step, i) => {
+            const StepIcon = step.icon
+            return (
+              <div key={step.title} className="contents">
+                <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <StepIcon className="h-4.5 w-4.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{step.subtitle}</p>
+                    <p className="text-xs font-medium mt-2 text-primary">
+                      {step.count > 0
+                        ? `${step.count} ${step.unit}${step.count !== 1 ? 's' : ''}`
+                        : 'Not set up yet'}
+                    </p>
+                  </div>
+                </div>
+                {i < funnelSteps.length - 1 && (
+                  <div className="hidden md:flex items-center justify-center">
+                    <ChevronRight className="h-5 w-5 text-muted-foreground/50" />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Action buttons */}
       <div className="flex items-center gap-3">
         {uncoveredItemIds.length > 0 && (
@@ -174,7 +241,7 @@ export function BoostSalesDashboard({
           size="sm"
           onClick={() => setShowPreview(!showPreview)}
         >
-          <Eye className="mr-2 h-4 w-4" />
+          <EyeIcon className="mr-2 h-4 w-4" />
           {showPreview ? 'Hide Preview' : 'Preview CX'}
         </Button>
       </div>
@@ -215,7 +282,12 @@ export function BoostSalesDashboard({
                   }`}
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="text-sm font-semibold">{tab.label}</span>
+                  <div className="text-left">
+                    <span className="text-sm font-semibold">{tab.label}</span>
+                    {isActive && tab.subtitle && (
+                      <p className="text-[11px] font-normal text-muted-foreground leading-tight">{tab.subtitle}</p>
+                    )}
+                  </div>
                   {tab.badge && (
                     <span
                       className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${

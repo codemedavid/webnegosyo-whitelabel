@@ -1,6 +1,6 @@
 'use client'
 
-import { Component, type ReactNode, type ErrorInfo, useMemo, useEffect } from 'react'
+import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { ConvexProvider } from 'convex/react'
 import { ConvexReactClient } from 'convex/react'
 
@@ -23,6 +23,20 @@ class ConvexErrorBoundary extends Component<
   }
 }
 
+// Module-level cache of Convex clients keyed by URL.
+// This follows the official Convex pattern of long-lived singleton clients
+// and avoids React strict-mode double-mount issues entirely.
+const clientCache = new Map<string, ConvexReactClient>()
+
+function getClient(url: string): ConvexReactClient {
+  let client = clientCache.get(url)
+  if (!client) {
+    client = new ConvexReactClient(url)
+    clientCache.set(url, client)
+  }
+  return client
+}
+
 interface SafeConvexProviderProps {
   url: string
   children: ReactNode
@@ -31,17 +45,11 @@ interface SafeConvexProviderProps {
 
 /**
  * Wraps ConvexProvider with:
- * - Per-mount client lifecycle (creates on mount, closes on unmount)
+ * - Cached client per URL (survives React strict-mode double-mount)
  * - Built-in error boundary to prevent crashes from missing Convex functions
  */
 export function SafeConvexProvider({ url, children, fallback }: SafeConvexProviderProps) {
-  const client = useMemo(() => new ConvexReactClient(url), [url])
-
-  useEffect(() => {
-    return () => {
-      client.close()
-    }
-  }, [client])
+  const client = getClient(url)
 
   return (
     <ConvexErrorBoundary fallback={fallback}>

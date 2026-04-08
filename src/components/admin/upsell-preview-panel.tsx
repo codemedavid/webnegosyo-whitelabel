@@ -7,11 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { X, Search, CheckCircle2, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/cart-utils'
-import type { MenuItem, UpsellPairWithItems, BundleWithSlots } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItemWithCategory, UpsellPairWithItems, BundleWithSlots } from '@/types/database'
 
 interface UpsellPreviewPanelProps {
   menuItems: MenuItemWithCategory[]

@@ -1,12 +1,9 @@
 'use client'
 
+import { memo } from 'react'
 import { Lightbulb } from 'lucide-react'
 import { WizardItemGrid } from '@/components/admin/wizard-item-grid'
-import type { MenuItem } from '@/types/database'
-
-interface MenuItemWithCategory extends MenuItem {
-  category: { id: string; name: string } | null
-}
+import type { MenuItemWithCategory } from '@/types/database'
 
 export interface WizardStepSourceProps {
   items: MenuItemWithCategory[]
@@ -14,7 +11,7 @@ export interface WizardStepSourceProps {
   onSelect: (itemId: string) => void
 }
 
-export function WizardStepSource({
+export const WizardStepSource = memo(function WizardStepSource({
   items,
   selectedItemId,
   onSelect,
@@ -44,4 +41,4 @@ export function WizardStepSource({
       />
     </div>
   )
-}
+})

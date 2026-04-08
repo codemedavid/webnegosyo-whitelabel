@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState, useRef, useCallback } from 'react'
+import { memo, useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Check, Minus, Plus } from 'lucide-react'
@@ -41,6 +41,13 @@ export const UpsellItemCard = memo(function UpsellItemCard({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const needsCustomization = itemNeedsCustomization(item)
+
+  // Clean up timeout on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   const handleAdd = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -91,6 +98,7 @@ export const UpsellItemCard = memo(function UpsellItemCard({
             className="object-cover"
             sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 22vw"
             loading={index < 4 ? 'eager' : 'lazy'}
+            fetchPriority={index < 2 ? 'high' : 'auto'}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-gray-300">

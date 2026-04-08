@@ -25,7 +25,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, MoreVertical, Pencil, Trash2, ArrowRight, X } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Plus, MoreVertical, Pencil, Trash2, ChevronRight, X, GitBranch, Tag, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type {
@@ -238,95 +239,114 @@ export function PairingRulesTab({
   // Show skeleton while loading (no initial data and fetch in progress)
   if (!hasLoaded && isPending) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold">Pairing Rules</h3>
-            <p className="text-xs text-muted-foreground">Automatic suggestions based on category and tags</p>
-          </div>
-          <div className="h-9 w-24 bg-muted animate-pulse rounded-md" />
-        </div>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="border rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-muted animate-pulse" />
-                <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+      <div className="space-y-6">
+        <div className="h-9 w-44 bg-muted animate-pulse rounded-md" />
+        <Card>
+          <CardHeader>
+            <div className="h-5 w-28 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-48 bg-muted animate-pulse rounded mt-1" />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="rounded-lg border overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+                  <div className="h-5 w-10 bg-muted animate-pulse rounded-full" />
+                </div>
+                <div className="border-t border-border/50 px-4 py-3 flex items-center gap-3">
+                  <div className="h-8 w-28 bg-muted animate-pulse rounded-md" />
+                  <div className="h-3 w-3 bg-muted animate-pulse rounded" />
+                  <div className="h-8 w-24 bg-muted animate-pulse rounded-md" />
+                  <div className="h-8 w-20 bg-muted animate-pulse rounded-md" />
+                </div>
+                <div className="border-t border-border/50 px-4 py-2.5 flex justify-between">
+                  <div className="h-3 w-48 bg-muted animate-pulse rounded" />
+                  <div className="h-3 w-20 bg-muted animate-pulse rounded" />
+                </div>
               </div>
-              <div className="h-6 w-16 bg-muted animate-pulse rounded" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-5 w-28 bg-muted animate-pulse rounded-full" />
-              <div className="h-3 w-3 bg-muted animate-pulse rounded" />
-              <div className="h-5 w-24 bg-muted animate-pulse rounded-full" />
-            </div>
-          </div>
-        ))}
+            ))}
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">Pairing Rules</h3>
-          <p className="text-xs text-muted-foreground">Automatic suggestions based on category and tags</p>
-        </div>
-        <Button size="sm" onClick={openAddDialog} disabled={isPending}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add Rule
-        </Button>
-      </div>
+    <div className="space-y-6">
+      {/* Create Button */}
+      <Button onClick={openAddDialog} disabled={isPending} className="w-full sm:w-auto">
+        <Plus className="mr-2 h-4 w-4" />
+        Create Pairing Rule
+      </Button>
 
-      {/* Platform defaults */}
-      {platformRules.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Platform Defaults</span>
-          {platformRules.map((rule) => (
-            <RuleRow
-              key={rule.id}
-              rule={rule}
-              isPlatform
-              onToggle={(active) => handleToggle(rule.id, active)}
-              categories={categories}
-              tags={tags}
-              menuItems={menuItems}
-            />
-          ))}
-        </div>
-      )}
+      {/* Rules List */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Pairing Rules</CardTitle>
+              <CardDescription className="mt-1">
+                {rules.length} rule{rules.length !== 1 ? 's' : ''} &middot; Auto-suggest items when customers add to cart
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {rules.length === 0 && hasLoaded ? (
+            <div className="py-12 text-center">
+              <GitBranch className="mx-auto h-10 w-10 text-muted-foreground/30" />
+              <p className="mt-3 text-sm font-medium text-muted-foreground">
+                No pairing rules configured yet
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create your first rule to automatically suggest items when customers shop.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Platform defaults */}
+              {platformRules.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Platform Defaults</span>
+                  {platformRules.map((rule) => (
+                    <RuleRow
+                      key={rule.id}
+                      rule={rule}
+                      isPlatform
+                      onToggle={(active) => handleToggle(rule.id, active)}
+                      categories={categories}
+                      tags={tags}
+                      menuItems={menuItems}
+                    />
+                  ))}
+                </div>
+              )}
 
-      {/* Tenant rules */}
-      {tenantRules.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Your Rules</span>
-          {tenantRules.map((rule) => (
-            <RuleRow
-              key={rule.id}
-              rule={rule}
-              isPlatform={false}
-              onToggle={(active) => handleToggle(rule.id, active)}
-              onEdit={() => openEditDialog(rule)}
-              onDelete={() => handleDelete(rule.id)}
-              categories={categories}
-              tags={tags}
-              menuItems={menuItems}
-            />
-          ))}
-        </div>
-      )}
-
-      {rules.length === 0 && hasLoaded && (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          No pairing rules yet. Add one to automatically suggest items when customers shop.
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground text-center">
-        Rules are checked in order: Manual Pairs → Category Rules → Tag Rules → Smart BCG
-      </p>
+              {/* Tenant rules */}
+              {tenantRules.length > 0 && (
+                <div className="space-y-2">
+                  {platformRules.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Your Rules</span>
+                  )}
+                  {tenantRules.map((rule) => (
+                    <RuleRow
+                      key={rule.id}
+                      rule={rule}
+                      isPlatform={false}
+                      onToggle={(active) => handleToggle(rule.id, active)}
+                      onEdit={() => openEditDialog(rule)}
+                      onDelete={() => handleDelete(rule.id)}
+                      categories={categories}
+                      tags={tags}
+                      menuItems={menuItems}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open) }}>
@@ -571,35 +591,34 @@ function RuleRow({
       : 'Unknown'
 
   const totalItems = rule.targets.reduce((sum, t) => sum + t.items.length, 0)
+  const SourceIcon = rule.source_type === 'category' ? FolderOpen : Tag
 
   return (
-    <div className="border rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            'w-2 h-2 rounded-full',
-            rule.is_active ? 'bg-green-500' : 'bg-amber-500'
-          )} />
-          <span className="text-sm font-medium">{rule.name}</span>
+    <div className={cn(
+      'rounded-lg border transition-colors',
+      rule.is_active
+        ? 'border-primary/20 bg-primary/[0.02]'
+        : 'border-border bg-muted/20 opacity-60'
+    )}>
+      {/* Header: name + controls */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-sm font-medium truncate">{rule.name}</span>
           {isPlatform && (
-            <Badge variant="outline" className="text-[10px] bg-indigo-950/40 text-indigo-400 border-indigo-800">
-              PLATFORM
+            <Badge variant="secondary" className="text-[10px] shrink-0">
+              Platform
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {totalItems > 0 ? `${totalItems} items · ` : ''}Max {rule.max_suggestions}
-          </span>
-          {isPlatform ? (
-            <Switch
-              checked={rule.is_active}
-              onCheckedChange={onToggle}
-            />
-          ) : (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Switch
+            checked={rule.is_active}
+            onCheckedChange={onToggle}
+          />
+          {!isPlatform && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -620,52 +639,59 @@ function RuleRow({
         </div>
       </div>
 
-      {/* Source → Targets */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <Badge
-          variant="outline"
-          className={cn(
-            'text-[11px]',
-            rule.source_type === 'category'
-              ? 'bg-blue-950/40 text-blue-400 border-blue-800'
-              : 'bg-red-950/40 text-red-400 border-red-800'
-          )}
-        >
-          {rule.source_type === 'category' ? 'Category' : 'Tag'}: {sourceLabel}
-        </Badge>
-        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-        {rule.targets.map((target) => {
-          const targetLabel = target.target_type === 'category'
-            ? target.target_category?.name || 'Unknown'
-            : target.target_tag?.tag_value || 'Unknown'
+      {/* Flow: Source → Targets */}
+      <div className="border-t border-border/50 px-4 py-3">
+        <div className="flex items-start gap-3">
+          {/* Source */}
+          <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 shrink-0">
+            <SourceIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium">{sourceLabel}</span>
+          </div>
 
-          return (
-            <Badge
-              key={target.id}
-              variant="outline"
-              className="text-[11px] bg-green-950/40 text-green-400 border-green-800"
-            >
-              {targetLabel}
-              {target.selection_mode === 'handpick' && target.items.length > 0
-                ? ` (${target.items.length} picked)`
-                : target.selection_mode === 'any' ? ' (any)' : ''
-              }
-            </Badge>
-          )
-        })}
+          <ChevronRight className="h-4 w-4 text-muted-foreground mt-2 shrink-0" />
+
+          {/* Targets */}
+          <div className="flex flex-wrap gap-1.5 min-w-0">
+            {rule.targets.map((target) => {
+              const targetLabel = target.target_type === 'category'
+                ? target.target_category?.name || 'Unknown'
+                : target.target_tag?.tag_value || 'Unknown'
+              const itemCount = target.selection_mode === 'handpick' && target.items.length > 0
+                ? target.items.length
+                : null
+
+              return (
+                <div
+                  key={target.id}
+                  className="flex items-center gap-1.5 rounded-md bg-muted/50 px-3 py-2"
+                >
+                  <span className="text-xs font-medium">{targetLabel}</span>
+                  {itemCount !== null ? (
+                    <span className="text-[10px] text-muted-foreground">{itemCount}</span>
+                  ) : target.selection_mode === 'any' ? (
+                    <span className="text-[10px] text-muted-foreground">all</span>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Item names preview */}
-      {totalItems > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {rule.targets.flatMap((t) => t.items).slice(0, 6).map((item) => (
-            <span key={item.id} className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-              {item.name}
-            </span>
-          ))}
-          {totalItems > 6 && (
-            <span className="text-[10px] text-muted-foreground">+{totalItems - 6} more</span>
+      {/* Footer: item preview + metadata */}
+      {(totalItems > 0 || rule.max_suggestions) && (
+        <div className="border-t border-border/50 px-4 py-2.5 flex items-center justify-between gap-3">
+          {totalItems > 0 ? (
+            <p className="text-xs text-muted-foreground truncate">
+              {rule.targets.flatMap((t) => t.items).slice(0, 4).map((i) => i.name).join(', ')}
+              {totalItems > 4 ? ` +${totalItems - 4} more` : ''}
+            </p>
+          ) : (
+            <span />
           )}
+          <span className="text-[11px] text-muted-foreground shrink-0">
+            Max {rule.max_suggestions} suggestion{rule.max_suggestions !== 1 ? 's' : ''}
+          </span>
         </div>
       )}
     </div>

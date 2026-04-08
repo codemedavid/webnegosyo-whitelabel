@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShoppingCart, Minus, Plus, Trash2, Package } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -27,8 +27,9 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { CartItem, CartBundleItem } from '@/types/database'
+import type { CartItem, CartBundleItem, MenuItem } from '@/types/database'
 import Link from 'next/link'
 
 interface CartDrawerProps {
@@ -61,8 +62,30 @@ export function CartDrawer({
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
+  const [prefetchedUpsellItems, setPrefetchedUpsellItems] = useState<MenuItem[] | undefined>(undefined)
+  const prefetchedRef = useRef(false)
 
   const showInterstitial = menuEngineeringEnabled && checkoutUpsellEnabled && !!tenantId
+
+  // Prefetch checkout route and upsell items when cart drawer opens
+  useEffect(() => {
+    if (!open || items.length === 0) return
+
+    router.prefetch(`/${tenantSlug}/checkout`)
+
+    // Prefetch upsell items so the modal opens instantly (no skeleton)
+    if (showInterstitial && tenantId && !prefetchedRef.current) {
+      prefetchedRef.current = true
+      const cartItemIds = items.map((ci) => ci.menu_item.id)
+      getCheckoutUpsellsAction(cartItemIds, tenantId, checkoutUpsellMaxItems)
+        .then((result) => {
+          if (result.success && result.data) {
+            setPrefetchedUpsellItems(result.data)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [open, items, router, tenantSlug, showInterstitial, tenantId, checkoutUpsellMaxItems])
 
   const handleCheckoutClick = useCallback(() => {
     if (showInterstitial) {
@@ -435,6 +458,7 @@ export function CartDrawer({
           title={checkoutUpsellTitle}
           subtitle={checkoutUpsellSubtitle}
           maxItems={checkoutUpsellMaxItems}
+          prefetchedItems={prefetchedUpsellItems}
         />
       )}
     </>

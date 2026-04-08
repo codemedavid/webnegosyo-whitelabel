@@ -35,8 +35,8 @@ export function useConvexDashboardStats() {
   return useQuery(getDashboardStatsRef);
 }
 
-export function useConvexOrderById(orderId: string) {
-  return useQuery(getOrderByIdRef, { orderId });
+export function useConvexOrderById(orderId: string | null) {
+  return useQuery(getOrderByIdRef, orderId ? { orderId } : "skip");
 }
 
 export function useUpdateConvexOrderStatus() {
