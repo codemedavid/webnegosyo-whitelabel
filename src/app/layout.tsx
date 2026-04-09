@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Whitelabel App",
-  description: "A modern Next.js application with TypeScript and Tailwind CSS",
+  title: "WebNegosyo",
+  description: "Sell More with Smart Menu",
 };
 
 export default function RootLayout({
