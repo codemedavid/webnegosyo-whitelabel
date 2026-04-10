@@ -457,6 +457,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const dietaryTags = useMemo(() => {
         const tags: Array<{ label: string; icon: React.ElementType }> = []
         const text = `${item.name} ${item.description}`.toLowerCase()
+        const spicyKeywordPattern = /\b(spicy|chili|chilli|jalapeno|jalapeño|sriracha|buffalo|wasabi|harissa|sambal|gochujang)\b/
+        const spicyPhrasePattern = /\bhot\s+(sauce|salsa|wings|wing|chicken|pepper|peppers)\b/
 
         if (text.includes('vegetarian') || text.includes('veg')) {
             tags.push({ label: 'Vegetarian', icon: Leaf })
@@ -464,7 +466,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         if (text.includes('vegan')) {
             tags.push({ label: 'Vegan', icon: Leaf })
         }
-        if (text.includes('spicy') || text.includes('hot') || text.includes('chili')) {
+        if (spicyKeywordPattern.test(text) || spicyPhrasePattern.test(text)) {
             tags.push({ label: 'Spicy', icon: Flame })
         }
         if (text.includes('gluten-free') || text.includes('gluten free')) {

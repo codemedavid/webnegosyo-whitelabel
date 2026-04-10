@@ -310,4 +310,38 @@ describe('ProductDetailContent', () => {
         expect(mainDiv.style.getPropertyValue('--pd-primary')).toBe('#ff0000')
         expect(mainDiv.style.getPropertyValue('--pd-text-primary')).toBe('#00ff00')
     })
+
+    it('should not infer a spicy tag from hot drinks', () => {
+        const item = createMockItem({
+            name: 'Hot Choco Mallows',
+            description: 'Warm chocolate drink topped with marshmallows'
+        })
+
+        render(
+            <ProductDetailContent
+                tenant={mockTenant}
+                item={item}
+                branding={mockBranding}
+            />
+        )
+
+        expect(screen.queryByText('Spicy')).not.toBeInTheDocument()
+    })
+
+    it('should render a spicy tag for explicitly spicy items', () => {
+        const item = createMockItem({
+            name: 'Hot Wings',
+            description: 'Crispy chicken wings tossed in hot sauce'
+        })
+
+        render(
+            <ProductDetailContent
+                tenant={mockTenant}
+                item={item}
+                branding={mockBranding}
+            />
+        )
+
+        expect(screen.getByText('Spicy')).toBeInTheDocument()
+    })
 })

@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { MetaPixelBootstrap } from '@/components/tracking/meta-pixel-bootstrap'
 
 const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
+const CHECKOUT_TUTORIAL_EMBED_URL =
+  'https://www.loom.com/embed/02d3b1e132f4459fa1effcb06e2b8491?autoplay=1&muted=1'
 
 export const metadata = {
   title: 'Checkout - WebNegosyo Smart Menu System',
@@ -57,7 +59,30 @@ export default async function CheckoutPage() {
 
           <div className="grid md:grid-cols-5 gap-10">
             {/* Form — left side */}
-            <div className="md:col-span-3">
+            <div className="md:col-span-3 space-y-6">
+              <section
+                data-testid="checkout-tutorial"
+                className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02]"
+              >
+                <div className="border-b border-white/8 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-white/50">
+                    Watch Before You Checkout
+                  </p>
+                  <h2 className="mt-1 text-lg font-bold text-white">
+                    Quick walkthrough of the checkout process
+                  </h2>
+                </div>
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={CHECKOUT_TUTORIAL_EMBED_URL}
+                    title="Checkout Tutorial Video"
+                    className="h-full w-full"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              </section>
+
               <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-8">
                 <h2 className="text-lg font-bold text-white mb-6">Your Details</h2>
                 <CheckoutForm />
