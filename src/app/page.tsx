@@ -1,13 +1,11 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { LandingPage } from '@/components/landing/landing-page'
-import { MetaPixelBootstrap } from '@/components/tracking/meta-pixel-bootstrap'
 import { getTenantSlugFromHeaders } from '@/lib/tenant'
 
 // Disable static generation for this page to allow dynamic tenant detection
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
-const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
 export const metadata: Metadata = {
   title: 'WebNegosyo - You Can Sell More With Smart Menu',
@@ -37,7 +35,6 @@ export default async function HomePage() {
   // Only show landing page if not a tenant subdomain
   return (
     <>
-      <MetaPixelBootstrap pixelId={META_PIXEL_ID} />
       <LandingPage />
     </>
   )

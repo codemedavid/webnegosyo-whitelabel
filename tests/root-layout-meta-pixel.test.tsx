@@ -25,7 +25,17 @@ jest.mock('@/components/ui/sonner', () => ({
 import RootLayout from '@/app/layout'
 
 describe('RootLayout Meta Pixel', () => {
-  it('renders the hardcoded Meta Pixel snippet and noscript beacon', () => {
+  const originalMetaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID
+
+  beforeAll(() => {
+    process.env.NEXT_PUBLIC_META_PIXEL_ID = '123456789'
+  })
+
+  afterAll(() => {
+    process.env.NEXT_PUBLIC_META_PIXEL_ID = originalMetaPixelId
+  })
+
+  it('renders the Meta Pixel snippet and noscript beacon from the configured pixel id', () => {
     const html = renderToStaticMarkup(
       <RootLayout>
         <div>content</div>
@@ -33,7 +43,7 @@ describe('RootLayout Meta Pixel', () => {
     )
 
     expect(html).toContain('https://connect.facebook.net/en_US/fbevents.js')
-    expect(html).toContain("fbq('init', '939808131983849')")
-    expect(html).toContain('https://www.facebook.com/tr?id=939808131983849&amp;ev=PageView&amp;noscript=1')
+    expect(html).toContain("fbq('init', '123456789')")
+    expect(html).toContain('https://www.facebook.com/tr?id=123456789&amp;ev=PageView&amp;noscript=1')
   })
 })

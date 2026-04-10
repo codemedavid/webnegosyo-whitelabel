@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -72,6 +72,7 @@ export function CheckoutForm({
 }: CheckoutFormProps) {
   const router = useRouter()
   const isPaymentTermControlled = controlledPaymentTerm !== undefined
+  const isSubmittingRef = useRef(false)
   const [paymentMethods, setPaymentMethods] = useState<PlatformPaymentMethod[]>([])
   const [isLoadingMethods, setIsLoadingMethods] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -144,8 +145,10 @@ export function CheckoutForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingRef.current) return
     if (!validateForm()) return
 
+    isSubmittingRef.current = true
     setIsSubmitting(true)
     try {
       const eventId = createMetaEventId('lead')
@@ -183,6 +186,7 @@ export function CheckoutForm({
     } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {
+      isSubmittingRef.current = false
       setIsSubmitting(false)
     }
   }
@@ -371,7 +375,7 @@ export function CheckoutForm({
         {isSubmitting ? (
           <>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Processing...
+            Processing Checkout...
           </>
         ) : (
           `Complete Purchase — P${CHECKOUT_BASE_PRICE.toLocaleString()}`
