@@ -11,6 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:meta-pixel": "node scripts/verify-meta-pixel.mjs",
     "test:superadmin": "node scripts/test-superadmin.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "db:check": "node scripts/check-database.mjs",
