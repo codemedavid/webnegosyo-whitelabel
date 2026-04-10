@@ -361,6 +361,13 @@ export function CheckoutForm({
         type="submit"
         disabled={isSubmitting || isLoadingMethods}
         className="w-full bg-orange-500 py-6 text-lg font-bold text-white hover:bg-orange-600"
+        onClick={() => {
+          trackMetaEvent('InitiateCheckout', {
+            content_name: 'Smart Menu System',
+            currency: 'PHP',
+            value: 3899,
+          })
+        }}
       >
         {isSubmitting ? (
           <>
