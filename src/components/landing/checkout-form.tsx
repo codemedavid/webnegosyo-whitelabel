@@ -101,16 +101,6 @@ export function CheckoutForm({
     })
   }, [])
 
-  useEffect(() => {
-    if (!META_PIXEL_ID) return
-
-    trackMetaEvent('InitiateCheckout', {
-      content_name: 'Smart Menu System',
-      currency: 'PHP',
-      value: 3899,
-    })
-  }, [])
-
   const handleChange = (field: keyof FormData, value: string) => {
     const newValue = field === 'phone' ? value.replace(/\D/g, '') : value
     setFormData((prev) => ({ ...prev, [field]: newValue }))

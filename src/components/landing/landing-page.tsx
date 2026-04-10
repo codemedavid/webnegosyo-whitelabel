@@ -71,13 +71,6 @@ function CTAButton({
   return (
     <Link
       href={CHECKOUT_URL}
-      onClick={() => {
-        trackMetaEvent('InitiateCheckout', {
-          content_name: 'Smart Menu System',
-          currency: 'PHP',
-          value: 3899,
-        })
-      }}
       className={`group inline-flex items-center justify-center gap-2 rounded-xl font-extrabold uppercase tracking-[0.06em] text-white transition-transform duration-200 hover:-translate-y-0.5 ${sizeClasses} ${fullWidth ? 'w-full' : ''} ${className}`}
       style={{
         background: `linear-gradient(135deg, ${BRAND}, ${BRAND_DEEP})`,
