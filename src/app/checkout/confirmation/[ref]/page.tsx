@@ -1,6 +1,4 @@
-import { notFound } from 'next/navigation'
-import { fetchCheckoutLeadByRef } from '@/app/actions/checkout-leads'
-import { ConfirmationContent } from './confirmation-content'
+import { redirect } from 'next/navigation'
 
 interface ConfirmationPageProps {
   params: Promise<{ ref: string }>
@@ -8,11 +6,5 @@ interface ConfirmationPageProps {
 
 export default async function ConfirmationPage({ params }: ConfirmationPageProps) {
   const { ref } = await params
-  const result = await fetchCheckoutLeadByRef(ref)
-
-  if (!result.data) {
-    notFound()
-  }
-
-  return <ConfirmationContent lead={result.data} />
+  redirect(`/checkout/confirmation?confirm=${encodeURIComponent(ref)}`)
 }

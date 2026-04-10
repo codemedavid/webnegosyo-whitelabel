@@ -181,7 +181,7 @@ export function CheckoutForm({
           },
           eventId
         )
-        router.push(`/checkout/confirmation/${result.data.reference_number}`)
+        router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}`)
       }
     } catch {
       toast.error('Something went wrong. Please try again.')

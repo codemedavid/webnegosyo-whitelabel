@@ -160,7 +160,7 @@ describe('CheckoutForm payment terms', () => {
     })
 
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith('/checkout/confirmation/WN-20260410-PENDING')
+      expect(push).toHaveBeenCalledWith('/checkout/confirmation?confirm=WN-20260410-PENDING')
     })
   })
 })

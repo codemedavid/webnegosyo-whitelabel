@@ -111,7 +111,6 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
           <Link href="/checkout" className="text-gray-500 hover:text-gray-700">
@@ -122,7 +121,6 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
       </header>
 
       <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-        {/* Reference Number Banner */}
         <div className="rounded-xl bg-white p-6 text-center shadow-sm">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
             <Check className="h-7 w-7 text-green-600" />
@@ -148,7 +146,6 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
           </p>
         </div>
 
-        {/* Payment Instructions */}
         {paymentMethod && (
           <div className="rounded-xl bg-white p-6 shadow-sm">
             <h3 className="text-lg font-bold text-gray-900">Payment Instructions</h3>
@@ -200,7 +197,6 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
           </div>
         )}
 
-        {/* Payment Proof Upload */}
         <div className="rounded-xl bg-white p-6 shadow-sm">
           <h3 className="text-lg font-bold text-gray-900">Upload Payment Proof</h3>
           <p className="mt-1 text-sm text-gray-500">
@@ -265,7 +261,6 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
           </div>
         </div>
 
-        {/* Messenger Link */}
         <div className="rounded-xl bg-white p-6 text-center shadow-sm">
           <p className="text-sm text-gray-500">Have questions or need help?</p>
           <a
