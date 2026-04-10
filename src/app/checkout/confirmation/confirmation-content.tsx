@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 
 const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
@@ -108,6 +109,14 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
     xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`)
     xhr.send(formData)
   }
+  useEffect(() => {
+
+    trackMetaEvent('InitiateCheckout', {
+      content_name: 'Smart Menu System',
+      currency: 'PHP',
+      value: lead.amount,
+    })
+  }, [lead.amount])
 
   return (
     <div className="min-h-screen bg-gray-50">
