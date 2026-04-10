@@ -8,6 +8,7 @@ import {
   updateCheckoutLeadStatus,
   uploadPaymentProof,
   getCheckoutLeadHistory,
+  type CreateCheckoutLeadInput,
 } from '@/lib/checkout-leads/checkout-leads-service'
 import {
   getAllPlatformPaymentMethods,
@@ -17,6 +18,7 @@ import {
   deletePlatformPaymentMethod,
   reorderPlatformPaymentMethods,
 } from '@/lib/checkout-leads/platform-payment-methods-service'
+import { getCheckoutPayableAmount } from '@/lib/checkout-leads/payment-terms'
 import { createClient } from '@/lib/supabase/server'
 import type { CheckoutLeadStatus } from '@/types/database'
 import { captureCheckoutLeadCreated } from '@/lib/posthog'
@@ -45,21 +47,7 @@ async function verifySuperadmin() {
 
 // ---- Checkout Leads ----
 
-export async function submitCheckoutForm(input: {
-  name: string
-  email: string
-  phone: string
-  business_name: string
-  notes?: string
-  selected_payment_method_id: string
-  meta?: {
-    eventId?: string
-    fbp?: string
-    fbc?: string
-    eventSourceUrl?: string
-    clientUserAgent?: string
-  }
-}) {
+export async function submitCheckoutForm(input: CreateCheckoutLeadInput) {
   const result = await createCheckoutLead(input)
 
   if (result.data && !result.error) {
@@ -69,7 +57,7 @@ export async function submitCheckoutForm(input: {
       phone: input.phone,
       businessName: input.business_name,
       referenceNumber: result.data.reference_number,
-      amount: result.data.amount ?? 3899,
+      amount: result.data.amount ?? getCheckoutPayableAmount(input.payment_term),
     }).catch(() => {})
   }
 

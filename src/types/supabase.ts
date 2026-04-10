@@ -2021,6 +2021,7 @@ export type Database = {
           phone: string
           business_name: string
           notes: string | null
+          payment_term: 'downpayment_50' | 'full_payment'
           selected_payment_method_id: string | null
           status: string
           payment_proof_url: string | null
@@ -2037,6 +2038,7 @@ export type Database = {
           phone: string
           business_name: string
           notes?: string | null
+          payment_term?: 'downpayment_50' | 'full_payment'
           selected_payment_method_id?: string | null
           status?: string
           payment_proof_url?: string | null
@@ -2053,6 +2055,7 @@ export type Database = {
           phone?: string
           business_name?: string
           notes?: string | null
+          payment_term?: 'downpayment_50' | 'full_payment'
           selected_payment_method_id?: string | null
           status?: string
           payment_proof_url?: string | null

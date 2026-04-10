@@ -13,6 +13,17 @@ interface ConfirmationContentProps {
   lead: CheckoutLeadWithPaymentMethod
 }
 
+function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment_term']) {
+  switch (paymentTerm) {
+    case 'downpayment_50':
+      return '50% Downpayment'
+    case 'full_payment':
+      return 'Full Payment'
+    default:
+      return paymentTerm
+  }
+}
+
 export function ConfirmationContent({ lead }: ConfirmationContentProps) {
   const [copied, setCopied] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -131,6 +142,9 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
           </div>
           <p className="mt-2 text-sm text-gray-500">
             Amount: <span className="font-semibold text-gray-900">P{lead.amount.toLocaleString()}</span>
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            Payment term: <span className="font-semibold text-gray-900">{getPaymentTermLabel(lead.payment_term)}</span>
           </p>
         </div>
 

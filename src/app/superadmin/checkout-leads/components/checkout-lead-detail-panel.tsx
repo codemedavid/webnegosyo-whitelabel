@@ -19,6 +19,17 @@ const ALL_STATUSES: { value: CheckoutLeadStatus; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
+function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment_term']) {
+  switch (paymentTerm) {
+    case 'downpayment_50':
+      return '50% Downpayment'
+    case 'full_payment':
+      return 'Full Payment'
+    default:
+      return paymentTerm
+  }
+}
+
 interface CheckoutLeadDetailPanelProps {
   leadId: string | null
   open: boolean
@@ -99,6 +110,9 @@ export function CheckoutLeadDetailPanel({
               <p className="font-mono text-lg font-bold">{lead.reference_number}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Amount: <span className="font-medium text-foreground">P{lead.amount.toLocaleString()}</span>
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Payment term: <span className="font-medium text-foreground">{getPaymentTermLabel(lead.payment_term)}</span>
               </p>
             </div>
 

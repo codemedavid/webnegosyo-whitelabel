@@ -1,5 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendMetaConversionEvent } from '@/lib/meta-conversions'
+import {
+  getCheckoutPayableAmount,
+  isCheckoutPaymentTerm,
+  type CheckoutPaymentTerm,
+} from './payment-terms'
 import { generateReferenceNumber } from './reference-number'
 import type {
   CheckoutLead,
@@ -15,7 +20,7 @@ export interface CreateCheckoutLeadInput {
   business_name: string
   notes?: string
   selected_payment_method_id: string
-  amount?: number
+  payment_term: CheckoutPaymentTerm
   meta?: {
     eventId?: string
     fbp?: string
@@ -34,6 +39,13 @@ export async function createCheckoutLead(
   input: CreateCheckoutLeadInput
 ): Promise<{ data: CheckoutLead | null; error: string | null }> {
   const supabase = createAdminClient()
+  const paymentTerm = input.payment_term
+
+  if (!isCheckoutPaymentTerm(paymentTerm)) {
+    return { data: null, error: 'Invalid payment term' }
+  }
+
+  const amount = getCheckoutPayableAmount(paymentTerm)
 
   // Try up to 5 times to generate a unique reference number
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -49,7 +61,8 @@ export async function createCheckoutLead(
         business_name: input.business_name,
         notes: input.notes ?? null,
         selected_payment_method_id: input.selected_payment_method_id,
-        amount: input.amount ?? 3899,
+        payment_term: paymentTerm,
+        amount,
       })
       .select()
       .single()
@@ -77,7 +90,7 @@ export async function createCheckoutLead(
         customData: {
           content_name: 'Smart Menu System',
           currency: 'PHP',
-          value: data.amount ?? input.amount ?? 3899,
+          value: data.amount ?? amount,
           reference_number: data.reference_number,
         },
       }).catch((metaError) => {

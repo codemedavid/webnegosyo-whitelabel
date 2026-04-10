@@ -1,5 +1,6 @@
 // Database Types for Smart Restaurant Menu System
 // Re-export the auto-generated Database type used by Supabase client
+import type { Database as SupabaseDatabase } from './supabase'
 export type { Database } from './supabase'
 
 export type BcgClassification = 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified';
@@ -611,6 +612,7 @@ export interface CheckoutLead {
   phone: string
   business_name: string
   notes: string | null
+  payment_term: SupabaseDatabase['public']['Tables']['checkout_leads']['Row']['payment_term']
   selected_payment_method_id: string | null
   status: CheckoutLeadStatus
   payment_proof_url: string | null

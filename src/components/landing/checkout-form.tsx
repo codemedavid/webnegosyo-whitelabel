@@ -16,6 +16,12 @@ import {
   getMetaBrowserData,
   trackMetaEvent,
 } from '@/lib/meta-pixel'
+import {
+  CHECKOUT_BASE_PRICE,
+  DEFAULT_PAYMENT_TERM,
+  getCheckoutPayableAmount,
+  type CheckoutPaymentTerm,
+} from '@/lib/checkout-leads/payment-terms'
 
 const checkoutFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -38,11 +44,39 @@ const PAYMENT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: strin
 }
 const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
-export function CheckoutForm() {
+type CheckoutFormProps = {
+  selectedPaymentTerm?: CheckoutPaymentTerm
+  onPaymentTermChange?: (term: CheckoutPaymentTerm) => void
+}
+
+const PAYMENT_TERM_OPTIONS: Array<{
+  value: CheckoutPaymentTerm
+  label: string
+  description: string
+}> = [
+  {
+    value: 'downpayment_50',
+    label: '50% Downpayment',
+    description: `Pay ₱${Math.round(CHECKOUT_BASE_PRICE / 2).toLocaleString()} today, balance after setup starts`,
+  },
+  {
+    value: 'full_payment',
+    label: 'Full Payment',
+    description: `Pay ₱${CHECKOUT_BASE_PRICE.toLocaleString()} today`,
+  },
+]
+
+export function CheckoutForm({
+  selectedPaymentTerm: controlledPaymentTerm,
+  onPaymentTermChange,
+}: CheckoutFormProps) {
   const router = useRouter()
+  const isPaymentTermControlled = controlledPaymentTerm !== undefined
   const [paymentMethods, setPaymentMethods] = useState<PlatformPaymentMethod[]>([])
   const [isLoadingMethods, setIsLoadingMethods] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [internalPaymentTerm, setInternalPaymentTerm] =
+    useState<CheckoutPaymentTerm>(DEFAULT_PAYMENT_TERM)
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -52,6 +86,7 @@ export function CheckoutForm() {
     notes: '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
+  const selectedPaymentTerm = controlledPaymentTerm ?? internalPaymentTerm
 
   useEffect(() => {
     fetchActivePlatformPaymentMethods().then((methods) => {
@@ -81,6 +116,13 @@ export function CheckoutForm() {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }))
     }
+  }
+
+  const handlePaymentTermChange = (term: CheckoutPaymentTerm) => {
+    if (!isPaymentTermControlled) {
+      setInternalPaymentTerm(term)
+    }
+    onPaymentTermChange?.(term)
   }
 
   const validateForm = (): boolean => {
@@ -113,6 +155,7 @@ export function CheckoutForm() {
         phone: formData.phone,
         business_name: formData.businessName,
         selected_payment_method_id: formData.paymentMethodId,
+        payment_term: selectedPaymentTerm,
         notes: formData.notes || undefined,
         meta: {
           eventId,
@@ -131,7 +174,7 @@ export function CheckoutForm() {
           {
             content_name: 'Smart Menu System',
             currency: 'PHP',
-            value: result.data.amount ?? 3899,
+            value: result.data.amount ?? getCheckoutPayableAmount(selectedPaymentTerm),
           },
           eventId
         )
@@ -200,6 +243,41 @@ export function CheckoutForm() {
       </div>
 
       {/* Payment Method - Radio Cards */}
+      <div className="space-y-3">
+        <Label className="text-white/70">Payment Terms</Label>
+        <div className="grid gap-3">
+          {PAYMENT_TERM_OPTIONS.map((term) => {
+            const isSelected = selectedPaymentTerm === term.value
+            const inputId = `payment-term-${term.value}`
+            return (
+              <label
+                key={term.value}
+                htmlFor={inputId}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all ${
+                  isSelected
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-white/10 hover:border-white/20'
+                }`}
+              >
+                <input
+                  id={inputId}
+                  type="radio"
+                  name="paymentTerm"
+                  value={term.value}
+                  checked={isSelected}
+                  onChange={() => handlePaymentTermChange(term.value)}
+                  className="mt-1 h-4 w-4 accent-orange-500"
+                />
+                <div>
+                  <p className="font-medium text-white">{term.label}</p>
+                  <p className="text-sm text-white/40">{term.description}</p>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label className="text-white/70">Payment Method</Label>
         {isLoadingMethods ? (
@@ -296,7 +374,7 @@ export function CheckoutForm() {
             Processing...
           </>
         ) : (
-          'Complete Purchase — P3,899'
+          `Complete Purchase — P${CHECKOUT_BASE_PRICE.toLocaleString()}`
         )}
       </Button>
     </form>
