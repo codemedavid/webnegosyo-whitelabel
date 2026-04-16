@@ -35,6 +35,7 @@ export async function createMenuItemAction(tenantId: string, tenantSlug: string,
     const item = await createMenuItem(tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data: item }
   } catch (error) {
     // Handle Zod validation errors
@@ -57,6 +58,7 @@ export async function updateMenuItemAction(itemId: string, tenantId: string, ten
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/admin/menu/${itemId}`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/${itemId}`)
     return { success: true, data: item }
   } catch (error) {
     // Handle Zod validation errors
@@ -78,6 +80,7 @@ export async function deleteMenuItemAction(itemId: string, tenantId: string, ten
     await deleteMenuItem(itemId, tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete menu item' }
@@ -89,6 +92,7 @@ export async function toggleAvailabilityAction(itemId: string, tenantId: string,
     const item = await toggleMenuItemAvailability(itemId, tenantId, isAvailable)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/${itemId}`)
     return { success: true, data: item }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle availability' }

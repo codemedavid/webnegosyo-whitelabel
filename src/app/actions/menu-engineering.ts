@@ -41,6 +41,7 @@ export async function updateBcgClassificationAction(
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update classification' }
@@ -58,6 +59,7 @@ export async function bulkUpdateBcgAction(
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to bulk update classifications' }
@@ -78,6 +80,7 @@ export async function updateBadgeTextAction(
     const data = await updateBadgeText(itemId, tenantId, badgeText)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update badge text' }
@@ -111,6 +114,7 @@ export async function promoteItemAction(
     if (error) throw error
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update featured status' }
@@ -128,6 +132,7 @@ export async function hideItemAction(
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true, data }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle availability' }
@@ -173,7 +178,8 @@ export async function deleteUpsellPairAction(
     ])
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete upsell pair' }
@@ -278,6 +284,7 @@ export async function setCheckoutUpsellItemsAction(
     await invalidateCheckoutUpsellCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update checkout upsell items' }
@@ -324,6 +331,8 @@ export async function acceptPairSuggestionAction(
     await acceptPairSuggestion(tenantId, sourceItemId, targetItemId, strategy)
     await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
+    revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
   } catch (error) {
     console.error('Failed to accept pair suggestion:', error)
     throw error
@@ -339,6 +348,8 @@ export async function bulkAcceptPairSuggestionsAction(
     await bulkAcceptPairSuggestions(tenantId, suggestions)
     await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
+    revalidatePath(`/${tenantSlug}/menu`)
+    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
   } catch (error) {
     console.error('Failed to bulk accept pair suggestions:', error)
     throw error

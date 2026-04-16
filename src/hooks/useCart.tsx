@@ -9,6 +9,7 @@ import {
   generateCartItemId,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
+import { fetchFreshCartItemData } from '@/lib/cart-refresh'
 
 interface CartContextType extends Cart {
   orderType: string | null
@@ -300,6 +301,82 @@ export function CartProvider({ children }: { children: ReactNode }) {
   tenantIdRef.current = tenantId
   const tenantSlugRef = useRef<string | null>(null)
   tenantSlugRef.current = tenantSlug
+
+  // Refresh cart items from Supabase to pick up admin edits (price, name, availability)
+  const refreshCartItems = useCallback(async () => {
+    const currentTenantId = tenantIdRef.current
+    const currentItems = itemsRef.current
+    if (!currentTenantId || currentItems.length === 0) return
+
+    const itemIds = [...new Set(currentItems.map((item) => item.menu_item.id))]
+    try {
+      const freshData = await fetchFreshCartItemData(itemIds, currentTenantId)
+      setItems((prevItems) => {
+        let hasChanges = false
+        const updatedItems = prevItems.reduce<CartItem[]>((acc, item) => {
+          const fresh = freshData.get(item.menu_item.id)
+          if (!fresh) return [...acc, item]
+
+          if (!fresh.is_available) {
+            console.warn(`[useCart] Item "${item.menu_item.name}" is no longer available, removing from cart`)
+            hasChanges = true
+            return acc
+          }
+
+          const updatedMenuItem = {
+            ...item.menu_item,
+            name: fresh.name,
+            price: fresh.price,
+            discounted_price: fresh.discounted_price,
+            image_url: fresh.image_url,
+          }
+
+          const newSubtotal = calculateCartItemSubtotal(
+            fresh.price,
+            item.selected_variations || item.selected_variation,
+            item.selected_addons,
+            item.quantity
+          )
+
+          if (
+            updatedMenuItem.name !== item.menu_item.name ||
+            updatedMenuItem.price !== item.menu_item.price ||
+            updatedMenuItem.discounted_price !== item.menu_item.discounted_price ||
+            updatedMenuItem.image_url !== item.menu_item.image_url ||
+            newSubtotal !== item.subtotal
+          ) {
+            hasChanges = true
+            return [...acc, { ...item, menu_item: updatedMenuItem, subtotal: newSubtotal }]
+          }
+
+          return [...acc, item]
+        }, [])
+
+        return hasChanges ? updatedItems : prevItems
+      })
+    } catch {
+      // Silent fail — cart refresh is non-critical
+    }
+  }, [])
+
+  // Refresh cart items shortly after hydration and whenever the tab regains focus
+  useEffect(() => {
+    if (!isInitialized) return
+
+    const timer = setTimeout(refreshCartItems, 1000)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshCartItems()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [isInitialized, refreshCartItems])
 
   // Keep refs in sync with state for stable callbacks and debounced Messenger sync
   itemsRef.current = items

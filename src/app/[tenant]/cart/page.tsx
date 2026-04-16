@@ -46,10 +46,13 @@ export default function CartPage() {
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
   const [prefetchedItems, setPrefetchedItems] = useState<MenuItem[] | null>(null)
-  const prefetchedRef = useRef(false)
 
   const showInterstitial = tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled
   const branding = useMemo(() => getTenantBranding(tenant), [tenant])
+  const cartSignature = useMemo(
+    () => items.map((ci) => ci.menu_item.id).sort().join(','),
+    [items]
+  )
 
   // Load tenant data from Supabase
   useEffect(() => {
@@ -73,24 +76,25 @@ export default function CartPage() {
     loadTenant()
   }, [tenantSlug, router])
 
-  // Prefetch upsell items once when tenant loads
+  // Prefetch upsell items whenever cart item set changes (debounced)
   useEffect(() => {
-    if (prefetchedRef.current) return
     if (!tenant || !tenant.menu_engineering_enabled || !tenant.checkout_upsell_enabled) return
-    if (items.length === 0) return
+    if (!cartSignature) return
 
-    prefetchedRef.current = true
-    const cartItemIds = items.map((ci) => ci.menu_item.id)
-    getCheckoutUpsellsAction(cartItemIds, tenant.id, tenant.checkout_upsell_max_items || 4)
-      .then((result) => {
-        if (result.success && result.data) {
-          setPrefetchedItems(result.data)
-        }
-      })
-      .catch(() => {
-        // Silent fail — modal will fallback to on-demand fetch
-      })
-  }, [tenant, items])
+    const cartItemIds = cartSignature.split(',')
+    const timer = setTimeout(() => {
+      getCheckoutUpsellsAction(cartItemIds, tenant.id, tenant.checkout_upsell_max_items || 4)
+        .then((result) => {
+          if (result.success && result.data) {
+            setPrefetchedItems(result.data)
+          }
+        })
+        .catch(() => {
+          // Silent fail — modal will fallback to on-demand fetch
+        })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [tenant, cartSignature])
 
   const handleDecreaseQuantity = (item: CartItem) => {
     if (item.quantity <= 1) {

@@ -8,8 +8,8 @@
 import { createClient } from '@/lib/supabase/client'
 import type { ProductDetailSettings } from './product-detail-theme'
 
-// Cache duration in milliseconds (5 minutes)
-const CACHE_DURATION = 5 * 60 * 1000
+// Cache duration in milliseconds (1 minute)
+const CACHE_DURATION = 60 * 1000
 
 interface CacheEntry<T> {
     data: T
