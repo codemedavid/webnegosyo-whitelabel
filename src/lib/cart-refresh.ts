@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/client'
 
-interface FreshCartItemData {
+// Types match MenuItem: discounted_price is optional (not null), image_url is string (not null)
+export interface FreshCartItemData {
   name: string
   price: number
-  discounted_price: number | null
-  image_url: string | null
+  discounted_price: number | undefined
+  image_url: string
   is_available: boolean
 }
 
@@ -26,8 +27,8 @@ export async function fetchFreshCartItemData(
     map.set(item.id, {
       name: item.name,
       price: item.price,
-      discounted_price: item.discounted_price ?? null,
-      image_url: item.image_url ?? null,
+      discounted_price: item.discounted_price ?? undefined,
+      image_url: item.image_url ?? '',
       is_available: item.is_available ?? true,
     })
   }

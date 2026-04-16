@@ -311,19 +311,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const itemIds = [...new Set(currentItems.map((item) => item.menu_item.id))]
     try {
       const freshData = await fetchFreshCartItemData(itemIds, currentTenantId)
-      setItems((prevItems) => {
+      setItems((prevItems): CartItem[] => {
         let hasChanges = false
-        const updatedItems = prevItems.reduce<CartItem[]>((acc, item) => {
-          const fresh = freshData.get(item.menu_item.id)
-          if (!fresh) return [...acc, item]
 
-          if (!fresh.is_available) {
+        // Remove unavailable items
+        const available = prevItems.filter((item) => {
+          const fresh = freshData.get(item.menu_item.id)
+          if (fresh && !fresh.is_available) {
             console.warn(`[useCart] Item "${item.menu_item.name}" is no longer available, removing from cart`)
             hasChanges = true
-            return acc
+            return false
           }
+          return true
+        })
 
-          const updatedMenuItem = {
+        // Merge updated fields
+        const updated: CartItem[] = available.map((item): CartItem => {
+          const fresh = freshData.get(item.menu_item.id)
+          if (!fresh) return item
+
+          const updatedMenuItem: MenuItem = {
             ...item.menu_item,
             name: fresh.name,
             price: fresh.price,
@@ -346,13 +353,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
             newSubtotal !== item.subtotal
           ) {
             hasChanges = true
-            return [...acc, { ...item, menu_item: updatedMenuItem, subtotal: newSubtotal }]
+            return { ...item, menu_item: updatedMenuItem, subtotal: newSubtotal }
           }
 
-          return [...acc, item]
-        }, [])
+          return item
+        })
 
-        return hasChanges ? updatedItems : prevItems
+        return hasChanges ? updated : prevItems
       })
     } catch {
       // Silent fail — cart refresh is non-critical
