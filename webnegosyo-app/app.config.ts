@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#111111",
     },
     package: "com.webnegosyo.admin",
-    googleServicesFile: "./google-services.json",
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
