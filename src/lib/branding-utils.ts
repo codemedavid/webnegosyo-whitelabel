@@ -65,6 +65,19 @@ export interface BrandingColors {
   primary: string
   secondary: string
   accent?: string
+
+  // Search bar
+  searchBar: {
+    enabled: boolean
+    background: string | null
+    text: string | null
+    placeholder: string | null
+    icon: string | null
+    border: string | null
+    focusRing: string | null
+    radius: 'pill' | 'rounded' | 'square'
+    style: 'filled' | 'outline' | 'ghost'
+  }
 }
 
 /**
@@ -112,7 +125,18 @@ export const DEFAULT_BRANDING: BrandingColors = {
   shadow: 'rgba(0, 0, 0, 0.1)',
   primary: '#111111',
   secondary: '#666666',
-  accent: '#ffd700'
+  accent: '#ffd700',
+  searchBar: {
+    enabled: true,
+    background: null,
+    text: null,
+    placeholder: null,
+    icon: null,
+    border: null,
+    focusRing: null,
+    radius: 'pill',
+    style: 'filled',
+  },
 }
 
 /**
@@ -171,7 +195,18 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     shadow: get('shadow_color', DEFAULT_BRANDING.shadow),
     primary: get('primary_color', DEFAULT_BRANDING.primary),
     secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
-    accent: get('accent_color', DEFAULT_BRANDING.accent || '')
+    accent: get('accent_color', DEFAULT_BRANDING.accent || ''),
+    searchBar: {
+      enabled: tenant['search_bar_enabled'] !== false,
+      background: typeof tenant['search_bar_background'] === 'string' && tenant['search_bar_background'] ? tenant['search_bar_background'] as string : null,
+      text: typeof tenant['search_bar_text'] === 'string' && tenant['search_bar_text'] ? tenant['search_bar_text'] as string : null,
+      placeholder: typeof tenant['search_bar_placeholder'] === 'string' && tenant['search_bar_placeholder'] ? tenant['search_bar_placeholder'] as string : null,
+      icon: typeof tenant['search_bar_icon'] === 'string' && tenant['search_bar_icon'] ? tenant['search_bar_icon'] as string : null,
+      border: typeof tenant['search_bar_border'] === 'string' && tenant['search_bar_border'] ? tenant['search_bar_border'] as string : null,
+      focusRing: typeof tenant['search_bar_focus_ring'] === 'string' && tenant['search_bar_focus_ring'] ? tenant['search_bar_focus_ring'] as string : null,
+      radius: (['pill','rounded','square'].includes(tenant['search_bar_radius'] as string) ? tenant['search_bar_radius'] : 'pill') as 'pill' | 'rounded' | 'square',
+      style: (['filled','outline','ghost'].includes(tenant['search_bar_style'] as string) ? tenant['search_bar_style'] : 'filled') as 'filled' | 'outline' | 'ghost',
+    },
   }
 }
 
