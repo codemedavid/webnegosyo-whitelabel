@@ -44,7 +44,7 @@ interface LayoutGridFocusProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 export const LayoutGridFocus = memo(function LayoutGridFocus({
@@ -85,13 +85,15 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
     return (
         <div>
             {/* Compact Search Bar */}
-            {!isLoading && (
+            {!isLoading && (branding.searchBar.enabled || isBrandAdmin) && (
                 <div className="mb-4">
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search menu..."
                         branding={branding}
+                        isBrandAdmin={isBrandAdmin}
+                        onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                     />
                 </div>
             )}

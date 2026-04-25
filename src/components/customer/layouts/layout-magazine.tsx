@@ -45,7 +45,7 @@ interface LayoutMagazineProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 export const LayoutMagazine = memo(function LayoutMagazine({
@@ -190,14 +190,18 @@ export const LayoutMagazine = memo(function LayoutMagazine({
             )}
 
             {/* Search */}
+            {(branding.searchBar.enabled || isBrandAdmin) && (
             <div className="mb-8 max-w-md mx-auto">
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Search the menu..."
                     branding={branding}
+                    isBrandAdmin={isBrandAdmin}
+                    onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                 />
             </div>
+            )}
 
             {/* Category Navigation */}
             {categories.length > 0 && (

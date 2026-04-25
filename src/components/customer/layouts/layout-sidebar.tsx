@@ -41,7 +41,7 @@ interface LayoutSidebarProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 import { useEffect, useState, useRef } from 'react'
@@ -205,14 +205,18 @@ export const LayoutSidebar = memo(function LayoutSidebar({
             {/* Main Content */}
             <div className="flex-1 min-w-0">
                 {/* Search Bar - Sticky on mobile? Optional, but keeping simple for now */}
+                {(branding.searchBar.enabled || isBrandAdmin) && (
                 <div className="mb-6 sticky top-0 z-30 pt-2 bg-white/80 backdrop-blur-md md:static md:bg-transparent md:pt-0">
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search menu..."
                         branding={branding}
+                        isBrandAdmin={isBrandAdmin}
+                        onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                     />
                 </div>
+                )}
 
                 {/* Promotion Banners Carousel */}
                 {showPromotionBanners && (

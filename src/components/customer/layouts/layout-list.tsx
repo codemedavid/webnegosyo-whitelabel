@@ -44,7 +44,7 @@ interface LayoutListProps {
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards') => void
+    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 export const LayoutList = memo(function LayoutList({
@@ -122,14 +122,18 @@ export const LayoutList = memo(function LayoutList({
             )}
 
             {/* Search */}
+            {(branding.searchBar.enabled || isBrandAdmin) && (
             <div className="mb-6">
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Search..."
                     branding={branding}
+                    isBrandAdmin={isBrandAdmin}
+                    onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                 />
             </div>
+            )}
 
             {/* Category Navigation Strip */}
             {categories.length > 0 && (

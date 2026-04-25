@@ -14,7 +14,7 @@ import { HeroRenderer } from '@/components/customer/hero-renderer'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
 interface LayoutDefaultProps {
     tenant: Tenant | null
@@ -167,13 +167,15 @@ export const LayoutDefault = memo(function LayoutDefault({
             )}
 
             {/* Mobile Search */}
-            {!isLoading && (
+            {!isLoading && (branding.searchBar.enabled || isBrandAdmin) && (
                 <div className="mb-8 md:hidden">
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search..."
                         branding={branding}
+                        isBrandAdmin={isBrandAdmin}
+                        onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                     />
                 </div>
             )}
