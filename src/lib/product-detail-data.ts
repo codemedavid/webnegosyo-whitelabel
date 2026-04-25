@@ -58,6 +58,16 @@ export interface SelectedTenant {
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
     convex_deployment_url?: string | null
     convex_schema_version?: number
+    // Search bar branding fields
+    search_bar_enabled?: boolean
+    search_bar_background?: string | null
+    search_bar_text?: string | null
+    search_bar_placeholder?: string | null
+    search_bar_icon?: string | null
+    search_bar_border?: string | null
+    search_bar_focus_ring?: string | null
+    search_bar_radius?: 'pill' | 'rounded' | 'square'
+    search_bar_style?: 'filled' | 'outline' | 'ghost'
     // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
     [key: string]: unknown
 }
@@ -118,7 +128,16 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
                 bundles_enabled,
                 pairing_rules_enabled,
                 convex_deployment_url,
-                convex_schema_version
+                convex_schema_version,
+                search_bar_enabled,
+                search_bar_background,
+                search_bar_text,
+                search_bar_placeholder,
+                search_bar_icon,
+                search_bar_border,
+                search_bar_focus_ring,
+                search_bar_radius,
+                search_bar_style
             `)
             .eq('slug', slug)
             .eq('is_active', true)
