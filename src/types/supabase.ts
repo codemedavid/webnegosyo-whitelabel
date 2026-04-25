@@ -1322,6 +1322,15 @@ export type Database = {
           restaurant_address: string | null
           restaurant_latitude: number | null
           restaurant_longitude: number | null
+          search_bar_background: string | null
+          search_bar_border: string | null
+          search_bar_enabled: boolean
+          search_bar_focus_ring: string | null
+          search_bar_icon: string | null
+          search_bar_placeholder: string | null
+          search_bar_radius: string
+          search_bar_style: string
+          search_bar_text: string | null
           secondary_color: string
           shadow_color: string | null
           slug: string
@@ -1433,6 +1442,15 @@ export type Database = {
           restaurant_address?: string | null
           restaurant_latitude?: number | null
           restaurant_longitude?: number | null
+          search_bar_background?: string | null
+          search_bar_border?: string | null
+          search_bar_enabled?: boolean
+          search_bar_focus_ring?: string | null
+          search_bar_icon?: string | null
+          search_bar_placeholder?: string | null
+          search_bar_radius?: string
+          search_bar_style?: string
+          search_bar_text?: string | null
           secondary_color?: string
           shadow_color?: string | null
           slug: string
@@ -1544,6 +1562,15 @@ export type Database = {
           restaurant_address?: string | null
           restaurant_latitude?: number | null
           restaurant_longitude?: number | null
+          search_bar_background?: string | null
+          search_bar_border?: string | null
+          search_bar_enabled?: boolean
+          search_bar_focus_ring?: string | null
+          search_bar_icon?: string | null
+          search_bar_placeholder?: string | null
+          search_bar_radius?: string
+          search_bar_style?: string
+          search_bar_text?: string | null
           secondary_color?: string
           shadow_color?: string | null
           slug?: string

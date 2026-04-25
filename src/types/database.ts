@@ -42,6 +42,16 @@ export interface Tenant {
   menu_cart_badge_background_color?: string;
   menu_cart_badge_text_color?: string;
   border_color?: string;
+  // Search bar branding
+  search_bar_enabled?: boolean;
+  search_bar_background?: string | null;
+  search_bar_text?: string | null;
+  search_bar_placeholder?: string | null;
+  search_bar_icon?: string | null;
+  search_bar_border?: string | null;
+  search_bar_focus_ring?: string | null;
+  search_bar_radius?: 'pill' | 'rounded' | 'square';
+  search_bar_style?: 'filled' | 'outline' | 'ghost';
   success_color?: string;
   warning_color?: string;
   error_color?: string;
