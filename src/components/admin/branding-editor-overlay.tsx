@@ -13,7 +13,7 @@ import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import { toast } from 'sonner'
 
 type BrandingEditorTab = 'colors' | 'layouts' | 'cards' | 'banners'
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
 interface MenuBrandingEditorOpenDetail {
   section?: MenuBrandingSection
@@ -83,6 +83,16 @@ interface BrandingDraft {
   mobile_grid_columns?: number
   mobile_page_layout?: string | null
   mobile_card_template?: string | null
+  // Search Bar
+  search_bar_enabled?: boolean
+  search_bar_background?: string
+  search_bar_text?: string
+  search_bar_placeholder?: string
+  search_bar_icon?: string
+  search_bar_border?: string
+  search_bar_focus_ring?: string
+  search_bar_radius?: 'pill' | 'rounded' | 'square'
+  search_bar_style?: 'filled' | 'outline' | 'ghost'
   // Banners
   announcement_text?: string
   announcement_bg_color?: string
@@ -161,6 +171,15 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     mobile_grid_columns: tenant.mobile_grid_columns || 1,
     mobile_page_layout: tenant.mobile_page_layout || null,
     mobile_card_template: tenant.mobile_card_template || null,
+    search_bar_enabled: tenant.search_bar_enabled !== false,
+    search_bar_background: tenant.search_bar_background || '',
+    search_bar_text: tenant.search_bar_text || '',
+    search_bar_placeholder: tenant.search_bar_placeholder || '',
+    search_bar_icon: tenant.search_bar_icon || '',
+    search_bar_border: tenant.search_bar_border || '',
+    search_bar_focus_ring: tenant.search_bar_focus_ring || '',
+    search_bar_radius: tenant.search_bar_radius || 'pill',
+    search_bar_style: tenant.search_bar_style || 'filled',
     announcement_text: tenant.announcement_text || '',
     announcement_bg_color: tenant.announcement_bg_color || '#FFF4E5',
     announcement_text_color: tenant.announcement_text_color || '#663C00',
@@ -233,6 +252,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
     cart_badge: 'Cart Badge',
     hero: 'Hero Section',
     menu_cards: 'Menu Cards',
+    search_bar: 'Search Bar',
   }
 
   function renderMenuBrandingSection(section: MenuBrandingSection) {
@@ -295,6 +315,78 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
               <Swatch id="hero_title_color_focused" label="Title Color" value={draft.hero_title_color || ''} onChange={(v) => updateDraft('hero_title_color', v)} compact />
               <Swatch id="hero_description_color_focused" label="Description Color" value={draft.hero_description_color || ''} onChange={(v) => updateDraft('hero_description_color', v)} compact />
             </div>
+          </div>
+        </Section>
+      )
+    }
+
+    if (section === 'search_bar') {
+      return (
+        <Section key={section} title="Search Bar" emoji="🔎">
+          <div className="space-y-3">
+            <label className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+              <span className="text-xs font-medium">Show search bar</span>
+              <input
+                type="checkbox"
+                checked={draft.search_bar_enabled !== false}
+                onChange={(e) => updateDraft('search_bar_enabled', e.target.checked)}
+                className="h-4 w-4"
+              />
+            </label>
+            <div className="grid gap-3 grid-cols-2">
+              <Swatch id="search_bar_background" label="Background" value={draft.search_bar_background || ''} onChange={(v) => updateDraft('search_bar_background', v)} compact />
+              <Swatch id="search_bar_text" label="Text" value={draft.search_bar_text || ''} onChange={(v) => updateDraft('search_bar_text', v)} compact />
+              <Swatch id="search_bar_placeholder" label="Placeholder" value={draft.search_bar_placeholder || ''} onChange={(v) => updateDraft('search_bar_placeholder', v)} compact />
+              <Swatch id="search_bar_icon" label="Icon" value={draft.search_bar_icon || ''} onChange={(v) => updateDraft('search_bar_icon', v)} compact />
+              <Swatch id="search_bar_border" label="Border" value={draft.search_bar_border || ''} onChange={(v) => updateDraft('search_bar_border', v)} compact />
+              <Swatch id="search_bar_focus_ring" label="Focus Ring" value={draft.search_bar_focus_ring || ''} onChange={(v) => updateDraft('search_bar_focus_ring', v)} compact />
+            </div>
+            <div className="grid gap-3 grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="search_bar_radius" className="text-xs">Shape</Label>
+                <select
+                  id="search_bar_radius"
+                  value={draft.search_bar_radius || 'pill'}
+                  onChange={(e) => updateDraft('search_bar_radius', e.target.value as 'pill' | 'rounded' | 'square')}
+                  className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                >
+                  <option value="pill">Pill</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="square">Square</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="search_bar_style" className="text-xs">Style</Label>
+                <select
+                  id="search_bar_style"
+                  value={draft.search_bar_style || 'filled'}
+                  onChange={(e) => updateDraft('search_bar_style', e.target.value as 'filled' | 'outline' | 'ghost')}
+                  className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                >
+                  <option value="filled">Filled</option>
+                  <option value="outline">Outline</option>
+                  <option value="ghost">Ghost</option>
+                </select>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => {
+                updateDraft('search_bar_background', '')
+                updateDraft('search_bar_text', '')
+                updateDraft('search_bar_placeholder', '')
+                updateDraft('search_bar_icon', '')
+                updateDraft('search_bar_border', '')
+                updateDraft('search_bar_focus_ring', '')
+                updateDraft('search_bar_radius', 'pill')
+                updateDraft('search_bar_style', 'filled')
+              }}
+            >
+              Reset to defaults
+            </Button>
           </div>
         </Section>
       )
@@ -399,7 +491,7 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
               ) : (
                 <>
               {(
-                ['main_header', 'category_navigation', 'category_header', 'cart_badge', 'hero', 'menu_cards'] as MenuBrandingSection[]
+                ['main_header', 'category_navigation', 'category_header', 'cart_badge', 'hero', 'search_bar', 'menu_cards'] as MenuBrandingSection[]
               ).map((section) => renderMenuBrandingSection(section))}
 
               {/* Core Brand Colors */}
