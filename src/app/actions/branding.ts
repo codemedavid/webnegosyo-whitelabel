@@ -67,6 +67,16 @@ const brandingSchema = z.object({
     menu_category_inactive_color: cssColorString().optional().or(z.literal('')),
     menu_cart_badge_background_color: cssColorString().optional().or(z.literal('')),
     menu_cart_badge_text_color: cssColorString().optional().or(z.literal('')),
+    // Search bar
+    search_bar_enabled: z.boolean().optional(),
+    search_bar_background: cssColorString().optional().or(z.literal('')),
+    search_bar_text: cssColorString().optional().or(z.literal('')),
+    search_bar_placeholder: cssColorString().optional().or(z.literal('')),
+    search_bar_icon: cssColorString().optional().or(z.literal('')),
+    search_bar_border: cssColorString().optional().or(z.literal('')),
+    search_bar_focus_ring: cssColorString().optional().or(z.literal('')),
+    search_bar_radius: z.enum(['pill', 'rounded', 'square']).optional(),
+    search_bar_style: z.enum(['filled', 'outline', 'ghost']).optional(),
     border_color: cssColorString().optional().or(z.literal('')),
     // Utility colors
     success_color: cssColorString().optional().or(z.literal('')),
