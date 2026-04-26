@@ -19,6 +19,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "com.webnegosyo.admin",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSBluetoothAlwaysUsageDescription:
+        "Used to connect to your thermal receipt printer over Bluetooth.",
+      NSBluetoothPeripheralUsageDescription:
+        "Used to connect to your thermal receipt printer over Bluetooth.",
+      NSLocalNetworkUsageDescription:
+        "Used to connect to network thermal printers on your local network.",
     },
   },
   android: {

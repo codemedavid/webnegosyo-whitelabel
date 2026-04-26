@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
@@ -100,6 +100,7 @@ export default function DashboardScreen() {
 
   const displayStats = period === "today" ? stats : periodStats;
   const isStatsLoading = period === "today" ? isLoading : periodLoading;
+  const showPrinterSettings = Platform.OS !== "ios";
 
   // Alert on new pending orders
   useOrderAlerts({ orders: queue?.pending, enabled: !!convexUrl });
@@ -125,13 +126,15 @@ export default function DashboardScreen() {
             <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={() => router.push("/(main)/printer-settings")}
-              style={styles.printerButton}
-            >
-              <Text style={{ fontSize: 20 }}>🖨</Text>
-              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-            </TouchableOpacity>
+            {showPrinterSettings && (
+              <TouchableOpacity
+                onPress={() => router.push("/(main)/printer-settings")}
+                style={styles.printerButton}
+              >
+                <Text style={{ fontSize: 20 }}>🖨</Text>
+                <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
               <Text style={styles.logoutText}>Sign Out</Text>
             </TouchableOpacity>
@@ -164,13 +167,15 @@ export default function DashboardScreen() {
           <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={() => router.push("/(main)/printer-settings")}
-            style={styles.printerButton}
-          >
-            <Text style={{ fontSize: 20 }}>🖨</Text>
-            <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-          </TouchableOpacity>
+          {showPrinterSettings && (
+            <TouchableOpacity
+              onPress={() => router.push("/(main)/printer-settings")}
+              style={styles.printerButton}
+            >
+              <Text style={{ fontSize: 20 }}>🖨</Text>
+              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.logoutText}>Sign Out</Text>
           </TouchableOpacity>
