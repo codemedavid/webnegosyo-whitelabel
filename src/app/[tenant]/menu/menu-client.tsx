@@ -30,7 +30,7 @@ interface MenuClientProps {
   error: string | null
 }
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards'
+type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
 interface AdminEditPencilProps {
   visible: boolean
