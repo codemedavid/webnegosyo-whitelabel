@@ -230,15 +230,18 @@ export const getDashboardStats = query({
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    // Server-side filter: only fetch today's orders instead of loading all
     const todayOrders = await ctx.db
       .query("orders")
       .filter((q) => q.gte(q.field("_creationTime"), todayStart))
       .order("desc")
       .take(QUERY_LIMIT);
 
-    const totalRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = todayOrders.length > 0 ? totalRevenue / todayOrders.length : 0;
+    // Revenue and order-count metrics exclude cancelled orders so cancellations
+    // immediately propagate to the dashboard. Status counts still include them
+    // so the merchant can see the cancellation breakdown.
+    const completedOrders = todayOrders.filter((o) => o.status !== "cancelled");
+    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
+    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
 
     const statusCounts: Record<string, number> = {
       pending: 0,
@@ -254,7 +257,7 @@ export const getDashboardStats = query({
     }
 
     return {
-      totalOrders: todayOrders.length,
+      totalOrders: completedOrders.length,
       totalRevenue,
       avgOrderValue,
       statusCounts,
@@ -268,7 +271,6 @@ export const getDashboardStatsByPeriod = query({
     endDate: v.number(),
   },
   handler: async (ctx, args) => {
-    // Server-side filter: push date range filtering into the query
     const filtered = await ctx.db
       .query("orders")
       .filter((q) =>
@@ -280,8 +282,9 @@ export const getDashboardStatsByPeriod = query({
       .order("desc")
       .take(QUERY_LIMIT);
 
-    const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = filtered.length > 0 ? totalRevenue / filtered.length : 0;
+    const completedOrders = filtered.filter((o) => o.status !== "cancelled");
+    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
+    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
 
     const statusCounts: Record<string, number> = {
       pending: 0,
@@ -297,7 +300,7 @@ export const getDashboardStatsByPeriod = query({
     }
 
     return {
-      totalOrders: filtered.length,
+      totalOrders: completedOrders.length,
       totalRevenue,
       avgOrderValue,
       statusCounts,

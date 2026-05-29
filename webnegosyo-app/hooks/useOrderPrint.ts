@@ -41,8 +41,11 @@ export function useOrderPrint() {
       setIsPrinting(true);
       try {
         const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
-        const printed = await printReceipt(receipt);
-        return printed;
+        const result = await printReceipt(receipt);
+        if (!result.success) {
+          console.warn("[useOrderPrint] Print failed:", result.error);
+        }
+        return result.success;
       } catch (err: unknown) {
         console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
         return false;

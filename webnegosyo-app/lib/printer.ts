@@ -2,19 +2,18 @@ import { Platform, PermissionsAndroid } from "react-native";
 import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
 
-// ESC/POS commands for text formatting
+// ESC/POS commands for text formatting.
+// Note: init/feed/cut are handled by the library's printBill (EPToolkit) so we
+// don't need to inject those bytes manually into the receipt text.
 const ESC = "\x1B";
 const GS = "\x1D";
 const COMMANDS = {
-  INIT: `${ESC}@`,           // Initialize printer
   ALIGN_CENTER: `${ESC}a1`,
   ALIGN_LEFT: `${ESC}a0`,
   BOLD_ON: `${ESC}E1`,
   BOLD_OFF: `${ESC}E0`,
-  DOUBLE_HEIGHT: `${GS}!0x10`,
-  NORMAL_SIZE: `${GS}!0x00`,
-  CUT: `${GS}VA`,            // Full cut
-  FEED: `${ESC}d\x03`,       // Feed 3 lines
+  DOUBLE_HEIGHT: `${GS}!\x10`,
+  NORMAL_SIZE: `${GS}!\x00`,
 };
 
 /** Structured result for printer operations — callers handle UI */
@@ -200,36 +199,73 @@ export async function disconnectPrinter(): Promise<void> {
   usePrinterStore.getState().setConnected(false);
 }
 
-export async function printReceipt(receiptText: string): Promise<boolean> {
+/**
+ * Wrap the library's fire-and-forget printBill in a real Promise.
+ * The library's printText/printBill returns void and only delivers errors via
+ * the onError callback — without this wrapper, failures are silent and
+ * `await` resolves immediately on success/failure alike.
+ */
+function printBillAsync(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  printerInstance: any,
+  text: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    try {
+      printerInstance.printBill(text, {
+        beep: false,
+        cut: true,
+        tailingLine: true,
+        encoding: "UTF8",
+        onError: (err: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(err instanceof Error ? err : new Error(String(err)));
+        },
+      });
+    } catch (err: unknown) {
+      if (settled) return;
+      settled = true;
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    // printBill is fire-and-forget; if no onError fires within a short window
+    // we treat it as success. The library doesn't expose a success callback.
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }, 1500);
+  });
+}
+
+export async function printReceipt(receiptText: string): Promise<PrinterResult> {
   const mod = getPrinterModule();
-  if (!mod) return false;
+  if (!mod) return { success: false, error: NOT_AVAILABLE_MSG };
 
   const { printer, isConnected } = usePrinterStore.getState();
-  if (!printer) return false;
+  if (!printer) return { success: false, error: "No printer configured." };
+
+  // Reconnect if needed
+  if (!isConnected) {
+    const result = await connectPrinter(printer.type, printer.address);
+    if (!result.success) return result;
+  }
 
   try {
-    // Reconnect if needed
-    if (!isConnected) {
-      const result = await connectPrinter(printer.type, printer.address);
-      if (!result.success) return false;
-    }
-
-    // Send text with ESC/POS formatting
-    const data = COMMANDS.INIT + receiptText + COMMANDS.FEED + COMMANDS.CUT;
-    if (printer.type === "bluetooth") {
-      await mod.BLEPrinter.printText(data);
-    } else {
-      await mod.NetPrinter.printText(data);
-    }
-    return true;
+    const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
+    await printBillAsync(instance, receiptText);
+    return { success: true };
   } catch (err: unknown) {
-    console.warn("Print failed:", err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("Print failed:", message);
     usePrinterStore.getState().setConnected(false);
-    return false;
+    return { success: false, error: message || "Print failed" };
   }
 }
 
-export async function printTestPage(): Promise<boolean> {
+export async function printTestPage(): Promise<PrinterResult> {
   const testReceipt = [
     "================================",
     "        PRINTER TEST PAGE       ",

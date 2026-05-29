@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
             }, { status: 500 })
         }
 
-        // Call NVIDIA GPT-OSS 120B API with streaming to avoid timeout
+        // Call NVIDIA Llama 3.1 70B API with streaming to avoid timeout
         const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -143,15 +143,15 @@ export async function POST(request: NextRequest) {
                 'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: 'openai/gpt-oss-120b',
+                model: 'meta/llama-3.1-70b-instruct',
                 messages: [
                     { role: 'system', content: SYSTEM_PROMPT },
                     { role: 'user', content: `Parse the following menu text into structured JSON:\n\n${menuText}` }
                 ],
-                temperature: 0.3, // Lower temperature for more consistent structured output
-                top_p: 0.9,
-                max_tokens: 8192,
-                stream: true, // Enable streaming to avoid timeout
+                temperature: 0.2,
+                top_p: 0.7,
+                max_tokens: 1024,
+                stream: true,
             }),
         })
 

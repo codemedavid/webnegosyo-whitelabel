@@ -86,10 +86,12 @@ export default function PrinterSettingsScreen() {
 
   const handleTestPrint = async () => {
     setTesting(true);
-    const success = await printTestPage();
+    const result = await printTestPage();
     setTesting(false);
-    if (!success) {
-      Alert.alert("Test Failed", "Could not print test page. Check printer connection.");
+    if (!result.success) {
+      Alert.alert("Test Failed", result.error ?? "Could not print test page. Check printer connection.");
+    } else {
+      Alert.alert("Test Sent", "Test data was sent to the printer. If nothing came out, the printer may not be ESC/POS compatible (e.g. Niimbot uses its own protocol).");
     }
   };
 

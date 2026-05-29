@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@haroldtran/react-native-thermal-printer": "^1.1.1",
@@ -24,6 +25,7 @@
     "expo-router": "~6.0.23",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.16",
+    "patch-package": "^8.0.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "^0.81.5",

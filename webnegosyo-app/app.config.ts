@@ -20,11 +20,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
-        "Used to connect to your thermal receipt printer over Bluetooth.",
+        "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",
       NSBluetoothPeripheralUsageDescription:
-        "Used to connect to your thermal receipt printer over Bluetooth.",
+        "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",
       NSLocalNetworkUsageDescription:
-        "Used to connect to network thermal printers on your local network.",
+        "This app uses your local network to connect to network thermal receipt printers for printing customer orders.",
     },
   },
   android: {
