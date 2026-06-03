@@ -19,6 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "com.webnegosyo.admin",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription: "Scan customer order QR codes",
       NSBluetoothAlwaysUsageDescription:
         "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",
       NSBluetoothPeripheralUsageDescription:
@@ -51,6 +52,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-audio",
+    [
+      "expo-camera",
+      {
+        cameraPermission: "Scan customer order QR codes",
+        recordAudioAndroid: false,
+      },
+    ],
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",

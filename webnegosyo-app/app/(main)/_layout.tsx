@@ -52,6 +52,17 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="product-analytics"
+        options={{
+          tabBarLabel: "Products",
+          tabBarIcon: ({ color }) => <TabIcon symbol="▤" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="scan"
+        options={{ href: null, title: "Scan QR" }}
+      />
+      <Tabs.Screen
         name="order/[orderId]"
         options={{ href: null, title: "Order Detail" }}
       />

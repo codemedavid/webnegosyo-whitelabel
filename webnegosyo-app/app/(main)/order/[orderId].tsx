@@ -9,6 +9,8 @@ import { Badge } from "../../../components/Badge";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
+import { useAuthStore } from "../../../stores/auth-store";
+import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -292,6 +294,10 @@ export default function OrderDetailScreen() {
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
     try {
       // When confirming with auto-print enabled, attempt print BEFORE updating status
       if (newStatus === "confirmed" && autoPrint && hasPrinter) {

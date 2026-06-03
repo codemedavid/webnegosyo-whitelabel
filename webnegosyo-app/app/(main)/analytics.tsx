@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { formatPeso } from "../../lib/format";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
@@ -77,23 +78,39 @@ const BAR_COLORS = ["#6366F1", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#06B
 
 export default function AnalyticsScreen() {
   const [daysBack, setDaysBack] = useState(7);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const { data: upsellStats, error: upsellError } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
   const { data: bundleStats, error: bundleError } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
   const { data: topItems, error: topItemsError } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
   const { data: revenueBreakdown, error: revenueError } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { daysBack });
   const { data: upsellTrends, error: trendsError } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
-  const { data: heatmapData, error: heatmapError } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
-  const { data: customerInsights, error: customerError } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
+  const { data: customerInsights, error: customerError, isMissingFunction: customerMissing } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
 
   // Only include existing query errors in the global error banner.
   // New analytics queries degrade gracefully (sections hide when not deployed).
   const error = upsellError || bundleError || topItemsError || revenueError || trendsError;
 
+  // When a section is empty because the tenant's Convex deployment predates that
+  // function (stale bundle), tell the merchant instead of silently hiding it.
+  const anyMissing = salesMissing || paymentMissing || heatmapMissing || customerMissing;
+
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    >
       <Text style={styles.title}>Analytics</Text>
 
       <View style={styles.periodRow}>
@@ -111,6 +128,14 @@ export default function AnalyticsScreen() {
 
       {error && <ErrorState message={error} />}
 
+      {anyMissing && (
+        <View style={styles.missingBanner}>
+          <Text style={styles.missingBannerText}>
+            Some reports need a backend update. Ask support to redeploy this store, then pull to refresh.
+          </Text>
+        </View>
+      )}
+
       {/* Sales Overview — hidden if query not deployed */}
       {!salesError && (
         <Card title="Sales Overview" style={styles.section}>
@@ -119,12 +144,12 @@ export default function AnalyticsScreen() {
           ) : (
             <>
               <View style={styles.salesHeadline}>
-                <Text style={styles.headlineValue}>₱{salesAnalytics.totalRevenue.toFixed(0)}</Text>
+                <Text style={styles.headlineValue}>{formatPeso(salesAnalytics.totalRevenue, 0)}</Text>
                 <GrowthIndicator value={salesAnalytics.revenueGrowth} />
               </View>
               <View style={styles.metricsRow}>
                 <StatCard value={salesAnalytics.totalOrders} label="Orders" />
-                <StatCard value={`₱${salesAnalytics.avgOrderValue.toFixed(0)}`} label="Avg Order" />
+                <StatCard value={formatPeso(salesAnalytics.avgOrderValue, 0)} label="Avg Order" />
               </View>
               <View style={styles.metricsRow}>
                 <StatCard value={salesAnalytics.cancelledOrders} label="Cancelled" />
@@ -210,7 +235,7 @@ export default function AnalyticsScreen() {
               <View style={styles.metricsRow}>
                 <StatCard value={`${(customerInsights.returnRate * 100).toFixed(0)}%`} label="Return Rate" />
                 <StatCard value={customerInsights.avgOrdersPerCustomer.toFixed(1)} label="Avg Orders" />
-                <StatCard value={`₱${customerInsights.avgRevenuePerCustomer.toFixed(0)}`} label="Avg Spend" />
+                <StatCard value={formatPeso(customerInsights.avgRevenuePerCustomer, 0)} label="Avg Spend" />
               </View>
 
               {customerInsights.topCustomers.length > 0 && (
@@ -240,7 +265,7 @@ export default function AnalyticsScreen() {
           <>
             {upsellTrends && (
               <View style={styles.upsellHeadline}>
-                <Text style={styles.headlineValue}>₱{upsellTrends.totalUpsellRevenue.toFixed(0)}</Text>
+                <Text style={styles.headlineValue}>{formatPeso(upsellTrends.totalUpsellRevenue, 0)}</Text>
                 <Text style={styles.headlineLabel}>Upsell Revenue</Text>
               </View>
             )}
@@ -364,7 +389,7 @@ export default function AnalyticsScreen() {
                 <View style={styles.topItemInfo}>
                   <View style={styles.topItemHeader}>
                     <Text style={styles.topItemName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.topItemRevenue}>₱{item.revenue.toFixed(0)}</Text>
+                    <Text style={styles.topItemRevenue}>{formatPeso(item.revenue, 0)}</Text>
                   </View>
                   <View style={styles.barTrack}>
                     <View style={[styles.barFill, { width: `${barWidthPct}%` }]} />
@@ -484,6 +509,13 @@ const styles = StyleSheet.create({
   periodText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
   periodTextActive: { color: "#FFFFFF" },
   section: { marginBottom: spacing.lg },
+  missingBanner: {
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  missingBannerText: { ...typography.caption, color: colors.statusPending.text },
   upsellHeadline: { alignItems: "center", marginBottom: spacing.md },
   headlineValue: { fontSize: 28, fontWeight: "700", color: colors.primary },
   headlineLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },

@@ -1,14 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router } from "expo-router";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
+import { formatPeso } from "../../lib/format";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Badge } from "../../components/Badge";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
+import { useAuthStore } from "../../stores/auth-store";
+import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -53,11 +56,22 @@ function timeAgo(timestamp: number): string {
 
 export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
+  const [refreshing, setRefreshing] = useState(false);
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, filter === "all" ? {} : { status: filter });
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { autoPrint, hasPrinter } = useOrderPrint();
 
+  // Orders stream in live via Convex; pull-to-refresh just acknowledges the gesture.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
+
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
     try {
       await updateStatus({ orderId, status: newStatus });
       if (newStatus === "confirmed" && autoPrint && hasPrinter) {
@@ -72,6 +86,13 @@ export default function OrdersScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.title}>Orders</Text>
+        <TouchableOpacity
+          onPress={() => router.push("/(main)/scan")}
+          style={styles.scanButton}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -98,7 +119,7 @@ export default function OrdersScreen() {
         style={styles.list}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={false} onRefresh={() => {}} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {error ? (
@@ -124,7 +145,7 @@ export default function OrdersScreen() {
                     <Text style={styles.orderContact}>{order.customerContact}</Text>
                   </View>
                   <View style={styles.orderRight}>
-                    <Text style={styles.orderTotal}>₱{order.total.toFixed(2)}</Text>
+                    <Text style={styles.orderTotal}>{formatPeso(order.total)}</Text>
                     <Badge label={order.status} variant={order.status} />
                   </View>
                 </View>
@@ -149,11 +170,18 @@ export default function OrdersScreen() {
 
                 {order.status !== "delivered" && order.status !== "cancelled" && (
                   <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Cancel order for ${order.customerName}`}
                     onPress={() => {
-                      Alert.alert("Cancel Order", "Are you sure?", [
-                        { text: "No" },
-                        { text: "Yes", onPress: () => handleUpdateStatus(order._id, "cancelled"), style: "destructive" },
-                      ]);
+                      Alert.alert(
+                        "Cancel this order?",
+                        "It will be removed from the active queue and excluded from revenue.",
+                        [
+                          { text: "Keep Order", style: "cancel" },
+                          { text: "Cancel Order", onPress: () => handleUpdateStatus(order._id, "cancelled"), style: "destructive" },
+                        ]
+                      );
                     }}
                   >
                     <Text style={styles.cancelText}>Cancel Order</Text>
@@ -170,8 +198,22 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: spacing.xl,
+    paddingTop: 60,
+    paddingBottom: spacing.md,
+  },
   title: { ...typography.title, color: colors.textPrimary },
+  scanButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  scanButtonText: { ...typography.caption, color: "#FFFFFF", fontWeight: "600" },
   filterScroll: { maxHeight: 44 },
   filterContent: { paddingHorizontal: spacing.xl, gap: spacing.sm },
   filterPill: {

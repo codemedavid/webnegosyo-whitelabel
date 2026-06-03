@@ -105,6 +105,8 @@ function usePushNotifications() {
       } catch (e) {
         console.warn("Failed to register push token:", e);
       }
+    }).catch((e) => {
+      console.warn("Push notification registration failed:", e);
     });
   }, [isAuthenticated, convexUrl]);
 }

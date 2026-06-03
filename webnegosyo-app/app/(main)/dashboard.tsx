@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { formatPeso } from "../../lib/format";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
 import { supabase } from "../../lib/supabase";
@@ -85,11 +86,21 @@ function getGreeting(): string {
 export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const isDemo = useAuthStore((s) => s.isDemo);
   const clear = useAuthStore((s) => s.clear);
   const { isConnected, loadSaved } = usePrinterStore();
 
   const [period, setPeriod] = useState("today");
   const dateRange = useMemo(() => getDateRange(period), [period]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Convex queries are reactive (they update on their own), but merchants expect
+  // pull-to-refresh to do *something* — show a brief spinner so the gesture is
+  // acknowledged. The green "Live" dot communicates that data updates automatically.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const { data: stats, isLoading, error: statsError } = useSafeQuery<DashboardStats>(getDashboardStatsRef);
   const { data: periodStats, isLoading: periodLoading } = useSafeQuery<DashboardStats>(
@@ -158,15 +169,26 @@ export default function DashboardScreen() {
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={false} onRefresh={() => {}} tintColor={colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
+          <View style={styles.liveRow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>Live · updates automatically</Text>
+          </View>
         </View>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/scan")}
+            style={styles.scanButton}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
+          </TouchableOpacity>
           {showPrinterSettings && (
             <TouchableOpacity
               onPress={() => router.push("/(main)/printer-settings")}
@@ -182,6 +204,16 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {isDemo && (
+        <View style={styles.demoBanner}>
+          <Text style={styles.demoBannerTitle}>You&apos;re viewing a demo store</Text>
+          <Text style={styles.demoBannerBody}>
+            Browse real-time orders and analytics with sample data. To manage
+            your own store, sign out and tap &quot;Create your store.&quot;
+          </Text>
+        </View>
+      )}
+
       {isStatsLoading ? (
         <LoadingState message="Loading dashboard..." />
       ) : (
@@ -189,11 +221,11 @@ export default function DashboardScreen() {
           <PeriodSelector periods={DASHBOARD_PERIODS} selected={period} onSelect={setPeriod} />
           <View style={styles.statsRow}>
             <StatCard value={displayStats?.totalOrders ?? 0} label={period === "today" ? "Orders Today" : "Total Orders"} />
-            <StatCard value={`₱${(displayStats?.totalRevenue ?? 0).toFixed(0)}`} label="Revenue" />
+            <StatCard value={formatPeso(displayStats?.totalRevenue ?? 0, 0)} label="Revenue" />
           </View>
           <View style={styles.statsRow}>
-            <StatCard value={`₱${(displayStats?.avgOrderValue ?? 0).toFixed(0)}`} label="Avg Order" />
-            <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Orders" />
+            <StatCard value={formatPeso(displayStats?.avgOrderValue ?? 0, 0)} label="Avg Order" />
+            <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Now" />
           </View>
 
           <Text style={styles.sectionTitle}>Order Queue</Text>
@@ -224,7 +256,7 @@ export default function DashboardScreen() {
               >
                 <View style={styles.orderHeader}>
                   <Text style={styles.orderName}>{order.customerName}</Text>
-                  <Text style={styles.orderTotal}>₱{order.total.toFixed(2)}</Text>
+                  <Text style={styles.orderTotal}>{formatPeso(order.total)}</Text>
                 </View>
                 <View style={styles.orderMeta}>
                   <Text style={styles.orderMetaText}>
@@ -247,8 +279,19 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.xxl },
   greeting: { ...typography.body, color: colors.textSecondary },
   tenantName: { ...typography.title, color: colors.textPrimary, marginTop: 2 },
+  liveRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+  liveText: { ...typography.small, color: colors.textTertiary },
   logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   logoutText: { ...typography.body, color: colors.danger, fontWeight: "500" },
+  demoBanner: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  demoBannerTitle: { ...typography.body, color: colors.primary, fontWeight: "700" },
+  demoBannerBody: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   statsRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
   sectionTitle: { ...typography.heading, color: colors.textPrimary, marginTop: spacing.xl, marginBottom: spacing.md },
   queueRow: { flexDirection: "row", gap: spacing.sm },
@@ -262,6 +305,13 @@ const styles = StyleSheet.create({
   orderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
   orderMetaText: { ...typography.caption, color: colors.textSecondary },
   headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  scanButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  scanButtonText: { ...typography.caption, color: "#FFFFFF", fontWeight: "600" },
   printerButton: { position: "relative", padding: spacing.sm },
   printerDot: { position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4 },
 });

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
-import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
+import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
+import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
@@ -50,24 +51,38 @@ function BarChart({ data, valueKey, color, label }: {
 
   const values = data.map((d) => Number(d[valueKey]) || 0);
   const maxVal = Math.max(...values, 1);
-  const barWidth = Math.max(((SCREEN_WIDTH - 100) / data.length) - 4, 6);
+  const isMoney = valueKey !== "totalOrders";
+  // Past ~10 bars the chart no longer fits the screen width, so switch to a
+  // fixed-width scrollable strip with legible bars/labels instead of cramming.
+  const scroll = data.length > 10;
+  const barWidth = scroll ? 24 : Math.max(((SCREEN_WIDTH - 100) / data.length) - 6, 14);
+
+  const bars = (
+    <View style={[styles.barsContainer, scroll && styles.barsContainerScroll]}>
+      {data.map((d, i) => {
+        const height = values[i] > 0 ? Math.max((values[i] / maxVal) * 100, 4) : 0;
+        return (
+          <View key={d.date} style={[styles.barWrapper, { width: barWidth + 8 }]}>
+            <Text style={styles.barValue} numberOfLines={1}>
+              {isMoney ? formatPesoCompact(values[i]) : formatCount(values[i])}
+            </Text>
+            <View style={[styles.bar, { height, backgroundColor: color, width: barWidth }]} />
+            <Text style={styles.barLabel}>{d.date.slice(5)}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
 
   return (
     <Card title={label} style={styles.chartCard}>
-      <View style={styles.barsContainer}>
-        {data.map((d, i) => {
-          const height = (values[i] / maxVal) * 100;
-          return (
-            <View key={d.date} style={styles.barWrapper}>
-              <Text style={styles.barValue}>
-                {valueKey === "totalRevenue" ? `₱${values[i].toFixed(0)}` : values[i].toString()}
-              </Text>
-              <View style={[styles.bar, { height, backgroundColor: color, width: barWidth }]} />
-              <Text style={styles.barLabel}>{d.date.slice(5)}</Text>
-            </View>
-          );
-        })}
-      </View>
+      {scroll ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {bars}
+        </ScrollView>
+      ) : (
+        bars
+      )}
     </Card>
   );
 }
@@ -150,12 +165,26 @@ const stackStyles = StyleSheet.create({
 
 export default function TrendsScreen() {
   const [daysBack, setDaysBack] = useState(14);
-  const { data: trends, isLoading, error } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  const { data: trends, isLoading, error, isMissingFunction: trendsMissing } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+
+  const anyMissing = trendsMissing || salesMissing || paymentMissing;
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    >
       <Text style={styles.title}>Trends</Text>
 
       <View style={styles.periodRow}>
@@ -171,78 +200,89 @@ export default function TrendsScreen() {
         ))}
       </View>
 
-      {error ? (
-        <ErrorState message={error} />
-      ) : isLoading ? (
+      {anyMissing && (
+        <View style={bannerStyles.banner}>
+          <Text style={bannerStyles.text}>
+            Some reports need a backend update. Ask support to redeploy this store, then pull to refresh.
+          </Text>
+        </View>
+      )}
+
+      {/* Daily trend charts — computed live from orders, so they react to
+          cancellations and show today immediately. */}
+      {isLoading ? (
         <LoadingState message="Loading trends..." />
+      ) : error && !trendsMissing ? (
+        <ErrorState message={error} />
       ) : (trends ?? []).length === 0 ? (
-        <EmptyState message="No trend data yet. Data appears after daily stats are aggregated." />
+        <EmptyState message="No orders in this period yet." />
       ) : (
         <>
           <View style={styles.summaryRow}>
             <StatCard value={(trends ?? []).reduce((s, d) => s + d.totalOrders, 0)} label="Total Orders" />
-            <StatCard value={`₱${(trends ?? []).reduce((s, d) => s + d.totalRevenue, 0).toFixed(0)}`} label="Total Revenue" />
+            <StatCard value={formatPeso((trends ?? []).reduce((s, d) => s + d.totalRevenue, 0))} label="Total Revenue" />
           </View>
 
           <BarChart data={trends ?? []} valueKey="totalRevenue" color={colors.primary} label="Daily Revenue" />
           <BarChart data={trends ?? []} valueKey="totalOrders" color={colors.success} label="Daily Orders" />
           <BarChart data={trends ?? []} valueKey="avgOrderValue" color={colors.warning} label="Avg Order Value" />
-
-          {/* Orders by Source — hidden if query not deployed */}
-          {!salesError && salesAnalytics && (
-            <Card title="Orders by Source" style={styles.chartCard}>
-              <View style={sourceStyles.container}>
-                <View style={sourceStyles.barRow}>
-                  <Text style={sourceStyles.label}>Web</Text>
-                  <View style={sourceStyles.barTrack}>
-                    <View style={[sourceStyles.barFill, {
-                      width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.web / salesAnalytics.totalOrders) * 100 : 0}%`,
-                      backgroundColor: colors.primary,
-                    }]} />
-                  </View>
-                  <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.web}</Text>
-                </View>
-                <View style={sourceStyles.barRow}>
-                  <Text style={sourceStyles.label}>App</Text>
-                  <View style={sourceStyles.barTrack}>
-                    <View style={[sourceStyles.barFill, {
-                      width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.mobile / salesAnalytics.totalOrders) * 100 : 0}%`,
-                      backgroundColor: colors.success,
-                    }]} />
-                  </View>
-                  <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.mobile}</Text>
-                </View>
-              </View>
-            </Card>
-          )}
-
-          {/* Payment Trends — hidden if query not deployed */}
-          {!paymentError && paymentAnalytics && paymentAnalytics.dailyBreakdown.length > 0 && (
-            <StackedBarChart data={paymentAnalytics.dailyBreakdown} label="Payment Trends" />
-          )}
-
-          {/* Cancellation Summary — hidden if query not deployed */}
-          {!salesError && salesAnalytics && salesAnalytics.cancelledOrders > 0 && (
-            <Card title="Cancellations" style={styles.chartCard}>
-              <View style={cancelStyles.row}>
-                <View style={cancelStyles.metric}>
-                  <Text style={cancelStyles.value}>{salesAnalytics.cancelledOrders}</Text>
-                  <Text style={cancelStyles.label}>Cancelled</Text>
-                </View>
-                <View style={cancelStyles.metric}>
-                  <Text style={cancelStyles.value}>₱{salesAnalytics.cancelledRevenue.toFixed(0)}</Text>
-                  <Text style={cancelStyles.label}>Lost Revenue</Text>
-                </View>
-                <View style={cancelStyles.metric}>
-                  <Text style={[cancelStyles.value, { color: colors.danger }]}>
-                    {(salesAnalytics.cancellationRate * 100).toFixed(1)}%
-                  </Text>
-                  <Text style={cancelStyles.label}>Cancel Rate</Text>
-                </View>
-              </View>
-            </Card>
-          )}
         </>
+      )}
+
+      {/* Live cards below render independently of the trend series so they
+          never disappear just because there are no daily bars yet. */}
+      {!salesError && salesAnalytics && (
+        <Card title="Orders by Source" style={styles.chartCard}>
+          <View style={sourceStyles.container}>
+            <View style={sourceStyles.barRow}>
+              <Text style={sourceStyles.label}>Web</Text>
+              <View style={sourceStyles.barTrack}>
+                <View style={[sourceStyles.barFill, {
+                  width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.web / salesAnalytics.totalOrders) * 100 : 0}%`,
+                  backgroundColor: colors.primary,
+                }]} />
+              </View>
+              <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.web}</Text>
+            </View>
+            <View style={sourceStyles.barRow}>
+              <Text style={sourceStyles.label}>App</Text>
+              <View style={sourceStyles.barTrack}>
+                <View style={[sourceStyles.barFill, {
+                  width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.mobile / salesAnalytics.totalOrders) * 100 : 0}%`,
+                  backgroundColor: colors.success,
+                }]} />
+              </View>
+              <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.mobile}</Text>
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {/* Payment Trends — hidden if query not deployed */}
+      {!paymentError && paymentAnalytics && paymentAnalytics.dailyBreakdown.length > 0 && (
+        <StackedBarChart data={paymentAnalytics.dailyBreakdown} label="Payment Trends" />
+      )}
+
+      {/* Cancellation Summary — hidden if query not deployed */}
+      {!salesError && salesAnalytics && salesAnalytics.cancelledOrders > 0 && (
+        <Card title="Cancellations" style={styles.chartCard}>
+          <View style={cancelStyles.row}>
+            <View style={cancelStyles.metric}>
+              <Text style={cancelStyles.value}>{salesAnalytics.cancelledOrders}</Text>
+              <Text style={cancelStyles.label}>Cancelled</Text>
+            </View>
+            <View style={cancelStyles.metric}>
+              <Text style={cancelStyles.value}>{formatPeso(salesAnalytics.cancelledRevenue)}</Text>
+              <Text style={cancelStyles.label}>Lost Revenue</Text>
+            </View>
+            <View style={cancelStyles.metric}>
+              <Text style={[cancelStyles.value, { color: colors.danger }]}>
+                {(salesAnalytics.cancellationRate * 100).toFixed(1)}%
+              </Text>
+              <Text style={cancelStyles.label}>Cancel Rate</Text>
+            </View>
+          </View>
+        </Card>
       )}
     </ScrollView>
   );
@@ -267,10 +307,21 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg },
   chartCard: { marginBottom: spacing.lg },
   barsContainer: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 3, height: 140, paddingTop: spacing.sm },
+  barsContainerScroll: { justifyContent: "flex-start" },
   barWrapper: { alignItems: "center" },
   bar: { borderRadius: 3, minHeight: 2 },
-  barValue: { fontSize: 7, color: colors.textTertiary, marginBottom: 3, textAlign: "center" },
-  barLabel: { fontSize: 7, color: colors.textTertiary, marginTop: 3, textAlign: "center" },
+  barValue: { fontSize: 9, color: colors.textTertiary, marginBottom: 3, textAlign: "center" },
+  barLabel: { fontSize: 9, color: colors.textTertiary, marginTop: 3, textAlign: "center" },
+});
+
+const bannerStyles = StyleSheet.create({
+  banner: {
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  text: { ...typography.caption, color: colors.statusPending.text },
 });
 
 const sourceStyles = StyleSheet.create({

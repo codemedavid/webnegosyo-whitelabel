@@ -10,9 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
+import { DEMO_STORE } from "../../lib/demo";
 import { colors, typography, radius, spacing } from "../../theme/colors";
 
 export default function LoginScreen() {
@@ -20,6 +21,22 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  const handleExploreDemo = () => {
+    // No credentials needed — Convex reads are public. Marks the session
+    // read-only so a guest can browse without altering real data.
+    setAuth({
+      userId: null,
+      tenantId: DEMO_STORE.tenantId,
+      tenantSlug: DEMO_STORE.tenantSlug,
+      tenantName: DEMO_STORE.tenantName,
+      convexUrl: DEMO_STORE.convexUrl,
+      isLoading: false,
+      isAuthenticated: true,
+      isDemo: true,
+    });
+    router.replace("/(main)/dashboard");
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -90,7 +107,9 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>WebNegosyo</Text>
-          <Text style={styles.subtitle}>Admin Dashboard</Text>
+          <Text style={styles.subtitle}>
+            Run your store from anywhere — for any food or retail business
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -130,6 +149,35 @@ export default function LoginScreen() {
               <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handleExploreDemo}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.secondaryButtonText}>
+              Explore Demo — no account needed
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.signupLink}
+            onPress={() => router.push("/(auth)/signup" as Href)}
+            disabled={isLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signupText}>
+              New here?{" "}
+              <Text style={styles.signupTextBold}>Create your store</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -158,4 +206,19 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: "#FFFFFF", fontSize: 17, fontWeight: "600" },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: spacing.xs },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.separator },
+  dividerText: { ...typography.caption, color: colors.textTertiary },
+  secondaryButton: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  secondaryButtonText: { color: colors.primary, fontSize: 16, fontWeight: "600" },
+  signupLink: { alignItems: "center", paddingVertical: spacing.sm },
+  signupText: { ...typography.body, color: colors.textSecondary },
+  signupTextBold: { color: colors.primary, fontWeight: "600" },
 });
