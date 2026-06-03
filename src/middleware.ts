@@ -113,6 +113,7 @@ export async function middleware(request: NextRequest) {
     (pathname.match(/^\/[^/]+\/menu(\/|$)/) && !pathname.match(/^\/[^/]+\/admin\//)) ||
     pathname === '/' ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/support') ||
     pathname.includes('/login') ||
     pathname.startsWith('/superadmin/login')
 
