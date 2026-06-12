@@ -8,7 +8,7 @@ Thank you for the detailed review. We have addressed all three issues. Please se
 
 ## Guideline 2.1(a) — Performance: App Completeness
 
-We reproduced and fixed the error that prevented the app from advancing past the initial login screen on iPad. The fix is included in the new build we have submitted with this reply (version 1.0, build 10). We verified the fix on iPad (iPadOS 26) as well as iPhone before resubmitting.
+We reproduced and fixed the error that prevented the app from advancing past the initial login screen on iPad. The fix is included in the new build we have submitted with this reply (version 1.0, build 12). We verified the fix on iPad (iPadOS 26) as well as iPhone before resubmitting.
 
 Additionally, the reviewer can now evaluate the app without any account at all: on the login screen, tap **"Explore Demo — no account needed"**. This opens a fully functional demo store ("Webnegosyo Coffee") with live dashboard, orders, and analytics, so the app can be reviewed end-to-end without credentials.
 
