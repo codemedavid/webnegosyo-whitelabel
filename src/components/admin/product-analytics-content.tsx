@@ -189,8 +189,8 @@ export function ProductAnalyticsContent({ menuItems, menuEngineeringEnabled }: P
   const sorted = useMemo(
     () =>
       [...rows].sort((a, b) => {
-        const aVal = Number((a as Record<string, unknown>)[sortField]) || 0
-        const bVal = Number((b as Record<string, unknown>)[sortField]) || 0
+        const aVal = Number((a as unknown as Record<string, unknown>)[sortField]) || 0
+        const bVal = Number((b as unknown as Record<string, unknown>)[sortField]) || 0
         return sortDir === 'desc' ? bVal - aVal : aVal - bVal
       }),
     [rows, sortField, sortDir]
