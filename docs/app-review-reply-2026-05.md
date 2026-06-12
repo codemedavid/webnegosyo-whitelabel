@@ -8,7 +8,7 @@ Thank you for the detailed review. We have addressed all three issues. Please se
 
 ## Guideline 2.1(a) — Performance: App Completeness
 
-We reproduced and fixed the error that prevented the app from advancing past the initial login screen on iPad. The fix is included in the new build we have submitted with this reply (version 1.0, build 12). We verified the fix on iPad (iPadOS 26) as well as iPhone before resubmitting.
+We reproduced and fixed the error that prevented the app from advancing past the initial login screen on iPad. The fix is included in the new build we have submitted with this reply (version 1.0, build 14). We verified the fix on iPad (iPadOS 26) as well as iPhone before resubmitting.
 
 Additionally, the reviewer can now evaluate the app without any account at all: on the login screen, tap **"Explore Demo — no account needed"**. This opens a fully functional demo store ("Webnegosyo Coffee") with live dashboard, orders, and analytics, so the app can be reviewed end-to-end without credentials.
 
@@ -36,7 +36,7 @@ Answers to your questions:
    None. The app does not unlock any previously purchased digital content. After a merchant's store is set up, the app simply displays that store's operational data: incoming orders, order statuses, daily sales figures, and menu analytics. All features of the app are available to every signed-in merchant equally, and most can be seen in Demo Mode.
 
 4. **Is your app restricted to users who are part of a single company?**
-   No. The app is not restricted to any company, partner, employee, or contractor group. Any food or retail business anywhere can become a merchant via the public, self-service sign-up screen inside the app or via our website. The general public can also open the app in Demo Mode without any account.
+   No. The app is not restricted to any company, partner, employee, or contractor group. Any food or retail business anywhere can become a merchant via the public, self-service sign-up screen inside the app ("Create your store" on the login screen), or by contacting us through our website. The general public can also open the app in Demo Mode without any account.
 
 5. **What paid content, subscriptions, or features are unlocked within your app that do not use in-app purchase?**
    None. No content, subscription, or feature is unlocked by any payment, inside or outside the app.
