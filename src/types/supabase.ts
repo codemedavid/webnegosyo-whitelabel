@@ -1316,6 +1316,7 @@ export type Database = {
           name: string
           page_layout: string | null
           pairing_rules_enabled: boolean
+          qr_handoff_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
@@ -1436,6 +1437,7 @@ export type Database = {
           name: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -1556,6 +1558,7 @@ export type Database = {
           name?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null

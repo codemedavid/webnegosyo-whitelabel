@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import { localDateKey } from "./time";
 
 export const aggregateToday = internalAction({
   handler: async (ctx) => {
@@ -13,7 +14,7 @@ export const aggregateToday = internalAction({
       limit: 10,
     });
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateKey(Date.now());
 
     await ctx.runMutation(internal.statsAggregator.upsertDailyStat, {
       date: today,

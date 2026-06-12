@@ -62,6 +62,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
     enableOrderManagement: tenant.enable_order_management,
     menuEngineeringEnabled: tenant.menu_engineering_enabled,
     bundlesEnabled: tenant.bundles_enabled,
+    convexConfigured: !!tenant.convex_deployment_url,
   }
 
   return (

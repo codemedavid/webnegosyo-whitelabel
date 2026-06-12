@@ -63,17 +63,21 @@ function useFilteredItems(
   enableOrderManagement?: boolean,
   menuEngineeringEnabled?: boolean,
   bundlesEnabled?: boolean,
+  convexConfigured?: boolean,
 ) {
   const hiddenPaths = useMemo(() => {
     const paths = new Set<string>()
     if (enableOrderManagement === false) paths.add('/orders')
     if (!menuEngineeringEnabled) {
       paths.add('/boost-sales')
-      paths.add('/product-analytics')
+      // Product Analytics shows basic per-product sales whenever Convex is
+      // configured (advanced BCG/cost features are gated inside the page), so
+      // only hide it when there is no Convex backend at all.
+      if (!convexConfigured) paths.add('/product-analytics')
     }
     if (!bundlesEnabled) paths.add('/bundles')
     return paths
-  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled])
+  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured])
 
   const shouldHide = useCallback(
     (href: string) => Array.from(hiddenPaths).some((p) => href.includes(p)),
@@ -146,16 +150,17 @@ interface SidebarProps {
   enableOrderManagement?: boolean
   menuEngineeringEnabled?: boolean
   bundlesEnabled?: boolean
+  convexConfigured?: boolean
 }
 
 // ─── Desktop Sidebar ──────────────────────────────────────────────────────────
 
-export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled)
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured)
 
   // Auto-expand group containing active route
   useEffect(() => {
@@ -409,12 +414,12 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
 
 // ─── Mobile Header + Sheet ────────────────────────────────────────────────────
 
-export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled }: SidebarProps) {
+export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured }: SidebarProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled)
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured)
   const pageTitle = useActivePageTitle(filteredItems)
 
   // Auto-expand active group on open

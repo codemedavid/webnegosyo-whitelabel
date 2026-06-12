@@ -1,8 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
 
 // Safety cap for queries that load large collections
 const QUERY_LIMIT = 10000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const trackEvent = mutation({
   args: {
@@ -132,17 +134,41 @@ export const getTrends = query({
   },
   handler: async (ctx, args) => {
     const days = args.daysBack ?? 30;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    // Compute trends LIVE from orders (not the dailyStats snapshot) so the
+    // series is reactive: cancelling an order — even on a past day — drops that
+    // day's revenue immediately, and today's bar appears as soon as orders come
+    // in (the old 23:59-UTC cron only wrote today's row, never corrected the
+    // past, and excluded the in-progress day). Inclusive N-day window ending on
+    // the current local day; bucketed by the merchant's local (PH) day.
+    const startMs = localDayStartMs(Date.now()) - (days - 1) * DAY_MS;
 
-    const stats = await ctx.db
-      .query("dailyStats")
-      .withIndex("by_date")
-      .collect();
+    const orders = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("_creationTime"), startMs),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
+      .order("desc")
+      .take(QUERY_LIMIT);
 
-    const cutoffDate = new Date(cutoff).toISOString().split("T")[0];
+    const dayMap = new Map<string, { totalOrders: number; totalRevenue: number }>();
+    for (const order of orders) {
+      const date = localDateKey(order._creationTime);
+      const existing = dayMap.get(date) ?? { totalOrders: 0, totalRevenue: 0 };
+      existing.totalOrders += 1;
+      existing.totalRevenue += order.total;
+      dayMap.set(date, existing);
+    }
 
-    return stats
-      .filter((s) => s.date >= cutoffDate)
+    return Array.from(dayMap.entries())
+      .map(([date, d]) => ({
+        date,
+        totalOrders: d.totalOrders,
+        totalRevenue: d.totalRevenue,
+        avgOrderValue: d.totalOrders > 0 ? d.totalRevenue / d.totalOrders : 0,
+      }))
       .sort((a, b) => a.date.localeCompare(b.date));
   },
 });
@@ -222,13 +248,13 @@ export const getUpsellTrends = query({
     // Group by date for daily rates
     const dailyMap = new Map<string, { shown: number; converted: number }>();
     for (const event of recentShown) {
-      const date = new Date(event._creationTime).toISOString().split("T")[0];
+      const date = localDateKey(event._creationTime);
       const existing = dailyMap.get(date) ?? { shown: 0, converted: 0 };
       existing.shown += 1;
       dailyMap.set(date, existing);
     }
     for (const event of recentConverted) {
-      const date = new Date(event._creationTime).toISOString().split("T")[0];
+      const date = localDateKey(event._creationTime);
       const existing = dailyMap.get(date) ?? { shown: 0, converted: 0 };
       existing.converted += 1;
       dailyMap.set(date, existing);
@@ -372,7 +398,7 @@ export const getPaymentMethodAnalytics = query({
     // Daily breakdown for trend lines
     const dailyMap = new Map<string, Map<string, number>>();
     for (const order of orders) {
-      const date = new Date(order._creationTime).toISOString().split("T")[0];
+      const date = localDateKey(order._creationTime);
       const method = order.paymentMethod ?? "Unknown";
       if (!dailyMap.has(date)) dailyMap.set(date, new Map());
       const dayMethods = dailyMap.get(date)!;
@@ -414,8 +440,7 @@ export const getOrderHeatmap = query({
     const countMap = new Map<string, number>();
 
     for (const order of orders) {
-      const d = new Date(order._creationTime);
-      const key = `${d.getDay()}-${d.getHours()}`;
+      const key = `${localDayOfWeek(order._creationTime)}-${localHour(order._creationTime)}`;
       countMap.set(key, (countMap.get(key) ?? 0) + 1);
     }
 

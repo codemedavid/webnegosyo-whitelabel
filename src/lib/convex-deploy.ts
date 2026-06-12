@@ -4,7 +4,20 @@ import convexPushBundle from "./convex-push-bundle.json";
 
 const brotliCompress = promisify(zlib.brotliCompress);
 
-const CURRENT_SCHEMA_VERSION = 5;
+// v9: POS / counter sales — orders.source now accepts "pos". POS orders are
+// auto-confirmed (skip the pending queue) and skip the new-order push, like
+// qr_handoff, since the merchant rings them up on the device they're holding.
+// Bumping forces bulkDeployConvexAction to re-push every tenant.
+// v8: QR-handoff orders are now auto-confirmed (status "confirmed" instead of
+// "pending") and skip the new-order push notification, since the merchant
+// creates them by scanning + sliding to accept on the device they're holding.
+// v7: QR handoff (orders.source "qr_handoff", clientOrderId + by_client_order_id
+// index + getOrderByClientId) PLUS analytics correctness — cancelled orders
+// excluded from dashboard/trends revenue, getTrends now computed LIVE from orders
+// (self-corrects on cancellation), PH-local day boundaries (time.ts),
+// getAllOrderItems, and the de-N+1'd product analytics aggregator. Bumping forces
+// bulkDeployConvexAction to re-push every tenant.
+const CURRENT_SCHEMA_VERSION = 9;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

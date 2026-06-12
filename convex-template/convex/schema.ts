@@ -17,7 +17,13 @@ export default defineSchema({
     ),
     orderType: v.optional(v.string()),
     orderTypeId: v.optional(v.string()),
-    source: v.union(v.literal("web"), v.literal("mobile")),
+    source: v.union(
+      v.literal("web"),
+      v.literal("mobile"),
+      v.literal("qr_handoff"),
+      v.literal("pos")
+    ),
+    clientOrderId: v.optional(v.string()),
     itemCount: v.number(),
     paymentMethod: v.optional(v.string()),
     paymentMethodDetails: v.optional(v.string()),
@@ -35,7 +41,8 @@ export default defineSchema({
     hasUpsellItems: v.optional(v.boolean()),
     hasBundleItems: v.optional(v.boolean()),
   })
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_client_order_id", ["clientOrderId"]),
 
   orderItems: defineTable({
     orderId: v.id("orders"),

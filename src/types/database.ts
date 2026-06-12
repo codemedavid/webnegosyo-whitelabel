@@ -113,6 +113,8 @@ export interface Tenant {
   bundles_enabled?: boolean;
   // Pairing rules
   pairing_rules_enabled?: boolean;
+  // QR-handoff ordering
+  qr_handoff_enabled?: boolean;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen

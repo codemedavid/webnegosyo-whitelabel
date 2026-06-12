@@ -261,9 +261,14 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersData = orders as any[] || []
 
+  // Revenue and order count exclude cancelled orders so a cancellation
+  // immediately lowers the figures (matching the Convex dashboard semantics).
+  // Per-status counts still cover all rows so the breakdown stays complete.
+  const completedOrders = ordersData.filter(o => o.status !== 'cancelled')
+
   const stats = {
-    todayOrders: ordersData.length || 0,
-    todayRevenue: ordersData.reduce((sum, order) => sum + Number(order.total), 0) || 0,
+    todayOrders: completedOrders.length || 0,
+    todayRevenue: completedOrders.reduce((sum, order) => sum + Number(order.total), 0) || 0,
     pendingOrders: ordersData.filter(o => o.status === 'pending').length || 0,
     confirmedOrders: ordersData.filter(o => o.status === 'confirmed').length || 0,
     preparingOrders: ordersData.filter(o => o.status === 'preparing').length || 0,

@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductCostField } from '@/components/admin/product-cost-field'
+import { ProductCostFieldConvex } from '@/components/admin/product-cost-field-convex'
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
 
 interface MenuItemFormProps {
@@ -368,16 +369,25 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             </div>
           </div>
 
-          <ProductCostField
-            menuItemId={item?.id}
-            currentPrice={parseFloat(formData.price) || 0}
-            discountedPrice={parseFloat(formData.discounted_price) || undefined}
-          />
-
-          {convexUrl && item?.id && (
+          {convexUrl && item?.id ? (
             <SafeConvexProvider url={convexUrl}>
+              {/* Convex-connected: actually persists the cost price so BCG
+                  classification can work (the bare field never saved). */}
+              <ProductCostFieldConvex
+                menuItemId={item.id}
+                currentPrice={parseFloat(formData.price) || 0}
+                discountedPrice={parseFloat(formData.discounted_price) || undefined}
+              />
               <ProductMiniPerformance menuItemId={item.id} />
             </SafeConvexProvider>
+          ) : (
+            // New (unsaved) item or no Convex: show the calculator only. Costs
+            // can be saved once the item has an id and Convex is configured.
+            <ProductCostField
+              menuItemId={item?.id}
+              currentPrice={parseFloat(formData.price) || 0}
+              discountedPrice={parseFloat(formData.discounted_price) || undefined}
+            />
           )}
 
           <div className="space-y-2">

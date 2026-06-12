@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { ProductAnalyticsWrapper } from '@/components/admin/product-analytics-wrapper'
 
 interface ProductAnalyticsPageProps {
@@ -16,10 +15,10 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
     .eq('slug', tenant)
     .single()
 
-  if (!tenantData?.menu_engineering_enabled) {
-    redirect(`/${tenant}/admin`)
-  }
-
+  // Basic per-product SALES reporting (units, revenue, last order) only needs
+  // Convex. The advanced BCG/cost/recommendation layer is gated separately by
+  // menu_engineering_enabled inside the content component, so we no longer
+  // redirect away when the flag is off.
   if (!tenantData?.convex_deployment_url) {
     return (
       <div className="p-6">
@@ -32,9 +31,28 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
     )
   }
 
+  // Fetch the full menu so EVERY available product is listed — including items
+  // with zero sales (which never get a Convex productAnalytics row). menu_items.id
+  // (uuid) is the same key as productAnalytics.menuItemId.
+  const { data: menuItemsData } = await supabase
+    .from('menu_items')
+    .select('id, name, is_available')
+    .eq('tenant_id', tenantData.id)
+    .order('name', { ascending: true })
+
+  const menuItems = (menuItemsData ?? []).map((m) => ({
+    id: m.id as string,
+    name: m.name as string,
+    isAvailable: (m.is_available as boolean | null) ?? true,
+  }))
+
   return (
     <div className="p-6">
-      <ProductAnalyticsWrapper convexUrl={tenantData.convex_deployment_url} />
+      <ProductAnalyticsWrapper
+        convexUrl={tenantData.convex_deployment_url}
+        menuItems={menuItems}
+        menuEngineeringEnabled={!!tenantData.menu_engineering_enabled}
+      />
     </div>
   )
 }

@@ -266,6 +266,18 @@ export const computeAnalytics = internalAction({
     // Step 2: Get all order items
     const allCosts = await ctx.runQuery(api.productCosts.getAllCosts, {});
 
+    // Bulk-load every order item ONCE and group by order id. Previously this
+    // ran one getOrderById per order, per period (and again for the prev
+    // window) — an N+1 over up to 10k orders that risked timing out and
+    // leaving product analytics empty.
+    const allItems = await ctx.runQuery(api.orders.getAllOrderItems, {});
+    const itemsByOrder = new Map<string, typeof allItems>();
+    for (const it of allItems) {
+      const arr = itemsByOrder.get(it.orderId) ?? [];
+      arr.push(it);
+      itemsByOrder.set(it.orderId, arr);
+    }
+
     // Step 3: Compute for each period
     const periods = ["7d", "30d", "all"] as const;
     const now = Date.now();
@@ -305,10 +317,9 @@ export const computeAnalytics = internalAction({
       >();
 
       for (const order of periodOrders) {
-        const items = await ctx.runQuery(api.orders.getOrderById, { orderId: order._id });
-        if (!items || !items.items) continue;
+        const orderItems = itemsByOrder.get(order._id) ?? [];
 
-        for (const item of items.items) {
+        for (const item of orderItems) {
           const existing = itemMap.get(item.menuItemId) ?? {
             name: item.menuItemName,
             totalUnits: 0,
@@ -364,11 +375,8 @@ export const computeAnalytics = internalAction({
 
         const prevItemMap = new Map<string, number>();
         for (const order of prevOrders) {
-          const items = await ctx.runQuery(api.orders.getOrderById, {
-            orderId: order._id,
-          });
-          if (!items || !items.items) continue;
-          for (const item of items.items) {
+          const orderItems = itemsByOrder.get(order._id) ?? [];
+          for (const item of orderItems) {
             prevItemMap.set(
               item.menuItemId,
               (prevItemMap.get(item.menuItemId) ?? 0) + item.quantity

@@ -69,6 +69,8 @@ interface TenantFormData {
   bundles_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
+  // QR-handoff ordering
+  qr_handoff_enabled: boolean
   // Restaurant address for Lalamove pickup
   restaurant_address: string
   restaurant_latitude: string
@@ -831,6 +833,51 @@ function PairingRulesFeatureSection({
   )
 }
 
+// QR-Handoff Ordering Feature Toggle Section
+function QrHandoffFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>QR-Handoff Ordering</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Customers build an order on the web and get a QR code instead of a Messenger redirect. The vendor scans it in the admin app to confirm and create the order.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="qr_handoff_enabled">Enable QR-Handoff Ordering</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, web checkout skips Messenger and shows a QR thank-you page. Nothing is written until the vendor scans and accepts the QR.
+            </p>
+          </div>
+          <Switch
+            id="qr_handoff_enabled"
+            checked={formData.qr_handoff_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, qr_handoff_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.qr_handoff_enabled && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Disabled:</strong> Web checkout uses the standard Messenger flow. The QR thank-you page will not be shown.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Restaurant Address Section (for Lalamove pickup)
 function RestaurantAddressSection({
   formData,
@@ -1233,6 +1280,8 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
     bundles_enabled: tenant?.bundles_enabled ?? false,
     // Pairing rules
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
+    // QR-handoff ordering
+    qr_handoff_enabled: tenant?.qr_handoff_enabled ?? false,
     // Restaurant address
     restaurant_address: tenant?.restaurant_address || '',
     restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
@@ -1298,6 +1347,8 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
       bundles_enabled: formData.bundles_enabled,
       // Pairing rules
       pairing_rules_enabled: formData.pairing_rules_enabled,
+      // QR-handoff ordering
+      qr_handoff_enabled: formData.qr_handoff_enabled,
       // Restaurant address
       restaurant_address: formData.restaurant_address || undefined,
       restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
@@ -1412,6 +1463,12 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
       />
 
       <PairingRulesFeatureSection
+        formData={formData}
+        setFormData={setFormData}
+        isPending={isPending}
+      />
+
+      <QrHandoffFeatureSection
         formData={formData}
         setFormData={setFormData}
         isPending={isPending}

@@ -145,7 +145,12 @@ export async function bulkDeployConvexAction() {
     )
     .not("convex_deployment_url", "is", null)
     .not("convex_deploy_key", "is", null)
-    .lt("convex_schema_version", CURRENT_SCHEMA_VERSION);
+    // Include tenants that have never been deployed (null version) as well as
+    // those on an older schema. `NULL < N` is NULL in Postgres, so a plain
+    // `.lt` would silently skip freshly-configured tenants.
+    .or(
+      `convex_schema_version.is.null,convex_schema_version.lt.${CURRENT_SCHEMA_VERSION}`
+    );
 
   const tenants = data as Array<{ id: string }> | null;
 

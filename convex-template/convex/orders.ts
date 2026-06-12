@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { localDayStartMs } from "./time";
 
 // --- MUTATIONS ---
 
@@ -12,7 +13,13 @@ export const createOrder = mutation({
     total: v.number(),
     orderType: v.optional(v.string()),
     orderTypeId: v.optional(v.string()),
-    source: v.union(v.literal("web"), v.literal("mobile")),
+    source: v.union(
+      v.literal("web"),
+      v.literal("mobile"),
+      v.literal("qr_handoff"),
+      v.literal("pos")
+    ),
+    clientOrderId: v.optional(v.string()),
     itemCount: v.number(),
     paymentMethod: v.optional(v.string()),
     paymentMethodDetails: v.optional(v.string()),
@@ -61,9 +68,29 @@ export const createOrder = mutation({
   handler: async (ctx, args) => {
     const { items, ...orderData } = args;
 
+    // Idempotency guard: if this clientOrderId already exists, return the
+    // existing order id without inserting again or re-scheduling the push.
+    if (args.clientOrderId) {
+      const existing = await ctx.db
+        .query("orders")
+        .withIndex("by_client_order_id", (q) =>
+          q.eq("clientOrderId", args.clientOrderId)
+        )
+        .first();
+      if (existing) {
+        return existing._id;
+      }
+    }
+
+    // QR-handoff and POS orders are rung up by the merchant directly (scanning
+    // the customer's QR, or taking a counter sale), so they are confirmed on
+    // arrival — they skip the pending queue entirely (no approval step needed)
+    // and skip the new-order push (the merchant is already at the device).
+    const skipPending = args.source === "qr_handoff" || args.source === "pos";
+
     const orderId = await ctx.db.insert("orders", {
       ...orderData,
-      status: "pending",
+      status: skipPending ? "confirmed" : "pending",
       paymentStatus: "pending",
     });
 
@@ -74,13 +101,17 @@ export const createOrder = mutation({
       });
     }
 
-    // Send push notification to admin devices
-    await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
-      customerName: args.customerName,
-      total: args.total,
-      itemCount: args.itemCount,
-      orderId: orderId,
-    });
+    // Send push notification to admin devices. Skip for QR handoff / POS: the
+    // merchant is already holding the device they rang the order up on, so a
+    // new-order alert sound/notification would be redundant and noisy.
+    if (!skipPending) {
+      await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
+        customerName: args.customerName,
+        total: args.total,
+        itemCount: args.itemCount,
+        orderId: orderId,
+      });
+    }
 
     return orderId;
   },
@@ -207,6 +238,34 @@ export const getOrderById = query({
   },
 });
 
+// Bulk-load all order items in one query. Used by the product-analytics
+// aggregator to avoid an N+1 (one getOrderById per order, per period).
+export const getAllOrderItems = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("orderItems").take(QUERY_LIMIT);
+  },
+});
+
+export const getOrderByClientId = query({
+  args: { clientOrderId: v.string() },
+  handler: async (ctx, args) => {
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_client_order_id", (q) =>
+        q.eq("clientOrderId", args.clientOrderId)
+      )
+      .first();
+    if (!order) return null;
+
+    const items = await ctx.db
+      .query("orderItems")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+
+    return { ...order, items };
+  },
+});
+
 export const getRealtimeQueue = query({
   handler: async (ctx) => {
     const statuses = ["pending", "confirmed", "preparing", "ready"] as const;
@@ -227,8 +286,9 @@ export const getRealtimeQueue = query({
 
 export const getDashboardStats = query({
   handler: async (ctx) => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    // Start of the merchant's local (PH) day, not UTC midnight, so "today"
+    // matches the calendar day the merchant is actually operating in.
+    const todayStart = localDayStartMs(Date.now());
 
     const todayOrders = await ctx.db
       .query("orders")

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useProductAnalytics, usePortfolioSummary, useRefreshAnalytics } from '@/hooks/use-convex-product-analytics'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,35 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+
+export interface ProductMenuItem {
+  id: string
+  name: string
+  isAvailable?: boolean
+}
+
+interface ProductRow {
+  menuItemId: string
+  menuItemName?: string
+  totalUnitsSold: number
+  totalRevenue: number
+  totalCost: number
+  totalProfit: number
+  marginPercent?: number
+  avgDailyUnits: number
+  revenueTrend: string
+  bcgClassification: string
+  recommendation: string
+  pairingReason?: string
+  lastOrderDate?: number
+  isAvailable?: boolean
+  hasData?: boolean
+}
+
+interface ProductAnalyticsContentProps {
+  menuItems: ProductMenuItem[]
+  menuEngineeringEnabled: boolean
+}
 
 const bcgConfig: Record<string, {
   label: string
@@ -86,7 +115,29 @@ function MarginBadge({ margin }: { margin: number | undefined }) {
   return <span className={`font-medium ${color}`}>{margin.toFixed(1)}%</span>
 }
 
-export function ProductAnalyticsContent() {
+function peso(n: number) {
+  return `₱${Math.round(n).toLocaleString()}`
+}
+
+function zeroRow(id: string, name: string, isAvailable?: boolean): ProductRow {
+  return {
+    menuItemId: id,
+    menuItemName: name,
+    totalUnitsSold: 0,
+    totalRevenue: 0,
+    totalCost: 0,
+    totalProfit: 0,
+    marginPercent: undefined,
+    avgDailyUnits: 0,
+    revenueTrend: 'stable',
+    bcgClassification: 'unclassified',
+    recommendation: 'No sales in this period yet. Add a cost price and wait for orders to unlock insights.',
+    isAvailable,
+    hasData: false,
+  }
+}
+
+export function ProductAnalyticsContent({ menuItems, menuEngineeringEnabled }: ProductAnalyticsContentProps) {
   const [period, setPeriod] = useState('30d')
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [filterClass, setFilterClass] = useState<string | null>(null)
@@ -94,7 +145,7 @@ export function ProductAnalyticsContent() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const analytics = useProductAnalytics(period)
+  const analytics = useProductAnalytics(period) as ProductRow[] | undefined
   const summary = usePortfolioSummary(period)
   const refreshAnalytics = useRefreshAnalytics()
 
@@ -111,13 +162,39 @@ export function ProductAnalyticsContent() {
     }
   }
 
-  const sorted = analytics
-    ? [...analytics].sort((a, b) => {
-        const aVal = Number(a[sortField]) || 0
-        const bVal = Number(b[sortField]) || 0
+  // Menu-first: every available product appears, even with zero sales. Analytics
+  // rows are overlaid by id; rows for items no longer on the menu are appended so
+  // historical revenue is never lost.
+  const rows: ProductRow[] = useMemo(() => {
+    const byId = new Map<string, ProductRow>()
+    for (const a of analytics ?? []) byId.set(a.menuItemId, { ...a, hasData: true })
+
+    const seen = new Set<string>()
+    const out: ProductRow[] = []
+    for (const mi of menuItems) {
+      seen.add(mi.id)
+      const a = byId.get(mi.id)
+      out.push(
+        a
+          ? { ...a, menuItemName: a.menuItemName ?? mi.name, isAvailable: mi.isAvailable }
+          : zeroRow(mi.id, mi.name, mi.isAvailable)
+      )
+    }
+    for (const a of analytics ?? []) {
+      if (!seen.has(a.menuItemId)) out.push({ ...a, hasData: true })
+    }
+    return out
+  }, [menuItems, analytics])
+
+  const sorted = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const aVal = Number((a as Record<string, unknown>)[sortField]) || 0
+        const bVal = Number((b as Record<string, unknown>)[sortField]) || 0
         return sortDir === 'desc' ? bVal - aVal : aVal - bVal
-      })
-    : []
+      }),
+    [rows, sortField, sortDir]
+  )
 
   const filtered = filterClass
     ? sorted.filter(item => item.bcgClassification === filterClass)
@@ -157,7 +234,9 @@ export function ProductAnalyticsContent() {
         <div>
           <h1 className="text-2xl font-bold">Product Analytics</h1>
           <p className="text-muted-foreground">
-            Data-driven insights to optimize your menu profitability
+            {menuEngineeringEnabled
+              ? 'Data-driven insights to optimize your menu profitability'
+              : 'Sales performance for every product on your menu'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -183,8 +262,8 @@ export function ProductAnalyticsContent() {
         </div>
       </div>
 
-      {/* Portfolio Summary — BCG Quadrant Cards */}
-      {summary && (
+      {/* Portfolio Summary — BCG Quadrant Cards (advanced; gated) */}
+      {menuEngineeringEnabled && summary && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {(['star', 'puzzle', 'plowhorse', 'dog'] as const).map((cls) => {
@@ -218,8 +297,8 @@ export function ProductAnalyticsContent() {
           {/* Health summary or setup guidance */}
           {(() => {
             const totalClassified = summary.counts.star + summary.counts.puzzle + summary.counts.plowhorse + summary.counts.dog
-            const productsWithMargin = analytics?.filter((a: { marginPercent?: number }) => a.marginPercent !== undefined).length ?? 0
-            const productsWithEnoughOrders = analytics?.filter((a: { totalUnitsSold: number }) => a.totalUnitsSold >= 5).length ?? 0
+            const productsWithMargin = (analytics ?? []).filter((a) => a.marginPercent !== undefined).length
+            const productsWithEnoughOrders = (analytics ?? []).filter((a) => a.totalUnitsSold >= 5).length
 
             if (totalClassified === 0) {
               const needs: string[] = []
@@ -274,7 +353,7 @@ export function ProductAnalyticsContent() {
                         <span className={`text-lg font-bold ${config.textColor}`}>{pct}%</span>
                         <div className="text-xs text-muted-foreground leading-tight">
                           <div>from {config.label}</div>
-                          <div>₱{Math.round(rev).toLocaleString()}</div>
+                          <div>{peso(rev)}</div>
                         </div>
                       </div>
                     )
@@ -299,17 +378,13 @@ export function ProductAnalyticsContent() {
           <CardHeader>
             <CardTitle>
               {filterClass ? bcgConfig[filterClass]?.label ?? 'Products' : 'All Products'}
+              <span className="ml-2 text-sm font-normal text-muted-foreground">({filtered.length})</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {filtered.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p>{filterClass ? `No ${bcgConfig[filterClass]?.label ?? ''} products.` : 'No analytics data yet.'}</p>
-                {!filterClass && (
-                  <p className="text-sm mt-1">
-                    Add cost prices to your menu items and wait for orders to flow in.
-                  </p>
-                )}
+                <p>{filterClass ? `No ${bcgConfig[filterClass]?.label ?? ''} products.` : 'No products on the menu yet.'}</p>
               </div>
             ) : (
               <div className="w-full overflow-auto">
@@ -319,10 +394,17 @@ export function ProductAnalyticsContent() {
                       <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Product</th>
                       <SortHeader field="totalRevenue">Revenue</SortHeader>
                       <SortHeader field="totalUnitsSold">Units</SortHeader>
-                      <SortHeader field="marginPercent">Margin</SortHeader>
+                      {menuEngineeringEnabled && <SortHeader field="marginPercent">Margin</SortHeader>}
                       {!selectedItem && <SortHeader field="avgDailyUnits">Avg/Day</SortHeader>}
-                      {!selectedItem && <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Trend</th>}
-                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Class</th>
+                      {!selectedItem && !menuEngineeringEnabled && (
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Last Order</th>
+                      )}
+                      {!selectedItem && menuEngineeringEnabled && (
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Trend</th>
+                      )}
+                      {menuEngineeringEnabled && (
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-sm">Class</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -335,39 +417,52 @@ export function ProductAnalyticsContent() {
                           key={item.menuItemId}
                           className={cn(
                             'border-b cursor-pointer transition-colors',
-                            isSelected ? 'bg-muted' : 'hover:bg-muted/50'
+                            isSelected ? 'bg-muted' : 'hover:bg-muted/50',
+                            !item.hasData && 'text-muted-foreground'
                           )}
                           onClick={() => setSelectedItemId(isSelected ? null : item.menuItemId)}
                         >
-                          <td className="p-3 align-middle font-medium">
-                            {item.menuItemName ?? item.menuItemId}
+                          <td className="p-3 align-middle font-medium text-foreground">
+                            <span className="flex items-center gap-2">
+                              {item.menuItemName ?? item.menuItemId}
+                              {item.isAvailable === false && (
+                                <Badge variant="outline" className="text-xs">Hidden</Badge>
+                              )}
+                            </span>
                           </td>
-                          <td className="p-3 align-middle">
-                            &#8369;{Math.round(item.totalRevenue).toLocaleString()}
-                          </td>
+                          <td className="p-3 align-middle">{peso(item.totalRevenue)}</td>
                           <td className="p-3 align-middle">{item.totalUnitsSold}</td>
-                          <td className="p-3 align-middle">
-                            <MarginBadge margin={item.marginPercent} />
-                          </td>
+                          {menuEngineeringEnabled && (
+                            <td className="p-3 align-middle">
+                              <MarginBadge margin={item.marginPercent} />
+                            </td>
+                          )}
                           {!selectedItem && <td className="p-3 align-middle">{item.avgDailyUnits}</td>}
-                          {!selectedItem && (
+                          {!selectedItem && !menuEngineeringEnabled && (
+                            <td className="p-3 align-middle">
+                              {item.lastOrderDate ? new Date(item.lastOrderDate).toLocaleDateString() : '—'}
+                            </td>
+                          )}
+                          {!selectedItem && menuEngineeringEnabled && (
                             <td className="p-3 align-middle">
                               {trendIcons[item.revenueTrend] ?? trendIcons.stable}
                             </td>
                           )}
-                          <td className="p-3 align-middle">
-                            {bcg ? (
-                              <Badge
-                                variant="outline"
-                                className={`${bcg.bgColor} ${bcg.textColor} ${bcg.borderColor}`}
-                              >
-                                {bcg.icon}
-                                <span className="ml-1">{bcg.label}</span>
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline">Unclassified</Badge>
-                            )}
-                          </td>
+                          {menuEngineeringEnabled && (
+                            <td className="p-3 align-middle">
+                              {bcg ? (
+                                <Badge
+                                  variant="outline"
+                                  className={`${bcg.bgColor} ${bcg.textColor} ${bcg.borderColor}`}
+                                >
+                                  {bcg.icon}
+                                  <span className="ml-1">{bcg.label}</span>
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline">Unclassified</Badge>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       )
                     })}
@@ -387,16 +482,18 @@ export function ProductAnalyticsContent() {
                   <CardTitle className="text-lg">
                     {selectedItem.menuItemName ?? selectedItem.menuItemId}
                   </CardTitle>
-                  {bcgForSelected ? (
-                    <Badge
-                      variant="outline"
-                      className={`${bcgForSelected.bgColor} ${bcgForSelected.textColor} ${bcgForSelected.borderColor}`}
-                    >
-                      {bcgForSelected.icon}
-                      <span className="ml-1">{bcgForSelected.label}</span>
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Unclassified</Badge>
+                  {menuEngineeringEnabled && (
+                    bcgForSelected ? (
+                      <Badge
+                        variant="outline"
+                        className={`${bcgForSelected.bgColor} ${bcgForSelected.textColor} ${bcgForSelected.borderColor}`}
+                      >
+                        {bcgForSelected.icon}
+                        <span className="ml-1">{bcgForSelected.label}</span>
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Unclassified</Badge>
+                    )
                   )}
                 </div>
                 <Button
@@ -414,67 +511,83 @@ export function ProductAnalyticsContent() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">Revenue</p>
-                  <p className="text-lg font-bold">₱{Math.round(selectedItem.totalRevenue).toLocaleString()}</p>
+                  <p className="text-lg font-bold">{peso(selectedItem.totalRevenue)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">Units Sold</p>
                   <p className="text-lg font-bold">{selectedItem.totalUnitsSold}</p>
                 </div>
-                <div className="rounded-lg bg-muted/50 p-3">
-                  <p className="text-xs text-muted-foreground">Margin</p>
-                  <p className="text-lg font-bold">
-                    <MarginBadge margin={selectedItem.marginPercent} />
-                  </p>
-                </div>
+                {menuEngineeringEnabled && (
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">Margin</p>
+                    <p className="text-lg font-bold">
+                      <MarginBadge margin={selectedItem.marginPercent} />
+                    </p>
+                  </div>
+                )}
                 <div className="rounded-lg bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">Avg/Day</p>
                   <div className="flex items-center gap-1.5">
                     <p className="text-lg font-bold">{selectedItem.avgDailyUnits}</p>
-                    {trendIcons[selectedItem.revenueTrend] ?? trendIcons.stable}
+                    {menuEngineeringEnabled && (trendIcons[selectedItem.revenueTrend] ?? trendIcons.stable)}
                   </div>
                 </div>
               </div>
 
-              {/* Cost & Profit */}
-              <div className="rounded-lg border p-3 space-y-1.5">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Cost</span>
-                  <span className="font-medium">
-                    {selectedItem.totalCost > 0 ? `₱${Math.round(selectedItem.totalCost).toLocaleString()}` : 'No cost set'}
-                  </span>
+              {/* Cost & Profit (advanced; gated) */}
+              {menuEngineeringEnabled && (
+                <div className="rounded-lg border p-3 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Cost</span>
+                    <span className="font-medium">
+                      {selectedItem.totalCost > 0 ? peso(selectedItem.totalCost) : 'No cost set'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Profit</span>
+                    <span className={cn('font-medium', selectedItem.totalProfit > 0 ? 'text-green-600' : '')}>
+                      {selectedItem.totalCost > 0 ? peso(selectedItem.totalProfit) : '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Trend</span>
+                    <span className="flex items-center gap-1">
+                      {trendIcons[selectedItem.revenueTrend] ?? trendIcons.stable}
+                      <span className="text-sm">{trendLabels[selectedItem.revenueTrend] ?? 'Stable'}</span>
+                    </span>
+                  </div>
+                  {selectedItem.lastOrderDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Last Order</span>
+                      <span>{new Date(selectedItem.lastOrderDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Profit</span>
-                  <span className={cn('font-medium', selectedItem.totalProfit > 0 ? 'text-green-600' : '')}>
-                    {selectedItem.totalCost > 0 ? `₱${Math.round(selectedItem.totalProfit).toLocaleString()}` : '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Trend</span>
-                  <span className="flex items-center gap-1">
-                    {trendIcons[selectedItem.revenueTrend] ?? trendIcons.stable}
-                    <span className="text-sm">{trendLabels[selectedItem.revenueTrend] ?? 'Stable'}</span>
-                  </span>
-                </div>
-                {selectedItem.lastOrderDate && (
+              )}
+
+              {/* Basic last-order line when advanced features are off */}
+              {!menuEngineeringEnabled && (
+                <div className="rounded-lg border p-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Last Order</span>
-                    <span>{new Date(selectedItem.lastOrderDate).toLocaleDateString()}</span>
+                    <span>{selectedItem.lastOrderDate ? new Date(selectedItem.lastOrderDate).toLocaleDateString() : 'No sales yet'}</span>
                   </div>
-                )}
-              </div>
-
-              {/* Recommendation */}
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Lightbulb className="h-4 w-4 text-blue-600" />
-                  <p className="text-sm font-semibold text-blue-900">Recommendation</p>
                 </div>
-                <p className="text-sm text-blue-800">{selectedItem.recommendation}</p>
-              </div>
+              )}
 
-              {/* Cross-Promotion */}
-              {selectedItem.pairingReason && (
+              {/* Recommendation (advanced; gated) */}
+              {menuEngineeringEnabled && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Lightbulb className="h-4 w-4 text-blue-600" />
+                    <p className="text-sm font-semibold text-blue-900">Recommendation</p>
+                  </div>
+                  <p className="text-sm text-blue-800">{selectedItem.recommendation}</p>
+                </div>
+              )}
+
+              {/* Cross-Promotion (advanced; gated) */}
+              {menuEngineeringEnabled && selectedItem.pairingReason && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Link2 className="h-4 w-4 text-emerald-600" />

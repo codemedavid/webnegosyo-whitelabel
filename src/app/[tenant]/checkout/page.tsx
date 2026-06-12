@@ -16,6 +16,9 @@ import { createOrderAction } from '@/app/actions/orders'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { createClient } from '@/lib/supabase/client'
+import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
+import { savePendingOrder } from '@/lib/qr-pending-order'
+import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import type { Tenant, OrderType, CustomerFormField, PaymentMethod, CartItem } from '@/types/database'
@@ -366,6 +369,165 @@ export default function CheckoutPage() {
     }
   }, [tenant, orderTypes, orderType, customerData.delivery_address, customerData.delivery_lat, customerData.delivery_lng])
 
+  // QR-handoff flow: build a QrOrderPayloadV1 from the cart + form values,
+  // persist it locally, and navigate to the QR thank-you page. NOTHING is
+  // written to Convex or Supabase here — the vendor scanner is the sole writer.
+  const handleQrHandoff = () => {
+    if (!tenant || isProcessing || !orderType) return
+
+    setIsProcessing(true)
+
+    try {
+      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
+      const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
+
+      // Map cart items to QrOrderItemV1 — mirrors the OrderItem construction
+      // used in the Messenger/createOrderAction path below.
+      const qrItems: QrOrderItemV1[] = items.map(item => {
+        let itemPrice = item.menu_item.price
+        if (item.selected_variation) {
+          itemPrice += item.selected_variation.price_modifier
+        }
+        if (item.selected_variations) {
+          itemPrice += Object.values(item.selected_variations).reduce(
+            (sum, option) => sum + option.price_modifier, 0
+          )
+        }
+
+        const variationSelections: QrOrderItemV1['variationSelections'] = []
+        let variationText = ''
+        if (item.selected_variation) {
+          variationText = item.selected_variation.name
+          variationSelections.push({
+            typeName: 'Variation',
+            optionName: item.selected_variation.name,
+            priceAdjustment: item.selected_variation.price_modifier,
+          })
+        } else if (item.selected_variations) {
+          const opts = Object.values(item.selected_variations)
+          variationText = opts.map(opt => opt.name).join(', ')
+          for (const opt of opts) {
+            variationSelections.push({
+              typeName: 'Variation',
+              optionName: opt.name,
+              priceAdjustment: opt.price_modifier,
+            })
+          }
+        }
+
+        return {
+          menuItemId: item.menu_item.id,
+          menuItemName: item.menu_item.name,
+          quantity: item.quantity,
+          price: itemPrice,
+          subtotal: item.subtotal,
+          ...(variationSelections.length > 0 ? { variationSelections } : {}),
+          ...(variationText ? { variation: variationText } : {}),
+          ...(item.selected_addons.length > 0
+            ? { addons: item.selected_addons.map(a => ({ name: a.name, price: a.price })) }
+            : {}),
+          ...(item.special_instructions ? { specialInstructions: item.special_instructions } : {}),
+          ...(item.upsellSource ? { isUpsellItem: true } : {}),
+        }
+      })
+
+      // Flatten bundle items into QR items (same shape as the Messenger path).
+      for (const bundle of bundleItems) {
+        for (const slot of bundle.slots) {
+          let slotPrice = slot.priceOverride
+          let variationText = ''
+          const variationSelections: QrOrderItemV1['variationSelections'] = []
+
+          if (slot.selectedVariation) {
+            slotPrice += slot.selectedVariation.price_modifier
+            variationText = slot.selectedVariation.name
+            variationSelections.push({
+              typeName: 'Variation',
+              optionName: slot.selectedVariation.name,
+              priceAdjustment: slot.selectedVariation.price_modifier,
+            })
+          } else if (slot.selectedVariations) {
+            const opts = Object.values(slot.selectedVariations)
+            slotPrice += opts.reduce((sum, option) => sum + option.price_modifier, 0)
+            variationText = opts.map(opt => opt.name).join(', ')
+            for (const opt of opts) {
+              variationSelections.push({
+                typeName: 'Variation',
+                optionName: opt.name,
+                priceAdjustment: opt.price_modifier,
+              })
+            }
+          }
+
+          const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price, 0)
+          const quantity = slot.quantity * bundle.quantity
+          const itemTotal = (slotPrice + addonTotal) * quantity
+
+          qrItems.push({
+            menuItemId: slot.menuItemId,
+            menuItemName: slot.menuItemName,
+            quantity,
+            price: slotPrice + addonTotal,
+            subtotal: itemTotal,
+            ...(variationSelections.length > 0 ? { variationSelections } : {}),
+            ...(variationText ? { variation: variationText } : {}),
+            ...(slot.selectedAddons.length > 0
+              ? { addons: slot.selectedAddons.map(a => ({ name: a.name, price: a.price })) }
+              : {}),
+            isBundleItem: true,
+            bundleId: bundle.bundleId,
+            bundleName: bundle.bundleName,
+            slotName: slot.slotName,
+          })
+        }
+      }
+
+      const grandTotal = total + serviceChargeAmount
+
+      const payload: Omit<QrOrderPayloadV1, 'ck'> = {
+        v: 1,
+        cid: crypto.randomUUID(),
+        t: Date.now(),
+        tenantId: tenant.id,
+        tenantSlug,
+        orderTypeId: orderType,
+        orderType: selectedOrderType?.type ?? selectedOrderType?.name ?? '',
+        customerName: customerData.customer_name || '',
+        customerContact: customerData.customer_phone || customerData.customer_email || '',
+        customerData: { ...customerData },
+        items: qrItems,
+        total: grandTotal,
+        ...(selectedPayment ? { paymentMethodId: selectedPayment.id, paymentMethod: selectedPayment.name } : {}),
+      }
+
+      const qrString = encodeOrderToQr(payload)
+      if (qrString.length > QR_SIZE_WARN_THRESHOLD) {
+        console.warn(
+          `[Checkout] QR payload length ${qrString.length} exceeds warning threshold ${QR_SIZE_WARN_THRESHOLD}; QR may be hard to scan.`
+        )
+      }
+
+      const fullPayload: QrOrderPayloadV1 = { ...payload, ck: computeChecksum(payload) }
+
+      savePendingOrder(tenantSlug, {
+        payload: fullPayload,
+        qrString,
+        createdAt: payload.t,
+        lastStatus: 'pending',
+      })
+
+      // Set ref synchronously BEFORE clearCart to prevent race with cart-empty useEffect
+      checkoutCompleteRef.current = true
+      clearCart()
+      toast.success('Order ready! Show the QR to the vendor.')
+      router.push(`/${tenantSlug}/order/qr/${payload.cid}`)
+    } catch (error) {
+      console.error('QR handoff error:', error)
+      toast.error('Failed to generate order QR. Please try again.')
+      setIsProcessing(false)
+    }
+  }
+
   const handleProceedToPayment = () => {
     // Validate required fields
     const requiredFields = formFields.filter(field => field.is_required)
@@ -373,6 +535,13 @@ export default function CheckoutPage() {
 
     if (missingFields.length > 0) {
       toast.error(`Please fill in required fields: ${missingFields.map(f => f.field_label).join(', ')}`)
+      return
+    }
+
+    // QR-handoff: skip both the Messenger flow and createOrderAction entirely.
+    // The vendor scanner writes the order; the customer just shows a QR.
+    if (tenant?.qr_handoff_enabled) {
+      handleQrHandoff()
       return
     }
 

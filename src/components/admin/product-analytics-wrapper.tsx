@@ -1,13 +1,19 @@
 'use client'
 
 import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
-import { ProductAnalyticsContent } from '@/components/admin/product-analytics-content'
+import { ProductAnalyticsContent, type ProductMenuItem } from '@/components/admin/product-analytics-content'
 
 interface ProductAnalyticsWrapperProps {
   convexUrl: string
+  menuItems: ProductMenuItem[]
+  menuEngineeringEnabled: boolean
 }
 
-export function ProductAnalyticsWrapper({ convexUrl }: ProductAnalyticsWrapperProps) {
+export function ProductAnalyticsWrapper({
+  convexUrl,
+  menuItems,
+  menuEngineeringEnabled,
+}: ProductAnalyticsWrapperProps) {
   return (
     <SafeConvexProvider
       url={convexUrl}
@@ -17,7 +23,10 @@ export function ProductAnalyticsWrapper({ convexUrl }: ProductAnalyticsWrapperPr
         </div>
       }
     >
-      <ProductAnalyticsContent />
+      <ProductAnalyticsContent
+        menuItems={menuItems}
+        menuEngineeringEnabled={menuEngineeringEnabled}
+      />
     </SafeConvexProvider>
   )
 }

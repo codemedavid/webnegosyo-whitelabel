@@ -15,6 +15,9 @@
 !.yarn/releases
 !.yarn/versions
 
+# Cloudinary backup binary blobs (keep scripts + manifest, exclude the images)
+/cloudinary-backup/files/
+
 # testing
 /coverage
 
