@@ -114,6 +114,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
+    pathname.startsWith('/download') ||
     pathname.includes('/login') ||
     pathname.startsWith('/superadmin/login')
 

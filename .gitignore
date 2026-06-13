@@ -53,3 +53,6 @@ next-env.d.ts
 
 # Database backups (may contain secrets)
 /backup/
+
+# Desktop binary too large for GitHub (100MB limit) — host .dmg on CDN/Release
+public/downloads/*.dmg
