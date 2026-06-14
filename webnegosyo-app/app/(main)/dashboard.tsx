@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { formatPeso } from "../../lib/format";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
-import { supabase } from "../../lib/supabase";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { StatCard } from "../../components/StatCard";
@@ -87,7 +86,6 @@ export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const isDemo = useAuthStore((s) => s.isDemo);
-  const clear = useAuthStore((s) => s.clear);
   const { isConnected, loadSaved } = usePrinterStore();
 
   const [period, setPeriod] = useState("today");
@@ -111,17 +109,10 @@ export default function DashboardScreen() {
 
   const displayStats = period === "today" ? stats : periodStats;
   const isStatsLoading = period === "today" ? isLoading : periodLoading;
-  const showPrinterSettings = Platform.OS !== "ios";
 
   useEffect(() => {
     loadSaved();
   }, []);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    clear();
-    router.replace("/(auth)/login");
-  };
 
   const error = statsError || queueError;
 
@@ -134,17 +125,15 @@ export default function DashboardScreen() {
             <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
           </View>
           <View style={styles.headerRight}>
-            {showPrinterSettings && (
-              <TouchableOpacity
-                onPress={() => router.push("/(main)/printer-settings")}
-                style={styles.printerButton}
-              >
-                <Text style={{ fontSize: 20 }}>🖨</Text>
-                <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutText}>Sign Out</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(main)/printer-settings")}
+              style={styles.printerButton}
+            >
+              <Text style={{ fontSize: 20 }}>🖨</Text>
+              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
+              <Text style={styles.accountText}>Account</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -186,17 +175,15 @@ export default function DashboardScreen() {
           >
             <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
           </TouchableOpacity>
-          {showPrinterSettings && (
-            <TouchableOpacity
-              onPress={() => router.push("/(main)/printer-settings")}
-              style={styles.printerButton}
-            >
-              <Text style={{ fontSize: 20 }}>🖨</Text>
-              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Sign Out</Text>
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/printer-settings")}
+            style={styles.printerButton}
+          >
+            <Text style={{ fontSize: 20 }}>🖨</Text>
+            <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
+            <Text style={styles.accountText}>Account</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -285,7 +272,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
   liveText: { ...typography.small, color: colors.textTertiary },
   logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  logoutText: { ...typography.body, color: colors.danger, fontWeight: "500" },
+  accountText: { ...typography.body, color: colors.primary, fontWeight: "500" },
   demoBanner: {
     backgroundColor: colors.primaryLight,
     borderRadius: radius.md,

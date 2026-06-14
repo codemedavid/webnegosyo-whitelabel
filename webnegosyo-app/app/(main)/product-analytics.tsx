@@ -268,7 +268,7 @@ export default function ProductAnalyticsScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{editing?.menuItemName}</Text>
             <Text style={styles.modalSubtitle}>
-              Enter what this item costs you to make. This unlocks margin and BCG classification.
+              Enter what this item costs you to make. This enables margin and BCG classification.
             </Text>
             <TextInput
               style={styles.modalInput}

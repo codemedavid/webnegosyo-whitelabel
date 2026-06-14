@@ -99,6 +99,10 @@ export default function MainLayout() {
         name="printer-settings"
         options={{ href: null, title: "Printer Settings" }}
       />
+      <Tabs.Screen
+        name="account"
+        options={{ href: null, title: "Account" }}
+      />
     </Tabs>
   );
 }

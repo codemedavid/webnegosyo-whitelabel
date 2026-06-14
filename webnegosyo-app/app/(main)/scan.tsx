@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Linking,
   PanResponder,
   type LayoutChangeEvent,
 } from "react-native";
@@ -234,6 +235,10 @@ export default function ScanScreen() {
   }
 
   if (!permission.granted) {
+    // `canAskAgain` is false once the OS will no longer surface its own prompt
+    // (the user previously declined). In that case the only way forward is the
+    // system Settings app — we point there instead of a dead-end button.
+    const canPrompt = permission.canAskAgain;
     return (
       <View style={styles.screen}>
         <ScanHeader title="Scan QR" onClose={() => router.back()} />
@@ -241,14 +246,18 @@ export default function ScanScreen() {
           <Text style={styles.permissionIcon}>📷</Text>
           <Text style={styles.permissionTitle}>Camera access needed</Text>
           <Text style={styles.permissionText}>
-            Allow camera access to scan customer order QR codes.
+            {canPrompt
+              ? "This screen uses the camera to scan customer order QR codes. Tap Continue to choose your camera preference."
+              : "Scanning order QR codes needs camera access, which is currently turned off for WebNegosyo. You can turn it on in Settings."}
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={requestPermission}
+            onPress={canPrompt ? requestPermission : () => Linking.openSettings()}
             activeOpacity={0.8}
           >
-            <Text style={styles.primaryButtonText}>Grant access</Text>
+            <Text style={styles.primaryButtonText}>
+              {canPrompt ? "Continue" : "Open Settings"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
