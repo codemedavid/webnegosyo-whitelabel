@@ -18,6 +18,20 @@ interface SafeQueryResult<T> {
 
 const MISSING_FN_MARKER = "Could not find public function";
 
+// A tenant's Convex deployment can lag the app (older bundle). Besides a flat-out
+// missing function, that shows up as validator/argument drift. Treat all of these
+// as a recoverable "this store needs a backend update" state rather than a hard
+// error, so screens show their missing-section placeholder instead of an error.
+const STALE_BUNDLE_MARKERS = [
+  MISSING_FN_MARKER,
+  "ArgumentValidationError",
+  "is not in the validator",
+];
+
+function isStaleBundleError(msg: string): boolean {
+  return STALE_BUNDLE_MARKERS.some((m) => msg.includes(m));
+}
+
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
 
 export function useSafeQuery<T>(
@@ -38,7 +52,7 @@ export function useSafeQuery<T>(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     hookError = msg;
-    if (!msg.includes("Could not find public function")) {
+    if (!isStaleBundleError(msg)) {
       console.error("[useSafeQuery] Convex error:", msg);
     }
   }
@@ -73,7 +87,7 @@ export function useSafeQuery<T>(
       data: undefined,
       isLoading: false,
       error: hookError,
-      isMissingFunction: hookError.includes(MISSING_FN_MARKER),
+      isMissingFunction: isStaleBundleError(hookError),
     };
   }
 

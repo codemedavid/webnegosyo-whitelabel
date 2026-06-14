@@ -1,11 +1,67 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { Stack, router, useRootNavigationState } from "expo-router";
+import { Stack, router, useRootNavigationState, type ErrorBoundaryProps } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications } from "../lib/notifications";
+import { CrashFallback } from "../components/CrashFallback";
+
+/**
+ * App-wide Error Boundary. expo-router automatically wraps the route tree with
+ * a same-file `ErrorBoundary` export, so ANY uncaught render throw anywhere in
+ * the app degrades to this recoverable screen instead of force-closing the
+ * process. "Sign Out" clears the (possibly demo) session and returns to login.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // No session to clear (e.g. demo mode) — ignore.
+    }
+    useAuthStore.getState().clear();
+    await retry();
+  };
+  return (
+    <CrashFallback
+      error={error}
+      onRetry={() => {
+        void retry();
+      }}
+      onSignOut={handleSignOut}
+    />
+  );
+}
+
+/**
+ * Catch JS errors that escape React's render phase (async callbacks, event
+ * handlers, native module callbacks). Without a handler these can terminate the
+ * process in a release build; here we log them so failures are diagnosable.
+ */
+function useGlobalErrorHandler() {
+  useEffect(() => {
+    const g = globalThis as unknown as {
+      ErrorUtils?: {
+        getGlobalHandler?: () => (error: unknown, isFatal?: boolean) => void;
+        setGlobalHandler?: (h: (error: unknown, isFatal?: boolean) => void) => void;
+      };
+    };
+    const eu = g.ErrorUtils;
+    if (!eu?.setGlobalHandler) return;
+    const previous = eu.getGlobalHandler?.();
+    eu.setGlobalHandler((error, isFatal) => {
+      console.error("[GlobalError]", isFatal ? "(fatal)" : "", error);
+      // Preserve the dev red-box; in production swallow non-fatal JS errors so a
+      // stray async throw cannot force-close the app.
+      if (__DEV__ && previous) previous(error, isFatal);
+    });
+    return () => {
+      if (previous) eu.setGlobalHandler?.(previous);
+    };
+  }, []);
+}
 
 function useAuthInit() {
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -112,6 +168,7 @@ function usePushNotifications() {
 }
 
 export default function RootLayout() {
+  useGlobalErrorHandler();
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();

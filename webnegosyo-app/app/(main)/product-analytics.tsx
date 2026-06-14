@@ -131,6 +131,14 @@ export default function ProductAnalyticsScreen() {
   }, [rows, menuItems]);
 
   const onRefresh = useCallback(async () => {
+    // Demo sessions are read-only. refreshAnalytics is an unauthenticated Convex
+    // action that writes aggregated rows to the real sample store, so block the
+    // write for demo guests and just acknowledge the pull gesture.
+    if (useAuthStore.getState().isDemo) {
+      setRefreshing(true);
+      setTimeout(() => setRefreshing(false), 400);
+      return;
+    }
     setRefreshing(true);
     try {
       await refreshAnalytics();

@@ -13,7 +13,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { Badge } from "../../components/Badge";
-import { useOrderAlerts } from "../../hooks/useOrderAlerts";
+import { OrderAlerts } from "../../hooks/useOrderAlerts";
 import { PeriodSelector } from "../../components/PeriodSelector";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
@@ -113,9 +113,6 @@ export default function DashboardScreen() {
   const isStatsLoading = period === "today" ? isLoading : periodLoading;
   const showPrinterSettings = Platform.OS !== "ios";
 
-  // Alert on new pending orders
-  useOrderAlerts({ orders: queue?.pending, enabled: !!convexUrl });
-
   useEffect(() => {
     loadSaved();
   }, []);
@@ -203,6 +200,11 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* New-order alerts (ringtone + notification) only for a real, live
+          merchant session — never for the read-only demo, which also keeps the
+          native audio module off the demo landing path entirely. */}
+      {!!convexUrl && !isDemo && <OrderAlerts orders={queue?.pending} />}
 
       {isDemo && (
         <View style={styles.demoBanner}>

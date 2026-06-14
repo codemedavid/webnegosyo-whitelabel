@@ -7,7 +7,7 @@ import * as Notifications from "expo-notifications";
 const ringtoneSource = require("../assets/ringtone.mp3");
 
 interface OrderAlertOptions {
-  orders: Array<{ _id: string; customerName: string; total: number; itemCount: number }> | undefined;
+  orders: Array<{ _id: string; customerName?: string; total?: number; itemCount?: number }> | undefined;
   enabled?: boolean;
 }
 
@@ -31,7 +31,10 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
 
     if (newOrders.length > 0) {
       const latest = newOrders[0];
-      const body = `${latest.customerName} — ₱${latest.total.toFixed(2)} (${latest.itemCount} item${latest.itemCount !== 1 ? "s" : ""})`;
+      const name = latest.customerName ?? "Customer";
+      const total = (latest.total ?? 0).toFixed(2);
+      const count = latest.itemCount ?? 0;
+      const body = `${name} — ₱${total} (${count} item${count !== 1 ? "s" : ""})`;
 
       // Play custom ringtone sound in-app
       try {
@@ -57,4 +60,17 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
 
     prevIdsRef.current = currentIds;
   }, [orders, enabled, player]);
+}
+
+/**
+ * Renderable wrapper around {@link useOrderAlerts}. Because `useAudioPlayer`
+ * constructs a native iOS audio player at render time, the hook is only safe to
+ * run when alerts are actually wanted. Mounting this component conditionally
+ * (e.g. only for a real, live merchant session — NOT the read-only demo) keeps
+ * the native audio module off the code path entirely when it isn't needed, and
+ * spares App Store reviewers surprise "New Order!" pop-ups over the demo store.
+ */
+export function OrderAlerts({ orders }: { orders: OrderAlertOptions["orders"] }) {
+  useOrderAlerts({ orders, enabled: true });
+  return null;
 }
