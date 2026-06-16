@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   XCircle,
   FileText,
-  ShoppingBag
+  ShoppingBag,
+  CalendarClock
 } from 'lucide-react'
 import {
   Dialog,
@@ -28,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPrice } from '@/lib/cart-utils'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
 import { OrderStatusManagement } from '@/components/admin/order-status-management'
+import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
@@ -95,6 +97,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   const orderTypeConfig = getOrderTypeConfig(order.order_type)
   const currentStatus = statusConfig[order.status]
   const StatusIcon = currentStatus.icon
+  const scheduledLabel = getOrderScheduledLabel(order)
 
   const itemsCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -142,6 +145,14 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                 </Badge>
               )}
             </div>
+
+            {/* Scheduled / Pre-order Banner */}
+            {scheduledLabel && (
+              <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                <CalendarClock className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-semibold">Pre-order · Scheduled for {scheduledLabel}</span>
+              </div>
+            )}
 
             {/* Quick Stats */}
             <div className="flex gap-4 pt-2">
@@ -270,7 +281,12 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                       <div className="space-y-3">
                         <h4 className="font-medium text-sm text-muted-foreground">Additional Information</h4>
                         <div className="space-y-3">
-                          {Object.entries(order.customer_data).map(([key, value]) => {
+                          {Object.entries(order.customer_data)
+                            .filter(([key, value]) =>
+                              !['scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid'].includes(key) &&
+                              value !== '' && value != null
+                            )
+                            .map(([key, value]) => {
                             const isAddress = key.toLowerCase().includes('address')
                             return (
                               <div

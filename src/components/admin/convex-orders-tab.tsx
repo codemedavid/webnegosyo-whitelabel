@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Globe, Smartphone, Package, Loader2 } from "lucide-react";
+import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useConvexOrders } from "@/hooks/use-convex-orders";
 import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
+import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS = [
@@ -111,6 +112,10 @@ export function ConvexOrdersTab() {
             const status = (order.status as string) || "pending";
             const orderType = order.orderType as string | undefined;
             const source = order.source as string | undefined;
+            const scheduledLabel = getOrderScheduledLabel({
+              scheduled_for: (order.scheduledFor ?? null) as string | null,
+              customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+            });
 
             return (
               <button
@@ -150,6 +155,15 @@ export function ConvexOrdersTab() {
                       </>
                     )}
                   </div>
+                  {scheduledLabel && (
+                    <Badge
+                      variant="outline"
+                      className="mt-1 w-fit gap-1 bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-medium"
+                    >
+                      <CalendarClock className="size-3" />
+                      Scheduled · {scheduledLabel}
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Right Side: Total, Count, Status */}

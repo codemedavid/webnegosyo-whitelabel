@@ -112,6 +112,48 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* =========================================================================
+   Superadmin pure-black theme — matches the /download landing aesthetic.
+   Scoped to `.superadmin-shell` so every Shadcn primitive (Card, Button,
+   Input, Badge, Popover, Dialog…) inherits the black palette automatically.
+   Defined AFTER `.dark` so it wins when both classes are present.
+   ========================================================================= */
+.superadmin-shell {
+  --radius: 0.75rem;
+  --background: oklch(0 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(1 0 0 / 3%);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.16 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(1 0 0);
+  --primary-foreground: oklch(0.12 0 0);
+  --secondary: oklch(1 0 0 / 6%);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(1 0 0 / 5%);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(1 0 0 / 8%);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.62 0.21 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(1 0 0 / 30%);
+  --chart-1: oklch(0.985 0 0);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.627 0.265 303.9);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(1 0 0);
+  --sidebar-primary-foreground: oklch(0.12 0 0);
+  --sidebar-accent: oklch(1 0 0 / 8%);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(1 0 0 / 30%);
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -13,6 +13,7 @@ import {
   Globe,
   Smartphone,
   Loader2,
+  CalendarClock,
 } from "lucide-react";
 import {
   Sheet,
@@ -33,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { OrderStatusStepper } from "@/components/admin/order-status-stepper";
+import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
 import {
   useConvexOrderById,
   useUpdateConvexOrderStatus,
@@ -170,6 +172,22 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange }: ConvexOrderShe
               )}
             </div>
 
+            {/* Scheduled / Pre-order Banner */}
+            {(() => {
+              const scheduledLabel = getOrderScheduledLabel({
+                scheduled_for: (order.scheduledFor ?? null) as string | null,
+                customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+              });
+              return scheduledLabel ? (
+                <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900">
+                  <CalendarClock className="size-5 shrink-0" />
+                  <span className="text-sm font-semibold">
+                    Pre-order · Scheduled for {scheduledLabel}
+                  </span>
+                </div>
+              ) : null;
+            })()}
+
             {/* Items Section */}
             <Card>
               <CardHeader className="pb-3">
@@ -259,7 +277,12 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange }: ConvexOrderShe
                 )}
                 {order.customerData && typeof order.customerData === "object" && (
                   <div className="mt-2 space-y-1 rounded-md bg-muted/50 p-2">
-                    {Object.entries(order.customerData as Record<string, unknown>).map(
+                    {Object.entries(order.customerData as Record<string, unknown>)
+                      .filter(([key, value]) =>
+                        !["scheduled_for", "scheduled_for_label", "delivery_lat", "delivery_lng", "messenger_psid"].includes(key) &&
+                        value !== "" && value != null
+                      )
+                      .map(
                       ([key, value]) => (
                         <div key={key} className="flex justify-between text-xs">
                           <span className="text-muted-foreground capitalize">

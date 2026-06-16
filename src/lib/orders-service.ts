@@ -311,7 +311,8 @@ export async function createOrder(
   paymentMethodName?: string,
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
-  serviceChargeAmount?: number
+  serviceChargeAmount?: number,
+  scheduledForISO?: string
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -443,6 +444,20 @@ export async function createOrder(
   const total = verifiedTotal
   const finalTotal = total + (deliveryFee || 0) + (serviceChargeAmount || 0)
 
+  // Advance order: validate the requested fulfillment time. Accept only a parseable
+  // timestamp within a sane horizon (now-1h .. now+90d); otherwise treat as ASAP.
+  let scheduledForValue: string | null = null
+  if (scheduledForISO) {
+    const when = new Date(scheduledForISO)
+    const ms = when.getTime()
+    if (!Number.isNaN(ms)) {
+      const nowMs = Date.now()
+      if (ms >= nowMs - 60 * 60 * 1000 && ms <= nowMs + 90 * 24 * 60 * 60 * 1000) {
+        scheduledForValue = when.toISOString()
+      }
+    }
+  }
+
   // Create order
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -453,6 +468,7 @@ export async function createOrder(
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
       customer_data: customerData || {},
+      scheduled_for: scheduledForValue,
       total: finalTotal,
       delivery_fee: deliveryFee || 0,
       lalamove_quotation_id: lalamoveQuotationId || null,
@@ -558,16 +574,25 @@ export async function createOrderConvex(
   paymentMethodName?: string,
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
-  serviceChargeAmount?: number
+  serviceChargeAmount?: number,
+  scheduledForISO?: string
 ) {
   const convex = createConvexServerClient(convexUrl, convexKey)
+
+  // Convex `orders` has no scheduled_for column, but customerData is `v.any()`, so we
+  // carry the advance-order time inside it. This stays compatible with every existing
+  // tenant deployment (no Convex schema/mutation redeploy required).
+  const convexCustomerData: Record<string, unknown> = {
+    ...(customerData ?? {}),
+    ...(scheduledForISO ? { scheduled_for: scheduledForISO } : {}),
+  }
 
   // Build args matching Convex createOrder mutation schema exactly
   // Do NOT send fields not in the schema (tenantId, paymentMethodId, paymentMethodQrCodeUrl)
   const mutationArgs: Record<string, unknown> = {
     customerName: customerInfo?.name ?? 'Guest',
     customerContact: customerInfo?.contact ?? '',
-    customerData: customerData ?? {},
+    customerData: convexCustomerData,
     total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
     source: 'web' as const,
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),

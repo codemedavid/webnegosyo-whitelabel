@@ -11,6 +11,7 @@ import { ResetButton } from '@/components/admin/reset-button'
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
 import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 import { FlashScreenCard } from '@/components/admin/flash-screen-card'
+import { FooterManagerCard } from '@/components/admin/footer/footer-manager-card'
 
 export default async function SettingsPage({
   params,
@@ -384,6 +385,9 @@ export default async function SettingsPage({
           </form>
         </CardContent>
       </Card>
+
+      {/* Storefront Footer */}
+      <FooterManagerCard tenant={tenant} />
 
       {/* Facebook Messenger Integration */}
       <FacebookConnectionCard tenant={tenant} />

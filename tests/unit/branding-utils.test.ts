@@ -39,8 +39,8 @@ describe('generateBrandingCSS', () => {
     const branding = getTenantBranding(TENANT_FIXTURE.tenant1 as any)
     const css = generateBrandingCSS(branding)
     
-    expect(css['--brand-background']).toBe('#ffffff')
-    expect(css['--brand-primary']).toBe('#ff0000')
+    expect((css as Record<string, string>)['--brand-background']).toBe('#ffffff')
+    expect((css as Record<string, string>)['--brand-primary']).toBe('#ff0000')
   })
 
   it('includes all branding properties', () => {

@@ -52,6 +52,11 @@ export async function createOrderTypeAction(
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
     service_charge_value?: number
+    advance_order_enabled?: boolean
+    advance_order_allow_asap?: boolean
+    advance_order_lead_time_minutes?: number
+    advance_order_max_days_ahead?: number
+    advance_order_slot_interval_minutes?: number
   }
 ) {
   try {
@@ -82,6 +87,11 @@ export async function updateOrderTypeAction(
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
     service_charge_value?: number
+    advance_order_enabled?: boolean
+    advance_order_allow_asap?: boolean
+    advance_order_lead_time_minutes?: number
+    advance_order_max_days_ahead?: number
+    advance_order_slot_interval_minutes?: number
   }
 ) {
   try {
@@ -157,6 +167,11 @@ export async function reorderOrderTypesAction(
         service_charge_enabled: existing.service_charge_enabled,
         service_charge_type: existing.service_charge_type,
         service_charge_value: existing.service_charge_value,
+        advance_order_enabled: existing.advance_order_enabled,
+        advance_order_allow_asap: existing.advance_order_allow_asap,
+        advance_order_lead_time_minutes: existing.advance_order_lead_time_minutes,
+        advance_order_max_days_ahead: existing.advance_order_max_days_ahead,
+        advance_order_slot_interval_minutes: existing.advance_order_slot_interval_minutes,
       })
     })
 

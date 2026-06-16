@@ -25,7 +25,8 @@ export function ImageModal({ isOpen, onOpenChange, imageUrl, itemName }: ImageMo
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent
-                className="max-w-4xl w-[95vw] h-[90vh] p-0 border-none overflow-hidden"
+                className="max-w-4xl w-[95vw] h-[90vh] p-0 border-none overflow-hidden z-[110]"
+                overlayClassName="z-[110]"
                 style={{ backgroundColor: 'var(--pd-modal-bg)' }}
             >
                 {/* Hidden title for accessibility */}

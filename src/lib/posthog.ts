@@ -145,13 +145,20 @@ export async function captureBookingCreated(data: BookingEventData): Promise<voi
 
   try {
     posthog.capture({
-      distinctId: `lead_${data.leadId}`,
+      distinctId: `lead_${data.email}`,
       event: 'booking_created',
       properties: {
         lead_id: data.leadId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
         booking_date: data.bookingDate,
         booking_time: data.bookingTime,
         source: data.source,
+        $set: {
+          email: data.email,
+          name: data.name,
+        },
       },
     })
     await posthog.flush()

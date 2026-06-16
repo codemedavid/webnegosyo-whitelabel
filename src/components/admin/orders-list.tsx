@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import { formatDistance } from 'date-fns'
-import { 
-  ShoppingBag, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
-  UtensilsCrossed, 
-  Package, 
-  Truck
+import {
+  ShoppingBag,
+  Clock,
+  CheckCircle,
+  XCircle,
+  UtensilsCrossed,
+  Package,
+  Truck,
+  CalendarClock
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { formatPrice } from '@/lib/cart-utils'
+import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
 import type { OrderWithItems } from '@/lib/orders-service'
 
@@ -133,6 +135,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
         {filteredOrders.map((order) => {
           const StatusIcon = statusIcons[order.status]
           const itemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0)
+          const scheduledLabel = getOrderScheduledLabel(order)
 
           return (
             <Card key={order.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedOrder(order)}>
@@ -149,6 +152,15 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
                     {order.status}
                   </Badge>
                 </div>
+                {scheduledLabel && (
+                  <Badge
+                    variant="outline"
+                    className="mt-2 w-fit gap-1.5 bg-amber-100 text-amber-800 border-amber-300 font-medium"
+                  >
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Scheduled · {scheduledLabel}
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">

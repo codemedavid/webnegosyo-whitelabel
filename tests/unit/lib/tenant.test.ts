@@ -66,7 +66,7 @@ describe('tenant resolution', () => {
     beforeEach(() => {
       // Mock getRootDomain to return a test domain
       jest.doMock('@/lib/tenant', () => {
-        const originalModule = jest.requireActual('@/lib/tenant')
+        const originalModule = jest.requireActual('@/lib/tenant') as Record<string, unknown>
         return {
           ...originalModule,
           getRootDomain: () => 'example.com',
@@ -165,7 +165,7 @@ describe('tenant resolution', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
+        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: { id: 'tenant-1', slug: 'test-tenant', is_active: true },
           error: null,
         }),
@@ -180,7 +180,7 @@ describe('tenant resolution', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
+        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: { id: 'tenant-1', slug: 'inactive-tenant', is_active: false },
           error: null,
         }),
@@ -197,7 +197,7 @@ describe('tenant resolution', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
+        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: null,
           error: null,
         }),
@@ -212,7 +212,7 @@ describe('tenant resolution', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
+        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: null,
           error: { message: 'Database error' },
         }),

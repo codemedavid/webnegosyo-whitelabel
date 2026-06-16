@@ -17,6 +17,7 @@ export default defineSchema({
     ),
     orderType: v.optional(v.string()),
     orderTypeId: v.optional(v.string()),
+    scheduledFor: v.optional(v.string()),
     source: v.union(
       v.literal("web"),
       v.literal("mobile"),

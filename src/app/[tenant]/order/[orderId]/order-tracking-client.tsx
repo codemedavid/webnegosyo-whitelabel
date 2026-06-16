@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, XCircle } from 'lucide-react'
+import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, XCircle, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -148,6 +148,12 @@ export function OrderTrackingClient({
               Placed {formatTime(trackingData.createdAt)}
               {trackingData.orderType && ` \u00b7 ${trackingData.orderType}`}
             </p>
+            {trackingData.scheduledLabel && (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-800">
+                <CalendarClock className="h-4 w-4" />
+                Scheduled for {trackingData.scheduledLabel}
+              </div>
+            )}
           </div>
 
           {/* Status Stepper */}

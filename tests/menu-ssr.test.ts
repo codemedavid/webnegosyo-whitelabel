@@ -77,6 +77,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       name: 'Appetizers',
       order: 1,
       is_active: true,
+      display_layout: 'grid',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z'
     },
@@ -86,6 +87,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       name: 'Main Course',
       order: 2,
       is_active: true,
+      display_layout: 'grid',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z'
     }

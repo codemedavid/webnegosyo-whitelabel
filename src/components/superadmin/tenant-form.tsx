@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ImageUpload } from '@/components/shared/image-upload'
 import type { Tenant } from '@/types/database'
 import { useCreateTenant, useUpdateTenant } from '@/lib/queries/tenants'
@@ -196,11 +195,14 @@ export function TenantForm({ tenant }: TenantFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Identity
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Basic Information</h2>
+        </div>
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Restaurant Name *</Label>
             <Input
@@ -226,7 +228,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
                 Generate
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/45">
               Will be accessible at: yoursite.com/{formData.slug}
             </p>
           </div>
@@ -255,18 +257,21 @@ export function TenantForm({ tenant }: TenantFormProps) {
               type="checkbox"
               checked={formData.is_active}
               onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-              className="h-4 w-4"
+              className="h-4 w-4 accent-white"
             />
-            <span className="text-sm font-medium">Active</span>
+            <span className="text-sm font-medium text-white">Active</span>
           </label>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Branding</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Theme
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Branding</h2>
+        </div>
+        <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="primary_color">Primary Color</Label>
@@ -322,14 +327,17 @@ export function TenantForm({ tenant }: TenantFormProps) {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Branding</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Theme
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Extended Branding</h2>
+        </div>
+        <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="background_color">Background Color</Label>
@@ -475,14 +483,17 @@ export function TenantForm({ tenant }: TenantFormProps) {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Messenger Integration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Integration
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Messenger Integration</h2>
+        </div>
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="messenger_page_id">Facebook Page ID *</Label>
             <Input
@@ -502,28 +513,31 @@ export function TenantForm({ tenant }: TenantFormProps) {
               onChange={(e) => setFormData({ ...formData, messenger_username: e.target.value })}
               placeholder="bellaitalia"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/45">
               Optional: If provided, will use m.me/username instead of page ID
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Email Notifications</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Notifications
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Email Notifications</h2>
+        </div>
+        <div className="space-y-4">
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={formData.email_notifications_enabled}
               onChange={(e) => setFormData({ ...formData, email_notifications_enabled: e.target.checked })}
-              className="h-4 w-4"
+              className="h-4 w-4 accent-white"
             />
-            <span className="text-sm font-medium">Enable Email Notifications</span>
+            <span className="text-sm font-medium text-white">Enable Email Notifications</span>
           </label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-white/45">
             Send order notification emails to the restaurant via PostHog Workflows
           </p>
 
@@ -537,18 +551,21 @@ export function TenantForm({ tenant }: TenantFormProps) {
               placeholder="restaurant@example.com"
               disabled={!formData.email_notifications_enabled}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/45">
               Orders will be sent to this email address when a new order is placed
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Convex / Mobile App</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="mb-5">
+          <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+            Mobile App
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">Convex / Mobile App</h2>
+        </div>
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="convex_deployment_url">Convex Deployment URL</Label>
             <Input
@@ -573,9 +590,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
           {tenant?.convex_schema_version != null && (
             <div className="space-y-2">
               <Label>Current Schema Version</Label>
-              <p className="text-sm text-muted-foreground">
+              <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-sm font-medium text-white/60">
                 v{tenant.convex_schema_version}
-              </p>
+              </span>
             </div>
           )}
 
@@ -594,14 +611,14 @@ export function TenantForm({ tenant }: TenantFormProps) {
                 {isDeploying ? 'Deploying...' : 'Deploy Schema to Convex'}
               </Button>
               {deployStatus && (
-                <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-destructive' : 'text-green-600'}`}>
+                <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-red-400' : 'text-emerald-400'}`}>
                   {deployStatus}
                 </p>
               )}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <div className="flex justify-end gap-2">
         <Button

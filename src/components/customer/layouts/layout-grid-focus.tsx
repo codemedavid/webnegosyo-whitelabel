@@ -101,8 +101,9 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
             {/* Slim Category Strip */}
             {!isLoading && categories.length > 0 && (
                 <div
-                    className="sticky top-20 z-40 mb-4 py-2 px-1 rounded-xl backdrop-blur-sm border-b"
+                    className="sticky z-40 mb-4 py-2 px-1 rounded-xl backdrop-blur-sm border-b"
                     style={{
+                        top: 'var(--menu-header-h, 5rem)',
                         backgroundColor: `${branding.header}ee`,
                         borderColor: branding.border
                     }}

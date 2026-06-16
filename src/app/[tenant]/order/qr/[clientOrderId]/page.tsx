@@ -3,10 +3,11 @@
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, X, ShieldQuestion } from 'lucide-react'
+import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, X, ShieldQuestion, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
+import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getTenantBranding, generateBrandingCSS, setAlpha } from '@/lib/branding-utils'
 import {
@@ -292,6 +293,18 @@ export default function QrOrderPage() {
                 {payload.orderType}
               </p>
             )}
+            {(() => {
+              const scheduledLabel = getOrderScheduledLabel({
+                scheduled_for: payload.scheduledFor ?? null,
+                customer_data: payload.customerData,
+              })
+              return scheduledLabel ? (
+                <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Scheduled for {scheduledLabel}
+                </div>
+              ) : null
+            })()}
             <div className="space-y-3">
               {payload.items.map((item, index) => (
                 <div key={`${item.menuItemId}-${index}`}>

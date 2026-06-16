@@ -7,6 +7,17 @@ interface UseProductDetailModalsOptions {
     menuEngineeringEnabled: boolean
     upgradeUpsellsCount: number
     upsellBundlesCount: number
+    /**
+     * When provided (sheet mode), this is called instead of router.back() when a
+     * flow wants to dismiss the product detail (e.g. closing the post-add upsell
+     * screen). In page mode this is omitted and navigation falls back to history.
+     */
+    onExit?: () => void
+    /**
+     * Suppress the auto-opening "Make it a Meal?" upgrade prompt. Used by the
+     * bottom sheet after an in-sheet upgrade swap so the prompt doesn't re-fire.
+     */
+    suppressAutoUpgrade?: boolean
 }
 
 export function useProductDetailModals({
@@ -14,6 +25,8 @@ export function useProductDetailModals({
     menuEngineeringEnabled,
     upgradeUpsellsCount,
     upsellBundlesCount,
+    onExit,
+    suppressAutoUpgrade = false,
 }: UseProductDetailModalsOptions) {
     const router = useRouter()
 
@@ -37,12 +50,12 @@ export function useProductDetailModals({
     // Auto-open the upgrade screen once -- skip if user already chose or dismissed
     // Brief delay so user sees the product detail page first
     useEffect(() => {
-        if (upgradeDismissed) return
+        if (upgradeDismissed || suppressAutoUpgrade) return
         if (menuEngineeringEnabled && (upgradeUpsellsCount > 0 || upsellBundlesCount > 0)) {
             const timer = setTimeout(() => setIsUpgradeScreenOpen(true), 200)
             return () => clearTimeout(timer)
         }
-    }, [menuEngineeringEnabled, upgradeUpsellsCount, upsellBundlesCount, upgradeDismissed])
+    }, [menuEngineeringEnabled, upgradeUpsellsCount, upsellBundlesCount, upgradeDismissed, suppressAutoUpgrade])
 
     // Image modal handlers
     const handleOpenImageModal = useCallback(() => {
@@ -68,10 +81,13 @@ export function useProductDetailModals({
         if (buyNowIntentRef.current) {
             buyNowIntentRef.current = false
             router.push(`/${tenantSlug}/cart`)
+        } else if (onExit) {
+            // Sheet mode: close the sheet instead of popping history.
+            onExit()
         } else {
             router.back()
         }
-    }, [router, tenantSlug])
+    }, [router, tenantSlug, onExit])
 
     // Navigate after buy-now intent when closing various modals
     const navigateAfterBuyNow = useCallback(() => {

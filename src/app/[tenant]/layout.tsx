@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { NavigationProgress } from '@/components/shared/navigation-progress'
+import { SiteFooter } from '@/components/customer/site-footer'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -40,6 +41,7 @@ export default async function TenantLayout({ params, children }: Props) {
                 <NavigationProgress color={primaryColor} />
             </Suspense>
             {children}
+            <SiteFooter tenant={tenant} />
         </>
     )
 }

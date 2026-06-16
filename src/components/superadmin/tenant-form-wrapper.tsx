@@ -1,16 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { StatusBadge } from '@/components/superadmin/ui/primitives'
+import { TenantMonogram } from '@/components/superadmin/tenant-visuals'
+import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
@@ -25,6 +31,9 @@ interface PrefillData {
 interface TenantFormWrapperProps {
   tenant?: Tenant
   prefill?: PrefillData
+  usersSlot?: ReactNode
+  importSlot?: ReactNode
+  statsSlot?: ReactNode
 }
 
 interface TenantFormData {
@@ -217,10 +226,10 @@ function BasicInfoSection({
             type="checkbox"
             checked={formData.is_active}
             onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-            className="h-4 w-4"
+            className="h-4 w-4 accent-white"
             disabled={isPending}
           />
-          <span className="text-sm font-medium">Active</span>
+          <span className="text-sm font-medium text-white">Active</span>
         </label>
       </CardContent>
     </Card>
@@ -515,7 +524,7 @@ function MessengerModeSection({
               messenger_redirect_mode: e.target.value as 'webhook' | 'direct'
             })}
             disabled={isPending}
-            className="w-full h-10 px-3 rounded-md border border-input bg-background"
+            className="w-full h-10 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-white focus:border-white/30 focus:outline-none disabled:opacity-50"
           >
             <option value="webhook">Webhook Mode (Recommended)</option>
             <option value="direct">Direct Mode</option>
@@ -523,17 +532,17 @@ function MessengerModeSection({
         </div>
 
         {formData.messenger_redirect_mode === 'webhook' ? (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Webhook Mode:</strong> Uses m.me links with ref parameter for tracking.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Webhook Mode:</strong> Uses m.me links with ref parameter for tracking.
               Orders are automatically sent to the customer&apos;s Messenger via webhook.
               Requires Facebook page connection for best results.
             </p>
           </div>
         ) : (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <p className="text-sm text-amber-800">
-              <strong>Direct Mode:</strong> Opens Messenger directly (messenger.com/t/).
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Direct Mode:</strong> Opens Messenger directly (messenger.com/t/).
               Simpler but no webhook tracking - message is pre-filled for customer to send manually.
             </p>
           </div>
@@ -574,9 +583,9 @@ function MapboxSection({
           />
         </div>
         {!formData.mapbox_enabled && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <p className="text-sm text-amber-800">
-              <strong>Note:</strong> When disabled, customers will need to type their address manually without map assistance.
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Note:</strong> When disabled, customers will need to type their address manually without map assistance.
             </p>
           </div>
         )}
@@ -616,9 +625,9 @@ function OrderManagementSection({
           />
         </div>
         {!formData.enable_order_management && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Note:</strong> When disabled, orders will only redirect to Messenger without being saved to the database.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Note:</strong> When disabled, orders will only redirect to Messenger without being saved to the database.
               Order management features in the admin panel will not be available.
             </p>
           </div>
@@ -662,16 +671,16 @@ function MenuEngineeringSection({
           />
         </div>
         {!formData.menu_engineering_enabled ? (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <p className="text-sm text-amber-800">
-              <strong>Disabled:</strong> Menu engineering features are off. The tenant admin will not see the Menu Engineering sidebar item, and customers will not see upsell suggestions, badges, or checkout interstitials.
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Disabled:</strong> Menu engineering features are off. The tenant admin will not see the Menu Engineering sidebar item, and customers will not see upsell suggestions, badges, or checkout interstitials.
             </p>
           </div>
         ) : (
           <>
-            <div className="rounded-lg bg-green-50 border border-green-200 p-4">
-              <p className="text-sm text-green-800">
-                <strong>Enabled:</strong> The tenant admin can access BCG classification, upsell pair management, and checkout interstitial settings from their admin dashboard.
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+              <p className="text-sm text-white/70">
+                <strong className="text-emerald-400">Enabled:</strong> The tenant admin can access BCG classification, upsell pair management, and checkout interstitial settings from their admin dashboard.
               </p>
             </div>
 
@@ -732,9 +741,9 @@ function FlashScreenFeatureSection({
           />
         </div>
         {!formData.flash_screen_feature_enabled && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Disabled:</strong> Tenant admins will not see flash screen controls in their settings.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Disabled:</strong> Tenant admins will not see flash screen controls in their settings.
             </p>
           </div>
         )}
@@ -777,9 +786,9 @@ function BundlesFeatureSection({
           />
         </div>
         {!formData.bundles_enabled && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Disabled:</strong> Bundle management will not appear in the admin dashboard and customers will not see bundles on the menu.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Disabled:</strong> Bundle management will not appear in the admin dashboard and customers will not see bundles on the menu.
             </p>
           </div>
         )}
@@ -822,9 +831,9 @@ function PairingRulesFeatureSection({
           />
         </div>
         {!formData.pairing_rules_enabled && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Disabled:</strong> Tag-based pairing rules will not be evaluated and no automatic complementary suggestions will be generated from rules.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Disabled:</strong> Tag-based pairing rules will not be evaluated and no automatic complementary suggestions will be generated from rules.
             </p>
           </div>
         )}
@@ -867,9 +876,9 @@ function QrHandoffFeatureSection({
           />
         </div>
         {!formData.qr_handoff_enabled && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Disabled:</strong> Web checkout uses the standard Messenger flow. The QR thank-you page will not be shown.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Disabled:</strong> Web checkout uses the standard Messenger flow. The QR thank-you page will not be shown.
             </p>
           </div>
         )}
@@ -943,9 +952,9 @@ function RestaurantAddressSection({
           </div>
         </div>
 
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-          <p className="text-sm text-blue-800">
-            <strong>Tip:</strong> Use the map picker above to automatically fill in coordinates, or use Google Maps to find your restaurant coordinates manually.
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+          <p className="text-sm text-white/70">
+            <strong className="text-sky-400">Tip:</strong> Use the map picker above to automatically fill in coordinates, or use Google Maps to find your restaurant coordinates manually.
           </p>
         </div>
       </CardContent>
@@ -1059,9 +1068,9 @@ function LalamoveSection({
               </div>
 
               {formData.lalamove_sandbox && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-                  <p className="text-sm text-amber-800">
-                    <strong>Testing Mode:</strong> Using sandbox environment. No real deliveries will be created.
+                <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+                  <p className="text-sm text-white/70">
+                    <strong className="text-amber-400">Testing Mode:</strong> Using sandbox environment. No real deliveries will be created.
                   </p>
                 </div>
               )}
@@ -1214,7 +1223,7 @@ function ConvexMobileAppSection({
               {isDeploying ? 'Deploying...' : 'Deploy Schema to Convex'}
             </Button>
             {deployStatus && (
-              <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-destructive' : 'text-green-600'}`}>
+              <p className={`text-sm ${deployStatus.startsWith('Deploy failed') ? 'text-red-400' : 'text-emerald-400'}`}>
                 {deployStatus}
               </p>
             )}
@@ -1222,9 +1231,9 @@ function ConvexMobileAppSection({
         )}
 
         {!formData.convex_deployment_url && (
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Without Convex configuration, orders will only be stored in Supabase. Configure Convex to enable real-time order tracking and mobile app support.
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-sky-400">Note:</strong> Without Convex configuration, orders will only be stored in Supabase. Configure Convex to enable real-time order tracking and mobile app support.
             </p>
           </div>
         )}
@@ -1233,7 +1242,13 @@ function ConvexMobileAppSection({
   )
 }
 
-export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
+export function TenantFormWrapper({
+  tenant,
+  prefill,
+  usersSlot,
+  importSlot,
+  statsSlot,
+}: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
 
@@ -1301,8 +1316,8 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
     email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault()
 
     const input = {
       name: formData.name,
@@ -1401,117 +1416,202 @@ export function TenantFormWrapper({ tenant, prefill }: TenantFormWrapperProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <BasicInfoSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
+    <div className="space-y-6">
+      {/* Sticky workspace header */}
+      <div className="sticky top-0 z-30 rounded-2xl border border-white/10 bg-[#0a0a0a]/80 px-5 py-4 backdrop-blur">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <TenantMonogram
+              tenant={
+                tenant ?? {
+                  name: formData.name || 'New',
+                  logo_url: formData.logo_url,
+                  primary_color: formData.primary_color,
+                }
+              }
+              size="md"
+            />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="truncate text-xl font-bold tracking-tight text-white">
+                  {formData.name || 'New Restaurant'}
+                </h1>
+                {tenant ? <StatusBadge active={formData.is_active} /> : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-white/55">
+                <span className="font-mono text-white/55">/{formData.slug || 'slug'}</span>
+                {formData.domain ? (
+                  <>
+                    <span className="text-white/30">·</span>
+                    <span className="text-white/55">{formData.domain}</span>
+                  </>
+                ) : null}
+              </div>
+              {statsSlot ? <div className="mt-2">{statsSlot}</div> : null}
+            </div>
+          </div>
 
-      <BrandingSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <ExtendedBrandingSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <MessengerSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <MessengerModeSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <MapboxSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <OrderManagementSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <MenuEngineeringSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <FlashScreenFeatureSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <BundlesFeatureSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <PairingRulesFeatureSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <QrHandoffFeatureSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <RestaurantAddressSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <LalamoveSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <EmailNotificationsSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-      />
-
-      <ConvexMobileAppSection
-        formData={formData}
-        setFormData={setFormData}
-        isPending={isPending}
-        tenant={tenant}
-      />
-
-      <div className="flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push('/superadmin/tenants')}
-          disabled={isPending}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Saving...' : tenant ? 'Update Tenant' : 'Create Tenant'}
-        </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {tenant ? (
+              <Button
+                asChild
+                variant="outline"
+                className="border-white/15 text-white hover:bg-white/10"
+              >
+                <Link href={`/${tenant.slug}/menu`} target="_blank">
+                  View live menu
+                  <ExternalLink className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/15 text-white hover:bg-white/10"
+              onClick={() => router.push('/superadmin/tenants')}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-white text-black hover:bg-white/90"
+              onClick={() => handleSubmit()}
+              disabled={isPending}
+            >
+              {isPending ? 'Saving…' : tenant ? 'Save changes' : 'Create tenant'}
+            </Button>
+          </div>
+        </div>
       </div>
-    </form>
+
+      {/* Tabbed workspace */}
+      <Tabs defaultValue="general">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="branding">Branding</TabsTrigger>
+          <TabsTrigger value="features">Features</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="delivery">Delivery</TabsTrigger>
+          {tenant ? <TabsTrigger value="team">Team</TabsTrigger> : null}
+          {tenant ? <TabsTrigger value="import">Import</TabsTrigger> : null}
+        </TabsList>
+
+        <TabsContent value="general" className="mt-6 space-y-6">
+          <BasicInfoSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+        </TabsContent>
+
+        <TabsContent value="branding" className="mt-6 space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+            <div className="space-y-6">
+              <BrandingSection
+                formData={formData}
+                setFormData={setFormData}
+                isPending={isPending}
+              />
+              <ExtendedBrandingSection
+                formData={formData}
+                setFormData={setFormData}
+                isPending={isPending}
+              />
+            </div>
+            <div className="h-fit xl:sticky xl:top-28">
+              <TenantBrandPreview formData={formData} />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="features" className="mt-6 space-y-6">
+          <MenuEngineeringSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <BundlesFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <PairingRulesFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <QrHandoffFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <FlashScreenFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <OrderManagementSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <MapboxSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="mt-6 space-y-6">
+          <MessengerSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <MessengerModeSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <EmailNotificationsSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <ConvexMobileAppSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+            tenant={tenant}
+          />
+        </TabsContent>
+
+        <TabsContent value="delivery" className="mt-6 space-y-6">
+          <RestaurantAddressSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <LalamoveSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+        </TabsContent>
+
+        {tenant ? (
+          <TabsContent value="team" className="mt-6 space-y-6">
+            {usersSlot}
+          </TabsContent>
+        ) : null}
+
+        {tenant ? (
+          <TabsContent value="import" className="mt-6 space-y-6">
+            {importSlot}
+          </TabsContent>
+        ) : null}
+      </Tabs>
+    </div>
   )
 }

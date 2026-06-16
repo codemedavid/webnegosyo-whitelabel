@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { Mail, Phone, CalendarClock, ArrowUpRight, Loader2, MessageSquarePlus } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchLeadDetail, changeLeadStatus, addLeadNote } from '@/app/actions/leads'
+import { LEAD_STATUS_CONFIG } from './lead-status-badge'
 import type { LeadStatus, Lead, LeadNote, LeadStatusHistoryEntry } from '@/lib/leads/types'
 
 interface LeadDetailPanelProps {
@@ -15,20 +17,17 @@ interface LeadDetailPanelProps {
   onStatusChange: () => void
 }
 
-const STATUS_OPTIONS: { value: LeadStatus; label: string; activeClass: string }[] = [
-  { value: 'new', label: 'New', activeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { value: 'contacted', label: 'Contacted', activeClass: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'qualified', label: 'Qualified', activeClass: 'bg-purple-50 text-purple-700 border-purple-200' },
-  { value: 'converted', label: 'Converted', activeClass: 'bg-green-50 text-green-700 border-green-200' },
-  { value: 'lost', label: 'Lost', activeClass: 'bg-zinc-100 text-zinc-500 border-zinc-200' },
+const STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'qualified', label: 'Qualified' },
+  { value: 'converted', label: 'Converted' },
+  { value: 'lost', label: 'Lost' },
 ]
 
-const AVATAR_COLORS: Record<LeadStatus, string> = {
-  new: 'bg-blue-50 text-blue-600',
-  contacted: 'bg-amber-50 text-amber-600',
-  qualified: 'bg-purple-50 text-purple-600',
-  converted: 'bg-green-50 text-green-600',
-  lost: 'bg-zinc-100 text-zinc-500',
+function avatarClass(status: LeadStatus): string {
+  const c = LEAD_STATUS_CONFIG[status]
+  return `${c.bg} ${c.text} border ${c.border}`
 }
 
 function getInitials(name: string): string {
@@ -81,6 +80,10 @@ function timeAgo(dateStr: string): string {
   if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`
   if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks !== 1 ? 's' : ''} ago`
   return `${diffMonths} month${diffMonths !== 1 ? 's' : ''} ago`
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-white/45">{children}</div>
 }
 
 export function LeadDetailPanel({
@@ -144,11 +147,20 @@ export function LeadDetailPanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex flex-col gap-0 overflow-y-auto p-0 sm:max-w-md"
+        className="flex w-full flex-col gap-0 overflow-y-auto rounded-l-2xl border-white/10 bg-background p-0 sm:max-w-md"
       >
         {isLoading || !lead ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-muted-foreground">{isLoading ? 'Loading...' : 'No lead selected.'}</div>
+            <div className="flex items-center gap-2 text-sm text-white/45">
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading lead...
+                </>
+              ) : (
+                'No lead selected.'
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-6 p-6">
@@ -156,42 +168,63 @@ export function LeadDetailPanel({
               <SheetTitle className="sr-only">{lead.name} — Lead Detail</SheetTitle>
             </SheetHeader>
 
-            {/* 1. Header: Avatar + name + contact */}
-            <div className="flex items-center gap-4">
-              <div
-                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold ${AVATAR_COLORS[lead.status]}`}
-              >
-                {getInitials(lead.name)}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-lg font-semibold">{lead.name}</div>
-                <div className="mt-0.5 truncate text-sm text-muted-foreground">
-                  {lead.email}
-                  {lead.phone ? <span className="mx-1 opacity-40">·</span> : null}
-                  {lead.phone && <span>{lead.phone}</span>}
+            {/* 1. Header: Avatar + name + contact actions */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold ${avatarClass(lead.status)}`}
+                >
+                  {getInitials(lead.name)}
                 </div>
+                <div className="min-w-0">
+                  <div className="truncate text-lg font-semibold text-white">{lead.name}</div>
+                  <div className="mt-0.5 truncate text-xs capitalize text-white/45">
+                    {lead.source.replace(/_/g, ' ')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <a
+                  href={`mailto:${lead.email}`}
+                  className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/80 transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                >
+                  <Mail className="h-4 w-4 shrink-0 text-white/45" />
+                  <span className="truncate">{lead.email}</span>
+                </a>
+                {lead.phone && (
+                  <a
+                    href={`tel:${lead.phone}`}
+                    className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/80 transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                  >
+                    <Phone className="h-4 w-4 shrink-0 text-white/45" />
+                    <span className="truncate">{lead.phone}</span>
+                  </a>
+                )}
               </div>
             </div>
 
             {/* 2. Status changer */}
             <div>
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Status
-              </div>
+              <SectionLabel>Status</SectionLabel>
               <div className="flex flex-wrap gap-2">
                 {STATUS_OPTIONS.map((opt) => {
                   const isActive = lead.status === opt.value
+                  const c = LEAD_STATUS_CONFIG[opt.value]
                   return (
                     <button
                       key={opt.value}
+                      type="button"
                       disabled={isChangingStatus}
+                      aria-pressed={isActive}
                       onClick={() => handleStatusChange(opt.value)}
-                      className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                         isActive
-                          ? opt.activeClass
-                          : 'border-border bg-muted text-muted-foreground hover:bg-muted/80'
+                          ? `${c.bg} ${c.text} ${c.border}`
+                          : 'border-white/10 bg-white/[0.04] text-white/60 hover:bg-white/10 hover:text-white'
                       }`}
                     >
+                      <span className={`h-1.5 w-1.5 rounded-full ${isActive ? c.dot : 'bg-white/30'}`} />
                       {opt.label}
                     </button>
                   )
@@ -201,86 +234,108 @@ export function LeadDetailPanel({
 
             {/* 3. Booking info */}
             {lead.booking_date && (
-              <div className="rounded-lg border bg-muted p-4">
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Booking
-                </div>
-                <div className="text-sm font-medium">
-                  {formatDate(lead.booking_date)}
-                </div>
-                {lead.booking_time && (
-                  <div className="mt-0.5 text-sm text-muted-foreground">
-                    {formatTime(lead.booking_time)}
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl border border-indigo-400/20 bg-indigo-400/10 p-2">
+                    <CalendarClock className="h-4 w-4 text-indigo-400" />
                   </div>
-                )}
-                <div className="mt-2 text-xs text-muted-foreground opacity-60">15-minute growth call</div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                      Scheduled call
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-white">{formatDate(lead.booking_date)}</div>
+                    {lead.booking_time && (
+                      <div className="mt-0.5 text-sm text-white/55">{formatTime(lead.booking_time)}</div>
+                    )}
+                    <div className="mt-1.5 text-xs text-white/35">15-minute growth call</div>
+                  </div>
+                </div>
               </div>
             )}
 
             {/* 4. Notes */}
             <div>
-              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Notes
-              </div>
+              <SectionLabel>
+                Notes{notes.length > 0 ? <span className="ml-1.5 text-white/30">{notes.length}</span> : null}
+              </SectionLabel>
               {notes.length > 0 ? (
-                <ul className="mb-4 space-y-3">
+                <ul className="mb-4 space-y-2.5">
                   {notes.map((n) => (
-                    <li key={n.id} className="rounded-lg border bg-muted p-3">
-                      <p className="text-sm">{n.note}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{timeAgo(n.created_at)}</p>
+                    <li key={n.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <p className="whitespace-pre-wrap text-sm text-white/80">{n.note}</p>
+                      <p className="mt-1.5 text-xs text-white/40">{timeAgo(n.created_at)}</p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mb-4 text-sm text-muted-foreground">No notes yet.</p>
+                <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-3 py-4 text-sm text-white/40">
+                  <MessageSquarePlus className="h-4 w-4" />
+                  No notes yet — add the first one below.
+                </div>
               )}
               <Textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Add a note..."
+                placeholder="Add a note about this lead..."
                 rows={3}
+                aria-label="New note"
               />
               <Button
                 size="sm"
                 disabled={!noteText.trim() || isSavingNote}
                 onClick={handleSaveNote}
-                className="mt-2"
+                className="mt-2 gap-1.5"
               >
-                {isSavingNote ? 'Saving...' : 'Save Note'}
+                {isSavingNote ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Note'
+                )}
               </Button>
             </div>
 
             {/* 5. Status history */}
             {history.length > 0 && (
               <div>
-                <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Status History
-                </div>
-                <div className="border-l-2 border-border pl-4 space-y-4">
-                  {history.map((entry) => (
-                    <div key={entry.id}>
-                      <p className="text-sm">
-                        Status changed to{' '}
-                        <span className="font-semibold capitalize">{entry.new_status}</span>
-                      </p>
-                      {entry.note && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">{entry.note}</p>
-                      )}
-                      <p className="mt-0.5 text-xs text-muted-foreground opacity-60">{timeAgo(entry.created_at)}</p>
-                    </div>
-                  ))}
+                <SectionLabel>Status History</SectionLabel>
+                <div className="space-y-4 border-l border-white/10 pl-4">
+                  {history.map((entry) => {
+                    const c = LEAD_STATUS_CONFIG[entry.new_status as LeadStatus]
+                    return (
+                      <div key={entry.id} className="relative">
+                        <span
+                          className={`absolute -left-[1.3125rem] top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${
+                            c ? c.dot : 'bg-white/40'
+                          }`}
+                          aria-hidden
+                        />
+                        <p className="text-sm text-white/80">
+                          Moved to{' '}
+                          <span className={`font-semibold capitalize ${c ? c.text : 'text-white'}`}>
+                            {entry.new_status}
+                          </span>
+                        </p>
+                        {entry.note && <p className="mt-0.5 text-xs text-white/55">{entry.note}</p>}
+                        <p className="mt-0.5 text-xs text-white/35">{timeAgo(entry.created_at)}</p>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
 
             {/* 6. Convert to Tenant */}
             {lead.status !== 'converted' && (
-              <div className="pt-2">
+              <div className="pt-1">
                 <Link
                   href={`/superadmin/tenants/new?lead_id=${lead.id}&name=${encodeURIComponent(lead.name)}&email=${encodeURIComponent(lead.email)}`}
-                  className="inline-flex w-full items-center justify-center rounded-md border border-green-600 bg-transparent px-4 py-2 text-sm font-medium text-green-600 transition-colors hover:bg-green-50"
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-400/20"
                 >
                   Convert to Tenant
+                  <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </div>
             )}

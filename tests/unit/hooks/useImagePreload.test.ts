@@ -12,7 +12,14 @@ describe('useImagePreload', () => {
     createElementSpy.mockRestore()
   })
 
-  it('creates Image elements for the first N urls', () => {
+  const preloadLinks = (spy: jest.SpyInstance) =>
+    spy.mock.results.filter((r) => {
+      if (r.type !== 'return') return false
+      const el = r.value as HTMLElement | undefined
+      return el?.tagName === 'LINK' && (el as HTMLLinkElement).rel === 'preload'
+    })
+
+  it('creates preload links for the first N urls', () => {
     const urls = [
       'https://example.com/a.jpg',
       'https://example.com/b.jpg',
@@ -21,28 +28,19 @@ describe('useImagePreload', () => {
     ]
     renderHook(() => useImagePreload(urls, 2))
 
-    const imgCalls = createElementSpy.mock.results
-      .filter((r: { type: string; value: HTMLElement }) => r.type === 'return' && r.value?.tagName === 'IMG')
-
-    expect(imgCalls.length).toBe(2)
+    expect(preloadLinks(createElementSpy).length).toBe(2)
   })
 
   it('does nothing with empty urls', () => {
     renderHook(() => useImagePreload([], 6))
 
-    const imgCalls = createElementSpy.mock.results
-      .filter((r: { type: string; value: HTMLElement }) => r.type === 'return' && r.value?.tagName === 'IMG')
-
-    expect(imgCalls.length).toBe(0)
+    expect(preloadLinks(createElementSpy).length).toBe(0)
   })
 
-  it('defaults to 6 images when count not specified', () => {
+  it('defaults to 6 preload links when count not specified', () => {
     const urls = Array.from({ length: 10 }, (_, i) => `https://example.com/${i}.jpg`)
     renderHook(() => useImagePreload(urls))
 
-    const imgCalls = createElementSpy.mock.results
-      .filter((r: { type: string; value: HTMLElement }) => r.type === 'return' && r.value?.tagName === 'IMG')
-
-    expect(imgCalls.length).toBe(6)
+    expect(preloadLinks(createElementSpy).length).toBe(6)
   })
 })

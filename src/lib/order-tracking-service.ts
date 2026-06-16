@@ -6,6 +6,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
+import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 
 export interface TrackingOrderItem {
   name: string
@@ -26,6 +27,8 @@ export interface TrackingData {
   customerName?: string
   createdAt: string
   isTerminal: boolean
+  /** Pre-computed, hydration-safe label for a scheduled (advance) order, or null for ASAP. */
+  scheduledLabel?: string | null
 }
 
 /**
@@ -110,6 +113,10 @@ async function fetchFromConvex(
     customerName: order.customerName,
     createdAt: new Date(order._creationTime).toISOString(),
     isTerminal,
+    scheduledLabel: getOrderScheduledLabel({
+      scheduled_for: null,
+      customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+    }),
   }
 }
 
@@ -122,6 +129,7 @@ async function fetchFromSupabase(
     .from('orders')
     .select(`
       id, status, total, delivery_fee, service_charge_amount, order_type, customer_name, created_at,
+      scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
     .eq('id', orderId)
@@ -151,5 +159,9 @@ async function fetchFromSupabase(
     customerName: o.customer_name,
     createdAt: o.created_at,
     isTerminal,
+    scheduledLabel: getOrderScheduledLabel({
+      scheduled_for: o.scheduled_for ?? null,
+      customer_data: (o.customer_data ?? null) as Record<string, unknown> | null,
+    }),
   }
 }

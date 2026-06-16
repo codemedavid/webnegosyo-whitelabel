@@ -2,11 +2,11 @@ import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { TenantFormWrapper } from '@/components/superadmin/tenant-form-wrapper'
+import { TenantStats } from '@/components/superadmin/tenant-stats'
 import { TenantUsersList } from '@/components/superadmin/tenant-users-list'
 import { BulkMenuImport } from '@/components/superadmin/bulk-menu-import'
 import { getTenant } from '@/lib/queries/tenants-server'
 import { getTenantUsers } from '@/actions/users'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 // Force dynamic rendering to avoid Cloudinary prerendering issues
 export const dynamic = 'force-dynamic'
@@ -22,6 +22,29 @@ async function TenantUsersSection({ id, tenantName }: { id: string; tenantName: 
   )
 }
 
+function UsersSkeleton() {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+      <div className="mb-4 h-6 w-32 animate-pulse rounded-xl bg-white/[0.06]" />
+      <div className="space-y-3">
+        {[...Array(2)].map((_, i) => (
+          <div key={i} className="h-16 w-full animate-pulse rounded-xl bg-white/[0.06]" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatsSkeleton() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="h-4 w-24 animate-pulse rounded-full bg-white/[0.06]" />
+      ))}
+    </div>
+  )
+}
+
 async function TenantData({ id }: { id: string }) {
   const tenant = await getTenant(id)
 
@@ -30,36 +53,20 @@ async function TenantData({ id }: { id: string }) {
   }
 
   return (
-    <>
-      <div>
-        <h1 className="text-3xl font-bold">Edit Tenant</h1>
-        <p className="text-muted-foreground">Update the details of {tenant.name}</p>
-      </div>
-
-      {/* Tenant Form Section - show ASAP */}
-      <TenantFormWrapper tenant={tenant} />
-
-      {/* User Management Section - stream separately */}
-      <Suspense
-        fallback={
-          <Card>
-            <CardHeader>
-              <div className="h-6 w-32 animate-pulse bg-muted rounded" />
-            </CardHeader>
-            <CardContent>
-              {[...Array(2)].map((_, i) => (
-                <div key={i} className="mb-3 h-16 w-full animate-pulse bg-muted rounded" />
-              ))}
-            </CardContent>
-          </Card>
-        }
-      >
-        <TenantUsersSection id={tenant.id} tenantName={tenant.name} />
-      </Suspense>
-
-      {/* Bulk Menu Import Section */}
-      <BulkMenuImport tenantId={tenant.id} tenantName={tenant.name} />
-    </>
+    <TenantFormWrapper
+      tenant={tenant}
+      statsSlot={
+        <Suspense fallback={<StatsSkeleton />}>
+          <TenantStats tenant={tenant} />
+        </Suspense>
+      }
+      usersSlot={
+        <Suspense fallback={<UsersSkeleton />}>
+          <TenantUsersSection id={tenant.id} tenantName={tenant.name} />
+        </Suspense>
+      }
+      importSlot={<BulkMenuImport tenantId={tenant.id} tenantName={tenant.name} />}
+    />
   )
 }
 
@@ -70,47 +77,52 @@ export default async function EditTenantPage({
 }) {
   const { id } = await params
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Breadcrumbs
         items={[
           { label: 'Dashboard', href: '/superadmin' },
-          { label: 'Tenants', href: '/superadmin/tenants' },
-          { label: 'Edit Tenant' },
+          { label: 'Restaurants', href: '/superadmin/tenants' },
+          { label: 'Edit' },
         ]}
       />
 
       <Suspense
         fallback={
           <div className="space-y-6">
-            <div>
-              <div className="h-9 w-48 animate-pulse bg-muted rounded mb-2" />
-              <div className="h-5 w-64 animate-pulse bg-muted rounded" />
+            {/* Sticky header skeleton */}
+            <div className="rounded-2xl border border-white/10 bg-[#0a0a0a]/80 px-5 py-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 animate-pulse rounded-xl bg-white/[0.06]" />
+                  <div className="space-y-2">
+                    <div className="h-6 w-48 animate-pulse rounded-xl bg-white/[0.06]" />
+                    <div className="h-4 w-64 animate-pulse rounded-xl bg-white/[0.06]" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-10 w-28 animate-pulse rounded-xl bg-white/[0.06]" />
+                  <div className="h-10 w-28 animate-pulse rounded-xl bg-white/[0.06]" />
+                </div>
+              </div>
             </div>
-            {/* User Management Loading Skeleton */}
-            <Card>
-              <CardHeader>
-                <div className="h-6 w-32 animate-pulse bg-muted rounded" />
-              </CardHeader>
-              <CardContent>
-                {[...Array(2)].map((_, i) => (
-                  <div key={i} className="mb-3 h-16 w-full animate-pulse bg-muted rounded" />
-                ))}
-              </CardContent>
-            </Card>
-            {/* Tenant Form Loading Skeleton */}
-            <Card>
-              <CardHeader>
-                <div className="h-6 w-40 animate-pulse bg-muted rounded" />
-              </CardHeader>
-              <CardContent className="space-y-4">
+            {/* Tab strip skeleton */}
+            <div className="flex flex-wrap gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-9 w-24 animate-pulse rounded-lg bg-white/[0.06]" />
+              ))}
+            </div>
+            {/* Tab body skeleton */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+              <div className="mb-4 h-6 w-40 animate-pulse rounded-xl bg-white/[0.06]" />
+              <div className="space-y-4">
                 {[...Array(5)].map((_, i) => (
                   <div key={i} className="space-y-2">
-                    <div className="h-4 w-24 animate-pulse bg-muted rounded" />
-                    <div className="h-10 w-full animate-pulse bg-muted rounded" />
+                    <div className="h-4 w-24 animate-pulse rounded-xl bg-white/[0.06]" />
+                    <div className="h-10 w-full animate-pulse rounded-xl bg-white/[0.06]" />
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         }
       >
@@ -119,4 +131,3 @@ export default async function EditTenantPage({
     </div>
   )
 }
-

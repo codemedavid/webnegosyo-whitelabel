@@ -19,7 +19,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "com.webnegosyo.admin",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+<<<<<<< Updated upstream
       NSCameraUsageDescription: "Scan customer order QR codes",
+=======
+>>>>>>> Stashed changes
       NSBluetoothAlwaysUsageDescription:
         "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",
       NSBluetoothPeripheralUsageDescription:

@@ -120,7 +120,8 @@ export function generateMessengerMessage(
   customerData?: Record<string, string>,
   paymentMethod?: { name: string; details?: string } | null,
   formFields?: FormFieldMeta[],
-  serviceChargeAmount?: number
+  serviceChargeAmount?: number,
+  scheduledForLabel?: string | null
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -138,6 +139,12 @@ export function generateMessengerMessage(
     lines.push('')
   }
 
+  // Advance order: requested fulfillment time
+  if (scheduledForLabel) {
+    lines.push(`🗓️ Scheduled for: ${scheduledForLabel}`)
+    lines.push('')
+  }
+
   // Add customer information (including all custom form fields)
   if (customerData) {
     const customerInfo: string[] = []
@@ -151,8 +158,8 @@ export function generateMessengerMessage(
       table_number: '🪑',
     }
 
-    // Fields to skip (internal use only, like coordinates)
-    const skipFields = ['delivery_lat', 'delivery_lng', 'messenger_psid']
+    // Fields to skip (internal use only, like coordinates and advance-order metadata)
+    const skipFields = ['delivery_lat', 'delivery_lng', 'messenger_psid', 'scheduled_for', 'scheduled_for_label']
 
     // If we have form field metadata, use it to maintain order and get proper labels
     if (formFields && formFields.length > 0) {

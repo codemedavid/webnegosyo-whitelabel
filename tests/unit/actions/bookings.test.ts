@@ -1,11 +1,11 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 
-const mockCreateLead = jest.fn()
+const mockCreateLead = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/leads/leads-service', () => ({
   createLead: (...args: unknown[]) => mockCreateLead(...args),
 }))
 
-const mockCaptureBooking = jest.fn()
+const mockCaptureBooking = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/posthog', () => ({
   captureBookingCreated: (...args: unknown[]) => mockCaptureBooking(...args),
 }))

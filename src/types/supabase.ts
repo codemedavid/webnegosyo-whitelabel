@@ -640,6 +640,11 @@ export type Database = {
       }
       order_types: {
         Row: {
+          advance_order_allow_asap: boolean
+          advance_order_enabled: boolean
+          advance_order_lead_time_minutes: number
+          advance_order_max_days_ahead: number
+          advance_order_slot_interval_minutes: number
           created_at: string
           description: string | null
           id: string
@@ -652,6 +657,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          advance_order_allow_asap?: boolean
+          advance_order_enabled?: boolean
+          advance_order_lead_time_minutes?: number
+          advance_order_max_days_ahead?: number
+          advance_order_slot_interval_minutes?: number
           created_at?: string
           description?: string | null
           id?: string
@@ -664,6 +674,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          advance_order_allow_asap?: boolean
+          advance_order_enabled?: boolean
+          advance_order_lead_time_minutes?: number
+          advance_order_max_days_ahead?: number
+          advance_order_slot_interval_minutes?: number
           created_at?: string
           description?: string | null
           id?: string
@@ -709,6 +724,7 @@ export type Database = {
           payment_method_name: string | null
           payment_method_qr_code_url: string | null
           payment_status: string | null
+          scheduled_for: string | null
           status: string
           tenant_id: string
           total: number
@@ -737,6 +753,7 @@ export type Database = {
           payment_method_name?: string | null
           payment_method_qr_code_url?: string | null
           payment_status?: string | null
+          scheduled_for?: string | null
           status?: string
           tenant_id: string
           total: number
@@ -765,6 +782,7 @@ export type Database = {
           payment_method_name?: string | null
           payment_method_qr_code_url?: string | null
           payment_status?: string | null
+          scheduled_for?: string | null
           status?: string
           tenant_id?: string
           total?: number
@@ -1270,8 +1288,50 @@ export type Database = {
           flash_screen_subtitle: string | null
           flash_screen_text_color: string | null
           flash_screen_title: string | null
+          footer_about_us: string | null
+          footer_address: string | null
+          footer_background_color: string | null
+          footer_border_color: string | null
+          footer_business_name: string | null
+          footer_copyright_text: string | null
+          footer_email: string | null
+          footer_enabled: boolean | null
+          footer_facebook_url: string | null
+          footer_heading_color: string | null
+          footer_icon_background_color: string | null
+          footer_icon_color: string | null
+          footer_instagram_url: string | null
+          footer_link_color: string | null
+          footer_logo_url: string | null
+          footer_muted_color: string | null
+          footer_phone: string | null
+          footer_powered_by_text: string | null
+          footer_privacy_policy: string | null
+          footer_refund_policy: string | null
+          footer_show_powered_by: boolean | null
+          footer_tagline: string | null
+          footer_terms_of_service: string | null
+          footer_text_color: string | null
+          footer_theme: string
+          footer_tiktok_url: string | null
+          footer_twitter_url: string | null
+          footer_viber: string | null
+          footer_whatsapp: string | null
+          footer_youtube_url: string | null
+          header_blur: boolean
           header_color: string | null
           header_font_color: string | null
+          header_height: string
+          header_logo_shape: string
+          header_shadow: boolean
+          header_show_cart: boolean
+          header_show_logo: boolean
+          header_show_name: boolean
+          header_show_search: boolean
+          header_sticky: boolean
+          header_tagline: string | null
+          header_tagline_color: string | null
+          header_template: string
           hero_description: string | null
           hero_description_color: string | null
           hero_title: string | null
@@ -1308,6 +1368,7 @@ export type Database = {
           messenger_username: string | null
           mobile_card_template: string | null
           mobile_grid_columns: number | null
+          mobile_header_template: string | null
           mobile_page_layout: string | null
           modal_background_color: string | null
           modal_description_color: string | null
@@ -1391,8 +1452,50 @@ export type Database = {
           flash_screen_subtitle?: string | null
           flash_screen_text_color?: string | null
           flash_screen_title?: string | null
+          footer_about_us?: string | null
+          footer_address?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_business_name?: string | null
+          footer_copyright_text?: string | null
+          footer_email?: string | null
+          footer_enabled?: boolean | null
+          footer_facebook_url?: string | null
+          footer_heading_color?: string | null
+          footer_icon_background_color?: string | null
+          footer_icon_color?: string | null
+          footer_instagram_url?: string | null
+          footer_link_color?: string | null
+          footer_logo_url?: string | null
+          footer_muted_color?: string | null
+          footer_phone?: string | null
+          footer_powered_by_text?: string | null
+          footer_privacy_policy?: string | null
+          footer_refund_policy?: string | null
+          footer_show_powered_by?: boolean | null
+          footer_tagline?: string | null
+          footer_terms_of_service?: string | null
+          footer_text_color?: string | null
+          footer_theme?: string
+          footer_tiktok_url?: string | null
+          footer_twitter_url?: string | null
+          footer_viber?: string | null
+          footer_whatsapp?: string | null
+          footer_youtube_url?: string | null
+          header_blur?: boolean
           header_color?: string | null
           header_font_color?: string | null
+          header_height?: string
+          header_logo_shape?: string
+          header_shadow?: boolean
+          header_show_cart?: boolean
+          header_show_logo?: boolean
+          header_show_name?: boolean
+          header_show_search?: boolean
+          header_sticky?: boolean
+          header_tagline?: string | null
+          header_tagline_color?: string | null
+          header_template?: string
           hero_description?: string | null
           hero_description_color?: string | null
           hero_title?: string | null
@@ -1429,6 +1532,7 @@ export type Database = {
           messenger_username?: string | null
           mobile_card_template?: string | null
           mobile_grid_columns?: number | null
+          mobile_header_template?: string | null
           mobile_page_layout?: string | null
           modal_background_color?: string | null
           modal_description_color?: string | null
@@ -1512,8 +1616,50 @@ export type Database = {
           flash_screen_subtitle?: string | null
           flash_screen_text_color?: string | null
           flash_screen_title?: string | null
+          footer_about_us?: string | null
+          footer_address?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_business_name?: string | null
+          footer_copyright_text?: string | null
+          footer_email?: string | null
+          footer_enabled?: boolean | null
+          footer_facebook_url?: string | null
+          footer_heading_color?: string | null
+          footer_icon_background_color?: string | null
+          footer_icon_color?: string | null
+          footer_instagram_url?: string | null
+          footer_link_color?: string | null
+          footer_logo_url?: string | null
+          footer_muted_color?: string | null
+          footer_phone?: string | null
+          footer_powered_by_text?: string | null
+          footer_privacy_policy?: string | null
+          footer_refund_policy?: string | null
+          footer_show_powered_by?: boolean | null
+          footer_tagline?: string | null
+          footer_terms_of_service?: string | null
+          footer_text_color?: string | null
+          footer_theme?: string
+          footer_tiktok_url?: string | null
+          footer_twitter_url?: string | null
+          footer_viber?: string | null
+          footer_whatsapp?: string | null
+          footer_youtube_url?: string | null
+          header_blur?: boolean
           header_color?: string | null
           header_font_color?: string | null
+          header_height?: string
+          header_logo_shape?: string
+          header_shadow?: boolean
+          header_show_cart?: boolean
+          header_show_logo?: boolean
+          header_show_name?: boolean
+          header_show_search?: boolean
+          header_sticky?: boolean
+          header_tagline?: string | null
+          header_tagline_color?: string | null
+          header_template?: string
           hero_description?: string | null
           hero_description_color?: string | null
           hero_title?: string | null
@@ -1550,6 +1696,7 @@ export type Database = {
           messenger_username?: string | null
           mobile_card_template?: string | null
           mobile_grid_columns?: number | null
+          mobile_header_template?: string | null
           mobile_page_layout?: string | null
           modal_background_color?: string | null
           modal_description_color?: string | null

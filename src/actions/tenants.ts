@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
@@ -383,6 +384,125 @@ export async function updateTenantBrandingForAdminAction(tenantId: string, input
   return { success: true }
 }
 
+// Allow tenant admins to update only footer-related fields for their own tenant
+export interface FooterUpdateInput {
+  footer_enabled?: boolean
+  footer_theme?: string
+  footer_logo_url?: string
+  footer_business_name?: string
+  footer_tagline?: string
+  footer_address?: string
+  footer_phone?: string
+  footer_whatsapp?: string
+  footer_viber?: string
+  footer_email?: string
+  footer_facebook_url?: string
+  footer_instagram_url?: string
+  footer_tiktok_url?: string
+  footer_twitter_url?: string
+  footer_youtube_url?: string
+  footer_facebook_name?: string
+  footer_instagram_name?: string
+  footer_tiktok_name?: string
+  footer_twitter_name?: string
+  footer_youtube_name?: string
+  footer_about_us?: string
+  footer_terms_of_service?: string
+  footer_refund_policy?: string
+  footer_privacy_policy?: string
+  footer_copyright_text?: string
+  footer_show_powered_by?: boolean
+  footer_powered_by_text?: string
+  footer_background_color?: string
+  footer_text_color?: string
+  footer_heading_color?: string
+  footer_link_color?: string
+  footer_muted_color?: string
+  footer_icon_color?: string
+  footer_icon_background_color?: string
+  footer_border_color?: string
+}
+
+const footerUpdateSchema = z.object({
+  footer_enabled: z.boolean().optional(),
+  footer_theme: z.enum(['auto', 'light', 'dark', 'brand', 'midnight', 'minimal', 'custom']).optional(),
+  footer_logo_url: z.string().optional(),
+  footer_business_name: z.string().optional(),
+  footer_tagline: z.string().optional(),
+  footer_address: z.string().optional(),
+  footer_phone: z.string().optional(),
+  footer_whatsapp: z.string().optional(),
+  footer_viber: z.string().optional(),
+  footer_email: z.string().optional(),
+  footer_facebook_url: z.string().optional(),
+  footer_instagram_url: z.string().optional(),
+  footer_tiktok_url: z.string().optional(),
+  footer_twitter_url: z.string().optional(),
+  footer_youtube_url: z.string().optional(),
+  footer_facebook_name: z.string().optional(),
+  footer_instagram_name: z.string().optional(),
+  footer_tiktok_name: z.string().optional(),
+  footer_twitter_name: z.string().optional(),
+  footer_youtube_name: z.string().optional(),
+  footer_about_us: z.string().optional(),
+  footer_terms_of_service: z.string().optional(),
+  footer_refund_policy: z.string().optional(),
+  footer_privacy_policy: z.string().optional(),
+  footer_copyright_text: z.string().optional(),
+  footer_show_powered_by: z.boolean().optional(),
+  footer_powered_by_text: z.string().optional(),
+  footer_background_color: z.string().optional(),
+  footer_text_color: z.string().optional(),
+  footer_heading_color: z.string().optional(),
+  footer_link_color: z.string().optional(),
+  footer_muted_color: z.string().optional(),
+  footer_icon_color: z.string().optional(),
+  footer_icon_background_color: z.string().optional(),
+  footer_border_color: z.string().optional(),
+})
+
+export async function updateTenantFooterForAdminAction(
+  tenantId: string,
+  input: FooterUpdateInput
+): Promise<{ error?: string; success?: boolean }> {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const parsed = footerUpdateSchema.parse(input)
+
+  const query = supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update(parsed as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  const { data, error } = await query
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Revalidate relevant paths (settings, public menu, storefront, and content pages)
+  revalidatePath(`/superadmin/tenants/${tenantId}`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+    revalidatePath(`/${updated.slug}/menu`)
+    revalidatePath(`/${updated.slug}`)
+    revalidatePath(`/${updated.slug}/about`)
+    revalidatePath(`/${updated.slug}/terms`)
+    revalidatePath(`/${updated.slug}/refund`)
+    revalidatePath(`/${updated.slug}/privacy`)
+  }
+
+  return { success: true }
+}
+
 const flashScreenUpdateSchema = z.object({
   flash_screen_is_active: z.boolean().default(false),
   flash_screen_title: z.string().max(120).optional().or(z.literal('')).optional(),
@@ -491,4 +611,170 @@ export async function updateTenantMessengerModeAction(
   }
 
   return { success: true, mode }
+}
+
+/**
+ * Toggle a single tenant's active state. Superadmin-only.
+ */
+export async function setTenantActiveAction(
+  id: string,
+  isActive: boolean
+): Promise<{ error?: string; success?: boolean }> {
+  try {
+    const { supabase } = await verifySuperadmin()
+
+    const { error } = await supabase
+      .from('tenants')
+      // Cast through unknown to satisfy strict generic constraints if local types differ
+      .update({ is_active: isActive } as unknown as never)
+      .eq('id', id)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/superadmin')
+    revalidatePath('/superadmin/tenants')
+    revalidatePath(`/superadmin/tenants/${id}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error setting tenant active state:', error)
+    return {
+      error: error instanceof Error ? error.message : 'Failed to update tenant',
+    }
+  }
+}
+
+/**
+ * Bulk toggle active state for many tenants at once. Superadmin-only.
+ */
+export async function bulkSetTenantsActiveAction(
+  ids: string[],
+  isActive: boolean
+): Promise<{ error?: string; updated?: number }> {
+  try {
+    const { supabase } = await verifySuperadmin()
+
+    if (!ids.length) {
+      return { updated: 0 }
+    }
+
+    const { error } = await supabase
+      .from('tenants')
+      // Cast through unknown to satisfy strict generic constraints if local types differ
+      .update({ is_active: isActive } as unknown as never)
+      .in('id', ids)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/superadmin')
+    revalidatePath('/superadmin/tenants')
+
+    return { updated: ids.length }
+  } catch (error) {
+    console.error('Error bulk-updating tenant active state:', error)
+    return {
+      error: error instanceof Error ? error.message : 'Failed to update tenants',
+    }
+  }
+}
+
+/**
+ * Bulk delete tenants and all associated data. Superadmin-only.
+ *
+ * Mirrors the cascade in src/app/api/tenants/[id]/route.ts:
+ * app_users (+ auth, skipping the current superadmin) -> order_items -> orders
+ * -> menu_items -> categories -> tenant, all via the service-role admin client.
+ */
+export async function bulkDeleteTenantsAction(
+  ids: string[]
+): Promise<{ error?: string; deleted?: number; failed?: string[] }> {
+  try {
+    const { user } = await verifySuperadmin()
+
+    if (!ids.length) {
+      return { deleted: 0, failed: [] }
+    }
+
+    const adminClient = createAdminClient()
+    let deleted = 0
+    const failed: string[] = []
+
+    for (const tenantId of ids) {
+      try {
+        // Verify tenant exists
+        const { data: tenant, error: fetchError } = await adminClient
+          .from('tenants')
+          .select('id')
+          .eq('id', tenantId)
+          .single()
+
+        if (fetchError) {
+          // Could not verify the tenant — treat as a failure so the caller
+          // knows this id was not processed, rather than silently dropping it.
+          console.error(`Error verifying tenant ${tenantId}:`, fetchError)
+          failed.push(tenantId)
+          continue
+        }
+
+        if (!tenant) {
+          // Already gone — nothing to delete, not an error.
+          continue
+        }
+
+        // Delete associated admin users (and their auth accounts)
+        const { data: tenantUsers } = await adminClient
+          .from('app_users')
+          .select('user_id')
+          .eq('tenant_id', tenantId)
+
+        if (tenantUsers && tenantUsers.length > 0) {
+          for (const appUserRow of tenantUsers) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const userId = (appUserRow as any).user_id
+            // Don't delete the current superadmin's auth account
+            if (userId && userId !== user.id) {
+              await adminClient.auth.admin.deleteUser(userId)
+            }
+          }
+          await adminClient.from('app_users').delete().eq('tenant_id', tenantId)
+        }
+
+        // Delete related data in FK-safe order
+        await adminClient.from('order_items').delete().eq('tenant_id', tenantId)
+        await adminClient.from('orders').delete().eq('tenant_id', tenantId)
+        await adminClient.from('menu_items').delete().eq('tenant_id', tenantId)
+        await adminClient.from('categories').delete().eq('tenant_id', tenantId)
+
+        // Delete the tenant itself
+        const { error: deleteError } = await adminClient
+          .from('tenants')
+          .delete()
+          .eq('id', tenantId)
+
+        if (deleteError) {
+          console.error(`Error deleting tenant ${tenantId}:`, deleteError)
+          failed.push(tenantId)
+        } else {
+          deleted += 1
+        }
+      } catch (innerError) {
+        console.error(`Error deleting tenant ${tenantId}:`, innerError)
+        failed.push(tenantId)
+      }
+    }
+
+    revalidatePath('/superadmin')
+    revalidatePath('/superadmin/tenants')
+
+    return { deleted, failed }
+  } catch (error) {
+    console.error('Error bulk-deleting tenants:', error)
+    return {
+      error: error instanceof Error ? error.message : 'Failed to delete tenants',
+    }
+  }
 }

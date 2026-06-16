@@ -184,7 +184,7 @@ Two-path architecture with graceful degradation:
 - **Lalamove**: Delivery service via `@lalamove/lalamove-js` SDK (`src/lib/lalamove-service.ts`). Quotation, booking, tracking, cancellation. Markets: PH, SG, HK, TH, TW, MY, VN.
 - **Upstash Redis**: Caching for webhooks (`src/lib/redis-cache.ts`)
 - **Sentry**: Error tracking and session replay. Server + edge + client instrumentation (`src/instrumentation.ts`, `src/instrumentation-client.ts`, `src/app/global-error.tsx`)
-- **AI Menu Parsing**: `POST /api/ai/parse-menu` — superadmin endpoint that sends raw menu text to NVIDIA API for structured extraction of categories, items, variations, and addons
+- **AI Menu Parsing**: `POST /api/ai/parse-menu` — superadmin endpoint that sends raw menu text to OpenRouter (Llama 3.3 70B Instruct) for structured extraction of categories, items, variations, and addons
 - **Expo Push**: Mobile push notifications via `exp.host/--/api/v2/push/send` (triggered from Convex on new orders)
 
 ### Component Organization

@@ -82,7 +82,7 @@ describe('Marketing checkout page', () => {
     expect(tutorial).toBeInTheDocument()
     expect(tutorial).toHaveAttribute(
       'src',
-      expect.stringContaining('https://www.loom.com/embed/02d3b1e132f4459fa1effcb06e2b8491')
+      expect.stringContaining('https://www.loom.com/embed/70da55654c904a60b18ef9ee8dae4ea0')
     )
     expect(tutorial).toHaveAttribute('src', expect.stringContaining('autoplay=1'))
     expect(tutorial).toHaveAttribute('src', expect.stringContaining('muted=1'))
@@ -93,7 +93,7 @@ describe('Marketing checkout page', () => {
     expect(tutorialSection).toBeInTheDocument()
     expect(formCard).toBeInTheDocument()
     expect(
-      tutorialSection?.compareDocumentPosition(formCard as HTMLElement) &
+      (tutorialSection as Element).compareDocumentPosition(formCard as HTMLElement) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
 

@@ -15,22 +15,16 @@ export default async function NewTenantPage({
     : undefined
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Breadcrumbs
         items={[
           { label: 'Dashboard', href: '/superadmin' },
-          { label: 'Tenants', href: '/superadmin/tenants' },
-          { label: 'New Tenant' },
+          { label: 'Restaurants', href: '/superadmin/tenants' },
+          { label: 'New' },
         ]}
       />
-
-      <div>
-        <h1 className="text-3xl font-bold">Add Tenant</h1>
-        <p className="text-muted-foreground">Create a new restaurant tenant</p>
-      </div>
 
       <TenantFormWrapper prefill={prefill} />
     </div>
   )
 }
-

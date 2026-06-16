@@ -1,8 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import { useAuthStore } from './stores/auth-store'
+import { useSyncEngine } from './hooks/useSyncEngine'
 import { LoginScreen } from './screens/LoginScreen'
 import { OrdersScreen } from './screens/OrdersScreen'
+import { UpdatePrompt } from './components/UpdatePrompt'
 
 export function App(): React.JSX.Element {
   const { isLoading, isAuthenticated, convexUrl, restore, logout, tenantName } = useAuthStore()
@@ -20,22 +22,24 @@ export function App(): React.JSX.Element {
     }
   }, [convexUrl])
 
+  // Drain queued offline sales to Convex in the background. Called
+  // unconditionally (hooks must be stable); the engine no-ops when the client
+  // is null, so it's safe before a store has a real-time backend configured.
+  useSyncEngine(convexClient)
+
   useEffect(() => {
     return () => {
       void convexClient?.close()
     }
   }, [convexClient])
 
+  let content: React.JSX.Element
   if (isLoading) {
-    return <div className="center-fill">Loading…</div>
-  }
-
-  if (!isAuthenticated) {
-    return <LoginScreen />
-  }
-
-  if (!convexClient) {
-    return (
+    content = <div className="center-fill">Loading…</div>
+  } else if (!isAuthenticated) {
+    content = <LoginScreen />
+  } else if (!convexClient) {
+    content = (
       <div className="center-fill">
         <p>
           <strong>{tenantName}</strong> has no real-time backend configured.
@@ -46,11 +50,18 @@ export function App(): React.JSX.Element {
         </button>
       </div>
     )
+  } else {
+    content = (
+      <ConvexProvider client={convexClient}>
+        <OrdersScreen />
+      </ConvexProvider>
+    )
   }
 
   return (
-    <ConvexProvider client={convexClient}>
-      <OrdersScreen />
-    </ConvexProvider>
+    <>
+      {content}
+      <UpdatePrompt />
+    </>
   )
 }

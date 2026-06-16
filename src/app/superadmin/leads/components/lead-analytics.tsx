@@ -1,75 +1,59 @@
 'use client'
 
-import { Users, TrendingUp, Phone, Clock } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Users, TrendingUp, Phone, Timer } from 'lucide-react'
 import type { LeadStats } from '@/lib/leads/types'
+import { KpiCard } from '@/components/superadmin/ui/primitives'
+import { formatNumber } from '@/components/superadmin/ui/format'
 
 export function LeadAnalytics({ stats }: { stats: LeadStats }) {
+  const responseOnTarget = stats.avgResponseTimeHours <= 2
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {/* Total Leads */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Total Leads</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
-              <Users className="h-4.5 w-4.5 text-blue-600" />
-            </div>
-          </div>
-          <div className="mt-2 text-3xl font-bold">{stats.totalLeads}</div>
-          <p className="mt-1 text-xs text-green-600">
-            ↑ {stats.newThisWeek} this week
-          </p>
-        </CardContent>
-      </Card>
+      <KpiCard
+        label="Total Leads"
+        value={formatNumber(stats.totalLeads)}
+        icon={Users}
+        hint={
+          stats.newThisWeek > 0 ? (
+            <span className="text-emerald-400">+{stats.newThisWeek} new this week</span>
+          ) : (
+            'No new leads this week'
+          )
+        }
+      />
 
-      {/* Conversion Rate */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Conversion Rate</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-50">
-              <TrendingUp className="h-4.5 w-4.5 text-green-600" />
-            </div>
-          </div>
-          <div className="mt-2 text-3xl font-bold">{stats.conversionRate}%</div>
-          <p className={`mt-1 text-xs ${stats.conversionDelta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {stats.conversionDelta >= 0 ? '↑' : '↓'} {Math.abs(stats.conversionDelta)}% vs last month
-          </p>
-        </CardContent>
-      </Card>
+      <KpiCard
+        label="Conversion Rate"
+        value={`${stats.conversionRate}%`}
+        icon={TrendingUp}
+        delta={stats.conversionDelta}
+        hint="Converted this month vs last"
+      />
 
-      {/* Pending Calls */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Pending Calls</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50">
-              <Phone className="h-4.5 w-4.5 text-amber-600" />
-            </div>
-          </div>
-          <div className="mt-2 text-3xl font-bold">{stats.pendingCalls}</div>
-          <p className="mt-1 text-xs text-amber-600">
-            {stats.pendingToday} scheduled today
-          </p>
-        </CardContent>
-      </Card>
+      <KpiCard
+        label="Pending Calls"
+        value={formatNumber(stats.pendingCalls)}
+        icon={Phone}
+        hint={
+          stats.pendingToday > 0 ? (
+            <span className="text-amber-400">{stats.pendingToday} scheduled today</span>
+          ) : (
+            'None scheduled today'
+          )
+        }
+      />
 
-      {/* Avg Response Time */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start justify-between">
-            <p className="text-sm font-medium text-muted-foreground">Avg Response Time</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-50">
-              <Clock className="h-4.5 w-4.5 text-purple-600" />
-            </div>
-          </div>
-          <div className="mt-2 text-3xl font-bold">{stats.avgResponseTimeHours}h</div>
-          <p className={`mt-1 text-xs ${stats.avgResponseTimeHours <= 2 ? 'text-green-600' : 'text-red-600'}`}>
-            {stats.avgResponseTimeHours <= 2 ? 'On target (<2h)' : 'Slower than target'}
-          </p>
-        </CardContent>
-      </Card>
+      <KpiCard
+        label="Avg Response Time"
+        value={`${stats.avgResponseTimeHours}h`}
+        icon={Timer}
+        hint={
+          <span className={responseOnTarget ? 'text-emerald-400' : 'text-red-400'}>
+            {responseOnTarget ? 'On target (under 2h)' : 'Slower than 2h target'}
+          </span>
+        }
+      />
     </div>
   )
 }

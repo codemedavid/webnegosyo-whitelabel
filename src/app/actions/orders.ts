@@ -11,6 +11,7 @@ import {
 } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateTrackingToken } from '@/lib/tracking-token'
+import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -84,7 +85,8 @@ export async function createOrderAction(
   paymentMethodName?: string,
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
-  serviceChargeAmount?: number
+  serviceChargeAmount?: number,
+  scheduledForISO?: string
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -110,6 +112,58 @@ export async function createOrderAction(
 
     if (!tenantConfig) {
       return { success: false, error: 'Restaurant not found or is currently inactive' }
+    }
+
+    // ── Advance-order schedule validation (authoritative; covers BOTH Supabase + Convex) ──
+    // The client sends scheduledForISO and may also stash scheduled_for/scheduled_for_label in
+    // customerData. Re-validate the requested time against the order type's advance config and
+    // keep customer_data in lockstep with what we actually persist, so DB filtering and every
+    // display agree (no "ASAP column but scheduled label" desync).
+    let validatedScheduledISO: string | undefined = undefined
+    if (scheduledForISO && orderTypeId) {
+      const when = new Date(scheduledForISO)
+      const whenMs = when.getTime()
+      if (!Number.isNaN(whenMs)) {
+        const { data: otRow } = await supabaseAdmin
+          .from('order_types')
+          .select('advance_order_enabled, advance_order_allow_asap, advance_order_lead_time_minutes, advance_order_max_days_ahead, advance_order_slot_interval_minutes')
+          .eq('id', orderTypeId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle()
+        const cfg = getAdvanceOrderConfig(otRow as Parameters<typeof getAdvanceOrderConfig>[0])
+        const nowMs = Date.now()
+        const minMs = nowMs + cfg.leadTimeMinutes * 60_000 - 5 * 60_000 // 5-min submit grace
+        const maxMs = nowMs + (cfg.maxDaysAhead + 1) * 24 * 60 * 60_000 // generous horizon
+        if (cfg.enabled && whenMs >= minMs && whenMs <= maxMs) {
+          validatedScheduledISO = when.toISOString()
+        } else {
+          // Log the parsed/normalized timestamp, never the raw client string.
+          console.warn('[Order] Rejected out-of-policy scheduled_for', { orderTypeId, requestedAt: when.toISOString() })
+        }
+      }
+    }
+
+    // Reconcile customer_data with the validated schedule.
+    let effectiveCustomerData = customerData
+    if (customerData && typeof customerData === 'object') {
+      const cd = customerData as Record<string, unknown>
+      if (!validatedScheduledISO) {
+        if ('scheduled_for' in cd || 'scheduled_for_label' in cd) {
+          effectiveCustomerData = { ...cd }
+          delete (effectiveCustomerData as Record<string, unknown>).scheduled_for
+          delete (effectiveCustomerData as Record<string, unknown>).scheduled_for_label
+        }
+      } else {
+        const rawLabel = cd.scheduled_for_label
+        const cleanLabel = typeof rawLabel === 'string'
+          ? rawLabel.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 80)
+          : undefined
+        effectiveCustomerData = {
+          ...cd,
+          scheduled_for: validatedScheduledISO,
+          ...(cleanLabel ? { scheduled_for_label: cleanLabel } : {}),
+        }
+      }
     }
 
     // PostHog email notification - awaited to ensure flush completes
@@ -145,7 +199,13 @@ export async function createOrderAction(
             deliveryFee: deliveryFee ?? 0,
             orderType: orderTypeName,
             paymentMethod: paymentMethodName ?? null,
-            customerData: customerData ?? null,
+            // Surface the human "scheduled_for_label" but drop the raw UTC ISO from the email payload.
+            customerData: (() => {
+              if (!effectiveCustomerData || typeof effectiveCustomerData !== 'object') return effectiveCustomerData ?? null
+              const copy = { ...(effectiveCustomerData as Record<string, unknown>) }
+              delete copy.scheduled_for
+              return copy
+            })(),
           })
         } catch (err) {
           console.error('[PostHog] Email notification failed:', err)
@@ -201,14 +261,15 @@ export async function createOrderAction(
         items,
         customerInfo,
         orderTypeId,
-        customerData,
+        effectiveCustomerData,
         deliveryFee,
         lalamoveQuotationId,
         paymentMethodId,
         paymentMethodName,
         paymentMethodDetails,
         paymentMethodQrCodeUrl,
-        serviceChargeAmount
+        serviceChargeAmount,
+        validatedScheduledISO
       )
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
@@ -222,14 +283,15 @@ export async function createOrderAction(
       items,
       customerInfo,
       orderTypeId,
-      customerData,
+      effectiveCustomerData,
       deliveryFee,
       lalamoveQuotationId,
       paymentMethodId,
       paymentMethodName,
       paymentMethodDetails,
       paymentMethodQrCodeUrl,
-      serviceChargeAmount
+      serviceChargeAmount,
+      validatedScheduledISO
     )
     // Return both order and token for secure public API access
     await firePostHogNotification(result.order.id, items)

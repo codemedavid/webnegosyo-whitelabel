@@ -22,6 +22,12 @@ export const orderTypeSchema = z.object({
   service_charge_enabled: z.boolean().optional(),
   service_charge_type: z.enum(['percentage', 'fixed']).optional(),
   service_charge_value: z.number().min(0).optional(),
+  // Advance order (scheduled / pre-order) configuration
+  advance_order_enabled: z.boolean().optional(),
+  advance_order_allow_asap: z.boolean().optional(),
+  advance_order_lead_time_minutes: z.number().int().min(0).max(10080).optional(),
+  advance_order_max_days_ahead: z.number().int().min(0).max(60).optional(),
+  advance_order_slot_interval_minutes: z.number().int().min(5).max(240).optional(),
 }).refine(
   (data) => {
     if (!data.service_charge_enabled) return true

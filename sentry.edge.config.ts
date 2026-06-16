@@ -4,9 +4,27 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import {
+  isSentryEnabled,
+  sentryEnvironment,
+  SENTRY_IGNORE_ERRORS,
+  filterSentryEvent,
+} from "@/lib/sentry-filtering";
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  // In the edge runtime only NEXT_PUBLIC_* env vars are reliably inlined into
+  // the bundle, so fall back to the public DSN to avoid an undefined DSN.
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+  // Only deliver events from real deployments. Keeps local dev-server
+  // Turbopack/HMR noise out of the dashboard. Override with
+  // SENTRY_FORCE_ENABLE=true.
+  enabled: isSentryEnabled(),
+  environment: sentryEnvironment,
+
+  // Drop known framework/network noise (see src/lib/sentry-filtering.ts).
+  ignoreErrors: SENTRY_IGNORE_ERRORS,
+  beforeSend: filterSentryEvent,
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: (() => {

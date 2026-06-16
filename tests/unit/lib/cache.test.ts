@@ -11,7 +11,7 @@ describe('getCachedMenuItemsList', () => {
   })
 
   test('returns menu items with only essential fields', async () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: [
         {
           id: 'item-1',
@@ -46,7 +46,7 @@ describe('getCachedMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     const result = await getCachedMenuItemsList('tenant-1')
     expect(result).toHaveLength(2)
@@ -60,7 +60,7 @@ describe('getCachedMenuItemsList', () => {
   })
 
   test('returns ordered menu items', async () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: [
         {
           id: 'item-1',
@@ -93,7 +93,7 @@ describe('getCachedMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     const result = await getCachedMenuItemsList('tenant-1')
     expect(result[0].order).toBe(0)
@@ -101,7 +101,7 @@ describe('getCachedMenuItemsList', () => {
   })
 
   test('returns empty array for tenant with no items', async () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: [],
       error: null,
     })
@@ -109,14 +109,14 @@ describe('getCachedMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     const result = await getCachedMenuItemsList('tenant-1')
     expect(result).toHaveLength(0)
   })
 
   test('throws error for database errors', async () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: null,
       error: new Error('Database error'),
     })
@@ -124,13 +124,13 @@ describe('getCachedMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     await expect(getCachedMenuItemsList('tenant-1')).rejects.toThrow('Database error')
   })
 
   test('caches results for same tenant', async () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: [
         {
           id: 'item-1',
@@ -151,7 +151,7 @@ describe('getCachedMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     await getCachedMenuItemsList('tenant-1')
     await getCachedMenuItemsList('tenant-1')
@@ -164,7 +164,7 @@ describe('getCachedMenuItemsList', () => {
 
 describe('preloadMenuItemsList', () => {
   test('preloadMenuItemsList triggers cache load without waiting', () => {
-    const mockOrder = jest.fn().mockResolvedValue({
+    const mockOrder = jest.fn<() => Promise<unknown>>().mockResolvedValue({
       data: [],
       error: null,
     })
@@ -172,7 +172,7 @@ describe('preloadMenuItemsList', () => {
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder })
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq })
 
-    global.mockFrom.mockReturnValue({ select: mockSelect })
+    ;(global as unknown as Record<string, jest.Mock>).mockFrom.mockReturnValue({ select: mockSelect })
 
     const result = preloadMenuItemsList('tenant-1')
     expect(result).toBeUndefined()

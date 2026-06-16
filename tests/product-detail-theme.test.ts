@@ -28,9 +28,23 @@ describe('Product Detail Theme', () => {
         modalTitle: '#111827',
         modalPrice: '#3b82f6',
         modalDescription: '#6b7280',
+        checkoutModalBackground: '#ffffff',
+        checkoutModalTitle: '#111827',
+        checkoutModalDescription: '#6b7280',
+        checkoutModalPrice: '#3b82f6',
+        checkoutModalButton: '#3b82f6',
+        checkoutModalButtonText: '#ffffff',
+        checkoutModalBorder: '#e5e7eb',
         textPrimary: '#111827',
         textSecondary: '#6b7280',
         textMuted: '#9ca3af',
+        menuMainHeaderText: '#111827',
+        menuMainHeaderSubtitle: '#9ca3af',
+        menuCategoryHeader: '#111827',
+        menuCategoryActive: '#111827',
+        menuCategoryInactive: '#6b7280',
+        menuCartBadgeBackground: '#111827',
+        menuCartBadgeText: '#ffffff',
         border: '#e5e7eb',
         buttonPrimary: '#3b82f6',
         buttonPrimaryText: '#ffffff',
@@ -41,7 +55,18 @@ describe('Product Detail Theme', () => {
         error: '#ef4444',
         link: '#3b82f6',
         shadow: 'rgba(0, 0, 0, 0.1)',
-        accent: '#ffd700'
+        accent: '#ffd700',
+        searchBar: {
+            enabled: true,
+            background: null,
+            text: null,
+            placeholder: null,
+            icon: null,
+            border: null,
+            focusRing: null,
+            radius: 'pill',
+            style: 'filled',
+        }
     }
 
     describe('mergeSettingsWithBranding', () => {
@@ -114,10 +139,11 @@ describe('Product Detail Theme', () => {
             const cssVars = getProductDetailThemeCSS(colors)
 
             // Check specific critical variables have values
-            expect(cssVars['--pd-page-background']).toBeTruthy()
-            expect(cssVars['--pd-product-name']).toBeTruthy()
-            expect(cssVars['--pd-primary']).toBeTruthy()
-            expect(cssVars['--pd-transition-duration']).toMatch(/\d+s/)
+            const vars = cssVars as Record<string, string>
+            expect(vars['--pd-page-background']).toBeTruthy()
+            expect(vars['--pd-product-name']).toBeTruthy()
+            expect(vars['--pd-primary']).toBeTruthy()
+            expect(vars['--pd-transition-duration']).toMatch(/\d+s/)
         })
 
         it('should handle animation speed settings', () => {
@@ -126,22 +152,22 @@ describe('Product Detail Theme', () => {
             // Test normal speed
             colors.animationSpeed = 'normal'
             let cssVars = getProductDetailThemeCSS(colors)
-            expect(cssVars['--pd-transition-duration']).toBe('0.3s')
+            expect((cssVars as Record<string, string>)['--pd-transition-duration']).toBe('0.3s')
 
             // Test slow speed
             colors.animationSpeed = 'slow'
             cssVars = getProductDetailThemeCSS(colors)
-            expect(cssVars['--pd-transition-duration']).toBe('0.5s')
+            expect((cssVars as Record<string, string>)['--pd-transition-duration']).toBe('0.5s')
 
             // Test fast speed
             colors.animationSpeed = 'fast'
             cssVars = getProductDetailThemeCSS(colors)
-            expect(cssVars['--pd-transition-duration']).toBe('0.15s')
+            expect((cssVars as Record<string, string>)['--pd-transition-duration']).toBe('0.15s')
 
             // Test disabled animations
             colors.enableAnimations = false
             cssVars = getProductDetailThemeCSS(colors)
-            expect(cssVars['--pd-transition-duration']).toBe('0s')
+            expect((cssVars as Record<string, string>)['--pd-transition-duration']).toBe('0s')
         })
     })
 

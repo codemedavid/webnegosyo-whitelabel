@@ -183,8 +183,9 @@ export const LayoutDefault = memo(function LayoutDefault({
             {/* Mobile Category Navigation - Sticky */}
             {!isLoading && categories.length > 0 && (
                 <div
-                    className="sticky top-20 z-40 backdrop-blur-sm border-b mb-8 md:hidden rounded-[20px]"
+                    className="sticky z-40 backdrop-blur-sm border-b mb-8 md:hidden rounded-[20px]"
                     style={{
+                        top: 'var(--menu-header-h, 5rem)',
                         backgroundColor: branding.header,
                         borderColor: branding.border
                     }}
