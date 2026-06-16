@@ -1,17 +1,21 @@
 /**
  * Advance Order (scheduled / pre-order) utilities.
  *
- * Pure, dependency-free helpers shared by checkout, admin, and the order pipeline.
- * All formatting is deterministic (no `toLocaleString`) so output is identical on
- * server and client — this avoids React hydration mismatches and locale drift.
+ * Pure, dependency-free helpers shared by checkout and the order pipeline.
+ * All formatting is deterministic (no `toLocaleString`) so output is identical
+ * across devices and never drifts by locale.
  *
  * Timezone model: a scheduled time is chosen in the customer's *local* time, stored
  * as a UTC ISO string in `orders.scheduled_for`, and a human label is captured at
  * creation time (`customer_data.scheduled_for_label`) so every later view — including
  * server-side webhooks running in UTC — shows the customer's intended local time.
+ *
+ * Operating hours: the per-day selectable window is derived from the tenant's
+ * `operating_hours` config via `getDayWindow`. ASAP ordering is never gated by hours;
+ * a missing/misconfigured config falls back to the default 08:00–22:00 window.
  */
 
-import { getDayWindow, type OperatingHours } from './operating-hours'
+import { getDayWindow, type OperatingHours } from '@/lib/operating-hours'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Config
@@ -38,10 +42,6 @@ export interface AdvanceOrderConfig {
 export const DEFAULT_LEAD_TIME_MINUTES = 30
 export const DEFAULT_MAX_DAYS_AHEAD = 7
 export const DEFAULT_SLOT_INTERVAL_MINUTES = 30
-
-// Selectable window within a day (minutes from local midnight). 08:00–22:00.
-export const DEFAULT_DAY_START_MINUTES = 8 * 60
-export const DEFAULT_DAY_END_MINUTES = 22 * 60
 
 /** Normalize raw order-type columns into a safe config with sane fallbacks. */
 export function getAdvanceOrderConfig(ot: AdvanceOrderFields | null | undefined): AdvanceOrderConfig {
@@ -130,7 +130,10 @@ function isSameLocalDay(a: Date, b: Date): boolean {
   )
 }
 
-/** Available calendar dates from today through `maxDaysAhead`. */
+/**
+ * Available calendar dates from today through `maxDaysAhead`.
+ * Days that are explicitly closed in the tenant's operating hours are excluded.
+ */
 export function generateScheduleDates(
   config: AdvanceOrderConfig,
   now: Date,
@@ -140,7 +143,6 @@ export function generateScheduleDates(
   const base = startOfDay(now)
   for (let offset = 0; offset <= config.maxDaysAhead; offset++) {
     const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset, 0, 0, 0, 0)
-    // Skip days the store is closed.
     if (getDayWindow(hours, d).closed) continue
     let label: string
     if (offset === 0) label = 'Today'
@@ -152,9 +154,10 @@ export function generateScheduleDates(
 }
 
 /**
- * Selectable time slots for a given local date, honoring lead time + slot interval.
- * For today, slots earlier than `now + leadTime` are excluded. Returns [] when no
- * valid slot remains within the day window (e.g. a late-evening "today").
+ * Selectable time slots for a given local date, honoring lead time + slot interval,
+ * within the day's open/close window from the tenant's operating hours.
+ * For today, slots earlier than `now + leadTime` are excluded. Returns [] when the day
+ * is closed or no valid slot remains within the day window (e.g. a late-evening "today").
  */
 export function generateTimeSlots(
   config: AdvanceOrderConfig,
@@ -167,8 +170,7 @@ export function generateTimeSlots(
   const dayStartDate = new Date(y, (mo || 1) - 1, d || 1, 0, 0, 0, 0)
   if (Number.isNaN(dayStartDate.getTime())) return []
 
-  // The selectable window for this weekday comes from the store's operating hours
-  // (falls back to the default 08:00–22:00 when unset). A closed day yields no slots.
+  // Per-day selectable window comes from the tenant's operating hours (or default 08:00–22:00).
   const window = getDayWindow(hours, dayStartDate)
   if (window.closed) return []
   const dayStartMinutes = window.openMinutes
@@ -213,7 +215,10 @@ export function getFirstAvailableSlot(
   return null
 }
 
-/** True if `when` is a valid advance slot (in the future, within the allowed horizon). */
+/**
+ * True if `when` is a valid advance slot: in the future (>= now + lead time), within the
+ * allowed horizon, and inside the day's open window (and the day is not closed).
+ */
 export function isValidScheduledTime(
   config: AdvanceOrderConfig,
   when: Date,
@@ -234,11 +239,14 @@ export function isValidScheduledTime(
     999,
   )
   if (when.getTime() > maxDate.getTime()) return false
-  // Must fall within the store's operating window for that weekday.
+
+  // Honor the tenant's operating hours: reject closed days and times outside the window.
   const window = getDayWindow(hours, when)
   if (window.closed) return false
   const whenMinutes = when.getHours() * 60 + when.getMinutes()
-  return whenMinutes >= window.openMinutes && whenMinutes <= window.closeMinutes
+  if (whenMinutes < window.openMinutes || whenMinutes > window.closeMinutes) return false
+
+  return true
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -251,10 +259,10 @@ export function isValidScheduledTime(
  * Prefer a precomputed `scheduled_for_label` when available (see getOrderScheduledLabel).
  */
 export function formatScheduledFor(input: string | Date): string {
-  const d = typeof input === 'string' ? new Date(input) : input
-  if (Number.isNaN(d.getTime())) return ''
-  const minutes = d.getHours() * 60 + d.getMinutes()
-  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()} · ${formatTime12(minutes)}`
+  const dt = typeof input === 'string' ? new Date(input) : input
+  if (Number.isNaN(dt.getTime())) return ''
+  const minutes = dt.getHours() * 60 + dt.getMinutes()
+  return `${WEEKDAYS[dt.getDay()]}, ${MONTHS[dt.getMonth()]} ${dt.getDate()} · ${formatTime12(minutes)}`
 }
 
 /** Human lead-time phrase, e.g. 30 → "30 minutes", 90 → "1.5 hours", 120 → "2 hours". */
