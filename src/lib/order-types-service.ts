@@ -201,6 +201,24 @@ export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: stri
   return data as unknown as OrderType
 }
 
+export async function toggleOrderTypeAdvanceOrder(orderTypeId: string, tenantId: string, enabled: boolean) {
+  await verifyTenantAdmin(tenantId)
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('order_types')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ advance_order_enabled: enabled } as any)
+    .eq('id', orderTypeId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as unknown as OrderType
+}
+
 /**
  * Initialize default order types for a tenant if they don't exist
  * This can be called manually or automatically

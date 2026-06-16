@@ -37,10 +37,11 @@ export async function createPaymentMethodAction(
   details?: string,
   qrCodeUrl?: string,
   isActive: boolean = true,
-  orderTypes: string[] = []
+  orderTypes: string[] = [],
+  requirePaymentProof: boolean = false
 ) {
   try {
-    const paymentMethod = await createPaymentMethod(tenantId, name, details, qrCodeUrl, isActive, orderTypes)
+    const paymentMethod = await createPaymentMethod(tenantId, name, details, qrCodeUrl, isActive, orderTypes, requirePaymentProof)
     revalidatePath(`/${tenantSlug}/admin/payment-methods`)
     revalidatePath(`/${tenantSlug}/admin`)
     return { success: true, data: paymentMethod }
@@ -58,6 +59,7 @@ export async function updatePaymentMethodAction(
     details?: string
     qr_code_url?: string
     is_active?: boolean
+    require_payment_proof?: boolean
   }
 ) {
   try {

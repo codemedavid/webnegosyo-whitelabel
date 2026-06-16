@@ -8,6 +8,7 @@ import {
   updateOrderType,
   deleteOrderType,
   toggleOrderTypeEnabled,
+  toggleOrderTypeAdvanceOrder,
   getCustomerFormFieldsByOrderType,
   getCustomerFormFieldById,
   createCustomerFormField,
@@ -137,6 +138,22 @@ export async function toggleOrderTypeEnabledAction(
     return { success: true, data: orderType }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle order type' }
+  }
+}
+
+export async function toggleOrderTypeAdvanceOrderAction(
+  orderTypeId: string,
+  tenantId: string,
+  tenantSlug: string,
+  enabled: boolean
+) {
+  try {
+    const orderType = await toggleOrderTypeAdvanceOrder(orderTypeId, tenantId, enabled)
+    revalidatePath(`/${tenantSlug}/admin/order-types`)
+    revalidatePath(`/${tenantSlug}/admin`)
+    return { success: true, data: orderType }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle pre-order' }
   }
 }
 

@@ -7,6 +7,16 @@ import { normalizeDomain, clearDomainCache } from '@/lib/tenant'
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
 
+// Columns added by the distance-based delivery migration. The generated Supabase types
+// (src/types/supabase.ts) are regenerated from the DB and lag new migrations, so we widen
+// the insert/update payloads locally instead of hand-editing the generated file.
+type DeliveryFeeColumns = {
+  distance_delivery_enabled?: boolean
+  delivery_price_per_km?: number | null
+  delivery_min_fee?: number | null
+  delivery_radius_km?: number | null
+}
+
 // Domain validation: must be a valid domain format (not necessarily a URL)
 const domainSchema = z
   .union([
@@ -90,10 +100,15 @@ export const tenantSchema = z.object({
   flash_screen_background_color: z.string().optional().or(z.literal('')).optional(),
   flash_screen_text_color: z.string().optional().or(z.literal('')).optional(),
   flash_screen_duration_ms: z.number().int().min(500).max(15000).optional(),
-  // Restaurant address for Lalamove pickup
+  // Restaurant address for Lalamove pickup / distance-based delivery store location
   restaurant_address: z.string().optional().or(z.literal('')).optional(),
   restaurant_latitude: z.number().optional(),
   restaurant_longitude: z.number().optional(),
+  // Distance-based delivery fee (non-Lalamove path)
+  distance_delivery_enabled: z.boolean().default(false),
+  delivery_price_per_km: z.number().min(0).nullable().optional(),
+  delivery_min_fee: z.number().min(0).nullable().optional(),
+  delivery_radius_km: z.number().positive().nullable().optional(),
   // Lalamove configuration
   lalamove_enabled: z.boolean().default(false),
   lalamove_api_key: z.string().optional().or(z.literal('')).optional(),
@@ -107,6 +122,22 @@ export const tenantSchema = z.object({
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
+}).superRefine((val, ctx) => {
+  // Distance-based delivery must be fully configured when enabled, otherwise it silently
+  // fails open at checkout (no fee + no radius enforcement). Require pricing + store location.
+  if (!val.distance_delivery_enabled) return
+  if (val.delivery_price_per_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_price_per_km'], message: 'Price per km is required when distance-based delivery is enabled' })
+  }
+  if (val.delivery_min_fee == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_min_fee'], message: 'Minimum fee is required when distance-based delivery is enabled' })
+  }
+  if (val.delivery_radius_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_radius_km'], message: 'Delivery radius is required when distance-based delivery is enabled' })
+  }
+  if (val.restaurant_latitude == null || val.restaurant_longitude == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
+  }
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>
@@ -174,7 +205,7 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
   if (parsed.domain && (await isDomainTaken(parsed.domain))) {
     throw new Error('Domain is already taken')
   }
-  const insertPayload: TenantsInsert = {
+  const insertPayload: TenantsInsert & DeliveryFeeColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -239,6 +270,11 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     restaurant_address: parsed.restaurant_address ?? undefined,
     restaurant_latitude: parsed.restaurant_latitude ?? undefined,
     restaurant_longitude: parsed.restaurant_longitude ?? undefined,
+    // Distance-based delivery fee
+    distance_delivery_enabled: parsed.distance_delivery_enabled,
+    delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
+    delivery_min_fee: parsed.delivery_min_fee ?? undefined,
+    delivery_radius_km: parsed.delivery_radius_km ?? undefined,
     // Lalamove configuration
     lalamove_enabled: parsed.lalamove_enabled,
     lalamove_api_key: parsed.lalamove_api_key ?? undefined,
@@ -285,7 +321,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
   if (oldTenant?.domain) {
     clearDomainCache(oldTenant.domain)
   }
-  const updatePayload: TenantsUpdate = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -350,6 +386,11 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     restaurant_address: parsed.restaurant_address ?? undefined,
     restaurant_latitude: parsed.restaurant_latitude ?? undefined,
     restaurant_longitude: parsed.restaurant_longitude ?? undefined,
+    // Distance-based delivery fee
+    distance_delivery_enabled: parsed.distance_delivery_enabled,
+    delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
+    delivery_min_fee: parsed.delivery_min_fee ?? undefined,
+    delivery_radius_km: parsed.delivery_radius_km ?? undefined,
     // Lalamove configuration
     lalamove_enabled: parsed.lalamove_enabled,
     lalamove_api_key: parsed.lalamove_api_key ?? undefined,

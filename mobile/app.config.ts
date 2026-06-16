@@ -29,6 +29,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       infoPlist: {
         LSApplicationQueriesSchemes: ['fb-messenger'],
         ITSAppUsesNonExemptEncryption: false,
+        NSPhotoLibraryUsageDescription:
+          'Allow access to your photos so you can upload a screenshot of your payment as proof at checkout.',
       },
     },
     android: {

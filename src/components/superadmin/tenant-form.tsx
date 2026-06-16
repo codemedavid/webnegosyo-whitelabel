@@ -125,6 +125,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      // Distance-based delivery is configured via TenantFormWrapper (the live superadmin form);
+      // this legacy form is unused but must satisfy the required schema field.
+      distance_delivery_enabled: false,
       menu_engineering_enabled: formData.menu_engineering_enabled,
       checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,

@@ -92,6 +92,8 @@ export interface Tenant {
   ios_app_store_id?: string;
   android_package_name?: string;
   app_enabled?: boolean;
+  operating_hours?: Record<string, { closed: boolean; open: string; close: string }> | null;
+  timezone?: string | null;
   created_at: string;
   updated_at: string;
   [key: string]: unknown;
@@ -225,6 +227,12 @@ export interface OrderType {
   description?: string;
   note?: string;
   is_enabled: boolean;
+  // Advance order (scheduled / pre-order) configuration
+  advance_order_enabled?: boolean;
+  advance_order_allow_asap?: boolean;
+  advance_order_lead_time_minutes?: number;
+  advance_order_max_days_ahead?: number;
+  advance_order_slot_interval_minutes?: number;
   order_index: number;
   created_at: string;
   updated_at: string;
@@ -254,6 +262,8 @@ export interface PaymentMethod {
   qr_code_url?: string;
   is_active: boolean;
   order_index: number;
+  /** When true, checkout blocks until the customer provides a screenshot or reference number. */
+  require_payment_proof?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -286,6 +296,8 @@ export interface Order {
   customer_contact?: string;
   customer_data?: Record<string, unknown>;
   total: number;
+  /** Requested fulfillment time for advance/scheduled orders (UTC ISO); null/undefined = ASAP. */
+  scheduled_for?: string | null;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   delivery_fee?: number;
   lalamove_quotation_id?: string;
@@ -300,6 +312,11 @@ export interface Order {
   payment_method_details?: string;
   payment_method_qr_code_url?: string;
   payment_status?: 'pending' | 'paid' | 'failed' | 'verified';
+  // Payment proof (screenshot and/or reference number captured at checkout)
+  payment_proof_url?: string | null;
+  payment_proof_public_id?: string | null;
+  payment_proof_reference?: string | null;
+  payment_proof_uploaded_at?: string | null;
   created_at: string;
   updated_at: string;
 }

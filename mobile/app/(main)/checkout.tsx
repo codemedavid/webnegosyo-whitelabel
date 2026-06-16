@@ -10,11 +10,25 @@ import { supabase } from '@/lib/supabase'
 import { formatPrice, generateMessengerMessage, generateMessengerUrl, generateMessengerCombinedUrl, generateMessengerDirectUrl } from '@/lib/cart-utils'
 import { DynamicForm } from '@/components/checkout/dynamic-form'
 import { PaymentMethodCard } from '@/components/checkout/payment-method-card'
+import { AdvanceOrderScheduler } from '@/components/checkout/advance-order-scheduler'
 import { CartSummary } from '@/components/cart/cart-summary'
 import { Button } from '@/components/ui/button'
 import { useOrderStore } from '@/stores/order-store'
 import { resolveCustomerLookup, useCustomerHistoryHydrated, useCustomerHistoryStore } from '@/stores/customer-history-store'
 import { postOrderToSheets } from '@/lib/google-sheets'
+import {
+  getAdvanceOrderConfig,
+  generateScheduleDates,
+  generateTimeSlots,
+  getFirstAvailableSlot,
+  combineDateAndTime,
+  formatScheduledFor,
+  isValidScheduledTime,
+} from '@/lib/advance-order-utils'
+import { normalizeOperatingHours } from '@/lib/operating-hours'
+import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
+import { pickAndUploadPaymentProof, deletePaymentProof, isCloudinaryConfigured } from '@/lib/cloudinary-upload'
+import { PaymentProofField } from '@/components/checkout/payment-proof-field'
 import type { OrderType, PaymentMethod, CustomerFormField } from '@/types/database'
 
 export default function CheckoutScreen() {
@@ -38,6 +52,70 @@ export default function CheckoutScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const isCompletingCheckoutRef = useRef(false)
 
+  // Payment proof (screenshot upload and/or reference number)
+  const [paymentProofUrl, setPaymentProofUrl] = useState('')
+  const [paymentProofPublicId, setPaymentProofPublicId] = useState('')
+  const [paymentProofReference, setPaymentProofReference] = useState('')
+  const [isUploadingProof, setIsUploadingProof] = useState(false)
+
+  // Advance order (scheduling) state — kept local to checkout, like the web version.
+  const [scheduleMode, setScheduleMode] = useState<'asap' | 'scheduled'>('asap')
+  const [scheduleDate, setScheduleDate] = useState<string>('') // YYYY-MM-DD (local)
+  const [scheduleTime, setScheduleTime] = useState<string>('') // HH:MM (24h, local)
+  // `now` drives slot availability; refreshed each minute so the cutoff stays accurate.
+  const [now, setNow] = useState<Date>(() => new Date())
+
+  // Operating hours constrain the per-day selectable window for scheduled slots only.
+  const operatingHours = useMemo(
+    () => normalizeOperatingHours(tenant?.operating_hours),
+    [tenant?.operating_hours]
+  )
+
+  // Advance-order config + derived scheduling values for the selected order type.
+  const advanceConfig = useMemo(
+    () => getAdvanceOrderConfig(selectedOrderType),
+    [selectedOrderType]
+  )
+  const scheduleDates = useMemo(
+    () =>
+      advanceConfig.enabled
+        ? generateScheduleDates(advanceConfig, now, operatingHours).filter(
+            (d) => generateTimeSlots(advanceConfig, d.value, now, operatingHours).length > 0
+          )
+        : [],
+    [advanceConfig, now, operatingHours]
+  )
+  const timeSlots = useMemo(
+    () =>
+      advanceConfig.enabled && scheduleDate
+        ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours)
+        : [],
+    [advanceConfig, scheduleDate, now, operatingHours]
+  )
+  const isScheduling = advanceConfig.enabled && scheduleMode === 'scheduled'
+  const scheduledDateObj = useMemo(
+    () =>
+      isScheduling && scheduleDate && scheduleTime
+        ? combineDateAndTime(scheduleDate, scheduleTime)
+        : null,
+    [isScheduling, scheduleDate, scheduleTime]
+  )
+  const scheduledForISO = scheduledDateObj ? scheduledDateObj.toISOString() : null
+  const scheduledForLabel = scheduledDateObj ? formatScheduledFor(scheduledDateObj) : null
+  const isScheduleValid = scheduledDateObj
+    ? isValidScheduledTime(advanceConfig, scheduledDateObj, now, operatingHours)
+    : true
+
+  // Change the scheduled date and snap the time to the first valid slot for that date.
+  const handleScheduleDateChange = useCallback(
+    (date: string) => {
+      setScheduleDate(date)
+      const slots = generateTimeSlots(advanceConfig, date, now, operatingHours)
+      setScheduleTime(slots[0]?.value ?? '')
+    },
+    [advanceConfig, now, operatingHours]
+  )
+
   // Use storedOrderTypeId directly so fields load immediately (no wait for order types list)
   const { data: formFields = [], isLoading: isFieldsLoading } = useFormFields(storedOrderTypeId || undefined)
   const { data: paymentMethods = [] } = usePaymentMethods(tenant?.id, storedOrderTypeId || undefined)
@@ -47,6 +125,52 @@ export default function CheckoutScreen() {
       router.replace('/(main)/home')
     }
   }, [isHydrated, storedOrderTypeId, isSubmitting])
+
+  // Advance order: refresh "now" each minute so the lead-time cutoff stays accurate.
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Advance order: default the "When?" choice whenever the selected order type changes.
+  // Schedule-only types (ASAP disabled) start in scheduled mode; others default to ASAP.
+  useEffect(() => {
+    if (!advanceConfig.enabled) {
+      setScheduleMode('asap')
+      return
+    }
+    setScheduleMode(advanceConfig.allowAsap ? 'asap' : 'scheduled')
+  }, [storedOrderTypeId, advanceConfig.enabled, advanceConfig.allowAsap])
+
+  // Advance order: seed a sensible default slot on entering scheduled mode, and keep the
+  // selection valid as time passes or the order type changes. Re-seeds when the chosen date
+  // is missing, has gone stale (e.g. crossed midnight), or falls outside the order type's
+  // (possibly shrunk) horizon; otherwise just snaps the time to a valid slot for that date.
+  useEffect(() => {
+    if (!advanceConfig.enabled || scheduleMode !== 'scheduled') return
+    const dates = generateScheduleDates(advanceConfig, now, operatingHours)
+    const dateValid = !!scheduleDate && dates.some((d) => d.value === scheduleDate)
+    const slots = dateValid ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours) : []
+    if (!dateValid || slots.length === 0) {
+      const first = getFirstAvailableSlot(advanceConfig, now, operatingHours)
+      setScheduleDate(first?.dateValue ?? '')
+      setScheduleTime(first?.timeValue ?? '')
+      return
+    }
+    if (!scheduleTime || !slots.some((s) => s.value === scheduleTime)) {
+      setScheduleTime(slots[0].value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    scheduleMode,
+    scheduleDate,
+    advanceConfig.enabled,
+    advanceConfig.maxDaysAhead,
+    advanceConfig.leadTimeMinutes,
+    advanceConfig.slotIntervalMinutes,
+    now,
+    operatingHours,
+  ])
 
   const hideCurrencySymbol = tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol
   const customerLookup = useMemo(
@@ -81,11 +205,67 @@ export default function CheckoutScreen() {
     }
   }, [validateForm])
 
+  const handlePickProof = useCallback(async () => {
+    if (!isCloudinaryConfigured()) {
+      Alert.alert('Unavailable', 'Screenshot upload is not configured for this app.')
+      return
+    }
+    setIsUploadingProof(true)
+    try {
+      const uploaded = await pickAndUploadPaymentProof()
+      if (uploaded) {
+        // Replace-cleanup: delete the previous screenshot before storing the new one.
+        if (paymentProofPublicId && paymentProofPublicId !== uploaded.publicId) {
+          deletePaymentProof(paymentProofPublicId)
+        }
+        setPaymentProofUrl(uploaded.url)
+        setPaymentProofPublicId(uploaded.publicId)
+      }
+    } catch (error) {
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Please try again.')
+    } finally {
+      setIsUploadingProof(false)
+    }
+  }, [paymentProofPublicId])
+
+  const handleRemoveProof = useCallback(() => {
+    if (paymentProofPublicId) deletePaymentProof(paymentProofPublicId)
+    setPaymentProofUrl('')
+    setPaymentProofPublicId('')
+  }, [paymentProofPublicId])
+
   const handleSubmitOrder = useCallback(async () => {
     if (!tenant || !selectedOrderType) return
     if (!selectedPaymentMethod && paymentMethods.length > 0) {
       Alert.alert('Payment Required', 'Please select a payment method.')
       return
+    }
+
+    // Enforce per-method payment-proof requirement (screenshot OR reference).
+    const proofError = getPaymentProofError(selectedPaymentMethod, {
+      screenshotUrl: paymentProofUrl,
+      reference: paymentProofReference,
+    })
+    if (proofError) {
+      Alert.alert('Payment Proof Required', proofError)
+      return
+    }
+
+    // Advance order: schedule-only order types (ASAP disabled) must be scheduled.
+    if (advanceConfig.enabled && !advanceConfig.allowAsap && scheduleMode !== 'scheduled') {
+      Alert.alert('Scheduling required', 'This order type must be scheduled for a later time.')
+      return
+    }
+
+    // Advance order: when scheduling is required (or chosen), enforce a valid slot.
+    if (advanceConfig.enabled && scheduleMode === 'scheduled') {
+      if (!scheduledForISO || !isScheduleValid) {
+        Alert.alert(
+          'Pick a time',
+          'Please select a valid date and time for your scheduled order before placing it.'
+        )
+        return
+      }
     }
 
     setIsSubmitting(true)
@@ -106,11 +286,24 @@ export default function CheckoutScreen() {
             args: {
               customerName: formValues.customer_name || null,
               customerContact: formValues.customer_phone || formValues.customer_email || null,
-              customerData: formValues,
+              customerData: {
+                ...formValues,
+                ...(scheduledForISO
+                  ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
+                  : {}),
+                ...((paymentProofUrl || paymentProofReference)
+                  ? {
+                      payment_proof_url: paymentProofUrl || undefined,
+                      payment_proof_public_id: paymentProofPublicId || undefined,
+                      payment_proof_reference: paymentProofReference || undefined,
+                    }
+                  : {}),
+              },
               total,
               orderType: selectedOrderType.name,
               orderTypeId: String(selectedOrderType.id),
               source: 'mobile' as const,
+              ...(scheduledForISO ? { scheduledFor: scheduledForISO } : {}),
               itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
               paymentMethod: selectedPaymentMethod?.name || null,
               paymentMethodDetails: selectedPaymentMethod?.details || null,
@@ -169,14 +362,26 @@ export default function CheckoutScreen() {
             order_type: selectedOrderType.name,
             customer_name: formValues.customer_name || null,
             customer_contact: formValues.customer_phone || formValues.customer_email || null,
-            customer_data: formValues,
+            customer_data: {
+              ...formValues,
+              ...(scheduledForISO
+                ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
+                : {}),
+            },
             total,
+            ...(scheduledForISO ? { scheduled_for: scheduledForISO } : {}),
             status: 'pending',
             payment_method_id: selectedPaymentMethod?.id || null,
             payment_method_name: selectedPaymentMethod?.name || null,
             payment_method_details: selectedPaymentMethod?.details || null,
             payment_method_qr_code_url: selectedPaymentMethod?.qr_code_url || null,
             payment_status: 'pending',
+            payment_proof_url: paymentProofUrl || null,
+            payment_proof_public_id: paymentProofPublicId || null,
+            payment_proof_reference: paymentProofReference.trim() || null,
+            payment_proof_uploaded_at: (paymentProofUrl || paymentProofReference.trim())
+              ? new Date().toISOString()
+              : null,
           })
           .select()
           .single()
@@ -201,7 +406,8 @@ export default function CheckoutScreen() {
         { name: selectedOrderType.name, type: selectedOrderType.type },
         formValues,
         selectedPaymentMethod ? { name: selectedPaymentMethod.name, details: selectedPaymentMethod.details } : null,
-        formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label }))
+        formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label })),
+        scheduledForLabel
       )
 
       const messengerPageId = tenant.messenger_page_id || tenant.messenger_username
@@ -246,6 +452,7 @@ export default function CheckoutScreen() {
         messengerMessage: message,
         messengerUrl: messengerUrl || '',
         orderId,
+        scheduledForLabel,
       })
 
       // Fire-and-forget: sync order to Google Sheets
@@ -276,7 +483,25 @@ export default function CheckoutScreen() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [tenant, selectedOrderType, selectedPaymentMethod, items, total, formValues, formFields, clearCart])
+  }, [
+    tenant,
+    selectedOrderType,
+    selectedPaymentMethod,
+    paymentMethods.length,
+    items,
+    total,
+    formValues,
+    formFields,
+    clearCart,
+    paymentProofUrl,
+    paymentProofPublicId,
+    paymentProofReference,
+    advanceConfig.enabled,
+    scheduleMode,
+    scheduledForISO,
+    scheduledForLabel,
+    isScheduleValid,
+  ])
 
   // Wait for cart store hydration so order type state is available
   if (!isHydrated || !isCustomerHistoryHydrated) {
@@ -301,6 +526,24 @@ export default function CheckoutScreen() {
       </View>
     )
   }
+
+  // Advance-order scheduler, rendered in Step 1 after the form. Gated by the order type's
+  // advance_order_enabled flag (the component itself also no-ops when disabled).
+  const schedulerEl = selectedOrderType?.advance_order_enabled ? (
+    <AdvanceOrderScheduler
+      config={advanceConfig}
+      scheduleMode={scheduleMode}
+      onChangeMode={setScheduleMode}
+      scheduleDates={scheduleDates}
+      timeSlots={timeSlots}
+      scheduleDate={scheduleDate}
+      scheduleTime={scheduleTime}
+      onChangeDate={handleScheduleDateChange}
+      onChangeTime={setScheduleTime}
+      scheduledForLabel={scheduledForLabel}
+      orderTypeKind={selectedOrderType.type}
+    />
+  ) : null
 
   return (
     <View style={[styles.container, { backgroundColor: theme.checkoutModalBackground }]}>
@@ -330,6 +573,7 @@ export default function CheckoutScreen() {
               <Text style={[styles.sectionTitle, { color: theme.checkoutModalTitle, textAlign: 'center' }]}>
                 No additional details needed
               </Text>
+              {schedulerEl}
               <View style={styles.navButtons}>
                 <Button title="Continue to Payment" onPress={() => setStep(2)} style={{ flex: 1 }} checkoutVariant />
               </View>
@@ -357,6 +601,7 @@ export default function CheckoutScreen() {
                   </Text>
                 </View>
               ) : null}
+              {schedulerEl}
               <View style={styles.navButtons}>
                 <Button title="Continue" onPress={handleNextToPayment} style={{ flex: 1 }} checkoutVariant />
               </View>
@@ -376,6 +621,17 @@ export default function CheckoutScreen() {
                 checkoutTheme
               />
             ))}
+            {selectedPaymentMethod ? (
+              <PaymentProofField
+                required={isPaymentProofRequired(selectedPaymentMethod)}
+                screenshotUrl={paymentProofUrl}
+                reference={paymentProofReference}
+                isUploading={isUploadingProof}
+                onPickImage={handlePickProof}
+                onRemoveImage={handleRemoveProof}
+                onReferenceChange={setPaymentProofReference}
+              />
+            ) : null}
             <CartSummary subtotal={total} hideCurrencySymbol={hideCurrencySymbol || false} useCheckoutTheme />
           </View>
         ) : null}

@@ -72,10 +72,11 @@ export async function createPaymentMethod(
   details?: string,
   qrCodeUrl?: string,
   isActive: boolean = true,
-  orderTypes: string[] = []
+  orderTypes: string[] = [],
+  requirePaymentProof: boolean = false
 ) {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
 
   // Get the next order_index
@@ -99,6 +100,7 @@ export async function createPaymentMethod(
       qr_code_url: qrCodeUrl || null,
       is_active: isActive,
       order_index: orderIndex,
+      require_payment_proof: requirePaymentProof,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
@@ -134,15 +136,17 @@ export async function updatePaymentMethod(
     details?: string
     qr_code_url?: string
     is_active?: boolean
+    require_payment_proof?: boolean
   }
 ) {
   await verifyTenantAdmin(tenantId)
-  
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('payment_methods')
-    .update(updates)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(updates as any)
     .eq('id', paymentMethodId)
     .eq('tenant_id', tenantId)
     .select()

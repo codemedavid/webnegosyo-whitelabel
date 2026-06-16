@@ -117,6 +117,15 @@ export default function OrderConfirmationScreen() {
             <Text style={[styles.cardValue, { color: c.value }]}>
               {completedOrder.orderTypeName}
             </Text>
+            {/* Advance order: requested fulfillment time */}
+            {completedOrder.scheduledForLabel ? (
+              <View style={styles.scheduledRow}>
+                <Ionicons name="calendar-outline" size={16} color={c.label} />
+                <Text style={[styles.scheduledText, { color: c.value }]}>
+                  Scheduled for {completedOrder.scheduledForLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -330,6 +339,8 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 13, fontWeight: '500' },
   cardValue: { fontSize: 16, fontWeight: '700' },
+  scheduledRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  scheduledText: { fontSize: 14, fontWeight: '600' },
   historySubtext: { fontSize: 12, marginTop: 4 },
   sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 14 },
   infoRow: {

@@ -90,7 +90,8 @@ export function generateMessengerMessage(
   orderType?: { name: string; type: string } | null,
   customerData?: Record<string, string>,
   paymentMethod?: { name: string; details?: string } | null,
-  formFields?: FormFieldMeta[]
+  formFields?: FormFieldMeta[],
+  scheduledForLabel?: string | null
 ): string {
   const lines = [
     `New Order from ${restaurantName}`,
@@ -107,6 +108,12 @@ export function generateMessengerMessage(
     lines.push('')
   }
 
+  // Advance order: requested fulfillment time
+  if (scheduledForLabel) {
+    lines.push(`🗓️ Scheduled for: ${scheduledForLabel}`)
+    lines.push('')
+  }
+
   if (customerData) {
     const customerInfo: string[] = []
     const knownFieldEmojis: Record<string, string> = {
@@ -116,7 +123,8 @@ export function generateMessengerMessage(
       delivery_address: '📍',
       table_number: '🪑',
     }
-    const skipFields = ['delivery_lat', 'delivery_lng', 'messenger_psid']
+    // Skip internal-use fields (coordinates, messenger PSID, advance-order metadata).
+    const skipFields = ['delivery_lat', 'delivery_lng', 'messenger_psid', 'scheduled_for', 'scheduled_for_label']
 
     if (formFields && formFields.length > 0) {
       formFields.forEach(field => {

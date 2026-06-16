@@ -30,10 +30,13 @@ import {
   isValidScheduledTime,
   formatScheduledFor,
 } from '@/lib/advance-order-utils'
+import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
+import { getPaymentProofError } from '@/lib/payment-proof'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
+import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
 import { createClient } from '@/lib/supabase/client'
 import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { savePendingOrder } from '@/lib/qr-pending-order'
@@ -73,11 +76,14 @@ export function useCheckout(tenantSlug: string) {
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
 
-  // Lalamove delivery fee state
+  // Delivery fee state (Lalamove quotation OR distance-based; Lalamove takes precedence)
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
   const [quotationId, setQuotationId] = useState<string | null>(null)
   const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false)
   const [deliveryFeeAddress, setDeliveryFeeAddress] = useState<string>('') // Track which address the fee is for
+  // Distance-based delivery: address is outside the configured radius (blocks delivery submit)
+  const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false)
+  const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null)
 
   // Payment method state
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -85,6 +91,10 @@ export function useCheckout(tenantSlug: string) {
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
+  // Payment proof (screenshot upload and/or reference number)
+  const [paymentProofUrl, setPaymentProofUrl] = useState<string>('')
+  const [paymentProofPublicId, setPaymentProofPublicId] = useState<string>('')
+  const [paymentProofReference, setPaymentProofReference] = useState<string>('')
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [messageExpanded, setMessageExpanded] = useState(false)
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
@@ -131,11 +141,16 @@ export function useCheckout(tenantSlug: string) {
   // Only surface dates that still have at least one selectable slot (a too-late "today"
   // or a day fully inside the lead window is dropped).
   const advanceConfig = getAdvanceOrderConfig(selectedOrderTypeData)
+  // Operating hours bound the selectable slot window per weekday (closed days are dropped).
+  const operatingHours = useMemo(
+    () => normalizeOperatingHours(tenant?.operating_hours ?? null),
+    [tenant?.operating_hours],
+  )
   const scheduleDates = advanceConfig.enabled
-    ? generateScheduleDates(advanceConfig, now).filter(d => generateTimeSlots(advanceConfig, d.value, now).length > 0)
+    ? generateScheduleDates(advanceConfig, now, operatingHours).filter(d => generateTimeSlots(advanceConfig, d.value, now, operatingHours).length > 0)
     : []
   const timeSlots = advanceConfig.enabled && scheduleDate
-    ? generateTimeSlots(advanceConfig, scheduleDate, now)
+    ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours)
     : []
   const isScheduling = advanceConfig.enabled && scheduleMode === 'scheduled'
   const scheduledDateObj = isScheduling && scheduleDate && scheduleTime
@@ -143,7 +158,7 @@ export function useCheckout(tenantSlug: string) {
     : null
   const scheduledForISO = scheduledDateObj ? scheduledDateObj.toISOString() : null
   const scheduledForLabel = scheduledDateObj ? formatScheduledFor(scheduledDateObj) : null
-  const isScheduleValid = scheduledDateObj ? isValidScheduledTime(advanceConfig, scheduledDateObj, now) : true
+  const isScheduleValid = scheduledDateObj ? isValidScheduledTime(advanceConfig, scheduledDateObj, now, operatingHours) : true
 
   // Derived totals shared by every design so they never recompute the fee/total rules.
   const validDeliveryFee = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address)
@@ -154,7 +169,7 @@ export function useCheckout(tenantSlug: string) {
   // Convenience: change the scheduled date and snap the time to the first valid slot.
   const handleScheduleDateChange = (date: string) => {
     setScheduleDate(date)
-    const slots = generateTimeSlots(advanceConfig, date, now)
+    const slots = generateTimeSlots(advanceConfig, date, now, operatingHours)
     setScheduleTime(slots[0]?.value ?? '')
   }
 
@@ -331,85 +346,120 @@ export function useCheckout(tenantSlug: string) {
     return () => clearInterval(interval)
   }, [checkoutComplete, completedOrderData?.messengerUrl])
 
-  // Fetch Lalamove delivery quotation when delivery address is entered
+  // Fetch the delivery fee when a delivery address is entered.
+  // Two mutually-exclusive sources: Lalamove (when enabled — always wins) or the
+  // distance-based fee (when Lalamove is off and distance delivery is configured).
   useEffect(() => {
     let isCancelled = false // Prevent race conditions
 
+    // Reset all delivery-fee state to "no fee".
+    const resetDeliveryState = () => {
+      setDeliveryFee(null)
+      setQuotationId(null)
+      setDeliveryFeeAddress('')
+      setDeliveryOutOfRange(false)
+      setDeliveryDistanceKm(null)
+      setIsFetchingDeliveryFee(false)
+    }
+
     const fetchDeliveryQuote = async () => {
-      // Check if this is a delivery order
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const isDeliveryOrder = selectedOrderType?.type === 'delivery'
 
-      // Check if Lalamove is enabled and restaurant address is configured
-      const hasRestaurantAddress = tenant?.restaurant_address &&
-        tenant?.restaurant_latitude &&
-        tenant?.restaurant_longitude
+      // Store location must be configured for either fee source.
+      const hasRestaurantLocation = !!tenant?.restaurant_latitude && !!tenant?.restaurant_longitude
 
-      // Check if delivery address is provided
+      // Lalamove takes precedence; distance-based only applies when Lalamove is off.
+      const lalamoveOn = !!tenant?.lalamove_enabled
+      const distanceOn = !lalamoveOn && !!tenant?.distance_delivery_enabled
+
       const deliveryAddress = customerData.delivery_address
       const deliveryLat = customerData.delivery_lat
       const deliveryLng = customerData.delivery_lng
 
-      if (!isDeliveryOrder || !tenant?.lalamove_enabled || !hasRestaurantAddress) {
-        // Reset delivery fee if not applicable
-        setDeliveryFee(null)
-        setQuotationId(null)
-        setDeliveryFeeAddress('')
-        setIsFetchingDeliveryFee(false)
+      if (!isDeliveryOrder || (!lalamoveOn && !distanceOn) || !hasRestaurantLocation) {
+        resetDeliveryState()
         return
       }
 
       if (!deliveryAddress || !deliveryLat || !deliveryLng) {
-        // Delivery address not yet entered
-        setDeliveryFee(null)
-        setQuotationId(null)
-        setDeliveryFeeAddress('')
-        setIsFetchingDeliveryFee(false)
+        // Delivery address not yet selected from suggestions
+        resetDeliveryState()
         return
       }
 
-      // IMMEDIATELY clear old delivery fee to prevent showing stale data
+      // IMMEDIATELY clear old delivery state to prevent showing stale data
       setDeliveryFee(null)
       setQuotationId(null)
       setDeliveryFeeAddress('')
+      setDeliveryOutOfRange(false)
+      setDeliveryDistanceKm(null)
       setIsFetchingDeliveryFee(true)
 
-      // Fetch quotation
       try {
-        const result = await createQuotationAction(
-          tenant.id,
-          tenant.restaurant_address!,
-          tenant.restaurant_latitude!,
-          tenant.restaurant_longitude!,
-          deliveryAddress,
-          parseFloat(deliveryLat),
-          parseFloat(deliveryLng)
-        )
-
-        // Only update state if this request hasn't been cancelled
-        if (isCancelled) return
-
-        if (result.success && result.data) {
-          // Only set fee if the address still matches
-          if (deliveryAddress === customerData.delivery_address) {
-            setDeliveryFee(result.data.price)
-            setQuotationId(result.data.quotationId)
-            setDeliveryFeeAddress(deliveryAddress)
+        if (lalamoveOn) {
+          const result = await createQuotationAction(
+            tenant!.id,
+            tenant!.restaurant_address || '',
+            tenant!.restaurant_latitude!,
+            tenant!.restaurant_longitude!,
+            deliveryAddress,
+            parseFloat(deliveryLat),
+            parseFloat(deliveryLng)
+          )
+          if (isCancelled) return
+          if (result.success && result.data) {
+            if (deliveryAddress === customerData.delivery_address) {
+              setDeliveryFee(result.data.price)
+              setQuotationId(result.data.quotationId)
+              setDeliveryFeeAddress(deliveryAddress)
+            }
+          } else {
+            console.error('Failed to fetch delivery quote:', result.error)
+            toast.error(result.error || 'Failed to get delivery fee')
+            setDeliveryFee(null)
+            setQuotationId(null)
+            setDeliveryFeeAddress('')
           }
         } else {
-          console.error('Failed to fetch delivery quote:', result.error)
-          toast.error(result.error || 'Failed to get delivery fee')
-          setDeliveryFee(null)
-          setQuotationId(null)
-          setDeliveryFeeAddress('')
+          // Distance-based fee
+          const result = await calculateDistanceDeliveryFeeAction(
+            tenant!.id,
+            parseFloat(deliveryLat),
+            parseFloat(deliveryLng)
+          )
+          if (isCancelled) return
+          if (result.success && result.data) {
+            // Guard against stale responses for a previous address
+            if (deliveryAddress === customerData.delivery_address) {
+              setDeliveryDistanceKm(result.data.distanceKm)
+              if (result.data.withinRadius) {
+                setDeliveryFee(result.data.fee)
+                setDeliveryFeeAddress(deliveryAddress)
+                setDeliveryOutOfRange(false)
+              } else {
+                setDeliveryFee(null)
+                setDeliveryFeeAddress('')
+                setDeliveryOutOfRange(true)
+                toast.error(`This address is outside the delivery area (${result.data.radiusKm} km).`)
+              }
+            }
+          } else {
+            console.error('Failed to calculate delivery fee:', result.error)
+            toast.error(result.error || 'Failed to get delivery fee')
+            setDeliveryFee(null)
+            setDeliveryFeeAddress('')
+            setDeliveryOutOfRange(false)
+          }
         }
       } catch (error) {
         if (isCancelled) return
-        console.error('Error fetching delivery quote:', error)
+        console.error('Error fetching delivery fee:', error)
         toast.error('Failed to calculate delivery fee')
         setDeliveryFee(null)
         setQuotationId(null)
         setDeliveryFeeAddress('')
+        setDeliveryOutOfRange(false)
       } finally {
         if (!isCancelled) {
           setIsFetchingDeliveryFee(false)
@@ -447,11 +497,11 @@ export function useCheckout(tenantSlug: string) {
   // (possibly shrunk) horizon; otherwise just snaps the time to a valid slot for that date.
   useEffect(() => {
     if (!advanceConfig.enabled || scheduleMode !== 'scheduled') return
-    const dates = generateScheduleDates(advanceConfig, now)
+    const dates = generateScheduleDates(advanceConfig, now, operatingHours)
     const dateValid = !!scheduleDate && dates.some(d => d.value === scheduleDate)
-    const slots = dateValid ? generateTimeSlots(advanceConfig, scheduleDate, now) : []
+    const slots = dateValid ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours) : []
     if (!dateValid || slots.length === 0) {
-      const first = getFirstAvailableSlot(advanceConfig, now)
+      const first = getFirstAvailableSlot(advanceConfig, now, operatingHours)
       setScheduleDate(first?.dateValue ?? '')
       setScheduleTime(first?.timeValue ?? '')
       return
@@ -467,6 +517,7 @@ export function useCheckout(tenantSlug: string) {
     advanceConfig.maxDaysAhead,
     advanceConfig.leadTimeMinutes,
     advanceConfig.slotIntervalMinutes,
+    operatingHours,
     now,
   ])
 
@@ -643,6 +694,12 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
+    // Distance-based delivery: block submit when the chosen address is outside the radius.
+    if (selectedOrderTypeData?.type === 'delivery' && deliveryOutOfRange) {
+      toast.error('This address is outside the delivery area. Please choose a closer address or switch to pickup.')
+      return
+    }
+
     // Advance order: validate the scheduled time before proceeding
     if (advanceConfig.enabled) {
       if (!advanceConfig.allowAsap && scheduleMode !== 'scheduled') {
@@ -691,8 +748,44 @@ export function useCheckout(tenantSlug: string) {
     handleCheckout()
   }
 
+  // Best-effort delete of a Cloudinary payment-proof asset (replace/remove cleanup).
+  const deleteProofAsset = (publicId: string) => {
+    if (!publicId) return
+    fetch('/api/payment-proof/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ publicId }),
+    }).catch(error => console.warn('[Checkout] Proof cleanup failed:', error))
+  }
+
+  // Upload callback: delete the previously-uploaded screenshot before storing the new one.
+  const handlePaymentProofUploaded = (url: string, publicId: string) => {
+    if (paymentProofPublicId && paymentProofPublicId !== publicId) {
+      deleteProofAsset(paymentProofPublicId)
+    }
+    setPaymentProofUrl(url)
+    setPaymentProofPublicId(publicId)
+  }
+
+  const handleRemovePaymentProof = () => {
+    if (paymentProofPublicId) deleteProofAsset(paymentProofPublicId)
+    setPaymentProofUrl('')
+    setPaymentProofPublicId('')
+  }
+
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
+
+    // Enforce per-method payment-proof requirement (screenshot OR reference).
+    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
+    const proofError = getPaymentProofError(selectedMethodForProof, {
+      screenshotUrl: paymentProofUrl,
+      reference: paymentProofReference,
+    })
+    if (proofError) {
+      toast.error(proofError)
+      return
+    }
 
     setIsProcessing(true)
 
@@ -909,7 +1002,14 @@ export function useCheckout(tenantSlug: string) {
           selectedPayment?.details || undefined,
           selectedPayment?.qr_code_url || undefined,
           serviceChargeAmount || undefined,
-          scheduledForISO || undefined
+          scheduledForISO || undefined,
+          (paymentProofUrl || paymentProofReference)
+            ? {
+                url: paymentProofUrl || null,
+                publicId: paymentProofPublicId || null,
+                reference: paymentProofReference || null,
+              }
+            : undefined
         ).then(result => {
           if (result.success) {
             // Track upsell conversions
@@ -1000,6 +1100,8 @@ export function useCheckout(tenantSlug: string) {
     deliveryFee,
     isFetchingDeliveryFee,
     deliveryFeeAddress,
+    deliveryOutOfRange,
+    deliveryDistanceKm,
     validDeliveryFee,
     grandTotal,
     // advance order / scheduling
@@ -1026,6 +1128,12 @@ export function useCheckout(tenantSlug: string) {
     openQrDialog,
     copiedText,
     handleCopyText,
+    // payment proof
+    paymentProofUrl,
+    paymentProofReference,
+    setPaymentProofReference,
+    handlePaymentProofUploaded,
+    handleRemovePaymentProof,
     // confirmation
     checkoutComplete,
     completedOrderData,
