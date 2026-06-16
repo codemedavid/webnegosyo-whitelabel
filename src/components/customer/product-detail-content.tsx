@@ -658,7 +658,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             style={cssVariables}
         >
             {/* Back Navigation */}
-            <header className={`fixed top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
+            <header className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
                 <div className="flex items-center justify-between gap-2">
                     <motion.button
                         onClick={handleGoBack}
@@ -1131,7 +1131,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Sticky Footer */}
             <footer
-                className="fixed bottom-0 left-0 right-0 z-40 border-t"
+                className={`${isSheet ? 'absolute' : 'fixed'} bottom-0 left-0 right-0 z-40 border-t`}
                 style={dynamicStyles?.footer}
             >
                 {/* Selected Summary */}

@@ -215,7 +215,14 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       item.variations.length > 0 ||
       (item.variation_types && item.variation_types.length > 0) ||
       item.addons.length > 0
-    if (!hasCustomizations && !tenant?.menu_engineering_enabled) {
+    // Only skip the sheet for a bare item when NO upsell surface applies — the
+    // sheet is also where pairing-rule and bundle upsells render, so those flags
+    // must keep an otherwise-customization-free item routed through it.
+    const hasUpsellSurface =
+      tenant?.menu_engineering_enabled ||
+      tenant?.pairing_rules_enabled ||
+      tenant?.bundles_enabled
+    if (!hasCustomizations && !hasUpsellSurface) {
       addItem(item, undefined, [], 1, undefined)
       toast.success(`Added ${item.name} to cart`)
     } else if (isBrandAdmin) {
@@ -226,7 +233,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       // Customers get the instant bottom sheet instead of a route navigation.
       setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, addItem, router, tenantSlug, isBrandAdmin])
+  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin])
 
   const desktopLayout = (pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout
   const mobileLayout = (mobilePageLayoutOverride ?? tenant?.mobile_page_layout ?? desktopLayout) as PageLayout
