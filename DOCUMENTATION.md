@@ -519,7 +519,7 @@ Error tracking and session replay across server, edge, and client environments.
 
 ### AI Menu Parsing
 
-Superadmin tool that sends raw menu text (e.g., from a photo transcript) to NVIDIA API for structured extraction of categories, items, variations, and addons.
+Superadmin tool that sends raw menu text (e.g., from a photo transcript) to OpenRouter (Llama 3.3 70B Instruct) for structured extraction of categories, items, variations, and addons.
 
 ---
 

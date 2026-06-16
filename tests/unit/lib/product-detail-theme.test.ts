@@ -65,6 +65,17 @@ const mockBranding: BrandingColors = {
     primary: '#aa0028',
     secondary: '#aa0029',
     accent: '#aa002a',
+    searchBar: {
+        enabled: true,
+        background: null,
+        text: null,
+        placeholder: null,
+        icon: null,
+        border: null,
+        focusRing: null,
+        radius: 'pill',
+        style: 'filled',
+    },
 }
 
 describe('mergeSettingsWithBranding', () => {

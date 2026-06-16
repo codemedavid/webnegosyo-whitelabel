@@ -5,6 +5,7 @@
 
 import type { Order, Tenant } from '@/types/database'
 import { formatPrice } from './cart-utils'
+import { getOrderScheduledLabel } from './advance-order-utils'
 
 /**
  * Format order details into a message for Messenger
@@ -24,6 +25,13 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
     }
     const emoji = orderTypeEmoji[order.order_type as keyof typeof orderTypeEmoji] || '📋'
     lines.push(`📋 Order Type: ${emoji} ${order.order_type}`)
+    lines.push('')
+  }
+
+  // Add scheduled (advance / pre-order) fulfillment time
+  const scheduledLabel = getOrderScheduledLabel(order)
+  if (scheduledLabel) {
+    lines.push(`🗓️ Scheduled for: ${scheduledLabel}`)
     lines.push('')
   }
 

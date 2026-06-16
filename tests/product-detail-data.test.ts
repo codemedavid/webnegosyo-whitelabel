@@ -169,6 +169,7 @@ describe('Product Detail Data', () => {
                     { id: 'a1', name: 'Extra', price: 1 }
                 ],
                 is_available: true,
+                order: 0,
                 created_at: '',
                 updated_at: ''
             }
@@ -212,6 +213,7 @@ describe('Product Detail Data', () => {
                 addons: [],
                 variation_types: [],
                 is_available: true,
+                order: 0,
                 created_at: '',
                 updated_at: ''
             }

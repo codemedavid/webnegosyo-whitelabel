@@ -3,8 +3,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { Pencil } from 'lucide-react'
-import { OptimizedImage } from '@/components/shared/optimized-image'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
@@ -13,6 +11,8 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
+import { MenuHeaderRenderer } from '@/components/customer/header-templates'
+import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 import type { BundleWithSlots } from '@/types/database'
 import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
@@ -32,13 +32,6 @@ interface MenuClientProps {
 
 type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
-interface AdminEditPencilProps {
-  visible: boolean
-  onClick: () => void
-  label: string
-  className?: string
-}
-
 const BrandingEditorOverlay = dynamic(
   () => import('@/components/admin/branding-editor-overlay').then(mod => ({ default: mod.BrandingEditorOverlay })),
   { ssr: false }
@@ -53,23 +46,11 @@ const BundleWizard = dynamic(
   () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
 )
+const ProductDetailSheet = dynamic(
+  () => import('@/components/customer/product-detail-sheet').then((m) => ({ default: m.ProductDetailSheet })),
+  { ssr: false }
+)
 
-
-function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencilProps) {
-  if (!visible) return null
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900 ${className || ''}`}
-    >
-      <Pencil className="h-3.5 w-3.5" />
-    </button>
-  )
-}
 
 export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   const router = useRouter()
@@ -92,6 +73,8 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [selectedBundle, setSelectedBundle] = useState<BundleWithSlots | null>(null)
+  // The item shown in the product-detail bottom sheet (null = closed).
+  const [sheetItem, setSheetItem] = useState<MenuItem | null>(null)
   const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
   const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
 
@@ -204,6 +187,11 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
   const [mobileGridColumnsOverride, setMobileGridColumnsOverride] = useState<number | null>(null)
   const [mobilePageLayoutOverride, setMobilePageLayoutOverride] = useState<string | null>(null)
   const [mobileCardTemplateOverride, setMobileCardTemplateOverride] = useState<string | null>(null)
+  const [headerTemplateOverride, setHeaderTemplateOverride] = useState<string | null>(null)
+  const [mobileHeaderTemplateOverride, setMobileHeaderTemplateOverride] = useState<string | null>(null)
+  const [headerConfigOverride, setHeaderConfigOverride] = useState<Partial<HeaderConfig> | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
   const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
   const branding = useMemo(() => {
     if (!brandingOverride) return baseBranding
@@ -227,19 +215,82 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
       item.variations.length > 0 ||
       (item.variation_types && item.variation_types.length > 0) ||
       item.addons.length > 0
-    if (!hasCustomizations && !tenant?.menu_engineering_enabled) {
+    // Only skip the sheet for a bare item when NO upsell surface applies — the
+    // sheet is also where pairing-rule and bundle upsells render, so those flags
+    // must keep an otherwise-customization-free item routed through it.
+    const hasUpsellSurface =
+      tenant?.menu_engineering_enabled ||
+      tenant?.pairing_rules_enabled ||
+      tenant?.bundles_enabled
+    if (!hasCustomizations && !hasUpsellSurface) {
       addItem(item, undefined, [], 1, undefined)
       toast.success(`Added ${item.name} to cart`)
-    } else {
+    } else if (isBrandAdmin) {
+      // Brand admins keep navigating to the full page so the inline branding
+      // editor and product-detail customizer remain available.
       router.push(`/${tenantSlug}/menu/item/${item.id}`, { scroll: true })
+    } else {
+      // Customers get the instant bottom sheet instead of a route navigation.
+      setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, addItem, router, tenantSlug])
+  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin])
 
   const desktopLayout = (pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout
   const mobileLayout = (mobilePageLayoutOverride ?? tenant?.mobile_page_layout ?? desktopLayout) as PageLayout
   const desktopCard = (cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate
   const mobileCard = (mobileCardTemplateOverride ?? tenant?.mobile_card_template ?? desktopCard) as CardTemplate
   const needsDualRender = mobileLayout !== desktopLayout || mobileCard !== desktopCard
+
+  const desktopHeader = (headerTemplateOverride || tenant?.header_template || 'classic') as HeaderTemplate
+  // While the editor is open (previewing), a null mobile override means the admin
+  // reset to desktop — fall back to the desktop header instead of the stale saved
+  // value so the live preview matches what will be saved.
+  const mobileHeader = (
+    isPreviewing
+      ? (mobileHeaderTemplateOverride ?? desktopHeader)
+      : (mobileHeaderTemplateOverride ?? tenant?.mobile_header_template ?? desktopHeader)
+  ) as HeaderTemplate
+  const headerConfig = useMemo<HeaderConfig>(() => {
+    const base = getHeaderConfig(tenant)
+    return headerConfigOverride ? { ...base, ...headerConfigOverride } : base
+  }, [tenant, headerConfigOverride])
+
+  // When the header carries its own inline search, suppress the layout's search bar
+  // so the menu never shows two search inputs.
+  const layoutBranding = useMemo(() => {
+    if (!headerConfig.showSearch) return branding
+    return { ...branding, searchBar: { ...branding.searchBar, enabled: false } }
+  }, [branding, headerConfig.showSearch])
+
+  // Measure the live header height and expose it as --menu-header-h so the sticky
+  // category bars sit flush beneath whichever header template/height the tenant picked
+  // (and beneath whichever of the desktop/mobile headers is currently visible).
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const measure = () => {
+      // A non-sticky header scrolls away, so the category bar should pin at the very
+      // top rather than reserving the (now-absent) header's height.
+      if (!headerConfig.sticky) {
+        root.style.setProperty('--menu-header-h', '0px')
+        return
+      }
+      let max = 0
+      root.querySelectorAll(':scope > header').forEach((el) => {
+        const h = (el as HTMLElement).offsetHeight
+        if (h > max) max = h
+      })
+      if (max > 0) root.style.setProperty('--menu-header-h', `${max}px`)
+    }
+    measure()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    if (observer) root.querySelectorAll(':scope > header').forEach((el) => observer.observe(el))
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [desktopHeader, mobileHeader, headerConfig])
 
   function mapDraftToBranding(draft: Partial<Record<string, unknown>> | null): Partial<Record<string, string>> | null {
     if (!draft) return null
@@ -321,6 +372,23 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
     }
   }
 
+  function mapDraftToHeaderConfig(draft: Partial<Record<string, unknown>> | null): Partial<HeaderConfig> | null {
+    if (!draft) return null
+    const cfg: Partial<HeaderConfig> = {}
+    if (typeof draft.header_show_logo === 'boolean') cfg.showLogo = draft.header_show_logo
+    if (typeof draft.header_show_name === 'boolean') cfg.showName = draft.header_show_name
+    if (typeof draft.header_show_cart === 'boolean') cfg.showCart = draft.header_show_cart
+    if (typeof draft.header_show_search === 'boolean') cfg.showSearch = draft.header_show_search
+    if (typeof draft.header_tagline === 'string') cfg.tagline = draft.header_tagline
+    if (typeof draft.header_tagline_color === 'string') cfg.taglineColor = draft.header_tagline_color
+    if (typeof draft.header_sticky === 'boolean') cfg.sticky = draft.header_sticky
+    if (typeof draft.header_blur === 'boolean') cfg.blur = draft.header_blur
+    if (typeof draft.header_shadow === 'boolean') cfg.shadow = draft.header_shadow
+    if (draft.header_logo_shape === 'circle' || draft.header_logo_shape === 'rounded' || draft.header_logo_shape === 'square') cfg.logoShape = draft.header_logo_shape
+    if (draft.header_height === 'compact' || draft.header_height === 'standard' || draft.header_height === 'tall') cfg.height = draft.header_height
+    return cfg
+  }
+
   useEffect(() => {
     const promotionBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const isVisible = bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible
@@ -395,6 +463,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
 
   return (
     <div
+      ref={rootRef}
       className="min-h-screen"
       style={{ backgroundColor: branding.background }}
     >
@@ -449,83 +518,55 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
           {bannerOverride?.announcementText || tenant?.announcement_text || 'Welcome!'}
         </div>
       )}
-      <header
-        className="sticky top-0 z-50 w-full backdrop-blur-sm border-b"
-        style={{
-          backgroundColor: branding.header,
-          color: branding.headerFont,
-          borderColor: branding.border
-        }}
-      >
-        <div className="container mx-auto px-4">
-          <div className="flex h-20 items-center justify-between">
-            <div className="flex items-center gap-3">
-              {tenant?.logo_url ? (
-                <div className="relative h-12 w-12 rounded-full overflow-hidden">
-                  <OptimizedImage
-                    src={tenant.logo_url}
-                    alt={tenant.name}
-                    fill
-                    className="object-cover"
-                    sizes="48px"
-                  />
-                </div>
-              ) : (
-                <div
-                  className="flex h-12 w-12 items-center justify-center rounded-full"
-                  style={{ backgroundColor: branding.primary }}
-                >
-                  <span className="text-lg font-bold text-white">
-                    {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <div>
-                  <h1
-                    className="text-xl font-bold"
-                    style={{ color: branding.menuMainHeaderText }}
-                  >
-                    {tenant?.name || tenantSlug.replace(/-/g, ' ')}
-                  </h1>
-                </div>
-                <AdminEditPencil
-                  visible={isBrandAdmin}
-                  onClick={() => openBrandingEditor('main_header')}
-                  label="Edit main header colors"
-                  className="mt-0.5"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="relative p-2 transition-colors hover:opacity-80"
-                style={{ color: branding.textSecondary }}
-              >
-                <span className="text-xl">🛒</span>
-                {item_count > 0 && (
-                  <span
-                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold"
-                    style={{
-                      backgroundColor: branding.menuCartBadgeBackground,
-                      color: branding.menuCartBadgeText,
-                    }}
-                  >
-                    {item_count > 99 ? '99+' : item_count}
-                  </span>
-                )}
-              </button>
-              <AdminEditPencil
-                visible={isBrandAdmin}
-                onClick={() => openBrandingEditor('cart_badge')}
-                label="Edit cart badge colors"
-              />
-            </div>
-          </div>
-        </div>
-      </header>
+      {desktopHeader === mobileHeader ? (
+        <MenuHeaderRenderer
+          template={desktopHeader}
+          tenant={tenant}
+          tenantSlug={tenantSlug}
+          branding={branding}
+          config={headerConfig}
+          itemCount={item_count}
+          onCartClick={() => setIsCartOpen(true)}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          isBrandAdmin={isBrandAdmin}
+          onEditSection={openBrandingEditor}
+        />
+      ) : (
+        <>
+          {/* Responsive class goes on the <header> itself (not a wrapper) so
+              position: sticky keeps working — a sticky element nested in a
+              short wrapper div would scroll away immediately. */}
+          <MenuHeaderRenderer
+            template={mobileHeader}
+            className="md:hidden"
+            tenant={tenant}
+            tenantSlug={tenantSlug}
+            branding={branding}
+            config={headerConfig}
+            itemCount={item_count}
+            onCartClick={() => setIsCartOpen(true)}
+            searchQuery={searchQuery}
+            onSearchChange={handleSearchChange}
+            isBrandAdmin={isBrandAdmin}
+            onEditSection={openBrandingEditor}
+          />
+          <MenuHeaderRenderer
+            template={desktopHeader}
+            className="hidden md:block"
+            tenant={tenant}
+            tenantSlug={tenantSlug}
+            branding={branding}
+            config={headerConfig}
+            itemCount={item_count}
+            onCartClick={() => setIsCartOpen(true)}
+            searchQuery={searchQuery}
+            onSearchChange={handleSearchChange}
+            isBrandAdmin={isBrandAdmin}
+            onEditSection={openBrandingEditor}
+          />
+        </>
+      )}
 
       {categoriesWithBundles.length > 0 && (
         needsDualRender ? (
@@ -571,6 +612,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         <BrandingEditorOverlay
           tenant={tenant}
           onPreview={(draft) => {
+            setIsPreviewing(draft !== null)
             setBrandingOverride(mapDraftToBranding(draft))
             setHeroOverride(mapDraftToHero(draft as Partial<Record<string, unknown>> | null))
             setBannerOverride(mapDraftToBanners(draft as Partial<Record<string, unknown>> | null))
@@ -579,6 +621,9 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
             setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
             setMobilePageLayoutOverride(draft?.mobile_page_layout as string || null)
             setMobileCardTemplateOverride(draft?.mobile_card_template as string || null)
+            setHeaderTemplateOverride(draft?.header_template as string || null)
+            setMobileHeaderTemplateOverride((draft?.mobile_header_template as string | null | undefined) ?? null)
+            setHeaderConfigOverride(mapDraftToHeaderConfig(draft as Partial<Record<string, unknown>> | null))
           }}
           onSaved={(result) => {
             if (result?.warning) {
@@ -623,7 +668,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
                 searchQuery={searchQuery}
                 setSearchQuery={handleSearchChange}
                 onItemSelect={handleItemSelect}
-                branding={branding}
+                branding={layoutBranding}
                 cardTemplate={mobileCard}
                 isLoading={false}
                 heroOverride={heroOverride}
@@ -650,7 +695,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
                 searchQuery={searchQuery}
                 setSearchQuery={handleSearchChange}
                 onItemSelect={handleItemSelect}
-                branding={branding}
+                branding={layoutBranding}
                 cardTemplate={desktopCard}
                 isLoading={false}
                 heroOverride={heroOverride}
@@ -678,7 +723,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
             searchQuery={searchQuery}
             setSearchQuery={handleSearchChange}
             onItemSelect={handleItemSelect}
-            branding={branding}
+            branding={layoutBranding}
             cardTemplate={desktopCard}
             isLoading={false}
             heroOverride={heroOverride}
@@ -735,6 +780,24 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         branding={branding}
         hideCurrencySymbol={tenant?.hide_currency_symbol}
       />
+
+      {/* Product Detail Bottom Sheet (customer fast path — opens instantly from
+          in-memory menu data, lazy-fetches upsells/settings in the background) */}
+      {tenant && (
+        <ProductDetailSheet
+          open={!!sheetItem}
+          item={sheetItem}
+          onClose={() => setSheetItem(null)}
+          tenant={tenant}
+          branding={branding}
+          categories={categories}
+          allMenuItems={allMenuItems}
+          menuEngineeringEnabled={tenant.menu_engineering_enabled}
+          pairingRulesEnabled={tenant.pairing_rules_enabled}
+          bundlesEnabled={tenant.bundles_enabled}
+          hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
+        />
+      )}
 
       {/* Active Order Banner */}
       <ActiveOrderBanner

@@ -19,7 +19,7 @@ describe('order-token', () => {
     test('generates a unique token', async () => {
       const chain = {
         update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           error: null,
           count: 1,
         }),
@@ -31,7 +31,7 @@ describe('order-token', () => {
       // Reset mock for second call
       mockFrom.mockReturnValue({
         update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           error: null,
           count: 1,
         }),
@@ -49,7 +49,7 @@ describe('order-token', () => {
       const mockUpdate = jest.fn().mockReturnThis()
       const chain = {
         update: mockUpdate,
-        eq: jest.fn().mockResolvedValue({
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           error: null,
           count: 1,
         }),
@@ -71,7 +71,7 @@ describe('order-token', () => {
     test('throws error for nonexistent order', async () => {
       const chain = {
         update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           error: null,
           count: 0,
         }),
@@ -86,7 +86,7 @@ describe('order-token', () => {
     test('throws error on database error', async () => {
       const chain = {
         update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           error: { message: 'Database error' },
           count: null,
         }),
@@ -107,7 +107,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: {
             order_token_hash: tokenHash,
             order_token_expires_at: new Date(Date.now() + 10000).toISOString(),
@@ -125,7 +125,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: {
             order_token_hash: 'wrong-hash',
             order_token_expires_at: new Date(Date.now() + 10000).toISOString(),
@@ -143,7 +143,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: {
             order_token_hash: 'some-hash',
             order_token_expires_at: new Date(Date.now() - 10000).toISOString(),
@@ -161,7 +161,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: {
             order_token_hash: null,
             order_token_expires_at: new Date(Date.now() + 10000).toISOString(),
@@ -179,7 +179,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: {
             order_token_hash: 'some-hash',
             order_token_expires_at: null,
@@ -197,7 +197,7 @@ describe('order-token', () => {
       const chain = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
+        single: jest.fn<() => Promise<unknown>>().mockResolvedValue({
           data: null,
           error: { code: 'PGRST116' },
         }),
@@ -214,7 +214,7 @@ describe('order-token', () => {
       const mockUpdate = jest.fn().mockReturnThis()
       const chain = {
         update: mockUpdate,
-        eq: jest.fn().mockResolvedValue({ error: null }),
+        eq: jest.fn<() => Promise<unknown>>().mockResolvedValue({ error: null }),
       }
       mockFrom.mockReturnValue(chain)
 

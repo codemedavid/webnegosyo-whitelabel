@@ -92,7 +92,7 @@ Important rules:
 
 /**
  * POST /api/ai/parse-menu
- * Parses raw menu text using GPT-OSS 120B via NVIDIA API
+ * Parses raw menu text using Llama 3.3 70B Instruct via OpenRouter
  */
 export async function POST(request: NextRequest) {
     try {
@@ -127,23 +127,25 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: `Menu text too long. Maximum ${MAX_MENU_TEXT_LENGTH} characters allowed.` }, { status: 400 })
         }
 
-        // Get NVIDIA API key from environment
-        const apiKey = process.env.NVIDIA_API_KEY
+        // Get OpenRouter API key from environment
+        const apiKey = process.env.OPENROUTER_API_KEY
         if (!apiKey) {
             return NextResponse.json({
-                error: 'NVIDIA API key not configured. Please set NVIDIA_API_KEY environment variable.'
+                error: 'OpenRouter API key not configured. Please set OPENROUTER_API_KEY environment variable.'
             }, { status: 500 })
         }
 
-        // Call NVIDIA Llama 3.1 70B API with streaming to avoid timeout
-        const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+        // Call Llama 3.3 70B Instruct via OpenRouter with streaming to avoid timeout
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || 'https://webnegosyo.com',
+                'X-Title': 'WebNegosyo Menu Parser',
             },
             body: JSON.stringify({
-                model: 'meta/llama-3.1-70b-instruct',
+                model: 'meta-llama/llama-3.3-70b-instruct',
                 messages: [
                     { role: 'system', content: SYSTEM_PROMPT },
                     { role: 'user', content: `Parse the following menu text into structured JSON:\n\n${menuText}` }
@@ -157,7 +159,7 @@ export async function POST(request: NextRequest) {
 
         if (!response.ok) {
             const errorText = await response.text()
-            console.error('[Parse Menu] NVIDIA API error:', errorText)
+            console.error('[Parse Menu] OpenRouter API error:', errorText)
             return NextResponse.json({
                 error: 'Failed to parse menu with AI. Please try again.'
             }, { status: 500 })

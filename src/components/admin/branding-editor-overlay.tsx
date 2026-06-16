@@ -7,12 +7,25 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CARD_TEMPLATES } from '@/lib/card-templates'
+import { CHECKOUT_TEMPLATES } from '@/lib/checkout-templates'
+import { CART_TEMPLATES } from '@/lib/cart-templates'
+import { HEADER_TEMPLATES } from '@/lib/header-templates'
 import { PAGE_LAYOUTS } from '@/lib/page-layouts'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { FooterView } from '@/components/customer/site-footer'
+import { getFooterConfig, type FooterTheme } from '@/lib/footer-utils'
 import { toast } from 'sonner'
 
-type BrandingEditorTab = 'colors' | 'layouts' | 'cards' | 'banners'
+type BrandingEditorTab = 'colors' | 'header' | 'layouts' | 'cards' | 'checkout' | 'banners' | 'footer'
 type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
 interface MenuBrandingEditorOpenDetail {
@@ -79,10 +92,26 @@ interface BrandingDraft {
   hero_title_color?: string
   hero_description_color?: string
   card_template?: string
+  checkout_template?: string
+  cart_template?: string
   page_layout?: string
   mobile_grid_columns?: number
   mobile_page_layout?: string | null
   mobile_card_template?: string | null
+  // Header template & customization
+  header_template?: string
+  mobile_header_template?: string | null
+  header_show_logo?: boolean
+  header_show_name?: boolean
+  header_show_cart?: boolean
+  header_show_search?: boolean
+  header_tagline?: string
+  header_tagline_color?: string
+  header_sticky?: boolean
+  header_blur?: boolean
+  header_shadow?: boolean
+  header_logo_shape?: 'circle' | 'rounded' | 'square'
+  header_height?: 'compact' | 'standard' | 'tall'
   // Search Bar
   search_bar_enabled?: boolean
   search_bar_background?: string
@@ -101,6 +130,42 @@ interface BrandingDraft {
   promotion_image_url?: string
   is_promotion_visible?: boolean
   promotion_banners?: PromotionBanner[]
+  // Footer
+  footer_enabled?: boolean
+  footer_theme?: FooterTheme
+  footer_logo_url?: string
+  footer_business_name?: string
+  footer_tagline?: string
+  footer_address?: string
+  footer_phone?: string
+  footer_whatsapp?: string
+  footer_viber?: string
+  footer_email?: string
+  footer_facebook_url?: string
+  footer_instagram_url?: string
+  footer_tiktok_url?: string
+  footer_twitter_url?: string
+  footer_youtube_url?: string
+  footer_facebook_name?: string
+  footer_instagram_name?: string
+  footer_tiktok_name?: string
+  footer_twitter_name?: string
+  footer_youtube_name?: string
+  footer_about_us?: string
+  footer_terms_of_service?: string
+  footer_refund_policy?: string
+  footer_privacy_policy?: string
+  footer_copyright_text?: string
+  footer_show_powered_by?: boolean
+  footer_powered_by_text?: string
+  footer_background_color?: string
+  footer_text_color?: string
+  footer_heading_color?: string
+  footer_link_color?: string
+  footer_muted_color?: string
+  footer_icon_color?: string
+  footer_icon_background_color?: string
+  footer_border_color?: string
 }
 
 interface BrandingEditorOverlayProps {
@@ -110,7 +175,21 @@ interface BrandingEditorOverlayProps {
   onToggleCheckoutPreview?: () => void
 }
 
+const FOOTER_THEME_OPTIONS: ReadonlyArray<{ value: FooterTheme; label: string }> = [
+  { value: 'auto', label: 'Auto (from branding)' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'brand', label: 'Brand' },
+  { value: 'midnight', label: 'Midnight' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'custom', label: 'Custom' },
+]
+
 function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
+  // Footer columns live on the tenants row but are not declared on the local
+  // Tenant type, so read them through an index view.
+  const row = tenant as unknown as Record<string, unknown>
+  const str = (key: string): string => (typeof row[key] === 'string' ? (row[key] as string) : '')
   return {
     primary_color: tenant.primary_color,
     secondary_color: tenant.secondary_color,
@@ -167,10 +246,25 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     hero_title_color: tenant.hero_title_color || '',
     hero_description_color: tenant.hero_description_color || '',
     card_template: tenant.card_template || 'classic',
+    checkout_template: tenant.checkout_template || 'classic',
+    cart_template: tenant.cart_template || 'classic',
     page_layout: tenant.page_layout || 'default',
     mobile_grid_columns: tenant.mobile_grid_columns || 1,
     mobile_page_layout: tenant.mobile_page_layout || null,
     mobile_card_template: tenant.mobile_card_template || null,
+    header_template: tenant.header_template || 'classic',
+    mobile_header_template: tenant.mobile_header_template ?? null,
+    header_show_logo: tenant.header_show_logo !== false,
+    header_show_name: tenant.header_show_name !== false,
+    header_show_cart: tenant.header_show_cart !== false,
+    header_show_search: tenant.header_show_search === true,
+    header_tagline: tenant.header_tagline || '',
+    header_tagline_color: tenant.header_tagline_color || '',
+    header_sticky: tenant.header_sticky !== false,
+    header_blur: tenant.header_blur !== false,
+    header_shadow: tenant.header_shadow === true,
+    header_logo_shape: tenant.header_logo_shape || 'circle',
+    header_height: tenant.header_height || 'standard',
     search_bar_enabled: tenant.search_bar_enabled !== false,
     search_bar_background: tenant.search_bar_background || '',
     search_bar_text: tenant.search_bar_text || '',
@@ -187,6 +281,41 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     promotion_image_url: tenant.promotion_image_url || '',
     is_promotion_visible: tenant.is_promotion_visible || false,
     promotion_banners: tenant.promotion_banners || [],
+    footer_enabled: row['footer_enabled'] !== false,
+    footer_theme: (str('footer_theme') || 'auto') as FooterTheme,
+    footer_logo_url: str('footer_logo_url'),
+    footer_business_name: str('footer_business_name'),
+    footer_tagline: str('footer_tagline'),
+    footer_address: str('footer_address'),
+    footer_phone: str('footer_phone'),
+    footer_whatsapp: str('footer_whatsapp'),
+    footer_viber: str('footer_viber'),
+    footer_email: str('footer_email'),
+    footer_facebook_url: str('footer_facebook_url'),
+    footer_instagram_url: str('footer_instagram_url'),
+    footer_tiktok_url: str('footer_tiktok_url'),
+    footer_twitter_url: str('footer_twitter_url'),
+    footer_youtube_url: str('footer_youtube_url'),
+    footer_facebook_name: str('footer_facebook_name'),
+    footer_instagram_name: str('footer_instagram_name'),
+    footer_tiktok_name: str('footer_tiktok_name'),
+    footer_twitter_name: str('footer_twitter_name'),
+    footer_youtube_name: str('footer_youtube_name'),
+    footer_about_us: str('footer_about_us'),
+    footer_terms_of_service: str('footer_terms_of_service'),
+    footer_refund_policy: str('footer_refund_policy'),
+    footer_privacy_policy: str('footer_privacy_policy'),
+    footer_copyright_text: str('footer_copyright_text'),
+    footer_show_powered_by: row['footer_show_powered_by'] !== false,
+    footer_powered_by_text: str('footer_powered_by_text'),
+    footer_background_color: str('footer_background_color'),
+    footer_text_color: str('footer_text_color'),
+    footer_heading_color: str('footer_heading_color'),
+    footer_link_color: str('footer_link_color'),
+    footer_muted_color: str('footer_muted_color'),
+    footer_icon_color: str('footer_icon_color'),
+    footer_icon_background_color: str('footer_icon_background_color'),
+    footer_border_color: str('footer_border_color'),
   }
 }
 
@@ -198,12 +327,20 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
   const [draft, setDraft] = useState<BrandingDraft>(() => buildDraftFromTenant(tenant))
   const [layoutScreen, setLayoutScreen] = useState<'desktop' | 'mobile'>('desktop')
   const [cardScreen, setCardScreen] = useState<'desktop' | 'mobile'>('desktop')
+  const [headerScreen, setHeaderScreen] = useState<'desktop' | 'mobile'>('desktop')
 
   useEffect(() => {
     const handleOpenCustomizer = (event: Event) => {
       const detail = (event as CustomEvent<MenuBrandingEditorOpenDetail>).detail
-      setActiveTab('colors')
-      setFocusedMenuSection(detail?.section ?? null)
+      // The main-header pencil jumps straight to the dedicated Header tab;
+      // other sections open the Colors tab focused on that section.
+      if (detail?.section === 'main_header') {
+        setActiveTab('header')
+        setFocusedMenuSection(null)
+      } else {
+        setActiveTab('colors')
+        setFocusedMenuSection(detail?.section ?? null)
+      }
       setIsOpen(true)
     }
 
@@ -447,10 +584,14 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
 
           {/* Tabs for Colors and Card Templates */}
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as BrandingEditorTab)} className="flex-1 flex flex-col overflow-hidden">
-            <TabsList className="mx-4 mt-4">
+            <TabsList className="mx-4 mt-4 flex h-auto flex-wrap">
               <TabsTrigger value="colors" className="flex-1">
                 <span className="mr-1.5">🎨</span>
                 Colors
+              </TabsTrigger>
+              <TabsTrigger value="header" className="flex-1">
+                <span className="mr-1.5">🧱</span>
+                Header
               </TabsTrigger>
               <TabsTrigger value="layouts" className="flex-1">
                 <span className="mr-1.5">📐</span>
@@ -460,9 +601,17 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                 <span className="mr-1.5">🃏</span>
                 Cards
               </TabsTrigger>
+              <TabsTrigger value="checkout" className="flex-1">
+                <span className="mr-1.5">🛒</span>
+                Checkout
+              </TabsTrigger>
               <TabsTrigger value="banners" className="flex-1">
                 <span className="mr-1.5">📢</span>
                 Banners
+              </TabsTrigger>
+              <TabsTrigger value="footer" className="flex-1">
+                <span className="mr-1.5">🔗</span>
+                Footer
               </TabsTrigger>
             </TabsList>
 
@@ -655,6 +804,182 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
               </Section>
                 </>
               )}
+            </TabsContent>
+
+            {/* Header Tab */}
+            <TabsContent value="header" className="flex-1 overflow-y-auto p-4 mt-0">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-gray-900">Choose Your Header Style</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Select a layout for your menu&apos;s main header bar.
+                    </p>
+                  </div>
+                  <ScreenToggle value={headerScreen} onChange={setHeaderScreen} />
+                </div>
+
+                {headerScreen === 'mobile' && !draft.mobile_header_template && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs text-amber-900">
+                      Currently using the desktop header. Pick a different style to customize mobile separately.
+                    </p>
+                  </div>
+                )}
+
+                {headerScreen === 'mobile' && draft.mobile_header_template && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      onClick={() => updateDraft('mobile_header_template', null)}
+                    >
+                      Reset to desktop header
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid gap-4">
+                  {HEADER_TEMPLATES.map((template) => {
+                    const activeTemplate = headerScreen === 'desktop'
+                      ? (draft.header_template || 'classic')
+                      : (draft.mobile_header_template || draft.header_template || 'classic')
+                    const isActive = activeTemplate === template.id
+
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isActive ? draft.primary_color : '#e5e7eb',
+                          backgroundColor: isActive ? `${draft.primary_color}10` : '#ffffff'
+                        }}
+                        onClick={() => {
+                          if (headerScreen === 'desktop') {
+                            updateDraft('header_template', template.id)
+                          } else {
+                            updateDraft('mobile_header_template', template.id)
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                            style={{ backgroundColor: draft.primary_color }}
+                          >
+                            ✓
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 text-3xl">{template.preview}</div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {template.features.map((feature, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: isActive ? draft.primary_color : '#f3f4f6',
+                                    color: isActive ? '#ffffff' : '#6b7280'
+                                  }}
+                                >
+                                  {feature}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Header elements */}
+                <div className="pt-4 border-t space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Header Elements</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Show logo</span>
+                      <input type="checkbox" checked={draft.header_show_logo !== false} onChange={(e) => updateDraft('header_show_logo', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Show name</span>
+                      <input type="checkbox" checked={draft.header_show_name !== false} onChange={(e) => updateDraft('header_show_name', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Show cart</span>
+                      <input type="checkbox" checked={draft.header_show_cart !== false} onChange={(e) => updateDraft('header_show_cart', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Show search</span>
+                      <input type="checkbox" checked={draft.header_show_search === true} onChange={(e) => updateDraft('header_show_search', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Sticky on scroll</span>
+                      <input type="checkbox" checked={draft.header_sticky !== false} onChange={(e) => updateDraft('header_sticky', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Blur background</span>
+                      <input type="checkbox" checked={draft.header_blur !== false} onChange={(e) => updateDraft('header_blur', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <span className="text-xs font-medium">Drop shadow</span>
+                      <input type="checkbox" checked={draft.header_shadow === true} onChange={(e) => updateDraft('header_shadow', e.target.checked)} className="h-4 w-4" />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Tagline, logo shape & height */}
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="header_tagline" className="text-xs">Tagline (optional)</Label>
+                    <Input id="header_tagline" value={draft.header_tagline || ''} onChange={(e) => updateDraft('header_tagline', e.target.value)} placeholder="e.g., Freshly brewed daily" className="text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="header_logo_shape" className="text-xs">Logo shape</Label>
+                      <select id="header_logo_shape" value={draft.header_logo_shape || 'circle'} onChange={(e) => updateDraft('header_logo_shape', e.target.value as 'circle' | 'rounded' | 'square')} className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm">
+                        <option value="circle">Circle</option>
+                        <option value="rounded">Rounded</option>
+                        <option value="square">Square</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="header_height" className="text-xs">Header height</Label>
+                      <select id="header_height" value={draft.header_height || 'standard'} onChange={(e) => updateDraft('header_height', e.target.value as 'compact' | 'standard' | 'tall')} className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm">
+                        <option value="compact">Compact</option>
+                        <option value="standard">Standard</option>
+                        <option value="tall">Tall</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Header colors */}
+                <div className="pt-4 border-t space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Header Colors</h3>
+                  <div className="grid gap-3 grid-cols-2">
+                    <Swatch id="header_color_h" label="Background" value={draft.header_color || ''} onChange={(v) => updateDraft('header_color', v)} compact />
+                    <Swatch id="header_font_color_h" label="Header Font" value={draft.header_font_color || ''} onChange={(v) => updateDraft('header_font_color', v)} compact />
+                    <Swatch id="menu_main_header_text_color_h" label="Title" value={draft.menu_main_header_text_color || ''} onChange={(v) => updateDraft('menu_main_header_text_color', v)} compact />
+                    <Swatch id="header_tagline_color_h" label="Tagline" value={draft.header_tagline_color || ''} onChange={(v) => updateDraft('header_tagline_color', v)} compact />
+                    <Swatch id="border_color_h" label="Border" value={draft.border_color || ''} onChange={(v) => updateDraft('border_color', v)} compact />
+                    <Swatch id="menu_cart_badge_background_color_h" label="Cart Badge" value={draft.menu_cart_badge_background_color || ''} onChange={(v) => updateDraft('menu_cart_badge_background_color', v)} compact />
+                    <Swatch id="menu_cart_badge_text_color_h" label="Cart Number" value={draft.menu_cart_badge_text_color || ''} onChange={(v) => updateDraft('menu_cart_badge_text_color', v)} compact />
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm">💡</span>
+                    <p className="text-xs text-blue-700">Changes preview live on your menu header. Don&apos;t forget to save!</p>
+                  </div>
+                </div>
+              </div>
             </TabsContent>
 
             {/* Layouts Tab */}
@@ -922,6 +1247,134 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
               </div>
             </TabsContent>
 
+            {/* Checkout & Cart Designs Tab */}
+            <TabsContent value="checkout" className="flex-1 overflow-y-auto p-4 space-y-8 mt-0">
+              {/* Checkout page design */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-gray-900">Checkout Page Design</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Choose how your checkout page looks. Every design uses your brand colors automatically.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  {CHECKOUT_TEMPLATES.map((template) => {
+                    const isActive = (draft.checkout_template || 'classic') === template.id
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isActive ? draft.primary_color : '#e5e7eb',
+                          backgroundColor: isActive ? `${draft.primary_color}10` : '#ffffff',
+                        }}
+                        onClick={() => updateDraft('checkout_template', template.id)}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                            style={{ backgroundColor: draft.primary_color }}
+                          >
+                            ✓
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 text-3xl">{template.preview}</div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {template.features.map((feature, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: isActive ? draft.primary_color : '#f3f4f6',
+                                    color: isActive ? '#ffffff' : '#6b7280',
+                                  }}
+                                >
+                                  {feature}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Cart page design */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-gray-900">Cart Page Design</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Choose how your shopping cart page looks.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  {CART_TEMPLATES.map((template) => {
+                    const isActive = (draft.cart_template || 'classic') === template.id
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="relative text-left rounded-xl border-2 p-4 transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isActive ? draft.primary_color : '#e5e7eb',
+                          backgroundColor: isActive ? `${draft.primary_color}10` : '#ffffff',
+                        }}
+                        onClick={() => updateDraft('cart_template', template.id)}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white text-xs font-bold"
+                            style={{ backgroundColor: draft.primary_color }}
+                          >
+                            ✓
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 text-3xl">{template.preview}</div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm mb-1">{template.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {template.features.map((feature, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: isActive ? draft.primary_color : '#f3f4f6',
+                                    color: isActive ? '#ffffff' : '#6b7280',
+                                  }}
+                                >
+                                  {feature}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-sm">💡</span>
+                  <p className="text-xs text-blue-700">
+                    Save your changes, then open your Cart and Checkout pages to see the new design. Designs inherit your brand colors.
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
+
             {/* Banners Tab */}
             <TabsContent value="banners" className="flex-1 overflow-y-auto p-4 space-y-6 mt-0">
               {/* Announcement Banner */}
@@ -1060,6 +1513,194 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                       </Button>
                     </div>
                   )}
+                </div>
+              </Section>
+            </TabsContent>
+
+            {/* Footer Tab */}
+            <TabsContent value="footer" className="flex-1 overflow-y-auto p-4 space-y-6 mt-0">
+              {/* General */}
+              <Section title="Footer" emoji="🔗">
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                    <span className="text-xs font-medium">Show footer</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.footer_enabled !== false}
+                      onChange={(e) => updateDraft('footer_enabled', e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_theme" className="text-xs">Theme</Label>
+                    <Select
+                      value={draft.footer_theme || 'auto'}
+                      onValueChange={(value) => updateDraft('footer_theme', value as FooterTheme)}
+                    >
+                      <SelectTrigger id="footer_theme" className="w-full text-sm">
+                        <SelectValue placeholder="Select a theme" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FOOTER_THEME_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">Pick a preset, or choose Custom and set colors below.</p>
+                  </div>
+
+                  <SimpleImageUpload
+                    label="Footer Logo"
+                    folder="tenants/footer"
+                    currentImageUrl={draft.footer_logo_url || ''}
+                    onImageUploaded={(url) => updateDraft('footer_logo_url', url)}
+                    description="Optional logo shown at the top of the footer"
+                  />
+
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_business_name" className="text-xs">Business Name</Label>
+                    <Input id="footer_business_name" value={draft.footer_business_name || ''} onChange={(e) => updateDraft('footer_business_name', e.target.value)} placeholder={tenant.name} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_tagline" className="text-xs">Tagline</Label>
+                    <Input id="footer_tagline" value={draft.footer_tagline || ''} onChange={(e) => updateDraft('footer_tagline', e.target.value)} placeholder="A short line about your business" className="text-sm" />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Contact */}
+              <Section title="Contact" emoji="📇">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_address" className="text-xs">Address</Label>
+                    <Textarea id="footer_address" value={draft.footer_address || ''} onChange={(e) => updateDraft('footer_address', e.target.value)} placeholder="123 Main St, City, Country" rows={2} className="text-sm" />
+                  </div>
+                  <div className="grid gap-3 grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="footer_phone" className="text-xs">Phone</Label>
+                      <Input id="footer_phone" value={draft.footer_phone || ''} onChange={(e) => updateDraft('footer_phone', e.target.value)} placeholder="+63 900 000 0000" className="text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="footer_whatsapp" className="text-xs">WhatsApp</Label>
+                      <Input id="footer_whatsapp" value={draft.footer_whatsapp || ''} onChange={(e) => updateDraft('footer_whatsapp', e.target.value)} placeholder="+63 900 000 0000" className="text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="footer_viber" className="text-xs">Viber</Label>
+                      <Input id="footer_viber" value={draft.footer_viber || ''} onChange={(e) => updateDraft('footer_viber', e.target.value)} placeholder="+63 900 000 0000" className="text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="footer_email" className="text-xs">Email</Label>
+                      <Input id="footer_email" type="email" value={draft.footer_email || ''} onChange={(e) => updateDraft('footer_email', e.target.value)} placeholder="hello@example.com" className="text-sm" />
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
+              {/* Social */}
+              <Section title="Social Links" emoji="🌐">
+                <p className="text-[11px] text-muted-foreground mb-2">Add a link and an optional name shown beside the icon. Leave the name blank to use the platform name.</p>
+                <div className="space-y-4">
+                  {([
+                    { platform: 'facebook', label: 'Facebook', urlPlaceholder: 'https://facebook.com/yourpage' },
+                    { platform: 'instagram', label: 'Instagram', urlPlaceholder: 'https://instagram.com/yourhandle' },
+                    { platform: 'tiktok', label: 'TikTok', urlPlaceholder: 'https://tiktok.com/@yourhandle' },
+                    { platform: 'twitter', label: 'Twitter / X', urlPlaceholder: 'https://x.com/yourhandle' },
+                    { platform: 'youtube', label: 'YouTube', urlPlaceholder: 'https://youtube.com/@yourchannel' },
+                  ] as const).map(({ platform, label, urlPlaceholder }) => {
+                    const urlKey = `footer_${platform}_url` as keyof BrandingDraft
+                    const nameKey = `footer_${platform}_name` as keyof BrandingDraft
+                    return (
+                      <div key={platform} className="space-y-1.5 rounded-md border border-gray-100 p-2.5">
+                        <Label className="text-xs font-semibold">{label}</Label>
+                        <Input
+                          id={urlKey}
+                          value={(draft[urlKey] as string) || ''}
+                          onChange={(e) => updateDraft(urlKey, e.target.value)}
+                          placeholder={urlPlaceholder}
+                          className="text-sm"
+                        />
+                        <Input
+                          id={nameKey}
+                          value={(draft[nameKey] as string) || ''}
+                          onChange={(e) => updateDraft(nameKey, e.target.value)}
+                          placeholder={`Name (e.g. ${label})`}
+                          className="text-sm"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </Section>
+
+              {/* Pages */}
+              <Section title="Pages" emoji="📄">
+                <div className="space-y-3">
+                  <p className="text-[11px] text-muted-foreground">Each filled section becomes a public page linked from the footer (/about, /terms, /refund, /privacy). Leave empty to hide.</p>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_about_us" className="text-xs">About Us</Label>
+                    <Textarea id="footer_about_us" value={draft.footer_about_us || ''} onChange={(e) => updateDraft('footer_about_us', e.target.value)} placeholder="Tell customers about your business..." rows={4} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_terms_of_service" className="text-xs">Terms of Service</Label>
+                    <Textarea id="footer_terms_of_service" value={draft.footer_terms_of_service || ''} onChange={(e) => updateDraft('footer_terms_of_service', e.target.value)} placeholder="Your terms of service..." rows={4} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_refund_policy" className="text-xs">Refund / Cancellation Policy</Label>
+                    <Textarea id="footer_refund_policy" value={draft.footer_refund_policy || ''} onChange={(e) => updateDraft('footer_refund_policy', e.target.value)} placeholder="Your refund and cancellation policy..." rows={4} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_privacy_policy" className="text-xs">Privacy Policy</Label>
+                    <Textarea id="footer_privacy_policy" value={draft.footer_privacy_policy || ''} onChange={(e) => updateDraft('footer_privacy_policy', e.target.value)} placeholder="Your privacy policy..." rows={4} className="text-sm" />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Bottom row */}
+              <Section title="Bottom Row" emoji="©️">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_copyright_text" className="text-xs">Copyright Text</Label>
+                    <Input id="footer_copyright_text" value={draft.footer_copyright_text || ''} onChange={(e) => updateDraft('footer_copyright_text', e.target.value)} placeholder="© 2026 Your Business. All rights reserved." className="text-sm" />
+                    <p className="text-[11px] text-muted-foreground">Leave empty to auto-generate from business name and year.</p>
+                  </div>
+                  <label className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                    <span className="text-xs font-medium">Show &quot;Powered by&quot;</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.footer_show_powered_by !== false}
+                      onChange={(e) => updateDraft('footer_show_powered_by', e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  <div className="space-y-1">
+                    <Label htmlFor="footer_powered_by_text" className="text-xs">Powered-by Text</Label>
+                    <Input id="footer_powered_by_text" value={draft.footer_powered_by_text || ''} onChange={(e) => updateDraft('footer_powered_by_text', e.target.value)} placeholder="Powered by WebNegosyo" className="text-sm" />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Colors */}
+              <Section title="Footer Colors" emoji="🎨">
+                <p className="text-[11px] text-muted-foreground mb-2">Leave a color untouched to inherit it from the selected theme.</p>
+                <div className="grid gap-3 grid-cols-2">
+                  <Swatch id="footer_background_color" label="Background" value={draft.footer_background_color || ''} onChange={(v) => updateDraft('footer_background_color', v)} compact />
+                  <Swatch id="footer_text_color" label="Text" value={draft.footer_text_color || ''} onChange={(v) => updateDraft('footer_text_color', v)} compact />
+                  <Swatch id="footer_heading_color" label="Heading" value={draft.footer_heading_color || ''} onChange={(v) => updateDraft('footer_heading_color', v)} compact />
+                  <Swatch id="footer_link_color" label="Link" value={draft.footer_link_color || ''} onChange={(v) => updateDraft('footer_link_color', v)} compact />
+                  <Swatch id="footer_muted_color" label="Muted" value={draft.footer_muted_color || ''} onChange={(v) => updateDraft('footer_muted_color', v)} compact />
+                  <Swatch id="footer_icon_color" label="Icon Glyph" value={draft.footer_icon_color || ''} onChange={(v) => updateDraft('footer_icon_color', v)} compact />
+                  <Swatch id="footer_icon_background_color" label="Icon Background" value={draft.footer_icon_background_color || ''} onChange={(v) => updateDraft('footer_icon_background_color', v)} compact />
+                  <Swatch id="footer_border_color" label="Border" value={draft.footer_border_color || ''} onChange={(v) => updateDraft('footer_border_color', v)} compact />
+                </div>
+              </Section>
+
+              {/* Live preview */}
+              <Section title="Live Preview" emoji="👀">
+                <div className="overflow-hidden rounded-lg border">
+                  <FooterView config={getFooterConfig({ ...(tenant as unknown as Record<string, unknown>), ...draft })} interactive={false} />
                 </div>
               </Section>
             </TabsContent>

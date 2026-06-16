@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Desktop binary too large for GitHub (100MB limit) — host .dmg on CDN/Release
 public/downloads/*.dmg
+
+# Local Claude Code agent config / session state (machine-local, not product code)
+/.claude/

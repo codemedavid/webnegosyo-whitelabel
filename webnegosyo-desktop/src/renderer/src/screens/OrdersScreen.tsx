@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from 'convex/react'
 import { getRealtimeQueueRef } from '../lib/convex-refs'
 import { useAuthStore } from '../stores/auth-store'
+import { useSyncStore } from '../stores/sync-store'
 import { useAutoPrint } from '../hooks/useAutoPrint'
 import { playNewOrderChime } from '../lib/chime'
 import { OrderCard } from '../components/OrderCard'
@@ -27,6 +28,9 @@ interface Toast {
 
 export function OrdersScreen(): React.JSX.Element {
   const { tenantName, logout } = useAuthStore()
+  const isOnline = useSyncStore((s) => s.isOnline)
+  const pendingCount = useSyncStore((s) => s.pendingCount)
+  const isSyncing = useSyncStore((s) => s.isSyncing)
   const queue = useQuery(getRealtimeQueueRef, {}) as Queue | undefined
   const [tab, setTab] = useState<'orders' | 'pos'>('orders')
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
@@ -84,6 +88,12 @@ export function OrdersScreen(): React.JSX.Element {
         <span className="store">{tenantName}</span>
         <span className="live-dot" />
         <span className="live-label">Live</span>
+        {!isOnline && <span className="offline-badge">⚠ Offline</span>}
+        {pendingCount > 0 && (
+          <span className="pending-sync-badge">
+            {isSyncing ? 'Syncing…' : `${pendingCount} pending sync`}
+          </span>
+        )}
         <div className="tab-switch">
           <button
             className={`tab${tab === 'orders' ? ' active' : ''}`}

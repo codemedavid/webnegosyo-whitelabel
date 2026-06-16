@@ -4,7 +4,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 // Each method returns `this` so calls can be chained; the terminal
 // `.select()` / `.eq()` etc. resolves to `{ data: [], error: null }`.
 function makeChain(resolvedValue: { data: unknown; error: null } = { data: [], error: null }) {
-  const chain: Record<string, jest.Mock> = {}
+  const chain: Record<string, jest.Mock<(...args: never[]) => unknown>> = {}
   const methods = [
     'from', 'select', 'eq', 'neq', 'gte', 'lte', 'lt', 'gt',
     'in', 'not', 'or', 'order', 'limit', 'single', 'maybeSingle',
@@ -14,7 +14,9 @@ function makeChain(resolvedValue: { data: unknown; error: null } = { data: [], e
     chain[m] = jest.fn(() => chain)
   })
   // Make the chain thenable so `await supabase.from(...).select(...)` works
-  chain['then'] = jest.fn((resolve: (v: unknown) => unknown) => Promise.resolve(resolvedValue).then(resolve))
+  chain['then'] = jest.fn<(resolve: (v: unknown) => unknown) => Promise<unknown>>(
+    (resolve: (v: unknown) => unknown) => Promise.resolve(resolvedValue).then(resolve)
+  )
   return chain
 }
 
@@ -99,7 +101,7 @@ describe('getLeadStats', () => {
 
   test('handles Supabase errors gracefully (returns zeros, does not throw)', async () => {
     mockAdminClient.from.mockImplementation(() =>
-      makeChain({ data: null as unknown as [], error: { message: 'DB error' } as null })
+      makeChain({ data: null as unknown as [], error: { message: 'DB error' } as unknown as null })
     )
 
     await expect(getLeadStats()).resolves.toBeDefined()

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useMutation } from 'convex/react'
-import { createOrderRef, updatePaymentStatusRef } from '../../lib/convex-refs'
-import { fetchOrderTypes, fetchPaymentMethods } from '../../lib/supabase-queries'
+import { getCachedCatalog, refreshCatalog } from '../../lib/catalog-cache'
+import { requestSync } from '../../lib/sync-engine'
 import type { OrderType, PaymentMethod } from '../../lib/menu-types'
 import { useAuthStore } from '../../stores/auth-store'
+import { useSyncStore } from '../../stores/sync-store'
 import { useCartStore, type CartLine } from '../../stores/cart-store'
 import { formatPeso } from '../OrderCard'
-import type { Order, OrderItem } from '../../../../shared/types'
+import type { Order, OrderItem, PosOrderPayload } from '../../../../shared/types'
 
 interface CheckoutDialogProps {
   onClose: () => void
@@ -74,8 +74,6 @@ function buildItem(line: CartLine): BuiltItem {
 export function CheckoutDialog({ onClose, onToast }: CheckoutDialogProps): React.JSX.Element {
   const { tenantId, tenantName } = useAuthStore()
   const { lines, total, itemCount, clear } = useCartStore()
-  const createOrder = useMutation(createOrderRef)
-  const updatePaymentStatus = useMutation(updatePaymentStatusRef)
 
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -85,29 +83,50 @@ export function CheckoutDialog({ onClose, onToast }: CheckoutDialogProps): React
   const [customerContact, setCustomerContact] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // Load order types once.
-  useEffect(() => {
-    if (!tenantId) return
-    void fetchOrderTypes(tenantId)
-      .then((types) => {
-        setOrderTypes(types)
-        if (types.length > 0) setOrderTypeId(types[0].id)
-      })
-      .catch((err) => onToast(err instanceof Error ? err.message : 'Failed to load order types', true))
-  }, [tenantId, onToast])
+  // The cached catalog holds both order types and the per-type payment methods,
+  // so checkout never touches the network. We hold the whole snapshot in state
+  // and derive payment methods from it as the selected order type changes.
+  const [catalogPaymentMethods, setCatalogPaymentMethods] = useState<
+    Record<string, unknown[]>
+  >({})
 
-  // Load payment methods whenever the order type changes.
+  // Load order types + payment methods from the offline cache on mount, then
+  // refresh from Supabase in the background so they stay fresh when online.
   useEffect(() => {
     if (!tenantId) return
-    void fetchPaymentMethods(tenantId, orderTypeId || undefined)
-      .then((methods) => {
-        setPaymentMethods(methods)
-        setPaymentMethodId((prev) =>
-          methods.some((m) => m.id === prev) ? prev : (methods[0]?.id ?? '')
-        )
-      })
-      .catch(() => setPaymentMethods([]))
-  }, [tenantId, orderTypeId])
+    let active = true
+
+    const apply = (cache: { orderTypes: unknown[]; paymentMethods: Record<string, unknown[]> }): void => {
+      if (!active) return
+      const types = cache.orderTypes as OrderType[]
+      setOrderTypes(types)
+      setCatalogPaymentMethods(cache.paymentMethods)
+      // Default to the first order type only if none is selected yet.
+      setOrderTypeId((prev) => (prev ? prev : (types[0]?.id ?? '')))
+    }
+
+    void getCachedCatalog(tenantId).then((cache) => {
+      if (cache) apply(cache)
+    })
+    // Background refresh — ignore failures (offline keeps the cached copy).
+    void refreshCatalog(tenantId)
+      .then((cache) => apply(cache))
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [tenantId])
+
+  // Derive payment methods from the cached catalog for the selected order type,
+  // falling back to the unfiltered set (''); keep the prior selection if present.
+  useEffect(() => {
+    const pm = (catalogPaymentMethods[orderTypeId] ??
+      catalogPaymentMethods[''] ??
+      []) as PaymentMethod[]
+    setPaymentMethods(pm)
+    setPaymentMethodId((prev) => (pm.some((m) => m.id === prev) ? prev : (pm[0]?.id ?? '')))
+  }, [catalogPaymentMethods, orderTypeId])
 
   const cartTotal = total()
   const selectedOrderType = orderTypes.find((t) => t.id === orderTypeId)
@@ -116,61 +135,90 @@ export function CheckoutDialog({ onClose, onToast }: CheckoutDialogProps): React
   const handleConfirm = async (): Promise<void> => {
     if (submitting || lines.length === 0) return
     setSubmitting(true)
+
+    // Snapshot everything we need up front so background work (payment status,
+    // printing) is unaffected by clearing the cart / unmounting the dialog.
+    const built = lines.map(buildItem)
+    const trimmedName = customerName.trim() || 'Walk-in'
+    const trimmedContact = customerContact.trim() || 'POS'
+    const orderTypeName = selectedOrderType?.name
+    const paymentName = selectedPayment?.name ?? 'Cash'
+    const paymentDetails = selectedPayment?.details
+    const lineCount = itemCount()
+    const clientOrderId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `pos_${Date.now()}_${Math.round(Math.random() * 1e6)}`
+
+    // Critical path: persist the sale to the durable LOCAL store first. This is
+    // instant and offline-safe — the cashier is never blocked on the network.
+    // The background sync engine (mounted in App via useSyncEngine) replays it
+    // to Convex when a connection is available; createOrder is idempotent on
+    // clientOrderId, so re-syncing can never create duplicates.
+    const payload: PosOrderPayload = {
+      customerName: trimmedName,
+      customerContact: trimmedContact,
+      customerData: { name: trimmedName, source: 'pos' },
+      total: cartTotal,
+      orderType: orderTypeName,
+      orderTypeId: selectedOrderType ? String(selectedOrderType.id) : undefined,
+      source: 'pos',
+      clientOrderId,
+      itemCount: lineCount,
+      paymentMethod: paymentName,
+      paymentMethodDetails: paymentDetails,
+      items: built.map((b) => b.payload),
+    }
+
     try {
-      const built = lines.map(buildItem)
-      const clientOrderId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `pos_${Date.now()}_${Math.round(Math.random() * 1e6)}`
+      // Durable write — once this resolves the sale is recorded and survives a
+      // crash or restart. Counter sales are paid on the spot.
+      await window.api.savePosOrder(payload, 'paid')
 
-      const orderId = (await createOrder({
-        customerName: customerName.trim() || 'Walk-in',
-        customerContact: customerContact.trim() || 'POS',
-        customerData: { name: customerName.trim() || 'Walk-in', source: 'pos' },
-        total: cartTotal,
-        orderType: selectedOrderType?.name,
-        orderTypeId: selectedOrderType ? String(selectedOrderType.id) : undefined,
-        source: 'pos',
-        clientOrderId,
-        itemCount: itemCount(),
-        paymentMethod: selectedPayment?.name ?? 'Cash',
-        paymentMethodDetails: selectedPayment?.details,
-        items: built.map((b) => b.payload),
-      })) as string
-
-      // Counter sales are paid on the spot.
-      try {
-        await updatePaymentStatus({ orderId, paymentStatus: 'paid' })
-      } catch {
-        // Non-fatal: order is created; payment status can be reconciled later.
-      }
-
-      // Print immediately from a locally-built order (no Convex round-trip).
-      const order: Order = {
-        _id: orderId,
-        _creationTime: Date.now(),
-        customerName: customerName.trim() || 'Walk-in',
-        customerContact: customerContact.trim() || 'POS',
-        status: 'confirmed',
-        orderType: selectedOrderType?.name,
-        source: 'pos',
-        total: cartTotal,
-        itemCount: itemCount(),
-        paymentMethod: selectedPayment?.name ?? 'Cash',
-        paymentMethodDetails: selectedPayment?.details,
-        paymentStatus: 'paid',
-        items: built.map((b) => b.receipt),
-      }
-      const result = await window.api.printReceipt({ order, tenantName: tenantName ?? 'Receipt' })
-      if (!result.ok) onToast(`Order saved, but print failed: ${result.error}`, true)
-
+      // Hand the counter back to the cashier right away.
       clear()
       onToast(`Sale complete · ${formatPeso(cartTotal)}`)
       onClose()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to complete sale'
-      onToast(message, true)
-    } finally {
+
+      // Reflect the new sale in the pending-sync badge immediately — even
+      // offline, where requestSync() no-ops, so the count would otherwise look
+      // stale precisely in the scenario the badge exists for.
+      void window.api
+        .getPosPendingCount()
+        .then((c) => useSyncStore.getState().setPendingCount(c))
+        .catch(() => {})
+
+      // Nudge the sync engine to drain immediately if we happen to be online.
+      requestSync()
+
+      // Background: print from a locally-built order (no Convex round-trip). The
+      // clientOrderId stands in as the order id until the sync assigns the real one.
+      const order: Order = {
+        _id: clientOrderId,
+        _creationTime: Date.now(),
+        customerName: trimmedName,
+        customerContact: trimmedContact,
+        status: 'confirmed',
+        orderType: orderTypeName,
+        source: 'pos',
+        total: cartTotal,
+        itemCount: lineCount,
+        paymentMethod: paymentName,
+        paymentMethodDetails: paymentDetails,
+        paymentStatus: 'paid',
+        items: built.map((b) => b.receipt),
+      }
+      void window.api
+        .printReceipt({ order, tenantName: tenantName ?? 'Receipt' })
+        .then((result) => {
+          if (!result.ok) onToast(`Sale saved, but print failed: ${result.error}`, true)
+        })
+        .catch((err) =>
+          onToast(`Sale saved, but print failed: ${err instanceof Error ? err.message : err}`, true)
+        )
+    } catch {
+      // Only a rare LOCAL DISK failure lands here; the dialog is still open.
+      onToast('Failed to save sale locally. Please try again.', true)
       setSubmitting(false)
     }
   }

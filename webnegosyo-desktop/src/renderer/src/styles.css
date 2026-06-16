@@ -155,6 +155,26 @@ input, select, textarea { font: inherit; color: var(--text); }
   background: var(--accent);
   border-color: var(--accent);
 }
+/* Warning pill: shown only while the PC has no network — sales still save locally. */
+.offline-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: #b45309;
+  border: 1px solid #b45309;
+}
+/* Neutral pill: count of queued sales waiting to drain to Convex. */
+.pending-sync-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+}
 
 /* ---------- Board ---------- */
 .board {
@@ -585,3 +605,53 @@ input, select, textarea { font: inherit; color: var(--text); }
   border-top: 1px solid var(--border);
 }
 .pos-add-btn { flex: 1; padding: 12px; font-weight: 700; }
+
+/* ---------- Auto-update prompt ---------- */
+.update-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.update-toast__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: update-pulse 1.2s ease-in-out infinite;
+}
+@keyframes update-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+.update-card {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  width: 320px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+.update-card__body strong { font-size: 15px; }
+.update-card__body p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.update-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}

@@ -1,17 +1,22 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Download, ImageIcon } from 'lucide-react'
+import { Search, Download, ImageIcon, Inbox, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { RangeTabs, EmptyState } from '@/components/superadmin/ui/primitives'
+import { formatCurrency } from '@/components/superadmin/ui/format'
 import { fetchCheckoutLeads } from '@/app/actions/checkout-leads'
 import { CheckoutLeadStatusBadge } from './checkout-lead-status-badge'
 import { CheckoutLeadDetailPanel } from './checkout-lead-detail-panel'
+import { getPaymentTermLabel } from './payment-term'
 import type { CheckoutLeadStatus, CheckoutLeadWithPaymentMethod } from '@/types/database'
 
 const PAGE_SIZE = 20
 
-const STATUS_TABS: { value: CheckoutLeadStatus | 'all'; label: string }[] = [
+type StatusFilter = CheckoutLeadStatus | 'all'
+
+const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'initiated', label: 'Initiated' },
   { value: 'paid', label: 'Paid' },
@@ -28,7 +33,7 @@ interface CheckoutLeadsTableProps {
 export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeadsTableProps) {
   const [leads, setLeads] = useState(initialLeads)
   const [count, setCount] = useState(initialCount)
-  const [statusFilter, setStatusFilter] = useState<CheckoutLeadStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -63,9 +68,11 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
   }, [loadLeads])
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
+  const rangeStart = count === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(page * PAGE_SIZE, count)
 
   function handleExportCSV() {
-    const headers = ['Reference', 'Name', 'Email', 'Phone', 'Business', 'Payment Method', 'Status', 'Amount', 'Date']
+    const headers = ['Reference', 'Name', 'Email', 'Phone', 'Business', 'Payment Method', 'Term', 'Status', 'Amount', 'Date']
     const rows = leads.map((lead) => [
       lead.reference_number,
       `"${lead.name.replace(/"/g, '""')}"`,
@@ -73,6 +80,7 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
       lead.phone,
       `"${lead.business_name.replace(/"/g, '""')}"`,
       lead.platform_payment_methods?.name ?? '',
+      getPaymentTermLabel(lead.payment_term),
       lead.status,
       lead.amount,
       new Date(lead.created_at).toLocaleDateString(),
@@ -89,60 +97,68 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
 
   return (
     <>
-      <div className="rounded-xl border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
             <Input
-              placeholder="Search by name, email, ref..."
+              placeholder="Search by name, email, ref…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
+              aria-label="Search checkout leads"
             />
+            {isLoading && (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-white/35" />
+            )}
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={leads.length === 0}>
             <Download className="mr-1.5 h-3.5 w-3.5" />
             Export CSV
           </Button>
         </div>
 
-        {/* Status Tabs */}
-        <div className="flex gap-1 border-b px-4 pt-2">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => { setStatusFilter(tab.value); setPage(1) }}
-              className={`rounded-t-md px-3 py-2 text-xs font-medium transition-colors ${
-                statusFilter === tab.value
-                  ? 'border-b-2 border-orange-500 text-orange-600'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* Status filter */}
+        <div className="flex items-center gap-3 overflow-x-auto border-b border-white/10 px-4 py-3">
+          <RangeTabs<StatusFilter>
+            value={statusFilter}
+            onChange={(val) => {
+              setStatusFilter(val)
+              setPage(1)
+            }}
+            options={STATUS_TABS}
+          />
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-                <th className="px-4 py-3">Ref #</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Business</th>
-                <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Proof</th>
-                <th className="px-4 py-3">Date</th>
+              <tr className="border-b border-white/10 text-left text-[11px] font-medium uppercase tracking-wider text-white/45">
+                <th className="px-4 py-3 font-medium">Reference</th>
+                <th className="px-4 py-3 font-medium">Business</th>
+                <th className="px-4 py-3 font-medium">Contact</th>
+                <th className="px-4 py-3 text-right font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Term</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 text-center font-medium">Proof</th>
+                <th className="px-4 py-3 text-right font-medium">Date</th>
               </tr>
             </thead>
-            <tbody className={isLoading ? 'opacity-50' : ''}>
+            <tbody className={isLoading ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
               {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                    No checkout leads found
+                  <td colSpan={8} className="px-4 py-6">
+                    <EmptyState
+                      icon={Inbox}
+                      title="No checkout leads found"
+                      description={
+                        debouncedSearch || statusFilter !== 'all'
+                          ? 'Try adjusting your search or filter.'
+                          : 'New checkout leads will appear here.'
+                      }
+                    />
                   </td>
                 </tr>
               ) : (
@@ -150,34 +166,50 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLeadId(lead.id)}
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/30"
+                    className="group cursor-pointer border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04]"
                   >
-                    <td className="px-4 py-3 font-mono text-xs font-medium">
-                      {lead.reference_number}
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs font-medium text-white">
+                        {lead.reference_number}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{lead.name}</div>
-                      <div className="text-xs text-muted-foreground">{lead.email}</div>
+                      <span className="font-medium text-white">{lead.business_name}</span>
                     </td>
-                    <td className="px-4 py-3">{lead.business_name}</td>
-                    <td className="px-4 py-3 text-xs">
-                      {lead.platform_payment_methods?.name ?? '—'}
+                    <td className="px-4 py-3">
+                      <div className="text-white/80">{lead.name}</div>
+                      <div className="text-xs text-white/45">{lead.email}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums text-white">
+                      {formatCurrency(lead.amount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs text-white/60">{getPaymentTermLabel(lead.payment_term)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <CheckoutLeadStatusBadge status={lead.status} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-center">
                       {lead.payment_proof_url ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                          <ImageIcon className="h-3.5 w-3.5" />
-                          Uploaded
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400"
+                          title="Payment proof uploaded"
+                        >
+                          <ImageIcon className="h-3 w-3" />
+                          Proof
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-white/30" aria-label="No proof">
+                          —
+                        </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {new Date(lead.created_at).toLocaleDateString()}
+                    <td className="px-4 py-3 text-right text-xs text-white/45">
+                      {new Date(lead.created_at).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
                     </td>
                   </tr>
                 ))
@@ -187,29 +219,38 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3">
-            <p className="text-xs text-muted-foreground">
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, count)} of {count}
+        {(totalPages > 1 || count > 0) && (
+          <div className="flex flex-col gap-3 border-t border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-white/45">
+              Showing <span className="font-medium text-white/70">{rangeStart}</span>–
+              <span className="font-medium text-white/70">{rangeEnd}</span> of{' '}
+              <span className="font-medium text-white/70">{count}</span>
             </p>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/45">
+                  Page {page} of {totalPages}
+                </span>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1 || isLoading}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages || isLoading}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -218,7 +259,9 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
       <CheckoutLeadDetailPanel
         leadId={selectedLeadId}
         open={!!selectedLeadId}
-        onOpenChange={(open) => { if (!open) setSelectedLeadId(null) }}
+        onOpenChange={(open) => {
+          if (!open) setSelectedLeadId(null)
+        }}
         onStatusChange={loadLeads}
       />
     </>

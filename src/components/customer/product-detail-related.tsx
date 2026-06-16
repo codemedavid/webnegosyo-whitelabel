@@ -78,14 +78,23 @@ const RelatedItemCard = memo(function RelatedItemCard({
 interface RelatedItemsSectionProps {
     relatedItems: MenuItem[]
     tenantSlug: string
+    /**
+     * When provided (bottom-sheet mode), clicking a related item swaps the item
+     * in-place instead of navigating to its full-page route.
+     */
+    onSelectItem?: (item: MenuItem) => void
 }
 
-export function RelatedItemsSection({ relatedItems, tenantSlug }: RelatedItemsSectionProps) {
+export function RelatedItemsSection({ relatedItems, tenantSlug, onSelectItem }: RelatedItemsSectionProps) {
     const router = useRouter()
 
     const handleRelatedItemClick = useCallback((relatedItem: MenuItem) => {
+        if (onSelectItem) {
+            onSelectItem(relatedItem)
+            return
+        }
         router.push(`/${tenantSlug}/menu/item/${relatedItem.id}`, { scroll: true })
-    }, [router, tenantSlug])
+    }, [router, tenantSlug, onSelectItem])
 
     if (relatedItems.length === 0) {
         return null

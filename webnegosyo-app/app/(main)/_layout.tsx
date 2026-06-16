@@ -1,6 +1,35 @@
-import { Tabs } from "expo-router";
+import { Tabs, router, type ErrorBoundaryProps } from "expo-router";
 import { Text } from "react-native";
 import { colors } from "../../theme/colors";
+import { CrashFallback } from "../../components/CrashFallback";
+import { useAuthStore } from "../../stores/auth-store";
+import { supabase } from "../../lib/supabase";
+
+/**
+ * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
+ * tab degrades to this screen instead of force-closing the app. expo-router
+ * wraps this route segment with this same-file export.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // No session (e.g. demo) — ignore.
+    }
+    useAuthStore.getState().clear();
+    router.replace("/(auth)/login");
+  };
+  return (
+    <CrashFallback
+      error={error}
+      onRetry={() => {
+        void retry();
+      }}
+      onSignOut={handleSignOut}
+    />
+  );
+}
 
 function TabIcon({ symbol, color }: { symbol: string; color: string }) {
   return <Text style={{ fontSize: 22, color }}>{symbol}</Text>;
@@ -69,6 +98,10 @@ export default function MainLayout() {
       <Tabs.Screen
         name="printer-settings"
         options={{ href: null, title: "Printer Settings" }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{ href: null, title: "Account" }}
       />
     </Tabs>
   );

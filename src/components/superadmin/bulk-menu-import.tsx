@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { Loader2, Sparkles, Upload, Check, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -141,20 +140,23 @@ export function BulkMenuImport({ tenantId, tenantName }: BulkMenuImportProps) {
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-purple-500" />
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+            <div className="mb-5">
+                <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
+                    AI Import
+                </span>
+                <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+                    <Sparkles className="h-5 w-5 text-violet-400" />
                     Bulk Menu Import
-                </CardTitle>
-                <CardDescription>
+                </h2>
+                <p className="mt-1 text-sm text-white/55">
                     Paste menu text in natural language format. AI will parse and structure it for import into {tenantName}.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+                </p>
+            </div>
+            <div className="space-y-4">
                 {/* Input Section */}
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">Menu Text</label>
+                    <label className="text-sm font-medium text-white">Menu Text</label>
                     <Textarea
                         placeholder={`Paste your menu here, for example:
 
@@ -182,7 +184,7 @@ Box of 12: P350`}
                         className="font-mono text-sm"
                         disabled={isParsing || isImporting}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-white/45">
                         The AI will extract categories, items, prices, and variations from natural language text.
                     </p>
                 </div>
@@ -208,10 +210,10 @@ Box of 12: P350`}
 
                 {/* Parsed Data Preview */}
                 {parsedData && (
-                    <div className="space-y-4 border-t pt-4">
+                    <div className="space-y-4 border-t border-white/10 pt-4">
                         <div className="flex items-center justify-between">
-                            <h3 className="font-semibold flex items-center gap-2">
-                                <Check className="h-4 w-4 text-green-500" />
+                            <h3 className="font-semibold text-white flex items-center gap-2">
+                                <Check className="h-4 w-4 text-emerald-400" />
                                 Parsed Results
                             </h3>
                             <Button
@@ -231,14 +233,14 @@ Box of 12: P350`}
                             <div className="space-y-4 max-h-96 overflow-y-auto">
                                 {/* Categories */}
                                 <div>
-                                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                                    <h4 className="text-xs uppercase tracking-wide text-white/45 mb-2">
                                         Categories ({parsedData.categories.length})
                                     </h4>
                                     <div className="flex flex-wrap gap-2">
                                         {parsedData.categories.map((cat, i) => (
                                             <span
                                                 key={i}
-                                                className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded-md text-sm"
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-violet-400/20 bg-violet-400/10 text-violet-300 text-sm"
                                             >
                                                 {cat.icon} {cat.name}
                                             </span>
@@ -248,35 +250,35 @@ Box of 12: P350`}
 
                                 {/* Menu Items */}
                                 <div>
-                                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                                    <h4 className="text-xs uppercase tracking-wide text-white/45 mb-2">
                                         Menu Items ({parsedData.items.length})
                                     </h4>
                                     <div className="space-y-2">
                                         {parsedData.items.map((item, i) => (
                                             <div
                                                 key={i}
-                                                className="p-3 bg-muted/50 rounded-lg text-sm"
+                                                className="p-3 rounded-xl border border-white/10 bg-white/[0.02] text-sm transition-colors hover:bg-white/[0.04]"
                                             >
                                                 <div className="flex justify-between items-start">
                                                     <div>
-                                                        <span className="font-medium">{item.name}</span>
-                                                        <span className="text-muted-foreground ml-2 text-xs">
+                                                        <span className="font-medium text-white">{item.name}</span>
+                                                        <span className="text-white/45 ml-2 text-xs">
                                                             → {item.category}
                                                         </span>
                                                     </div>
-                                                    <span className="font-semibold text-green-600">
+                                                    <span className="font-semibold text-emerald-400">
                                                         {formatPrice(item.price)}
                                                     </span>
                                                 </div>
                                                 {item.description && (
-                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                    <p className="text-xs text-white/45 mt-1">
                                                         {item.description}
                                                     </p>
                                                 )}
                                                 {item.variations && item.variations.length > 0 && (
                                                     <div className="mt-2 flex flex-wrap gap-1">
                                                         {item.variations.map((varType, vi) => (
-                                                            <span key={vi} className="text-xs">
+                                                            <span key={vi} className="text-xs text-white/60">
                                                                 {varType.name}: {varType.options.map(o =>
                                                                     `${o.name}${o.priceModifier > 0 ? ` (+${formatPrice(o.priceModifier)})` : ''}`
                                                                 ).join(', ')}
@@ -315,45 +317,45 @@ Box of 12: P350`}
 
                 {/* Import Results */}
                 {importResult && (
-                    <div className="border-t pt-4">
-                        <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <div className="border-t border-white/10 pt-4">
+                        <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
                             {importResult.itemsFailed === 0 ? (
-                                <Check className="h-4 w-4 text-green-500" />
+                                <Check className="h-4 w-4 text-emerald-400" />
                             ) : (
-                                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                <AlertCircle className="h-4 w-4 text-amber-400" />
                             )}
                             Import Results
                         </h3>
                         <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div className="p-2 bg-green-50 rounded">
-                                <span className="font-medium text-green-700">
+                            <div className="p-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/10">
+                                <span className="font-medium text-emerald-400">
                                     {importResult.categoriesCreated}
                                 </span>
-                                <span className="text-green-600 ml-1">categories created</span>
+                                <span className="text-emerald-400/80 ml-1">categories created</span>
                             </div>
-                            <div className="p-2 bg-blue-50 rounded">
-                                <span className="font-medium text-blue-700">
+                            <div className="p-2.5 rounded-xl border border-sky-400/20 bg-sky-400/10">
+                                <span className="font-medium text-sky-400">
                                     {importResult.categoriesSkipped}
                                 </span>
-                                <span className="text-blue-600 ml-1">categories skipped (existing)</span>
+                                <span className="text-sky-400/80 ml-1">categories skipped (existing)</span>
                             </div>
-                            <div className="p-2 bg-green-50 rounded">
-                                <span className="font-medium text-green-700">
+                            <div className="p-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/10">
+                                <span className="font-medium text-emerald-400">
                                     {importResult.itemsCreated}
                                 </span>
-                                <span className="text-green-600 ml-1">items created</span>
+                                <span className="text-emerald-400/80 ml-1">items created</span>
                             </div>
                             {importResult.itemsFailed > 0 && (
-                                <div className="p-2 bg-red-50 rounded">
-                                    <span className="font-medium text-red-700">
+                                <div className="p-2.5 rounded-xl border border-red-400/20 bg-red-400/10">
+                                    <span className="font-medium text-red-400">
                                         {importResult.itemsFailed}
                                     </span>
-                                    <span className="text-red-600 ml-1">items failed</span>
+                                    <span className="text-red-400/80 ml-1">items failed</span>
                                 </div>
                             )}
                         </div>
                         {importResult.errors.length > 0 && (
-                            <div className="mt-2 p-2 bg-red-50 rounded text-sm text-red-600">
+                            <div className="mt-2 p-3 rounded-xl border border-red-400/20 bg-red-400/10 text-sm text-red-400">
                                 <p className="font-medium">Errors:</p>
                                 <ul className="list-disc list-inside">
                                     {importResult.errors.slice(0, 5).map((err, i) => (
@@ -367,7 +369,7 @@ Box of 12: P350`}
                         )}
                     </div>
                 )}
-            </CardContent>
-        </Card>
+            </div>
+        </section>
     )
 }

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { formatPrice } from '@/lib/cart-utils'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import { useUpsellOrchestrator } from '@/lib/upsell-orchestrator'
 import type { MenuItem, UpgradeUpsell } from '@/types/database'
 import type { BundleWithItems } from '@/lib/bundles-service'
@@ -53,6 +54,10 @@ export const InlineUpgradeSection = memo(function InlineUpgradeSection({
     const trackedRef = useRef(false)
     const orchestrator = useUpsellOrchestrator()
 
+    // Restores the previous overflow value on close (not a hardcoded ''), so it
+    // doesn't clobber a parent lock when nested inside the product-detail sheet.
+    useBodyScrollLock(open)
+
     useEffect(() => {
         if (!open) { trackedRef.current = false; return }
         if (!orchestrator.canShowUpsell('upgrade')) { onDismiss(); return }
@@ -64,10 +69,6 @@ export const InlineUpgradeSection = memo(function InlineUpgradeSection({
             upgradeCount: upgrades.length, bundleCount: bundles.length,
         })
     }, [open, tenantId, sourceItem.id, upgrades.length, bundles.length, orchestrator, onDismiss])
-
-    useEffect(() => {
-        if (open) { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = '' } }
-    }, [open])
 
     const header = upgrades[0]?.upgradeHeader || 'Would you like to make it a meal?'
     const sourceLabel = upgrades[0]?.sourceLabel || 'Ala Carte'

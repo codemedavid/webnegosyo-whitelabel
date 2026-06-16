@@ -71,6 +71,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error(error?.message ?? 'Invalid email or password.')
       }
       const tenant = await resolveTenant(data.user.id)
+      // Cache the resolved tenant so the POS can open offline on next launch.
+      window.api
+        .setPosTenant({ userId: data.user.id, ...tenant, updatedAt: Date.now() })
+        .catch(() => undefined)
       set({
         isLoading: false,
         isAuthenticated: true,
@@ -89,16 +93,35 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   restore: async () => {
+    // getSession() reads the persisted session from disk, so it succeeds offline.
+    const { data } = await supabase.auth.getSession()
+    const user = data.session?.user
+    if (!user) {
+      set({ isLoading: false })
+      return
+    }
     try {
-      const { data } = await supabase.auth.getSession()
-      const user = data.session?.user
-      if (!user) {
-        set({ isLoading: false })
-        return
-      }
       const tenant = await resolveTenant(user.id)
+      // Refresh the offline cache while we have a connection.
+      window.api
+        .setPosTenant({ userId: user.id, ...tenant, updatedAt: Date.now() })
+        .catch(() => undefined)
       set({ isLoading: false, isAuthenticated: true, userId: user.id, ...tenant })
     } catch {
+      // Offline / network error: fall back to the cached tenant from the last online login.
+      const cached = await window.api.getPosTenant().catch(() => null)
+      if (cached && cached.userId === user.id) {
+        set({
+          isLoading: false,
+          isAuthenticated: true,
+          userId: user.id,
+          tenantId: cached.tenantId,
+          tenantSlug: cached.tenantSlug,
+          tenantName: cached.tenantName,
+          convexUrl: cached.convexUrl,
+        })
+        return
+      }
       set({ isLoading: false, isAuthenticated: false })
     }
   },

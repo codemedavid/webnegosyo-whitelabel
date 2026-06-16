@@ -93,9 +93,29 @@ describe('ProductDetailContent', () => {
         background_color: '#ffffff',
         text_primary_color: '#111827',
         text_secondary_color: '#6b7280',
+        text_muted_color: '#9ca3af',
         border_color: '#e5e7eb',
         header_color: '#ffffff',
+        header_font_color: '#374151',
         cards_color: '#f9fafb',
+        cards_border_color: '#e5e7eb',
+        card_title_color: '#111827',
+        card_price_color: '#3b82f6',
+        card_description_color: '#6b7280',
+        modal_background_color: '#ffffff',
+        modal_title_color: '#111827',
+        modal_price_color: '#3b82f6',
+        modal_description_color: '#6b7280',
+        button_primary_color: '#3b82f6',
+        button_primary_text_color: '#ffffff',
+        button_secondary_color: '#ffffff',
+        button_secondary_text_color: '#111827',
+        link_color: '#3b82f6',
+        shadow_color: 'rgba(0, 0, 0, 0.1)',
+        success_color: '#10b981',
+        warning_color: '#f59e0b',
+        error_color: '#ef4444',
+        accent_color: '#ffd700',
         is_active: true
     }
 
@@ -114,9 +134,23 @@ describe('ProductDetailContent', () => {
         modalTitle: '#111827',
         modalPrice: '#3b82f6',
         modalDescription: '#6b7280',
+        checkoutModalBackground: '#ffffff',
+        checkoutModalTitle: '#111827',
+        checkoutModalDescription: '#6b7280',
+        checkoutModalPrice: '#3b82f6',
+        checkoutModalButton: '#3b82f6',
+        checkoutModalButtonText: '#ffffff',
+        checkoutModalBorder: '#e5e7eb',
         textPrimary: '#111827',
         textSecondary: '#6b7280',
         textMuted: '#9ca3af',
+        menuMainHeaderText: '#111827',
+        menuMainHeaderSubtitle: '#9ca3af',
+        menuCategoryHeader: '#111827',
+        menuCategoryActive: '#111827',
+        menuCategoryInactive: '#6b7280',
+        menuCartBadgeBackground: '#111827',
+        menuCartBadgeText: '#ffffff',
         border: '#e5e7eb',
         buttonPrimary: '#3b82f6',
         buttonPrimaryText: '#ffffff',
@@ -127,7 +161,18 @@ describe('ProductDetailContent', () => {
         error: '#ef4444',
         link: '#3b82f6',
         shadow: 'rgba(0, 0, 0, 0.1)',
-        accent: '#ffd700'
+        accent: '#ffd700',
+        searchBar: {
+            enabled: true,
+            background: null,
+            text: null,
+            placeholder: null,
+            icon: null,
+            border: null,
+            focusRing: null,
+            radius: 'pill',
+            style: 'filled',
+        }
     }
 
     const createMockItem = (overrides?: Partial<MenuItem>): MenuItem => ({
@@ -142,6 +187,7 @@ describe('ProductDetailContent', () => {
         variations: [],
         addons: [],
         is_available: true,
+        order: 0,
         created_at: '',
         updated_at: '',
         ...overrides
@@ -151,6 +197,9 @@ describe('ProductDetailContent', () => {
         id: 'cat-1',
         tenant_id: 'tenant-1',
         name: 'Main Course',
+        order: 0,
+        is_active: true,
+        display_layout: 'grid',
         created_at: '',
         updated_at: ''
     }
@@ -176,8 +225,8 @@ describe('ProductDetailContent', () => {
     it('should render variations when provided', () => {
         const item = createMockItem({
             variations: [
-                { id: 'var-1', name: 'Small', price_modifier: 0, is_default: true, menu_item_id: 'item-1', created_at: '', updated_at: '' },
-                { id: 'var-2', name: 'Large', price_modifier: 5, is_default: false, menu_item_id: 'item-1', created_at: '', updated_at: '' }
+                { id: 'var-1', name: 'Small', price_modifier: 0, is_default: true },
+                { id: 'var-2', name: 'Large', price_modifier: 5, is_default: false }
             ]
         })
 
@@ -200,8 +249,8 @@ describe('ProductDetailContent', () => {
     it('should render add-ons when provided', () => {
         const item = createMockItem({
             addons: [
-                { id: 'addon-1', name: 'Extra Cheese', price: 2, menu_item_id: 'item-1', created_at: '', updated_at: '' },
-                { id: 'addon-2', name: 'Bacon', price: 3, menu_item_id: 'item-1', created_at: '', updated_at: '' }
+                { id: 'addon-1', name: 'Extra Cheese', price: 2 },
+                { id: 'addon-2', name: 'Bacon', price: 3 }
             ]
         })
 
@@ -221,8 +270,8 @@ describe('ProductDetailContent', () => {
     it('should render related items when provided', () => {
         const item = createMockItem()
         const relatedItems: MenuItem[] = [
-            { id: 'item-2', name: 'Related Item 1', price: 15, image_url: '', category_id: 'cat-1', tenant_id: 'tenant-1', is_available: true, description: '', variations: [], addons: [], created_at: '', updated_at: '' },
-            { id: 'item-3', name: 'Related Item 2', price: 20, image_url: '', category_id: 'cat-1', tenant_id: 'tenant-1', is_available: true, description: '', variations: [], addons: [], created_at: '', updated_at: '' }
+            { id: 'item-2', name: 'Related Item 1', price: 15, image_url: '', category_id: 'cat-1', tenant_id: 'tenant-1', is_available: true, description: '', variations: [], addons: [], order: 0, created_at: '', updated_at: '' },
+            { id: 'item-3', name: 'Related Item 2', price: 20, image_url: '', category_id: 'cat-1', tenant_id: 'tenant-1', is_available: true, description: '', variations: [], addons: [], order: 0, created_at: '', updated_at: '' }
         ]
 
         render(

@@ -1,74 +1,143 @@
-import { Suspense } from 'react'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import Link from 'next/link'
+import { DollarSign, ShoppingCart, Receipt, CheckCircle2, XCircle } from 'lucide-react'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
+import { PageHeader, KpiCard } from '@/components/superadmin/ui/primitives'
+import { formatCurrency, formatNumber, formatPercent } from '@/components/superadmin/ui/format'
+import { AnalyticsDashboard } from '@/components/superadmin/analytics/analytics-dashboard'
 import { TopActiveTenants } from '@/components/superadmin/analytics/top-active-tenants'
-import { getTopActiveTenants, getTotalOrders } from '@/lib/queries/analytics-server'
+import {
+  getPlatformAnalytics,
+  getTenantGrowth,
+  getFeatureAdoption,
+  type AnalyticsRange,
+} from '@/lib/queries/platform-analytics-server'
 
-// Cache the analytics for 60s
+// Cache the platform analytics for 60s.
 export const revalidate = 60
 
-async function AnalyticsContent() {
-    // Fetch data for both ranges in parallel
-    const [data3d, data7d, totalOrders3d, totalOrders7d] = await Promise.all([
-        getTopActiveTenants('3d'),
-        getTopActiveTenants('7d'),
-        getTotalOrders('3d'),
-        getTotalOrders('7d'),
-    ])
+const RANGE_OPTIONS: { value: AnalyticsRange; label: string }[] = [
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: 'all', label: 'All time' },
+]
 
-    return (
-        <TopActiveTenants
-            initialData3d={data3d}
-            initialData7d={data7d}
-            totalOrders3d={totalOrders3d}
-            totalOrders7d={totalOrders7d}
-        />
-    )
+const RANGE_LABELS: Record<AnalyticsRange, string> = {
+  '7d': 'Last 7 days',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+  all: 'All time',
 }
 
-export default function AnalyticsPage() {
-    return (
-        <div className="space-y-6">
-            <Breadcrumbs
-                items={[
-                    { label: 'Dashboard', href: '/superadmin' },
-                    { label: 'Analytics' },
-                ]}
-            />
+function isRange(value: string | undefined): value is AnalyticsRange {
+  return value === '7d' || value === '30d' || value === '90d' || value === 'all'
+}
 
-            <div>
-                <h1 className="text-3xl font-bold">Analytics</h1>
-                <p className="text-muted-foreground">Monitor platform activity and top performing restaurants</p>
-            </div>
+/** Server-rendered range switcher styled like the RangeTabs pill group.
+ *  Active state derives from the `range` prop, so no client boundary is needed. */
+function RangeSwitcher({ range }: { range: AnalyticsRange }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+      {RANGE_OPTIONS.map((opt) => {
+        const isActive = opt.value === range
+        return (
+          <Link
+            key={opt.value}
+            href={`/superadmin/analytics?range=${opt.value}`}
+            scroll={false}
+            aria-current={isActive ? 'true' : undefined}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              isActive ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            {opt.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
 
-            <Suspense
-                fallback={
-                    <div className="space-y-6">
-                        <Card>
-                            <CardHeader>
-                                <div className="h-4 w-24 animate-pulse bg-muted rounded" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-8 w-16 animate-pulse bg-muted rounded" />
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <div className="h-6 w-48 animate-pulse bg-muted rounded" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-3">
-                                    {[...Array(5)].map((_, i) => (
-                                        <div key={i} className="h-16 w-full animate-pulse bg-muted rounded" />
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-                }
-            >
-                <AnalyticsContent />
-            </Suspense>
-        </div>
-    )
+interface AnalyticsPageProps {
+  // Recent windows are near-empty, so we default to 'all'.
+  searchParams: Promise<{ range?: string }>
+}
+
+export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
+  const params = await searchParams
+  const range: AnalyticsRange = isRange(params.range) ? params.range : 'all'
+  const rangeLabel = RANGE_LABELS[range]
+
+  const [analytics, growth, adoption] = await Promise.all([
+    getPlatformAnalytics(range),
+    getTenantGrowth(),
+    getFeatureAdoption(),
+  ])
+
+  const { kpis } = analytics
+
+  return (
+    <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/superadmin' },
+          { label: 'Analytics' },
+        ]}
+      />
+
+      <PageHeader
+        eyebrow="Platform Insights"
+        title="Analytics"
+        subtitle="Revenue, orders and adoption across every restaurant on the platform"
+        actions={<RangeSwitcher range={range} />}
+      />
+
+      {/* KPI row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <KpiCard
+          label="GMV"
+          value={formatCurrency(kpis.gmv)}
+          icon={DollarSign}
+          delta={kpis.gmvDelta}
+          hint={rangeLabel}
+        />
+        <KpiCard
+          label="Orders"
+          value={formatNumber(kpis.orders)}
+          icon={ShoppingCart}
+          delta={kpis.ordersDelta}
+          hint={rangeLabel}
+        />
+        <KpiCard
+          label="Avg. order value"
+          value={formatCurrency(kpis.aov)}
+          icon={Receipt}
+          hint="Per order"
+        />
+        <KpiCard
+          label="Completed"
+          value={formatNumber(kpis.completed)}
+          icon={CheckCircle2}
+          hint="Delivered orders"
+        />
+        <KpiCard
+          label="Cancel rate"
+          value={formatPercent(kpis.cancelRate, 1)}
+          icon={XCircle}
+          hint={`${formatNumber(kpis.cancelled)} cancelled`}
+        />
+      </div>
+
+      {/* Charts & breakdowns */}
+      <AnalyticsDashboard
+        analytics={analytics}
+        growth={growth}
+        adoption={adoption}
+        rangeLabel={rangeLabel}
+      />
+
+      {/* Revenue leaderboard */}
+      <TopActiveTenants tenants={analytics.topByRevenue} rangeLabel={rangeLabel} />
+    </div>
+  )
 }

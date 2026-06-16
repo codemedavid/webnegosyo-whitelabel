@@ -1,10 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Trash2, UserPlus } from 'lucide-react'
+import { Trash2, UserPlus, Users, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { removeTenantUser, type TenantUser } from '@/actions/users'
 import {
@@ -18,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { AddTenantUserDialog } from '@/components/superadmin/add-tenant-user-dialog'
+import { Panel, SectionHeader, EmptyState } from '@/components/superadmin/ui/primitives'
 
 interface TenantUsersListProps {
   tenantId: string
@@ -66,84 +65,123 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Admin Users</CardTitle>
-              <CardDescription>
-                Manage administrators who can access {tenantName}
-              </CardDescription>
-            </div>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Add User
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
+      <Panel className="overflow-hidden p-0">
+        <div className="border-b border-white/[0.06] p-6">
+          <SectionHeader
+            icon={Users}
+            title={
+              <span className="flex items-center gap-2.5">
+                Admin Users
+                <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-xs font-medium text-white/55">
+                  {users.length}
+                </span>
+              </span>
+            }
+            subtitle={`Administrators who can access ${tenantName}`}
+            action={
+              <Button
+                onClick={() => setIsAddDialogOpen(true)}
+                className="rounded-xl bg-white text-black hover:bg-white/90"
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add User
+              </Button>
+            }
+          />
+        </div>
+
+        <div className="p-6">
           {users.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No admin users assigned to this tenant</p>
-              <p className="text-sm mt-2">Click &quot;Add User&quot; to create the first admin</p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No admin users yet"
+              description={`Add the first administrator for ${tenantName}.`}
+              action={
+                <Button
+                  onClick={() => setIsAddDialogOpen(true)}
+                  variant="outline"
+                  className="rounded-xl border-white/15 bg-transparent text-white hover:bg-white/10"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+              }
+            />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {users.map((user) => (
                 <div
                   key={user.user_id}
-                  className="flex items-center justify-between rounded-lg border p-4"
+                  className="group flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 transition-colors hover:border-white/20 hover:bg-white/[0.04]"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
-                        {user.email.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium">{user.email}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Added {new Date(user.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white">
+                      {user.email.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-white">{user.email}</p>
+                      <p className="text-xs text-white/45">
+                        Added{' '}
+                        {new Date(user.created_at).toLocaleDateString('en-US', {
+                          timeZone: 'Asia/Manila',
+                          year: 'numeric',
+                          month: 'numeric',
+                          day: 'numeric',
+                        })}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary">{user.role}</Badge>
+                  <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                    <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-0.5 text-xs font-medium capitalize text-sky-400">
+                      {user.role}
+                    </span>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => setUserToDelete(user)}
                       disabled={isDeleting}
+                      aria-label={`Remove ${user.email}`}
+                      className="h-9 w-9 rounded-xl text-white/40 hover:bg-red-400/10 hover:text-red-400 focus-visible:ring-red-400/30"
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-2xl border-white/10 bg-[#0a0a0a]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove User Access</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove <strong>{userToDelete?.email}</strong> from {tenantName}?
-              <br />
-              <br />
-              This will delete their account and they will lose access to the admin panel.
-              This action cannot be undone.
+            <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-red-400/20 bg-red-400/10">
+              <ShieldAlert className="h-5 w-5 text-red-400" />
+            </div>
+            <AlertDialogTitle className="text-white">Remove User Access</AlertDialogTitle>
+            <AlertDialogDescription className="text-white/55">
+              You&apos;re about to remove{' '}
+              <span className="font-medium text-white/80">{userToDelete?.email}</span> from {tenantName}.
+              This deletes their account and revokes admin-panel access.
+              <span className="mt-3 flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-xs font-medium text-red-400">
+                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                This action cannot be undone.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={isDeleting}
+              className="rounded-xl border-white/15 bg-transparent text-white hover:bg-white/10"
+            >
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => userToDelete && handleDeleteUser(userToDelete)}
               disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="rounded-xl border border-red-400/20 bg-red-400/10 text-red-400 hover:bg-red-400/20"
             >
               {isDeleting ? 'Removing...' : 'Remove User'}
             </AlertDialogAction>

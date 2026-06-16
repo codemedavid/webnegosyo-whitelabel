@@ -64,10 +64,26 @@ export interface Tenant {
   hero_description_color?: string;
   hero_design?: Record<string, unknown> | null;  // HeroDesign JSON from hero designer
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon' | 'storefront'
+  checkout_template?: string; // Checkout page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
+  cart_template?: string; // Cart page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
   mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
+  // Main header template & customization
+  header_template?: string; // 'classic' | 'centered' | 'minimal' | 'split' | 'banner' | 'stacked'
+  mobile_header_template?: string | null; // Header template for mobile (<768px), falls back to header_template
+  header_show_logo?: boolean;
+  header_show_name?: boolean;
+  header_show_cart?: boolean;
+  header_show_search?: boolean; // Show an inline search bar in the header
+  header_tagline?: string; // Optional tagline shown under the restaurant name
+  header_tagline_color?: string;
+  header_sticky?: boolean; // Stick the header to the top on scroll
+  header_blur?: boolean; // Apply a backdrop blur to the header
+  header_shadow?: boolean; // Apply a drop shadow under the header
+  header_logo_shape?: 'circle' | 'rounded' | 'square';
+  header_height?: 'compact' | 'standard' | 'tall';
   messenger_page_id: string;
   messenger_username?: string;
   messenger_redirect_mode?: 'webhook' | 'direct'; // 'webhook' = m.me with ref+text, 'direct' = messenger.com/t/
@@ -126,6 +142,37 @@ export interface Tenant {
   flash_screen_background_color?: string;
   flash_screen_text_color?: string;
   flash_screen_duration_ms?: number;
+  // Footer maker
+  footer_enabled?: boolean;
+  footer_theme?: 'auto' | 'light' | 'dark' | 'brand' | 'midnight' | 'minimal' | 'custom';
+  footer_logo_url?: string;
+  footer_business_name?: string;
+  footer_tagline?: string;
+  footer_address?: string;
+  footer_phone?: string;
+  footer_whatsapp?: string;
+  footer_viber?: string;
+  footer_email?: string;
+  footer_facebook_url?: string;
+  footer_instagram_url?: string;
+  footer_tiktok_url?: string;
+  footer_twitter_url?: string;
+  footer_youtube_url?: string;
+  footer_about_us?: string;
+  footer_terms_of_service?: string;
+  footer_refund_policy?: string;
+  footer_privacy_policy?: string;
+  footer_copyright_text?: string;
+  footer_show_powered_by?: boolean;
+  footer_powered_by_text?: string;
+  footer_background_color?: string;
+  footer_text_color?: string;
+  footer_heading_color?: string;
+  footer_link_color?: string;
+  footer_muted_color?: string;
+  footer_icon_color?: string;
+  footer_icon_background_color?: string;
+  footer_border_color?: string;
   // Convex integration
   convex_deployment_url?: string | null;
   convex_deploy_key?: string | null;
@@ -378,6 +425,12 @@ export interface OrderType {
   service_charge_enabled: boolean;
   service_charge_type: "percentage" | "fixed";
   service_charge_value: number;
+  // Advance order (scheduled / pre-order) configuration
+  advance_order_enabled: boolean;
+  advance_order_allow_asap: boolean;
+  advance_order_lead_time_minutes: number;
+  advance_order_max_days_ahead: number;
+  advance_order_slot_interval_minutes: number;
   order_index: number;
   created_at: string;
   updated_at: string;
@@ -440,6 +493,8 @@ export interface Order {
   customer_data?: Record<string, unknown>;
   items: OrderItem[];
   total: number;
+  /** Requested fulfillment time for advance/scheduled orders (UTC ISO); null/undefined = ASAP. */
+  scheduled_for?: string | null;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   // Lalamove delivery fields
   delivery_fee?: number;

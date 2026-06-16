@@ -1,10 +1,11 @@
 'use client'
 
 import { formatDistance } from 'date-fns'
-import { Clock, CheckCircle, XCircle, ShoppingBag, Package, Truck, UtensilsCrossed } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, ShoppingBag, Package, Truck, UtensilsCrossed, CalendarClock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
+import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 interface OrderCardProps {
@@ -48,6 +49,7 @@ function getOrderTypeConfig(orderType: string | undefined | null) {
 export function OrderCard({ order, onClick }: OrderCardProps) {
   const StatusIcon = statusIcons[order.status]
   const itemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0)
+  const scheduledLabel = getOrderScheduledLabel(order)
 
   return (
     <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
@@ -64,6 +66,15 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             {order.status}
           </Badge>
         </div>
+        {scheduledLabel && (
+          <Badge
+            variant="outline"
+            className="mt-2 w-fit gap-1.5 bg-amber-100 text-amber-800 border-amber-300 font-medium"
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            Scheduled · {scheduledLabel}
+          </Badge>
+        )}
       </CardHeader>
       <CardContent>
         <div className="space-y-2">

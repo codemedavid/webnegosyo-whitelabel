@@ -60,6 +60,23 @@ interface ProductDetailContentProps {
     upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
     isBrandAdmin?: boolean
+    /**
+     * 'page' (default) renders as the full-page route. 'sheet' adapts navigation
+     * for the bottom-sheet host: back/menu/post-add dismiss the sheet via onClose,
+     * upgrades and related items swap in-place via onNavigateToItem, and Share
+     * copies the canonical full-page URL.
+     */
+    mode?: 'page' | 'sheet'
+    onClose?: () => void
+    onNavigateToItem?: (item: MenuItem, opts?: { fromUpgrade?: boolean }) => void
+    suppressAutoUpgrade?: boolean
+    /**
+     * Sheet mode: true while the per-item upsell data is still being fetched.
+     * Used to defer the post-add upsell decision so a fast Add-to-Cart tap
+     * doesn't skip the upsell screen (which the full page never does, since it
+     * fetches server-side before paint).
+     */
+    upsellsPending?: boolean
 }
 
 interface ProductDetailCustomizerOpenDetail {
@@ -266,12 +283,21 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     upsellBundles = [],
     bundlesEnabled = false,
     isBrandAdmin = false,
+    mode = 'page',
+    onClose,
+    onNavigateToItem,
+    suppressAutoUpgrade = false,
+    upsellsPending = false,
 }: ProductDetailContentProps) {
     const router = useRouter()
+    const isSheet = mode === 'sheet'
     const { addItem, setTenantContext } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
+    // Sheet mode: set when Add-to-Cart fires before upsell data has loaded, so
+    // the post-add decision is deferred until upsellsPending clears.
+    const pendingPostAddRef = useRef(false)
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     const {
@@ -298,6 +324,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         menuEngineeringEnabled,
         upgradeUpsellsCount: upgradeUpsells.length,
         upsellBundlesCount: upsellBundles.length,
+        onExit: isSheet ? onClose : undefined,
+        suppressAutoUpgrade,
     })
 
     // Eager-preload upsell modal bundles so they're ready when triggered
@@ -481,16 +509,25 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     // Memoized event handlers
     const handleGoBack = useCallback(() => {
+        if (isSheet) {
+            onClose?.()
+            return
+        }
         router.back()
-    }, [router])
+    }, [isSheet, onClose, router])
 
     const handleGoHome = useCallback(() => {
         router.push(`/${tenant.slug}`)
     }, [router, tenant.slug])
 
     const handleGoMenu = useCallback(() => {
+        // In sheet mode we're already on the menu — just close the sheet.
+        if (isSheet) {
+            onClose?.()
+            return
+        }
         router.push(`/${tenant.slug}/menu`)
-    }, [router, tenant.slug])
+    }, [isSheet, onClose, router, tenant.slug])
 
     // Generate selected summary text - memoized
     const getSelectedSummary = useMemo(() => {
@@ -553,16 +590,27 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             return
         }
 
+        // Sheet mode: upsell data may still be loading. Defer the post-add
+        // decision (the deferred-decision effect re-runs once it resolves) so a
+        // fast Add-to-Cart tap doesn't skip the upsell screen.
+        if (!skipNavigation && isSheet && upsellsPending) {
+            pendingPostAddRef.current = true
+            return
+        }
+
         // No upsells — navigate directly
         if (!skipNavigation) {
             if (buyNowIntentRef.current) {
                 buyNowIntentRef.current = false
                 router.push(`/${tenant.slug}/cart`)
+            } else if (isSheet) {
+                // Sheet mode: close the sheet, returning to the menu.
+                onClose?.()
             } else {
                 router.back()
             }
         }
-    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen])
+    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -571,23 +619,46 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     const handleShare = useCallback(async () => {
         try {
-            await navigator.clipboard.writeText(window.location.href)
+            // In sheet mode the address bar still shows /menu, so build the
+            // canonical full-page URL for the item being viewed.
+            const shareUrl = isSheet
+                ? `${window.location.origin}/${tenant.slug}/menu/item/${item.id}`
+                : window.location.href
+            await navigator.clipboard.writeText(shareUrl)
             toast.success('Link copied!')
         } catch {
             toast.error('Failed to copy link')
         }
-    }, [])
+    }, [isSheet, tenant.slug, item.id])
+
+    // Sheet mode: when a fast Add-to-Cart deferred its post-add decision, resolve
+    // it now that upsell data has loaded — show the upsell screen if any, else
+    // close the sheet (or go to cart for buy-now).
+    useEffect(() => {
+        if (!isSheet || upsellsPending || !pendingPostAddRef.current) return
+        pendingPostAddRef.current = false
+        const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells.length > 0
+        const hasBundle = bundlesEnabled && matchingBundle !== null
+        if (hasSuggestions || hasBundle) {
+            setIsPostAddUpsellOpen(true)
+        } else if (buyNowIntentRef.current) {
+            buyNowIntentRef.current = false
+            router.push(`/${tenant.slug}/cart`)
+        } else {
+            onClose?.()
+        }
+    }, [isSheet, upsellsPending, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, router, tenant.slug, onClose, buyNowIntentRef, setIsPostAddUpsellOpen])
 
     return (
         <UpsellOrchestratorProvider>
         <motion.div
             animate={isPageTransitioning ? { x: '-100%', opacity: 0 } : { x: 0, opacity: 1 }}
             transition={{ type: 'tween' as const, duration: 0.25, ease: 'easeInOut' as const }}
-            className="min-h-screen flex flex-col"
+            className={isSheet ? 'h-full flex flex-col' : 'min-h-screen flex flex-col'}
             style={cssVariables}
         >
             {/* Back Navigation */}
-            <header className="fixed top-0 left-0 right-0 z-50 p-3" style={{ backgroundColor: 'var(--pd-header-background)' }}>
+            <header className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
                 <div className="flex items-center justify-between gap-2">
                     <motion.button
                         onClick={handleGoBack}
@@ -901,6 +972,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             <LazyRelatedItemsSection
                                 relatedItems={relatedItems}
                                 tenantSlug={tenant.slug}
+                                onSelectItem={isSheet ? onNavigateToItem : undefined}
                             />
                         </div>
                     )}
@@ -925,6 +997,11 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     onSelectUpgrade={(upgrade) => {
                         setIsUpgradeScreenOpen(false)
                         setUpgradeDismissed(true)
+                        if (isSheet) {
+                            // Swap the item in-place; the host suppresses the re-prompt.
+                            onNavigateToItem?.(upgrade.targetItem, { fromUpgrade: true })
+                            return
+                        }
                         // Trigger slide-left exit animation, then navigate
                         pendingNavigationRef.current = `/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`
                         setIsPageTransitioning(true)
@@ -1054,7 +1131,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Sticky Footer */}
             <footer
-                className="fixed bottom-0 left-0 right-0 z-40 border-t"
+                className={`${isSheet ? 'absolute' : 'fixed'} bottom-0 left-0 right-0 z-40 border-t`}
                 style={dynamicStyles?.footer}
             >
                 {/* Selected Summary */}

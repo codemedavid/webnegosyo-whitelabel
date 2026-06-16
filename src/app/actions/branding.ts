@@ -100,10 +100,26 @@ const brandingSchema = z.object({
     hero_description_color: cssColorString().optional().or(z.literal('')),
     // Layout settings
     card_template: z.string().optional(),
+    checkout_template: z.string().optional(),
+    cart_template: z.string().optional(),
     page_layout: z.string().optional(),
     mobile_grid_columns: z.number().min(1).max(4).optional(),
     mobile_page_layout: z.string().optional().nullable(),
     mobile_card_template: z.string().optional().nullable(),
+    // Header template & customization
+    header_template: z.string().optional(),
+    mobile_header_template: z.string().optional().nullable(),
+    header_show_logo: z.boolean().optional(),
+    header_show_name: z.boolean().optional(),
+    header_show_cart: z.boolean().optional(),
+    header_show_search: z.boolean().optional(),
+    header_tagline: z.string().max(200).optional().or(z.literal('')),
+    header_tagline_color: cssColorString().optional().or(z.literal('')),
+    header_sticky: z.boolean().optional(),
+    header_blur: z.boolean().optional(),
+    header_shadow: z.boolean().optional(),
+    header_logo_shape: z.enum(['circle', 'rounded', 'square']).optional(),
+    header_height: z.enum(['compact', 'standard', 'tall']).optional(),
     // Announcement banner
     announcement_text: z.string().max(500).optional().or(z.literal('')),
     announcement_bg_color: cssColorString().optional().or(z.literal('')),
@@ -118,6 +134,42 @@ const brandingSchema = z.object({
         title: z.string().optional(),
         description: z.string().optional(),
     })).optional(),
+    // Footer
+    footer_enabled: z.boolean().optional(),
+    footer_theme: z.enum(['auto', 'light', 'dark', 'brand', 'midnight', 'minimal', 'custom']).optional(),
+    footer_logo_url: z.string().optional().or(z.literal('')),
+    footer_business_name: z.string().max(200).optional().or(z.literal('')),
+    footer_tagline: z.string().max(300).optional().or(z.literal('')),
+    footer_address: z.string().max(500).optional().or(z.literal('')),
+    footer_phone: z.string().max(100).optional().or(z.literal('')),
+    footer_whatsapp: z.string().max(100).optional().or(z.literal('')),
+    footer_viber: z.string().max(100).optional().or(z.literal('')),
+    footer_email: z.string().max(200).optional().or(z.literal('')),
+    footer_facebook_url: z.string().max(500).optional().or(z.literal('')),
+    footer_instagram_url: z.string().max(500).optional().or(z.literal('')),
+    footer_tiktok_url: z.string().max(500).optional().or(z.literal('')),
+    footer_twitter_url: z.string().max(500).optional().or(z.literal('')),
+    footer_youtube_url: z.string().max(500).optional().or(z.literal('')),
+    footer_facebook_name: z.string().max(100).optional().or(z.literal('')),
+    footer_instagram_name: z.string().max(100).optional().or(z.literal('')),
+    footer_tiktok_name: z.string().max(100).optional().or(z.literal('')),
+    footer_twitter_name: z.string().max(100).optional().or(z.literal('')),
+    footer_youtube_name: z.string().max(100).optional().or(z.literal('')),
+    footer_about_us: z.string().optional().or(z.literal('')),
+    footer_terms_of_service: z.string().optional().or(z.literal('')),
+    footer_refund_policy: z.string().optional().or(z.literal('')),
+    footer_privacy_policy: z.string().optional().or(z.literal('')),
+    footer_copyright_text: z.string().max(500).optional().or(z.literal('')),
+    footer_show_powered_by: z.boolean().optional(),
+    footer_powered_by_text: z.string().max(200).optional().or(z.literal('')),
+    footer_background_color: cssColorString().optional().or(z.literal('')),
+    footer_text_color: cssColorString().optional().or(z.literal('')),
+    footer_heading_color: cssColorString().optional().or(z.literal('')),
+    footer_link_color: cssColorString().optional().or(z.literal('')),
+    footer_muted_color: cssColorString().optional().or(z.literal('')),
+    footer_icon_color: cssColorString().optional().or(z.literal('')),
+    footer_icon_background_color: cssColorString().optional().or(z.literal('')),
+    footer_border_color: cssColorString().optional().or(z.literal('')),
 })
 
 export type BrandingInput = z.infer<typeof brandingSchema>
@@ -143,6 +195,8 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'menu_category_inactive_color',
     'menu_cart_badge_background_color',
     'menu_cart_badge_text_color',
+    'checkout_template',
+    'cart_template',
     'page_layout',
     'mobile_grid_columns',
     'button_secondary_color',
@@ -163,6 +217,19 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'flash_screen_duration_ms',
     'mobile_page_layout',
     'mobile_card_template',
+    'header_template',
+    'mobile_header_template',
+    'header_show_logo',
+    'header_show_name',
+    'header_show_cart',
+    'header_show_search',
+    'header_tagline',
+    'header_tagline_color',
+    'header_sticky',
+    'header_blur',
+    'header_shadow',
+    'header_logo_shape',
+    'header_height',
 ] as const
 
 function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {
@@ -247,7 +314,16 @@ export async function saveBrandingAction(
         // Revalidate all affected pages for instant updates
         // Using 'layout' type revalidates the route and all its children
         revalidatePath(`/${tenantSlug}/menu`, 'layout')
+        // Checkout/cart design changes must invalidate those routes too
+        revalidatePath(`/${tenantSlug}/checkout`, 'layout')
+        revalidatePath(`/${tenantSlug}/cart`, 'layout')
         revalidatePath(`/${tenantSlug}/admin/settings`)
+        // Footer also drives the storefront and content pages
+        revalidatePath(`/${tenantSlug}`)
+        revalidatePath(`/${tenantSlug}/about`)
+        revalidatePath(`/${tenantSlug}/terms`)
+        revalidatePath(`/${tenantSlug}/refund`)
+        revalidatePath(`/${tenantSlug}/privacy`)
 
         console.log(`[saveBrandingAction] Branding saved and cache revalidated for ${tenantSlug}`)
 

@@ -40,11 +40,6 @@ function isExpoGo(): boolean {
 function checkPrinterAvailable(): boolean {
   if (printerAvailable !== null) return printerAvailable;
 
-  if (Platform.OS === "ios") {
-    printerAvailable = false;
-    return false;
-  }
-
   // In Expo Go, requiring native modules triggers a fatal TurboModule crash.
   // Skip the require entirely — printer features are only available in dev/prod builds.
   if (isExpoGo()) {

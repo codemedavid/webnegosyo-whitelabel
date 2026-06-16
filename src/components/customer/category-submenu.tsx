@@ -39,8 +39,9 @@ export const CategorySubmenu = memo(function CategorySubmenu({
 
   return (
     <nav
-      className="sticky top-20 z-40 hidden md:block border-b backdrop-blur-sm"
+      className="sticky z-40 hidden md:block border-b backdrop-blur-sm"
       style={{
+        top: 'var(--menu-header-h, 5rem)',
         backgroundColor: branding.header,
         borderColor: branding.border,
       }}

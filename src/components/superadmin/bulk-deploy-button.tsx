@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Rocket } from "lucide-react";
+import { Panel, SectionHeader } from "@/components/superadmin/ui/primitives";
 import { bulkDeployConvexAction } from "@/app/actions/convex";
 
 export function BulkDeployButton() {
@@ -29,48 +29,76 @@ export function BulkDeployButton() {
     setDeploying(false);
   };
 
+  const hasErrors = !!result?.errors && result.errors.length > 0;
+  const isOk = !!result?.success && !hasErrors;
+  const isPartial = !!result?.success && hasErrors;
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm font-medium">Convex Deployment</CardTitle>
-        <Rocket className="h-4 w-4 text-violet-600" />
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Deploy latest Convex functions to all tenants with outdated schema versions.
-        </p>
-        <Button onClick={handleDeploy} disabled={deploying} className="w-full">
-          {deploying ? "Deploying..." : "Bulk Deploy to All Tenants"}
+    <Panel>
+      <SectionHeader
+        icon={Rocket}
+        title="Convex Deployment"
+        subtitle="Push the latest Convex functions to tenants on an outdated schema version."
+      />
+
+      <div className="mt-5 space-y-4">
+        <Button
+          onClick={handleDeploy}
+          disabled={deploying}
+          className="w-full bg-white text-black hover:bg-white/90 sm:w-auto"
+        >
+          {deploying ? (
+            <>
+              <Rocket className="mr-2 h-4 w-4 animate-pulse" />
+              Deploying…
+            </>
+          ) : (
+            <>
+              <Rocket className="mr-2 h-4 w-4" />
+              Bulk deploy to all tenants
+            </>
+          )}
         </Button>
+
         {result && (
           <div
-            className={`rounded-md p-3 text-sm ${
-              result.success && (!result.errors || result.errors.length === 0)
-                ? "bg-green-50 text-green-800"
-                : result.errors && result.errors.length > 0
-                  ? "bg-yellow-50 text-yellow-800"
-                  : "bg-red-50 text-red-800"
+            className={`rounded-xl border p-4 text-sm ${
+              isOk
+                ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-400"
+                : isPartial
+                  ? "border-amber-400/20 bg-amber-400/10 text-amber-400"
+                  : "border-red-400/20 bg-red-400/10 text-red-400"
             }`}
           >
             {result.success ? (
               <>
-                <p className="font-medium">
-                  Updated {result.updated ?? 0} tenant{(result.updated ?? 0) !== 1 ? "s" : ""}
+                <p className="flex items-center gap-2 font-medium">
+                  {isPartial ? (
+                    <AlertTriangle className="h-4 w-4" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Updated {result.updated ?? 0} tenant
+                  {(result.updated ?? 0) !== 1 ? "s" : ""}
+                  {isPartial ? " with warnings" : ""}
                 </p>
-                {result.errors && result.errors.length > 0 && (
-                  <ul className="mt-1 list-disc pl-4 text-xs">
-                    {result.errors.map((e, i) => (
+                {hasErrors && (
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-xs">
+                    {result.errors!.map((e, i) => (
                       <li key={i}>{e}</li>
                     ))}
                   </ul>
                 )}
               </>
             ) : (
-              <p>{result.errors?.[0] ?? "Deployment failed"}</p>
+              <p className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                {result.errors?.[0] ?? "Deployment failed"}
+              </p>
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

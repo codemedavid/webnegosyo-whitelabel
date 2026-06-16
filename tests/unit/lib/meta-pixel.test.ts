@@ -1,34 +1,34 @@
 import { initMetaPixel, trackMetaEvent } from '@/lib/meta-pixel'
 
-declare global {
-  interface Window {
-    fbq?: jest.Mock
-    _fbq?: jest.Mock
-  }
+type FbqGlobal = {
+  fbq?: jest.Mock & { queue?: unknown[] }
+  _fbq?: jest.Mock
 }
+
+const fbqGlobal = globalThis as unknown as FbqGlobal
 
 describe('meta-pixel', () => {
   beforeEach(() => {
     document.head.innerHTML = ''
-    delete window.fbq
-    delete window._fbq
+    delete fbqGlobal.fbq
+    delete fbqGlobal._fbq
   })
 
   it('initializes the pixel and tracks a page view when fbq is already available', () => {
-    window.fbq = jest.fn()
+    fbqGlobal.fbq = jest.fn()
 
     initMetaPixel('123456789')
 
-    expect(window.fbq).toHaveBeenCalledWith('init', '123456789')
-    expect(window.fbq).toHaveBeenCalledWith('track', 'PageView')
+    expect(fbqGlobal.fbq).toHaveBeenCalledWith('init', '123456789')
+    expect(fbqGlobal.fbq).toHaveBeenCalledWith('track', 'PageView')
   })
 
   it('tracks custom events with an event id', () => {
-    window.fbq = jest.fn()
+    fbqGlobal.fbq = jest.fn()
 
     trackMetaEvent('Lead', { value: 3899, currency: 'PHP' }, 'event-123')
 
-    expect(window.fbq).toHaveBeenCalledWith(
+    expect(fbqGlobal.fbq).toHaveBeenCalledWith(
       'track',
       'Lead',
       { value: 3899, currency: 'PHP' },
@@ -46,9 +46,9 @@ describe('meta-pixel', () => {
   it('installs a queueing stub before the Meta Pixel script finishes loading', () => {
     initMetaPixel('123456789')
 
-    expect(window.fbq).toBeDefined()
-    expect(window._fbq).toBe(window.fbq)
-    expect(window.fbq?.queue).toEqual([
+    expect(fbqGlobal.fbq).toBeDefined()
+    expect(fbqGlobal._fbq).toBe(fbqGlobal.fbq)
+    expect(fbqGlobal.fbq?.queue).toEqual([
       ['init', '123456789'],
       ['track', 'PageView'],
     ])

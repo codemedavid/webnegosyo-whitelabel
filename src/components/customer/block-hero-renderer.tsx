@@ -376,15 +376,20 @@ function RenderVideo({ props }: { props: VideoWidgetProps }) {
 }
 
 function RenderCountdown({ props }: { props: CountdownWidgetProps }) {
-  const [now, setNow] = useState(() => Date.now())
+  // Start as null so the first client render matches the (time-stale, ISR-cached)
+  // server HTML — reading Date.now() during render would diverge and trigger a
+  // hydration mismatch. We adopt the live clock only after mount.
+  const [now, setNow] = useState<number | null>(null)
 
   useEffect(() => {
+    setNow(Date.now())
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
   const target = new Date(props.targetDate).getTime()
-  const diff = Math.max(0, target - now)
+  // Before mount (server + first client render) show zeros so both sides agree.
+  const diff = now === null ? 0 : Math.max(0, target - now)
 
   const days = Math.floor(diff / 86_400_000)
   const hours = Math.floor((diff % 86_400_000) / 3_600_000)

@@ -2,7 +2,7 @@
  * @jest-environment node
  *
  * Tests for POST /api/ai/parse-menu
- * Mocks the NVIDIA API (meta/llama-3.1-70b-instruct) and Supabase auth.
+ * Mocks the OpenRouter API (meta-llama/llama-3.3-70b-instruct) and Supabase auth.
  */
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
@@ -53,26 +53,26 @@ jest.mock('@/lib/supabase/server', () => ({
 // ---------------------------------------------------------------------------
 
 describe('POST /api/ai/parse-menu', () => {
-    let mockCreateClient: jest.Mock
+    let mockCreateClient: jest.Mock<() => Promise<unknown>>
     let originalEnv: NodeJS.ProcessEnv
 
     beforeEach(async () => {
         jest.resetModules()
         originalEnv = { ...process.env }
-        process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+        process.env.OPENROUTER_API_KEY = 'test-openrouter-key'
 
-        const { createClient } = await import('@/lib/supabase/server') as { createClient: jest.Mock }
-        mockCreateClient = createClient as jest.Mock
+        const { createClient } = await import('@/lib/supabase/server') as { createClient: jest.Mock<() => Promise<unknown>> }
+        mockCreateClient = createClient
 
         // Default: authenticated superadmin
         mockCreateClient.mockResolvedValue({
             auth: {
-                getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
+                getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
             },
-            from: jest.fn().mockReturnValue({
+            from: jest.fn<() => unknown>().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
                 eq: jest.fn().mockReturnThis(),
-                single: jest.fn().mockResolvedValue({ data: { role: 'superadmin' } }),
+                single: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { role: 'superadmin' } }),
             }),
         })
     })
@@ -87,7 +87,7 @@ describe('POST /api/ai/parse-menu', () => {
 
     test('returns 401 when user is not authenticated', async () => {
         mockCreateClient.mockResolvedValue({
-            auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+            auth: { getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: null } }) },
             from: jest.fn(),
         })
 
@@ -104,11 +104,11 @@ describe('POST /api/ai/parse-menu', () => {
 
     test('returns 403 when user is not superadmin', async () => {
         mockCreateClient.mockResolvedValue({
-            auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
-            from: jest.fn().mockReturnValue({
+            auth: { getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+            from: jest.fn<() => unknown>().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
                 eq: jest.fn().mockReturnThis(),
-                single: jest.fn().mockResolvedValue({ data: { role: 'admin' } }),
+                single: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { role: 'admin' } }),
             }),
         })
 
@@ -147,8 +147,8 @@ describe('POST /api/ai/parse-menu', () => {
         expect(res.status).toBe(400)
     })
 
-    test('returns 500 when NVIDIA_API_KEY is not set', async () => {
-        delete process.env.NVIDIA_API_KEY
+    test('returns 500 when OPENROUTER_API_KEY is not set', async () => {
+        delete process.env.OPENROUTER_API_KEY
 
         const { POST } = await import('@/app/api/ai/parse-menu/route')
         const req = new NextRequest('http://localhost/api/ai/parse-menu', {
@@ -160,14 +160,14 @@ describe('POST /api/ai/parse-menu', () => {
         const res = await POST(req)
         expect(res.status).toBe(500)
         const body = await res.json()
-        expect(body.error).toMatch(/NVIDIA_API_KEY/)
+        expect(body.error).toMatch(/OPENROUTER_API_KEY/)
     })
 
     // -----------------------------------------------------------------------
-    // NVIDIA API call — model and parameters
+    // OpenRouter API call — model and parameters
     // -----------------------------------------------------------------------
 
-    test('calls NVIDIA API with correct model and parameters', async () => {
+    test('calls OpenRouter API with correct model and parameters', async () => {
         const jsonChunk = JSON.stringify(VALID_PARSED_MENU)
         const sseChunks = [makeSseChunk(jsonChunk), 'data: [DONE]\n\n']
         const mockStream = makeSSEStream(sseChunks)
@@ -188,10 +188,10 @@ describe('POST /api/ai/parse-menu', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1)
         const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-        expect(url).toBe('https://integrate.api.nvidia.com/v1/chat/completions')
+        expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
 
         const requestBody = JSON.parse(init.body as string)
-        expect(requestBody.model).toBe('meta/llama-3.1-70b-instruct')
+        expect(requestBody.model).toBe('meta-llama/llama-3.3-70b-instruct')
         expect(requestBody.temperature).toBe(0.2)
         expect(requestBody.top_p).toBe(0.7)
         expect(requestBody.max_tokens).toBe(1024)
@@ -201,7 +201,7 @@ describe('POST /api/ai/parse-menu', () => {
         expect(requestBody.messages[1].content).toContain('Burger P120')
     })
 
-    test('passes Authorization header with NVIDIA API key', async () => {
+    test('passes Authorization header with OpenRouter API key', async () => {
         const jsonChunk = JSON.stringify(VALID_PARSED_MENU)
         const sseChunks = [makeSseChunk(jsonChunk), 'data: [DONE]\n\n']
         global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
@@ -219,7 +219,7 @@ describe('POST /api/ai/parse-menu', () => {
 
         const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
         const headers = init.headers as Record<string, string>
-        expect(headers['Authorization']).toBe('Bearer test-nvidia-key')
+        expect(headers['Authorization']).toBe('Bearer test-openrouter-key')
     })
 
     // -----------------------------------------------------------------------
@@ -275,7 +275,7 @@ describe('POST /api/ai/parse-menu', () => {
     // Error handling
     // -----------------------------------------------------------------------
 
-    test('returns 500 when NVIDIA API responds with non-200', async () => {
+    test('returns 500 when OpenRouter API responds with non-200', async () => {
         global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
             new Response('{"error":"rate limit"}', { status: 429 })
         )

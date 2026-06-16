@@ -141,6 +141,8 @@ export default function AnalyticsScreen() {
         <Card title="Sales Overview" style={styles.section}>
           {!salesAnalytics ? (
             <LoadingState />
+          ) : salesAnalytics.totalOrders === 0 ? (
+            <EmptyState message="No sales in this period yet" />
           ) : (
             <>
               <View style={styles.salesHeadline}>

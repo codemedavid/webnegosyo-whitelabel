@@ -45,5 +45,7 @@ export interface QrOrderPayloadV1 {
   total: number; // client-computed grand total (vendor re-validates)
   paymentMethodId?: string;
   paymentMethod?: string;
+  scheduledFor?: string; // advance order: requested fulfillment time (UTC ISO); absent = ASAP
+  scheduledForLabel?: string; // advance order: human label captured in customer's local time
   ck: string; // checksum (see codec)
 }

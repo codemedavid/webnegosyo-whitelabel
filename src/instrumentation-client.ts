@@ -3,9 +3,27 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import {
+    isSentryEnabled,
+    sentryEnvironment,
+    SENTRY_IGNORE_ERRORS,
+    SENTRY_DENY_URLS,
+    filterSentryEvent,
+} from "@/lib/sentry-filtering";
 
 Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+    // Only deliver events from real deployments. This keeps the local Turbopack
+    // dev server's HMR/devtools noise out of the dashboard. Override locally
+    // with NEXT_PUBLIC_SENTRY_FORCE_ENABLE=true.
+    enabled: isSentryEnabled(),
+    environment: sentryEnvironment,
+
+    // Drop known framework/network/extension noise (see src/lib/sentry-filtering.ts).
+    ignoreErrors: SENTRY_IGNORE_ERRORS,
+    denyUrls: SENTRY_DENY_URLS,
+    beforeSend: filterSentryEvent,
 
     // Add optional integrations for additional features
     integrations: [Sentry.replayIntegration()],

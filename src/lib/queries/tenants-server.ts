@@ -12,12 +12,33 @@ import type { Tenant } from '@/types/database'
 
 const TENANTS_PAGE_SIZE = 20
 
+export type TenantSort = 'recent' | 'oldest' | 'name' | 'status'
+export type TenantStatusFilter = 'all' | 'active' | 'inactive'
+export type TenantFeatureFilter = 'all' | 'menu_engineering' | 'bundles' | 'app' | 'lalamove'
+
+const FEATURE_COLUMN: Record<Exclude<TenantFeatureFilter, 'all'>, string> = {
+  menu_engineering: 'menu_engineering_enabled',
+  bundles: 'bundles_enabled',
+  app: 'app_enabled',
+  lalamove: 'lalamove_enabled',
+}
+
 export const getTenants = cache(async (options?: {
   search?: string
   page?: number
   pageSize?: number
+  status?: TenantStatusFilter
+  feature?: TenantFeatureFilter
+  sort?: TenantSort
 }): Promise<{ data: Tenant[]; count: number }> => {
-  const { search, page = 1, pageSize = TENANTS_PAGE_SIZE } = options ?? {}
+  const {
+    search,
+    page = 1,
+    pageSize = TENANTS_PAGE_SIZE,
+    status = 'all',
+    feature = 'all',
+    sort = 'recent',
+  } = options ?? {}
   const supabase = await createClient()
 
   let query = supabase
@@ -31,12 +52,38 @@ export const getTenants = cache(async (options?: {
     query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`)
   }
 
+  if (status === 'active') {
+    query = query.eq('is_active', true)
+  } else if (status === 'inactive') {
+    query = query.eq('is_active', false)
+  }
+
+  if (feature !== 'all') {
+    query = query.eq(FEATURE_COLUMN[feature], true)
+  }
+
+  switch (sort) {
+    case 'oldest':
+      query = query.order('created_at', { ascending: true })
+      break
+    case 'name':
+      query = query.order('name', { ascending: true })
+      break
+    case 'status':
+      query = query
+        .order('is_active', { ascending: false })
+        .order('created_at', { ascending: false })
+      break
+    case 'recent':
+    default:
+      query = query.order('created_at', { ascending: false })
+      break
+  }
+
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { data, count, error } = await query
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  const { data, count, error } = await query.range(from, to)
 
   if (error) {
     console.error('Error fetching tenants:', error)

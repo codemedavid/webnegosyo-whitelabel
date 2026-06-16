@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,7 @@ import {
   reorderCustomerFormFieldsAction,
 } from '@/app/actions/order-types'
 import { toast } from 'sonner'
+import { getAdvanceOrderConfig, formatLeadTime } from '@/lib/advance-order-utils'
 import type { OrderType, CustomerFormField } from '@/types/database'
 
 interface OrderTypeDetailProps {
@@ -68,6 +69,8 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<CustomerFormField | null>(null)
 
+  const advanceConfig = getAdvanceOrderConfig(orderType)
+
   const [formData, setFormData] = useState({
     name: orderType.name,
     description: orderType.description || '',
@@ -76,6 +79,11 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     service_charge_enabled: orderType.service_charge_enabled ?? false,
     service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
     service_charge_value: orderType.service_charge_value ?? 0,
+    advance_order_enabled: advanceConfig.enabled,
+    advance_order_allow_asap: advanceConfig.allowAsap,
+    advance_order_lead_time_minutes: advanceConfig.leadTimeMinutes,
+    advance_order_max_days_ahead: advanceConfig.maxDaysAhead,
+    advance_order_slot_interval_minutes: advanceConfig.slotIntervalMinutes,
   })
 
   const [formFields, setFormFields] = useState<CustomerFormField[]>(
@@ -99,6 +107,12 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           service_charge_enabled: formData.service_charge_enabled,
           service_charge_type: formData.service_charge_type,
           service_charge_value: formData.service_charge_value,
+          advance_order_enabled: formData.advance_order_enabled,
+          advance_order_allow_asap: formData.advance_order_allow_asap,
+          // Clamp to the Zod-accepted ranges so a blank/out-of-range field never produces a cryptic save error.
+          advance_order_lead_time_minutes: Math.min(10080, Math.max(0, Math.round(Number(formData.advance_order_lead_time_minutes) || 0))),
+          advance_order_max_days_ahead: Math.min(60, Math.max(0, Math.round(Number(formData.advance_order_max_days_ahead) || 0))),
+          advance_order_slot_interval_minutes: Math.min(240, Math.max(5, Math.round(Number(formData.advance_order_slot_interval_minutes) || 30))),
         }
       )
 
@@ -300,6 +314,97 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                       {formData.service_charge_type === 'percentage'
                         ? `${formData.service_charge_value}% will be added to the order subtotal`
                         : `₱${formData.service_charge_value.toFixed(2)} will be added to every order`}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Advance Orders / Scheduling */}
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="advance_order_enabled" className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4" />
+                    Advance Orders
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Let customers schedule this order type for later
+                  </p>
+                </div>
+                <Switch
+                  id="advance_order_enabled"
+                  checked={formData.advance_order_enabled}
+                  onCheckedChange={(checked) => setFormData({ ...formData, advance_order_enabled: checked })}
+                />
+              </div>
+
+              {formData.advance_order_enabled && (
+                <div className="space-y-4 pl-1">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="advance_order_allow_asap">Allow ASAP (immediate) orders</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {formData.advance_order_allow_asap
+                          ? 'Customers can order now or schedule for later'
+                          : 'Schedule-only — no immediate orders (e.g., catering)'}
+                      </p>
+                    </div>
+                    <Switch
+                      id="advance_order_allow_asap"
+                      checked={formData.advance_order_allow_asap}
+                      onCheckedChange={(checked) => setFormData({ ...formData, advance_order_allow_asap: checked })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="advance_order_lead_time_minutes">Minimum lead time (minutes)</Label>
+                    <Input
+                      id="advance_order_lead_time_minutes"
+                      type="number"
+                      min="0"
+                      max="10080"
+                      step="5"
+                      value={formData.advance_order_lead_time_minutes}
+                      onChange={(e) => setFormData({ ...formData, advance_order_lead_time_minutes: Number(e.target.value) || 0 })}
+                      placeholder="e.g., 30"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Earliest a scheduled order can be picked up: {formatLeadTime(formData.advance_order_lead_time_minutes)} from now
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="advance_order_max_days_ahead">Schedule up to (days ahead)</Label>
+                    <Input
+                      id="advance_order_max_days_ahead"
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="1"
+                      value={formData.advance_order_max_days_ahead}
+                      onChange={(e) => setFormData({ ...formData, advance_order_max_days_ahead: Number(e.target.value) || 0 })}
+                      placeholder="e.g., 7"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      How far in advance customers can book a slot
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="advance_order_slot_interval_minutes">Time-slot interval (minutes)</Label>
+                    <Input
+                      id="advance_order_slot_interval_minutes"
+                      type="number"
+                      min="5"
+                      max="240"
+                      step="5"
+                      value={formData.advance_order_slot_interval_minutes}
+                      onChange={(e) => setFormData({ ...formData, advance_order_slot_interval_minutes: Number(e.target.value) || 0 })}
+                      placeholder="e.g., 30"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Spacing between selectable pickup times
                     </p>
                   </div>
                 </div>

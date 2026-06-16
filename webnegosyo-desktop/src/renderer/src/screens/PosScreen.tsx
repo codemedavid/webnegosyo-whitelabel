@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchCategories, fetchMenuItems } from '../lib/supabase-queries'
+import { getCachedCatalog, refreshCatalog } from '../lib/catalog-cache'
 import type { Category, MenuItem } from '../lib/menu-types'
 import { useAuthStore } from '../stores/auth-store'
 import { useCartStore } from '../stores/cart-store'
@@ -33,14 +33,41 @@ export function PosScreen({ onToast }: PosScreenProps): React.JSX.Element {
 
   useEffect(() => {
     if (!tenantId) return
+    let cancelled = false
     setLoading(true)
-    Promise.all([fetchCategories(tenantId), fetchMenuItems(tenantId)])
-      .then(([cats, menu]) => {
-        setCategories(cats)
-        setItems(menu)
-      })
-      .catch((err) => onToast(err instanceof Error ? err.message : 'Failed to load menu', true))
-      .finally(() => setLoading(false))
+
+    // Stale-while-revalidate: paint the cached snapshot instantly (works fully
+    // offline), then refresh from Supabase in the background when reachable.
+    void (async () => {
+      const cached = await getCachedCatalog(tenantId)
+      let hadCache = false
+      if (cached && !cancelled) {
+        hadCache = true
+        setCategories(cached.categories as Category[])
+        setItems(cached.menuItems as MenuItem[])
+        setLoading(false)
+      }
+
+      try {
+        const fresh = await refreshCatalog(tenantId)
+        if (cancelled) return
+        setCategories(fresh.categories as Category[])
+        setItems(fresh.menuItems as MenuItem[])
+        setLoading(false)
+      } catch {
+        // Refresh failed (offline). Keep showing the cache if we have one;
+        // otherwise tell the user the menu must be loaded online once.
+        if (cancelled) return
+        if (!hadCache) {
+          onToast('Offline — no saved menu yet. Connect once to load the menu.', true)
+        }
+        setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [tenantId, onToast])
 
   const visibleItems = useMemo(() => {
