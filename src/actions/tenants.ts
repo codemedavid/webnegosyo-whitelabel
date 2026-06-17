@@ -8,10 +8,20 @@ import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
+
+// Distance-based delivery columns. Generated Supabase types lag the migration, so we widen
+// the insert/update payloads locally (same approach as src/lib/tenants-service.ts).
+type DeliveryFeeColumns = {
+  distance_delivery_enabled?: boolean
+  delivery_price_per_km?: number | null
+  delivery_min_fee?: number | null
+  delivery_radius_km?: number | null
+}
 
 /**
  * Verify the current user is a superadmin
@@ -71,7 +81,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: 'Slug is already taken' }
     }
 
-    const insertPayload: TenantsInsert = {
+    const insertPayload: TenantsInsert & DeliveryFeeColumns = {
       name: parsed.name,
       slug: parsed.slug,
       domain: parsed.domain || undefined,
@@ -142,6 +152,11 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       lalamove_market: parsed.lalamove_market || undefined,
       lalamove_service_type: parsed.lalamove_service_type || undefined,
       lalamove_sandbox: parsed.lalamove_sandbox,
+      // Distance-based delivery fee
+      distance_delivery_enabled: parsed.distance_delivery_enabled,
+      delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
+      delivery_min_fee: parsed.delivery_min_fee ?? undefined,
+      delivery_radius_km: parsed.delivery_radius_km ?? undefined,
       // Convex / Mobile App
       convex_deployment_url: parsed.convex_deployment_url || undefined,
       convex_deploy_key: parsed.convex_deploy_key || undefined,
@@ -215,7 +230,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     return { error: 'Slug is already taken' }
   }
 
-  const updatePayload: TenantsUpdate = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain || undefined,
@@ -286,6 +301,11 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     lalamove_market: parsed.lalamove_market || undefined,
     lalamove_service_type: parsed.lalamove_service_type || undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    // Distance-based delivery fee
+    distance_delivery_enabled: parsed.distance_delivery_enabled,
+    delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
+    delivery_min_fee: parsed.delivery_min_fee ?? undefined,
+    delivery_radius_km: parsed.delivery_radius_km ?? undefined,
     // Convex / Mobile App
     convex_deployment_url: parsed.convex_deployment_url || undefined,
     convex_deploy_key: parsed.convex_deploy_key || undefined,
@@ -379,6 +399,72 @@ export async function updateTenantBrandingForAdminAction(tenantId: string, input
   if (updated?.slug) {
     revalidatePath(`/${updated.slug}/admin/settings`)
     revalidatePath(`/${updated.slug}/menu`)
+  }
+
+  return { success: true }
+}
+
+// Allow tenant admins to update distance-based delivery + store-location fields for their own tenant
+const deliveryUpdateSchema = z.object({
+  distance_delivery_enabled: z.boolean(),
+  delivery_price_per_km: z.number().min(0).nullable(),
+  delivery_min_fee: z.number().min(0).nullable(),
+  delivery_radius_km: z.number().positive().nullable(),
+  restaurant_address: z.string().optional().or(z.literal('')),
+  restaurant_latitude: z.number().nullable(),
+  restaurant_longitude: z.number().nullable(),
+}).superRefine((val, ctx) => {
+  // When the feature is ON it must be fully configured, otherwise it silently fails open
+  // (no fee + no radius enforcement at checkout). Require pricing + store location.
+  if (!val.distance_delivery_enabled) return
+  if (val.delivery_price_per_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_price_per_km'], message: 'Price per km is required when distance-based delivery is enabled' })
+  }
+  if (val.delivery_min_fee == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_min_fee'], message: 'Minimum fee is required when distance-based delivery is enabled' })
+  }
+  if (val.delivery_radius_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_radius_km'], message: 'Delivery radius is required when distance-based delivery is enabled' })
+  }
+  if (val.restaurant_latitude == null || val.restaurant_longitude == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
+  }
+})
+
+export type DeliveryUpdateInput = z.infer<typeof deliveryUpdateSchema>
+
+export async function updateTenantDeliveryForAdminAction(tenantId: string, input: DeliveryUpdateInput) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const result = deliveryUpdateSchema.safeParse(input)
+  if (!result.success) {
+    return { error: result.error.issues[0]?.message ?? 'Invalid delivery settings' }
+  }
+  const parsed = result.data
+
+  const query = supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update(parsed as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  const { data, error } = await query
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  const slug = updated?.slug as string | undefined
+  if (slug) {
+    revalidatePath(`/${slug}/admin/settings`)
+    revalidatePath(`/${slug}/menu`)
   }
 
   return { success: true }
@@ -611,6 +697,46 @@ export async function updateTenantMessengerModeAction(
   }
 
   return { success: true, mode }
+}
+
+/**
+ * Update a tenant's operating hours + timezone. Tenant-admin (or superadmin) only.
+ * Operating hours drive advance-order scheduling slot windows; see src/lib/operating-hours.ts.
+ * Input is sanitized via normalizeOperatingHours so the stored JSON is always well-formed.
+ */
+export async function updateOperatingHoursAction(
+  tenantId: string,
+  operatingHours: OperatingHours | null,
+  timezone?: string
+) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const normalized = normalizeOperatingHours(operatingHours)
+  const tz = (timezone || '').trim() || 'Asia/Manila'
+
+  const { data, error } = await supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints (columns added via migration).
+    .update({ operating_hours: normalized, timezone: tz } as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+    revalidatePath(`/${updated.slug}/checkout`)
+  }
+
+  return { success: true, operating_hours: normalized, timezone: tz }
 }
 
 /**

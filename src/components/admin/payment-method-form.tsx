@@ -44,6 +44,7 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
     details: paymentMethod?.details || '',
     qr_code_url: paymentMethod?.qr_code_url || '',
     is_active: paymentMethod?.is_active ?? true,
+    require_payment_proof: paymentMethod?.require_payment_proof ?? false,
   })
 
   const [selectedOrderTypes, setSelectedOrderTypes] = useState<string[]>(
@@ -110,6 +111,7 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
             details: formData.details || undefined,
             qr_code_url: formData.qr_code_url || undefined,
             is_active: formData.is_active,
+            require_payment_proof: formData.require_payment_proof,
           }
         )
 
@@ -159,7 +161,8 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
           formData.details || undefined,
           formData.qr_code_url || undefined,
           formData.is_active,
-          selectedOrderTypes
+          selectedOrderTypes,
+          formData.require_payment_proof
         )
 
         if (!result.success) {
@@ -263,6 +266,26 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
             <Label htmlFor="is_active" className="cursor-pointer">
               Active (visible to customers)
             </Label>
+          </div>
+
+          {/* Require Payment Proof */}
+          <div className="flex items-start space-x-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+            <Checkbox
+              id="require_payment_proof"
+              checked={formData.require_payment_proof}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, require_payment_proof: checked as boolean })
+              }
+            />
+            <div className="grid gap-1 leading-none">
+              <Label htmlFor="require_payment_proof" className="cursor-pointer">
+                Require payment proof
+              </Label>
+              <p className="text-sm text-gray-500">
+                Customers must upload a screenshot or enter a reference number before they can place
+                the order with this method. Leave off for cash / cash on delivery.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

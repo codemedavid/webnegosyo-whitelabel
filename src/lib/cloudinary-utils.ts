@@ -183,6 +183,43 @@ export const cloudinaryPresets = {
 }
 
 /**
+ * Extract the Cloudinary public_id from a secure_url.
+ *
+ * Strips the host, the `/upload/` prefix, any chained transformation segments,
+ * the optional version segment (`v123...`), and the file extension.
+ * Returns null for non-Cloudinary or unparseable URLs.
+ *
+ * @example
+ * extractCloudinaryPublicId('https://res.cloudinary.com/demo/image/upload/v1/payment-proofs/abc.png')
+ * // => 'payment-proofs/abc'
+ */
+export function extractCloudinaryPublicId(url: string | null | undefined): string | null {
+    if (!url || !isCloudinaryUrl(url)) return null
+
+    const uploadIndex = url.indexOf('/upload/')
+    if (uploadIndex === -1) return null
+
+    const afterUpload = url.substring(uploadIndex + 8) // skip "/upload/"
+    const segments = afterUpload.split('/').filter(Boolean)
+
+    // Drop leading transformation segments (e.g. "w_200,c_fill") and the version segment.
+    let start = 0
+    while (start < segments.length && /^[a-z]+_[^/]+/.test(segments[start])) {
+        start += 1
+    }
+    if (start < segments.length && /^v\d+$/.test(segments[start])) {
+        start += 1
+    }
+
+    const remaining = segments.slice(start)
+    if (remaining.length === 0) return null
+
+    const publicIdWithExt = remaining.join('/')
+    const lastDot = publicIdWithExt.lastIndexOf('.')
+    return lastDot > 0 ? publicIdWithExt.substring(0, lastDot) : publicIdWithExt
+}
+
+/**
  * Generate srcset for responsive images
  */
 export function generateCloudinarySrcSet(

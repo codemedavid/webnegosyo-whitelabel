@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toggleOrderTypeEnabledAction, deleteOrderTypeAction, reorderOrderTypesAction } from '@/app/actions/order-types'
+import { toggleOrderTypeEnabledAction, toggleOrderTypeAdvanceOrderAction, deleteOrderTypeAction, reorderOrderTypesAction, initializeDefaultOrderTypesAction } from '@/app/actions/order-types'
 import { toast } from 'sonner'
 import { useEffect } from 'react'
 import type { OrderType, CustomerFormField } from '@/types/database'
@@ -45,6 +45,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [orderTypeToDelete, setOrderTypeToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(false)
   const [sortedOrderTypes, setSortedOrderTypes] = useState(
     [...orderTypes].sort((a, b) => a.order_index - b.order_index)
   )
@@ -63,6 +64,41 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
     } else {
       toast.error(result.error || 'Failed to update order type')
     }
+  }
+
+  const handleToggleAdvanceOrder = async (orderTypeId: string, currentEnabled: boolean) => {
+    const nextEnabled = !currentEnabled
+
+    // Optimistic local update
+    setSortedOrderTypes(prev =>
+      prev.map(ot => (ot.id === orderTypeId ? { ...ot, advance_order_enabled: nextEnabled } : ot))
+    )
+
+    const result = await toggleOrderTypeAdvanceOrderAction(orderTypeId, tenantId, tenantSlug, nextEnabled)
+
+    if (result.success) {
+      toast.success(`Pre-order ${nextEnabled ? 'enabled' : 'disabled'}`)
+      router.refresh()
+    } else {
+      // Revert optimistic update on failure
+      setSortedOrderTypes(prev =>
+        prev.map(ot => (ot.id === orderTypeId ? { ...ot, advance_order_enabled: currentEnabled } : ot))
+      )
+      toast.error(result.error || 'Failed to update pre-order')
+    }
+  }
+
+  const handleInitializeDefaults = async () => {
+    setIsInitializing(true)
+    const result = await initializeDefaultOrderTypesAction(tenantId, tenantSlug)
+
+    if (result.success) {
+      toast.success('Default order types created')
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to create default order types')
+    }
+    setIsInitializing(false)
   }
 
   const handleDelete = async () => {
@@ -113,13 +149,23 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Plus className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No order types configured</h3>
-          <p className="text-muted-foreground mb-4">
-            Configure your order types to allow customers to choose how they want to receive their orders
+          <p className="text-muted-foreground mb-4 text-center">
+            Get started instantly with Dine In, Pick Up, and Delivery — each preconfigured with the
+            right customer fields. Or add a single custom order type yourself.
           </p>
-          <Button onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Order Type
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            <Button onClick={handleInitializeDefaults} disabled={isInitializing}>
+              <Plus className="mr-2 h-4 w-4" />
+              {isInitializing ? 'Creating...' : 'Add default order types'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}
+              disabled={isInitializing}
+            >
+              Add custom order type
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
@@ -145,9 +191,17 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                     <CardTitle className="text-sm sm:text-base truncate">{orderType.name}</CardTitle>
                   </div>
                 </div>
-                <Badge className={`${orderTypeColors[orderType.type]} text-[10px] flex-shrink-0`} variant="outline">
-                  {orderType.type.replace('_', ' ')}
-                </Badge>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <Badge className={`${orderTypeColors[orderType.type]} text-[10px]`} variant="outline">
+                    {orderType.type.replace('_', ' ')}
+                  </Badge>
+                  {orderType.advance_order_enabled && (
+                    <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-[10px]" variant="outline">
+                      <CalendarClock className="mr-0.5 h-2.5 w-2.5" />
+                      Pre-order
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardHeader>
             
@@ -199,6 +253,24 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                     )}
                   </Button>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 rounded-md bg-purple-50/60 px-2 py-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <CalendarClock className="h-3.5 w-3.5 text-purple-700 flex-shrink-0" />
+                  <span className="text-[11px] text-muted-foreground truncate">
+                    Let customers schedule this for later
+                  </span>
+                </div>
+                <Button
+                  variant={orderType.advance_order_enabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleToggleAdvanceOrder(orderType.id, orderType.advance_order_enabled)}
+                  className={`text-[10px] h-6 px-2 flex-shrink-0 ${orderType.advance_order_enabled ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'border-purple-300 text-purple-700'}`}
+                  title="Toggle pre-order (scheduled orders)"
+                >
+                  {orderType.advance_order_enabled ? 'Pre-order On' : 'Pre-order Off'}
+                </Button>
               </div>
 
               <div className="flex gap-2">

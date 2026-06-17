@@ -15,6 +15,8 @@ export interface CompletedOrderData {
   messengerMessage: string
   messengerUrl: string
   orderId: string | null
+  /** Human label for an advance/scheduled order, e.g. "Tue, Jun 18 · 5:00 PM"; null = ASAP. */
+  scheduledForLabel?: string | null
 }
 
 interface OrderStore {

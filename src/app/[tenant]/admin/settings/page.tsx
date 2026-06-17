@@ -12,6 +12,8 @@ import { FacebookConnectionCard } from '@/components/admin/facebook-connection-c
 import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 import { FlashScreenCard } from '@/components/admin/flash-screen-card'
 import { FooterManagerCard } from '@/components/admin/footer/footer-manager-card'
+import { OperatingHoursCard } from '@/components/admin/operating-hours-card'
+import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
 
 export default async function SettingsPage({
   params,
@@ -400,6 +402,29 @@ export default async function SettingsPage({
           // This enables pre-filled message mode by default for simpler setups
           tenant.facebook_page_id ? 'webhook' : 'direct'
         )}
+      />
+
+      {/* Operating Hours (drives advance-order scheduling slots) */}
+      <OperatingHoursCard
+        tenantId={tenant.id}
+        initialHours={tenant.operating_hours ?? null}
+        initialTimezone={tenant.timezone ?? null}
+      />
+
+      {/* Distance-Based Delivery Fee */}
+      <DeliverySettingsForm
+        tenantId={tenant.id}
+        tenantSlug={tenant.slug}
+        mapboxEnabled={tenant.mapbox_enabled ?? true}
+        initial={{
+          distance_delivery_enabled: tenant.distance_delivery_enabled ?? false,
+          delivery_price_per_km: tenant.delivery_price_per_km ?? null,
+          delivery_min_fee: tenant.delivery_min_fee ?? null,
+          delivery_radius_km: tenant.delivery_radius_km ?? null,
+          restaurant_address: tenant.restaurant_address ?? '',
+          restaurant_latitude: tenant.restaurant_latitude ?? null,
+          restaurant_longitude: tenant.restaurant_longitude ?? null,
+        }}
       />
 
       {tenant.flash_screen_feature_enabled && (

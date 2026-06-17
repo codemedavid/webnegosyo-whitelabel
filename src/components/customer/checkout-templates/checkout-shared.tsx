@@ -18,6 +18,8 @@ import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { PaymentProofField } from '@/components/customer/payment-proof-field'
+import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
 
 /** Full-screen loading state (shared across designs). */
 export function CheckoutLoading() {
@@ -328,9 +330,18 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
     showPaymentDetails, selectedPaymentMethod, paymentMethods, total, deliveryFee,
     serviceChargeAmount, isProcessing, handleCheckout, setShowPaymentDetails,
     handleCopyText, copiedText,
+    paymentProofUrl, paymentProofReference, setPaymentProofReference,
+    handlePaymentProofUploaded, handleRemovePaymentProof,
   } = checkout
 
   if (!showPaymentDetails || !selectedPaymentMethod) return null
+
+  const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod) ?? null
+  const proofRequired = isPaymentProofRequired(selectedMethod)
+  const proofSatisfied = isPaymentProofSatisfied(selectedMethod, {
+    screenshotUrl: paymentProofUrl,
+    reference: paymentProofReference,
+  })
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -438,6 +449,16 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
             </div>
           </div>
 
+          {/* Payment Proof (screenshot and/or reference number) */}
+          <PaymentProofField
+            required={proofRequired}
+            screenshotUrl={paymentProofUrl}
+            reference={paymentProofReference}
+            onUploaded={handlePaymentProofUploaded}
+            onRemove={handleRemovePaymentProof}
+            onReferenceChange={setPaymentProofReference}
+          />
+
           {/* Important Note */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -467,7 +488,7 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
             <Button
               size="lg"
               onClick={handleCheckout}
-              disabled={isProcessing}
+              disabled={isProcessing || (proofRequired && !proofSatisfied)}
               className="flex-1 bg-orange-500 hover:bg-orange-600"
             >
               {isProcessing ? (

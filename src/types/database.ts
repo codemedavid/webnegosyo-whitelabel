@@ -102,6 +102,11 @@ export interface Tenant {
   restaurant_address?: string;
   restaurant_latitude?: number;
   restaurant_longitude?: number;
+  // Distance-based delivery fee (non-Lalamove path; Lalamove takes precedence when enabled)
+  distance_delivery_enabled?: boolean;
+  delivery_price_per_km?: number | null;
+  delivery_min_fee?: number | null;
+  delivery_radius_km?: number | null;
   // Banners
   announcement_text?: string;
   announcement_bg_color?: string;
@@ -184,6 +189,10 @@ export interface Tenant {
   // Email notifications
   admin_email?: string | null;
   email_notifications_enabled?: boolean;
+  // Operating hours (per-weekday open/close + closed days), keyed "0"=Sun.."6"=Sat.
+  // Drives advance-order slot windows. null = unset (advance scheduler uses default 08:00–22:00).
+  operating_hours?: Record<string, { closed: boolean; open: string; close: string }> | null;
+  timezone?: string | null;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
@@ -460,6 +469,8 @@ export interface PaymentMethod {
   qr_code_url?: string;
   is_active: boolean;
   order_index: number;
+  /** When true, checkout blocks until the customer provides a screenshot or reference number. */
+  require_payment_proof?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -512,6 +523,11 @@ export interface Order {
   payment_method_qr_code_url?: string;
   service_charge_amount?: number;
   payment_status?: 'pending' | 'paid' | 'failed' | 'verified';
+  // Payment proof (screenshot and/or reference number captured at checkout)
+  payment_proof_url?: string | null;
+  payment_proof_public_id?: string | null;
+  payment_proof_reference?: string | null;
+  payment_proof_uploaded_at?: string | null;
   created_at: string;
   updated_at: string;
 }

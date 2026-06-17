@@ -12,6 +12,7 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
+import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -86,7 +87,12 @@ export async function createOrderAction(
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
   serviceChargeAmount?: number,
-  scheduledForISO?: string
+  scheduledForISO?: string,
+  paymentProof?: {
+    url?: string | null
+    publicId?: string | null
+    reference?: string | null
+  }
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -102,7 +108,7 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active')
+      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -166,6 +172,54 @@ export async function createOrderAction(
       }
     }
 
+    // ── Server-side distance-based delivery fee (authoritative) ──
+    // For tenants on the non-Lalamove distance path, recompute the fee from the
+    // store↔customer straight-line distance + tenant config, and reject out-of-range
+    // addresses. The client-sent deliveryFee is never trusted here. Lalamove tenants keep
+    // their quotation-derived fee (it can't be recomputed without re-quoting Lalamove).
+    let effectiveDeliveryFee = deliveryFee
+    const distanceCfg = resolveDistanceDeliveryConfig({
+      enabled: tenantConfig.distance_delivery_enabled === true && tenantConfig.lalamove_enabled !== true,
+      perKm: tenantConfig.delivery_price_per_km,
+      minFee: tenantConfig.delivery_min_fee,
+      radiusKm: tenantConfig.delivery_radius_km,
+    })
+    if (distanceCfg && orderTypeId) {
+      const { data: otTypeRow } = await supabaseAdmin
+        .from('order_types')
+        .select('type')
+        .eq('id', orderTypeId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      const isDeliveryOrder = (otTypeRow as { type?: string } | null)?.type === 'delivery'
+      if (!isDeliveryOrder) {
+        // A distance tenant should never carry a delivery fee on a non-delivery order
+        // (pickup/dine-in). Be fully authoritative — ignore any client-sent fee.
+        effectiveDeliveryFee = undefined
+      } else {
+        const storeLat = Number(tenantConfig.restaurant_latitude)
+        const storeLng = Number(tenantConfig.restaurant_longitude)
+        const cd = (effectiveCustomerData ?? {}) as Record<string, unknown>
+        const destLat = Number(cd.delivery_lat)
+        const destLng = Number(cd.delivery_lng)
+        if (!Number.isFinite(storeLat) || !Number.isFinite(storeLng)) {
+          return { success: false, error: 'Delivery is unavailable: the store location has not been configured.' }
+        }
+        if (!Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+          return { success: false, error: 'Please select your delivery address from the suggestions so we can calculate the delivery fee.' }
+        }
+        const quote = quoteDistanceDelivery(
+          { lat: storeLat, lng: storeLng },
+          { lat: destLat, lng: destLng },
+          distanceCfg
+        )
+        if (!quote.withinRadius) {
+          return { success: false, error: `Sorry, this address is outside our delivery area (${distanceCfg.radiusKm} km).` }
+        }
+        effectiveDeliveryFee = quote.fee
+      }
+    }
+
     // PostHog email notification - awaited to ensure flush completes
     const firePostHogNotification = async (orderId: string, orderItems: typeof items) => {
       if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
@@ -195,8 +249,8 @@ export async function createOrderAction(
               addons: i.addons,
               subtotal: i.subtotal,
             })),
-            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
-            deliveryFee: deliveryFee ?? 0,
+            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (effectiveDeliveryFee ?? 0) + (serviceChargeAmount ?? 0),
+            deliveryFee: effectiveDeliveryFee ?? 0,
             orderType: orderTypeName,
             paymentMethod: paymentMethodName ?? null,
             // Surface the human "scheduled_for_label" but drop the raw UTC ISO from the email payload.
@@ -252,6 +306,18 @@ export async function createOrderAction(
       }
     }
 
+    // Convex has no payment-proof columns, so proof rides in customerData (same
+    // pattern as advance-order schedule) to stay cross-tenant compatible.
+    const hasProof = Boolean(paymentProof?.url || paymentProof?.reference)
+    const convexCustomerData = hasProof
+      ? {
+          ...(effectiveCustomerData || {}),
+          payment_proof_url: paymentProof?.url || undefined,
+          payment_proof_public_id: paymentProof?.publicId || undefined,
+          payment_proof_reference: paymentProof?.reference || undefined,
+        }
+      : effectiveCustomerData
+
     if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
       // Route to Convex (prices already validated above)
       const result = await createOrderConvex(
@@ -261,8 +327,8 @@ export async function createOrderAction(
         items,
         customerInfo,
         orderTypeId,
-        effectiveCustomerData,
-        deliveryFee,
+        convexCustomerData,
+        effectiveDeliveryFee,
         lalamoveQuotationId,
         paymentMethodId,
         paymentMethodName,
@@ -284,14 +350,15 @@ export async function createOrderAction(
       customerInfo,
       orderTypeId,
       effectiveCustomerData,
-      deliveryFee,
+      effectiveDeliveryFee,
       lalamoveQuotationId,
       paymentMethodId,
       paymentMethodName,
       paymentMethodDetails,
       paymentMethodQrCodeUrl,
       serviceChargeAmount,
-      validatedScheduledISO
+      validatedScheduledISO,
+      paymentProof
     )
     // Return both order and token for secure public API access
     await firePostHogNotification(result.order.id, items)
@@ -330,6 +397,27 @@ export async function updatePaymentStatusAction(
     const { data, error } = await query
 
     if (error) throw error
+
+    // Storage hygiene: once payment is verified, purge the proof screenshot from
+    // Cloudinary and null its columns (the reference + timestamp are kept as a record).
+    if (paymentStatus === 'verified') {
+      const publicId = (data as { payment_proof_public_id?: string | null })?.payment_proof_public_id
+      if (publicId) {
+        try {
+          const { deleteCloudinaryAsset, isDeletablePaymentProofId } = await import('@/lib/cloudinary-server')
+          if (isDeletablePaymentProofId(publicId) && (await deleteCloudinaryAsset(publicId))) {
+            await supabase
+              .from('orders')
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .update({ payment_proof_url: null, payment_proof_public_id: null } as any)
+              .eq('id', orderId)
+              .eq('tenant_id', tenantId)
+          }
+        } catch (purgeError) {
+          console.warn('[updatePaymentStatusAction] Proof purge failed:', purgeError)
+        }
+      }
+    }
 
     revalidatePath(`/${tenantSlug}/admin/orders`)
     revalidatePath(`/${tenantSlug}/admin`)

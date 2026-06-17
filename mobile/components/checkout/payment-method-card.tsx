@@ -79,6 +79,23 @@ export function PaymentMethodCard({ method, isSelected, onSelect, checkoutTheme 
               {method.details}
             </Text>
           ) : null}
+          {method.require_payment_proof ? (
+            <View style={styles.proofBadge}>
+              <Ionicons
+                name="receipt-outline"
+                size={11}
+                color={isSelected ? colors.selectedText : colors.desc}
+              />
+              <Text
+                style={[
+                  styles.proofBadgeText,
+                  { color: isSelected ? colors.selectedText : colors.desc },
+                ]}
+              >
+                Payment proof required
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
       {isSelected && method.qr_code_url ? (
@@ -121,6 +138,8 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   name: { fontSize: 15, fontWeight: '600' },
   details: { fontSize: 13, marginTop: 2 },
+  proofBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  proofBadgeText: { fontSize: 11, fontWeight: '600' },
   qrContainer: {
     alignItems: 'center',
     marginTop: 14,

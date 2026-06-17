@@ -312,7 +312,12 @@ export async function createOrder(
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
   serviceChargeAmount?: number,
-  scheduledForISO?: string
+  scheduledForISO?: string,
+  paymentProof?: {
+    url?: string | null
+    publicId?: string | null
+    reference?: string | null
+  }
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -479,6 +484,10 @@ export async function createOrder(
       service_charge_amount: serviceChargeAmount || 0,
       payment_status: 'pending',
       status: 'pending',
+      payment_proof_url: paymentProof?.url || null,
+      payment_proof_public_id: paymentProof?.publicId || null,
+      payment_proof_reference: (paymentProof?.reference || '').trim().slice(0, MAX_FIELD_LENGTH) || null,
+      payment_proof_uploaded_at: (paymentProof?.url || paymentProof?.reference) ? new Date().toISOString() : null,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()

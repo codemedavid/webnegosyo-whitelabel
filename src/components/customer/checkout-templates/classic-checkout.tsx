@@ -155,41 +155,66 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   {/* Date + time pickers */}
                   {scheduleMode === 'scheduled' && (
                     <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/40 p-3.5 sm:p-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      {scheduleDates.length === 0 ? (
+                        <p className="text-sm text-gray-600">
+                          No advance times are available right now — please check back later or contact us.
+                        </p>
+                      ) : (
+                      <div className="space-y-3">
                         <div>
                           <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
                             <CalendarDays className="h-3.5 w-3.5" /> Date
                           </label>
-                          <select
-                            value={scheduleDate}
-                            onChange={(e) => handleScheduleDateChange(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          >
-                            {scheduleDates.map((d) => (
-                              <option key={d.value} value={d.value}>{d.label}</option>
-                            ))}
-                          </select>
+                          <div className="-mx-1 flex gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
+                            {scheduleDates.map((d) => {
+                              const selected = d.value === scheduleDate
+                              return (
+                                <button
+                                  key={d.value}
+                                  type="button"
+                                  onClick={() => handleScheduleDateChange(d.value)}
+                                  aria-pressed={selected}
+                                  className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 ${selected
+                                    ? 'border-orange-500 bg-orange-500 text-white'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-orange-300'}`}
+                                >
+                                  {d.label}
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
                         <div>
                           <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
                             <Clock className="h-3.5 w-3.5" /> Time
                           </label>
-                          <select
-                            value={scheduleTime}
-                            onChange={(e) => setScheduleTime(e.target.value)}
-                            disabled={timeSlots.length === 0}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-gray-100 disabled:text-gray-400"
-                          >
-                            {timeSlots.length === 0 ? (
-                              <option value="">No times available</option>
-                            ) : (
-                              timeSlots.map((s) => (
-                                <option key={s.value} value={s.value}>{s.label}</option>
-                              ))
-                            )}
-                          </select>
+                          {timeSlots.length === 0 ? (
+                            <p className="text-xs text-gray-500">
+                              No more times available for this day — please pick another date.
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                              {timeSlots.map((s) => {
+                                const selected = s.value === scheduleTime
+                                return (
+                                  <button
+                                    key={s.value}
+                                    type="button"
+                                    onClick={() => setScheduleTime(s.value)}
+                                    aria-pressed={selected}
+                                    className={`rounded-lg border px-2 py-2 text-center text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 ${selected
+                                      ? 'border-orange-500 bg-orange-500 text-white'
+                                      : 'border-gray-300 bg-white text-gray-700 hover:border-orange-300'}`}
+                                  >
+                                    {s.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
+                      )}
 
                       {timeSlots.length > 0 && scheduledForLabel ? (
                         <div className="mt-3 flex items-center gap-2 rounded-lg bg-white border border-orange-200 px-3 py-2.5">
@@ -199,10 +224,6 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                             <span className="font-semibold text-gray-900">{scheduledForLabel}</span>
                           </p>
                         </div>
-                      ) : timeSlots.length === 0 ? (
-                        <p className="mt-3 text-xs text-gray-500">
-                          No more times available for this day — please pick another date.
-                        </p>
                       ) : null}
 
                       {advanceConfig.leadTimeMinutes > 0 && (
@@ -236,14 +257,19 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                       <MapboxAddressAutocomplete
                         value={customerData[field.field_name] || ''}
                         onChange={(address, coordinates) => {
-                          setCustomerData(prev => ({
-                            ...prev,
-                            [field.field_name]: address,
-                            ...(coordinates && {
-                              delivery_lat: String(coordinates.lat),
-                              delivery_lng: String(coordinates.lng),
-                            }),
-                          }))
+                          setCustomerData(prev => {
+                            const next = { ...prev, [field.field_name]: address }
+                            if (coordinates) {
+                              next.delivery_lat = String(coordinates.lat)
+                              next.delivery_lng = String(coordinates.lng)
+                            } else {
+                              // Free-text edit without a fresh geocode: drop stale coords so the
+                              // fee path treats this as "no coordinates" and forces re-selection.
+                              delete next.delivery_lat
+                              delete next.delivery_lng
+                            }
+                            return next
+                          })
                         }}
                         placeholder={field.placeholder || 'Start typing your address...'}
                         required={field.is_required}

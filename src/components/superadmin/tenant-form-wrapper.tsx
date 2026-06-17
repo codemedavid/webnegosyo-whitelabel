@@ -91,6 +91,11 @@ interface TenantFormData {
   lalamove_market: string
   lalamove_service_type: string
   lalamove_sandbox: boolean
+  // Distance-based delivery fee (non-Lalamove; Lalamove takes precedence when enabled)
+  distance_delivery_enabled: boolean
+  delivery_price_per_km: string
+  delivery_min_fee: string
+  delivery_radius_km: string
   // Convex / Mobile App
   convex_deployment_url: string
   convex_deploy_key: string
@@ -1082,6 +1087,107 @@ function LalamoveSection({
   )
 }
 
+// Distance-Based Delivery Fee Section (non-Lalamove pricing path)
+function DistanceDeliverySection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  const lalamoveOverrides = formData.lalamove_enabled
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Distance-Based Delivery Fee</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="distance_delivery_enabled">Enable Distance-Based Delivery</Label>
+            <p className="text-sm text-muted-foreground">
+              Auto-calculate the delivery fee from the distance between the store and the
+              customer&apos;s address. Use this when the tenant is NOT using Lalamove.
+            </p>
+          </div>
+          <Switch
+            id="distance_delivery_enabled"
+            checked={formData.distance_delivery_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, distance_delivery_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+
+        {lalamoveOverrides && formData.distance_delivery_enabled && (
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Lalamove is enabled.</strong> Lalamove rates take
+              precedence, so this distance-based fee will be ignored until Lalamove is turned off.
+            </p>
+          </div>
+        )}
+
+        {formData.distance_delivery_enabled && (
+          <>
+            <Separator />
+
+            <p className="text-xs text-muted-foreground">
+              Fee = max(minimum fee, distance in km × price per km). The store location is set in the
+              Restaurant Address section above. Addresses beyond the radius are blocked from delivery.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="delivery_radius_km">Delivery Radius (km) *</Label>
+                <Input
+                  id="delivery_radius_km"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={formData.delivery_radius_km}
+                  onChange={(e) => setFormData({ ...formData, delivery_radius_km: e.target.value })}
+                  placeholder="15"
+                  disabled={isPending}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="delivery_price_per_km">Price per km *</Label>
+                <Input
+                  id="delivery_price_per_km"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.delivery_price_per_km}
+                  onChange={(e) => setFormData({ ...formData, delivery_price_per_km: e.target.value })}
+                  placeholder="15"
+                  disabled={isPending}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="delivery_min_fee">Minimum Fee *</Label>
+                <Input
+                  id="delivery_min_fee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.delivery_min_fee}
+                  onChange={(e) => setFormData({ ...formData, delivery_min_fee: e.target.value })}
+                  placeholder="49"
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Email Notifications Section
 function EmailNotificationsSection({
   formData,
@@ -1308,6 +1414,11 @@ export function TenantFormWrapper({
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    // Distance-based delivery fee
+    distance_delivery_enabled: tenant?.distance_delivery_enabled ?? false,
+    delivery_price_per_km: tenant?.delivery_price_per_km?.toString() || '',
+    delivery_min_fee: tenant?.delivery_min_fee?.toString() || '',
+    delivery_radius_km: tenant?.delivery_radius_km?.toString() || '',
     // Convex / Mobile App
     convex_deployment_url: tenant?.convex_deployment_url || '',
     convex_deploy_key: tenant?.convex_deploy_key || '',
@@ -1375,6 +1486,11 @@ export function TenantFormWrapper({
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      // Distance-based delivery fee
+      distance_delivery_enabled: formData.distance_delivery_enabled,
+      delivery_price_per_km: formData.delivery_price_per_km ? parseFloat(formData.delivery_price_per_km) : null,
+      delivery_min_fee: formData.delivery_min_fee ? parseFloat(formData.delivery_min_fee) : null,
+      delivery_radius_km: formData.delivery_radius_km ? parseFloat(formData.delivery_radius_km) : null,
       // Convex / Mobile App
       convex_deployment_url: formData.convex_deployment_url || undefined,
       convex_deploy_key: formData.convex_deploy_key || undefined,
@@ -1594,6 +1710,11 @@ export function TenantFormWrapper({
             isPending={isPending}
           />
           <LalamoveSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <DistanceDeliverySection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
