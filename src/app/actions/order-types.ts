@@ -16,6 +16,7 @@ import {
   deleteCustomerFormField,
   reorderCustomerFormFields,
   getAllOrderTypesWithFormFields,
+  initializeOrderTypesForTenant,
 } from '@/lib/order-types-service'
 
 // ============================================
@@ -198,6 +199,17 @@ export async function reorderOrderTypesAction(
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder order types' }
+  }
+}
+
+export async function initializeDefaultOrderTypesAction(tenantId: string, tenantSlug: string) {
+  try {
+    const result = await initializeOrderTypesForTenant(tenantId)
+    revalidatePath(`/${tenantSlug}/admin/order-types`)
+    revalidatePath(`/${tenantSlug}/admin`)
+    return { success: true, ...result }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to create default order types' }
   }
 }
 

@@ -224,6 +224,8 @@ export async function toggleOrderTypeAdvanceOrder(orderTypeId: string, tenantId:
  * This can be called manually or automatically
  */
 export async function initializeOrderTypesForTenant(tenantId: string) {
+  await verifyTenantAdmin(tenantId)
+
   const supabase = await createClient()
 
   // Check if order types already exist

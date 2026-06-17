@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toggleOrderTypeEnabledAction, toggleOrderTypeAdvanceOrderAction, deleteOrderTypeAction, reorderOrderTypesAction } from '@/app/actions/order-types'
+import { toggleOrderTypeEnabledAction, toggleOrderTypeAdvanceOrderAction, deleteOrderTypeAction, reorderOrderTypesAction, initializeDefaultOrderTypesAction } from '@/app/actions/order-types'
 import { toast } from 'sonner'
 import { useEffect } from 'react'
 import type { OrderType, CustomerFormField } from '@/types/database'
@@ -45,6 +45,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [orderTypeToDelete, setOrderTypeToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(false)
   const [sortedOrderTypes, setSortedOrderTypes] = useState(
     [...orderTypes].sort((a, b) => a.order_index - b.order_index)
   )
@@ -85,6 +86,19 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
       )
       toast.error(result.error || 'Failed to update pre-order')
     }
+  }
+
+  const handleInitializeDefaults = async () => {
+    setIsInitializing(true)
+    const result = await initializeDefaultOrderTypesAction(tenantId, tenantSlug)
+
+    if (result.success) {
+      toast.success('Default order types created')
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to create default order types')
+    }
+    setIsInitializing(false)
   }
 
   const handleDelete = async () => {
@@ -135,13 +149,23 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Plus className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No order types configured</h3>
-          <p className="text-muted-foreground mb-4">
-            Configure your order types to allow customers to choose how they want to receive their orders
+          <p className="text-muted-foreground mb-4 text-center">
+            Get started instantly with Dine In, Pick Up, and Delivery — each preconfigured with the
+            right customer fields. Or add a single custom order type yourself.
           </p>
-          <Button onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Order Type
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            <Button onClick={handleInitializeDefaults} disabled={isInitializing}>
+              <Plus className="mr-2 h-4 w-4" />
+              {isInitializing ? 'Creating...' : 'Add default order types'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}
+              disabled={isInitializing}
+            >
+              Add custom order type
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
