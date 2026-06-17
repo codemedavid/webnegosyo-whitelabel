@@ -299,6 +299,19 @@ export function getCheckoutPalette(
 }
 
 /**
+ * Tenant columns that hold the cart & checkout PAGE palette. Any tenant query
+ * whose result feeds the branding editor (e.g. the menu-page projection in
+ * `menu-server.tsx`) MUST select these — otherwise saved values never
+ * round-trip back into the editor and it looks like the save "didn't stick".
+ */
+export const CART_CHECKOUT_PAGE_COLOR_COLUMNS: readonly string[] = [
+  'cart_background_color', 'cart_card_background_color', 'cart_text_color', 'cart_muted_text_color',
+  'cart_accent_color', 'cart_button_color', 'cart_button_text_color', 'cart_border_color', 'cart_summary_background_color',
+  'checkout_background_color', 'checkout_card_background_color', 'checkout_text_color', 'checkout_muted_text_color',
+  'checkout_accent_color', 'checkout_button_color', 'checkout_button_text_color', 'checkout_border_color', 'checkout_summary_background_color',
+]
+
+/**
  * Generate CSS custom properties for tenant branding
  */
 export function generateBrandingCSS(branding: BrandingColors): React.CSSProperties {

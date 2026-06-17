@@ -32,7 +32,11 @@ export async function getMenuData(tenantSlug: string) {
       mobile_grid_columns,
       menu_main_header_text_color, menu_main_header_subtitle_color,
       menu_category_header_color, menu_category_active_color, menu_category_inactive_color,
-      menu_cart_badge_background_color, menu_cart_badge_text_color
+      menu_cart_badge_background_color, menu_cart_badge_text_color,
+      cart_background_color, cart_card_background_color, cart_text_color, cart_muted_text_color,
+      cart_accent_color, cart_button_color, cart_button_text_color, cart_border_color, cart_summary_background_color,
+      checkout_background_color, checkout_card_background_color, checkout_text_color, checkout_muted_text_color,
+      checkout_accent_color, checkout_button_color, checkout_button_text_color, checkout_border_color, checkout_summary_background_color
     `)
     .eq('slug', tenantSlug)
     .eq('is_active', true)
