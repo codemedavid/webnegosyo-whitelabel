@@ -10,7 +10,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { setAlpha } from '@/lib/branding-utils'
+import { getCartPalette, setAlpha } from '@/lib/branding-utils'
 import { formatPrice } from '@/lib/cart-utils'
 import {
   CartItemRow,
@@ -27,13 +27,14 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
 
   if (!tenant) return null
 
-  const accent = cart.branding.buttonPrimary || cart.branding.primary || '#111111'
+  const palette = getCartPalette(cart.tenant, cart.branding)
+  const accent = palette.accent
   const isEmpty = items.length === 0 && bundleItems.length === 0
   const bundles = bundleItems.filter((bi) => Array.isArray(bi.slots))
   const itemCount = items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Sticky compact header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
@@ -45,7 +46,9 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h1 className="flex-1 text-base font-bold text-gray-900">Your Cart</h1>
+          <h1 className="flex-1 text-base font-bold text-gray-900" style={{ color: palette.text }}>
+            Your Cart
+          </h1>
           {!isEmpty && (
             <span
               className="inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-bold"
@@ -75,8 +78,14 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
             </div>
 
             {/* Order summary */}
-            <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm border border-gray-100">
-              <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+            <div
+              className="mt-4 rounded-2xl bg-white p-5 shadow-sm border border-gray-100"
+              style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
+            >
+              <h2
+                className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500"
+                style={{ color: palette.mutedText }}
+              >
                 Order Summary
               </h2>
               <CartTotalsRows cart={cart} />
@@ -90,11 +99,17 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
           {/* Fixed bottom checkout bar */}
           <div
             className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            style={{
+              paddingBottom: 'env(safe-area-inset-bottom)',
+              backgroundColor: palette.cardBackground,
+              borderColor: palette.border,
+            }}
           >
             <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
               <div className="flex shrink-0 flex-col">
-                <span className="text-xs font-medium text-gray-500">Total</span>
+                <span className="text-xs font-medium text-gray-500" style={{ color: palette.mutedText }}>
+                  Total
+                </span>
                 <span className="text-lg font-bold" style={{ color: accent }}>
                   {formatPrice(total)}
                 </span>

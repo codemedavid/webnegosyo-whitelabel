@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
+import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -37,16 +38,19 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
   if (!tenant) return null
 
+  const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
+  const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
-            <p className="text-sm text-gray-500">Complete your order</p>
+            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Checkout</h1>
+            <p className="text-sm text-gray-500" style={{ color: palette.mutedText }}>Complete your order</p>
           </div>
         </div>
       </header>
@@ -55,10 +59,10 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         <div className="mx-auto max-w-4xl space-y-8">
           {/* Order Type + Advance Order Scheduling */}
           {orderTypes.length > 0 && (
-            <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm">
+            <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <div className="mb-4 sm:mb-5">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">How would you like to receive your order?</h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900" style={{ color: palette.text }}>How would you like to receive your order?</h2>
+                <p className="text-sm text-gray-500 mt-1" style={{ color: palette.mutedText }}>
                   Choose a fulfillment method{advanceConfig.enabled ? ' and when you want it' : ''}.
                 </p>
               </div>
@@ -110,8 +114,8 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {advanceConfig.enabled && (
                 <div data-advance-order className="mt-5 sm:mt-6 border-t border-gray-100 pt-5 sm:pt-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <Clock className="h-5 w-5 text-orange-500" />
-                    <h3 className="text-base sm:text-lg font-bold text-gray-900">When would you like it?</h3>
+                    <Clock className="h-5 w-5 text-orange-500" style={{ color: accentColor }} />
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900" style={{ color: palette.text }}>When would you like it?</h3>
                   </div>
 
                   <div className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -127,8 +131,8 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                           <Zap className="h-5 w-5" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block font-semibold text-sm text-gray-900">As soon as possible</span>
-                          <span className="block text-xs text-gray-500 mt-0.5">Prepare my order now</span>
+                          <span className="block font-semibold text-sm text-gray-900" style={{ color: palette.text }}>As soon as possible</span>
+                          <span className="block text-xs text-gray-500 mt-0.5" style={{ color: palette.mutedText }}>Prepare my order now</span>
                         </span>
                       </button>
                     )}
@@ -144,8 +148,8 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                         <CalendarClock className="h-5 w-5" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block font-semibold text-sm text-gray-900">Schedule for later</span>
-                        <span className="block text-xs text-gray-500 mt-0.5">
+                        <span className="block font-semibold text-sm text-gray-900" style={{ color: palette.text }}>Schedule for later</span>
+                        <span className="block text-xs text-gray-500 mt-0.5" style={{ color: palette.mutedText }}>
                           {advanceConfig.allowAsap ? 'Pick a date & time' : 'Advance order required'}
                         </span>
                       </span>
@@ -156,13 +160,13 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   {scheduleMode === 'scheduled' && (
                     <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/40 p-3.5 sm:p-4">
                       {scheduleDates.length === 0 ? (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-600" style={{ color: palette.mutedText }}>
                           No advance times are available right now — please check back later or contact us.
                         </p>
                       ) : (
                       <div className="space-y-3">
                         <div>
-                          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
+                          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5" style={{ color: palette.mutedText }}>
                             <CalendarDays className="h-3.5 w-3.5" /> Date
                           </label>
                           <div className="-mx-1 flex gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
@@ -185,11 +189,11 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                           </div>
                         </div>
                         <div>
-                          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
+                          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5" style={{ color: palette.mutedText }}>
                             <Clock className="h-3.5 w-3.5" /> Time
                           </label>
                           {timeSlots.length === 0 ? (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500" style={{ color: palette.mutedText }}>
                               No more times available for this day — please pick another date.
                             </p>
                           ) : (
@@ -218,16 +222,16 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
                       {timeSlots.length > 0 && scheduledForLabel ? (
                         <div className="mt-3 flex items-center gap-2 rounded-lg bg-white border border-orange-200 px-3 py-2.5">
-                          <CalendarClock className="h-4 w-4 text-orange-500 shrink-0" />
-                          <p className="text-sm text-gray-700">
+                          <CalendarClock className="h-4 w-4 text-orange-500 shrink-0" style={{ color: accentColor }} />
+                          <p className="text-sm text-gray-700" style={{ color: palette.mutedText }}>
                             {selectedOrderTypeData?.type === 'delivery' ? 'Arriving' : 'Ready'}{' '}
-                            <span className="font-semibold text-gray-900">{scheduledForLabel}</span>
+                            <span className="font-semibold text-gray-900" style={{ color: palette.text }}>{scheduledForLabel}</span>
                           </p>
                         </div>
                       ) : null}
 
                       {advanceConfig.leadTimeMinutes > 0 && (
-                        <p className="mt-2 text-[11px] text-gray-400">
+                        <p className="mt-2 text-[11px] text-gray-400" style={{ color: palette.mutedText }}>
                           Orders need at least {formatLeadTime(advanceConfig.leadTimeMinutes)} of advance notice.
                         </p>
                       )}
@@ -240,14 +244,14 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Customer Information Form */}
           {orderType && formFields.length > 0 && (
-            <div className="rounded-2xl bg-white p-8 shadow-sm">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Customer Information</h2>
-              <p className="text-gray-600 mb-6">Please provide the following details</p>
+            <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Customer Information</h2>
+              <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>Please provide the following details</p>
 
               <div className="grid gap-4 md:grid-cols-2">
                 {formFields.map((field) => (
                   <div key={field.id} className={field.field_type === 'textarea' || field.field_name === 'delivery_address' ? 'md:col-span-2' : ''}>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2" style={{ color: palette.mutedText }}>
                       {field.field_label}
                       {field.is_required && <span className="text-red-500 ml-1">*</span>}
                     </label>
@@ -363,9 +367,9 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             </div>
           )}
 
-          <div className="rounded-2xl bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Summary</h2>
-            <p className="text-gray-600 mb-6">Review your order before checkout</p>
+          <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Order Summary</h2>
+            <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>Review your order before checkout</p>
 
             <div className="space-y-4">
               {items.map((item, index) => (
@@ -418,12 +422,12 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {(deliveryFee !== null || isFetchingDeliveryFee) && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">
+                    <span className="text-gray-600" style={{ color: palette.mutedText }}>
                       Delivery Fee
                     </span>
-                    <span className="font-semibold">
+                    <span className="font-semibold" style={{ color: palette.text }}>
                       {isFetchingDeliveryFee ? (
-                        <span className="text-orange-500 animate-pulse">Calculating...</span>
+                        <span className="text-orange-500 animate-pulse" style={{ color: accentColor }}>Calculating...</span>
                       ) : (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? (
                         formatPrice(deliveryFee)
                       ) : (
@@ -439,16 +443,16 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {serviceChargeAmount > 0 && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Service Charge</span>
-                    <span className="font-semibold">{formatPrice(serviceChargeAmount)}</span>
+                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Service Charge</span>
+                    <span className="font-semibold" style={{ color: palette.text }}>{formatPrice(serviceChargeAmount)}</span>
                   </div>
                   <Separator className="my-2" />
                 </>
               )}
 
               <div className="flex justify-between text-xl font-bold pt-4 border-t">
-                <span>Total</span>
-                <span className="text-orange-600">
+                <span style={{ color: palette.text }}>Total</span>
+                <span className="text-orange-600" style={{ color: accentColor }}>
                   {isFetchingDeliveryFee ? (
                     <span className="animate-pulse">Calculating...</span>
                   ) : (
@@ -461,15 +465,15 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Payment Method Selection */}
           {paymentMethods.length > 0 ? (
-            <div className="rounded-2xl bg-white p-8 shadow-sm" data-payment-methods>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-                <CreditCard className="h-6 w-6 text-orange-500" />
+            <div className="rounded-2xl bg-white p-8 shadow-sm" data-payment-methods style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3" style={{ color: palette.text }}>
+                <CreditCard className="h-6 w-6 text-orange-500" style={{ color: accentColor }} />
                 Select Payment Method
                 <Badge variant="outline" className="ml-auto bg-red-50 text-red-700 border-red-300">
                   Required
                 </Badge>
               </h2>
-              <p className="text-gray-600 mb-6">
+              <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>
                 Choose how you would like to pay for your order
               </p>
 
@@ -519,9 +523,9 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
                       {/* Payment Method Info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-base mb-1">{method.name}</h3>
+                        <h3 className="font-semibold text-base mb-1" style={{ color: palette.text }}>{method.name}</h3>
                         {method.details && (
-                          <p className="text-sm text-gray-600 line-clamp-2">
+                          <p className="text-sm text-gray-600 line-clamp-2" style={{ color: palette.mutedText }}>
                             {method.details}
                           </p>
                         )}
@@ -535,15 +539,15 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {selectedPaymentMethod && (
                 <div className="mt-6 p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
                   <div className="flex items-start gap-3">
-                    <CreditCard className="h-5 w-5 text-orange-600 mt-0.5" />
+                    <CreditCard className="h-5 w-5 text-orange-600 mt-0.5" style={{ color: accentColor }} />
                     <div className="flex-1">
-                      <h3 className="font-semibold text-orange-900 mb-2">Selected Payment Method</h3>
-                      <p className="font-medium text-gray-900 mb-2">
+                      <h3 className="font-semibold text-orange-900 mb-2" style={{ color: accentColor }}>Selected Payment Method</h3>
+                      <p className="font-medium text-gray-900 mb-2" style={{ color: palette.text }}>
                         {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
                       </p>
                       {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
                         <div className="bg-white p-3 rounded border border-orange-200">
-                          <p className="text-sm font-medium text-gray-700 mb-2">Payment Details:</p>
+                          <p className="text-sm font-medium text-gray-700 mb-2" style={{ color: palette.mutedText }}>Payment Details:</p>
                           <div className="space-y-2">
                             {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
                               const trimmedLine = line.trim()
@@ -555,7 +559,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                                   onClick={() => handleCopyText(trimmedLine, 'Details')}
                                   className="w-full flex items-center justify-between gap-2 p-2 rounded-md bg-gray-50 hover:bg-orange-100 transition-colors text-left group"
                                 >
-                                  <span className="text-sm text-gray-700 break-all">{trimmedLine}</span>
+                                  <span className="text-sm text-gray-700 break-all" style={{ color: palette.text }}>{trimmedLine}</span>
                                   {copiedText === trimmedLine ? (
                                     <Check className="h-4 w-4 text-green-500 shrink-0" />
                                   ) : (
@@ -565,7 +569,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                               )
                             })}
                           </div>
-                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1" style={{ color: palette.mutedText }}>
                             <Copy className="h-3 w-3" /> Tap on any line to copy
                           </p>
                         </div>
@@ -584,7 +588,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                               onClick={() => openQrDialog(qrUrl)}
                             />
                             <div className="flex-1">
-                              <p className="text-sm text-gray-600 mb-2">Scan this QR code to complete payment</p>
+                              <p className="text-sm text-gray-600 mb-2" style={{ color: palette.mutedText }}>Scan this QR code to complete payment</p>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -621,12 +625,12 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             </div>
           ) : null}
 
-          <div className="rounded-2xl bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-              <MessageCircle className="h-6 w-6 text-orange-500" />
+          <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3" style={{ color: palette.text }}>
+              <MessageCircle className="h-6 w-6 text-orange-500" style={{ color: accentColor }} />
               {paymentMethods.length > 0 ? 'Complete Order' : 'Complete Order via Messenger'}
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>
               {paymentMethods.length > 0
                 ? `After selecting your payment method, click below to complete your order with ${tenant.name}.`
                 : `Click the button below to send your order to ${tenant.name} via Facebook Messenger. You'll be redirected to Messenger with your order details pre-filled.`
@@ -636,6 +640,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <Button
               size="lg"
               className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: palette.button, color: palette.button ? palette.accentText : undefined }}
               onClick={handleProceedToPayment}
               disabled={isProcessing}
             >
@@ -657,7 +662,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               )}
             </Button>
 
-            <p className="text-center text-sm text-gray-500 mt-4">
+            <p className="text-center text-sm text-gray-500 mt-4" style={{ color: palette.mutedText }}>
               Your order will be sent to the restaurant for confirmation
             </p>
           </div>

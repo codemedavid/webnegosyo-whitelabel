@@ -9,7 +9,7 @@
  */
 
 import { ArrowLeft, ShoppingBag } from 'lucide-react'
-import { getContrastColor, setAlpha } from '@/lib/branding-utils'
+import { getCartPalette } from '@/lib/branding-utils'
 import {
   CartItemRow,
   CartBundleRow,
@@ -23,9 +23,10 @@ import type { UseCartViewReturn } from '@/hooks/useCartView'
 export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
   if (!cart.tenant) return null
 
-  const accent = cart.branding.buttonPrimary || cart.branding.primary || '#111111'
-  const accentText = getContrastColor(accent)
-  const accentSoft = setAlpha(accent, 0.1)
+  const palette = getCartPalette(cart.tenant, cart.branding)
+  const accent = palette.accent
+  const accentText = palette.accentText
+  const accentSoft = palette.accentSoft
 
   const { items, bundleItems } = cart
   const bundles = bundleItems.filter((bi) => Array.isArray(bi.slots))
@@ -33,7 +34,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
   const isEmpty = items.length === 0 && bundleItems.length === 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Sticky header */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="container mx-auto flex h-16 items-center gap-3 px-4 md:h-20">
@@ -46,7 +47,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex flex-1 items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Your Cart</h1>
+            <h1 className="text-xl font-bold text-gray-900 md:text-2xl" style={{ color: palette.text }}>Your Cart</h1>
             {!isEmpty && (
               <span
                 className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
@@ -76,7 +77,10 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
 
             {/* RIGHT: sticky order summary */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24 rounded-2xl border border-gray-100 bg-white p-6 shadow-lg md:p-8">
+              <div
+                className="sticky top-24 rounded-2xl border border-gray-100 bg-white p-6 shadow-lg md:p-8"
+                style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
+              >
                 <div className="mb-6 flex items-center gap-3">
                   <div
                     className="flex h-10 w-10 items-center justify-center rounded-full"
@@ -84,7 +88,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
                   >
                     <ShoppingBag className="h-5 w-5" />
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">Order summary</h2>
+                  <h2 className="text-xl font-bold text-gray-900" style={{ color: palette.text }}>Order summary</h2>
                 </div>
 
                 <div className="mb-6">

@@ -56,6 +56,26 @@ interface BrandingDraft {
   checkout_modal_button_color?: string
   checkout_modal_button_text_color?: string
   checkout_modal_border_color?: string
+  // Cart page palette
+  cart_background_color?: string
+  cart_card_background_color?: string
+  cart_text_color?: string
+  cart_muted_text_color?: string
+  cart_accent_color?: string
+  cart_button_color?: string
+  cart_button_text_color?: string
+  cart_border_color?: string
+  cart_summary_background_color?: string
+  // Checkout page palette
+  checkout_background_color?: string
+  checkout_card_background_color?: string
+  checkout_text_color?: string
+  checkout_muted_text_color?: string
+  checkout_accent_color?: string
+  checkout_button_color?: string
+  checkout_button_text_color?: string
+  checkout_border_color?: string
+  checkout_summary_background_color?: string
   button_primary_color?: string
   button_primary_text_color?: string
   button_secondary_color?: string
@@ -213,6 +233,24 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     checkout_modal_button_color: tenant.checkout_modal_button_color || '',
     checkout_modal_button_text_color: tenant.checkout_modal_button_text_color || '',
     checkout_modal_border_color: tenant.checkout_modal_border_color || '',
+    cart_background_color: tenant.cart_background_color || '',
+    cart_card_background_color: tenant.cart_card_background_color || '',
+    cart_text_color: tenant.cart_text_color || '',
+    cart_muted_text_color: tenant.cart_muted_text_color || '',
+    cart_accent_color: tenant.cart_accent_color || '',
+    cart_button_color: tenant.cart_button_color || '',
+    cart_button_text_color: tenant.cart_button_text_color || '',
+    cart_border_color: tenant.cart_border_color || '',
+    cart_summary_background_color: tenant.cart_summary_background_color || '',
+    checkout_background_color: tenant.checkout_background_color || '',
+    checkout_card_background_color: tenant.checkout_card_background_color || '',
+    checkout_text_color: tenant.checkout_text_color || '',
+    checkout_muted_text_color: tenant.checkout_muted_text_color || '',
+    checkout_accent_color: tenant.checkout_accent_color || '',
+    checkout_button_color: tenant.checkout_button_color || '',
+    checkout_button_text_color: tenant.checkout_button_text_color || '',
+    checkout_border_color: tenant.checkout_border_color || '',
+    checkout_summary_background_color: tenant.checkout_summary_background_color || '',
     button_primary_color: tenant.button_primary_color || '',
     button_primary_text_color: tenant.button_primary_text_color || '',
     button_secondary_color: tenant.button_secondary_color || '',
@@ -1364,6 +1402,38 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                   })}
                 </div>
               </div>
+
+              {/* Cart page colors */}
+              <Section title="Cart Page Colors" emoji="🛒">
+                <p className="text-[11px] text-muted-foreground mb-2">Leave a color blank to inherit your global brand colors. Applies to every cart design.</p>
+                <div className="grid gap-3 grid-cols-2">
+                  <Swatch id="cart_background_color" label="Background" value={draft.cart_background_color || ''} onChange={(v) => updateDraft('cart_background_color', v)} compact />
+                  <Swatch id="cart_card_background_color" label="Card Background" value={draft.cart_card_background_color || ''} onChange={(v) => updateDraft('cart_card_background_color', v)} compact />
+                  <Swatch id="cart_summary_background_color" label="Summary Background" value={draft.cart_summary_background_color || ''} onChange={(v) => updateDraft('cart_summary_background_color', v)} compact />
+                  <Swatch id="cart_text_color" label="Text" value={draft.cart_text_color || ''} onChange={(v) => updateDraft('cart_text_color', v)} compact />
+                  <Swatch id="cart_muted_text_color" label="Muted Text" value={draft.cart_muted_text_color || ''} onChange={(v) => updateDraft('cart_muted_text_color', v)} compact />
+                  <Swatch id="cart_accent_color" label="Accent" value={draft.cart_accent_color || ''} onChange={(v) => updateDraft('cart_accent_color', v)} compact />
+                  <Swatch id="cart_border_color" label="Border" value={draft.cart_border_color || ''} onChange={(v) => updateDraft('cart_border_color', v)} compact />
+                  <Swatch id="cart_button_color" label="Button" value={draft.cart_button_color || ''} onChange={(v) => updateDraft('cart_button_color', v)} compact />
+                  <Swatch id="cart_button_text_color" label="Button Text" value={draft.cart_button_text_color || ''} onChange={(v) => updateDraft('cart_button_text_color', v)} compact />
+                </div>
+              </Section>
+
+              {/* Checkout page colors */}
+              <Section title="Checkout Page Colors" emoji="🧾">
+                <p className="text-[11px] text-muted-foreground mb-2">Leave a color blank to inherit your global brand colors. These style the checkout page (not the upsell modal above).</p>
+                <div className="grid gap-3 grid-cols-2">
+                  <Swatch id="checkout_background_color" label="Background" value={draft.checkout_background_color || ''} onChange={(v) => updateDraft('checkout_background_color', v)} compact />
+                  <Swatch id="checkout_card_background_color" label="Card Background" value={draft.checkout_card_background_color || ''} onChange={(v) => updateDraft('checkout_card_background_color', v)} compact />
+                  <Swatch id="checkout_summary_background_color" label="Summary Background" value={draft.checkout_summary_background_color || ''} onChange={(v) => updateDraft('checkout_summary_background_color', v)} compact />
+                  <Swatch id="checkout_text_color" label="Text" value={draft.checkout_text_color || ''} onChange={(v) => updateDraft('checkout_text_color', v)} compact />
+                  <Swatch id="checkout_muted_text_color" label="Muted Text" value={draft.checkout_muted_text_color || ''} onChange={(v) => updateDraft('checkout_muted_text_color', v)} compact />
+                  <Swatch id="checkout_accent_color" label="Accent" value={draft.checkout_accent_color || ''} onChange={(v) => updateDraft('checkout_accent_color', v)} compact />
+                  <Swatch id="checkout_border_color" label="Border" value={draft.checkout_border_color || ''} onChange={(v) => updateDraft('checkout_border_color', v)} compact />
+                  <Swatch id="checkout_button_color" label="Button" value={draft.checkout_button_color || ''} onChange={(v) => updateDraft('checkout_button_color', v)} compact />
+                  <Swatch id="checkout_button_text_color" label="Button Text" value={draft.checkout_button_text_color || ''} onChange={(v) => updateDraft('checkout_button_text_color', v)} compact />
+                </div>
+              </Section>
 
               <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
                 <div className="flex items-start gap-2">

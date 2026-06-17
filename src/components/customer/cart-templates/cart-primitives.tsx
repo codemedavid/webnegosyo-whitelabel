@@ -5,8 +5,12 @@
  *
  * The modern cart designs compose these instead of re-implementing quantity
  * controls, bundle rendering, savings math, and totals. Each primitive themes
- * itself from `cart.branding`. The Classic design preserves the original orange
- * markup verbatim and does not use these.
+ * itself from the resolved cart palette (getCartPalette). The Classic design
+ * preserves the original orange markup verbatim and does not use these.
+ *
+ * Palette fields other than the accent are EXPLICIT overrides (undefined unless
+ * the merchant set that cart_* color), so they no-op into the design's own
+ * neutral defaults until chosen — no visual regression for existing tenants.
  */
 
 import Link from 'next/link'
@@ -14,27 +18,24 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, ShoppingBag, Package } from 'lucide-react'
 import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
-import { setAlpha, getContrastColor } from '@/lib/branding-utils'
+import { getCartPalette } from '@/lib/branding-utils'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import type { CartItem, CartBundleItem } from '@/types/database'
 
-function useCartAccent(cart: UseCartViewReturn) {
-  const accent = cart.branding.buttonPrimary || cart.branding.primary || '#111111'
-  return {
-    accent,
-    accentText: getContrastColor(accent),
-    accentSoft: setAlpha(accent, 0.08),
-    accentBorder: setAlpha(accent, 0.4),
-  }
+function useCartPalette(cart: UseCartViewReturn) {
+  return getCartPalette(cart.tenant, cart.branding)
 }
 
 /** A single cart line item with image, variations, addons, quantity stepper. */
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
   const { updateQuantity, setItemToRemove, handleDecreaseQuantity } = cart
-  const { accent, accentSoft } = useCartAccent(cart)
+  const p = useCartPalette(cart)
 
   return (
-    <div className="group rounded-2xl bg-white p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+    <div
+      className="group rounded-2xl bg-white p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow border border-gray-100"
+      style={{ backgroundColor: p.cardBackground, borderColor: p.border }}
+    >
       <div className="flex gap-4">
         <div className="relative h-20 w-20 md:h-24 md:w-24 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
           <OptimizedImage
@@ -51,7 +52,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
         <div className="flex flex-1 flex-col justify-between min-w-0">
           <div>
             <div className="flex items-start justify-between gap-3 mb-1.5">
-              <h3 className="text-base md:text-lg font-bold text-gray-900 line-clamp-1">{item.menu_item.name}</h3>
+              <h3 className="text-base md:text-lg font-bold text-gray-900 line-clamp-1" style={{ color: p.text }}>{item.menu_item.name}</h3>
               <button
                 className="h-9 w-9 -mt-1 -mr-1 inline-flex items-center justify-center text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation transition-colors"
                 onClick={() => setItemToRemove(item)}
@@ -62,24 +63,24 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
             </div>
 
             {item.selected_variation && (
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: accentSoft, color: accent }}>
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: p.accentSoft, color: p.accent }}>
                 {item.selected_variation.name}
               </span>
             )}
             {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {Object.values(item.selected_variations).map((option, idx) => (
-                  <span key={idx} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: accentSoft, color: accent }}>
+                  <span key={idx} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: p.accentSoft, color: p.accent }}>
                     {option.name}
                   </span>
                 ))}
               </div>
             )}
             {item.selected_addons.length > 0 && (
-              <p className="text-sm text-gray-600 mt-1"><span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}</p>
+              <p className="text-sm text-gray-600 mt-1" style={{ color: p.mutedText }}><span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}</p>
             )}
             {item.special_instructions && (
-              <p className="text-sm italic text-gray-500 mt-0.5"><span className="font-medium">Note:</span> {item.special_instructions}</p>
+              <p className="text-sm italic text-gray-500 mt-0.5" style={{ color: p.mutedText }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
             )}
           </div>
 
@@ -87,15 +88,16 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
             <div className="flex items-center gap-2.5">
               <button
                 className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 touch-manipulation transition-colors"
+                style={{ borderColor: p.border }}
                 onClick={() => handleDecreaseQuantity(item)}
                 aria-label="Decrease quantity"
               >
                 <Minus className="h-4 w-4" />
               </button>
-              <span className="w-9 text-center font-bold text-lg text-gray-900">{item.quantity}</span>
+              <span className="w-9 text-center font-bold text-lg text-gray-900" style={{ color: p.text }}>{item.quantity}</span>
               <button
                 className="h-9 w-9 inline-flex items-center justify-center rounded-full border touch-manipulation transition-colors"
-                style={{ borderColor: accentSoft, color: accent }}
+                style={{ borderColor: p.accentSoft, color: p.accent }}
                 onClick={() => updateQuantity(item.id, item.quantity + 1)}
                 aria-label="Increase quantity"
               >
@@ -103,9 +105,9 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               </button>
             </div>
             <div className="text-right">
-              <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(item.subtotal)}</span>
+              <span className="text-lg font-bold" style={{ color: p.accent }}>{formatPrice(item.subtotal)}</span>
               {item.quantity > 1 && (
-                <p className="text-xs text-gray-500">{formatPrice(item.subtotal / item.quantity)} each</p>
+                <p className="text-xs text-gray-500" style={{ color: p.mutedText }}>{formatPrice(item.subtotal / item.quantity)} each</p>
               )}
             </div>
           </div>
@@ -118,17 +120,17 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
 /** A bundle line item with its slots, savings badge, and quantity stepper. */
 export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; bundleItem: CartBundleItem }) {
   const { removeBundleFromCart, updateBundleQuantity } = cart
-  const { accent, accentSoft } = useCartAccent(cart)
+  const p = useCartPalette(cart)
   if (!Array.isArray(bundleItem.slots)) return null
 
   const savings = calculateSlotBundleSavings(bundleItem)
   const originalTotal = bundleItem.slots.reduce((sum, s) => sum + s.menuItemPrice * s.quantity, 0)
 
   return (
-    <div className="rounded-2xl bg-white p-4 md:p-5 shadow-sm border" style={{ borderColor: accentSoft }}>
+    <div className="rounded-2xl bg-white p-4 md:p-5 shadow-sm border" style={{ backgroundColor: p.cardBackground, borderColor: p.border ?? p.accentSoft }}>
       <div className="flex items-center gap-2 mb-3">
-        <Package className="h-4 w-4" style={{ color: accent }} />
-        <span className="font-bold text-gray-900">{bundleItem.bundleName}</span>
+        <Package className="h-4 w-4" style={{ color: p.accent }} />
+        <span className="font-bold text-gray-900" style={{ color: p.text }}>{bundleItem.bundleName}</span>
         {savings > 0 && (
           <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium">
             Save {formatPrice(savings)}
@@ -136,10 +138,10 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
         )}
       </div>
 
-      <div className="space-y-2 mb-3 pl-6 border-l-2" style={{ borderColor: accentSoft }}>
+      <div className="space-y-2 mb-3 pl-6 border-l-2" style={{ borderColor: p.accentSoft }}>
         {bundleItem.slots.map((slot, idx) => (
           <div key={idx} className="text-sm">
-            <span className="font-medium text-gray-800">
+            <span className="font-medium text-gray-800" style={{ color: p.text }}>
               {slot.quantity > 1 ? `${slot.quantity}x ` : ''}{slot.menuItemName}
             </span>
             {slot.selectedVariations && Object.values(slot.selectedVariations).length > 0 && (
@@ -153,7 +155,7 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
               <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 mt-0.5">{slot.selectedVariation.name}</span>
             )}
             {slot.selectedAddons.length > 0 && (
-              <p className="text-xs text-gray-500 mt-0.5">+ {slot.selectedAddons.map(a => a.name).join(', ')}</p>
+              <p className="text-xs text-gray-500 mt-0.5" style={{ color: p.mutedText }}>+ {slot.selectedAddons.map(a => a.name).join(', ')}</p>
             )}
           </div>
         ))}
@@ -178,7 +180,7 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
           {savings > 0 && (
             <span className="text-xs text-gray-400 line-through block">{formatPrice(originalTotal * bundleItem.quantity)}</span>
           )}
-          <span className="font-bold" style={{ color: accent }}>{formatPrice(bundleItem.subtotal)}</span>
+          <span className="font-bold" style={{ color: p.accent }}>{formatPrice(bundleItem.subtotal)}</span>
         </div>
       </div>
     </div>
@@ -188,14 +190,14 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
 /** Totals rows (items / bundle savings / total). Inline, no container. */
 export function CartTotalsRows({ cart }: { cart: UseCartViewReturn }) {
   const { items, bundleItems, total } = cart
-  const { accent } = useCartAccent(cart)
+  const p = useCartPalette(cart)
   const bundleSavings = calculateTotalSlotBundleSavings(bundleItems)
 
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <span className="text-gray-600">Items ({items.length})</span>
-        <span className="font-semibold text-gray-900">{formatPrice(total)}</span>
+        <span className="text-gray-600" style={{ color: p.mutedText }}>Items ({items.length})</span>
+        <span className="font-semibold text-gray-900" style={{ color: p.text }}>{formatPrice(total)}</span>
       </div>
       {bundleSavings > 0 && (
         <div className="flex justify-between items-center text-green-600 text-sm">
@@ -203,10 +205,10 @@ export function CartTotalsRows({ cart }: { cart: UseCartViewReturn }) {
           <span>-{formatPrice(bundleSavings)}</span>
         </div>
       )}
-      <div className="border-t border-gray-200 pt-3">
+      <div className="border-t border-gray-200 pt-3" style={{ borderColor: p.border }}>
         <div className="flex justify-between items-center">
-          <span className="text-lg font-bold text-gray-900">Total</span>
-          <span className="text-2xl font-bold" style={{ color: accent }}>{formatPrice(total)}</span>
+          <span className="text-lg font-bold text-gray-900" style={{ color: p.text }}>Total</span>
+          <span className="text-2xl font-bold" style={{ color: p.accent }}>{formatPrice(total)}</span>
         </div>
       </div>
     </div>
@@ -216,14 +218,14 @@ export function CartTotalsRows({ cart }: { cart: UseCartViewReturn }) {
 /** Primary checkout CTA button (branded). Drives the upsell-aware requestCheckout(). */
 export function CartCheckoutButton({ cart, className = '' }: { cart: UseCartViewReturn; className?: string }) {
   const { isNavigating, requestCheckout } = cart
-  const { accent, accentText } = useCartAccent(cart)
+  const p = useCartPalette(cart)
   return (
     <button
       type="button"
       onClick={requestCheckout}
       disabled={isNavigating}
       className={`w-full h-14 inline-flex items-center justify-center font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-      style={{ backgroundColor: accent, color: accentText }}
+      style={{ backgroundColor: p.button ?? p.accent, color: p.accentText }}
     >
       {isNavigating ? (
         <>

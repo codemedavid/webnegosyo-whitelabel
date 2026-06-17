@@ -8,7 +8,7 @@
  */
 
 import { ArrowLeft, Receipt } from 'lucide-react'
-import { setAlpha } from '@/lib/branding-utils'
+import { getCartPalette } from '@/lib/branding-utils'
 import {
   CartItemRow,
   CartBundleRow,
@@ -22,15 +22,16 @@ import type { UseCartViewReturn } from '@/hooks/useCartView'
 export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
   if (!cart.tenant) return null
 
-  const accent = cart.branding.buttonPrimary || cart.branding.primary || '#111111'
-  const accentSoft = setAlpha(accent, 0.08)
+  const palette = getCartPalette(cart.tenant, cart.branding)
+  const accent = palette.accent
+  const accentSoft = palette.accentSoft
 
   const isEmpty = cart.items.length === 0 && cart.bundleItems.length === 0
   const bundles = cart.bundleItems.filter((bi) => Array.isArray(bi.slots))
   const itemCount = cart.items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100" style={{ backgroundColor: palette.background }}>
       {/* Page header with back button + title */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
@@ -70,10 +71,16 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                 aria-hidden="true"
               />
 
-              <div className="-mt-px rounded-b-xl bg-white px-4 pb-6 pt-5 shadow-xl sm:px-7 sm:pb-8">
+              <div
+                className="-mt-px rounded-b-xl bg-white px-4 pb-6 pt-5 shadow-xl sm:px-7 sm:pb-8"
+                style={{ backgroundColor: palette.cardBackground }}
+              >
                 {/* Receipt masthead */}
                 <div className="mb-5 text-center">
-                  <p className="text-base font-bold uppercase tracking-[0.18em] text-gray-900">
+                  <p
+                    className="text-base font-bold uppercase tracking-[0.18em] text-gray-900"
+                    style={{ color: palette.text }}
+                  >
                     {cart.tenant.name}
                   </p>
                   <p className="mt-1 text-xs font-medium uppercase tracking-[0.3em] text-gray-400">

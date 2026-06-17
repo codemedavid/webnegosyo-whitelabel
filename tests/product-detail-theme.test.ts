@@ -16,6 +16,8 @@ describe('Product Detail Theme', () => {
     const mockBranding: BrandingColors = {
         primary: '#3b82f6',
         secondary: '#64748b',
+        cartAccent: '#3b82f6',
+        checkoutAccent: '#3b82f6',
         background: '#ffffff',
         header: '#ffffff',
         headerFont: '#374151',

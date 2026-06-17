@@ -11,7 +11,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { setAlpha } from '@/lib/branding-utils'
+import { setAlpha, getCartPalette } from '@/lib/branding-utils'
 import {
   CartItemRow,
   CartBundleRow,
@@ -27,7 +27,8 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
 
   if (!tenant) return null
 
-  const accent = cart.branding.buttonPrimary || cart.branding.primary || '#111111'
+  const palette = getCartPalette(cart.tenant, cart.branding)
+  const accent = palette.accent
   const accentSoft = setAlpha(accent, 0.08)
 
   const isEmpty = items.length === 0 && bundleItems.length === 0
@@ -35,7 +36,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
   const itemCount = items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Minimal header */}
       <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-xl items-center gap-3 px-5 md:px-0">
@@ -47,7 +48,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <span className="text-base font-semibold tracking-tight text-gray-900">Cart</span>
+          <span className="text-base font-semibold tracking-tight text-gray-900" style={{ color: palette.text }}>Cart</span>
         </div>
       </header>
 
@@ -58,9 +59,9 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
           <>
             {/* Large bold heading */}
             <div className="mb-8 md:mb-10">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">Cart</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl" style={{ color: palette.text }}>Cart</h1>
               {itemCount > 0 && (
-                <p className="mt-1.5 text-sm text-gray-500">
+                <p className="mt-1.5 text-sm text-gray-500" style={{ color: palette.mutedText }}>
                   {itemCount} item{itemCount !== 1 ? 's' : ''} in your bag
                 </p>
               )}
@@ -79,7 +80,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
             {/* Summary panel */}
             <section
               className="mt-10 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm md:p-8"
-              style={{ boxShadow: `0 1px 2px ${accentSoft}` }}
+              style={{ boxShadow: `0 1px 2px ${accentSoft}`, backgroundColor: palette.summaryBackground, borderColor: palette.border }}
             >
               <CartTotalsRows cart={cart} />
             </section>

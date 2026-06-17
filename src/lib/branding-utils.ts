@@ -66,6 +66,12 @@ export interface BrandingColors {
   secondary: string
   accent?: string
 
+  // Cart & checkout page accents (resolved with fallback to button/primary).
+  // The remaining cart/checkout page colors are applied as explicit overrides,
+  // read raw from the tenant via getCartPalette()/getCheckoutPalette().
+  cartAccent: string
+  checkoutAccent: string
+
   // Search bar
   searchBar: {
     enabled: boolean
@@ -126,6 +132,8 @@ export const DEFAULT_BRANDING: BrandingColors = {
   primary: '#111111',
   secondary: '#666666',
   accent: '#ffd700',
+  cartAccent: '#111111',
+  checkoutAccent: '#111111',
   searchBar: {
     enabled: true,
     background: null,
@@ -196,6 +204,8 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     primary: get('primary_color', DEFAULT_BRANDING.primary),
     secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
     accent: get('accent_color', DEFAULT_BRANDING.accent || ''),
+    cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
+    checkoutAccent: get('checkout_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
     searchBar: {
       enabled: tenant['search_bar_enabled'] !== false,
       background: typeof tenant['search_bar_background'] === 'string' && tenant['search_bar_background'] ? tenant['search_bar_background'] as string : null,
@@ -207,6 +217,84 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
       radius: (['pill','rounded','square'].includes(tenant['search_bar_radius'] as string) ? tenant['search_bar_radius'] : 'pill') as 'pill' | 'rounded' | 'square',
       style: (['filled','outline','ghost'].includes(tenant['search_bar_style'] as string) ? tenant['search_bar_style'] : 'filled') as 'filled' | 'outline' | 'ghost',
     },
+  }
+}
+
+/**
+ * Resolved Cart/Checkout PAGE palette.
+ *
+ * `accent`/`accentText`/`accentSoft`/`accentBorder` are always present — the
+ * accent resolves cart_accent_color → button_primary_color → primary_color, so
+ * an unset tenant keeps today's look. Every OTHER field is an explicit override:
+ * `undefined` unless the merchant set that specific cart/checkout color.
+ * Designs apply these via inline `style` so `undefined` is a no-op and the
+ * design's own neutral default (Tailwind class) wins — no regression when unset.
+ */
+export interface SurfacePalette {
+  accent: string
+  accentText: string
+  accentSoft: string
+  accentBorder: string
+  /** Extra-soft accent tint — checkout only (matches the original useAccent). */
+  accentSofter?: string
+  /** Explicit CTA background override; call sites fall back to `accent`. */
+  button?: string
+  background?: string
+  cardBackground?: string
+  text?: string
+  mutedText?: string
+  border?: string
+  summaryBackground?: string
+}
+
+/** Read a tenant color column raw — returns undefined when unset/blank. */
+function rawTenantColor(tenant: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = tenant?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/** Resolve the Cart page palette from a tenant record + its resolved branding. */
+export function getCartPalette(
+  tenant: Record<string, unknown> | null | undefined,
+  branding: BrandingColors
+): SurfacePalette {
+  const accent = branding.cartAccent || branding.buttonPrimary || branding.primary || '#111111'
+  const buttonText = rawTenantColor(tenant, 'cart_button_text_color')
+  return {
+    accent,
+    accentText: buttonText || getContrastColor(accent),
+    accentSoft: setAlpha(accent, 0.08),
+    accentBorder: setAlpha(accent, 0.4),
+    button: rawTenantColor(tenant, 'cart_button_color'),
+    background: rawTenantColor(tenant, 'cart_background_color'),
+    cardBackground: rawTenantColor(tenant, 'cart_card_background_color'),
+    text: rawTenantColor(tenant, 'cart_text_color'),
+    mutedText: rawTenantColor(tenant, 'cart_muted_text_color'),
+    border: rawTenantColor(tenant, 'cart_border_color'),
+    summaryBackground: rawTenantColor(tenant, 'cart_summary_background_color'),
+  }
+}
+
+/** Resolve the Checkout page palette from a tenant record + its resolved branding. */
+export function getCheckoutPalette(
+  tenant: Record<string, unknown> | null | undefined,
+  branding: BrandingColors
+): SurfacePalette {
+  const accent = branding.checkoutAccent || branding.buttonPrimary || branding.primary || '#111111'
+  const buttonText = rawTenantColor(tenant, 'checkout_button_text_color')
+  return {
+    accent,
+    accentText: buttonText || getContrastColor(accent),
+    accentSoft: setAlpha(accent, 0.08),
+    accentSofter: setAlpha(accent, 0.04),
+    accentBorder: setAlpha(accent, 0.45),
+    button: rawTenantColor(tenant, 'checkout_button_color'),
+    background: rawTenantColor(tenant, 'checkout_background_color'),
+    cardBackground: rawTenantColor(tenant, 'checkout_card_background_color'),
+    text: rawTenantColor(tenant, 'checkout_text_color'),
+    mutedText: rawTenantColor(tenant, 'checkout_muted_text_color'),
+    border: rawTenantColor(tenant, 'checkout_border_color'),
+    summaryBackground: rawTenantColor(tenant, 'checkout_summary_background_color'),
   }
 }
 
@@ -257,6 +345,8 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-primary': branding.primary,
     '--brand-secondary': branding.secondary,
     '--brand-accent': branding.accent || branding.primary,
+    '--brand-cart-accent': branding.cartAccent,
+    '--brand-checkout-accent': branding.checkoutAccent,
   } as React.CSSProperties
 }
 

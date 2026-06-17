@@ -123,6 +123,27 @@ export interface Tenant {
   checkout_modal_button_color?: string;
   checkout_modal_button_text_color?: string;
   checkout_modal_border_color?: string;
+  // Cart page palette (distinct from the checkout interstitial modal above).
+  // Unset = inherit the design default / global brand colors.
+  cart_background_color?: string;
+  cart_card_background_color?: string;
+  cart_text_color?: string;
+  cart_muted_text_color?: string;
+  cart_accent_color?: string;
+  cart_button_color?: string;
+  cart_button_text_color?: string;
+  cart_border_color?: string;
+  cart_summary_background_color?: string;
+  // Checkout page palette (the page itself, not the interstitial modal).
+  checkout_background_color?: string;
+  checkout_card_background_color?: string;
+  checkout_text_color?: string;
+  checkout_muted_text_color?: string;
+  checkout_accent_color?: string;
+  checkout_button_color?: string;
+  checkout_button_text_color?: string;
+  checkout_border_color?: string;
+  checkout_summary_background_color?: string;
   // Menu engineering
   menu_engineering_enabled?: boolean;
   hide_currency_symbol?: boolean;

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
-import { setAlpha, getContrastColor } from '@/lib/branding-utils'
+import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -38,16 +38,9 @@ const orderTypeIconMap = {
   delivery: Truck,
 } as const
 
-/** Themed accent values derived from tenant branding. */
+/** Themed checkout palette derived from tenant branding (accent + explicit overrides). */
 function useAccent(checkout: UseCheckoutReturn) {
-  const accent = checkout.branding.buttonPrimary || checkout.branding.primary || '#111111'
-  return {
-    accent,
-    accentText: getContrastColor(accent),
-    accentSoft: setAlpha(accent, 0.08),
-    accentSofter: setAlpha(accent, 0.04),
-    accentBorder: setAlpha(accent, 0.45),
-  }
+  return getCheckoutPalette(checkout.tenant, checkout.branding)
 }
 
 /**
@@ -389,7 +382,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
 /** Order summary line items + totals (branded). */
 export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn }) {
   const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, customerData, serviceChargeAmount, grandTotal } = checkout
-  const { accent } = useAccent(checkout)
+  const { accent, text, mutedText } = useAccent(checkout)
   const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
 
   return (
@@ -399,7 +392,7 @@ export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn })
           {index > 0 && <div className="my-3 border-t border-gray-100" />}
           <div className="flex justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <span className="font-medium text-sm text-gray-900">{item.menu_item.name}</span>
+              <span className="font-medium text-sm text-gray-900" style={{ color: text }}>{item.menu_item.name}</span>
               {item.selected_variation && (
                 <span className="text-xs text-gray-500"> ({item.selected_variation.name})</span>
               )}
@@ -424,8 +417,8 @@ export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn })
       <div className="my-3 border-t border-gray-100" />
 
       <div className="flex justify-between text-sm">
-        <span className="text-gray-600">Subtotal</span>
-        <span className="font-medium text-gray-900">{formatPrice(total)}</span>
+        <span className="text-gray-600" style={{ color: mutedText }}>Subtotal</span>
+        <span className="font-medium text-gray-900" style={{ color: text }}>{formatPrice(total)}</span>
       </div>
 
       {(deliveryFee !== null || isFetchingDeliveryFee) && (
@@ -453,7 +446,7 @@ export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn })
       <div className="my-2 border-t border-gray-200" />
 
       <div className="flex justify-between items-baseline">
-        <span className="text-base font-bold text-gray-900">Total</span>
+        <span className="text-base font-bold text-gray-900" style={{ color: text }}>Total</span>
         <span className="text-xl font-bold" style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>
@@ -616,7 +609,7 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
  */
 export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
   const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal } = checkout
-  const { accent, accentText } = useAccent(checkout)
+  const { accent, accentText, button } = useAccent(checkout)
 
   return (
     <button
@@ -624,7 +617,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
       onClick={handleProceedToPayment}
       disabled={isProcessing}
       className={`w-full h-14 inline-flex items-center justify-center gap-3 font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${className}`}
-      style={{ backgroundColor: accent, color: accentText }}
+      style={{ backgroundColor: button ?? accent, color: accentText }}
     >
       {isProcessing ? (
         <>

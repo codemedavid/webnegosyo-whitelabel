@@ -14,7 +14,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { setAlpha } from '@/lib/branding-utils'
+import { getCheckoutPalette, setAlpha } from '@/lib/branding-utils'
 import { formatPrice } from '@/lib/cart-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import {
@@ -30,13 +30,18 @@ function Section({
   title,
   subtitle,
   children,
+  surfaceColor,
 }: {
   title: string
   subtitle?: string
   children: React.ReactNode
+  surfaceColor?: string
 }) {
   return (
-    <section className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 sm:p-5">
+    <section
+      className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 sm:p-5"
+      style={{ backgroundColor: surfaceColor }}
+    >
       <div className="mb-3">
         <h2 className="text-base font-bold text-gray-900">{title}</h2>
         {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
@@ -51,10 +56,11 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
   if (!tenant) return null
 
-  const accent = checkout.branding.buttonPrimary || checkout.branding.primary || '#111111'
+  const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
+  const accent = palette.accent
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Compact sticky header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
@@ -79,6 +85,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <Section
               title="How do you want it?"
               subtitle={advanceConfig.enabled ? 'Pick a method and when' : 'Pick a fulfillment method'}
+              surfaceColor={palette.cardBackground}
             >
               <OrderTypeSelector checkout={checkout} compact />
               {advanceConfig.enabled && (
@@ -91,18 +98,18 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Customer information */}
           {orderType && formFields.length > 0 && (
-            <Section title="Your details" subtitle="So we can prepare your order">
+            <Section title="Your details" subtitle="So we can prepare your order" surfaceColor={palette.cardBackground}>
               <CheckoutFields checkout={checkout} columns={1} />
             </Section>
           )}
 
           {/* Payment methods — stays mounted for scroll-to-error anchor */}
-          <Section title="Payment" subtitle="Choose how you'd like to pay">
+          <Section title="Payment" subtitle="Choose how you'd like to pay" surfaceColor={palette.cardBackground}>
             <PaymentMethodList checkout={checkout} />
           </Section>
 
           {/* Order summary */}
-          <Section title="Order summary" subtitle="Review before you confirm">
+          <Section title="Order summary" subtitle="Review before you confirm" surfaceColor={palette.summaryBackground ?? palette.cardBackground}>
             <OrderSummaryLines checkout={checkout} />
           </Section>
 
@@ -115,7 +122,11 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
       {/* Sticky bottom pay bar */}
       <div
         className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white"
-        style={{ boxShadow: `0 -8px 24px -12px ${setAlpha('#000000', 0.18)}` }}
+        style={{
+          boxShadow: `0 -8px 24px -12px ${setAlpha('#000000', 0.18)}`,
+          backgroundColor: palette.summaryBackground,
+          borderTopColor: palette.border,
+        }}
       >
         <div
           className="mx-auto max-w-lg px-4 pt-3"

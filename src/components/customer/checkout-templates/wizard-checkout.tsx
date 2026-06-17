@@ -10,7 +10,7 @@
 
 import { useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
-import { getContrastColor, setAlpha } from '@/lib/branding-utils'
+import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import {
   OrderTypeSelector,
@@ -35,9 +35,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
   if (!tenant) return null
 
-  const accent = branding.buttonPrimary || branding.primary || '#111111'
-  const accentText = getContrastColor(accent)
-  const accentSoft = setAlpha(accent, 0.08)
+  const palette = getCheckoutPalette(tenant, branding)
+  const accent = palette.accent
+  const accentText = palette.accentText
+  const accentSoft = palette.accentSoft
 
   const isFirstStep = step === 0
   const isLastStep = step === STEPS.length - 1
@@ -79,7 +80,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
@@ -149,13 +150,16 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         </nav>
 
         {/* Step card */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 sm:p-7">
+        <div
+          className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 sm:p-7"
+          style={{ backgroundColor: palette.cardBackground }}
+        >
           <div className="mb-5 sm:mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
               Step {step + 1} of {STEPS.length}
             </p>
-            <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{stepTitles[step]}</h2>
-            <p className="mt-1 text-sm text-gray-500">{stepSubtitles[step]}</p>
+            <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl" style={{ color: palette.text }}>{stepTitles[step]}</h2>
+            <p className="mt-1 text-sm text-gray-500" style={{ color: palette.mutedText }}>{stepSubtitles[step]}</p>
           </div>
 
           {/*
@@ -211,7 +215,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 <span className="text-sm font-semibold text-gray-900">{checkout.scheduledForLabel}</span>
               </div>
             )}
-            <div className="rounded-xl border border-gray-100 p-4">
+            <div
+              className="rounded-xl border border-gray-100 p-4"
+              style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
+            >
               <OrderSummaryLines checkout={checkout} />
             </div>
           </div>

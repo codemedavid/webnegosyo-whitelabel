@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
+import { getCartPalette } from '@/lib/branding-utils'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 
 export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
@@ -27,16 +28,19 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
   if (!tenant) return null
 
+  const palette = getCartPalette(tenant, cart.branding)
+  const accentColor = typeof tenant?.cart_accent_color === 'string' && tenant.cart_accent_color ? tenant.cart_accent_color : undefined
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Your Cart</h1>
-            <p className="text-sm text-gray-500">Review your delicious selection</p>
+            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Your Cart</h1>
+            <p className="text-sm text-gray-500" style={{ color: palette.mutedText }}>Review your delicious selection</p>
           </div>
         </div>
       </header>
@@ -58,12 +62,12 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
           <div className="grid gap-8 lg:grid-cols-3">
             <div className="space-y-6 lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-900">Cart Items</h2>
-                <span className="text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                <h2 className="text-xl md:text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Cart Items</h2>
+                <span className="text-sm text-gray-500" style={{ color: palette.mutedText }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
               </div>
 
               {items.map((item, index) => (
-                <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+                <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                   <div className="flex gap-4 md:gap-6">
                     <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
                       <OptimizedImage
@@ -81,7 +85,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex-1">
-                            <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
+                            <h3 className="text-lg font-bold text-gray-900 line-clamp-1" style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h3>
 
@@ -118,13 +122,13 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         </div>
 
                         {item.selected_addons.length > 0 && (
-                          <p className="text-sm text-gray-600 mb-1">
+                          <p className="text-sm text-gray-600 mb-1" style={{ color: palette.mutedText }}>
                             <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
                           </p>
                         )}
 
                         {item.special_instructions && (
-                          <p className="text-sm italic text-gray-500">
+                          <p className="text-sm italic text-gray-500" style={{ color: palette.mutedText }}>
                             <span className="font-medium">Note:</span> {item.special_instructions}
                           </p>
                         )}
@@ -140,7 +144,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
-                          <span className="w-12 text-center font-bold text-lg text-gray-900">
+                          <span className="w-12 text-center font-bold text-lg text-gray-900" style={{ color: palette.text }}>
                             {item.quantity}
                           </span>
                           <Button
@@ -153,11 +157,11 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           </Button>
                         </div>
                         <div className="text-right">
-                          <span className="text-xl font-bold text-orange-600">
+                          <span className="text-xl font-bold text-orange-600" style={{ color: accentColor }}>
                             {formatPrice(item.subtotal)}
                           </span>
                           {item.quantity > 1 && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500" style={{ color: palette.mutedText }}>
                               {formatPrice(item.subtotal / item.quantity)} each
                             </p>
                           )}
@@ -176,11 +180,11 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                 )
 
                 return (
-                  <div key={bundleItem.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm border border-orange-100">
+                  <div key={bundleItem.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm border border-orange-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                     {/* Bundle header */}
                     <div className="flex items-center gap-2 mb-3">
-                      <Package className="h-4 w-4 text-orange-500" />
-                      <span className="font-bold text-gray-900">{bundleItem.bundleName}</span>
+                      <Package className="h-4 w-4 text-orange-500" style={{ color: accentColor }} />
+                      <span className="font-bold text-gray-900" style={{ color: palette.text }}>{bundleItem.bundleName}</span>
                       {savings > 0 && (
                         <Badge className="bg-green-100 text-green-700 text-xs">
                           Save {formatPrice(savings)}
@@ -192,7 +196,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                     <div className="space-y-2 mb-3 pl-6 border-l-2 border-orange-100">
                       {bundleItem.slots.map((slot, idx) => (
                         <div key={idx} className="text-sm">
-                          <span className="font-medium text-gray-800">
+                          <span className="font-medium text-gray-800" style={{ color: palette.text }}>
                             {slot.quantity > 1 ? `${slot.quantity}x ` : ''}{slot.menuItemName}
                           </span>
                           {slot.selectedVariations && Object.values(slot.selectedVariations).length > 0 && (
@@ -210,7 +214,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             </Badge>
                           )}
                           {slot.selectedAddons.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-xs text-gray-500 mt-0.5" style={{ color: palette.mutedText }}>
                               + {slot.selectedAddons.map(a => a.name).join(', ')}
                             </p>
                           )}
@@ -243,7 +247,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             {formatPrice(originalTotal * bundleItem.quantity)}
                           </span>
                         )}
-                        <span className="font-bold text-orange-600">
+                        <span className="font-bold text-orange-600" style={{ color: accentColor }}>
                           {formatPrice(bundleItem.subtotal)}
                         </span>
                       </div>
@@ -254,18 +258,18 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
             </div>
 
             <div className="lg:col-span-1">
-              <div className="sticky top-20 rounded-2xl bg-white p-6 md:p-8 shadow-lg border border-gray-100">
+              <div className="sticky top-20 rounded-2xl bg-white p-6 md:p-8 shadow-lg border border-gray-100" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-                    <span className="text-orange-600 font-bold">₱</span>
+                    <span className="text-orange-600 font-bold" style={{ color: accentColor }}>₱</span>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Order Summary</h3>
+                  <h3 className="text-xl font-bold text-gray-900" style={{ color: palette.text }}>Order Summary</h3>
                 </div>
 
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-gray-600">Items ({items.length})</span>
-                    <span className="font-semibold text-gray-900">{formatPrice(total)}</span>
+                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Items ({items.length})</span>
+                    <span className="font-semibold text-gray-900" style={{ color: palette.text }}>{formatPrice(total)}</span>
                   </div>
 
                   {calculateTotalSlotBundleSavings(bundleItems) > 0 && (
@@ -275,10 +279,10 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                     </div>
                   )}
 
-                  <div className="border-t border-gray-200 pt-4">
+                  <div className="border-t border-gray-200 pt-4" style={{ borderColor: palette.border }}>
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold text-gray-900">Total</span>
-                      <span className="text-2xl font-bold text-orange-600">{formatPrice(total)}</span>
+                      <span className="text-lg font-bold text-gray-900" style={{ color: palette.text }}>Total</span>
+                      <span className="text-2xl font-bold text-orange-600" style={{ color: accentColor }}>{formatPrice(total)}</span>
                     </div>
                   </div>
                 </div>
@@ -286,6 +290,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                 <div className="space-y-4">
                   <Button
                     className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: palette.button, color: palette.button ? palette.accentText : undefined }}
                     onClick={requestCheckout}
                     disabled={isNavigating}
                   >

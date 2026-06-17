@@ -23,6 +23,8 @@ jest.mock('@/lib/supabase/client', () => ({
  * Every required field of BrandingColors is populated.
  */
 const mockBranding: BrandingColors = {
+    cartAccent: '#aa00cc',
+    checkoutAccent: '#aa00cd',
     background: '#aa0001',
     header: '#aa0002',
     headerFont: '#aa0003',
