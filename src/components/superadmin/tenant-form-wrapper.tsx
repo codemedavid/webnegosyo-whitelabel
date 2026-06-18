@@ -36,6 +36,17 @@ interface TenantFormWrapperProps {
   statsSlot?: ReactNode
 }
 
+// Common Lalamove vehicle service types. Names are shared across markets; the
+// exact availability per city is enforced by Lalamove at quotation time.
+const LALAMOVE_SERVICE_TYPES = [
+  'MOTORCYCLE',
+  'SEDAN',
+  'MPV',
+  'VAN',
+  'TRUCK330',
+  'TRUCK550',
+] as const
+
 interface TenantFormData {
   name: string
   slug: string
@@ -91,6 +102,7 @@ interface TenantFormData {
   lalamove_market: string
   lalamove_service_type: string
   lalamove_sandbox: boolean
+  lalamove_sender_phone: string
   // Distance-based delivery fee (non-Lalamove; Lalamove takes precedence when enabled)
   distance_delivery_enabled: boolean
   delivery_price_per_km: string
@@ -1044,17 +1056,37 @@ function LalamoveSection({
 
                 <div className="space-y-2">
                   <Label htmlFor="lalamove_service_type">Service Type *</Label>
-                  <Input
+                  <select
                     id="lalamove_service_type"
                     value={formData.lalamove_service_type}
                     onChange={(e) => setFormData({ ...formData, lalamove_service_type: e.target.value })}
-                    placeholder="MOTORCYCLE, VAN, CAR"
                     disabled={isPending}
-                  />
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {LALAMOVE_SERVICE_TYPES.map((type) => (
+                      <option key={type} value={type} className="bg-background text-foreground">
+                        {type}
+                      </option>
+                    ))}
+                  </select>
                   <p className="text-xs text-muted-foreground">
                     Vehicle type for delivery
                   </p>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lalamove_sender_phone">Pickup Contact Phone</Label>
+                <Input
+                  id="lalamove_sender_phone"
+                  value={formData.lalamove_sender_phone}
+                  onChange={(e) => setFormData({ ...formData, lalamove_sender_phone: e.target.value })}
+                  placeholder="e.g. 09171234567 (store number)"
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The store number the driver calls for pickup. Falls back to the footer phone if blank.
+                </p>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1414,6 +1446,7 @@ export function TenantFormWrapper({
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    lalamove_sender_phone: tenant?.lalamove_sender_phone || '',
     // Distance-based delivery fee
     distance_delivery_enabled: tenant?.distance_delivery_enabled ?? false,
     delivery_price_per_km: tenant?.delivery_price_per_km?.toString() || '',
@@ -1486,6 +1519,7 @@ export function TenantFormWrapper({
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      lalamove_sender_phone: formData.lalamove_sender_phone || undefined,
       // Distance-based delivery fee
       distance_delivery_enabled: formData.distance_delivery_enabled,
       delivery_price_per_km: formData.delivery_price_per_km ? parseFloat(formData.delivery_price_per_km) : null,

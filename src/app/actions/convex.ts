@@ -47,7 +47,7 @@ export async function deployConvexToTenantAction(tenantId: string) {
   const { data, error } = await supabase
     .from("tenants")
     .select(
-      "convex_deployment_url, convex_deploy_key, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, restaurant_address, restaurant_latitude, restaurant_longitude"
+      "name, convex_deployment_url, convex_deploy_key, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, footer_phone, footer_whatsapp, restaurant_address, restaurant_latitude, restaurant_longitude"
     )
     .eq("id", tenantId)
     .single();
@@ -95,6 +95,18 @@ export async function deployConvexToTenantAction(tenantId: string) {
     configs.lalamove_market = tenant.lalamove_market ?? "PH";
     configs.lalamove_service_type = tenant.lalamove_service_type ?? "MOTORCYCLE";
     configs.lalamove_sandbox = String(tenant.lalamove_sandbox ?? true);
+    // Sender (pickup) contact the driver calls — store number, never the
+    // customer's. Falls back through footer phone fields.
+    configs.lalamove_sender_phone =
+      tenant.lalamove_sender_phone ??
+      tenant.footer_phone ??
+      tenant.footer_whatsapp ??
+      "";
+  }
+
+  // Store identity used as the Lalamove sender name + pickup label.
+  if (tenant.name) {
+    configs.restaurant_name = tenant.name;
   }
 
   if (tenant.restaurant_address) {
@@ -143,8 +155,15 @@ export async function bulkDeployConvexAction() {
     .select(
       "id, convex_deployment_url, convex_deploy_key, convex_schema_version"
     )
+    // Require BOTH credentials to be present and non-empty. Filtering only on
+    // `IS NULL` lets a half-configured tenant (e.g. a deploy key saved but the
+    // deployment URL left blank) slip through, where it would then fail the
+    // truthiness guard in deployConvexToTenantAction and surface as a
+    // "Missing Convex credentials" error rather than being quietly skipped.
     .not("convex_deployment_url", "is", null)
     .not("convex_deploy_key", "is", null)
+    .neq("convex_deployment_url", "")
+    .neq("convex_deploy_key", "")
     // Include tenants that have never been deployed (null version) as well as
     // those on an older schema. `NULL < N` is NULL in Postgres, so a plain
     // `.lt` would silently skip freshly-configured tenants.

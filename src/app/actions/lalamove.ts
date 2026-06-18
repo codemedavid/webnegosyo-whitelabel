@@ -5,12 +5,32 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { 
-  createLalamoveQuotation, 
+import {
+  createLalamoveQuotation,
   createLalamoveOrder,
-  cancelLalamoveOrder 
+  cancelLalamoveOrder
 } from '@/lib/lalamove-service'
+import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
 import type { Tenant } from '@/types/database'
+
+/**
+ * Resolve the Lalamove sender (pickup) contact from the tenant record.
+ *
+ * The driver calls the SENDER number to coordinate pickup at the store, so it
+ * must be the store's number — never the customer's. We prefer the explicit
+ * lalamove_sender_phone, then footer_phone / footer_whatsapp.
+ */
+function resolveSender(tenant: Tenant): { name: string; phone: string | undefined } {
+  const phone =
+    tenant.lalamove_sender_phone ||
+    tenant.footer_phone ||
+    tenant.footer_whatsapp ||
+    undefined
+  return {
+    name: tenant.name || tenant.footer_business_name || 'Restaurant',
+    phone: normalizeLalamovePhone(phone, tenant.lalamove_market),
+  }
+}
 
 /**
  * Create a Lalamove quotation for delivery
@@ -248,34 +268,20 @@ export async function createLalamoveOrderAction(
       console.warn('Quotation validity check failed, but proceeding in sandbox mode:', validityCheck.error)
     }
 
-    // Normalize phone numbers to E.164; default to +63 for PH market per Lalamove phone rules
-    function normalizePhone(phone: string | undefined, market: string | undefined): string | undefined {
-      if (!phone) return undefined
-      const trimmed = String(phone).trim()
-      if (trimmed.startsWith('+')) return trimmed
-      const digits = trimmed.replace(/\D/g, '')
-      if (!digits) return undefined
-      const isPH = (market || '').toUpperCase() === 'PH'
-      if (isPH) {
-        // Common inputs: 09xxxxxxxxx, 9xxxxxxxxx, 639xxxxxxxxx
-        if (digits.startsWith('63')) return `+${digits}`
-        if (digits.startsWith('0')) return `+63${digits.slice(1)}`
-        if (digits.length === 10 && digits.startsWith('9')) return `+63${digits}`
-        return `+63${digits}`
-      }
-      // Fallback: return with + prefix if a country code seems present
-      return `+${digits}`
-    }
-
-    const normalizedSenderPhone = normalizePhone(senderPhone, tenantTyped.lalamove_market)
-    const normalizedRecipientPhone = normalizePhone(recipientPhone, tenantTyped.lalamove_market)
+    // Resolve the sender (pickup) contact from the tenant — the driver calls
+    // this number for pickup, so it must be the STORE's number, not the
+    // customer's. The senderName/senderPhone params are ignored in favor of the
+    // authoritative tenant record to prevent the historical "driver calls
+    // customer for pickup" bug.
+    const sender = resolveSender(tenantTyped)
+    const normalizedRecipientPhone = normalizeLalamovePhone(recipientPhone, tenantTyped.lalamove_market)
 
     // Create Lalamove order
     const lalamoveOrder = await createLalamoveOrder(
       tenantTyped,
       quotationId,
-      senderName,
-      normalizedSenderPhone || senderPhone,
+      sender.name || senderName,
+      sender.phone || normalizeLalamovePhone(senderPhone, tenantTyped.lalamove_market) || senderPhone,
       recipientName,
       normalizedRecipientPhone || recipientPhone,
       {
@@ -396,6 +402,52 @@ export async function syncLalamoveOrderAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to sync Lalamove order',
+    }
+  }
+}
+
+/**
+ * Add a priority fee (tip) to an existing Lalamove order.
+ */
+export async function addPriorityFeeAction(
+  tenantId: string,
+  lalamoveOrderId: string,
+  amount: string
+) {
+  try {
+    const { verifyTenantAdmin } = await import('@/lib/admin-service')
+    await verifyTenantAdmin(tenantId)
+
+    const parsed = Number(amount)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return { success: false, error: 'Invalid priority fee amount' }
+    }
+
+    const supabase = await createClient()
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', tenantId)
+      .single()
+
+    if (!tenant) {
+      return { success: false, error: 'Tenant not found' }
+    }
+
+    const tenantTyped = tenant as unknown as Tenant
+    if (!tenantTyped.lalamove_enabled) {
+      return { success: false, error: 'Lalamove delivery is not enabled' }
+    }
+
+    const { addLalamovePriorityFee } = await import('@/lib/lalamove-service')
+    await addLalamovePriorityFee(tenantTyped, lalamoveOrderId, String(parsed))
+
+    return { success: true }
+  } catch (error) {
+    console.error('Lalamove priority fee error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add priority fee',
     }
   }
 }

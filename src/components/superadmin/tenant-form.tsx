@@ -66,6 +66,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
+    lalamove_sender_phone: tenant?.lalamove_sender_phone || '',
     menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
     checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
@@ -125,6 +126,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       lalamove_market: formData.lalamove_market || undefined,
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
+      lalamove_sender_phone: formData.lalamove_sender_phone || undefined,
       // Distance-based delivery is configured via TenantFormWrapper (the live superadmin form);
       // this legacy form is unused but must satisfy the required schema field.
       distance_delivery_enabled: false,

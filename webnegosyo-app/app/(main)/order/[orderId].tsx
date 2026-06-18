@@ -11,6 +11,7 @@ import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
+import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -59,6 +60,8 @@ interface OrderDetail {
   total: number;
   deliveryAddress?: string;
   deliveryFee?: number;
+  lalamoveQuotationId?: string;
+  lalamoveOrderId?: string;
   lalamoveStatus?: string;
   lalamoveDriverName?: string;
   lalamoveDriverPhone?: string;
@@ -432,12 +435,10 @@ export default function OrderDetailScreen() {
         <Card title="Delivery" style={styles.section}>
           <Text style={styles.value}>{order.deliveryAddress}</Text>
           {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
-          {order.lalamoveStatus && <Text style={styles.sub}>Lalamove: {order.lalamoveStatus}</Text>}
-          {order.lalamoveDriverName && (
-            <Text style={styles.sub}>Driver: {order.lalamoveDriverName} ({order.lalamoveDriverPhone})</Text>
-          )}
         </Card>
       )}
+
+      <LalamoveDeliveryCard order={order} />
 
       {order.paymentMethod && (
         <Card title="Payment" style={styles.section}>

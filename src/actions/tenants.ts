@@ -152,6 +152,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       lalamove_market: parsed.lalamove_market || undefined,
       lalamove_service_type: parsed.lalamove_service_type || undefined,
       lalamove_sandbox: parsed.lalamove_sandbox,
+      lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
       // Distance-based delivery fee
       distance_delivery_enabled: parsed.distance_delivery_enabled,
       delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
@@ -301,6 +302,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     lalamove_market: parsed.lalamove_market || undefined,
     lalamove_service_type: parsed.lalamove_service_type || undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
     // Distance-based delivery fee
     distance_delivery_enabled: parsed.distance_delivery_enabled,
     delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,

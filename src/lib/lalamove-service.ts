@@ -291,6 +291,31 @@ export async function getLalamoveOrder(
 }
 
 /**
+ * Add a priority fee (tip) to an existing Lalamove order to speed up driver
+ * matching. The amount is a string in the market's currency minor-unit-free
+ * format (e.g. "15").
+ */
+export async function addLalamovePriorityFee(
+  tenant: Tenant,
+  orderId: string,
+  amount: string
+) {
+  try {
+    const client = await initLalamoveClient(tenant)
+    const market = tenant.lalamove_market || 'HK'
+
+    return await client.Order.addPriorityFee(market, orderId, amount)
+  } catch (error) {
+    console.error('Lalamove priority fee error:', error)
+    throw new Error(
+      error instanceof Error
+        ? `Failed to add priority fee: ${error.message}`
+        : 'Failed to add priority fee'
+    )
+  }
+}
+
+/**
  * Cancel a Lalamove order
  */
 export async function cancelLalamoveOrder(

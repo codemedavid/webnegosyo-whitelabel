@@ -98,6 +98,8 @@ export interface Tenant {
   lalamove_market?: string;
   lalamove_service_type?: string;
   lalamove_sandbox?: boolean;
+  // Store pickup contact the driver calls; falls back to footer_phone when null
+  lalamove_sender_phone?: string;
   // Restaurant address for delivery pickup
   restaurant_address?: string;
   restaurant_latitude?: number;

@@ -6,10 +6,11 @@ import { Truck, RefreshCw, X, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/cart-utils'
-import { 
-  cancelLalamoveOrderAction, 
+import {
+  cancelLalamoveOrderAction,
   syncLalamoveOrderAction,
-  createLalamoveOrderAction 
+  createLalamoveOrderAction,
+  addPriorityFeeAction
 } from '@/app/actions/lalamove'
 import { toast } from 'sonner'
 import type { OrderWithItems } from '@/lib/orders-service'
@@ -24,6 +25,30 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
   const [cancellingLalamove, setCancellingLalamove] = useState(false)
   const [syncingLalamove, setSyncingLalamove] = useState(false)
   const [creatingLalamove, setCreatingLalamove] = useState(false)
+  const [addingPriorityFee, setAddingPriorityFee] = useState(false)
+
+  const handleAddPriorityFee = async () => {
+    if (!order.lalamove_order_id) return
+
+    const input = window.prompt('Priority fee amount (helps match a driver faster):', '50')
+    if (input === null) return
+
+    const amount = Number(input)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+
+    setAddingPriorityFee(true)
+    const result = await addPriorityFeeAction(tenantId, order.lalamove_order_id, String(amount))
+    if (result.success) {
+      toast.success(`Priority fee of ${formatPrice(amount)} added`)
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to add priority fee')
+    }
+    setAddingPriorityFee(false)
+  }
 
   const handleCancelLalamove = async () => {
     if (!order.lalamove_order_id || !confirm('Are you sure you want to cancel this Lalamove delivery?')) {
@@ -83,14 +108,15 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
       return
     }
 
-    const tenantName = 'Restaurant'
-
+    // Sender (pickup) name/phone are resolved server-side from the tenant
+    // record; we pass blanks so the customer's contact is never used as the
+    // pickup number. Recipient is the customer.
     const result = await createLalamoveOrderAction(
       tenantId,
       order.id,
       order.lalamove_quotation_id,
-      tenantName,
-      customerContact,
+      '',
+      '',
       customerName,
       customerContact,
       { orderId: order.id, tenantId }
@@ -229,6 +255,24 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     </>
                   )}
                 </Button>
+                {order.lalamove_status !== 'CANCELLED' && order.lalamove_status !== 'DELIVERED' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAddPriorityFee}
+                    disabled={addingPriorityFee}
+                    className="w-full text-xs sm:text-sm h-8 sm:h-9"
+                  >
+                    {addingPriorityFee ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                        <span>Adding…</span>
+                      </>
+                    ) : (
+                      <span>Add Priority Fee</span>
+                    )}
+                  </Button>
+                )}
                 {order.lalamove_status !== 'CANCELLED' && (
                   <Button
                     size="sm"

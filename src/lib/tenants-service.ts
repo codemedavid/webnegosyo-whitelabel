@@ -116,6 +116,7 @@ export const tenantSchema = z.object({
   lalamove_market: z.string().optional().or(z.literal('')).optional(),
   lalamove_service_type: z.string().optional().or(z.literal('')).optional(),
   lalamove_sandbox: z.boolean().default(true),
+  lalamove_sender_phone: z.string().optional().or(z.literal('')).optional(),
   // Convex integration
   convex_deployment_url: z.string().url().optional().or(z.literal('')).optional(),
   convex_deploy_key: z.string().optional().or(z.literal('')).optional(),
@@ -282,6 +283,7 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
@@ -398,6 +400,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
+    lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,

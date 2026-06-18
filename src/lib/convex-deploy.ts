@@ -4,6 +4,13 @@ import convexPushBundle from "./convex-push-bundle.json";
 
 const brotliCompress = promisify(zlib.brotliCompress);
 
+// v10: Lalamove v3 hardening — convex/lalamove.ts now signs requests with a
+// correct HMAC-SHA256 signature (was sending the raw secret → prod 401s), wraps
+// payloads in the v3 `{ data }` envelope, retrieves the quotation for real stop
+// IDs, and uses the store's pickup contact as sender (config lalamove_sender_phone
+// + restaurant_name). Adds cancelLalamove, addLalamovePriorityFee, and
+// syncLalamoveStatus actions consumed by the merchant app. Bumping forces
+// bulkDeployConvexAction to re-push every tenant.
 // v9: POS / counter sales — orders.source now accepts "pos". POS orders are
 // auto-confirmed (skip the pending queue) and skip the new-order push, like
 // qr_handoff, since the merchant rings them up on the device they're holding.
@@ -17,7 +24,7 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // (self-corrects on cancellation), PH-local day boundaries (time.ts),
 // getAllOrderItems, and the de-N+1'd product analytics aggregator. Bumping forces
 // bulkDeployConvexAction to re-push every tenant.
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

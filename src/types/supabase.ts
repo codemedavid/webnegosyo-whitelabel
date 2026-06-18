@@ -1348,6 +1348,7 @@ export type Database = {
           lalamove_enabled: boolean | null
           lalamove_market: string | null
           lalamove_sandbox: boolean | null
+          lalamove_sender_phone: string | null
           lalamove_secret_key: string | null
           lalamove_service_type: string | null
           link_color: string | null
@@ -1512,6 +1513,7 @@ export type Database = {
           lalamove_enabled?: boolean | null
           lalamove_market?: string | null
           lalamove_sandbox?: boolean | null
+          lalamove_sender_phone?: string | null
           lalamove_secret_key?: string | null
           lalamove_service_type?: string | null
           link_color?: string | null
@@ -1676,6 +1678,7 @@ export type Database = {
           lalamove_enabled?: boolean | null
           lalamove_market?: string | null
           lalamove_sandbox?: boolean | null
+          lalamove_sender_phone?: string | null
           lalamove_secret_key?: string | null
           lalamove_service_type?: string | null
           link_color?: string | null
