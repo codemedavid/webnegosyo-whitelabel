@@ -28,8 +28,8 @@ import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
-import type { BrandingColors } from '@/lib/branding-utils'
-import type { CartItem, CartBundleItem, MenuItem } from '@/types/database'
+import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
+import type { CartItem, CartBundleItem, MenuItem, Tenant } from '@/types/database'
 import Link from 'next/link'
 
 interface CartDrawerProps {
@@ -37,6 +37,8 @@ interface CartDrawerProps {
   onClose: () => void
   tenantSlug: string
   branding: BrandingColors
+  /** Full tenant row — used to resolve the cart page palette (cart_* overrides). */
+  tenant?: Tenant | null
   tenantId?: string
   menuEngineeringEnabled?: boolean
   checkoutUpsellEnabled?: boolean
@@ -50,6 +52,7 @@ export function CartDrawer({
   onClose,
   tenantSlug,
   branding,
+  tenant,
   tenantId,
   menuEngineeringEnabled,
   checkoutUpsellEnabled,
@@ -58,6 +61,12 @@ export function CartDrawer({
   checkoutUpsellMaxItems = 4,
 }: CartDrawerProps) {
   const router = useRouter()
+  // Cart page palette: accent is always resolved (falls back to brand colors);
+  // the override fields (background/cardBackground/summaryBackground/text/…)
+  // are undefined unless the merchant set that cart_* color, so they no-op into
+  // the drawer's existing defaults — zero change for tenants who set nothing.
+  const palette = getCartPalette(tenant ?? null, branding)
+  const accent = palette.accent
   const { items, total, updateQuantity, removeItem, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
@@ -141,12 +150,12 @@ export function CartDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full">
-          <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${branding.primary}20` }}>
+        <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
+          <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${accent}20` }}>
             <SheetTitle className="flex items-center gap-2 text-base">
               <div
                 className="flex h-8 w-8 items-center justify-center rounded-full flex-shrink-0"
-                style={{ backgroundColor: branding.primary }}
+                style={{ backgroundColor: accent }}
               >
                 <ShoppingCart className="h-4 w-4 text-white" />
               </div>
@@ -170,7 +179,7 @@ export function CartDrawer({
               <ScrollArea className="flex-1 overflow-y-auto px-4">
                 <div className="space-y-3 pt-3 pb-4">
                   {items.map((item, index) => (
-                    <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         <OptimizedImage
                           src={item.menu_item.image_url}
@@ -186,7 +195,7 @@ export function CartDrawer({
                       <div className="flex flex-1 flex-col min-w-0">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
+                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900" style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h4>
 
@@ -196,9 +205,9 @@ export function CartDrawer({
                                 variant="outline"
                                 className="mt-1 text-xs"
                                 style={{
-                                  borderColor: `${branding.primary}40`,
-                                  color: branding.primary,
-                                  backgroundColor: `${branding.primary}10`
+                                  borderColor: `${accent}40`,
+                                  color: accent,
+                                  backgroundColor: `${accent}10`
                                 }}
                               >
                                 {item.selected_variation.name}
@@ -214,9 +223,9 @@ export function CartDrawer({
                                     variant="outline"
                                     className="text-xs"
                                     style={{
-                                      borderColor: `${branding.primary}40`,
-                                      color: branding.primary,
-                                      backgroundColor: `${branding.primary}10`
+                                      borderColor: `${accent}40`,
+                                      color: accent,
+                                      backgroundColor: `${accent}10`
                                     }}
                                   >
                                     {option.name}
@@ -272,7 +281,7 @@ export function CartDrawer({
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
-                          <span className="font-bold text-sm" style={{ color: branding.primary }}>
+                          <span className="font-bold text-sm" style={{ color: accent }}>
                             {formatPrice(item.subtotal)}
                           </span>
                         </div>
@@ -281,7 +290,7 @@ export function CartDrawer({
                   ))}
 
                   {bundleItems.filter(bi => Array.isArray(bi.slots)).map((bundleItem, index) => (
-                    <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         {(bundleItem.bundleImageUrl || bundleItem.slots?.[0]?.menuItemImage) ? (
                           <OptimizedImage
@@ -302,16 +311,16 @@ export function CartDrawer({
                       <div className="flex flex-1 flex-col min-w-0">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900">
+                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900" style={{ color: palette.text }}>
                               {bundleItem.bundleName}
                             </h4>
                             <Badge
                               variant="outline"
                               className="mt-1 text-xs"
                               style={{
-                                borderColor: `${branding.primary}40`,
-                                color: branding.primary,
-                                backgroundColor: `${branding.primary}10`
+                                borderColor: `${accent}40`,
+                                color: accent,
+                                backgroundColor: `${accent}10`
                               }}
                             >
                               {bundleItem.slots?.length ?? 0} items
@@ -349,7 +358,7 @@ export function CartDrawer({
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
-                          <span className="font-bold text-sm" style={{ color: branding.primary }}>
+                          <span className="font-bold text-sm" style={{ color: accent }}>
                             {formatPrice(bundleItem.subtotal)}
                           </span>
                         </div>
@@ -359,10 +368,10 @@ export function CartDrawer({
                 </div>
               </ScrollArea>
 
-              <div className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${branding.primary}20` }}>
+              <div className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${accent}20`, backgroundColor: palette.summaryBackground }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-base font-bold text-gray-900">Total</span>
-                  <span className="text-lg font-bold" style={{ color: branding.primary }}>{formatPrice(total)}</span>
+                  <span className="text-base font-bold text-gray-900" style={{ color: palette.text }}>Total</span>
+                  <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(total)}</span>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -371,15 +380,15 @@ export function CartDrawer({
                       variant="outline"
                       className="w-full h-11 border-2 border-gray-200 rounded-xl font-semibold transition-colors"
                       style={{
-                        borderColor: `${branding.primary}40`
+                        borderColor: `${accent}40`
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = `${branding.primary}10`
-                        e.currentTarget.style.borderColor = `${branding.primary}60`
+                        e.currentTarget.style.backgroundColor = `${accent}10`
+                        e.currentTarget.style.borderColor = `${accent}60`
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = 'transparent'
-                        e.currentTarget.style.borderColor = `${branding.primary}40`
+                        e.currentTarget.style.borderColor = `${accent}40`
                       }}
                     >
                       Review Cart
@@ -387,7 +396,7 @@ export function CartDrawer({
                   </Link>
                   <Button
                     className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: branding.primary }}
+                    style={{ backgroundColor: palette.button ?? accent, color: palette.accentText }}
                     onClick={handleCheckoutClick}
                   >
                     Proceed to Checkout

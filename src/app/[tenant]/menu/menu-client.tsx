@@ -746,6 +746,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         onClose={() => setIsCartOpen(false)}
         tenantSlug={tenantSlug}
         branding={branding}
+        tenant={tenant}
         tenantId={tenant?.id}
         menuEngineeringEnabled={tenant?.menu_engineering_enabled}
         checkoutUpsellEnabled={tenant?.checkout_upsell_enabled}
