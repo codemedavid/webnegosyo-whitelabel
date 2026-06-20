@@ -381,7 +381,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
 
 /** Order summary line items + totals (branded). */
 export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn }) {
-  const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, customerData, serviceChargeAmount, grandTotal } = checkout
+  const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, customerData, serviceChargeAmount, grandTotal } = checkout
   const { accent, text, mutedText } = useAccent(checkout)
   const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
 
@@ -434,6 +434,12 @@ export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn })
             )}
           </span>
         </div>
+      )}
+
+      {deliveryFeeError && !isFetchingDeliveryFee && deliveryFee === null && (
+        <p className="text-xs text-red-600" role="alert">
+          {deliveryFeeError}
+        </p>
       )}
 
       {serviceChargeAmount > 0 && (

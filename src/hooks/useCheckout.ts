@@ -37,6 +37,7 @@ import { getPaymentProofError } from '@/lib/payment-proof'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
+import { resolveDeliveryQuotePlan } from '@/lib/delivery-quote'
 import { createClient } from '@/lib/supabase/client'
 import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { savePendingOrder } from '@/lib/qr-pending-order'
@@ -84,6 +85,9 @@ export function useCheckout(tenantSlug: string) {
   // Distance-based delivery: address is outside the configured radius (blocks delivery submit)
   const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false)
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null)
+  // Customer-visible reason the delivery fee couldn't be calculated (e.g. store not set up,
+  // or the quote provider failed). Shown in the order summary instead of failing silently.
+  const [deliveryFeeError, setDeliveryFeeError] = useState<string | null>(null)
 
   // Payment method state
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -359,6 +363,7 @@ export function useCheckout(tenantSlug: string) {
       setDeliveryFeeAddress('')
       setDeliveryOutOfRange(false)
       setDeliveryDistanceKm(null)
+      setDeliveryFeeError(null)
       setIsFetchingDeliveryFee(false)
     }
 
@@ -366,24 +371,34 @@ export function useCheckout(tenantSlug: string) {
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const isDeliveryOrder = selectedOrderType?.type === 'delivery'
 
-      // Store location must be configured for either fee source.
-      const hasRestaurantLocation = !!tenant?.restaurant_latitude && !!tenant?.restaurant_longitude
-
-      // Lalamove takes precedence; distance-based only applies when Lalamove is off.
-      const lalamoveOn = !!tenant?.lalamove_enabled
-      const distanceOn = !lalamoveOn && !!tenant?.distance_delivery_enabled
-
       const deliveryAddress = customerData.delivery_address
       const deliveryLat = customerData.delivery_lat
       const deliveryLng = customerData.delivery_lng
 
-      if (!isDeliveryOrder || (!lalamoveOn && !distanceOn) || !hasRestaurantLocation) {
+      // Single source of truth for which fee source applies (and why none does).
+      const plan = resolveDeliveryQuotePlan({
+        isDeliveryOrder,
+        lalamoveEnabled: !!tenant?.lalamove_enabled,
+        distanceEnabled: !!tenant?.distance_delivery_enabled,
+        restaurantLatitude: tenant?.restaurant_latitude,
+        restaurantLongitude: tenant?.restaurant_longitude,
+        deliveryLatitude: deliveryLat,
+        deliveryLongitude: deliveryLng,
+      })
+
+      // Delivery enabled but the store's pickup coordinates were never set: surface it
+      // instead of silently showing no fee (which reads as "delivery is broken").
+      if (plan.kind === 'misconfigured') {
+        console.error(
+          `[Checkout] Delivery enabled for tenant ${tenant?.id} but restaurant coordinates are missing`
+        )
         resetDeliveryState()
+        setDeliveryFeeError(plan.message)
         return
       }
 
-      if (!deliveryAddress || !deliveryLat || !deliveryLng) {
-        // Delivery address not yet selected from suggestions
+      // Not a delivery order, no fee source enabled, or address not yet picked.
+      if (plan.kind === 'idle' || plan.kind === 'awaiting-address') {
         resetDeliveryState()
         return
       }
@@ -394,15 +409,16 @@ export function useCheckout(tenantSlug: string) {
       setDeliveryFeeAddress('')
       setDeliveryOutOfRange(false)
       setDeliveryDistanceKm(null)
+      setDeliveryFeeError(null)
       setIsFetchingDeliveryFee(true)
 
       try {
-        if (lalamoveOn) {
+        if (plan.kind === 'lalamove') {
           const result = await createQuotationAction(
             tenant!.id,
             tenant!.restaurant_address || '',
-            tenant!.restaurant_latitude!,
-            tenant!.restaurant_longitude!,
+            Number(tenant!.restaurant_latitude),
+            Number(tenant!.restaurant_longitude),
             deliveryAddress,
             parseFloat(deliveryLat),
             parseFloat(deliveryLng)
@@ -420,6 +436,7 @@ export function useCheckout(tenantSlug: string) {
             setDeliveryFee(null)
             setQuotationId(null)
             setDeliveryFeeAddress('')
+            setDeliveryFeeError(result.error || 'We couldn’t get a delivery fee for this address. Please try again.')
           }
         } else {
           // Distance-based fee
@@ -450,6 +467,7 @@ export function useCheckout(tenantSlug: string) {
             setDeliveryFee(null)
             setDeliveryFeeAddress('')
             setDeliveryOutOfRange(false)
+            setDeliveryFeeError(result.error || 'We couldn’t calculate a delivery fee for this address. Please try again.')
           }
         }
       } catch (error) {
@@ -460,6 +478,7 @@ export function useCheckout(tenantSlug: string) {
         setQuotationId(null)
         setDeliveryFeeAddress('')
         setDeliveryOutOfRange(false)
+        setDeliveryFeeError('We couldn’t calculate a delivery fee right now. Please try again.')
       } finally {
         if (!isCancelled) {
           setIsFetchingDeliveryFee(false)
@@ -1102,6 +1121,7 @@ export function useCheckout(tenantSlug: string) {
     deliveryFeeAddress,
     deliveryOutOfRange,
     deliveryDistanceKm,
+    deliveryFeeError,
     validDeliveryFee,
     grandTotal,
     // advance order / scheduling

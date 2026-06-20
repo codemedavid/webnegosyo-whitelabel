@@ -416,6 +416,7 @@ export default async function SettingsPage({
         tenantId={tenant.id}
         tenantSlug={tenant.slug}
         mapboxEnabled={tenant.mapbox_enabled ?? true}
+        lalamoveEnabled={tenant.lalamove_enabled ?? false}
         initial={{
           distance_delivery_enabled: tenant.distance_delivery_enabled ?? false,
           delivery_price_per_km: tenant.delivery_price_per_km ?? null,

@@ -26,6 +26,9 @@ interface DeliverySettingsFormProps {
   tenantId: string
   tenantSlug: string
   mapboxEnabled: boolean
+  // Lalamove also needs the store's pickup coordinates, so the location field must be
+  // reachable even when distance-based delivery is off.
+  lalamoveEnabled: boolean
   initial: DeliverySettingsInitial
 }
 
@@ -46,6 +49,7 @@ export function DeliverySettingsForm({
   tenantId,
   tenantSlug,
   mapboxEnabled,
+  lalamoveEnabled,
   initial,
 }: DeliverySettingsFormProps) {
   const router = useRouter()
@@ -124,12 +128,14 @@ export function DeliverySettingsForm({
           />
         </div>
 
-        {enabled && (
+        {(enabled || lalamoveEnabled) && (
           <div className="space-y-6">
             <div className="space-y-2">
               <Label className="font-medium">Store location</Label>
               <p className="text-sm text-muted-foreground">
-                Set your store address — delivery distance is measured from this point.
+                {lalamoveEnabled && !enabled
+                  ? 'Set your store address — Lalamove uses this as the pickup point for delivery quotes and bookings.'
+                  : 'Set your store address — delivery distance is measured from this point.'}
               </p>
               <MapboxAddressAutocomplete
                 value={address}
@@ -142,8 +148,15 @@ export function DeliverySettingsForm({
                   Pinned at {latitude.toFixed(6)}, {longitude.toFixed(6)}
                 </p>
               )}
+              {lalamoveEnabled && !enabled && latitude === null && longitude === null && (
+                <p className="text-xs text-red-600" role="alert">
+                  Lalamove delivery won&apos;t show a fee at checkout until you pin your store location here.
+                </p>
+              )}
             </div>
 
+            {enabled && (
+            <>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="delivery-radius-km" className="font-medium">
@@ -211,6 +224,8 @@ export function DeliverySettingsForm({
               distance-based fee. Changes apply to <span className="font-medium">{tenantSlug}</span>
               &apos;s storefront after saving.
             </p>
+            </>
+            )}
           </div>
         )}
 
