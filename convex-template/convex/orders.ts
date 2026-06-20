@@ -85,8 +85,9 @@ export const createOrder = mutation({
 
     // QR-handoff and POS orders are rung up by the merchant directly (scanning
     // the customer's QR, or taking a counter sale), so they are confirmed on
-    // arrival — they skip the pending queue entirely (no approval step needed)
-    // and skip the new-order push (the merchant is already at the device).
+    // arrival — they skip the pending queue entirely (no approval step needed).
+    // They still fire a new-order push (see below) so every order, including
+    // pickups, audibly notifies the merchant.
     const skipPending = args.source === "qr_handoff" || args.source === "pos";
 
     const orderId = await ctx.db.insert("orders", {
@@ -102,17 +103,14 @@ export const createOrder = mutation({
       });
     }
 
-    // Send push notification to admin devices. Skip for QR handoff / POS: the
-    // merchant is already holding the device they rang the order up on, so a
-    // new-order alert sound/notification would be redundant and noisy.
-    if (!skipPending) {
-      await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
-        customerName: args.customerName,
-        total: args.total,
-        itemCount: args.itemCount,
-        orderId: orderId,
-      });
-    }
+    // Send push notification to admin devices for every new order — pickup,
+    // delivery, online, or counter — so nothing slips through silently.
+    await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
+      customerName: args.customerName,
+      total: args.total,
+      itemCount: args.itemCount,
+      orderId: orderId,
+    });
 
     return orderId;
   },

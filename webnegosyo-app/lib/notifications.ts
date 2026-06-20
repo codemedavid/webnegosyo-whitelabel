@@ -13,7 +13,36 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Track whether we've already (re)created the high-importance "orders" channel
+// this app session, so callers can invoke ensureOrdersChannel freely.
+let ordersChannelReady = false;
+
+/**
+ * Create the high-importance "orders" Android channel that rings the custom
+ * ringtone. Safe to call repeatedly and BEFORE any permission prompt — creating
+ * a channel does not require notification permission. Both remote pushes and
+ * local notifications target this channel via `channelId: "orders"`, so it must
+ * exist before the first order arrives. No-op on iOS.
+ */
+export async function ensureOrdersChannel(): Promise<void> {
+  if (Platform.OS !== "android" || ordersChannelReady) return;
+  // Delete first — channels are immutable once created, so sound/vibration
+  // changes from a previous build won't take effect otherwise.
+  await Notifications.deleteNotificationChannelAsync("orders").catch(() => {});
+  await Notifications.setNotificationChannelAsync("orders", {
+    name: "New Orders",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    sound: "ringtone.mp3",
+  });
+  ordersChannelReady = true;
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
+  // Make sure the ringtone channel exists even on devices/emulators where we
+  // bail out below — local in-app order alerts still rely on it.
+  await ensureOrdersChannel();
+
   // Push notifications only work on physical devices
   if (!Device.isDevice) {
     console.log("Push notifications require a physical device");
@@ -33,18 +62,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
   if (finalStatus !== "granted") {
     console.log("Push notification permission not granted");
     return null;
-  }
-
-  // Android notification channel — delete old channel first since channels are
-  // immutable once created (sound/vibration changes won't take effect otherwise)
-  if (Platform.OS === "android") {
-    await Notifications.deleteNotificationChannelAsync("orders").catch(() => {});
-    await Notifications.setNotificationChannelAsync("orders", {
-      name: "New Orders",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      sound: "ringtone.mp3",
-    });
   }
 
   // Get the Expo push token — projectId required in Expo Go / bare workflow

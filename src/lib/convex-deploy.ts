@@ -24,7 +24,10 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // (self-corrects on cancellation), PH-local day boundaries (time.ts),
 // getAllOrderItems, and the de-N+1'd product analytics aggregator. Bumping forces
 // bulkDeployConvexAction to re-push every tenant.
-const CURRENT_SCHEMA_VERSION = 10;
+// v11: new-order push now fires for EVERY order (pickup/delivery/counter) instead
+// of skipping qr_handoff/pos, and the push payload targets the high-importance
+// "orders" Android channel (channelId) so it rings the custom ringtone.
+const CURRENT_SCHEMA_VERSION = 11;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

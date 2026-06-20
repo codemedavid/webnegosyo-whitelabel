@@ -151,6 +151,11 @@ export default function OrdersScreen() {
                 </View>
 
                 <View style={styles.orderBottom}>
+                  {order.orderType && (
+                    <View style={styles.orderTypePill}>
+                      <Text style={styles.orderTypeText}>{order.orderType}</Text>
+                    </View>
+                  )}
                   <Text style={styles.orderMeta}>
                     {order.itemCount} item{order.itemCount !== 1 ? "s" : ""} · {order.source ?? "web"} · {timeAgo(order._creationTime)}
                   </Text>
@@ -241,7 +246,14 @@ const styles = StyleSheet.create({
   orderContact: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   orderRight: { alignItems: "flex-end", gap: spacing.xs },
   orderTotal: { ...typography.heading, color: colors.primary },
-  orderBottom: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 0.5, borderTopColor: colors.separator },
+  orderBottom: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 0.5, borderTopColor: colors.separator, flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
+  orderTypePill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: `${colors.primary}15`,
+  },
+  orderTypeText: { ...typography.small, color: colors.primary, fontWeight: "700", textTransform: "uppercase" },
   orderMeta: { ...typography.caption, color: colors.textSecondary },
   actionButton: {
     backgroundColor: colors.primary,

@@ -69,14 +69,17 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
         // Audio is best-effort — never let it break the alert.
       }
 
-      // Schedule local push notification (visible in notification tray / when app is backgrounded)
+      // Schedule local notification (visible in notification tray). Fire it on
+      // the high-importance "orders" channel so Android rings the custom
+      // ringtone instead of using the silent default channel. trigger with only
+      // a channelId fires immediately (ChannelAwareTriggerInput); ignored on iOS.
       Notifications.scheduleNotificationAsync({
         content: {
           title: "New Order!",
           body,
           sound: "default",
         },
-        trigger: null,
+        trigger: { channelId: "orders" },
       }).catch(() => {});
 
       // Show in-app alert dialog

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
@@ -124,6 +124,10 @@ const HIDDEN_FIELDS = new Set([
   'customer_name',
   'customer_phone',
   'customer_contact',
+  // Payment proof is rendered explicitly in the Payment card, not as raw rows.
+  'payment_proof_reference',
+  'payment_proof_url',
+  'payment_proof_public_id',
 ]);
 
 function formatFieldLabel(key: string): string {
@@ -356,9 +360,14 @@ export default function OrderDetailScreen() {
       <Card title="Customer" style={styles.section}>
         <Text style={styles.value}>{order.customerName}</Text>
         <Text style={styles.sub}>{order.customerContact}</Text>
-        <Text style={styles.sub}>
-          {order.orderType ?? "N/A"} · {order.source} · {new Date(order._creationTime).toLocaleString()}
-        </Text>
+        <View style={styles.orderTypeRow}>
+          <View style={styles.orderTypePill}>
+            <Text style={styles.orderTypeText}>{order.orderType ?? "N/A"}</Text>
+          </View>
+          <Text style={styles.sub}>
+            {order.source} · {new Date(order._creationTime).toLocaleString()}
+          </Text>
+        </View>
         {(order.hasUpsellItems || order.hasBundleItems) && (
           <View style={styles.tagRow}>
             {order.hasUpsellItems && (
@@ -440,15 +449,30 @@ export default function OrderDetailScreen() {
 
       <LalamoveDeliveryCard order={order} />
 
-      {order.paymentMethod && (
-        <Card title="Payment" style={styles.section}>
-          <Text style={styles.value}>{order.paymentMethod}</Text>
-          {order.paymentMethodDetails && (
-            <Text style={styles.sub}>{order.paymentMethodDetails}</Text>
-          )}
-          <Text style={styles.sub}>Status: {order.paymentStatus ?? "pending"}</Text>
-        </Card>
-      )}
+      {order.paymentMethod && (() => {
+        const paymentRef = order.customerData?.payment_proof_reference;
+        const paymentProofUrl = order.customerData?.payment_proof_url;
+        return (
+          <Card title="Payment" style={styles.section}>
+            <Text style={styles.value}>{order.paymentMethod}</Text>
+            {order.paymentMethodDetails && (
+              <Text style={styles.sub}>{order.paymentMethodDetails}</Text>
+            )}
+            {paymentRef != null && String(paymentRef).trim() !== "" && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Reference #</Text>
+                <Text style={styles.detailValue}>{String(paymentRef)}</Text>
+              </View>
+            )}
+            {paymentProofUrl != null && String(paymentProofUrl).trim() !== "" && (
+              <TouchableOpacity onPress={() => Linking.openURL(String(paymentProofUrl))}>
+                <Text style={styles.proofLink}>View payment proof</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.sub}>Status: {order.paymentStatus ?? "pending"}</Text>
+          </Card>
+        );
+      })()}
 
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
         <View style={styles.actions}>
@@ -559,5 +583,30 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.primary,
     fontWeight: "600",
+  },
+  orderTypeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    flexWrap: "wrap",
+  },
+  orderTypePill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: `${colors.primary}15`,
+  },
+  orderTypeText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  proofLink: {
+    ...typography.body,
+    color: colors.primary,
+    fontWeight: "600",
+    marginTop: spacing.xs,
   },
 });

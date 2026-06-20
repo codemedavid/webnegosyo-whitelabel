@@ -74,6 +74,10 @@ export const sendOrderNotification = internalAction({
     const messages = tokens.map((doc) => ({
       to: doc.token,
       sound: "default" as const,
+      // Route Android notifications to the high-importance "orders" channel so
+      // they ring with the custom ringtone. Without this, Android delivers them
+      // on the default channel and the ringtone never plays. Ignored on iOS.
+      channelId: "orders",
       title: "New Order!",
       body: `${args.customerName} — ₱${args.total.toFixed(2)} (${args.itemCount} item${args.itemCount !== 1 ? "s" : ""})`,
       data: { orderId: args.orderId },

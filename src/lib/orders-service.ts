@@ -632,7 +632,13 @@ export async function createOrderConvex(
   if (hasBundle) mutationArgs.hasBundleItems = true
 
   // Only include optional fields if they have values
-  if (orderTypeId) mutationArgs.orderTypeId = orderTypeId
+  if (orderTypeId) {
+    mutationArgs.orderTypeId = orderTypeId
+    // Send the human-readable name (e.g. "Pickup" / "Delivery") too — the
+    // merchant app displays `orderType`, and without it every order shows "N/A".
+    const orderTypeName = await getOrderTypeName(orderTypeId)
+    if (orderTypeName) mutationArgs.orderType = orderTypeName
+  }
   if (paymentMethodName) mutationArgs.paymentMethod = paymentMethodName
   if (paymentMethodDetails) mutationArgs.paymentMethodDetails = paymentMethodDetails
   if (deliveryFee) mutationArgs.deliveryFee = deliveryFee

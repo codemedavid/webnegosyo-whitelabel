@@ -5,7 +5,7 @@ import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
-import { registerForPushNotifications } from "../lib/notifications";
+import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
 import { CrashFallback } from "../components/CrashFallback";
 
 /**
@@ -135,6 +135,12 @@ function useAuthRedirect() {
 function usePushNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+
+  // Create the ringtone channel as early as possible — before login — so the
+  // first order's local alert can ring even if push registration hasn't run.
+  useEffect(() => {
+    ensureOrdersChannel().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !convexUrl) return;
