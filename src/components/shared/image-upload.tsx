@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { CldUploadWidget } from 'next-cloudinary'
-import { Upload, X, Image as ImageIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 interface ImageUploadProps {
   currentImageUrl?: string
@@ -14,6 +15,9 @@ interface ImageUploadProps {
   description?: string
   disabled?: boolean
 }
+
+const VALID_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp', 'image/gif']
+const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
 export function ImageUpload({
   currentImageUrl,
@@ -25,32 +29,51 @@ export function ImageUpload({
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedUrl, setUploadedUrl] = useState(currentImageUrl || '')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const cloudinaryPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+  const configured = isImageKitConfigured()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleUploadSuccess = (result: any) => {
-    setIsUploading(false)
-    if (result?.info?.secure_url) {
-      const url = result.info.secure_url
-      setUploadedUrl(url)
-      onImageUploaded(url)
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!VALID_TYPES.includes(file.type)) {
+      toast.error('Invalid file type. Please upload PNG, JPG, WEBP, or GIF.')
+      return
+    }
+    if (file.size > MAX_SIZE) {
+      toast.error('File too large. Maximum size is 5MB.')
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const result = await uploadImageToImageKit(file, { folder })
+      setUploadedUrl(result.url)
+      onImageUploaded(result.url)
+      toast.success('Image uploaded successfully')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Upload failed. Please try again.')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   const handleRemove = () => {
     setUploadedUrl('')
     onImageUploaded('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const displayUrl = uploadedUrl || currentImageUrl
 
-  if (!cloudinaryPreset) {
+  if (!configured) {
     return (
       <div className="space-y-2">
         {label && <Label>{label}</Label>}
         <div className="p-4 border border-yellow-300 bg-yellow-50 rounded-md text-sm text-yellow-800">
-          ⚠️ Cloudinary is not configured. Please set NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in your environment variables.
+          ⚠️ Image upload is not configured. Please set NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY and NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT in your environment variables.
         </div>
       </div>
     )
@@ -69,6 +92,15 @@ export function ImageUpload({
         </Label>
       )}
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpg,image/jpeg,image/webp,image/gif"
+        onChange={handleFileSelect}
+        disabled={disabled || isUploading}
+        className="hidden"
+      />
+
       {/* Preview */}
       {displayUrl && (
         <div className="relative inline-block">
@@ -78,7 +110,7 @@ export function ImageUpload({
             alt="Preview"
             className="h-32 w-32 object-cover rounded-lg border-2 border-gray-200"
           />
-          {!disabled && (
+          {!disabled && !isUploading && (
             <button
               type="button"
               onClick={handleRemove}
@@ -91,53 +123,25 @@ export function ImageUpload({
       )}
 
       {/* Upload Button */}
-      <CldUploadWidget
-        uploadPreset={cloudinaryPreset}
-        options={{
-          folder,
-          maxFiles: 1,
-          resourceType: 'image',
-          clientAllowedFormats: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-          maxFileSize: 5000000, // 5MB
-          sources: ['local', 'url', 'camera'],
-          multiple: false,
-        }}
-        onSuccess={handleUploadSuccess}
-        onOpen={() => setIsUploading(true)}
-        onClose={() => setIsUploading(false)}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={disabled || isUploading}
+        className="w-full sm:w-auto"
       >
-        {({ open }) => {
-          return (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={(e) => {
-                e.preventDefault()
-                open()
-              }}
-              disabled={disabled || isUploading}
-              className="w-full sm:w-auto"
-            >
-              {isUploading ? (
-                <>
-                  <div className="h-4 w-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mr-2" />
-                  Uploading...
-                </>
-              ) : displayUrl ? (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Change Image
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload Image
-                </>
-              )}
-            </Button>
-          )
-        }}
-      </CldUploadWidget>
+        {isUploading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Uploading...
+          </>
+        ) : (
+          <>
+            <Upload className="mr-2 h-4 w-4" />
+            {displayUrl ? 'Change Image' : 'Upload Image'}
+          </>
+        )}
+      </Button>
 
       {!displayUrl && (
         <div className="flex items-start gap-2 text-xs text-gray-500">

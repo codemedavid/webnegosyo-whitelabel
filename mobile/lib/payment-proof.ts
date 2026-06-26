@@ -10,7 +10,7 @@
 
 import type { PaymentMethod } from '../types/database'
 
-/** Cloudinary folder where customer payment screenshots are stored. */
+/** ImageKit folder where customer payment screenshots are stored. */
 export const PAYMENT_PROOF_FOLDER = 'payment-proofs'
 
 /** Accepted screenshot image formats. */

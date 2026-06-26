@@ -5,6 +5,7 @@ import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 interface SimpleImageUploadProps {
   currentImageUrl?: string
@@ -28,8 +29,7 @@ export function SimpleImageUpload({
   const [uploadProgress, setUploadProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
-  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+  const configured = isImageKitConfigured()
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -49,12 +49,12 @@ export function SimpleImageUpload({
       return
     }
 
-    await uploadToCloudinary(file)
+    await uploadToImageKit(file)
   }
 
-  const uploadToCloudinary = async (file: File) => {
-    if (!cloudName || !uploadPreset) {
-      toast.error('Cloudinary is not configured. Please set environment variables.')
+  const uploadToImageKit = async (file: File) => {
+    if (!configured) {
+      toast.error('Image upload is not configured. Please set environment variables.')
       return
     }
 
@@ -62,54 +62,18 @@ export function SimpleImageUpload({
     setUploadProgress(0)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('upload_preset', uploadPreset)
-      formData.append('folder', folder)
-
-      const xhr = new XMLHttpRequest()
-
-      // Track upload progress
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = Math.round((e.loaded / e.total) * 100)
-          setUploadProgress(percentComplete)
-        }
+      const result = await uploadImageToImageKit(file, {
+        folder,
+        onProgress: setUploadProgress,
       })
-
-      // Handle upload completion
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText)
-          const url = response.secure_url
-          setUploadedUrl(url)
-          onImageUploaded(url)
-          toast.success('Image uploaded successfully')
-          
-          // Reset file input
-          if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-          }
-        } else {
-          toast.error('Upload failed. Please try again.')
-        }
-        setIsUploading(false)
-        setUploadProgress(0)
-      })
-
-      // Handle upload error
-      xhr.addEventListener('error', () => {
-        toast.error('Upload failed. Please check your connection.')
-        setIsUploading(false)
-        setUploadProgress(0)
-      })
-
-      // Send request
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`)
-      xhr.send(formData)
+      setUploadedUrl(result.url)
+      onImageUploaded(result.url)
+      toast.success('Image uploaded successfully')
+      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error) {
       console.error('Upload error:', error)
-      toast.error('Upload failed. Please try again.')
+      toast.error(error instanceof Error ? error.message : 'Upload failed. Please try again.')
+    } finally {
       setIsUploading(false)
       setUploadProgress(0)
     }
@@ -129,12 +93,12 @@ export function SimpleImageUpload({
 
   const displayUrl = uploadedUrl || currentImageUrl
 
-  if (!cloudName || !uploadPreset) {
+  if (!configured) {
     return (
       <div className="space-y-2">
         {label && <Label>{label}</Label>}
         <div className="p-4 border border-yellow-300 bg-yellow-50 rounded-md text-sm text-yellow-800">
-          ⚠️ Cloudinary is not configured. Please set NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in your environment variables.
+          ⚠️ Image upload is not configured. Please set NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY and NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT in your environment variables.
         </div>
       </div>
     )

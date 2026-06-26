@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Payment proof field — screenshot upload (Cloudinary) and/or reference number.
+ * Payment proof field — screenshot upload (ImageKit) and/or reference number.
  *
  * Rendered inside the shared PaymentDetailsDialog so all checkout templates get
  * it. When the selected payment method requires proof, the customer must provide
@@ -9,29 +9,29 @@
  * before the order is submitted).
  */
 
-import { CldUploadWidget } from 'next-cloudinary'
-import { Upload, X, Receipt } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Upload, X, Receipt, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   PAYMENT_PROOF_FOLDER,
-  PAYMENT_PROOF_ALLOWED_FORMATS,
   PAYMENT_PROOF_MAX_FILE_SIZE,
 } from '@/lib/payment-proof'
+import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 interface PaymentProofFieldProps {
   required: boolean
   screenshotUrl: string
   reference: string
-  onUploaded: (url: string, publicId: string) => void
+  /** Called with the uploaded screenshot URL and its ImageKit file id. */
+  onUploaded: (url: string, fileId: string) => void
   onRemove: () => void
   onReferenceChange: (value: string) => void
 }
 
-interface CloudinaryUploadResult {
-  info?: { secure_url?: string; public_id?: string }
-}
+const VALID_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp']
 
 export function PaymentProofField({
   required,
@@ -41,12 +41,32 @@ export function PaymentProofField({
   onRemove,
   onReferenceChange,
 }: PaymentProofFieldProps) {
-  const cloudinaryPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const configured = isImageKitConfigured()
 
-  const handleSuccess = (result: unknown) => {
-    const info = (result as CloudinaryUploadResult)?.info
-    if (info?.secure_url && info?.public_id) {
-      onUploaded(info.secure_url, info.public_id)
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!VALID_TYPES.includes(file.type)) {
+      toast.error('Please upload a PNG, JPG, or WEBP image.')
+      return
+    }
+    if (file.size > PAYMENT_PROOF_MAX_FILE_SIZE) {
+      toast.error('Screenshot is too large (max 5MB).')
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const result = await uploadImageToImageKit(file, { folder: PAYMENT_PROOF_FOLDER })
+      onUploaded(result.url, result.fileId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to upload screenshot.')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -70,6 +90,15 @@ export function PaymentProofField({
           : 'Optionally upload a screenshot or enter your payment reference number.'}
       </p>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpg,image/jpeg,image/webp"
+        onChange={handleFileSelect}
+        disabled={isUploading}
+        className="hidden"
+      />
+
       {/* Screenshot upload */}
       {screenshotUrl ? (
         <div className="relative inline-block">
@@ -88,35 +117,29 @@ export function PaymentProofField({
             <X className="h-4 w-4" />
           </button>
         </div>
-      ) : cloudinaryPreset ? (
-        <CldUploadWidget
-          uploadPreset={cloudinaryPreset}
-          options={{
-            folder: PAYMENT_PROOF_FOLDER,
-            maxFiles: 1,
-            resourceType: 'image',
-            clientAllowedFormats: [...PAYMENT_PROOF_ALLOWED_FORMATS],
-            maxFileSize: PAYMENT_PROOF_MAX_FILE_SIZE,
-            sources: ['local', 'camera'],
-            multiple: false,
+      ) : configured ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+          disabled={isUploading}
+          onClick={(e) => {
+            e.preventDefault()
+            fileInputRef.current?.click()
           }}
-          onSuccess={handleSuccess}
         >
-          {({ open }) => (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-              onClick={(e) => {
-                e.preventDefault()
-                open()
-              }}
-            >
+          {isUploading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
               <Upload className="mr-2 h-4 w-4" />
               Upload Screenshot
-            </Button>
+            </>
           )}
-        </CldUploadWidget>
+        </Button>
       ) : (
         <div className="text-xs text-gray-500">Screenshot upload is not configured.</div>
       )}

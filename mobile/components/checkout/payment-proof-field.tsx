@@ -15,7 +15,7 @@ interface PaymentProofFieldProps {
 }
 
 /**
- * Payment proof entry for mobile checkout — screenshot upload (Cloudinary) and/or
+ * Payment proof entry for mobile checkout — screenshot upload (ImageKit) and/or
  * reference number. When the selected method requires proof, the customer must
  * provide at least one; enforced in checkout before the order is placed.
  */

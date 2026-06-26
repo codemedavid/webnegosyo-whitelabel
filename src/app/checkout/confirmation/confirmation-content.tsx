@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
 import { trackMetaEvent } from '@/lib/meta-pixel'
+import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
@@ -56,10 +57,7 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
       return
     }
 
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
-    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-
-    if (!cloudName || !uploadPreset) {
+    if (!isImageKitConfigured()) {
       toast.error('Upload not configured. Please contact us on Messenger.')
       return
     }
@@ -67,47 +65,26 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
     setIsUploading(true)
     setUploadProgress(0)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('upload_preset', uploadPreset)
-    formData.append('folder', 'checkout-proofs')
+    try {
+      const { url } = await uploadImageToImageKit(file, {
+        folder: 'checkout-proofs',
+        onProgress: setUploadProgress,
+      })
 
-    const xhr = new XMLHttpRequest()
-
-    xhr.upload.addEventListener('progress', (ev) => {
-      if (ev.lengthComputable) {
-        setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
-      }
-    })
-
-    xhr.addEventListener('load', async () => {
-      if (xhr.status === 200) {
-        const response = JSON.parse(xhr.responseText)
-        const url = response.secure_url as string
-
-        const result = await submitPaymentProof(lead.reference_number, url)
-        if (result.error) {
-          toast.error('Failed to save payment proof. Please try again.')
-        } else {
-          setProofUrl(url)
-          setProofUploaded(true)
-          toast.success('Payment proof uploaded successfully!')
-        }
+      const result = await submitPaymentProof(lead.reference_number, url)
+      if (result.error) {
+        toast.error('Failed to save payment proof. Please try again.')
       } else {
-        toast.error('Upload failed. Please try again.')
+        setProofUrl(url)
+        setProofUploaded(true)
+        toast.success('Payment proof uploaded successfully!')
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Upload failed. Please try again.')
+    } finally {
       setIsUploading(false)
       setUploadProgress(0)
-    })
-
-    xhr.addEventListener('error', () => {
-      toast.error('Upload failed. Please check your connection.')
-      setIsUploading(false)
-      setUploadProgress(0)
-    })
-
-    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`)
-    xhr.send(formData)
+    }
   }
   useEffect(() => {
 

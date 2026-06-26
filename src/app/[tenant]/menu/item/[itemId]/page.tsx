@@ -11,7 +11,7 @@ import {
     getCachedUpsellsForItem
 } from '@/lib/product-detail-data'
 import { getUpsellBundles } from '@/lib/bundles-service'
-import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
 import { createClient } from '@/lib/supabase/server'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'

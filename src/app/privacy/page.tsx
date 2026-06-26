@@ -116,7 +116,7 @@ export default function PrivacyPolicyPage() {
                 <strong>Expo</strong> &mdash; Push notification delivery
               </li>
               <li>
-                <strong>Cloudinary</strong> &mdash; Image storage and processing
+                <strong>ImageKit</strong> &mdash; Image storage and processing
               </li>
               <li>
                 <strong>Convex</strong> &mdash; Real-time data synchronization
