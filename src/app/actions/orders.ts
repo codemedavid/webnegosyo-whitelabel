@@ -399,13 +399,22 @@ export async function updatePaymentStatusAction(
     if (error) throw error
 
     // Storage hygiene: once payment is verified, purge the proof screenshot from
-    // Cloudinary and null its columns (the reference + timestamp are kept as a record).
+    // ImageKit and null its columns (the reference + timestamp are kept as a record).
+    // payment_proof_public_id now holds the ImageKit fileId; the filePath used to
+    // scope deletion is derived from the stored URL.
     if (paymentStatus === 'verified') {
-      const publicId = (data as { payment_proof_public_id?: string | null })?.payment_proof_public_id
-      if (publicId) {
+      const row = data as {
+        payment_proof_public_id?: string | null
+        payment_proof_url?: string | null
+      }
+      const fileId = row?.payment_proof_public_id
+      const proofUrl = row?.payment_proof_url
+      if (fileId && proofUrl) {
         try {
-          const { deleteCloudinaryAsset, isDeletablePaymentProofId } = await import('@/lib/cloudinary-server')
-          if (isDeletablePaymentProofId(publicId) && (await deleteCloudinaryAsset(publicId))) {
+          const { deleteImageKitAsset, isDeletablePaymentProofPath } = await import('@/lib/imagekit-server')
+          const { extractImageKitFilePath } = await import('@/lib/imagekit-utils')
+          const filePath = extractImageKitFilePath(proofUrl)
+          if (filePath && isDeletablePaymentProofPath(filePath) && (await deleteImageKitAsset(fileId))) {
             await supabase
               .from('orders')
               // eslint-disable-next-line @typescript-eslint/no-explicit-any

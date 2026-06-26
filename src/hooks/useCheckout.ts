@@ -34,6 +34,7 @@ import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
 import { getPaymentProofError } from '@/lib/payment-proof'
+import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
@@ -767,27 +768,30 @@ export function useCheckout(tenantSlug: string) {
     handleCheckout()
   }
 
-  // Best-effort delete of a Cloudinary payment-proof asset (replace/remove cleanup).
-  const deleteProofAsset = (publicId: string) => {
-    if (!publicId) return
+  // Best-effort delete of an ImageKit payment-proof asset (replace/remove cleanup).
+  // The folder-scoped guard runs server-side on the filePath derived from the URL.
+  const deleteProofAsset = (fileId: string, url: string) => {
+    if (!fileId || !url) return
+    const filePath = extractImageKitFilePath(url)
+    if (!filePath) return
     fetch('/api/payment-proof/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ publicId }),
+      body: JSON.stringify({ fileId, filePath }),
     }).catch(error => console.warn('[Checkout] Proof cleanup failed:', error))
   }
 
   // Upload callback: delete the previously-uploaded screenshot before storing the new one.
-  const handlePaymentProofUploaded = (url: string, publicId: string) => {
-    if (paymentProofPublicId && paymentProofPublicId !== publicId) {
-      deleteProofAsset(paymentProofPublicId)
+  const handlePaymentProofUploaded = (url: string, fileId: string) => {
+    if (paymentProofPublicId && paymentProofPublicId !== fileId) {
+      deleteProofAsset(paymentProofPublicId, paymentProofUrl)
     }
     setPaymentProofUrl(url)
-    setPaymentProofPublicId(publicId)
+    setPaymentProofPublicId(fileId)
   }
 
   const handleRemovePaymentProof = () => {
-    if (paymentProofPublicId) deleteProofAsset(paymentProofPublicId)
+    if (paymentProofPublicId) deleteProofAsset(paymentProofPublicId, paymentProofUrl)
     setPaymentProofUrl('')
     setPaymentProofPublicId('')
   }

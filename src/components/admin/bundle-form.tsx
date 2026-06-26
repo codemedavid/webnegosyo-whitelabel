@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { CldUploadWidget } from 'next-cloudinary'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     Check,
@@ -26,6 +25,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { createBundleAction, updateBundleAction } from '@/app/actions/bundles'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
 import type { MenuItem, Category } from '@/types/database'
 import type { BundleWithSlots } from '@/lib/bundles-service'
 
@@ -350,7 +350,34 @@ export function BundleForm({
                 ? Math.round(minSlotTotal * (1 - Math.min(discountPercentNumber, 100) / 100) * 100) / 100
                 : minSlotTotal
 
-    const cloudinaryPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+    const imagekitConfigured = isImageKitConfigured()
+    const imageInputRef = useRef<HTMLInputElement>(null)
+
+    const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+
+        const validTypes = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp', 'image/gif']
+        if (!validTypes.includes(file.type)) {
+            toast.error('Invalid file type. Please upload PNG, JPG, WEBP, or GIF.')
+            return
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('File too large. Maximum size is 5MB.')
+            return
+        }
+
+        setIsUploading(true)
+        try {
+            const result = await uploadImageToImageKit(file, { folder: 'tenants' })
+            setImageUrl(result.url)
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Upload failed. Please try again.')
+        } finally {
+            setIsUploading(false)
+            if (imageInputRef.current) imageInputRef.current.value = ''
+        }
+    }
 
     /* ─── Slot helpers ────────────────────────────────────────────── */
 
@@ -641,77 +668,63 @@ export function BundleForm({
                     <Label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500 md:text-sm md:font-medium md:normal-case md:tracking-normal md:text-gray-900">
                         Bundle Hero Image
                     </Label>
-                    {cloudinaryPreset ? (
+                    {imagekitConfigured ? (
                         <div className="space-y-2">
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/png,image/jpg,image/jpeg,image/webp,image/gif"
+                                onChange={handleImageSelect}
+                                disabled={isPending || isUploading}
+                                className="hidden"
+                            />
                             <div className="relative">
-                                <CldUploadWidget
-                                    uploadPreset={cloudinaryPreset}
-                                    options={{
-                                        folder: 'tenants',
-                                        maxFiles: 1,
-                                        resourceType: 'image',
-                                        clientAllowedFormats: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-                                        maxFileSize: 5000000,
-                                        sources: ['local', 'url', 'camera'],
-                                        multiple: false,
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.preventDefault()
+                                        imageInputRef.current?.click()
                                     }}
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    onSuccess={(result: any) => {
-                                        setIsUploading(false)
-                                        if (result?.info?.secure_url) {
-                                            setImageUrl(result.info.secure_url)
-                                        }
-                                    }}
-                                    onOpen={() => setIsUploading(true)}
-                                    onClose={() => setIsUploading(false)}
-                                >
-                                    {({ open }) => (
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.preventDefault()
-                                                open()
-                                            }}
-                                            disabled={isPending || isUploading}
-                                            className={cn(
-                                                'group relative flex w-full flex-col items-center justify-center overflow-hidden transition-colors',
-                                                'aspect-video rounded-xl md:aspect-auto md:h-64 md:rounded-lg',
-                                                imageUrl
-                                                    ? 'border border-gray-200 bg-gray-50'
-                                                    : 'border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-900 hover:bg-gray-100',
-                                                (isPending || isUploading) && 'cursor-not-allowed opacity-60'
-                                            )}
-                                        >
-                                            {imageUrl ? (
-                                                <>
-                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                    <img
-                                                        src={imageUrl}
-                                                        alt="Bundle artwork preview"
-                                                        className="absolute inset-0 h-full w-full object-cover"
-                                                    />
-                                                    <div className="absolute inset-0 bg-black/30 opacity-0 transition group-hover:opacity-100" />
-                                                    <div className="relative z-10 text-white opacity-0 transition group-hover:opacity-100">
-                                                        <ImagePlus className="mx-auto mb-2 h-8 w-8" />
-                                                        <p className="text-sm font-medium">Change image</p>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="text-center">
-                                                    <ImagePlus className="mx-auto mb-2 h-10 w-10 text-gray-400" />
-                                                    <p className="text-sm font-medium text-gray-900">
-                                                        Upload Cover Photo
-                                                    </p>
-                                                    <p className="mt-1 text-[10px] text-gray-500 md:text-xs">
-                                                        Recommended: 16:9 Aspect Ratio
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </button>
+                                    disabled={isPending || isUploading}
+                                    className={cn(
+                                        'group relative flex w-full flex-col items-center justify-center overflow-hidden transition-colors',
+                                        'aspect-video rounded-xl md:aspect-auto md:h-64 md:rounded-lg',
+                                        imageUrl
+                                            ? 'border border-gray-200 bg-gray-50'
+                                            : 'border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-900 hover:bg-gray-100',
+                                        (isPending || isUploading) && 'cursor-not-allowed opacity-60'
                                     )}
-                                </CldUploadWidget>
+                                >
+                                    {imageUrl ? (
+                                        <>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={imageUrl}
+                                                alt="Bundle artwork preview"
+                                                className="absolute inset-0 h-full w-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/30 opacity-0 transition group-hover:opacity-100" />
+                                            <div className="relative z-10 text-white opacity-0 transition group-hover:opacity-100">
+                                                <ImagePlus className="mx-auto mb-2 h-8 w-8" />
+                                                <p className="text-sm font-medium">
+                                                    {isUploading ? 'Uploading…' : 'Change image'}
+                                                </p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center">
+                                            <ImagePlus className="mx-auto mb-2 h-10 w-10 text-gray-400" />
+                                            <p className="text-sm font-medium text-gray-900">
+                                                {isUploading ? 'Uploading…' : 'Upload Cover Photo'}
+                                            </p>
+                                            <p className="mt-1 text-[10px] text-gray-500 md:text-xs">
+                                                Recommended: 16:9 Aspect Ratio
+                                            </p>
+                                        </div>
+                                    )}
+                                </button>
 
-                                {imageUrl && !isPending && (
+                                {imageUrl && !isPending && !isUploading && (
                                     <button
                                         type="button"
                                         onClick={() => setImageUrl('')}
@@ -724,9 +737,13 @@ export function BundleForm({
                         </div>
                     ) : (
                         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            Cloudinary upload is not configured. Set{' '}
+                            Image upload is not configured. Set{' '}
                             <code className="rounded bg-amber-100 px-1 py-0.5 text-xs">
-                                NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+                                NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY
+                            </code>{' '}
+                            and{' '}
+                            <code className="rounded bg-amber-100 px-1 py-0.5 text-xs">
+                                NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT
                             </code>{' '}
                             to enable image uploads.
                         </div>

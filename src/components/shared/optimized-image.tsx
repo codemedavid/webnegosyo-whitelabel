@@ -1,7 +1,7 @@
 'use client'
 
 import Image, { ImageProps } from 'next/image'
-import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import { transformImageUrl, isOptimizableImageUrl } from '@/lib/imagekit-utils'
 
 interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
     src: string | null | undefined
@@ -114,8 +114,8 @@ export function OptimizedImage({
     // Determine loading strategy: priority overrides lazy
     const loadingProp = priority ? undefined : (lazy ? 'lazy' : 'eager')
 
-    // If it's a Cloudinary URL and we should use Cloudinary transforms
-    if (useCloudinaryTransform && isCloudinaryUrl(src)) {
+    // If it's a CDN URL (ImageKit or legacy Cloudinary) use CDN transforms
+    if (useCloudinaryTransform && isOptimizableImageUrl(src)) {
         // Calculate dimensions for transformation.
         // For fill images, estimate a practical max width from `sizes` to avoid loading originals.
         const estimatedFillWidth = fill ? estimateRenderedWidthFromSizes(sizes) : null
@@ -135,8 +135,8 @@ export function OptimizedImage({
             : undefined
         const cropMode = transformWidth && transformHeight ? 'fill' : 'limit'
 
-        // Apply Cloudinary transformations
-        const transformedUrl = transformCloudinaryUrl(src, {
+        // Apply CDN transformations
+        const transformedUrl = transformImageUrl(src, {
             width: transformWidth,
             height: transformHeight,
             quality: cloudinaryQuality,

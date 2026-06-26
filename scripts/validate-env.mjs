@@ -32,6 +32,9 @@ if (existsSync(envLocalPath)) {
 const REQUIRED_VARS = [
     'NEXT_PUBLIC_SUPABASE_URL',
     'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT',
+    'NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY',
+    'IMAGEKIT_PRIVATE_KEY',
 ];
 
 const missing = [];

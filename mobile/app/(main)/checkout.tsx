@@ -27,7 +27,7 @@ import {
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
-import { pickAndUploadPaymentProof, deletePaymentProof, isCloudinaryConfigured } from '@/lib/cloudinary-upload'
+import { pickAndUploadPaymentProof, deletePaymentProof, isImageKitConfigured } from '@/lib/imagekit-upload'
 import { PaymentProofField } from '@/components/checkout/payment-proof-field'
 import type { OrderType, PaymentMethod, CustomerFormField } from '@/types/database'
 
@@ -55,6 +55,7 @@ export default function CheckoutScreen() {
   // Payment proof (screenshot upload and/or reference number)
   const [paymentProofUrl, setPaymentProofUrl] = useState('')
   const [paymentProofPublicId, setPaymentProofPublicId] = useState('')
+  const [paymentProofFilePath, setPaymentProofFilePath] = useState('')
   const [paymentProofReference, setPaymentProofReference] = useState('')
   const [isUploadingProof, setIsUploadingProof] = useState(false)
 
@@ -206,7 +207,7 @@ export default function CheckoutScreen() {
   }, [validateForm])
 
   const handlePickProof = useCallback(async () => {
-    if (!isCloudinaryConfigured()) {
+    if (!isImageKitConfigured()) {
       Alert.alert('Unavailable', 'Screenshot upload is not configured for this app.')
       return
     }
@@ -215,24 +216,26 @@ export default function CheckoutScreen() {
       const uploaded = await pickAndUploadPaymentProof()
       if (uploaded) {
         // Replace-cleanup: delete the previous screenshot before storing the new one.
-        if (paymentProofPublicId && paymentProofPublicId !== uploaded.publicId) {
-          deletePaymentProof(paymentProofPublicId)
+        if (paymentProofPublicId && paymentProofPublicId !== uploaded.fileId) {
+          deletePaymentProof(paymentProofPublicId, paymentProofFilePath)
         }
         setPaymentProofUrl(uploaded.url)
-        setPaymentProofPublicId(uploaded.publicId)
+        setPaymentProofPublicId(uploaded.fileId)
+        setPaymentProofFilePath(uploaded.filePath)
       }
     } catch (error) {
       Alert.alert('Upload failed', error instanceof Error ? error.message : 'Please try again.')
     } finally {
       setIsUploadingProof(false)
     }
-  }, [paymentProofPublicId])
+  }, [paymentProofPublicId, paymentProofFilePath])
 
   const handleRemoveProof = useCallback(() => {
-    if (paymentProofPublicId) deletePaymentProof(paymentProofPublicId)
+    if (paymentProofPublicId) deletePaymentProof(paymentProofPublicId, paymentProofFilePath)
     setPaymentProofUrl('')
     setPaymentProofPublicId('')
-  }, [paymentProofPublicId])
+    setPaymentProofFilePath('')
+  }, [paymentProofPublicId, paymentProofFilePath])
 
   const handleSubmitOrder = useCallback(async () => {
     if (!tenant || !selectedOrderType) return
