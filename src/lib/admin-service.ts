@@ -51,7 +51,9 @@ export const menuItemSchema = z.object({
   description: z.string().min(10, 'Description must be at least 10 characters'),
   price: z.number().positive('Price must be positive'),
   discounted_price: z.number().positive().optional().nullable(),
-  image_url: z.string().url('Must be a valid URL'),
+  // Image is optional — a product can be saved without one. Accept a valid
+  // delivery URL or an empty string; missing values normalize to ''.
+  image_url: z.string().url('Must be a valid URL').or(z.literal('')).optional().default(''),
   category_id: z.string().uuid('Must select a category'),
   // New grouped variation types
   variation_types: z.array(variationTypeSchema).optional().default([]),

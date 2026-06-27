@@ -44,7 +44,8 @@ const menuItemFormSchema = z.object({
     const num = parseFloat(val)
     return !isNaN(num) && num >= 0
   }, 'Discounted price must be a positive number'),
-  image_url: z.string().url('Must be a valid URL'),
+  // Image is optional — accept a valid URL or an empty string (no image).
+  image_url: z.string().url('Must be a valid URL').or(z.literal('')),
   category_id: z.string().uuid('Must select a category'),
 })
 
