@@ -12,7 +12,6 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { Badge } from "../../components/Badge";
-import { OrderAlerts } from "../../hooks/useOrderAlerts";
 import { PeriodSelector } from "../../components/PeriodSelector";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
@@ -188,10 +187,9 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* New-order alerts (ringtone + notification) only for a real, live
-          merchant session — never for the read-only demo, which also keeps the
-          native audio module off the demo landing path entirely. */}
-      {!!convexUrl && !isDemo && <OrderAlerts orders={queue?.pending} />}
+      {/* New-order alerts (ringtone + notification) are now mounted once at the
+          (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab —
+          not just here. Mounting them on the dashboard too would double-ring. */}
 
       {isDemo && (
         <View style={styles.demoBanner}>

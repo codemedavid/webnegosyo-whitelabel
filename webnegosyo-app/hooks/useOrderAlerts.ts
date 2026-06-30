@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
+import { selectNewOrders, formatOrderAlertBody, type AlertableOrder } from "../lib/order-alerts-utils";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ringtoneSource = require("../assets/ringtone.mp3");
 
 interface OrderAlertOptions {
-  orders: Array<{ _id: string; customerName?: string; total?: number; itemCount?: number }> | undefined;
+  orders: AlertableOrder[] | undefined;
   enabled?: boolean;
 }
 
@@ -37,21 +38,18 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
 
     const currentIds = new Set(orders.map((o) => o._id));
 
-    // Skip first render (initial load)
+    // Find genuinely new orders (IDs we haven't seen). On the first snapshot
+    // (prevIdsRef null) this returns [] so the initial load never rings.
+    const newOrders = selectNewOrders(prevIdsRef.current, orders);
+
+    // Record what we've now seen before any early return below.
     if (prevIdsRef.current === null) {
       prevIdsRef.current = currentIds;
       return;
     }
 
-    // Find genuinely new orders (IDs we haven't seen)
-    const newOrders = orders.filter((o) => !prevIdsRef.current!.has(o._id));
-
     if (newOrders.length > 0) {
-      const latest = newOrders[0];
-      const name = latest.customerName ?? "Customer";
-      const total = (latest.total ?? 0).toFixed(2);
-      const count = latest.itemCount ?? 0;
-      const body = `${name} — ₱${total} (${count} item${count !== 1 ? "s" : ""})`;
+      const body = formatOrderAlertBody(newOrders[0]);
 
       // Play the custom ringtone in-app. The native player is constructed here,
       // on first use — long after the navigation transition has settled — so it

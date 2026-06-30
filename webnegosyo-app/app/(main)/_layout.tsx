@@ -4,6 +4,7 @@ import { colors } from "../../theme/colors";
 import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { supabase } from "../../lib/supabase";
+import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -37,7 +38,10 @@ function TabIcon({ symbol, color }: { symbol: string; color: string }) {
 
 export default function MainLayout() {
   return (
-    <Tabs
+    <>
+      {/* App-wide new-order ringtone — active on every tab, not just Dashboard. */}
+      <GlobalOrderAlerts />
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -103,6 +107,7 @@ export default function MainLayout() {
         name="account"
         options={{ href: null, title: "Account" }}
       />
-    </Tabs>
+      </Tabs>
+    </>
   );
 }
