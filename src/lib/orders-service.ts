@@ -6,6 +6,7 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
 import type { Order } from '@/types/database'
 
 export interface OrderWithItems extends Order {
@@ -643,6 +644,12 @@ export async function createOrderConvex(
   if (paymentMethodDetails) mutationArgs.paymentMethodDetails = paymentMethodDetails
   if (deliveryFee) mutationArgs.deliveryFee = deliveryFee
   if (lalamoveQuotationId) mutationArgs.lalamoveQuotationId = lalamoveQuotationId
+
+  // Promote delivery address + coordinates out of `customerData` into the
+  // top-level Convex order fields. Without this, `lalamove.bookLalamove`
+  // rejects the order with "Order missing delivery details" because it reads
+  // `order.deliveryAddress` (see convex-template/convex/lalamove.ts).
+  Object.assign(mutationArgs, buildLalamoveDeliveryArgs(customerData))
 
   const orderId = await convex.mutation<string>('orders:createOrder', mutationArgs)
 
