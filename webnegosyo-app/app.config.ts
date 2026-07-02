@@ -60,6 +60,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         recordAudioAndroid: false,
       },
     ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Allow WebNegosyo to access your photos to add product images.",
+      },
+    ],
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",

@@ -92,6 +92,14 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="product-management"
+        options={{ href: null, title: "Manage Products" }}
+      />
+      <Tabs.Screen
+        name="product/[productId]"
+        options={{ href: null, title: "Product" }}
+      />
+      <Tabs.Screen
         name="scan"
         options={{ href: null, title: "Scan QR" }}
       />

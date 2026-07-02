@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+import { router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
@@ -192,8 +193,20 @@ export default function ProductAnalyticsScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.headerWrap}>
-        <Text style={styles.title}>Products</Text>
-        <Text style={styles.subtitle}>Sales performance for every menu item</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>Products</Text>
+            <Text style={styles.subtitle}>Sales performance for every menu item</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={() => router.push("/(main)/product-management")}
+            accessibilityRole="button"
+            accessibilityLabel="Manage products"
+          >
+            <Text style={styles.manageButtonText}>Manage</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -308,6 +321,14 @@ export default function ProductAnalyticsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  manageButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  manageButtonText: { ...typography.body, color: "#FFFFFF", fontWeight: "700" },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   content: { padding: spacing.xl, paddingTop: spacing.md },
