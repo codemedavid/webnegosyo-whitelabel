@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Platform } from "react-native";
+import { InteractionManager, Platform } from "react-native";
 import { Stack, router, useRootNavigationState, type ErrorBoundaryProps } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
@@ -148,28 +148,41 @@ function usePushNotifications() {
     const userId = useAuthStore.getState().userId;
     if (!userId) return;
 
-    registerForPushNotifications().then(async (token) => {
-      if (!token) return;
-      try {
-        await fetch(`${convexUrl}/api/mutation`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            path: "notifications:registerPushToken",
-            args: {
-              userId,
-              token,
-              platform: Platform.OS === "ios" ? "ios" : "android",
-            },
-            format: "json",
-          }),
-        });
-      } catch (e) {
-        console.warn("Failed to register push token:", e);
-      }
-    }).catch((e) => {
-      console.warn("Push notification registration failed:", e);
+    // registerForPushNotifications() presents a native OS permission prompt
+    // (UIAlertController on iOS). Firing it in the same tick as the
+    // post-login router.replace() races the UINavigationController's
+    // setViewControllers transition — on iPad this "unbalanced appearance
+    // transition" silently terminates the app (no crash log, matches Apple
+    // review report of app quitting on login with real credentials, since the
+    // read-only demo path has no userId and never reaches this effect).
+    // InteractionManager defers the prompt until the navigation transition
+    // and any other queued interactions have finished.
+    const task = InteractionManager.runAfterInteractions(() => {
+      registerForPushNotifications().then(async (token) => {
+        if (!token) return;
+        try {
+          await fetch(`${convexUrl}/api/mutation`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: "notifications:registerPushToken",
+              args: {
+                userId,
+                token,
+                platform: Platform.OS === "ios" ? "ios" : "android",
+              },
+              format: "json",
+            }),
+          });
+        } catch (e) {
+          console.warn("Failed to register push token:", e);
+        }
+      }).catch((e) => {
+        console.warn("Push notification registration failed:", e);
+      });
     });
+
+    return () => task.cancel();
   }, [isAuthenticated, convexUrl]);
 }
 
