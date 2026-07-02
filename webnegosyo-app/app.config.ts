@@ -39,6 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://webnegosyo.com",
     eas: {
       projectId: "e4af765d-36fe-4248-990d-e0589d1a6c50",
     },
