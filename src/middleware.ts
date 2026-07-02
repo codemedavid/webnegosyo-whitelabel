@@ -42,7 +42,8 @@ export async function middleware(request: NextRequest) {
       const tenantSlug = await resolveTenantSlugFromRequest(request)
 
       // If tenant detected (custom domain or subdomain) and current path isn't already /[tenant]/...
-      if (tenantSlug && !pathname.startsWith(`/${tenantSlug}/`) && pathname !== '/_next/image') {
+      // API routes are global (src/app/api) — never rewrite them to /[tenant]/api.
+      if (tenantSlug && !pathname.startsWith(`/${tenantSlug}/`) && !pathname.startsWith('/api/') && pathname !== '/_next/image') {
         const rewrittenUrl = request.nextUrl.clone()
         // Redirect tenant root to tenant menu
         const targetPath = pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`
