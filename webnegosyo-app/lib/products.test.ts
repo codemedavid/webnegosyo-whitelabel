@@ -1,0 +1,291 @@
+import {
+  validateProductInput,
+  sanitizeSearchQuery,
+  calculateMargin,
+  listProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  toggleProductAvailability,
+  listCategories,
+  type ProductInput,
+} from "./products";
+
+jest.mock("./supabase", () => {
+  const chain: Record<string, jest.Mock> = {};
+  const makeChain = () => {
+    const c: Record<string, jest.Mock> = {};
+    [
+      "select",
+      "eq",
+      "order",
+      "insert",
+      "update",
+      "delete",
+      "single",
+    ].forEach((method) => {
+      c[method] = jest.fn(() => c);
+    });
+    return c;
+  };
+  return {
+    supabase: {
+      from: jest.fn(() => makeChain()),
+    },
+  };
+});
+
+import { supabase } from "./supabase";
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+const validInput: ProductInput = {
+  name: "Iced Latte",
+  description: "A refreshing iced latte with espresso and milk.",
+  price: 120,
+  discounted_price: null,
+  image_url: "",
+  category_id: "9f4c3d2e-1234-4a56-8b9c-0d1e2f3a4b5c",
+  is_available: true,
+  is_featured: false,
+};
+
+describe("validateProductInput", () => {
+  it("accepts a fully valid product", () => {
+    const result = validateProductInput(validInput);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual({});
+  });
+
+  it("rejects a name shorter than 2 characters", () => {
+    const result = validateProductInput({ ...validInput, name: "A" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.name).toBeDefined();
+  });
+
+  it("rejects a description shorter than 10 characters", () => {
+    const result = validateProductInput({ ...validInput, description: "short" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.description).toBeDefined();
+  });
+
+  it("rejects a zero or negative price", () => {
+    expect(validateProductInput({ ...validInput, price: 0 }).valid).toBe(false);
+    expect(validateProductInput({ ...validInput, price: -5 }).valid).toBe(false);
+  });
+
+  it("rejects a missing category", () => {
+    const result = validateProductInput({ ...validInput, category_id: "" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.category_id).toBeDefined();
+  });
+
+  it("rejects a discounted price greater than or equal to the price", () => {
+    const result = validateProductInput({
+      ...validInput,
+      price: 100,
+      discounted_price: 100,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.discounted_price).toBeDefined();
+  });
+
+  it("accepts a discounted price lower than the price", () => {
+    const result = validateProductInput({
+      ...validInput,
+      price: 100,
+      discounted_price: 80,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts a null discounted price", () => {
+    const result = validateProductInput({ ...validInput, discounted_price: null });
+    expect(result.valid).toBe(true);
+  });
+});
+
+describe("sanitizeSearchQuery", () => {
+  it("strips PostgREST filter-special characters", () => {
+    expect(sanitizeSearchQuery("latte%_\\*,.()!=><")).toBe("latte");
+  });
+
+  it("trims whitespace", () => {
+    expect(sanitizeSearchQuery("  latte  ")).toBe("latte");
+  });
+
+  it("truncates to 100 characters", () => {
+    const long = "a".repeat(150);
+    expect(sanitizeSearchQuery(long).length).toBe(100);
+  });
+
+  it("returns an empty string for only special characters", () => {
+    expect(sanitizeSearchQuery("%_\\*")).toBe("");
+  });
+});
+
+describe("calculateMargin", () => {
+  it("returns null when cost price is not set", () => {
+    expect(calculateMargin(120, null)).toBeNull();
+  });
+
+  it("computes profit and margin percent for a normal sale", () => {
+    const result = calculateMargin(120, 40);
+    expect(result).not.toBeNull();
+    expect(result?.profit).toBe(80);
+    expect(result?.marginPercent).toBeCloseTo(66.6667, 3);
+  });
+
+  it("returns zero margin when price equals cost", () => {
+    const result = calculateMargin(100, 100);
+    expect(result?.profit).toBe(0);
+    expect(result?.marginPercent).toBe(0);
+  });
+
+  it("returns a negative margin when cost exceeds price", () => {
+    const result = calculateMargin(50, 80);
+    expect(result?.profit).toBe(-30);
+    expect(result?.marginPercent).toBeCloseTo(-60, 3);
+  });
+
+  it("returns null margin percent when price is zero to avoid divide-by-zero", () => {
+    const result = calculateMargin(0, 10);
+    expect(result?.profit).toBe(-10);
+    expect(result?.marginPercent).toBeNull();
+  });
+});
+
+describe("listProducts", () => {
+  it("scopes the query to the given tenant and orders by menu order", async () => {
+    const single = { data: [{ id: "1" }], error: null };
+    const chain: any = {};
+    ["select", "eq", "order"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.order = jest.fn(() => Promise.resolve(single));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    const result = await listProducts("tenant-1");
+
+    expect(supabase.from).toHaveBeenCalledWith("menu_items");
+    expect(chain.eq).toHaveBeenCalledWith("tenant_id", "tenant-1");
+    expect(result).toEqual([{ id: "1" }]);
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    const chain: any = {};
+    ["select", "eq"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.order = jest.fn(() =>
+      Promise.resolve({ data: null, error: new Error("db down") })
+    );
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    await expect(listProducts("tenant-1")).rejects.toThrow("db down");
+  });
+});
+
+describe("createProduct", () => {
+  it("rejects an invalid product without calling Supabase", async () => {
+    await expect(
+      createProduct("tenant-1", { ...validInput, name: "" })
+    ).rejects.toThrow();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("inserts the product scoped to the tenant", async () => {
+    const chain: any = {};
+    ["insert", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() =>
+      Promise.resolve({ data: { id: "new-1", ...validInput }, error: null })
+    );
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    const result = await createProduct("tenant-1", validInput);
+
+    expect(supabase.from).toHaveBeenCalledWith("menu_items");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: "tenant-1", name: validInput.name })
+    );
+    expect(result.id).toBe("new-1");
+  });
+});
+
+describe("updateProduct", () => {
+  it("updates only the given product for the given tenant", async () => {
+    const chain: any = {};
+    ["update", "eq", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() =>
+      Promise.resolve({ data: { id: "1", ...validInput }, error: null })
+    );
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    await updateProduct("1", "tenant-1", validInput);
+
+    expect(chain.eq).toHaveBeenCalledWith("id", "1");
+    expect(chain.eq).toHaveBeenCalledWith("tenant_id", "tenant-1");
+  });
+});
+
+describe("deleteProduct", () => {
+  it("deletes only the given product for the given tenant", async () => {
+    const chain: any = {};
+    chain.delete = jest.fn(() => chain);
+    chain.eq = jest.fn(() => chain);
+    // Last eq call resolves the promise
+    let eqCalls = 0;
+    chain.eq = jest.fn(() => {
+      eqCalls += 1;
+      if (eqCalls === 2) return Promise.resolve({ error: null });
+      return chain;
+    });
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    await deleteProduct("1", "tenant-1");
+
+    expect(chain.delete).toHaveBeenCalled();
+  });
+});
+
+describe("toggleProductAvailability", () => {
+  it("updates only is_available for the given product", async () => {
+    const chain: any = {};
+    ["update", "eq", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() =>
+      Promise.resolve({ data: { id: "1", is_available: false }, error: null })
+    );
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    await toggleProductAvailability("1", "tenant-1", false);
+
+    expect(chain.update).toHaveBeenCalledWith({ is_available: false });
+  });
+});
+
+describe("listCategories", () => {
+  it("scopes categories to the tenant and orders them", async () => {
+    const chain: any = {};
+    ["select", "eq"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.order = jest.fn(() =>
+      Promise.resolve({ data: [{ id: "cat-1", name: "Coffee" }], error: null })
+    );
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    const result = await listCategories("tenant-1");
+
+    expect(supabase.from).toHaveBeenCalledWith("categories");
+    expect(chain.eq).toHaveBeenCalledWith("tenant_id", "tenant-1");
+    expect(result).toEqual([{ id: "cat-1", name: "Coffee" }]);
+  });
+});
