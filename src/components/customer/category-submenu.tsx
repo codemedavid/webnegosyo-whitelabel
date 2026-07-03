@@ -1,7 +1,6 @@
 'use client'
 
 import { memo } from 'react'
-import { Pencil } from 'lucide-react'
 import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface CategoryLite {
@@ -22,8 +21,6 @@ interface CategorySubmenuProps {
     header: string
     border: string
   }
-  isBrandAdmin?: boolean
-  onEditBrandingSection?: () => void
 }
 
 export const CategorySubmenu = memo(function CategorySubmenu({
@@ -31,8 +28,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   activeCategory,
   onCategoryChange,
   branding,
-  isBrandAdmin = false,
-  onEditBrandingSection,
 }: CategorySubmenuProps) {
   const activeColor = branding.menuCategoryActive || branding.primary
   const inactiveColor = branding.menuCategoryInactive || activeColor
@@ -110,17 +105,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
               </button>
             ))}
           </div>
-          {isBrandAdmin && onEditBrandingSection && (
-            <button
-              type="button"
-              onClick={onEditBrandingSection}
-              title="Edit category navigation colors"
-              aria-label="Edit category navigation colors"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
       </div>
     </nav>

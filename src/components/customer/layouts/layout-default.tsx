@@ -6,7 +6,6 @@ import { MenuGrid } from '../menu-grid'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
-import { Pencil } from 'lucide-react'
 // CategorySubmenu not currently used in this layout
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { HeroDesign } from '@/types/hero-designer'
@@ -15,8 +14,6 @@ import { HeroPresetSection } from '@/components/customer/hero-preset'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
-
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
 
 interface LayoutDefaultProps {
     tenant: Tenant | null
@@ -49,8 +46,6 @@ interface LayoutDefaultProps {
     mobileGridColumns?: number
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
-    isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: MenuBrandingSection) => void
 }
 
 export const LayoutDefault = memo(function LayoutDefault({
@@ -73,8 +68,6 @@ export const LayoutDefault = memo(function LayoutDefault({
     mobileGridColumns = 1,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-    isBrandAdmin = false,
-    onOpenBrandingSection,
 }: Omit<LayoutDefaultProps, 'allMenuItems'>) {
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
@@ -95,8 +88,6 @@ export const LayoutDefault = memo(function LayoutDefault({
                     titleColor={heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary}
                     descriptionColor={heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary}
                     accentColor={branding.accent || branding.primary}
-                    isBrandAdmin={isBrandAdmin}
-                    onEdit={onOpenBrandingSection ? () => onOpenBrandingSection('hero') : undefined}
                 />
             ) : (
                 <div className="text-center mb-16">
@@ -107,17 +98,6 @@ export const LayoutDefault = memo(function LayoutDefault({
                         >
                             {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
                         </h1>
-                        {isBrandAdmin && onOpenBrandingSection && (
-                            <button
-                                type="button"
-                                onClick={() => onOpenBrandingSection('hero')}
-                                title="Edit hero section"
-                                aria-label="Edit hero section"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                        )}
                     </div>
                     <p
                         className="text-lg font-light hidden md:block"
@@ -180,15 +160,13 @@ export const LayoutDefault = memo(function LayoutDefault({
             )}
 
             {/* Mobile Search */}
-            {!isLoading && (branding.searchBar.enabled || isBrandAdmin) && (
+            {!isLoading && branding.searchBar.enabled && (
                 <div className="mb-8 md:hidden">
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search..."
                         branding={branding}
-                        isBrandAdmin={isBrandAdmin}
-                        onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                     />
                 </div>
             )}
@@ -210,8 +188,6 @@ export const LayoutDefault = memo(function LayoutDefault({
                             onCategoryChange={setActiveCategory}
                             branding={branding}
                             navStyle={tenant?.category_nav_style}
-                            isBrandAdmin={isBrandAdmin}
-                            onEditBrandingSection={() => onOpenBrandingSection?.('category_navigation')}
                         />
                     </div>
                 </div>
@@ -259,19 +235,6 @@ export const LayoutDefault = memo(function LayoutDefault({
             ) : (
                 // Show grouped view when no category is selected, regular grid when category is selected
                 <div className="relative">
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <div className="flex justify-end mb-3">
-                            <button
-                                type="button"
-                                onClick={() => onOpenBrandingSection('menu_cards')}
-                                title="Edit card colors"
-                                aria-label="Edit card colors"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    )}
                     {activeCategory ? (
                         <MenuGrid
                             items={filteredItems}
@@ -293,8 +256,6 @@ export const LayoutDefault = memo(function LayoutDefault({
                             mobileGridColumns={mobileGridColumns}
                             menuEngineeringEnabled={menuEngineeringEnabled}
                             hideCurrencySymbol={hideCurrencySymbol}
-                            isBrandAdmin={isBrandAdmin}
-                            onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
                         />
                     )}
                 </div>

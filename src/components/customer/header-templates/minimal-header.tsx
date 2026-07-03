@@ -7,7 +7,6 @@ import {
   HeaderTitle,
   HeaderCartButton,
   HeaderSearch,
-  HeaderAdminPencil,
   headerShellClass,
   headerShellStyle,
 } from './header-parts'
@@ -21,8 +20,6 @@ export const MinimalHeader = memo(function MinimalHeader({
   onCartClick,
   searchQuery,
   onSearchChange,
-  isBrandAdmin,
-  onEditSection,
   className,
 }: HeaderTemplateProps) {
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
@@ -49,11 +46,6 @@ export const MinimalHeader = memo(function MinimalHeader({
                 size="sm"
               />
             )}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('main_header')}
-              label="Edit main header"
-            />
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-3">
@@ -65,11 +57,6 @@ export const MinimalHeader = memo(function MinimalHeader({
             {config.showCart && (
               <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
             )}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('cart_badge')}
-              label="Edit cart badge"
-            />
           </div>
         </div>
 

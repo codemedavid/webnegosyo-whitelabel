@@ -10,7 +10,7 @@ import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
 import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import { toast } from 'sonner'
-import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
+import type { Category, MenuItem, Tenant } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
@@ -32,18 +32,7 @@ interface MenuClientProps {
   error: string | null
 }
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
-
-const BrandingEditorOverlay = dynamic(
-  () => import('@/components/admin/branding-editor-overlay').then(mod => ({ default: mod.BrandingEditorOverlay })),
-  { ssr: false }
-)
-
 // Heavy modals — loaded lazily since they are not visible on initial render.
-const CheckoutUpsellModal = dynamic(
-  () => import('@/components/customer/checkout-upsell-modal').then(mod => ({ default: mod.CheckoutUpsellModal })),
-  { ssr: false }
-)
 const BundleWizard = dynamic(
   () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
@@ -177,41 +166,11 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
     })
   }, [allItemsWithBundles, activeCategory, debouncedSearchQuery, tenant?.menu_engineering_enabled])
 
-  const baseBranding = useMemo(() => getTenantBranding(tenant), [tenant])
-  const [brandingOverride, setBrandingOverride] = useState<Partial<Record<string, string>> | null>(null)
-  const [heroOverride, setHeroOverride] = useState<{ title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null>(null)
-  const [bannerOverride, setBannerOverride] = useState<{
-    announcementText?: string;
-    announcementBgColor?: string;
-    announcementTextColor?: string;
-    isAnnouncementVisible?: boolean;
-    promotionImageUrl?: string;
-    isPromotionVisible?: boolean;
-    promotionBanners?: PromotionBanner[];
-  } | null>(null)
+  // Branding (incl. any live Branding Studio draft) resolves straight from the
+  // merged tenant — the old modal editor's per-field override states are gone.
+  const branding = useMemo(() => getTenantBranding(tenant), [tenant])
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [cardTemplateOverride, setCardTemplateOverride] = useState<string | null>(null)
-  const [pageLayoutOverride, setPageLayoutOverride] = useState<string | null>(null)
-  const [mobileGridColumnsOverride, setMobileGridColumnsOverride] = useState<number | null>(null)
-  const [mobilePageLayoutOverride, setMobilePageLayoutOverride] = useState<string | null>(null)
-  const [mobileCardTemplateOverride, setMobileCardTemplateOverride] = useState<string | null>(null)
-  const [headerTemplateOverride, setHeaderTemplateOverride] = useState<string | null>(null)
-  const [mobileHeaderTemplateOverride, setMobileHeaderTemplateOverride] = useState<string | null>(null)
-  const [headerConfigOverride, setHeaderConfigOverride] = useState<Partial<HeaderConfig> | null>(null)
-  const [isPreviewing, setIsPreviewing] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-  const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
-  const branding = useMemo(() => {
-    if (!brandingOverride) return baseBranding
-    return { ...baseBranding, ...brandingOverride }
-  }, [baseBranding, brandingOverride])
-
-  // Memoize banner props to avoid creating new object literals on every render,
-  // which would force child components (MenuLayout, CategorySubmenu) to re-render.
-  const bannerPropsOverride = useMemo(() => ({
-    promotionBanners: bannerOverride?.promotionBanners,
-    isPromotionVisible: bannerOverride?.isPromotionVisible,
-  }), [bannerOverride?.promotionBanners, bannerOverride?.isPromotionVisible])
 
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
@@ -243,25 +202,20 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
     }
   }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin])
 
-  const desktopLayout = (pageLayoutOverride || tenant?.page_layout || 'default') as PageLayout
-  const mobileLayout = (mobilePageLayoutOverride ?? tenant?.mobile_page_layout ?? desktopLayout) as PageLayout
-  const desktopCard = (cardTemplateOverride || tenant?.card_template || 'classic') as CardTemplate
-  const mobileCard = (mobileCardTemplateOverride ?? tenant?.mobile_card_template ?? desktopCard) as CardTemplate
+  // 'inherit' is the Branding Studio's explicit "same as desktop" choice —
+  // treat it (and blank/null) as "fall back to the desktop value".
+  const mobileOrDesktop = (mobileValue: string | null | undefined, desktopValue: string): string =>
+    mobileValue && mobileValue !== 'inherit' ? mobileValue : desktopValue
+
+  const desktopLayout = (tenant?.page_layout || 'default') as PageLayout
+  const mobileLayout = mobileOrDesktop(tenant?.mobile_page_layout, desktopLayout) as PageLayout
+  const desktopCard = (tenant?.card_template || 'classic') as CardTemplate
+  const mobileCard = mobileOrDesktop(tenant?.mobile_card_template, desktopCard) as CardTemplate
   const needsDualRender = mobileLayout !== desktopLayout || mobileCard !== desktopCard
 
-  const desktopHeader = (headerTemplateOverride || tenant?.header_template || 'classic') as HeaderTemplate
-  // While the editor is open (previewing), a null mobile override means the admin
-  // reset to desktop — fall back to the desktop header instead of the stale saved
-  // value so the live preview matches what will be saved.
-  const mobileHeader = (
-    isPreviewing
-      ? (mobileHeaderTemplateOverride ?? desktopHeader)
-      : (mobileHeaderTemplateOverride ?? tenant?.mobile_header_template ?? desktopHeader)
-  ) as HeaderTemplate
-  const headerConfig = useMemo<HeaderConfig>(() => {
-    const base = getHeaderConfig(tenant)
-    return headerConfigOverride ? { ...base, ...headerConfigOverride } : base
-  }, [tenant, headerConfigOverride])
+  const desktopHeader = (tenant?.header_template || 'classic') as HeaderTemplate
+  const mobileHeader = mobileOrDesktop(tenant?.mobile_header_template, desktopHeader) as HeaderTemplate
+  const headerConfig = useMemo<HeaderConfig>(() => getHeaderConfig(tenant), [tenant])
 
   // When the header carries its own inline search, suppress the layout's search bar
   // so the menu never shows two search inputs.
@@ -300,116 +254,15 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
     }
   }, [desktopHeader, mobileHeader, headerConfig])
 
-  function mapDraftToBranding(draft: Partial<Record<string, unknown>> | null): Partial<Record<string, string>> | null {
-    if (!draft) return null
-    const mapped: Record<string, string> = {}
-    const setIf = (key: string, value: unknown) => { if (typeof value === 'string') mapped[key] = value }
-    setIf('primary', draft.primary_color)
-    setIf('secondary', draft.secondary_color)
-    setIf('accent', draft.accent_color)
-    setIf('background', draft.background_color)
-    setIf('header', draft.header_color)
-    setIf('headerFont', draft.header_font_color)
-    setIf('cards', draft.cards_color)
-    setIf('cardsBorder', draft.cards_border_color)
-    setIf('cardTitle', draft.card_title_color)
-    setIf('cardPrice', draft.card_price_color)
-    setIf('cardDescription', draft.card_description_color)
-    setIf('modalBackground', draft.modal_background_color)
-    setIf('modalTitle', draft.modal_title_color)
-    setIf('modalPrice', draft.modal_price_color)
-    setIf('modalDescription', draft.modal_description_color)
-    setIf('checkoutModalBackground', draft.checkout_modal_background_color)
-    setIf('checkoutModalTitle', draft.checkout_modal_title_color)
-    setIf('checkoutModalDescription', draft.checkout_modal_description_color)
-    setIf('checkoutModalPrice', draft.checkout_modal_price_color)
-    setIf('checkoutModalButton', draft.checkout_modal_button_color)
-    setIf('checkoutModalButtonText', draft.checkout_modal_button_text_color)
-    setIf('checkoutModalBorder', draft.checkout_modal_border_color)
-    setIf('buttonPrimary', draft.button_primary_color)
-    setIf('buttonPrimaryText', draft.button_primary_text_color)
-    setIf('buttonSecondary', draft.button_secondary_color)
-    setIf('buttonSecondaryText', draft.button_secondary_text_color)
-    setIf('textPrimary', draft.text_primary_color)
-    setIf('textSecondary', draft.text_secondary_color)
-    setIf('textMuted', draft.text_muted_color)
-    setIf('menuMainHeaderText', draft.menu_main_header_text_color)
-    setIf('menuMainHeaderSubtitle', draft.menu_main_header_subtitle_color)
-    setIf('menuCategoryHeader', draft.menu_category_header_color)
-    setIf('menuCategoryActive', draft.menu_category_active_color)
-    setIf('menuCategoryInactive', draft.menu_category_inactive_color)
-    setIf('menuCartBadgeBackground', draft.menu_cart_badge_background_color)
-    setIf('menuCartBadgeText', draft.menu_cart_badge_text_color)
-    setIf('border', draft.border_color)
-    setIf('success', draft.success_color)
-    setIf('warning', draft.warning_color)
-    setIf('error', draft.error_color)
-    setIf('link', draft.link_color)
-    setIf('shadow', draft.shadow_color)
-    return mapped
-  }
-
-  function mapDraftToHero(draft: Partial<Record<string, unknown>> | null): { title?: string; description?: string; heroTitleColor?: string; heroDescriptionColor?: string } | null {
-    if (!draft) return null
-    return {
-      title: typeof draft.hero_title === 'string' ? draft.hero_title : undefined,
-      description: typeof draft.hero_description === 'string' ? draft.hero_description : undefined,
-      heroTitleColor: typeof draft.hero_title_color === 'string' ? draft.hero_title_color : undefined,
-      heroDescriptionColor: typeof draft.hero_description_color === 'string' ? draft.hero_description_color : undefined,
-    }
-  }
-
-  function mapDraftToBanners(draft: Partial<Record<string, unknown>> | null): {
-    announcementText?: string;
-    announcementBgColor?: string;
-    announcementTextColor?: string;
-    isAnnouncementVisible?: boolean;
-    promotionImageUrl?: string;
-    isPromotionVisible?: boolean;
-    promotionBanners?: PromotionBanner[];
-  } | null {
-    if (!draft) return null
-    return {
-      announcementText: typeof draft.announcement_text === 'string' ? draft.announcement_text : undefined,
-      announcementBgColor: typeof draft.announcement_bg_color === 'string' ? draft.announcement_bg_color : undefined,
-      announcementTextColor: typeof draft.announcement_text_color === 'string' ? draft.announcement_text_color : undefined,
-      isAnnouncementVisible: typeof draft.is_announcement_visible === 'boolean' ? draft.is_announcement_visible : undefined,
-      promotionImageUrl: typeof draft.promotion_image_url === 'string' ? draft.promotion_image_url : undefined,
-      isPromotionVisible: typeof draft.is_promotion_visible === 'boolean' ? draft.is_promotion_visible : undefined,
-      promotionBanners: Array.isArray(draft.promotion_banners) ? draft.promotion_banners as PromotionBanner[] : undefined,
-    }
-  }
-
-  function mapDraftToHeaderConfig(draft: Partial<Record<string, unknown>> | null): Partial<HeaderConfig> | null {
-    if (!draft) return null
-    const cfg: Partial<HeaderConfig> = {}
-    if (typeof draft.header_show_logo === 'boolean') cfg.showLogo = draft.header_show_logo
-    if (typeof draft.header_show_name === 'boolean') cfg.showName = draft.header_show_name
-    if (typeof draft.header_show_cart === 'boolean') cfg.showCart = draft.header_show_cart
-    if (typeof draft.header_show_search === 'boolean') cfg.showSearch = draft.header_show_search
-    if (typeof draft.header_tagline === 'string') cfg.tagline = draft.header_tagline
-    if (typeof draft.header_tagline_color === 'string') cfg.taglineColor = draft.header_tagline_color
-    if (typeof draft.header_sticky === 'boolean') cfg.sticky = draft.header_sticky
-    if (typeof draft.header_blur === 'boolean') cfg.blur = draft.header_blur
-    if (typeof draft.header_shadow === 'boolean') cfg.shadow = draft.header_shadow
-    if (draft.header_logo_shape === 'circle' || draft.header_logo_shape === 'rounded' || draft.header_logo_shape === 'square') cfg.logoShape = draft.header_logo_shape
-    if (draft.header_height === 'compact' || draft.header_height === 'standard' || draft.header_height === 'tall') cfg.height = draft.header_height
-    return cfg
-  }
-
   useEffect(() => {
-    const promotionBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
-    const isVisible = bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible
+    const promotionBanners = tenant?.promotion_banners ?? []
+    const isVisible = tenant?.is_promotion_visible
     if (!isVisible || promotionBanners.length <= 1) return
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % promotionBanners.length)
     }, 5000)
     return () => clearInterval(interval)
-  }, [bannerOverride?.isPromotionVisible, bannerOverride?.promotionBanners, tenant?.is_promotion_visible, tenant?.promotion_banners])
-
-  function openBrandingEditor(section: MenuBrandingSection) {
-    window.dispatchEvent(new CustomEvent('menu-branding-editor:open', { detail: { section } }))
-  }
+  }, [tenant?.is_promotion_visible, tenant?.promotion_banners])
 
   if (error === 'Restaurant not found') {
     return (
@@ -527,15 +380,15 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         </div>
       )}
 
-      {(bannerOverride?.isAnnouncementVisible ?? tenant?.is_announcement_visible) && (
+      {tenant?.is_announcement_visible && (
         <div
           className="w-full text-center py-2 px-4 text-sm font-medium relative z-[51]"
           style={{
-            backgroundColor: bannerOverride?.announcementBgColor || tenant?.announcement_bg_color || '#FFF4E5',
-            color: bannerOverride?.announcementTextColor || tenant?.announcement_text_color || '#663C00'
+            backgroundColor: tenant?.announcement_bg_color || '#FFF4E5',
+            color: tenant?.announcement_text_color || '#663C00'
           }}
         >
-          {bannerOverride?.announcementText || tenant?.announcement_text || 'Welcome!'}
+          {tenant?.announcement_text || 'Welcome!'}
         </div>
       )}
       {desktopHeader === mobileHeader ? (
@@ -549,8 +402,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
           onCartClick={() => setIsCartOpen(true)}
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
-          isBrandAdmin={isBrandAdmin}
-          onEditSection={openBrandingEditor}
         />
       ) : (
         <>
@@ -568,8 +419,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
             onCartClick={() => setIsCartOpen(true)}
             searchQuery={searchQuery}
             onSearchChange={handleSearchChange}
-            isBrandAdmin={isBrandAdmin}
-            onEditSection={openBrandingEditor}
           />
           <MenuHeaderRenderer
             template={desktopHeader}
@@ -582,8 +431,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
             onCartClick={() => setIsCartOpen(true)}
             searchQuery={searchQuery}
             onSearchChange={handleSearchChange}
-            isBrandAdmin={isBrandAdmin}
-            onEditSection={openBrandingEditor}
           />
         </>
       )}
@@ -598,8 +445,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
                   activeCategory={activeCategory}
                   onCategoryChange={setActiveCategory}
                   branding={branding}
-                  isBrandAdmin={isBrandAdmin}
-                  onEditBrandingSection={() => openBrandingEditor('category_navigation')}
                 />
               </div>
             )}
@@ -610,8 +455,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
                   activeCategory={activeCategory}
                   onCategoryChange={setActiveCategory}
                   branding={branding}
-                  isBrandAdmin={isBrandAdmin}
-                  onEditBrandingSection={() => openBrandingEditor('category_navigation')}
                 />
               </div>
             )}
@@ -622,40 +465,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
             branding={branding}
-            isBrandAdmin={isBrandAdmin}
-            onEditBrandingSection={() => openBrandingEditor('category_navigation')}
           />
         ) : null
-      )}
-
-      {tenant && isBrandAdmin && (
-        <BrandingEditorOverlay
-          tenant={tenant}
-          onPreview={(draft) => {
-            setIsPreviewing(draft !== null)
-            setBrandingOverride(mapDraftToBranding(draft))
-            setHeroOverride(mapDraftToHero(draft as Partial<Record<string, unknown>> | null))
-            setBannerOverride(mapDraftToBanners(draft as Partial<Record<string, unknown>> | null))
-            setCardTemplateOverride(draft?.card_template as string || null)
-            setPageLayoutOverride(draft?.page_layout as string || null)
-            setMobileGridColumnsOverride(typeof draft?.mobile_grid_columns === 'number' ? draft.mobile_grid_columns : null)
-            setMobilePageLayoutOverride(draft?.mobile_page_layout as string || null)
-            setMobileCardTemplateOverride(draft?.mobile_card_template as string || null)
-            setHeaderTemplateOverride(draft?.header_template as string || null)
-            setMobileHeaderTemplateOverride((draft?.mobile_header_template as string | null | undefined) ?? null)
-            setHeaderConfigOverride(mapDraftToHeaderConfig(draft as Partial<Record<string, unknown>> | null))
-          }}
-          onSaved={(result) => {
-            if (result?.warning) {
-              toast.warning(result.warning)
-            } else {
-              toast.success('Branding updated!')
-            }
-            // Refresh server props so the client gets the saved tenant data
-            router.refresh()
-          }}
-          onToggleCheckoutPreview={() => setIsCheckoutPreviewOpen(prev => !prev)}
-        />
       )}
 
       {/* Block Hero (v4) — rendered at the top level, above <main> content */}
@@ -691,15 +502,11 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
                 branding={layoutBranding}
                 cardTemplate={mobileCard}
                 isLoading={false}
-                heroOverride={heroOverride}
-                bannerOverride={bannerPropsOverride}
                 currentSlide={currentSlide}
                 setCurrentSlide={setCurrentSlide}
-                mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+                mobileGridColumns={tenant?.mobile_grid_columns || 1}
                 menuEngineeringEnabled={tenant?.menu_engineering_enabled}
                 hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
-                isBrandAdmin={isBrandAdmin}
-                onOpenBrandingSection={openBrandingEditor}
               />
             </div>
             <div className="hidden md:block">
@@ -718,15 +525,11 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
                 branding={layoutBranding}
                 cardTemplate={desktopCard}
                 isLoading={false}
-                heroOverride={heroOverride}
-                bannerOverride={bannerPropsOverride}
                 currentSlide={currentSlide}
                 setCurrentSlide={setCurrentSlide}
-                mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+                mobileGridColumns={tenant?.mobile_grid_columns || 1}
                 menuEngineeringEnabled={tenant?.menu_engineering_enabled}
                 hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
-                isBrandAdmin={isBrandAdmin}
-                onOpenBrandingSection={openBrandingEditor}
               />
             </div>
           </>
@@ -746,15 +549,11 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
             branding={layoutBranding}
             cardTemplate={desktopCard}
             isLoading={false}
-            heroOverride={heroOverride}
-            bannerOverride={bannerPropsOverride}
             currentSlide={currentSlide}
             setCurrentSlide={setCurrentSlide}
-            mobileGridColumns={mobileGridColumnsOverride || tenant?.mobile_grid_columns || 1}
+            mobileGridColumns={tenant?.mobile_grid_columns || 1}
             menuEngineeringEnabled={tenant?.menu_engineering_enabled}
             hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
-            isBrandAdmin={isBrandAdmin}
-            onOpenBrandingSection={openBrandingEditor}
           />
         )}
       </main>
@@ -774,24 +573,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         checkoutUpsellSubtitle={tenant?.checkout_upsell_subtitle}
         checkoutUpsellMaxItems={tenant?.checkout_upsell_max_items}
       />
-
-      {/* Checkout Interstitial Preview (admin only, z-[61] above branding editor z-[60]) */}
-      {tenant && isBrandAdmin && (
-        <CheckoutUpsellModal
-          open={isCheckoutPreviewOpen}
-          onContinue={() => setIsCheckoutPreviewOpen(false)}
-          tenantId={tenant.id}
-          branding={branding}
-          title={tenant.checkout_upsell_title || 'Before you go...'}
-          subtitle={tenant.checkout_upsell_subtitle || 'You might also enjoy these items'}
-          maxItems={4}
-          previewSuggestions={allMenuItems.slice(0, 3).map(item => ({
-            ...item,
-            category_id: item.category_id || '',
-          }))}
-          zIndexClass="z-[61]"
-        />
-      )}
 
       {/* Bundle Wizard */}
       <BundleWizard

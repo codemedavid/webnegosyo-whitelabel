@@ -7,7 +7,6 @@ import {
   HeaderTitle,
   HeaderCartButton,
   HeaderSearch,
-  HeaderAdminPencil,
   headerShellClass,
   headerShellStyle,
   rowHeightClass,
@@ -22,8 +21,6 @@ export const CenteredHeader = memo(function CenteredHeader({
   onCartClick,
   searchQuery,
   onSearchChange,
-  isBrandAdmin,
-  onEditSection,
   className,
 }: HeaderTemplateProps) {
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
@@ -52,23 +49,11 @@ export const CenteredHeader = memo(function CenteredHeader({
                 align="center"
               />
             )}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('main_header')}
-              label="Edit main header"
-            />
           </div>
 
-          {(config.showCart || isBrandAdmin) && (
+          {config.showCart && (
             <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-2">
-              {config.showCart && (
-                <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
-              )}
-              <HeaderAdminPencil
-                visible={isBrandAdmin}
-                onClick={() => onEditSection('cart_badge')}
-                label="Edit cart badge"
-              />
+              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
             </div>
           )}
         </div>

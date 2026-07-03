@@ -4,7 +4,6 @@ import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
-import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { HeroDesign } from '@/types/hero-designer'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
@@ -44,8 +43,6 @@ interface LayoutMosaicProps {
     mobileGridColumns?: number
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
-    isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 export const LayoutMosaic = memo(function LayoutMosaic({
@@ -65,8 +62,6 @@ export const LayoutMosaic = memo(function LayoutMosaic({
     setCurrentSlide,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-    isBrandAdmin = false,
-    onOpenBrandingSection,
 }: Omit<LayoutMosaicProps, 'allMenuItems' | 'tenantSlug' | 'mobileGridColumns' | 'isLoading'>) {
     // Banners
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
@@ -99,17 +94,6 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                         >
                             {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
                         </h1>
-                        {isBrandAdmin && onOpenBrandingSection && (
-                            <button
-                                type="button"
-                                onClick={() => onOpenBrandingSection('hero')}
-                                title="Edit hero section"
-                                aria-label="Edit hero section"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                        )}
                     </div>
                     <p
                         className="text-base font-light"
@@ -153,30 +137,17 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                             </button>
                         ))}
                     </div>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('category_navigation')}
-                            title="Edit category navigation colors"
-                            aria-label="Edit category navigation colors"
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                        >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
                 </div>
             )}
 
             {/* Search */}
-            {(branding.searchBar.enabled || isBrandAdmin) && (
+            {branding.searchBar.enabled && (
             <div className="mb-8 max-w-md mx-auto">
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Find something..."
                     branding={branding}
-                    isBrandAdmin={isBrandAdmin}
-                    onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                 />
             </div>
             )}
@@ -288,32 +259,8 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                                         {items.length} {items.length === 1 ? 'item' : 'items'}
                                     </p>
                                 </div>
-                                {isBrandAdmin && onOpenBrandingSection && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onOpenBrandingSection('category_header')}
-                                        title="Edit category header colors"
-                                        aria-label="Edit category header colors"
-                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                                    >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                )}
                             </div>
                             {/* Masonry Grid or Horizontal Scroll */}
-                            {isBrandAdmin && onOpenBrandingSection && (
-                                <div className="flex justify-end mb-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => onOpenBrandingSection('menu_cards')}
-                                        title="Edit card colors"
-                                        aria-label="Edit card colors"
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                                    >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            )}
                             <ResponsiveCategorySection
                                 displayLayout={category.display_layout}
                                 horizontalContent={

@@ -7,7 +7,6 @@ import { SearchBar } from '../search-bar'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
-import { Pencil } from 'lucide-react'
 import { CategoryIcon } from '@/components/shared/category-icon'
 
 interface LayoutSidebarProps {
@@ -40,8 +39,6 @@ interface LayoutSidebarProps {
     mobileGridColumns?: number
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
-    isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 import { useEffect, useState, useRef } from 'react'
@@ -61,8 +58,6 @@ export const LayoutSidebar = memo(function LayoutSidebar({
     mobileGridColumns = 1,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-    isBrandAdmin = false,
-    onOpenBrandingSection,
 }: Omit<LayoutSidebarProps, 'allMenuItems' | 'activeCategory' | 'setActiveCategory' | 'heroOverride'>) {
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
@@ -189,31 +184,18 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                         </span>
                     </button>
                 ))}
-                {isBrandAdmin && onOpenBrandingSection && (
-                    <button
-                        type="button"
-                        onClick={() => onOpenBrandingSection('category_navigation')}
-                        title="Edit category navigation colors"
-                        aria-label="Edit category navigation colors"
-                        className="mt-2 self-center inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                    >
-                        <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                )}
             </aside>
 
             {/* Main Content */}
             <div className="flex-1 min-w-0">
                 {/* Search Bar - Sticky on mobile? Optional, but keeping simple for now */}
-                {(branding.searchBar.enabled || isBrandAdmin) && (
+                {branding.searchBar.enabled && (
                 <div className="mb-6 sticky top-0 z-30 pt-2 bg-white/80 backdrop-blur-md md:static md:bg-transparent md:pt-0">
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
                         placeholder="Search menu..."
                         branding={branding}
-                        isBrandAdmin={isBrandAdmin}
-                        onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                     />
                 </div>
                 )}
@@ -271,19 +253,6 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                 {/* Removed Mobile Category Tabs as requested */}
 
                 {/* Menu Grid - Always show grouped view in this layout */}
-                {isBrandAdmin && onOpenBrandingSection && filteredItems.length > 0 && (
-                    <div className="flex justify-end mb-3">
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('menu_cards')}
-                            title="Edit card colors"
-                            aria-label="Edit card colors"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                        >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
-                )}
                 {filteredItems.length === 0 ? (
                     <div className="text-center py-12">
                         <div
@@ -312,8 +281,6 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                         mobileGridColumns={mobileGridColumns}
                         menuEngineeringEnabled={menuEngineeringEnabled}
                         hideCurrencySymbol={hideCurrencySymbol}
-                        isBrandAdmin={isBrandAdmin}
-                        onEditCategoryHeader={() => onOpenBrandingSection?.('category_header')}
                     />
                 )}
             </div>

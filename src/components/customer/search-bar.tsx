@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useMemo, useCallback } from 'react'
-import { Search, X, Pencil } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -12,8 +12,6 @@ interface SearchBarProps {
   onChange: (value: string) => void
   placeholder?: string
   branding?: BrandingColors
-  isBrandAdmin?: boolean
-  onEditBrandingSection?: () => void
 }
 
 const RADIUS_CLASS: Record<'pill' | 'rounded' | 'square', string> = {
@@ -27,8 +25,6 @@ export const SearchBar = memo(function SearchBar({
   onChange,
   placeholder = 'Search menu...',
   branding,
-  isBrandAdmin = false,
-  onEditBrandingSection,
 }: SearchBarProps) {
   const cfg = branding?.searchBar
 
@@ -59,22 +55,9 @@ export const SearchBar = memo(function SearchBar({
     if (resolved) e.currentTarget.style.borderColor = resolved.border
   }, [resolved])
 
-  const adminPencil = isBrandAdmin && onEditBrandingSection ? (
-    <button
-      type="button"
-      onClick={onEditBrandingSection}
-      title="Edit search bar"
-      aria-label="Edit search bar"
-      className="absolute -right-1 -top-1 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-    >
-      <Pencil className="h-3.5 w-3.5" />
-    </button>
-  ) : null
-
   if (branding && resolved) {
     return (
       <div className="relative">
-        {adminPencil}
         <Search
           className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2"
           style={{ color: resolved.icon }}
@@ -113,7 +96,6 @@ export const SearchBar = memo(function SearchBar({
 
   return (
     <div className="relative">
-      {adminPencil}
       <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
       <Input
         type="search"

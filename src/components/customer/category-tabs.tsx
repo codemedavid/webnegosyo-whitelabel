@@ -1,7 +1,6 @@
 'use client'
 
 import { memo } from 'react'
-import { Pencil } from 'lucide-react'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { resolveCategoryNavStyle } from '@/lib/storefront-theme'
 
@@ -26,8 +25,6 @@ interface CategoryTabsProps {
    * soft-tinted pills byte-identical; `chips`/`underline` are opt-in variants.
    */
   navStyle?: string
-  isBrandAdmin?: boolean
-  onEditBrandingSection?: () => void
 }
 
 type NavVariant = 'pills' | 'chips' | 'underline'
@@ -86,8 +83,6 @@ export const CategoryTabs = memo(function CategoryTabs({
   onCategoryChange,
   branding,
   navStyle,
-  isBrandAdmin = false,
-  onEditBrandingSection,
 }: CategoryTabsProps) {
   const primaryColor = branding?.menuCategoryActive || branding?.primary || '#ea580c'
   const textSecondary = branding?.menuCategoryInactive || '#6b7280'
@@ -138,17 +133,6 @@ export const CategoryTabs = memo(function CategoryTabs({
           )
         )}
       </div>
-      {isBrandAdmin && onEditBrandingSection && (
-        <button
-          type="button"
-          onClick={onEditBrandingSection}
-          title="Edit category navigation colors"
-          aria-label="Edit category navigation colors"
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
     </div>
   )
 })

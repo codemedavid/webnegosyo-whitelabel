@@ -11,7 +11,7 @@
 
 import { memo } from 'react'
 import type { HeaderTemplate } from '@/lib/header-templates'
-import type { HeaderTemplateProps } from './header-parts'
+import type { HeaderEditSection, HeaderTemplateProps } from './header-parts'
 import { ClassicHeader } from './classic-header'
 import { CenteredHeader } from './centered-header'
 import { MinimalHeader } from './minimal-header'
@@ -49,7 +49,15 @@ export function getHeaderTemplateComponent(template: HeaderTemplate = 'classic')
 export const MenuHeaderRenderer = memo(function MenuHeaderRenderer({
   template = 'classic',
   ...props
-}: HeaderTemplateProps & { template?: HeaderTemplate }) {
+}: HeaderTemplateProps & {
+  template?: HeaderTemplate
+  /** @deprecated Branding editing moved to the Branding Studio admin page. */
+  isBrandAdmin?: boolean
+  /** @deprecated Branding editing moved to the Branding Studio admin page. */
+  onEditSection?: (section: HeaderEditSection) => void
+}) {
+  // The deprecated branding-editor props ride along in the spread but are
+  // ignored by every header template. Editing lives in the Branding Studio.
   const HeaderComponent = getHeaderTemplateComponent(template)
   return <HeaderComponent {...props} />
 })

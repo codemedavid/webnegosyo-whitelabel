@@ -3,7 +3,6 @@
 import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { SearchBar } from '../search-bar'
-import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { HeroDesign } from '@/types/hero-designer'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
@@ -43,8 +42,6 @@ interface LayoutListProps {
     mobileGridColumns?: number
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
-    isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar') => void
 }
 
 export const LayoutList = memo(function LayoutList({
@@ -64,8 +61,6 @@ export const LayoutList = memo(function LayoutList({
     setCurrentSlide,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-    isBrandAdmin = false,
-    onOpenBrandingSection,
 }: Omit<LayoutListProps, 'allMenuItems' | 'mobileGridColumns' | 'tenantSlug' | 'isLoading'>) {
     const activeColor = branding.menuCategoryActive || branding.primary
     const activeTextColor = getContrastColor(activeColor)
@@ -100,17 +95,6 @@ export const LayoutList = memo(function LayoutList({
                         >
                             {heroOverride?.title || tenant?.hero_title || 'Menu'}
                         </h1>
-                        {isBrandAdmin && onOpenBrandingSection && (
-                            <button
-                                type="button"
-                                onClick={() => onOpenBrandingSection('hero')}
-                                title="Edit hero section"
-                                aria-label="Edit hero section"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                        )}
                     </div>
                     <p
                         className="text-sm"
@@ -122,15 +106,13 @@ export const LayoutList = memo(function LayoutList({
             )}
 
             {/* Search */}
-            {(branding.searchBar.enabled || isBrandAdmin) && (
+            {branding.searchBar.enabled && (
             <div className="mb-6">
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Search..."
                     branding={branding}
-                    isBrandAdmin={isBrandAdmin}
-                    onEditBrandingSection={() => onOpenBrandingSection?.('search_bar')}
                 />
             </div>
             )}
@@ -168,17 +150,6 @@ export const LayoutList = memo(function LayoutList({
                             </button>
                         ))}
                     </div>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <button
-                            type="button"
-                            onClick={() => onOpenBrandingSection('category_navigation')}
-                            title="Edit category navigation colors"
-                            aria-label="Edit category navigation colors"
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                        >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
                 </div>
             )}
 
@@ -227,19 +198,6 @@ export const LayoutList = memo(function LayoutList({
                 </div>
             ) : (
                 <div>
-                    {isBrandAdmin && onOpenBrandingSection && (
-                        <div className="flex justify-end mb-3">
-                            <button
-                                type="button"
-                                onClick={() => onOpenBrandingSection('menu_cards')}
-                                title="Edit card colors"
-                                aria-label="Edit card colors"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    )}
                 <div className="space-y-8">
                     {groupedItems.map(({ category, items }) => (
                         <section key={category.id} id={`category-${category.id}`} className="scroll-mt-24">
@@ -258,17 +216,6 @@ export const LayoutList = memo(function LayoutList({
                                     )}
                                     {category.name}
                                 </h2>
-                                {isBrandAdmin && onOpenBrandingSection && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onOpenBrandingSection('category_header')}
-                                        title="Edit category header colors"
-                                        aria-label="Edit category header colors"
-                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900"
-                                    >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                )}
                             </div>
 
                             {/* Item Rows or Horizontal Scroll */}

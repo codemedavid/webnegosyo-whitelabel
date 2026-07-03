@@ -8,7 +8,6 @@ import {
   HeaderTitle,
   HeaderCartButton,
   HeaderSearch,
-  HeaderAdminPencil,
   headerShellClass,
 } from './header-parts'
 
@@ -21,8 +20,6 @@ export const BannerHeader = memo(function BannerHeader({
   onCartClick,
   searchQuery,
   onSearchChange,
-  isBrandAdmin,
-  onEditSection,
   className,
 }: HeaderTemplateProps) {
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
@@ -41,20 +38,13 @@ export const BannerHeader = memo(function BannerHeader({
       style={{ background, color: branding.headerFont, borderColor: branding.border }}
     >
       <div className="container relative mx-auto px-4">
-        {(config.showCart || isBrandAdmin) && (
+        {config.showCart && (
           <div className="absolute right-4 top-4 flex items-center gap-2">
-            {config.showCart && (
-              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
-            )}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('cart_badge')}
-              label="Edit cart badge"
-            />
+            <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
           </div>
         )}
 
-        {/* px-20 keeps the centered brand clear of the top-right cart/pencil. */}
+        {/* px-20 keeps the centered brand clear of the top-right cart. */}
         <div className={`flex flex-col items-center gap-3 px-20 text-center ${bannerPad}`}>
           {config.showLogo && (
             <HeaderLogo
@@ -65,23 +55,15 @@ export const BannerHeader = memo(function BannerHeader({
               size="lg"
             />
           )}
-          {(config.showName || isBrandAdmin) && (
+          {config.showName && (
             <div className="flex min-w-0 max-w-full items-center gap-2">
-              {config.showName && (
-                <HeaderTitle
-                  name={name}
-                  tagline={config.tagline}
-                  taglineColor={config.taglineColor || branding.menuMainHeaderSubtitle}
-                  titleColor={branding.menuMainHeaderText}
-                  align="center"
-                  size="lg"
-                />
-              )}
-              <HeaderAdminPencil
-                visible={isBrandAdmin}
-                onClick={() => onEditSection('main_header')}
-                label="Edit main header"
-                className="mt-1"
+              <HeaderTitle
+                name={name}
+                tagline={config.tagline}
+                taglineColor={config.taglineColor || branding.menuMainHeaderSubtitle}
+                titleColor={branding.menuMainHeaderText}
+                align="center"
+                size="lg"
               />
             </div>
           )}

@@ -2,17 +2,20 @@
 
 /**
  * Shared building blocks for the menu header templates.
- * Keeping logo / title / cart / search / pencil in one place means every
+ * Keeping logo / title / cart / search in one place means every
  * header template renders identical, bug-free pieces and only differs in layout.
  */
 
-import { Pencil, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { HeaderConfig, HeaderLogoShape, HeaderHeight } from '@/lib/header-templates'
 import type { Tenant } from '@/types/database'
 
-/** The two header zones an admin can jump to from a pencil button. */
+/**
+ * Legacy header edit zones. Kept only so `MenuHeaderRenderer` can accept (and
+ * ignore) the old branding-editor props until all call sites stop passing them.
+ */
 export type HeaderEditSection = 'main_header' | 'cart_badge'
 
 export interface HeaderTemplateProps {
@@ -24,8 +27,6 @@ export interface HeaderTemplateProps {
   onCartClick: () => void
   searchQuery: string
   onSearchChange: (value: string) => void
-  isBrandAdmin: boolean
-  onEditSection: (section: HeaderEditSection) => void
   /**
    * Extra classes applied to the <header> element itself (NOT a wrapper) so
    * responsive visibility (e.g. "hidden md:block") can be toggled without
@@ -241,33 +242,5 @@ export function HeaderSearch({
         }}
       />
     </div>
-  )
-}
-
-/* ----------------------------- admin pencil ------------------------------ */
-
-export function HeaderAdminPencil({
-  visible,
-  onClick,
-  label,
-  className,
-}: {
-  visible: boolean
-  onClick: () => void
-  label: string
-  className?: string
-}) {
-  if (!visible) return null
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900 ${className || ''}`}
-    >
-      <Pencil className="h-3.5 w-3.5" />
-    </button>
   )
 }

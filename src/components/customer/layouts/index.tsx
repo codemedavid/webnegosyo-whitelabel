@@ -7,8 +7,6 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 
-type MenuBrandingSection = 'main_header' | 'category_navigation' | 'category_header' | 'cart_badge' | 'hero' | 'menu_cards' | 'search_bar'
-
 interface MenuLayoutProps {
     layout: PageLayout
     tenant: Tenant | null
@@ -41,8 +39,10 @@ interface MenuLayoutProps {
     mobileGridColumns?: number
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+    /** @deprecated Branding editing moved to the Branding Studio admin page; accepted but ignored. */
     isBrandAdmin?: boolean
-    onOpenBrandingSection?: (section: MenuBrandingSection) => void
+    /** @deprecated Branding editing moved to the Branding Studio admin page; accepted but ignored. */
+    onOpenBrandingSection?: (section: string) => void
 }
 
 // Minimal skeleton shown while the layout chunk loads on first render.
@@ -85,6 +85,8 @@ const LayoutMosaic = dynamic(
     { loading: LayoutSkeleton }
 )
 
+// The deprecated branding-editor props ride along in the spread but are
+// ignored by every layout. Editing lives in the Branding Studio admin page.
 export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
     const { activeCategory, setActiveCategory } = props
     // Reset active category when switching to sidebar layout (to show all items)

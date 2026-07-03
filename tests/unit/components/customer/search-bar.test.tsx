@@ -38,23 +38,7 @@ describe('SearchBar', () => {
     expect(screen.getByPlaceholderText('Search menu...').className).toMatch(/rounded-lg/)
   })
 
-  it('shows admin pencil button when isBrandAdmin and onEditBrandingSection are passed', () => {
-    const onEdit = jest.fn()
-    render(
-      <SearchBar
-        value=""
-        onChange={() => {}}
-        branding={makeBranding()}
-        isBrandAdmin
-        onEditBrandingSection={onEdit}
-      />
-    )
-    const pencil = screen.getByRole('button', { name: /edit search bar/i })
-    fireEvent.click(pencil)
-    expect(onEdit).toHaveBeenCalled()
-  })
-
-  it('does not show pencil when not admin', () => {
+  it('does not render an admin edit pencil (branding editing moved to Branding Studio)', () => {
     render(<SearchBar value="" onChange={() => {}} branding={makeBranding()} />)
     expect(screen.queryByRole('button', { name: /edit search bar/i })).toBeNull()
   })

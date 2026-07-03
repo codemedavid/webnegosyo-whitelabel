@@ -7,7 +7,6 @@ import {
   HeaderTitle,
   HeaderCartButton,
   HeaderSearch,
-  HeaderAdminPencil,
   headerShellClass,
   headerShellStyle,
   rowHeightClass,
@@ -22,8 +21,6 @@ export const SplitHeader = memo(function SplitHeader({
   onCartClick,
   searchQuery,
   onSearchChange,
-  isBrandAdmin,
-  onEditSection,
   className,
 }: HeaderTemplateProps) {
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
@@ -49,13 +46,6 @@ export const SplitHeader = memo(function SplitHeader({
                 titleColor={branding.menuMainHeaderText}
               />
             )}
-            {/* Pencil stays reachable even when the name is hidden. */}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('main_header')}
-              label="Edit main header"
-              className="mt-0.5"
-            />
           </div>
 
           {/* Center search occupies the remaining space on larger screens. */}
@@ -71,11 +61,6 @@ export const SplitHeader = memo(function SplitHeader({
             {config.showCart && (
               <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
             )}
-            <HeaderAdminPencil
-              visible={isBrandAdmin}
-              onClick={() => onEditSection('cart_badge')}
-              label="Edit cart badge"
-            />
           </div>
         </div>
 
