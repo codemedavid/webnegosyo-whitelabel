@@ -77,6 +77,32 @@ Migration `20260704010000_category_nav_style.sql` APPLIED via MCP. Wired:
 → `database.ts` type → `branding.ts` (zod + save column) → `menu-server.tsx`
 projection → Branding Editor Cards tab.
 
-## Follow-ups (remaining stages, not yet done)
+## Stage 3 — hero preset knob (DONE)
 
-- **Stage 3** — 6 additive hero presets (editorial/split/banner/collage/minimal/centered).
+Additive `hero_preset` (`theme` sentinel = today's centered serif hero,
+byte-identical; concrete presets `centered` / `editorial` / `split` / `banner` /
+`collage` / `minimal`). Presets only rearrange the same hero title, description,
+and edit affordance in `HeroPresetSection`; branding colors are passed in
+unchanged. Only the simple text-hero fallback in `layout-default` consumes it —
+the advanced block-hero designer (`hero_design`) path is untouched.
+
+| # | What is guaranteed | Test | Type | Result |
+|---|--------------------|------|------|--------|
+| 11 | `HERO_PRESETS` defines the six layouts, excludes `theme` | `storefront-theme.test.ts:HERO_PRESETS` | unit | PASS |
+| 12 | Options list leads with `theme` then every concrete preset | `storefront-theme.test.ts:HERO_PRESET_OPTIONS` | unit | PASS |
+| 13 | `resolveHeroPreset` maps each preset to its token; `theme`/unknown/non-string → null (keep centered hero) | `storefront-theme.test.ts:resolveHeroPreset` | unit | PASS |
+
+RED commit: `141536e` (`test(storefront): hero preset resolver + options (RED)`) — 7 failing.
+GREEN + wiring commit: `cb4bc64` (`feat(storefront): additive hero preset knob ...`) — 1081/1081 pass, lint clean.
+Migration `20260704020000_hero_preset.sql` APPLIED via MCP. Wired:
+`storefront-theme.ts` → `hero-preset.tsx` (`HeroPresetSection`) →
+`layout-default.tsx` (renders preset only when `resolveHeroPreset` is non-null,
+else today's exact markup) → `database.ts` type → `branding.ts` (zod + save
+column) → `menu-server.tsx` projection → Branding Editor Cards tab.
+
+## Follow-ups
+
+- All three additive theme-model stages (palette, category-nav style, hero
+  preset) are shipped. Any further reference-design parity (e.g. hero imagery
+  fields for banner/collage presets) would be net-new columns, out of the
+  current additive scope.
