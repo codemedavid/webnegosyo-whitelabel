@@ -3,7 +3,7 @@
  * Provides fallback colors and utility functions for consistent branding
  */
 
-import { resolveFontPair, resolveRoundness } from '@/lib/storefront-theme'
+import { resolveFontPair, resolveRoundness, resolvePalette } from '@/lib/storefront-theme'
 
 // Tenant type was removed - function accepts generic Record<string, unknown> instead
 
@@ -178,55 +178,61 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
   const fontPair = resolveFontPair(tenant['font_pair'])
   const roundnessPx = resolveRoundness(tenant['card_roundness'])
 
+  // Coordinated palette — an optional middle layer between an explicit per-field
+  // color and the hard-coded default: `column || palette?.role || DEFAULT`.
+  // When no palette is selected (`p` is null) every `p?.role` is `undefined`, so
+  // the expression collapses back to the original chain — zero regression.
+  const p = resolvePalette(tenant['storefront_palette'])
+
   return {
-    background: get('background_color', DEFAULT_BRANDING.background),
-    header: get('header_color', DEFAULT_BRANDING.header),
-    headerFont: get('header_font_color', DEFAULT_BRANDING.headerFont),
-    cards: get('cards_color', DEFAULT_BRANDING.cards),
-    cardsBorder: get('cards_border_color', DEFAULT_BRANDING.cardsBorder),
-    cardTitle: get('card_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.cardTitle),
-    cardPrice: get('card_price_color', '') || get('primary_color', DEFAULT_BRANDING.cardPrice),
-    cardDescription: get('card_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.cardDescription),
-    modalBackground: get('modal_background_color', '') || get('cards_color', DEFAULT_BRANDING.modalBackground),
-    modalTitle: get('modal_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.modalTitle),
-    modalPrice: get('modal_price_color', '') || get('primary_color', DEFAULT_BRANDING.modalPrice),
-    modalDescription: get('modal_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.modalDescription),
-    checkoutModalBackground: get('checkout_modal_background_color', '') || get('modal_background_color', '') || get('cards_color', DEFAULT_BRANDING.checkoutModalBackground),
-    checkoutModalTitle: get('checkout_modal_title_color', '') || get('modal_title_color', '') || get('text_primary_color', DEFAULT_BRANDING.checkoutModalTitle),
-    checkoutModalDescription: get('checkout_modal_description_color', '') || get('modal_description_color', '') || get('text_secondary_color', DEFAULT_BRANDING.checkoutModalDescription),
-    checkoutModalPrice: get('checkout_modal_price_color', '') || get('modal_price_color', '') || get('primary_color', DEFAULT_BRANDING.checkoutModalPrice),
-    checkoutModalButton: get('checkout_modal_button_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.checkoutModalButton),
-    checkoutModalButtonText: get('checkout_modal_button_text_color', '') || get('button_primary_text_color', DEFAULT_BRANDING.checkoutModalButtonText),
-    checkoutModalBorder: get('checkout_modal_border_color', '') || get('border_color', DEFAULT_BRANDING.checkoutModalBorder),
-    buttonPrimary: get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
-    buttonPrimaryText: get('button_primary_text_color', DEFAULT_BRANDING.buttonPrimaryText),
+    background: get('background_color', '') || p?.bg || DEFAULT_BRANDING.background,
+    header: get('header_color', '') || p?.surface || DEFAULT_BRANDING.header,
+    headerFont: get('header_font_color', '') || p?.text || DEFAULT_BRANDING.headerFont,
+    cards: get('cards_color', '') || p?.surface || DEFAULT_BRANDING.cards,
+    cardsBorder: get('cards_border_color', '') || p?.line || DEFAULT_BRANDING.cardsBorder,
+    cardTitle: get('card_title_color', '') || get('text_primary_color', '') || p?.text || DEFAULT_BRANDING.cardTitle,
+    cardPrice: get('card_price_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.cardPrice,
+    cardDescription: get('card_description_color', '') || get('text_secondary_color', '') || p?.muted || DEFAULT_BRANDING.cardDescription,
+    modalBackground: get('modal_background_color', '') || get('cards_color', '') || p?.surface || DEFAULT_BRANDING.modalBackground,
+    modalTitle: get('modal_title_color', '') || get('text_primary_color', '') || p?.text || DEFAULT_BRANDING.modalTitle,
+    modalPrice: get('modal_price_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.modalPrice,
+    modalDescription: get('modal_description_color', '') || get('text_secondary_color', '') || p?.muted || DEFAULT_BRANDING.modalDescription,
+    checkoutModalBackground: get('checkout_modal_background_color', '') || get('modal_background_color', '') || get('cards_color', '') || p?.surface || DEFAULT_BRANDING.checkoutModalBackground,
+    checkoutModalTitle: get('checkout_modal_title_color', '') || get('modal_title_color', '') || get('text_primary_color', '') || p?.text || DEFAULT_BRANDING.checkoutModalTitle,
+    checkoutModalDescription: get('checkout_modal_description_color', '') || get('modal_description_color', '') || get('text_secondary_color', '') || p?.muted || DEFAULT_BRANDING.checkoutModalDescription,
+    checkoutModalPrice: get('checkout_modal_price_color', '') || get('modal_price_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.checkoutModalPrice,
+    checkoutModalButton: get('checkout_modal_button_color', '') || get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.checkoutModalButton,
+    checkoutModalButtonText: get('checkout_modal_button_text_color', '') || get('button_primary_text_color', '') || p?.accentInk || DEFAULT_BRANDING.checkoutModalButtonText,
+    checkoutModalBorder: get('checkout_modal_border_color', '') || get('border_color', '') || p?.line || DEFAULT_BRANDING.checkoutModalBorder,
+    buttonPrimary: get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.buttonPrimary,
+    buttonPrimaryText: get('button_primary_text_color', '') || p?.accentInk || DEFAULT_BRANDING.buttonPrimaryText,
     buttonSecondary: get('button_secondary_color', DEFAULT_BRANDING.buttonSecondary),
     buttonSecondaryText: get('button_secondary_text_color', DEFAULT_BRANDING.buttonSecondaryText),
-    textPrimary: get('text_primary_color', DEFAULT_BRANDING.textPrimary),
-    textSecondary: get('text_secondary_color', DEFAULT_BRANDING.textSecondary),
-    textMuted: get('text_muted_color', DEFAULT_BRANDING.textMuted),
-    menuMainHeaderText: get('menu_main_header_text_color', '') || get('text_primary_color', DEFAULT_BRANDING.menuMainHeaderText),
-    menuMainHeaderSubtitle: get('menu_main_header_subtitle_color', '') || get('text_muted_color', DEFAULT_BRANDING.menuMainHeaderSubtitle),
-    menuCategoryHeader: get('menu_category_header_color', '') || get('primary_color', DEFAULT_BRANDING.menuCategoryHeader),
-    menuCategoryActive: get('menu_category_active_color', '') || get('primary_color', DEFAULT_BRANDING.menuCategoryActive),
-    menuCategoryInactive: get('menu_category_inactive_color', '') || get('text_secondary_color', DEFAULT_BRANDING.menuCategoryInactive),
-    menuCartBadgeBackground: get('menu_cart_badge_background_color', '') || get('primary_color', DEFAULT_BRANDING.menuCartBadgeBackground),
-    menuCartBadgeText: get('menu_cart_badge_text_color', '') || get('button_primary_text_color', DEFAULT_BRANDING.menuCartBadgeText),
-    border: get('border_color', DEFAULT_BRANDING.border),
+    textPrimary: get('text_primary_color', '') || p?.text || DEFAULT_BRANDING.textPrimary,
+    textSecondary: get('text_secondary_color', '') || p?.muted || DEFAULT_BRANDING.textSecondary,
+    textMuted: get('text_muted_color', '') || p?.muted || DEFAULT_BRANDING.textMuted,
+    menuMainHeaderText: get('menu_main_header_text_color', '') || get('text_primary_color', '') || p?.text || DEFAULT_BRANDING.menuMainHeaderText,
+    menuMainHeaderSubtitle: get('menu_main_header_subtitle_color', '') || get('text_muted_color', '') || p?.muted || DEFAULT_BRANDING.menuMainHeaderSubtitle,
+    menuCategoryHeader: get('menu_category_header_color', '') || get('primary_color', '') || p?.text || DEFAULT_BRANDING.menuCategoryHeader,
+    menuCategoryActive: get('menu_category_active_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.menuCategoryActive,
+    menuCategoryInactive: get('menu_category_inactive_color', '') || get('text_secondary_color', '') || p?.muted || DEFAULT_BRANDING.menuCategoryInactive,
+    menuCartBadgeBackground: get('menu_cart_badge_background_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.menuCartBadgeBackground,
+    menuCartBadgeText: get('menu_cart_badge_text_color', '') || get('button_primary_text_color', '') || p?.accentInk || DEFAULT_BRANDING.menuCartBadgeText,
+    border: get('border_color', '') || p?.line || DEFAULT_BRANDING.border,
     success: get('success_color', DEFAULT_BRANDING.success),
     warning: get('warning_color', DEFAULT_BRANDING.warning),
     error: get('error_color', DEFAULT_BRANDING.error),
     link: get('link_color', DEFAULT_BRANDING.link),
     shadow: get('shadow_color', DEFAULT_BRANDING.shadow),
-    primary: get('primary_color', DEFAULT_BRANDING.primary),
-    secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
-    accent: get('brand_color', '') || get('accent_color', DEFAULT_BRANDING.accent || ''),
+    primary: get('primary_color', '') || p?.text || DEFAULT_BRANDING.primary,
+    secondary: get('secondary_color', '') || p?.muted || DEFAULT_BRANDING.secondary,
+    accent: get('brand_color', '') || get('accent_color', '') || p?.accent || DEFAULT_BRANDING.accent || '',
     headingFont: fontPair ? fontPair.heading : null,
     headingWeight: fontPair ? fontPair.headingWeight : null,
     bodyFont: fontPair ? fontPair.body : null,
     radius: roundnessPx === null ? null : `${roundnessPx}px`,
-    cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
-    checkoutAccent: get('checkout_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
+    cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.buttonPrimary,
+    checkoutAccent: get('checkout_accent_color', '') || get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.buttonPrimary,
     searchBar: {
       enabled: tenant['search_bar_enabled'] !== false,
       background: typeof tenant['search_bar_background'] === 'string' && tenant['search_bar_background'] ? tenant['search_bar_background'] as string : null,

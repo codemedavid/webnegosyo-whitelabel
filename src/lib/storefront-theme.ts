@@ -19,6 +19,29 @@ export type FontPair =
 
 export type CardRoundness = 'theme' | 'sharp' | 'soft' | 'round'
 
+/**
+ * A coordinated storefront color palette — the seven color roles the reference
+ * design (Restaurant Storefront.dc.html) drives its whole surface from. Picking
+ * a palette restyles the storefront in one move; it layers *under* any explicit
+ * per-field color a merchant has set, so it is purely additive.
+ */
+export interface StorefrontPalette {
+  /** Page background. */
+  bg: string
+  /** Cards / header / raised surfaces. */
+  surface: string
+  /** Primary text. */
+  text: string
+  /** Secondary / muted text. */
+  muted: string
+  /** Accent — buttons, highlights, active states. */
+  accent: string
+  /** Text/icon color that sits on top of the accent. */
+  accentInk: string
+  /** Hairlines and borders. */
+  line: string
+}
+
 export interface FontPairDefinition {
   heading: string
   headingWeight: number
@@ -112,6 +135,60 @@ export const ROUNDNESS_PRESETS: Record<Exclude<CardRoundness, 'theme'>, number> 
   round: 22,
 }
 
+/**
+ * Coordinated storefront palettes, sourced from the reference design's own
+ * default values across its header/hero/card variants. Each is a cohesive
+ * look a merchant can apply in one selection. `'theme'` (see options below) is
+ * the inherit sentinel and is intentionally NOT a key here.
+ */
+export const STOREFRONT_PALETTES: Record<string, StorefrontPalette> = {
+  'warm editorial': {
+    bg: '#FFF6EC',
+    surface: '#FFFFFF',
+    text: '#1D1815',
+    muted: '#8A7B70',
+    accent: '#E4572E',
+    accentInk: '#FFFFFF',
+    line: '#EDE0CE',
+  },
+  'fine dining': {
+    bg: '#16130F',
+    surface: '#211C15',
+    text: '#EFE7D8',
+    muted: '#9C917E',
+    accent: '#C69A5D',
+    accentInk: '#16130F',
+    line: '#3A352C',
+  },
+  'cafe soft': {
+    bg: '#FBF6EF',
+    surface: '#FFFBF3',
+    text: '#3B2E25',
+    muted: '#94816F',
+    accent: '#A4643C',
+    accentInk: '#FFFFFF',
+    line: '#E4D5C2',
+  },
+  'bold diner': {
+    bg: '#FAFAF8',
+    surface: '#FFFFFF',
+    text: '#191919',
+    muted: '#777777',
+    accent: '#D7263D',
+    accentInk: '#FFFFFF',
+    line: '#ECECEC',
+  },
+  'fresh green': {
+    bg: '#F4F8F4',
+    surface: '#FFFFFF',
+    text: '#16241C',
+    muted: '#6E7F73',
+    accent: '#2A6F4E',
+    accentInk: '#FFFFFF',
+    line: '#DCE7DF',
+  },
+}
+
 /** Suggested accent swatches shown in the branding editor color picker. */
 export const BRAND_COLOR_PRESETS: readonly string[] = [
   '#E4572E',
@@ -133,6 +210,12 @@ export const ROUNDNESS_OPTIONS: readonly CardRoundness[] = [
   ...(Object.keys(ROUNDNESS_PRESETS) as Exclude<CardRoundness, 'theme'>[]),
 ]
 
+/** Selectable palette options — `'theme'` leads as the inherit default. */
+export const STOREFRONT_PALETTE_OPTIONS: readonly string[] = [
+  'theme',
+  ...Object.keys(STOREFRONT_PALETTES),
+]
+
 /**
  * Resolve a font-pair value into its font definition.
  * Returns `null` for the `'theme'` sentinel, unknown names, or non-string
@@ -152,4 +235,65 @@ export function resolveRoundness(value: unknown): number | null {
   if (typeof value !== 'string' || value === 'theme') return null
   const px = ROUNDNESS_PRESETS[value as Exclude<CardRoundness, 'theme'>]
   return px === undefined ? null : px
+}
+
+/**
+ * Resolve a palette value into its coordinated colors.
+ * Returns `null` for the `'theme'` sentinel, unknown ids, or non-string input —
+ * callers treat `null` as "keep the tenant's existing per-field colors", so an
+ * unset palette changes nothing.
+ */
+export function resolvePalette(value: unknown): StorefrontPalette | null {
+  if (typeof value !== 'string' || value === 'theme') return null
+  return STOREFRONT_PALETTES[value] ?? null
+}
+
+// --- Palette generation from a single seed color -----------------------------
+// Self-contained hex helpers (storefront-theme must not import branding-utils —
+// that module imports this one, and a cycle would break resolution).
+
+const SIX_HEX = /^#[0-9a-fA-F]{6}$/
+
+function hexChannels(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+function toHex(r: number, g: number, b: number): string {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)))
+  return `#${[r, g, b].map((n) => clamp(n).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Mix a channel toward white (amount 0..1). */
+function mixWhite([r, g, b]: [number, number, number], amount: number): string {
+  return toHex(r + (255 - r) * amount, g + (255 - g) * amount, b + (255 - b) * amount)
+}
+
+/** Mix a channel toward black (amount 0..1). */
+function mixBlack([r, g, b]: [number, number, number], amount: number): string {
+  return toHex(r * (1 - amount), g * (1 - amount), b * (1 - amount))
+}
+
+/**
+ * Derive a full coordinated palette from one seed accent (the "generate from
+ * logo color" action). The seed becomes the accent; background/surface/line are
+ * light tints of it and text/muted are dark shades, so the whole storefront
+ * stays in one hue family. Returns `null` for anything that isn't a 6-digit hex.
+ */
+export function generatePaletteFromColor(seed: unknown): StorefrontPalette | null {
+  if (typeof seed !== 'string' || !SIX_HEX.test(seed.trim())) return null
+  const accent = seed.trim()
+  const rgb = hexChannels(accent)
+  // Relative luminance → pick a readable ink (black/white) for on-accent text.
+  const [r, g, b] = rgb
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return {
+    accent,
+    accentInk: luminance > 0.55 ? '#000000' : '#ffffff',
+    bg: mixWhite(rgb, 0.92),
+    surface: mixWhite(rgb, 0.97),
+    line: mixWhite(rgb, 0.82),
+    text: mixBlack(rgb, 0.78),
+    muted: mixBlack(rgb, 0.42),
+  }
 }
