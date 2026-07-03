@@ -1,0 +1,64 @@
+# TDD Evidence — Storefront Coordinated Palette (theme model)
+
+**Feature:** Additive "pick a palette" storefront theme layer, from the reference
+design `Restaurant Storefront.dc.html` (Claude Design project
+`58ffe87a-1a94-4773-a43a-efdd350eb804`).
+
+**Source plan:** No `*.plan.md`. Journeys derived during this TDD run from the
+design + the user's directive: *"add this new theme model on top of everything so
+we have more choices and flexibility — old looks stay the same."*
+
+**Branch:** `fix/lalamove-missing-delivery-details`
+
+## User journeys
+
+1. As a merchant, I want to pick one coordinated palette and have my whole
+   storefront (background, surfaces, text, accent, borders) restyle at once, so I
+   don't hand-tune ~165 individual color fields.
+2. As a merchant, I want any color I *have* set explicitly to keep winning over
+   the palette, so the palette is a starting point, not an override.
+3. As an existing merchant who picks no palette, I want my storefront to look
+   exactly as it does today (zero regression).
+4. As a merchant, I want to generate a coordinated palette from my brand/logo
+   color in one click.
+
+## Task report
+
+| Behavior | Validation command | RED → GREEN | Guarantee |
+|---|---|---|---|
+| Palette presets + resolver + generate-from-color | `npx jest tests/unit/storefront-theme.test.ts` | 13 fail (missing API) → PASS | `STOREFRONT_PALETTES` (5 looks), `resolvePalette`, `generatePaletteFromColor` behave per spec; `'theme'`/unknown/non-string → null |
+| Palette layering in `getTenantBranding` | `npx jest tests/unit/branding-utils.test.ts` | fail → PASS | column > palette > default; explicit color still wins; unknown id ignored |
+| Zero regression when unset | same as above | PASS | `{storefront_palette:'theme'}` and `{storefront_palette:''}` resolve **byte-identical** (`toEqual`) to no palette |
+| Full suite (no collateral damage) | `npx jest` | PASS | 1067/1067 pass |
+| Lint | `npx eslint <changed files>` | clean | no lint errors (Vercel gate) |
+
+RED commit: `42d6e77` (`test: ... (RED)`) — 13 failing, 54 passing in the two files.
+GREEN commit: `ad10e3b` (core logic) — 1067/1067.
+Wiring commit: `5492d88` (migration + type + schema + editor + projection).
+
+## Test specification
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|--------------------|-----------|------|--------|
+| 1 | Each named palette resolves to its 7 coordinated colors | `storefront-theme.test.ts:resolvePalette` | unit | PASS |
+| 2 | `'theme'`/unknown/non-string palette → null (inherit) | `storefront-theme.test.ts:resolvePalette` | unit | PASS |
+| 3 | Every palette's 7 roles are valid hex; accentInk ≠ accent | `storefront-theme.test.ts:STOREFRONT_PALETTES` | unit | PASS |
+| 4 | `generatePaletteFromColor` builds a full palette from a seed; seed = accent; contrasting ink; null on non-hex | `storefront-theme.test.ts:generatePaletteFromColor` | unit | PASS |
+| 5 | Selecting a palette restyles background/accent/text/border/button roles | `branding-utils.test.ts:storefront palette` | unit | PASS |
+| 6 | Explicit per-field color overrides the palette | `branding-utils.test.ts:storefront palette` | unit | PASS |
+| 7 | Unset palette resolves byte-identically to today | `branding-utils.test.ts:storefront palette` | unit | PASS |
+
+## Coverage & known gaps
+
+- Logic is fully unit-covered (resolver, generator, layering, regression guard).
+- Editor UI control + `menu-server` projection are wired but not E2E-tested this
+  pass (consistent with how `font_pair`/`card_roundness` shipped).
+- Pre-existing `tsc` notes (NOT introduced here): `branding-editor-overlay.tsx`
+  `BrandingDraft → BrandingInput` string↦enum boundary (same as `font_pair`,
+  verified present at HEAD before these edits); several prior-session test mocks
+  miss `headingFont/headingWeight/bodyFont/radius`.
+
+## Follow-ups (remaining stages, not yet done)
+
+- **Stage 2** — category-nav style selector (subheader / sidebar / chips).
+- **Stage 3** — 6 additive hero presets (editorial/split/banner/collage/minimal/centered).
