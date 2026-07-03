@@ -458,11 +458,18 @@ export function buildPublishPayload(
   tenant: ValueBag
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {}
-  for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
+  for (const [fieldId, field] of Object.entries(BRANDING_FIELD_INDEX)) {
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]
-    if (value !== undefined && value !== null) payload[fieldId] = value
+    if (value === undefined || value === null) continue
+    // 'inherit' is an editor-only choice meaning "no mobile override" —
+    // persist it as null so storefronts fall back to the desktop value.
+    if (value === 'inherit' && field.type === 'select' && field.options?.includes('inherit')) {
+      payload[fieldId] = null
+      continue
+    }
+    payload[fieldId] = value
   }
   if (isBlank(payload.primary_color)) {
     payload.primary_color = String(BRANDING_FIELD_INDEX.primary_color.default)

@@ -200,6 +200,12 @@ describe('buildPublishPayload', () => {
     expect((payload.secondary_color as string).length).toBeGreaterThan(0)
   })
 
+  it('publishes the mobile "inherit" choice as null so storefronts fall back to desktop', () => {
+    const tenant = { primary_color: '#111111', secondary_color: '#666666', mobile_card_template: 'compact' }
+    const payload = buildPublishPayload({ mobile_card_template: 'inherit' }, tenant)
+    expect(payload.mobile_card_template).toBeNull()
+  })
+
   it('ignores keys that are not registry fields', () => {
     const payload = buildPublishPayload({ evil_column: 'x' } as Record<string, unknown>, {})
     expect('evil_column' in payload).toBe(false)
