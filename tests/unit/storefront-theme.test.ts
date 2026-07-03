@@ -5,8 +5,12 @@ import {
   BRAND_COLOR_PRESETS,
   FONT_PAIR_OPTIONS,
   ROUNDNESS_OPTIONS,
+  STOREFRONT_GOOGLE_FONTS,
   resolveFontPair,
   resolveRoundness,
+  fontFamilyName,
+  buildStorefrontFontsHref,
+  buildHeadingFontCss,
 } from '@/lib/storefront-theme'
 import { isValidHexColor } from '@/lib/branding-utils'
 
@@ -89,6 +93,69 @@ describe('BRAND_COLOR_PRESETS', () => {
     for (const color of BRAND_COLOR_PRESETS) {
       expect(isValidHexColor(color)).toBe(true)
     }
+  })
+})
+
+describe('fontFamilyName', () => {
+  it('extracts the quoted family name from a font-family string', () => {
+    expect(fontFamilyName("'Cormorant Garamond', serif")).toBe('Cormorant Garamond')
+    expect(fontFamilyName("'Archivo', sans-serif")).toBe('Archivo')
+  })
+
+  it('returns the trimmed first token when unquoted', () => {
+    expect(fontFamilyName('Lora, serif')).toBe('Lora')
+  })
+})
+
+describe('buildStorefrontFontsHref', () => {
+  it('returns a Google Fonts css2 stylesheet URL with font-display swap', () => {
+    const href = buildStorefrontFontsHref()
+    expect(href.startsWith('https://fonts.googleapis.com/css2?')).toBe(true)
+    expect(href).toContain('display=swap')
+  })
+
+  it('requests every family declared in STOREFRONT_GOOGLE_FONTS', () => {
+    const href = buildStorefrontFontsHref()
+    for (const family of Object.keys(STOREFRONT_GOOGLE_FONTS)) {
+      expect(href).toContain(`family=${family.replace(/ /g, '+')}`)
+    }
+  })
+
+  it('covers every family referenced by FONT_PAIRS (no drift)', () => {
+    const referenced = new Set<string>()
+    for (const pair of Object.values(FONT_PAIRS)) {
+      referenced.add(fontFamilyName(pair.heading))
+      referenced.add(fontFamilyName(pair.body))
+    }
+    for (const family of referenced) {
+      expect(Object.keys(STOREFRONT_GOOGLE_FONTS)).toContain(family)
+    }
+  })
+
+  it('includes each heading weight used by a pairing in its family request', () => {
+    for (const pair of Object.values(FONT_PAIRS)) {
+      const family = fontFamilyName(pair.heading)
+      expect(STOREFRONT_GOOGLE_FONTS[family]).toContain(pair.headingWeight)
+    }
+  })
+})
+
+describe('buildHeadingFontCss', () => {
+  it('scopes the heading font/weight rule to the given selector', () => {
+    const css = buildHeadingFontCss('.storefront-themed')
+    expect(css).toContain('.storefront-themed :is(h1,h2,h3,h4,h5,h6)')
+  })
+
+  it('drives heading font and weight from the brand CSS vars', () => {
+    const css = buildHeadingFontCss('.storefront-themed')
+    expect(css).toContain('font-family: var(--brand-heading-font)')
+    expect(css).toContain('font-weight: var(--brand-heading-weight)')
+  })
+
+  it('emits no braces or angle brackets that could break out of a <style> tag', () => {
+    const css = buildHeadingFontCss('.storefront-themed')
+    expect(css).not.toContain('<')
+    expect(css).not.toContain('</')
   })
 })
 
