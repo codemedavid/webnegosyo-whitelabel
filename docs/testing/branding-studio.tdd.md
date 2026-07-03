@@ -22,6 +22,8 @@
 | GREEN (bridge) | commit "feat: branding preview bridge hook" | same command → 8 passed |
 | RED→GREEN (inherit) | `299b5d4` | test "publishes the mobile 'inherit' choice as null" observed failing (1 failed, 25 passed), then passing after `buildPublishPayload` mapping (26 passed) |
 | Refactor/removal | `f693872` refactor: remove old pencil/modal branding editor | full suite stayed green (see below) |
+| RED (full-bleed layout) | `5564b1e` test: admin layout must render branding studio route full-bleed | `npx jest tests/unit/components/admin/admin-layout-client.test.tsx` → 1 failed (sidebar rendered on /admin/branding) |
+| GREEN (full-bleed layout) | `d238bcc` fix: render branding studio full-bleed, bypass admin sidebar chrome | same command → 2 passed; verified live at localhost:3000 (sidebar no longer bleeds through the studio) |
 
 ## Test specification
 
@@ -34,6 +36,7 @@
 | 5 | Presets and generate-from-logo emit only known registry color columns as valid hex | same (presets suite) | unit | PASS |
 | 6 | Preview bridge only activates with `?brandingPreview=1`, accepts same-origin draft messages only, rejects cross-origin/malformed data, merges drafts over tenant minus `__meta` keys | `tests/unit/hooks/use-branding-preview.test.tsx` | unit | PASS |
 | 7 | Storefront search bar renders no admin pencil | `tests/unit/components/customer/search-bar.test.tsx` | unit | PASS (updated) |
+| 8 | Admin layout skips sidebar/container chrome on `/admin/branding` (studio owns the viewport) but keeps it on other admin routes | `tests/unit/components/admin/admin-layout-client.test.tsx` | unit | PASS |
 
 ## Validation commands actually run
 
