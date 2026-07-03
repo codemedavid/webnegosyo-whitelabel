@@ -29,6 +29,7 @@ const brandingSchema = z.object({
     font_pair: z.enum(['theme', 'elegant serif', 'bold display', 'modern sans', 'warm editorial']).optional(),
     card_roundness: z.enum(['theme', 'sharp', 'soft', 'round']).optional(),
     brand_color: cssColorString().optional().or(z.literal('')),
+    storefront_palette: z.enum(['theme', 'warm editorial', 'fine dining', 'cafe soft', 'bold diner', 'fresh green']).optional(),
     // Core colors
     primary_color: cssColorString().min(1),
     secondary_color: cssColorString().min(1),
@@ -275,6 +276,7 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'font_pair',
     'card_roundness',
     'brand_color',
+    'storefront_palette',
 ] as const
 
 function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CARD_TEMPLATES } from '@/lib/card-templates'
-import { FONT_PAIR_OPTIONS, ROUNDNESS_OPTIONS, BRAND_COLOR_PRESETS } from '@/lib/storefront-theme'
+import { FONT_PAIR_OPTIONS, ROUNDNESS_OPTIONS, BRAND_COLOR_PRESETS, STOREFRONT_PALETTE_OPTIONS, STOREFRONT_PALETTES, generatePaletteFromColor } from '@/lib/storefront-theme'
 import { CHECKOUT_TEMPLATES } from '@/lib/checkout-templates'
 import { CART_TEMPLATES } from '@/lib/cart-templates'
 import { HEADER_TEMPLATES } from '@/lib/header-templates'
@@ -116,6 +116,7 @@ interface BrandingDraft {
   font_pair?: string
   card_roundness?: string
   brand_color?: string
+  storefront_palette?: string
   card_template?: string
   checkout_template?: string
   cart_template?: string
@@ -291,6 +292,7 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     font_pair: tenant.font_pair || 'theme',
     card_roundness: tenant.card_roundness || 'theme',
     brand_color: tenant.brand_color || '',
+    storefront_palette: tenant.storefront_palette || 'theme',
     card_template: tenant.card_template || 'classic',
     checkout_template: tenant.checkout_template || 'classic',
     cart_template: tenant.cart_template || 'classic',
@@ -412,6 +414,33 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
 
   function updateDraft<K extends keyof BrandingDraft>(key: K, value: BrandingDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
+  }
+
+  /**
+   * "Generate from logo color" — derive a coordinated palette from one seed
+   * color and write it into the foundation color fields in a single atomic
+   * update. Unlike a palette preset (which layers under explicit colors), this
+   * is an explicit bulk-fill the merchant opts into, so it sets real columns.
+   */
+  function applyGeneratedPalette(seed: string) {
+    const p = generatePaletteFromColor(seed)
+    if (!p) return
+    setDraft((d) => ({
+      ...d,
+      background_color: p.bg,
+      header_color: p.surface,
+      cards_color: p.surface,
+      modal_background_color: p.surface,
+      text_primary_color: p.text,
+      text_secondary_color: p.muted,
+      text_muted_color: p.muted,
+      brand_color: p.accent,
+      accent_color: p.accent,
+      button_primary_color: p.accent,
+      button_primary_text_color: p.accentInk,
+      border_color: p.line,
+      cards_border_color: p.line,
+    }))
   }
 
   function handleSave() {
@@ -1201,8 +1230,47 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                   <div className="space-y-1">
                     <h4 className="text-sm font-semibold text-gray-900">Storefront Theme</h4>
                     <p className="text-xs text-muted-foreground">
-                      Pick a font pairing, corner style, and brand color. Leave on &ldquo;Theme default&rdquo; to keep your current look.
+                      Pick a palette, font pairing, corner style, and brand color. Leave on &ldquo;Theme default&rdquo; to keep your current look.
                     </p>
+                  </div>
+
+                  {/* Coordinated palette — one pick restyles every color role. */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-gray-700">Color palette</span>
+                    <select
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm capitalize"
+                      value={draft.storefront_palette || 'theme'}
+                      onChange={(e) => updateDraft('storefront_palette', e.target.value)}
+                    >
+                      {STOREFRONT_PALETTE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt} className="capitalize">
+                          {opt === 'theme' ? 'Theme default' : opt}
+                        </option>
+                      ))}
+                    </select>
+                    {draft.storefront_palette && draft.storefront_palette !== 'theme' && STOREFRONT_PALETTES[draft.storefront_palette] && (
+                      <div className="flex items-center gap-1.5 pt-0.5" aria-hidden>
+                        {(['bg', 'surface', 'accent', 'text', 'muted', 'line'] as const).map((role) => (
+                          <span
+                            key={role}
+                            title={role}
+                            className="h-5 w-5 rounded-full border border-gray-200"
+                            style={{ backgroundColor: STOREFRONT_PALETTES[draft.storefront_palette!][role] }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      A palette only recolors fields you haven&rsquo;t set yourself.
+                    </p>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-blue-600 underline hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                      disabled={!draft.brand_color}
+                      onClick={() => draft.brand_color && applyGeneratedPalette(draft.brand_color)}
+                    >
+                      Generate palette from brand color
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
