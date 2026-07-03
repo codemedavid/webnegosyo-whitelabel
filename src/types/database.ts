@@ -70,6 +70,10 @@ export interface Tenant {
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
   mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
+  // Storefront theme knobs (design-system presets; 'theme' = inherit tenant default)
+  font_pair?: string; // 'theme' | 'elegant serif' | 'bold display' | 'modern sans' | 'warm editorial'
+  card_roundness?: string; // 'theme' | 'sharp' | 'soft' | 'round'
+  brand_color?: string; // Accent/brand color; overrides accent_color across the storefront when set
   // Main header template & customization
   header_template?: string; // 'classic' | 'centered' | 'minimal' | 'split' | 'banner' | 'stacked'
   mobile_header_template?: string | null; // Header template for mobile (<768px), falls back to header_template

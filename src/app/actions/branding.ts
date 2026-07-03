@@ -25,6 +25,10 @@ function cssColorString() {
 
 // Schema for all branding fields
 const brandingSchema = z.object({
+    // Storefront theme knobs (design-system presets)
+    font_pair: z.enum(['theme', 'elegant serif', 'bold display', 'modern sans', 'warm editorial']).optional(),
+    card_roundness: z.enum(['theme', 'sharp', 'soft', 'round']).optional(),
+    brand_color: cssColorString().optional().or(z.literal('')),
     // Core colors
     primary_color: cssColorString().min(1),
     secondary_color: cssColorString().min(1),
@@ -268,6 +272,9 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'header_shadow',
     'header_logo_shape',
     'header_height',
+    'font_pair',
+    'card_roundness',
+    'brand_color',
 ] as const
 
 function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {

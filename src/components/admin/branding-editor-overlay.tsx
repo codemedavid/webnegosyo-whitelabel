@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CARD_TEMPLATES } from '@/lib/card-templates'
+import { FONT_PAIR_OPTIONS, ROUNDNESS_OPTIONS, BRAND_COLOR_PRESETS } from '@/lib/storefront-theme'
 import { CHECKOUT_TEMPLATES } from '@/lib/checkout-templates'
 import { CART_TEMPLATES } from '@/lib/cart-templates'
 import { HEADER_TEMPLATES } from '@/lib/header-templates'
@@ -111,6 +112,10 @@ interface BrandingDraft {
   hero_description?: string
   hero_title_color?: string
   hero_description_color?: string
+  // Storefront theme knobs (design-system presets)
+  font_pair?: string
+  card_roundness?: string
+  brand_color?: string
   card_template?: string
   checkout_template?: string
   cart_template?: string
@@ -283,6 +288,9 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     hero_description: tenant.hero_description || '',
     hero_title_color: tenant.hero_title_color || '',
     hero_description_color: tenant.hero_description_color || '',
+    font_pair: tenant.font_pair || 'theme',
+    card_roundness: tenant.card_roundness || 'theme',
+    brand_color: tenant.brand_color || '',
     card_template: tenant.card_template || 'classic',
     checkout_template: tenant.checkout_template || 'classic',
     cart_template: tenant.cart_template || 'classic',
@@ -1186,6 +1194,83 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                     </p>
                   </div>
                   <ScreenToggle value={cardScreen} onChange={setCardScreen} />
+                </div>
+
+                {/* Storefront theme knobs — font pairing, roundness, brand color */}
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-gray-900">Storefront Theme</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Pick a font pairing, corner style, and brand color. Leave on &ldquo;Theme default&rdquo; to keep your current look.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-700">Font pairing</span>
+                      <select
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm capitalize"
+                        value={draft.font_pair || 'theme'}
+                        onChange={(e) => updateDraft('font_pair', e.target.value)}
+                      >
+                        {FONT_PAIR_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt} className="capitalize">
+                            {opt === 'theme' ? 'Theme default' : opt}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-700">Corner roundness</span>
+                      <select
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm capitalize"
+                        value={draft.card_roundness || 'theme'}
+                        onChange={(e) => updateDraft('card_roundness', e.target.value)}
+                      >
+                        {ROUNDNESS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt} className="capitalize">
+                            {opt === 'theme' ? 'Theme default' : opt}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-gray-700">Brand color</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {BRAND_COLOR_PRESETS.map((preset) => {
+                        const isActive = (draft.brand_color || '').toLowerCase() === preset.toLowerCase()
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            aria-label={`Use brand color ${preset}`}
+                            className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
+                            style={{ backgroundColor: preset, borderColor: isActive ? '#111111' : '#ffffff' }}
+                            onClick={() => updateDraft('brand_color', preset)}
+                          />
+                        )
+                      })}
+                      <input
+                        type="color"
+                        aria-label="Custom brand color"
+                        className="h-7 w-9 cursor-pointer rounded border border-gray-300 bg-white p-0.5"
+                        value={draft.brand_color || '#000000'}
+                        onChange={(e) => updateDraft('brand_color', e.target.value)}
+                      />
+                      {draft.brand_color && (
+                        <button
+                          type="button"
+                          className="text-xs text-blue-600 underline hover:text-blue-800"
+                          onClick={() => updateDraft('brand_color', '')}
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {cardScreen === 'mobile' && !draft.mobile_card_template && (

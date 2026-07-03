@@ -7,7 +7,7 @@ import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
-import { getTenantBranding } from '@/lib/branding-utils'
+import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -465,7 +465,14 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
     <div
       ref={rootRef}
       className="min-h-screen"
-      style={{ backgroundColor: branding.background }}
+      style={{
+        // Expose all --brand-* tokens (incl. the storefront theme knobs:
+        // --brand-radius / --brand-heading-font / --brand-body-font when set).
+        ...generateBrandingCSS(branding),
+        backgroundColor: branding.background,
+        // Apply the chosen body font pairing storefront-wide; unset = inherit.
+        ...(branding.bodyFont ? { fontFamily: branding.bodyFont } : {}),
+      }}
     >
       {showFlashScreen && (
         <div
