@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CARD_TEMPLATES } from '@/lib/card-templates'
-import { FONT_PAIR_OPTIONS, ROUNDNESS_OPTIONS, BRAND_COLOR_PRESETS, STOREFRONT_PALETTE_OPTIONS, STOREFRONT_PALETTES, generatePaletteFromColor } from '@/lib/storefront-theme'
+import { FONT_PAIR_OPTIONS, ROUNDNESS_OPTIONS, BRAND_COLOR_PRESETS, STOREFRONT_PALETTE_OPTIONS, STOREFRONT_PALETTES, CATEGORY_NAV_STYLE_OPTIONS, generatePaletteFromColor } from '@/lib/storefront-theme'
 import { CHECKOUT_TEMPLATES } from '@/lib/checkout-templates'
 import { CART_TEMPLATES } from '@/lib/cart-templates'
 import { HEADER_TEMPLATES } from '@/lib/header-templates'
@@ -117,6 +117,7 @@ interface BrandingDraft {
   card_roundness?: string
   brand_color?: string
   storefront_palette?: string
+  category_nav_style?: string
   card_template?: string
   checkout_template?: string
   cart_template?: string
@@ -293,6 +294,7 @@ function buildDraftFromTenant(tenant: Tenant): BrandingDraft {
     card_roundness: tenant.card_roundness || 'theme',
     brand_color: tenant.brand_color || '',
     storefront_palette: tenant.storefront_palette || 'theme',
+    category_nav_style: tenant.category_nav_style || 'theme',
     card_template: tenant.card_template || 'classic',
     checkout_template: tenant.checkout_template || 'classic',
     cart_template: tenant.cart_template || 'classic',
@@ -1297,6 +1299,21 @@ export function BrandingEditorOverlay({ tenant, onPreview, onSaved, onToggleChec
                         onChange={(e) => updateDraft('card_roundness', e.target.value)}
                       >
                         {ROUNDNESS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt} className="capitalize">
+                            {opt === 'theme' ? 'Theme default' : opt}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-700">Category nav style</span>
+                      <select
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm capitalize"
+                        value={draft.category_nav_style || 'theme'}
+                        onChange={(e) => updateDraft('category_nav_style', e.target.value)}
+                      >
+                        {CATEGORY_NAV_STYLE_OPTIONS.map((opt) => (
                           <option key={opt} value={opt} className="capitalize">
                             {opt === 'theme' ? 'Theme default' : opt}
                           </option>

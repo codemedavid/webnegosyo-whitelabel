@@ -20,6 +20,17 @@ export type FontPair =
 export type CardRoundness = 'theme' | 'sharp' | 'soft' | 'round'
 
 /**
+ * Presentation style for the storefront category navigation. `'theme'` is the
+ * inherit sentinel — it keeps today's soft-tinted pills exactly as they are, so
+ * an unset knob changes nothing. The concrete styles restyle the *shape* of each
+ * category control only (colors still come from branding):
+ * - `pills`     — soft-tinted rounded pills (today's look, named explicitly)
+ * - `chips`     — outlined chips that fill with the accent when active
+ * - `underline` — flat subheader tabs with an accent underline on the active one
+ */
+export type CategoryNavStyle = 'theme' | 'pills' | 'chips' | 'underline'
+
+/**
  * A coordinated storefront color palette — the seven color roles the reference
  * design (Restaurant Storefront.dc.html) drives its whole surface from. Picking
  * a palette restyles the storefront in one move; it layers *under* any explicit
@@ -189,6 +200,17 @@ export const STOREFRONT_PALETTES: Record<string, StorefrontPalette> = {
   },
 }
 
+/**
+ * Concrete category-nav styles (excludes the `'theme'` inherit sentinel). Each
+ * value is its own token — the resolver simply hands the token to `CategoryTabs`,
+ * which maps it to a presentation without touching the branding colors.
+ */
+export const CATEGORY_NAV_STYLES: Record<Exclude<CategoryNavStyle, 'theme'>, true> = {
+  pills: true,
+  chips: true,
+  underline: true,
+}
+
 /** Suggested accent swatches shown in the branding editor color picker. */
 export const BRAND_COLOR_PRESETS: readonly string[] = [
   '#E4572E',
@@ -214,6 +236,12 @@ export const ROUNDNESS_OPTIONS: readonly CardRoundness[] = [
 export const STOREFRONT_PALETTE_OPTIONS: readonly string[] = [
   'theme',
   ...Object.keys(STOREFRONT_PALETTES),
+]
+
+/** Selectable category-nav style options — `'theme'` leads as the inherit default. */
+export const CATEGORY_NAV_STYLE_OPTIONS: readonly CategoryNavStyle[] = [
+  'theme',
+  ...(Object.keys(CATEGORY_NAV_STYLES) as Exclude<CategoryNavStyle, 'theme'>[]),
 ]
 
 /**
@@ -246,6 +274,19 @@ export function resolveRoundness(value: unknown): number | null {
 export function resolvePalette(value: unknown): StorefrontPalette | null {
   if (typeof value !== 'string' || value === 'theme') return null
   return STOREFRONT_PALETTES[value] ?? null
+}
+
+/**
+ * Resolve a category-nav style into its variant token.
+ * Returns `null` for the `'theme'` sentinel, unknown names, or non-string input —
+ * callers treat `null` as "keep today's pills", so an unset knob changes nothing.
+ */
+export function resolveCategoryNavStyle(
+  value: unknown
+): Exclude<CategoryNavStyle, 'theme'> | null {
+  if (typeof value !== 'string' || value === 'theme') return null
+  const key = value as Exclude<CategoryNavStyle, 'theme'>
+  return CATEGORY_NAV_STYLES[key] ? key : null
 }
 
 // --- Palette generation from a single seed color -----------------------------

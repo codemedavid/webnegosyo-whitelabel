@@ -3,6 +3,7 @@
 import { memo } from 'react'
 import { Pencil } from 'lucide-react'
 import { CategoryIcon } from '@/components/shared/category-icon'
+import { resolveCategoryNavStyle } from '@/lib/storefront-theme'
 
 interface CategoryLite {
   id: string
@@ -20,8 +21,63 @@ interface CategoryTabsProps {
     menuCategoryActive: string
     menuCategoryInactive: string
   }
+  /**
+   * Presentation style for the tabs. `'theme'`/undefined keeps today's
+   * soft-tinted pills byte-identical; `chips`/`underline` are opt-in variants.
+   */
+  navStyle?: string
   isBrandAdmin?: boolean
   onEditBrandingSection?: () => void
+}
+
+type NavVariant = 'pills' | 'chips' | 'underline'
+
+interface TabStyles {
+  className: string
+  style: React.CSSProperties
+  hoverIn: React.CSSProperties | null
+  hoverOut: React.CSSProperties | null
+}
+
+// Per-variant presentation. `pills` (and the resolved-null default) reproduce the
+// original markup exactly, so an unset nav style changes nothing.
+function tabPresentation(
+  variant: NavVariant,
+  isActive: boolean,
+  primary: string,
+  secondary: string
+): TabStyles {
+  if (variant === 'chips') {
+    return {
+      className: 'rounded-full border px-4 py-2.5',
+      style: isActive
+        ? { backgroundColor: primary, color: '#ffffff', borderColor: primary }
+        : { backgroundColor: 'transparent', color: secondary, borderColor: `${secondary}40` },
+      hoverIn: isActive ? null : { color: primary, borderColor: primary },
+      hoverOut: isActive ? null : { color: secondary, borderColor: `${secondary}40` },
+    }
+  }
+
+  if (variant === 'underline') {
+    return {
+      className: 'rounded-none border-b-2 px-1 py-2',
+      style: isActive
+        ? { backgroundColor: 'transparent', color: primary, borderColor: primary }
+        : { backgroundColor: 'transparent', color: secondary, borderColor: 'transparent' },
+      hoverIn: isActive ? null : { color: primary },
+      hoverOut: isActive ? null : { color: secondary },
+    }
+  }
+
+  // pills (default): original soft-tinted look
+  return {
+    className: 'rounded-full px-4 py-2.5',
+    style: isActive
+      ? { backgroundColor: `${primary}15`, color: primary }
+      : { backgroundColor: 'transparent', color: secondary },
+    hoverIn: isActive ? null : { color: primary, backgroundColor: `${primary}15` },
+    hoverOut: isActive ? null : { color: secondary, backgroundColor: 'transparent' },
+  }
 }
 
 export const CategoryTabs = memo(function CategoryTabs({
@@ -29,71 +85,58 @@ export const CategoryTabs = memo(function CategoryTabs({
   activeCategory,
   onCategoryChange,
   branding,
+  navStyle,
   isBrandAdmin = false,
   onEditBrandingSection,
 }: CategoryTabsProps) {
   const primaryColor = branding?.menuCategoryActive || branding?.primary || '#ea580c'
   const textSecondary = branding?.menuCategoryInactive || '#6b7280'
+  const variant: NavVariant = resolveCategoryNavStyle(navStyle) ?? 'pills'
+
+  const renderTab = (
+    key: string,
+    label: string,
+    isActive: boolean,
+    onClick: () => void,
+    icon?: string,
+    iconColor?: string
+  ) => {
+    const p = tabPresentation(variant, isActive, primaryColor, textSecondary)
+    return (
+      <button
+        key={key}
+        className={`flex items-center gap-2 whitespace-nowrap text-sm font-medium transition-all shrink-0 ${p.className}`}
+        style={p.style}
+        onMouseEnter={(e) => {
+          if (p.hoverIn) Object.assign(e.currentTarget.style, p.hoverIn)
+        }}
+        onMouseLeave={(e) => {
+          if (p.hoverOut) Object.assign(e.currentTarget.style, p.hoverOut)
+        }}
+        onClick={onClick}
+      >
+        {icon && (
+          <CategoryIcon icon={icon} color={iconColor} fallbackColor={primaryColor} size="sm" />
+        )}
+        <span>{label}</span>
+      </button>
+    )
+  }
 
   return (
     <div className="flex items-center justify-between gap-3 pb-2 -mx-1 px-1">
       <div className="flex gap-3 overflow-x-auto scrollbar-hide">
-        <button
-          className="flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-medium transition-all shrink-0"
-          style={{
-            backgroundColor: !activeCategory ? `${primaryColor}15` : 'transparent',
-            color: !activeCategory ? primaryColor : textSecondary,
-          }}
-          onMouseEnter={(e) => {
-            if (activeCategory) {
-              e.currentTarget.style.color = primaryColor
-              e.currentTarget.style.backgroundColor = `${primaryColor}15`
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (activeCategory) {
-              e.currentTarget.style.color = textSecondary
-              e.currentTarget.style.backgroundColor = 'transparent'
-            }
-          }}
-          onClick={() => onCategoryChange(null)}
-        >
-          All Items
-        </button>
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            className="flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-medium transition-all shrink-0"
-            style={{
-              backgroundColor:
-                activeCategory === category.id ? `${primaryColor}15` : 'transparent',
-              color: activeCategory === category.id ? primaryColor : textSecondary,
-            }}
-            onMouseEnter={(e) => {
-              if (activeCategory !== category.id) {
-                e.currentTarget.style.color = primaryColor
-                e.currentTarget.style.backgroundColor = `${primaryColor}15`
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeCategory !== category.id) {
-                e.currentTarget.style.color = textSecondary
-                e.currentTarget.style.backgroundColor = 'transparent'
-              }
-            }}
-            onClick={() => onCategoryChange(category.id)}
-          >
-            {category.icon && (
-              <CategoryIcon
-                icon={category.icon}
-                color={category.icon_color}
-                fallbackColor={primaryColor}
-                size="sm"
-              />
-            )}
-            <span>{category.name}</span>
-          </button>
-        ))}
+        {renderTab('__all__', 'All Items', !activeCategory, () => onCategoryChange(null))}
+        {categories.map((category) =>
+          renderTab(
+            category.id,
+            category.name,
+            activeCategory === category.id,
+            () => onCategoryChange(category.id),
+            category.icon,
+            category.icon_color
+          )
+        )}
       </div>
       {isBrandAdmin && onEditBrandingSection && (
         <button

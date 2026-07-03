@@ -196,6 +196,7 @@ export const LayoutDefault = memo(function LayoutDefault({
                             activeCategory={activeCategory}
                             onCategoryChange={setActiveCategory}
                             branding={branding}
+                            navStyle={tenant?.category_nav_style}
                             isBrandAdmin={isBrandAdmin}
                             onEditBrandingSection={() => onOpenBrandingSection?.('category_navigation')}
                         />
