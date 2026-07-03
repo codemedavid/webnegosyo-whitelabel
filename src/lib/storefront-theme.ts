@@ -49,6 +49,62 @@ export const FONT_PAIRS: Record<Exclude<FontPair, 'theme'>, FontPairDefinition> 
   },
 }
 
+/**
+ * Google Fonts families used by the pairings, with the weights each one needs.
+ * The storefront loads exactly these via a single `css2` stylesheet so the
+ * pairings render with their true typefaces instead of the generic fallback.
+ * Keep this in sync with FONT_PAIRS — `buildStorefrontFontsHref`'s tests guard
+ * against drift.
+ */
+export const STOREFRONT_GOOGLE_FONTS: Record<string, number[]> = {
+  Archivo: [400, 500, 600, 700, 900],
+  'Cormorant Garamond': [500, 600, 700],
+  Anton: [400],
+  Lora: [400, 500, 600, 700],
+  Karla: [400, 500, 700],
+}
+
+/**
+ * Extract the primary family name from a CSS `font-family` string, e.g.
+ * `"'Cormorant Garamond', serif"` → `Cormorant Garamond`.
+ */
+export function fontFamilyName(fontFamily: string): string {
+  const first = fontFamily.split(',')[0] ?? ''
+  return first.trim().replace(/^['"]|['"]$/g, '')
+}
+
+/**
+ * Build the Google Fonts `css2` stylesheet URL for every storefront font,
+ * derived from STOREFRONT_GOOGLE_FONTS. Single-weight families are requested
+ * bare (the `css2` API rejects an explicit weight for fonts that have only one).
+ */
+export function buildStorefrontFontsHref(): string {
+  const families = Object.entries(STOREFRONT_GOOGLE_FONTS)
+    .map(([family, weights]) => {
+      const name = family.replace(/ /g, '+')
+      const isSingleDefaultWeight = weights.length === 1 && weights[0] === 400
+      return isSingleDefaultWeight ? `family=${name}` : `family=${name}:wght@${weights.join(';')}`
+    })
+    .join('&')
+  return `https://fonts.googleapis.com/css2?${families}&display=swap`
+}
+
+/**
+ * Build a scoped CSS rule that applies the chosen heading font pairing to every
+ * heading element inside `scopeSelector`. Font family and weight are read from
+ * the `--brand-heading-*` CSS vars (set inline on the storefront root only when
+ * a pairing is chosen), so this static rule is a no-op until a knob is set and
+ * carries no interpolated/untrusted values.
+ */
+export function buildHeadingFontCss(scopeSelector: string): string {
+  return (
+    `${scopeSelector} :is(h1,h2,h3,h4,h5,h6){` +
+    'font-family: var(--brand-heading-font);' +
+    'font-weight: var(--brand-heading-weight);' +
+    '}'
+  )
+}
+
 /** Corner radius in pixels per preset (excludes the `'theme'` inherit sentinel). */
 export const ROUNDNESS_PRESETS: Record<Exclude<CardRoundness, 'theme'>, number> = {
   sharp: 0,

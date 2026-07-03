@@ -50,10 +50,17 @@ describe('getTenantBranding — storefront theme knobs', () => {
     expect(branding.bodyFont).toBe("'Karla', sans-serif")
   })
 
+  it('resolves font_pair into the heading weight', () => {
+    expect(getTenantBranding({ font_pair: 'warm editorial' }).headingWeight).toBe(500)
+    expect(getTenantBranding({ font_pair: 'bold display' }).headingWeight).toBe(400)
+    expect(getTenantBranding({ font_pair: 'modern sans' }).headingWeight).toBe(900)
+  })
+
   it('leaves fonts null for the "theme" sentinel and when unset', () => {
     expect(getTenantBranding({ font_pair: 'theme' }).headingFont).toBeNull()
     expect(getTenantBranding({}).headingFont).toBeNull()
     expect(getTenantBranding({}).bodyFont).toBeNull()
+    expect(getTenantBranding({}).headingWeight).toBeNull()
   })
 
   it('resolves card_roundness into a pixel radius string', () => {
@@ -70,6 +77,7 @@ describe('getTenantBranding — storefront theme knobs', () => {
   it('keeps the new knob fields null on DEFAULT_BRANDING', () => {
     expect(DEFAULT_BRANDING.headingFont).toBeNull()
     expect(DEFAULT_BRANDING.bodyFont).toBeNull()
+    expect(DEFAULT_BRANDING.headingWeight).toBeNull()
     expect(DEFAULT_BRANDING.radius).toBeNull()
   })
 })
@@ -81,6 +89,7 @@ describe('generateBrandingCSS — storefront theme knobs', () => {
     ) as Record<string, string>
     expect(css['--brand-radius']).toBe('22px')
     expect(css['--brand-heading-font']).toBe("'Anton', sans-serif")
+    expect(css['--brand-heading-weight']).toBe('400')
     expect(css['--brand-body-font']).toBe("'Archivo', sans-serif")
   })
 
@@ -88,6 +97,7 @@ describe('generateBrandingCSS — storefront theme knobs', () => {
     const css = generateBrandingCSS(getTenantBranding({})) as Record<string, string>
     expect(css['--brand-radius']).toBeUndefined()
     expect(css['--brand-heading-font']).toBeUndefined()
+    expect(css['--brand-heading-weight']).toBeUndefined()
     expect(css['--brand-body-font']).toBeUndefined()
   })
 

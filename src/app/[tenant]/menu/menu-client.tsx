@@ -8,6 +8,7 @@ import { CartDrawer } from '@/components/customer/cart-drawer'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
+import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import { toast } from 'sonner'
 import type { Category, MenuItem, Tenant, PromotionBanner } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -464,7 +465,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
   return (
     <div
       ref={rootRef}
-      className="min-h-screen"
+      className="storefront-themed min-h-screen"
       style={{
         // Expose all --brand-* tokens (incl. the storefront theme knobs:
         // --brand-radius / --brand-heading-font / --brand-body-font when set).
@@ -474,6 +475,11 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         ...(branding.bodyFont ? { fontFamily: branding.bodyFont } : {}),
       }}
     >
+      {branding.headingFont && (
+        // Headings otherwise inherit the body font; this applies the pairing's
+        // display font/weight to headings. Scoped to this storefront root only.
+        <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
+      )}
       {showFlashScreen && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center px-6"

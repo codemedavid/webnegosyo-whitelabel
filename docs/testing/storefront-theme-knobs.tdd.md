@@ -85,14 +85,37 @@ Both exceed the 80% threshold. `npx eslint` clean on all seven touched files.
 - `src/app/[tenant]/menu/menu-client.tsx` — root exposes theme tokens + applies body font.
 - `src/components/admin/branding-editor-overlay.tsx` — "Storefront Theme" controls in the Cards tab.
 
-## Known gaps / follow-ups
+## Follow-up: webfont loading + heading application (2026-07-04)
 
-- **Webfonts:** the font pairings reference Google Fonts (Cormorant Garamond, Anton,
-  Lora, Karla). They gracefully fall back to the generic family (serif/sans/display)
-  so the pairing still visibly changes, but for exact fidelity the storefront should
-  load those webfonts (e.g. a `<link>` in the tenant layout). Not included here.
-- **Heading font var:** `--brand-heading-font` is emitted but individual card/heading
-  components still use their own typography; consuming the heading var in components
-  is optional polish, deferred by scope.
+The two gaps below were closed in a second TDD pass so the pairings render at full
+fidelity (true typefaces + distinct heading font), not just a generic fallback.
+
+- **Webfonts loaded:** `buildStorefrontFontsHref()` derives a single Google Fonts
+  `css2` stylesheet from `STOREFRONT_GOOGLE_FONTS` (Archivo, Cormorant Garamond,
+  Anton, Lora, Karla), rendered with `preconnect` in `src/app/[tenant]/menu/layout.tsx`
+  (covers the menu + nested item-detail pages). A drift test asserts every family
+  referenced by `FONT_PAIRS` is present, and each pairing's heading weight is requested.
+- **Heading application:** headings previously inherited the body font, so a pairing's
+  display font never showed. `getTenantBranding` now resolves `headingWeight`;
+  `generateBrandingCSS` emits `--brand-heading-weight`; `buildHeadingFontCss(scope)`
+  produces a scoped `h1–h6` rule driven by the `--brand-heading-*` vars, injected in
+  `menu-client.tsx` only when `headingFont` is set (no-op for unset tenants).
+
+RED → GREEN evidence for this pass:
+```
+RED:   Tests: 7 failed, 47 passed  (buildStorefrontFontsHref/fontFamilyName/
+       buildHeadingFontCss absent; headingWeight + --brand-heading-weight missing)
+GREEN: Test Suites: 75 passed · Tests: 1054 passed
+       storefront-theme.ts 100% · branding-utils.ts 81.9% (both > 80%)
+```
+
+New guarantees (all PASS): font-family name extraction; Google Fonts URL is a
+`css2?…&display=swap` stylesheet requesting every declared family and heading weight;
+no `FONT_PAIRS` family drifts out of the loader; heading CSS rule is scoped, var-driven,
+and emits no `<`/`>` that could break out of the `<style>` tag; `headingWeight` resolves
+per pairing and is `null` on theme/unset.
+
+## Remaining known gaps
+
 - Migration checkpoint commits are on `fix/lalamove-missing-delivery-details`
   (RED → GREEN → wiring); squash should preserve the RED/GREEN summary above.

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
+import { buildStorefrontFontsHref } from '@/lib/storefront-theme'
 
 export async function generateMetadata({
   params,
@@ -32,5 +33,15 @@ export async function generateMetadata({
 }
 
 export default function MenuLayout({ children }: { children: React.ReactNode }) {
-  return children
+  // Load the storefront font-pairing typefaces. A tenant only sees them when its
+  // `font_pair` knob is set; unset tenants keep their existing fonts (the CSS
+  // vars simply aren't emitted), so this is safe to load once for the storefront.
+  return (
+    <>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link rel="stylesheet" href={buildStorefrontFontsHref()} />
+      {children}
+    </>
+  )
 }

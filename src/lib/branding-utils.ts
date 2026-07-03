@@ -71,6 +71,7 @@ export interface BrandingColors {
   // Storefront theme knobs (design-system presets). `null` = inherit the
   // tenant's existing default, so an unset knob is a no-op for every consumer.
   headingFont: string | null
+  headingWeight: number | null
   bodyFont: string | null
   radius: string | null
 
@@ -141,6 +142,7 @@ export const DEFAULT_BRANDING: BrandingColors = {
   secondary: '#666666',
   accent: '#ffd700',
   headingFont: null,
+  headingWeight: null,
   bodyFont: null,
   radius: null,
   cartAccent: '#111111',
@@ -220,6 +222,7 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
     accent: get('brand_color', '') || get('accent_color', DEFAULT_BRANDING.accent || ''),
     headingFont: fontPair ? fontPair.heading : null,
+    headingWeight: fontPair ? fontPair.headingWeight : null,
     bodyFont: fontPair ? fontPair.body : null,
     radius: roundnessPx === null ? null : `${roundnessPx}px`,
     cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
@@ -384,6 +387,7 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
   // defaults win when a merchant hasn't opted into a preset (zero regression).
   if (branding.radius) css['--brand-radius'] = branding.radius
   if (branding.headingFont) css['--brand-heading-font'] = branding.headingFont
+  if (branding.headingWeight) css['--brand-heading-weight'] = String(branding.headingWeight)
   if (branding.bodyFont) css['--brand-body-font'] = branding.bodyFont
 
   return css as React.CSSProperties
