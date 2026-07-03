@@ -8,9 +8,12 @@ import {
   STOREFRONT_GOOGLE_FONTS,
   STOREFRONT_PALETTES,
   STOREFRONT_PALETTE_OPTIONS,
+  CATEGORY_NAV_STYLES,
+  CATEGORY_NAV_STYLE_OPTIONS,
   resolveFontPair,
   resolveRoundness,
   resolvePalette,
+  resolveCategoryNavStyle,
   generatePaletteFromColor,
   fontFamilyName,
   buildStorefrontFontsHref,
@@ -253,5 +256,50 @@ describe('generatePaletteFromColor', () => {
     expect(generatePaletteFromColor('not-a-color')).toBeNull()
     expect(generatePaletteFromColor('')).toBeNull()
     expect(generatePaletteFromColor('rgb(1,2,3)')).toBeNull()
+  })
+})
+
+describe('CATEGORY_NAV_STYLES', () => {
+  it('defines at least the pills, chips, and underline variants', () => {
+    expect(Object.keys(CATEGORY_NAV_STYLES)).toEqual(
+      expect.arrayContaining(['pills', 'chips', 'underline'])
+    )
+  })
+
+  it('does not include the theme sentinel as a concrete style', () => {
+    expect(Object.keys(CATEGORY_NAV_STYLES)).not.toContain('theme')
+  })
+})
+
+describe('CATEGORY_NAV_STYLE_OPTIONS', () => {
+  it('leads with the theme inherit sentinel', () => {
+    expect(CATEGORY_NAV_STYLE_OPTIONS[0]).toBe('theme')
+  })
+
+  it('contains every concrete style after the sentinel', () => {
+    expect(CATEGORY_NAV_STYLE_OPTIONS).toEqual([
+      'theme',
+      ...Object.keys(CATEGORY_NAV_STYLES),
+    ])
+  })
+})
+
+describe('resolveCategoryNavStyle', () => {
+  it('resolves each concrete style to its own variant token', () => {
+    expect(resolveCategoryNavStyle('pills')).toBe('pills')
+    expect(resolveCategoryNavStyle('chips')).toBe('chips')
+    expect(resolveCategoryNavStyle('underline')).toBe('underline')
+  })
+
+  it('returns null for the theme sentinel so the current pills stay byte-identical', () => {
+    expect(resolveCategoryNavStyle('theme')).toBeNull()
+  })
+
+  it('returns null for unknown, empty, or non-string values', () => {
+    expect(resolveCategoryNavStyle('rainbow')).toBeNull()
+    expect(resolveCategoryNavStyle('')).toBeNull()
+    expect(resolveCategoryNavStyle(undefined)).toBeNull()
+    expect(resolveCategoryNavStyle(null)).toBeNull()
+    expect(resolveCategoryNavStyle(7)).toBeNull()
   })
 })
