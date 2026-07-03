@@ -64,6 +64,8 @@ export const SearchBar = memo(function SearchBar({
         />
         <Input
           type="search"
+          name="menu-search"
+          aria-label="Search menu"
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -99,6 +101,8 @@ export const SearchBar = memo(function SearchBar({
       <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
       <Input
         type="search"
+        name="menu-search"
+        aria-label="Search menu"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
