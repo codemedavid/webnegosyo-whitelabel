@@ -3,6 +3,8 @@
  * Provides fallback colors and utility functions for consistent branding
  */
 
+import { resolveFontPair, resolveRoundness } from '@/lib/storefront-theme'
+
 // Tenant type was removed - function accepts generic Record<string, unknown> instead
 
 export interface BrandingColors {
@@ -65,6 +67,12 @@ export interface BrandingColors {
   primary: string
   secondary: string
   accent?: string
+
+  // Storefront theme knobs (design-system presets). `null` = inherit the
+  // tenant's existing default, so an unset knob is a no-op for every consumer.
+  headingFont: string | null
+  bodyFont: string | null
+  radius: string | null
 
   // Cart & checkout page accents (resolved with fallback to button/primary).
   // The remaining cart/checkout page colors are applied as explicit overrides,
@@ -132,6 +140,9 @@ export const DEFAULT_BRANDING: BrandingColors = {
   primary: '#111111',
   secondary: '#666666',
   accent: '#ffd700',
+  headingFont: null,
+  bodyFont: null,
+  radius: null,
   cartAccent: '#111111',
   checkoutAccent: '#111111',
   searchBar: {
@@ -160,6 +171,10 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     const value = tenant[key]
     return typeof value === 'string' ? value : fallback
   }
+
+  // Storefront theme knobs — resolve presets, `null` means "inherit default".
+  const fontPair = resolveFontPair(tenant['font_pair'])
+  const roundnessPx = resolveRoundness(tenant['card_roundness'])
 
   return {
     background: get('background_color', DEFAULT_BRANDING.background),
@@ -203,7 +218,10 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     shadow: get('shadow_color', DEFAULT_BRANDING.shadow),
     primary: get('primary_color', DEFAULT_BRANDING.primary),
     secondary: get('secondary_color', DEFAULT_BRANDING.secondary),
-    accent: get('accent_color', DEFAULT_BRANDING.accent || ''),
+    accent: get('brand_color', '') || get('accent_color', DEFAULT_BRANDING.accent || ''),
+    headingFont: fontPair ? fontPair.heading : null,
+    bodyFont: fontPair ? fontPair.body : null,
+    radius: roundnessPx === null ? null : `${roundnessPx}px`,
     cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
     checkoutAccent: get('checkout_accent_color', '') || get('button_primary_color', '') || get('primary_color', DEFAULT_BRANDING.buttonPrimary),
     searchBar: {
@@ -315,7 +333,7 @@ export const CART_CHECKOUT_PAGE_COLOR_COLUMNS: readonly string[] = [
  * Generate CSS custom properties for tenant branding
  */
 export function generateBrandingCSS(branding: BrandingColors): React.CSSProperties {
-  return {
+  const css: Record<string, string> = {
     '--brand-background': branding.background,
     '--brand-header': branding.header,
     '--brand-header-font': branding.headerFont,
@@ -360,7 +378,15 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-accent': branding.accent || branding.primary,
     '--brand-cart-accent': branding.cartAccent,
     '--brand-checkout-accent': branding.checkoutAccent,
-  } as React.CSSProperties
+  }
+
+  // Storefront theme knobs — only emit when set so the storefront's existing
+  // defaults win when a merchant hasn't opted into a preset (zero regression).
+  if (branding.radius) css['--brand-radius'] = branding.radius
+  if (branding.headingFont) css['--brand-heading-font'] = branding.headingFont
+  if (branding.bodyFont) css['--brand-body-font'] = branding.bodyFont
+
+  return css as React.CSSProperties
 }
 
 /**
