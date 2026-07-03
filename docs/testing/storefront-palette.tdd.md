@@ -58,7 +58,25 @@ Wiring commit: `5492d88` (migration + type + schema + editor + projection).
   verified present at HEAD before these edits); several prior-session test mocks
   miss `headingFont/headingWeight/bodyFont/radius`.
 
+## Stage 2 — category-nav style knob (DONE)
+
+Additive `category_nav_style` (`theme` sentinel = today's soft-tinted pills,
+byte-identical; concrete styles `pills` / `chips` / `underline`). Drives
+`CategoryTabs` presentation only — branding colors are unchanged.
+
+| # | What is guaranteed | Test | Type | Result |
+|---|--------------------|------|------|--------|
+| 8 | `CATEGORY_NAV_STYLES` defines pills/chips/underline, excludes `theme` | `storefront-theme.test.ts:CATEGORY_NAV_STYLES` | unit | PASS |
+| 9 | Options list leads with `theme` then every concrete style | `storefront-theme.test.ts:CATEGORY_NAV_STYLE_OPTIONS` | unit | PASS |
+| 10 | `resolveCategoryNavStyle` maps each style to its token; `theme`/unknown/non-string → null (keep pills) | `storefront-theme.test.ts:resolveCategoryNavStyle` | unit | PASS |
+
+RED commit: `test(storefront): category-nav style resolver + options (RED)` — 7 failing.
+GREEN + wiring commit: `feat(storefront): additive category-nav style knob (pills/chips/underline)` — 1074/1074 pass, lint clean.
+Migration `20260704010000_category_nav_style.sql` APPLIED via MCP. Wired:
+`storefront-theme.ts` → `category-tabs.tsx` (navStyle prop) → `layout-default.tsx`
+→ `database.ts` type → `branding.ts` (zod + save column) → `menu-server.tsx`
+projection → Branding Editor Cards tab.
+
 ## Follow-ups (remaining stages, not yet done)
 
-- **Stage 2** — category-nav style selector (subheader / sidebar / chips).
 - **Stage 3** — 6 additive hero presets (editorial/split/banner/collage/minimal/centered).
