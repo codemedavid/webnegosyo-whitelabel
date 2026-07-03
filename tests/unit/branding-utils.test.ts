@@ -33,6 +33,72 @@ describe('getTenantBranding', () => {
   })
 })
 
+describe('getTenantBranding — storefront theme knobs', () => {
+  it('lets brand_color override the accent color', () => {
+    const branding = getTenantBranding({ accent_color: '#ffd700', brand_color: '#E4572E' })
+    expect(branding.accent).toBe('#E4572E')
+  })
+
+  it('falls back to accent_color when brand_color is unset', () => {
+    const branding = getTenantBranding({ accent_color: '#ffd700' })
+    expect(branding.accent).toBe('#ffd700')
+  })
+
+  it('resolves font_pair into heading and body fonts', () => {
+    const branding = getTenantBranding({ font_pair: 'warm editorial' })
+    expect(branding.headingFont).toBe("'Lora', serif")
+    expect(branding.bodyFont).toBe("'Karla', sans-serif")
+  })
+
+  it('leaves fonts null for the "theme" sentinel and when unset', () => {
+    expect(getTenantBranding({ font_pair: 'theme' }).headingFont).toBeNull()
+    expect(getTenantBranding({}).headingFont).toBeNull()
+    expect(getTenantBranding({}).bodyFont).toBeNull()
+  })
+
+  it('resolves card_roundness into a pixel radius string', () => {
+    expect(getTenantBranding({ card_roundness: 'soft' }).radius).toBe('10px')
+    expect(getTenantBranding({ card_roundness: 'sharp' }).radius).toBe('0px')
+    expect(getTenantBranding({ card_roundness: 'round' }).radius).toBe('22px')
+  })
+
+  it('leaves radius null for the "theme" sentinel and when unset', () => {
+    expect(getTenantBranding({ card_roundness: 'theme' }).radius).toBeNull()
+    expect(getTenantBranding({}).radius).toBeNull()
+  })
+
+  it('keeps the new knob fields null on DEFAULT_BRANDING', () => {
+    expect(DEFAULT_BRANDING.headingFont).toBeNull()
+    expect(DEFAULT_BRANDING.bodyFont).toBeNull()
+    expect(DEFAULT_BRANDING.radius).toBeNull()
+  })
+})
+
+describe('generateBrandingCSS — storefront theme knobs', () => {
+  it('emits radius and font vars only when the knobs are set', () => {
+    const css = generateBrandingCSS(
+      getTenantBranding({ card_roundness: 'round', font_pair: 'bold display' })
+    ) as Record<string, string>
+    expect(css['--brand-radius']).toBe('22px')
+    expect(css['--brand-heading-font']).toBe("'Anton', sans-serif")
+    expect(css['--brand-body-font']).toBe("'Archivo', sans-serif")
+  })
+
+  it('omits the knob vars when knobs are on the "theme" default', () => {
+    const css = generateBrandingCSS(getTenantBranding({})) as Record<string, string>
+    expect(css['--brand-radius']).toBeUndefined()
+    expect(css['--brand-heading-font']).toBeUndefined()
+    expect(css['--brand-body-font']).toBeUndefined()
+  })
+
+  it('reflects brand_color through the accent var', () => {
+    const css = generateBrandingCSS(
+      getTenantBranding({ brand_color: '#2A6F4E', primary_color: '#000000' })
+    ) as Record<string, string>
+    expect(css['--brand-accent']).toBe('#2A6F4E')
+  })
+})
+
 describe('generateBrandingCSS', () => {
   it('generates CSS custom properties', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
