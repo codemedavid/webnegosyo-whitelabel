@@ -11,6 +11,7 @@ import {
   generateBrandingClasses,
   DEFAULT_BRANDING,
 } from '@/lib/branding-utils'
+import { STOREFRONT_PALETTES } from '@/lib/storefront-theme'
 import { TENANT_FIXTURE } from '../fixtures/fixtures'
 
 describe('getTenantBranding', () => {
@@ -79,6 +80,49 @@ describe('getTenantBranding — storefront theme knobs', () => {
     expect(DEFAULT_BRANDING.bodyFont).toBeNull()
     expect(DEFAULT_BRANDING.headingWeight).toBeNull()
     expect(DEFAULT_BRANDING.radius).toBeNull()
+  })
+})
+
+describe('getTenantBranding — storefront palette (coordinated theme)', () => {
+  it('is a pure no-op when no palette is selected (zero regression)', () => {
+    // The exact same tenant, with and without an (unset) palette field, must
+    // resolve to byte-identical branding so existing storefronts never shift.
+    const tenant = { accent_color: '#ffd700', background_color: '#fafafa', primary_color: '#222' }
+    expect(getTenantBranding({ ...tenant, storefront_palette: 'theme' })).toEqual(
+      getTenantBranding(tenant)
+    )
+    expect(getTenantBranding({ ...tenant, storefront_palette: '' })).toEqual(
+      getTenantBranding(tenant)
+    )
+  })
+
+  it('restyles coordinated color roles when a palette is selected', () => {
+    const p = STOREFRONT_PALETTES['fine dining']
+    const branding = getTenantBranding({ storefront_palette: 'fine dining' })
+    expect(branding.background).toBe(p.bg)
+    expect(branding.accent).toBe(p.accent)
+    expect(branding.textPrimary).toBe(p.text)
+    expect(branding.border).toBe(p.line)
+    expect(branding.buttonPrimary).toBe(p.accent)
+    expect(branding.buttonPrimaryText).toBe(p.accentInk)
+  })
+
+  it('lets an explicit per-field color still override the palette', () => {
+    const branding = getTenantBranding({
+      storefront_palette: 'fine dining',
+      background_color: '#123456',
+      accent_color: '#abcdef',
+    })
+    // Explicit columns win over the palette layer…
+    expect(branding.background).toBe('#123456')
+    // …while brand_color/accent_color still feeds accent as before.
+    expect(branding.accent).toBe('#abcdef')
+    // …and un-overridden roles still take the palette.
+    expect(branding.textPrimary).toBe(STOREFRONT_PALETTES['fine dining'].text)
+  })
+
+  it('ignores an unknown palette id (falls back to existing defaults)', () => {
+    expect(getTenantBranding({ storefront_palette: 'rainbow' })).toEqual(getTenantBranding({}))
   })
 })
 

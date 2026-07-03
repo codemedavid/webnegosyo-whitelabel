@@ -6,13 +6,28 @@ import {
   FONT_PAIR_OPTIONS,
   ROUNDNESS_OPTIONS,
   STOREFRONT_GOOGLE_FONTS,
+  STOREFRONT_PALETTES,
+  STOREFRONT_PALETTE_OPTIONS,
   resolveFontPair,
   resolveRoundness,
+  resolvePalette,
+  generatePaletteFromColor,
   fontFamilyName,
   buildStorefrontFontsHref,
   buildHeadingFontCss,
+  type StorefrontPalette,
 } from '@/lib/storefront-theme'
 import { isValidHexColor } from '@/lib/branding-utils'
+
+const PALETTE_KEYS: (keyof StorefrontPalette)[] = [
+  'bg',
+  'surface',
+  'text',
+  'muted',
+  'accent',
+  'accentInk',
+  'line',
+]
 
 describe('resolveFontPair', () => {
   it('returns the heading/body fonts for each named preset', () => {
@@ -163,10 +178,80 @@ describe('option lists', () => {
   it('lead with the "theme" sentinel so it is the default choice', () => {
     expect(FONT_PAIR_OPTIONS[0]).toBe('theme')
     expect(ROUNDNESS_OPTIONS[0]).toBe('theme')
+    expect(STOREFRONT_PALETTE_OPTIONS[0]).toBe('theme')
   })
 
   it('include every concrete preset alongside the sentinel', () => {
     expect(FONT_PAIR_OPTIONS).toEqual(expect.arrayContaining(Object.keys(FONT_PAIRS)))
     expect(ROUNDNESS_OPTIONS).toEqual(expect.arrayContaining(Object.keys(ROUNDNESS_PRESETS)))
+    expect(STOREFRONT_PALETTE_OPTIONS).toEqual(expect.arrayContaining(Object.keys(STOREFRONT_PALETTES)))
+  })
+})
+
+describe('STOREFRONT_PALETTES', () => {
+  it('provides at least the design reference palettes', () => {
+    // The reference storefront ships several coordinated looks.
+    expect(Object.keys(STOREFRONT_PALETTES).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('defines all seven coordinated roles as valid hex for every palette', () => {
+    for (const [id, palette] of Object.entries(STOREFRONT_PALETTES)) {
+      for (const role of PALETTE_KEYS) {
+        expect(isValidHexColor(palette[role])).toBe(true)
+      }
+      // accent ink must actually contrast the accent (guards unreadable buttons)
+      expect(palette.accentInk).not.toBe(palette.accent)
+      expect(id).not.toBe('theme') // 'theme' is the inherit sentinel, never a concrete palette
+    }
+  })
+})
+
+describe('resolvePalette', () => {
+  it('returns the coordinated colors for each named preset', () => {
+    for (const [id, palette] of Object.entries(STOREFRONT_PALETTES)) {
+      expect(resolvePalette(id)).toEqual(palette)
+    }
+  })
+
+  it('returns null for the "theme" sentinel (inherit tenant default)', () => {
+    expect(resolvePalette('theme')).toBeNull()
+  })
+
+  it('returns null for unknown, empty, or non-string values', () => {
+    expect(resolvePalette('rainbow')).toBeNull()
+    expect(resolvePalette('')).toBeNull()
+    expect(resolvePalette(undefined)).toBeNull()
+    expect(resolvePalette(null)).toBeNull()
+    expect(resolvePalette(7)).toBeNull()
+  })
+})
+
+describe('generatePaletteFromColor', () => {
+  it('builds a full coordinated palette from a single seed accent', () => {
+    const palette = generatePaletteFromColor('#2A6F4E')
+    expect(palette).not.toBeNull()
+    for (const role of PALETTE_KEYS) {
+      expect(isValidHexColor(palette![role])).toBe(true)
+    }
+  })
+
+  it('uses the seed as the accent and a contrasting accent ink', () => {
+    const palette = generatePaletteFromColor('#E4572E')
+    expect(palette!.accent).toBe('#E4572E')
+    // dark-ish accent → light ink
+    expect(palette!.accentInk).toBe('#ffffff')
+  })
+
+  it('derives a light background and dark text from the seed', () => {
+    const palette = generatePaletteFromColor('#2A6F4E')
+    // background should be far lighter than the accent; text far darker
+    expect(palette!.bg.toLowerCase()).not.toBe(palette!.accent.toLowerCase())
+    expect(palette!.text.toLowerCase()).not.toBe(palette!.accent.toLowerCase())
+  })
+
+  it('returns null for values that are not valid hex colors', () => {
+    expect(generatePaletteFromColor('not-a-color')).toBeNull()
+    expect(generatePaletteFromColor('')).toBeNull()
+    expect(generatePaletteFromColor('rgb(1,2,3)')).toBeNull()
   })
 })
