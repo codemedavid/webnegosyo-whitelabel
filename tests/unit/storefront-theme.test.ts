@@ -10,10 +10,13 @@ import {
   STOREFRONT_PALETTE_OPTIONS,
   CATEGORY_NAV_STYLES,
   CATEGORY_NAV_STYLE_OPTIONS,
+  HERO_PRESETS,
+  HERO_PRESET_OPTIONS,
   resolveFontPair,
   resolveRoundness,
   resolvePalette,
   resolveCategoryNavStyle,
+  resolveHeroPreset,
   generatePaletteFromColor,
   fontFamilyName,
   buildStorefrontFontsHref,
@@ -301,5 +304,60 @@ describe('resolveCategoryNavStyle', () => {
     expect(resolveCategoryNavStyle(undefined)).toBeNull()
     expect(resolveCategoryNavStyle(null)).toBeNull()
     expect(resolveCategoryNavStyle(7)).toBeNull()
+  })
+})
+
+describe('HERO_PRESETS', () => {
+  it('defines the six additive hero layouts', () => {
+    expect(Object.keys(HERO_PRESETS)).toEqual(
+      expect.arrayContaining([
+        'centered',
+        'editorial',
+        'split',
+        'banner',
+        'collage',
+        'minimal',
+      ])
+    )
+  })
+
+  it('does not include the theme sentinel as a concrete preset', () => {
+    expect(Object.keys(HERO_PRESETS)).not.toContain('theme')
+  })
+})
+
+describe('HERO_PRESET_OPTIONS', () => {
+  it('leads with the theme inherit sentinel', () => {
+    expect(HERO_PRESET_OPTIONS[0]).toBe('theme')
+  })
+
+  it('contains every concrete preset after the sentinel', () => {
+    expect(HERO_PRESET_OPTIONS).toEqual([
+      'theme',
+      ...Object.keys(HERO_PRESETS),
+    ])
+  })
+})
+
+describe('resolveHeroPreset', () => {
+  it('resolves each concrete preset to its own layout token', () => {
+    expect(resolveHeroPreset('centered')).toBe('centered')
+    expect(resolveHeroPreset('editorial')).toBe('editorial')
+    expect(resolveHeroPreset('split')).toBe('split')
+    expect(resolveHeroPreset('banner')).toBe('banner')
+    expect(resolveHeroPreset('collage')).toBe('collage')
+    expect(resolveHeroPreset('minimal')).toBe('minimal')
+  })
+
+  it('returns null for the theme sentinel so the current hero stays byte-identical', () => {
+    expect(resolveHeroPreset('theme')).toBeNull()
+  })
+
+  it('returns null for unknown, empty, or non-string values', () => {
+    expect(resolveHeroPreset('splash')).toBeNull()
+    expect(resolveHeroPreset('')).toBeNull()
+    expect(resolveHeroPreset(undefined)).toBeNull()
+    expect(resolveHeroPreset(null)).toBeNull()
+    expect(resolveHeroPreset(9)).toBeNull()
   })
 })
