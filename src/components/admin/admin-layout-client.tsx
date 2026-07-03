@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar, MobileSidebar, adminSidebarItems, type SidebarEntry } from '@/components/shared/sidebar'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -15,6 +15,10 @@ interface AdminLayoutClientProps {
 
 export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutClientProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  // Branding Studio is a full-screen workspace with its own top bar — no
+  // sidebar/container chrome, which would otherwise stack over its layout.
+  const isFullBleedRoute = pathname?.startsWith(`/${tenantSlug}/admin/branding`) ?? false
 
   const handleLogout = async () => {
     try {
@@ -63,6 +67,10 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
     menuEngineeringEnabled: tenant.menu_engineering_enabled,
     bundlesEnabled: tenant.bundles_enabled,
     convexConfigured: !!tenant.convex_deployment_url,
+  }
+
+  if (isFullBleedRoute) {
+    return <>{children}</>
   }
 
   return (
