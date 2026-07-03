@@ -20,6 +20,7 @@ import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
+import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -53,7 +54,13 @@ const ProductDetailSheet = dynamic(
 )
 
 
-export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+  // Branding Studio live preview: when this page runs inside the editor's
+  // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
+  // every branding consumer below re-renders in real time.
+  const tenant = useBrandingPreviewTenant(tenantProp)
+  const previewDraft = useBrandingPreviewDraft()
+  const isFlashPreview = previewDraft?.__previewSurface === 'flash'
   const router = useRouter()
   const { addItem, item_count, setTenantContext } = useCart()
 
@@ -480,7 +487,7 @@ export function MenuClient({ tenant, categories, allMenuItems, bundles, tenantSl
         // display font/weight to headings. Scoped to this storefront root only.
         <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
       )}
-      {showFlashScreen && (
+      {(showFlashScreen || isFlashPreview) && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center px-6"
           style={{

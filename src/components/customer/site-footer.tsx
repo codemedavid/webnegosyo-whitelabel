@@ -13,6 +13,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
+import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 
 import type { Tenant } from '@/types/database'
 import {
@@ -318,8 +319,11 @@ interface SiteFooterProps {
   tenant: Tenant | null
 }
 
-export function SiteFooter({ tenant }: SiteFooterProps) {
+export function SiteFooter({ tenant: tenantProp }: SiteFooterProps) {
   const pathname = usePathname()
+  // Branding Studio live preview — merges the editor's unsaved draft over the
+  // saved tenant when the storefront renders inside the preview iframe.
+  const tenant = useBrandingPreviewTenant(tenantProp)
 
   // Nothing to render without a resolved tenant (e.g. not-found routes).
   if (!tenant) {

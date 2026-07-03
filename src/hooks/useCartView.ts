@@ -15,6 +15,7 @@ import { useCart } from '@/hooks/useCart'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
+import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { toast } from 'sonner'
 import type { Tenant, CartItem, MenuItem } from '@/types/database'
 
@@ -24,7 +25,10 @@ export function useCartView() {
   const tenantSlug = params.tenant as string
   const { items, bundleItems, total, updateQuantity, removeItem, removeBundleFromCart, updateBundleQuantity } = useCart()
 
-  const [tenant, setTenant] = useState<Tenant | null>(null)
+  const [fetchedTenant, setTenant] = useState<Tenant | null>(null)
+  // Branding Studio live preview — merges the editor's unsaved draft over the
+  // saved tenant when the cart page renders inside the preview iframe.
+  const tenant = useBrandingPreviewTenant(fetchedTenant)
   const [isLoading, setIsLoading] = useState(true)
   const [isNavigating, setIsNavigating] = useState(false)
   const navigationCompletedRef = useRef(false)

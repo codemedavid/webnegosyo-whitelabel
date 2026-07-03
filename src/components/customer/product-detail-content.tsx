@@ -13,7 +13,8 @@ import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
 import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpsell } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
-import type { BrandingColors } from '@/lib/branding-utils'
+import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
+import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
@@ -111,7 +112,7 @@ const AdminEditPencil = memo(function AdminEditPencil({ visible, onClick, label,
 // Memoized Dietary Tag Component
 interface DietaryTagProps {
     label: string
-    icon: React.ElementType
+    icon: React.ComponentType<{ className?: string }>
 }
 
 const DietaryTag = memo(function DietaryTag({ label, icon: Icon }: DietaryTagProps) {
@@ -269,9 +270,9 @@ const AddonButton = memo(function AddonButton({
 
 
 export const ProductDetailContent = memo(function ProductDetailContent({
-    tenant,
+    tenant: tenantProp,
     item,
-    branding,
+    branding: brandingProp,
     category,
     relatedItems = [],
     customization = null,
@@ -291,6 +292,15 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 }: ProductDetailContentProps) {
     const router = useRouter()
     const isSheet = mode === 'sheet'
+    // Branding Studio live preview — the item page computes branding on the
+    // server, so when a preview draft is streaming we merge it over the tenant
+    // and recompute branding client-side for real-time accuracy.
+    const tenant = useBrandingPreviewTenant(tenantProp)
+    const previewDraft = useBrandingPreviewDraft()
+    const branding = useMemo(
+        () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
+        [previewDraft, tenant, brandingProp]
+    )
     const { addItem, setTenantContext } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
@@ -483,7 +493,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     )
 
     const dietaryTags = useMemo(() => {
-        const tags: Array<{ label: string; icon: React.ElementType }> = []
+        const tags: Array<{ label: string; icon: React.ComponentType<{ className?: string }> }> = []
         const text = `${item.name} ${item.description}`.toLowerCase()
         const spicyKeywordPattern = /\b(spicy|chili|chilli|jalapeno|jalapeño|sriracha|buffalo|wasabi|harissa|sambal|gochujang)\b/
         const spicyPhrasePattern = /\bhot\s+(sauce|salsa|wings|wing|chicken|pepper|peppers)\b/

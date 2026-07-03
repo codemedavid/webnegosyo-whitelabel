@@ -71,10 +71,10 @@ export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
  * its columns. Outside preview mode (or before the first draft arrives) the
  * original reference is returned so there is zero behavioural change.
  */
-export function useBrandingPreviewTenant<T extends Record<string, unknown> | null>(tenant: T): T {
+export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
   const draft = useBrandingPreviewDraft()
   return useMemo(() => {
     if (!draft || !tenant) return tenant
-    return { ...tenant, ...stripPreviewMeta(draft) } as T
+    return { ...(tenant as Record<string, unknown>), ...stripPreviewMeta(draft) } as T
   }, [tenant, draft])
 }

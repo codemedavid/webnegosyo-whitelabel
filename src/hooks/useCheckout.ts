@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl } from '@/lib/cart-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
+import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
 import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
 import {
@@ -66,7 +67,10 @@ export function useCheckout(tenantSlug: string) {
   const router = useRouter()
   const { items, bundleItems, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
 
-  const [tenant, setTenant] = useState<Tenant | null>(null)
+  const [fetchedTenant, setTenant] = useState<Tenant | null>(null)
+  // Branding Studio live preview — merges the editor's unsaved draft over the
+  // saved tenant when the checkout page renders inside the preview iframe.
+  const tenant = useBrandingPreviewTenant(fetchedTenant)
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
   const [formFields, setFormFields] = useState<CustomerFormField[]>([])
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
