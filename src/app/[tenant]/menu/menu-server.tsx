@@ -19,7 +19,7 @@ export async function getMenuData(tenantSlug: string) {
       checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
       checkout_modal_background_color, checkout_modal_title_color, checkout_modal_description_color,
       checkout_modal_price_color, checkout_modal_button_color, checkout_modal_button_text_color, checkout_modal_border_color,
-      font_pair, card_roundness, brand_color, storefront_palette, category_nav_style,
+      font_pair, card_roundness, brand_color, storefront_palette, category_nav_style, hero_preset,
       card_template, checkout_template, cart_template, page_layout, mobile_page_layout, mobile_card_template,
       header_template, mobile_header_template, header_show_logo, header_show_name, header_show_cart, header_show_search,
       header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height,

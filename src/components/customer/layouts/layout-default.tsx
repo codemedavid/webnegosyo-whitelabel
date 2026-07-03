@@ -11,6 +11,8 @@ import { Pencil } from 'lucide-react'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import type { HeroDesign } from '@/types/hero-designer'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
+import { HeroPresetSection } from '@/components/customer/hero-preset'
+import { resolveHeroPreset } from '@/lib/storefront-theme'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
@@ -85,6 +87,17 @@ export const LayoutDefault = memo(function LayoutDefault({
                 <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
                     (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
                 } />
+            ) : resolveHeroPreset(tenant?.hero_preset) ? (
+                <HeroPresetSection
+                    preset={resolveHeroPreset(tenant?.hero_preset)!}
+                    title={heroOverride?.title || tenant?.hero_title || 'Our Menu'}
+                    description={heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
+                    titleColor={heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary}
+                    descriptionColor={heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary}
+                    accentColor={branding.accent || branding.primary}
+                    isBrandAdmin={isBrandAdmin}
+                    onEdit={onOpenBrandingSection ? () => onOpenBrandingSection('hero') : undefined}
+                />
             ) : (
                 <div className="text-center mb-16">
                     <div className="inline-flex items-center gap-2 justify-center">

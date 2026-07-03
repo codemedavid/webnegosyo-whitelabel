@@ -76,6 +76,7 @@ export interface Tenant {
   brand_color?: string; // Accent/brand color; overrides accent_color across the storefront when set
   storefront_palette?: string; // Coordinated palette preset: theme | warm editorial | fine dining | cafe soft | bold diner | fresh green
   category_nav_style?: string; // Category nav presentation: theme | pills | chips | underline
+  hero_preset?: string; // Hero layout preset: theme | centered | editorial | split | banner | collage | minimal
   // Main header template & customization
   header_template?: string; // 'classic' | 'centered' | 'minimal' | 'split' | 'banner' | 'stacked'
   mobile_header_template?: string | null; // Header template for mobile (<768px), falls back to header_template

@@ -31,6 +31,28 @@ export type CardRoundness = 'theme' | 'sharp' | 'soft' | 'round'
 export type CategoryNavStyle = 'theme' | 'pills' | 'chips' | 'underline'
 
 /**
+ * Layout preset for the storefront hero (the simple title/description hero that
+ * renders when no advanced block-hero design is set). `'theme'` is the inherit
+ * sentinel — it keeps today's centered serif hero exactly as it is, so an unset
+ * knob changes nothing. The concrete presets rearrange the *same* title +
+ * description + edit affordance (colors still come from branding):
+ * - `centered`  — today's centered serif stack (named explicitly)
+ * - `editorial` — large left-aligned serif with an eyebrow rule
+ * - `split`     — title left, description right in a two-column row
+ * - `banner`    — full-width accent-tinted band behind the text
+ * - `collage`   — oversized offset title with the description tucked beneath
+ * - `minimal`   — small uppercase tracked title with a compact description
+ */
+export type HeroPreset =
+  | 'theme'
+  | 'centered'
+  | 'editorial'
+  | 'split'
+  | 'banner'
+  | 'collage'
+  | 'minimal'
+
+/**
  * A coordinated storefront color palette — the seven color roles the reference
  * design (Restaurant Storefront.dc.html) drives its whole surface from. Picking
  * a palette restyles the storefront in one move; it layers *under* any explicit
@@ -211,6 +233,20 @@ export const CATEGORY_NAV_STYLES: Record<Exclude<CategoryNavStyle, 'theme'>, tru
   underline: true,
 }
 
+/**
+ * Concrete hero presets (excludes the `'theme'` inherit sentinel). Each value is
+ * its own token — the resolver hands the token to the hero renderer, which maps
+ * it to a layout without touching the branding colors or the hero copy.
+ */
+export const HERO_PRESETS: Record<Exclude<HeroPreset, 'theme'>, true> = {
+  centered: true,
+  editorial: true,
+  split: true,
+  banner: true,
+  collage: true,
+  minimal: true,
+}
+
 /** Suggested accent swatches shown in the branding editor color picker. */
 export const BRAND_COLOR_PRESETS: readonly string[] = [
   '#E4572E',
@@ -242,6 +278,12 @@ export const STOREFRONT_PALETTE_OPTIONS: readonly string[] = [
 export const CATEGORY_NAV_STYLE_OPTIONS: readonly CategoryNavStyle[] = [
   'theme',
   ...(Object.keys(CATEGORY_NAV_STYLES) as Exclude<CategoryNavStyle, 'theme'>[]),
+]
+
+/** Selectable hero preset options — `'theme'` leads as the inherit default. */
+export const HERO_PRESET_OPTIONS: readonly HeroPreset[] = [
+  'theme',
+  ...(Object.keys(HERO_PRESETS) as Exclude<HeroPreset, 'theme'>[]),
 ]
 
 /**
@@ -287,6 +329,20 @@ export function resolveCategoryNavStyle(
   if (typeof value !== 'string' || value === 'theme') return null
   const key = value as Exclude<CategoryNavStyle, 'theme'>
   return CATEGORY_NAV_STYLES[key] ? key : null
+}
+
+/**
+ * Resolve a hero preset into its layout token.
+ * Returns `null` for the `'theme'` sentinel, unknown names, or non-string input —
+ * callers treat `null` as "keep today's centered hero", so an unset knob changes
+ * nothing.
+ */
+export function resolveHeroPreset(
+  value: unknown
+): Exclude<HeroPreset, 'theme'> | null {
+  if (typeof value !== 'string' || value === 'theme') return null
+  const key = value as Exclude<HeroPreset, 'theme'>
+  return HERO_PRESETS[key] ? key : null
 }
 
 // --- Palette generation from a single seed color -----------------------------
