@@ -15,43 +15,49 @@ import {
   BRANDING_READY_MESSAGE,
   type BrandingPreviewDraft,
 } from '@/hooks/use-branding-preview'
+import { getPreviewTarget } from './preview-routes'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
 const DRAFT_POST_DEBOUNCE_MS = 60
 const MOBILE_PREVIEW_WIDTH_PX = 390
 
-/** Storefront route previewed for each editor surface. */
-export function getPreviewPath(tenantSlug: string, surfaceId: BrandingSurface['id']): string {
-  const base = `/${tenantSlug}`
-  switch (surfaceId) {
-    case 'cart':
-      return `${base}/cart`
-    case 'checkout':
-    case 'upsell':
-      return `${base}/checkout`
-    default:
-      // global / storefront / product / footer / flash all live on the menu page
-      return `${base}/menu`
-  }
-}
-
 interface PreviewFrameProps {
   tenantSlug: string
   surfaceId: BrandingSurface['id']
   draft: BrandingPreviewDraft
+  /** Product-detail store draft — streamed under __productDetailDraft. */
+  productDraft?: BrandingPreviewDraft
+  /** Merged tenant mobile overrides — applied on a mobile viewport. */
+  mobileOverrides?: BrandingPreviewDraft
+  /** Merged product-detail mobile overrides — applied on a mobile viewport. */
+  productMobileOverrides?: BrandingPreviewDraft
   device: 'desktop' | 'mobile'
+  /** A real menu item id so the product surface can preview the item page. */
+  sampleItemId?: string | null
 }
 
-export function PreviewFrame({ tenantSlug, surfaceId, draft, device }: PreviewFrameProps) {
+export function PreviewFrame({
+  tenantSlug,
+  surfaceId,
+  draft,
+  productDraft,
+  mobileOverrides,
+  productMobileOverrides,
+  device,
+  sampleItemId,
+}: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
+  const productDraftRef = useRef(productDraft)
+  const mobileOverridesRef = useRef(mobileOverrides)
+  const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const previewPath = useMemo(
-    () => `${getPreviewPath(tenantSlug, surfaceId)}?${BRANDING_PREVIEW_PARAM}=1`,
-    [tenantSlug, surfaceId]
-  )
+  const previewPath = useMemo(() => {
+    const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId)
+    return `${path}?${BRANDING_PREVIEW_PARAM}=1`
+  }, [tenantSlug, surfaceId, sampleItemId])
 
   const postDraft = useCallback(() => {
     const frameWindow = iframeRef.current?.contentWindow
@@ -59,7 +65,13 @@ export function PreviewFrame({ tenantSlug, surfaceId, draft, device }: PreviewFr
     frameWindow.postMessage(
       {
         type: BRANDING_DRAFT_MESSAGE,
-        draft: { ...draftRef.current, __previewSurface: surfaceRef.current },
+        draft: {
+          ...draftRef.current,
+          __previewSurface: surfaceRef.current,
+          __productDetailDraft: productDraftRef.current ?? {},
+          __mobileOverrides: mobileOverridesRef.current ?? {},
+          __productMobileOverrides: productMobileOverridesRef.current ?? {},
+        },
       },
       window.location.origin
     )
@@ -68,13 +80,16 @@ export function PreviewFrame({ tenantSlug, surfaceId, draft, device }: PreviewFr
   // Stream draft changes (debounced — color pickers fire on every drag tick).
   useEffect(() => {
     draftRef.current = draft
+    productDraftRef.current = productDraft
+    mobileOverridesRef.current = mobileOverrides
+    productMobileOverridesRef.current = productMobileOverrides
     surfaceRef.current = surfaceId
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(postDraft, DRAFT_POST_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [draft, surfaceId, postDraft])
+  }, [draft, productDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
 
   // Re-send the current draft whenever the framed page announces readiness
   // (initial load and any in-iframe navigation).

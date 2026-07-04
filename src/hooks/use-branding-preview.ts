@@ -14,12 +14,35 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 
 export const BRANDING_PREVIEW_PARAM = 'brandingPreview'
 export const BRANDING_DRAFT_MESSAGE = 'wn-branding-draft'
 export const BRANDING_READY_MESSAGE = 'wn-branding-preview-ready'
 
+/** Viewport width (px) below which mobile branding overrides apply. */
+const MOBILE_BREAKPOINT_PX = 767
+
 export type BrandingPreviewDraft = Record<string, unknown>
+
+/**
+ * True on a mobile-width viewport. SSR-safe: renders desktop-first (false) then
+ * corrects on mount, so mobile overrides are a progressive enhancement. Also
+ * true inside the Studio's 390px preview iframe, so the mobile preview shows
+ * mobile overrides.
+ */
+export function useIsMobileViewport(): boolean {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`)
+    const update = () => setIsMobile(mql.matches)
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
+  return isMobile
+}
 
 /** Remove editor-only meta keys (double-underscore prefixed) from a draft. */
 export function stripPreviewMeta(draft: BrandingPreviewDraft): BrandingPreviewDraft {
@@ -88,8 +111,23 @@ export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
  */
 export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
   const draft = useBrandingPreviewDraft()
+  const isMobile = useIsMobileViewport()
   return useMemo(() => {
-    if (!draft || !tenant) return tenant
-    return { ...(tenant as Record<string, unknown>), ...stripPreviewMeta(draft) } as T
-  }, [tenant, draft])
+    if (!tenant) return tenant
+    let result = { ...(tenant as Record<string, unknown>) }
+    // Real runtime on a phone: overlay the tenant's saved mobile overrides.
+    if (isMobile) {
+      result = applyMobileOverrides(result, result.mobile_overrides as OverrideMap | undefined)
+    }
+    if (draft) {
+      // Preview draft's desktop columns, then its mobile layer on top.
+      result = { ...result, ...stripPreviewMeta(draft) }
+      if (isMobile) {
+        result = applyMobileOverrides(result, draft.__mobileOverrides as OverrideMap | undefined)
+      }
+    }
+    // Nothing changed the reference-worthy path outside preview/mobile.
+    if (!draft && !isMobile) return tenant
+    return result as T
+  }, [tenant, draft, isMobile])
 }

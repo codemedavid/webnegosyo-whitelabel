@@ -72,6 +72,31 @@ describe('branding registry structure', () => {
     expect(BRANDING_FIELD_INDEX['search_bar_enabled'].type).toBe('toggle')
   })
 
+  it('exposes a hero_section_enabled toggle so a disabled hero can be re-enabled', () => {
+    expect(BRANDING_FIELD_INDEX['hero_section_enabled']).toBeDefined()
+    expect(BRANDING_FIELD_INDEX['hero_section_enabled'].type).toBe('toggle')
+    expect(BRANDING_FIELD_INDEX['hero_section_enabled'].default).toBe(true)
+  })
+
+  it('covers the full footer field set — logo, contact, all socials + labels, and pages', () => {
+    for (const id of [
+      'footer_logo_url', 'footer_powered_by_text',
+      'footer_whatsapp', 'footer_viber',
+      'footer_twitter_url', 'footer_youtube_url',
+      'footer_facebook_name', 'footer_instagram_name', 'footer_tiktok_name',
+      'footer_twitter_name', 'footer_youtube_name',
+      'footer_about_us', 'footer_terms_of_service', 'footer_refund_policy', 'footer_privacy_policy',
+    ]) {
+      expect(BRANDING_FIELD_INDEX[id]).toBeDefined()
+    }
+  })
+
+  it('exposes the flash feature toggle, image and promotion toggle', () => {
+    expect(BRANDING_FIELD_INDEX['flash_screen_feature_enabled'].type).toBe('toggle')
+    expect(BRANDING_FIELD_INDEX['flash_screen_image_url']).toBeDefined()
+    expect(BRANDING_FIELD_INDEX['is_promotion_visible'].type).toBe('toggle')
+  })
+
   it('every inheritsFrom points at a real registry field', () => {
     for (const field of Object.values(BRANDING_FIELD_INDEX)) {
       if (field.inheritsFrom) {
@@ -171,6 +196,19 @@ describe('getSurfaceFieldIds', () => {
     expect(ids).toEqual(expect.arrayContaining(['cart_template', 'cart_background_color', 'cart_button_color']))
     expect(ids).not.toContain('checkout_background_color')
   })
+
+  it('keeps the menu-grid quick-view modal fields on the storefront surface', () => {
+    // These are tenant columns for the menu-card popup, distinct from the
+    // product_detail_settings-backed product page (its own registry).
+    const ids = getSurfaceFieldIds('storefront')
+    expect(ids).toEqual(
+      expect.arrayContaining(['modal_background_color', 'modal_title_color', 'modal_price_color', 'modal_description_color'])
+    )
+  })
+
+  it('leaves the product surface with no tenant-column fields — it uses the product_detail_settings store', () => {
+    expect(getSurfaceFieldIds('product')).toEqual([])
+  })
 })
 
 describe('buildPublishPayload', () => {
@@ -198,12 +236,6 @@ describe('buildPublishPayload', () => {
     expect((payload.primary_color as string).length).toBeGreaterThan(0)
     expect(typeof payload.secondary_color).toBe('string')
     expect((payload.secondary_color as string).length).toBeGreaterThan(0)
-  })
-
-  it('publishes the mobile "inherit" choice as null so storefronts fall back to desktop', () => {
-    const tenant = { primary_color: '#111111', secondary_color: '#666666', mobile_card_template: 'compact' }
-    const payload = buildPublishPayload({ mobile_card_template: 'inherit' }, tenant)
-    expect(payload.mobile_card_template).toBeNull()
   })
 
   it('ignores keys that are not registry fields', () => {
@@ -248,5 +280,22 @@ describe('palette presets + generate from logo color', () => {
         expect(BRANDING_FIELD_INDEX[key].type).toBe('color')
       }
     }
+  })
+
+  it('registers editable hero content fields for the rich hero presets', () => {
+    expect(BRANDING_FIELD_INDEX.hero_kicker?.type).toBe('text')
+    expect(BRANDING_FIELD_INDEX.hero_cta_primary_label?.type).toBe('text')
+    expect(BRANDING_FIELD_INDEX.hero_cta_secondary_label?.type).toBe('text')
+    expect(BRANDING_FIELD_INDEX.hero_featured_product_id?.type).toBe('product')
+    // Hero content belongs to the storefront surface.
+    const storefrontIds = getSurfaceFieldIds('storefront')
+    expect(storefrontIds).toEqual(
+      expect.arrayContaining([
+        'hero_kicker',
+        'hero_cta_primary_label',
+        'hero_cta_secondary_label',
+        'hero_featured_product_id',
+      ])
+    )
   })
 })

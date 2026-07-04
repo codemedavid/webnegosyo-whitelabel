@@ -4,17 +4,32 @@ import { useState, useTransition } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { updateTenantMessengerModeAction } from '@/actions/tenants'
+import { updateTenantMessengerModeAction, updateTenantMessengerRedirectEnabledAction } from '@/actions/tenants'
 import { toast } from 'sonner'
 
 interface MessengerModeCardProps {
     tenantId: string
     currentMode: 'webhook' | 'direct'
+    currentRedirectEnabled: boolean
 }
 
-export function MessengerModeCard({ tenantId, currentMode }: MessengerModeCardProps) {
+export function MessengerModeCard({ tenantId, currentMode, currentRedirectEnabled }: MessengerModeCardProps) {
     const [mode, setMode] = useState<'webhook' | 'direct'>(currentMode)
+    const [redirectEnabled, setRedirectEnabled] = useState<boolean>(currentRedirectEnabled)
     const [isPending, startTransition] = useTransition()
+
+    const handleToggleRedirect = (next: boolean) => {
+        setRedirectEnabled(next)
+        startTransition(async () => {
+            const result = await updateTenantMessengerRedirectEnabledAction(tenantId, next)
+            if (result.error) {
+                setRedirectEnabled(!next) // revert optimistic update on failure
+                toast.error(result.error)
+            } else {
+                toast.success(next ? 'Messenger redirect turned on' : 'Messenger redirect turned off')
+            }
+        })
+    }
 
     const handleSave = () => {
         startTransition(async () => {
@@ -30,13 +45,33 @@ export function MessengerModeCard({ tenantId, currentMode }: MessengerModeCardPr
     return (
         <Card>
             <CardHeader>
-                <CardTitle>📱 Messenger Redirect Mode</CardTitle>
+                <CardTitle>📱 Messenger Redirect</CardTitle>
                 <CardDescription>
-                    Choose how customers are redirected to Messenger after checkout
+                    Control whether and how customers are redirected to Messenger after checkout
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="space-y-3">
+                <label className="flex items-start justify-between gap-4 p-4 rounded-lg border border-gray-200">
+                    <div>
+                        <span className="font-medium">Auto-open Messenger after checkout</span>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            When on, customers are redirected to Messenger a few seconds after placing
+                            an order. When off, they stay on the confirmation screen and can send the
+                            order message manually.
+                        </p>
+                    </div>
+                    <input
+                        type="checkbox"
+                        role="switch"
+                        aria-label="Auto-open Messenger after checkout"
+                        checked={redirectEnabled}
+                        onChange={(e) => handleToggleRedirect(e.target.checked)}
+                        className="mt-1 h-5 w-5 shrink-0"
+                        disabled={isPending}
+                    />
+                </label>
+
+                <div className={`space-y-3 ${redirectEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
                     <Label>Select redirect method:</Label>
 
                     <div className="space-y-3">

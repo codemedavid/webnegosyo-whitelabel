@@ -121,8 +121,15 @@ const brandingSchema = z.object({
     flash_screen_text_color: cssColorString().optional().or(z.literal('')),
     flash_screen_duration_ms: z.number().min(500).max(15000).optional(),
     // Hero settings
+    hero_section_enabled: z.boolean().optional(),
     hero_title: z.string().max(200).optional().or(z.literal('')),
     hero_description: z.string().max(1000).optional().or(z.literal('')),
+    hero_kicker: z.string().max(60).optional().or(z.literal('')),
+    hero_cta_primary_label: z.string().max(40).optional().or(z.literal('')),
+    hero_cta_secondary_label: z.string().max(40).optional().or(z.literal('')),
+    hero_featured_product_id: z.string().uuid().optional().or(z.literal('')),
+    hero_image_url: z.string().url().max(2048).optional().or(z.literal('')),
+    hero_link_url: z.string().max(2048).optional().or(z.literal('')),
     hero_title_color: cssColorString().optional().or(z.literal('')),
     hero_description_color: cssColorString().optional().or(z.literal('')),
     // Layout settings
@@ -197,6 +204,9 @@ const brandingSchema = z.object({
     footer_icon_color: cssColorString().optional().or(z.literal('')),
     footer_icon_background_color: cssColorString().optional().or(z.literal('')),
     footer_border_color: cssColorString().optional().or(z.literal('')),
+    // Per-device mobile overrides: { tenant_column_name: value } overlaid on
+    // mobile viewports. Validated as a shallow string/number/bool/null map.
+    mobile_overrides: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 export type BrandingInput = z.infer<typeof brandingSchema>
@@ -281,6 +291,12 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'storefront_palette',
     'category_nav_style',
     'hero_preset',
+    'hero_kicker',
+    'hero_cta_primary_label',
+    'hero_cta_secondary_label',
+    'hero_featured_product_id',
+    'hero_image_url',
+    'hero_link_url',
 ] as const
 
 function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {
@@ -317,10 +333,18 @@ export async function saveBrandingAction(
         // Validate input
         const parsed = brandingSchema.parse(branding)
 
-        // Transform promotion_banners to match database format if present
+        // Transform promotion_banners to match database format if present.
+        // hero_featured_product_id is a uuid column: an empty string means
+        // "no featured product", which must persist as NULL, not ''.
         const updatePayload = {
             ...parsed,
             promotion_banners: parsed.promotion_banners as PromotionBanner[] | undefined,
+            ...(parsed.hero_featured_product_id === ''
+                ? { hero_featured_product_id: null }
+                : {}),
+            // Empty hero media strings persist as NULL so "unset" stays unset.
+            ...(parsed.hero_image_url === '' ? { hero_image_url: null } : {}),
+            ...(parsed.hero_link_url === '' ? { hero_link_url: null } : {}),
         }
 
         // Update database. If rollout-dependent columns are missing in the

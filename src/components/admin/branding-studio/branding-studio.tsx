@@ -26,6 +26,20 @@ import {
   type BrandingSurface,
 } from '@/lib/branding-registry'
 import { saveBrandingAction, type BrandingInput } from '@/app/actions/branding'
+import {
+  PRODUCT_DETAIL_SECTIONS,
+  getProductDetailFieldIds,
+  resolveProductField,
+  isProductFieldSet,
+  buildProductSettingsPayload,
+} from '@/lib/product-detail-registry'
+import { saveProductDetailSettings } from '@/app/actions/product-detail-settings'
+import type { ProductDetailSettings } from '@/lib/product-detail-theme'
+import {
+  mergeMobileOverrides,
+  resolveMobileFieldValue,
+  type OverrideMap,
+} from '@/lib/mobile-overrides'
 import { FieldRow } from './field-row'
 import { PreviewFrame } from './preview-frame'
 import type { Tenant } from '@/types/database'
@@ -35,11 +49,21 @@ const PUBLISHED_TOAST_MS = 2500
 interface BrandingStudioProps {
   tenant: Tenant
   tenantSlug: string
+  /** A real menu item id so the Product surface can preview the item page. */
+  sampleItemId?: string | null
+  /** The tenant's menu items, for the hero featured-product picker. */
+  products?: readonly { id: string; name: string }[]
+  /** Saved product_detail_settings row — the Product surface's saved snapshot. */
+  productSettings?: Partial<ProductDetailSettings> | null
 }
 
 type Draft = Record<string, unknown>
 
-export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
+export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [] }: BrandingStudioProps) {
+  const productOptions = useMemo(
+    () => products.map((p) => ({ value: p.id, label: p.name })),
+    [products]
+  )
   const router = useRouter()
   const [surfaceId, setSurfaceId] = useState<BrandingSurface['id']>('storefront')
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
@@ -47,21 +71,50 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
   // Locally-published values layered over the server tenant snapshot so the
   // editor stays accurate after Publish without waiting for a router refresh.
   const [publishedValues, setPublishedValues] = useState<Draft>({})
+  // The Product Detail surface edits the separate product_detail_settings store
+  // — its own draft + published overlay, published through a different action.
+  const [productDraft, setProductDraft] = useState<Draft>({})
+  const [publishedProductValues, setPublishedProductValues] = useState<Draft>({})
+  // Mobile-device edits go to a separate override map per store (published into
+  // the tenants / product_detail_settings `mobile_overrides` JSONB column).
+  const [mobileDraft, setMobileDraft] = useState<Draft>({})
+  const [mobileProductDraft, setMobileProductDraft] = useState<Draft>({})
+  const [publishedMobile, setPublishedMobile] = useState<OverrideMap | null>(null)
+  const [publishedMobileProduct, setPublishedMobileProduct] = useState<OverrideMap | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
   const [showPublishedToast, setShowPublishedToast] = useState(false)
+
+  const isMobile = device === 'mobile'
 
   const savedTenant = useMemo(
     () => ({ ...(tenant as unknown as Record<string, unknown>), ...publishedValues }),
     [tenant, publishedValues]
+  )
+  const savedProduct = useMemo(
+    () => ({ ...(productSettings ?? {}), ...publishedProductValues }) as Record<string, unknown>,
+    [productSettings, publishedProductValues]
+  )
+  const savedMobile = useMemo<OverrideMap>(
+    () => publishedMobile ?? ((tenant as unknown as Record<string, unknown>).mobile_overrides as OverrideMap) ?? {},
+    [publishedMobile, tenant]
+  )
+  const savedMobileProduct = useMemo<OverrideMap>(
+    () => publishedMobileProduct ?? ((productSettings?.mobile_overrides as OverrideMap) ?? {}),
+    [publishedMobileProduct, productSettings]
   )
 
   const surface = useMemo(
     () => BRANDING_SURFACES.find((s) => s.id === surfaceId) ?? BRANDING_SURFACES[0],
     [surfaceId]
   )
+  const isProductSurface = surface.id === 'product'
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({ 0: true })
 
-  const isDirty = Object.keys(draft).length > 0
+  const isDirty =
+    Object.keys(draft).length > 0 ||
+    Object.keys(productDraft).length > 0 ||
+    Object.keys(mobileDraft).length > 0 ||
+    Object.keys(mobileProductDraft).length > 0
 
   // Guard against losing unsaved changes on tab close / hard navigation.
   useEffect(() => {
@@ -89,6 +142,46 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
     })
   }, [savedTenant])
 
+  const setProductFieldValue = useCallback((fieldId: string, value: unknown) => {
+    setProductDraft((prev) => ({ ...prev, [fieldId]: value }))
+  }, [])
+
+  const clearProductFieldValue = useCallback((fieldId: string) => {
+    setProductDraft((prev) => {
+      const saved = savedProduct[fieldId]
+      const next = { ...prev }
+      if (saved !== undefined && saved !== null && saved !== '') next[fieldId] = ''
+      else delete next[fieldId]
+      return next
+    })
+  }, [savedProduct])
+
+  // Mobile-device edits: a blank value means "inherit desktop". Drop the draft
+  // key when there is no saved override to clear, else store '' so publish
+  // removes it from the JSONB map.
+  const clearMobileEntry = useCallback((setter: typeof setMobileDraft, saved: OverrideMap, fieldId: string) => {
+    setter((prev) => {
+      const next = { ...prev }
+      const savedValue = saved[fieldId]
+      if (savedValue !== undefined && savedValue !== null && savedValue !== '') next[fieldId] = ''
+      else delete next[fieldId]
+      return next
+    })
+  }, [])
+
+  const setMobileFieldValue = useCallback((fieldId: string, value: unknown) => {
+    setMobileDraft((prev) => ({ ...prev, [fieldId]: value }))
+  }, [])
+  const clearMobileFieldValue = useCallback((fieldId: string) => {
+    clearMobileEntry(setMobileDraft, savedMobile, fieldId)
+  }, [clearMobileEntry, savedMobile])
+  const setMobileProductFieldValue = useCallback((fieldId: string, value: unknown) => {
+    setMobileProductDraft((prev) => ({ ...prev, [fieldId]: value }))
+  }, [])
+  const clearMobileProductFieldValue = useCallback((fieldId: string) => {
+    clearMobileEntry(setMobileProductDraft, savedMobileProduct, fieldId)
+  }, [clearMobileEntry, savedMobileProduct])
+
   const pickSurface = useCallback((id: BrandingSurface['id']) => {
     setSurfaceId(id)
     setOpenSections({ 0: true })
@@ -99,31 +192,86 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
   }, [])
 
   const resetSurface = useCallback(() => {
-    const fieldIds = getSurfaceFieldIds(surface.id)
-    setDraft((prev) => {
+    const fieldIds = isProductSurface ? getProductDetailFieldIds() : getSurfaceFieldIds(surface.id)
+
+    if (isMobile) {
+      // Revert this surface's mobile overrides back to the desktop values.
+      const setter = isProductSurface ? setMobileProductDraft : setMobileDraft
+      const saved = isProductSurface ? savedMobileProduct : savedMobile
+      setter((prev) => {
+        const next = { ...prev }
+        for (const id of fieldIds) {
+          const savedValue = saved[id]
+          if (savedValue !== undefined && savedValue !== null && savedValue !== '') next[id] = ''
+          else delete next[id]
+        }
+        return next
+      })
+      return
+    }
+
+    const savedBag = isProductSurface ? savedProduct : (savedTenant as Draft)
+    const setter = isProductSurface ? setProductDraft : setDraft
+    setter((prev) => {
       const next = { ...prev }
       for (const id of fieldIds) {
-        const saved = (savedTenant as Draft)[id]
+        const saved = savedBag[id]
         if (saved !== undefined && saved !== null && saved !== '') next[id] = ''
         else delete next[id]
       }
       return next
     })
-  }, [surface.id, savedTenant])
+  }, [surface.id, savedTenant, isProductSurface, savedProduct, isMobile, savedMobile, savedMobileProduct])
 
   const handlePublish = useCallback(async () => {
     if (isPublishing) return
     setIsPublishing(true)
     try {
-      const payload = buildPublishPayload(draft, savedTenant)
-      const result = await saveBrandingAction(tenant.id, tenantSlug, payload as BrandingInput)
-      if (!result.success) {
-        toast.error(result.error || 'Failed to publish branding')
-        return
+      const hasTenantChanges = Object.keys(draft).length > 0
+      const hasProductChanges = Object.keys(productDraft).length > 0
+      const hasMobileChanges = Object.keys(mobileDraft).length > 0
+      const hasMobileProductChanges = Object.keys(mobileProductDraft).length > 0
+
+      const nextMobile = hasMobileChanges ? mergeMobileOverrides(savedMobile, mobileDraft) : null
+      const nextMobileProduct = hasMobileProductChanges
+        ? mergeMobileOverrides(savedMobileProduct, mobileProductDraft)
+        : null
+
+      if (hasTenantChanges || hasMobileChanges) {
+        // buildPublishPayload always carries the required core colors, so a
+        // mobile-only publish still sends a schema-valid tenant payload.
+        const payload = buildPublishPayload(draft, savedTenant)
+        if (nextMobile) payload.mobile_overrides = nextMobile
+        const result = await saveBrandingAction(tenant.id, tenantSlug, payload as BrandingInput)
+        if (!result.success) {
+          toast.error(result.error || 'Failed to publish branding')
+          return
+        }
+        if (result.warning) toast.warning(result.warning)
       }
-      if (result.warning) toast.warning(result.warning)
+
+      if (hasProductChanges || hasMobileProductChanges) {
+        const productPayload = buildProductSettingsPayload(productDraft, savedProduct)
+        if (nextMobileProduct) productPayload.mobile_overrides = nextMobileProduct
+        const result = await saveProductDetailSettings(
+          tenant.id,
+          tenantSlug,
+          productPayload as Partial<ProductDetailSettings>
+        )
+        if (!result.success) {
+          toast.error(result.error || 'Failed to publish product detail settings')
+          return
+        }
+      }
+
       setPublishedValues((prev) => ({ ...prev, ...draft }))
+      setPublishedProductValues((prev) => ({ ...prev, ...productDraft }))
+      if (nextMobile) setPublishedMobile(nextMobile)
+      if (nextMobileProduct) setPublishedMobileProduct(nextMobileProduct)
       setDraft({})
+      setProductDraft({})
+      setMobileDraft({})
+      setMobileProductDraft({})
       setShowPublishedToast(true)
       window.setTimeout(() => setShowPublishedToast(false), PUBLISHED_TOAST_MS)
       router.refresh()
@@ -132,11 +280,18 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
     } finally {
       setIsPublishing(false)
     }
-  }, [draft, savedTenant, tenant.id, tenantSlug, isPublishing, router])
+  }, [
+    draft, productDraft, mobileDraft, mobileProductDraft,
+    savedTenant, savedProduct, savedMobile, savedMobileProduct,
+    tenant.id, tenantSlug, isPublishing, router,
+  ])
 
-  const surfaceHasOverrides = getSurfaceFieldIds(surface.id).some((id) =>
-    isFieldSet(id, draft, savedTenant)
-  )
+  const surfaceFieldIds = isProductSurface ? getProductDetailFieldIds() : getSurfaceFieldIds(surface.id)
+  const surfaceHasOverrides = isMobile
+    ? surfaceFieldIds.some((id) => isFieldSet(id, isProductSurface ? mobileProductDraft : mobileDraft, isProductSurface ? savedMobileProduct : savedMobile))
+    : isProductSurface
+      ? getProductDetailFieldIds().some((id) => isProductFieldSet(id, productDraft, savedProduct))
+      : getSurfaceFieldIds(surface.id).some((id) => isFieldSet(id, draft, savedTenant))
 
   const [logoColor, setLogoColor] = useState('#E4572E')
 
@@ -294,10 +449,13 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
             )}
 
             {/* Accordion sections */}
-            {surface.sections.map((section, sectionIndex) => {
+            {(isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections).map((section, sectionIndex) => {
               const isOpen = !!openSections[sectionIndex]
+              const activeDraft = isMobile
+                ? (isProductSurface ? mobileProductDraft : mobileDraft)
+                : (isProductSurface ? productDraft : draft)
               const isSectionDirty = section.fields.some(
-                (f) => f.type !== 'note' && Object.prototype.hasOwnProperty.call(draft, f.id)
+                (f) => f.type !== 'note' && Object.prototype.hasOwnProperty.call(activeDraft, f.id)
               )
               const visibleFields = section.fields.filter((f) => !f.mobileOnly || device === 'mobile')
               if (visibleFields.length === 0) return null
@@ -321,17 +479,47 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
                   </button>
                   {isOpen && (
                     <div className="flex flex-col gap-3 px-[18px] pb-4 pt-0.5">
-                      {visibleFields.map((field) => (
-                        <FieldRow
-                          key={field.id}
-                          field={field}
-                          value={resolveFieldValue(field.id, draft, savedTenant)}
-                          isSet={isFieldSet(field.id, draft, savedTenant)}
-                          inheritLabel={getInheritSourceLabel(field.id, draft, savedTenant)}
-                          onChange={(value) => setFieldValue(field.id, value)}
-                          onClear={() => clearFieldValue(field.id)}
-                        />
-                      ))}
+                      {visibleFields.map((field) => {
+                        // Desktop-resolved value first — mobile rows fall back
+                        // to it when they have no override of their own.
+                        const desktopValue = isProductSurface
+                          ? resolveProductField(field.id, productDraft, savedProduct)
+                          : resolveFieldValue(field.id, draft, savedTenant)
+                        const desktopIsSet = isProductSurface
+                          ? isProductFieldSet(field.id, productDraft, savedProduct)
+                          : isFieldSet(field.id, draft, savedTenant)
+                        const desktopInherit = isProductSurface
+                          ? 'Brand default'
+                          : getInheritSourceLabel(field.id, draft, savedTenant)
+
+                        const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
+                        const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
+
+                        return (
+                          <FieldRow
+                            key={field.id}
+                            field={field}
+                            productOptions={productOptions}
+                            value={
+                              isMobile
+                                ? resolveMobileFieldValue(field.id, activeMobileDraft, activeSavedMobile, desktopValue)
+                                : desktopValue
+                            }
+                            isSet={isMobile ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
+                            inheritLabel={isMobile ? 'Desktop' : desktopInherit}
+                            onChange={(value) =>
+                              isMobile
+                                ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
+                                : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
+                            }
+                            onClear={() =>
+                              isMobile
+                                ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
+                                : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
+                            }
+                          />
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -342,7 +530,16 @@ export function BrandingStudio({ tenant, tenantSlug }: BrandingStudioProps) {
         </aside>
 
         {/* ============ LIVE PREVIEW ============ */}
-        <PreviewFrame tenantSlug={tenantSlug} surfaceId={surface.id} draft={draft} device={device} />
+        <PreviewFrame
+          tenantSlug={tenantSlug}
+          surfaceId={surface.id}
+          draft={draft}
+          productDraft={productDraft}
+          mobileOverrides={mergeMobileOverrides(savedMobile, mobileDraft)}
+          productMobileOverrides={mergeMobileOverrides(savedMobileProduct, mobileProductDraft)}
+          device={device}
+          sampleItemId={sampleItemId}
+        />
       </div>
     </div>
   )

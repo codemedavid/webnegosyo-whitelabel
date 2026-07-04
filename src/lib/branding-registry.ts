@@ -9,7 +9,7 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note'
+export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product'
 
 export interface BrandingField {
   id: string
@@ -53,6 +53,9 @@ const text = (id: string, label: string, placeholder = ''): BrandingField =>
 const number = (id: string, label: string, def: number, min: number, max: number): BrandingField =>
   ({ id, label, type: 'number', default: def, min, max })
 const note = (id: string, label: string): BrandingField => ({ id, label, type: 'note' })
+// A picker whose options are the tenant's own menu items (supplied at runtime,
+// not statically). Stored value is the selected menu item id, or '' for none.
+const product = (id: string, label: string): BrandingField => ({ id, label, type: 'product', default: '' })
 
 const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
 const CARD_TEMPLATE_OPTIONS = [
@@ -61,7 +64,6 @@ const CARD_TEMPLATE_OPTIONS = [
 ] as const
 const PAGE_LAYOUT_OPTIONS = ['default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic'] as const
 const CART_CHECKOUT_TEMPLATE_OPTIONS = ['classic', 'modern', 'wizard', 'minimal', 'express'] as const
-const withInherit = (options: readonly string[]): readonly string[] => ['inherit', ...options]
 
 export const BRANDING_SURFACES: BrandingSurface[] = [
   {
@@ -113,19 +115,20 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     description: 'Menu page — announcement, header, hero, navigation, search and menu cards.',
     sections: [
       {
-        title: 'Announcement bar',
+        title: 'Announcement & promotions',
         fields: [
           toggle('is_announcement_visible', 'Show announcement', false),
           text('announcement_text', 'Text', 'Welcome!'),
           color('announcement_bg_color', 'Background', '#FFF4E5'),
           color('announcement_text_color', 'Text color', '#663C00'),
+          toggle('is_promotion_visible', 'Show promotion banners', false),
+          note('note_promotion_banners', 'Promotion banner images are uploaded in Admin → Settings → Banners.'),
         ],
       },
       {
         title: 'Header',
         fields: [
           select('header_template', 'Template', HEADER_TEMPLATE_OPTIONS, 'classic'),
-          select('mobile_header_template', 'Template (mobile)', withInherit(HEADER_TEMPLATE_OPTIONS), 'inherit', true),
           toggle('header_show_logo', 'Show logo', true),
           toggle('header_show_name', 'Show business name', true),
           toggle('header_show_cart', 'Show cart button', true),
@@ -148,12 +151,19 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Hero',
         fields: [
+          toggle('hero_section_enabled', 'Show hero section', true),
           select('hero_preset', 'Style', ['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal'], 'theme'),
+          text('hero_kicker', 'Kicker (eyebrow)', 'Now serving'),
           text('hero_title', 'Title', 'Welcome to our menu'),
           text('hero_description', 'Description', 'Order your favorites for pickup or delivery.'),
+          text('hero_cta_primary_label', 'Primary button', 'Order Now'),
+          text('hero_cta_secondary_label', 'Secondary button', 'View Menu'),
+          product('hero_featured_product_id', 'Featured product (hero card)'),
+          text('hero_image_url', 'Fallback image URL', 'https://…/photo.jpg'),
+          text('hero_link_url', 'Fallback image link', '/menu/item/… or https://…'),
           color('hero_title_color', 'Title color', null, 'text_primary_color'),
           color('hero_description_color', 'Description color', null, 'text_secondary_color'),
-          note('note_hero_designer', 'Need a fully custom hero? Use the Hero Designer for block-level layouts, images and buttons.'),
+          note('note_hero_designer', 'Kicker and buttons appear on the richer hero styles (editorial, split, collage, centered, banner, minimal). A featured product turns the hero tile into a product card (image, price, Add to cart). With no product, paste a Fallback image URL (and optional link) to show a clickable image instead. Need a fully custom hero? Use the Hero Designer for block-level layouts.'),
         ],
       },
       {
@@ -183,15 +193,23 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Layout & menu cards',
         fields: [
           select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'),
-          select('mobile_page_layout', 'Page layout (mobile)', withInherit(PAGE_LAYOUT_OPTIONS), 'inherit', true),
           select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'),
-          select('mobile_card_template', 'Card template (mobile)', withInherit(CARD_TEMPLATE_OPTIONS), 'inherit', true),
           { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
           color('card_title_color', 'Title text', null, 'text_primary_color'),
           color('card_price_color', 'Price text', null, 'primary_color'),
           color('card_description_color', 'Description text', null, 'text_secondary_color'),
+        ],
+      },
+      {
+        title: 'Quick-view modal',
+        fields: [
+          note('note_quickview', 'The quick-view popup opened from a menu card. The full product page has its own surface (Product Detail).'),
+          color('modal_background_color', 'Background', '#ffffff'),
+          color('modal_title_color', 'Title', null, 'text_primary_color'),
+          color('modal_price_color', 'Price', null, 'primary_color'),
+          color('modal_description_color', 'Description', null, 'text_secondary_color'),
         ],
       },
     ],
@@ -273,20 +291,15 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     id: 'product',
     label: 'Product Detail',
     glyph: 'P',
-    description: 'Product sheet & quick view — image, variations, add-ons and actions.',
+    description: 'The full product detail page — image, variations, add-ons, sticky footer and upsell sheets. Blank fields inherit the global brand palette.',
+    // Product-detail styling lives in the dedicated `product_detail_settings`
+    // table, not `tenants`, so its ~96 editable fields come from
+    // PRODUCT_DETAIL_SECTIONS (product-detail-registry.ts). The Studio swaps in
+    // that registry — and its own draft + publish path — for this surface.
     sections: [
       {
-        title: 'Product sheet',
-        fields: [
-          color('modal_background_color', 'Background', null, 'cards_color'),
-          color('modal_title_color', 'Title', null, 'text_primary_color'),
-          color('modal_price_color', 'Price', null, 'primary_color'),
-          color('modal_description_color', 'Description', null, 'text_secondary_color'),
-        ],
-      },
-      {
-        title: 'Actions',
-        fields: [note('note_product_buttons', 'Add-to-cart and Buy-now buttons follow Global Brand → Buttons.')],
+        title: 'Product detail page',
+        fields: [note('note_product_detail', 'Every section of the product page is editable here — image, variations, add-ons, related items, sticky footer and the upsell bottom-sheets.')],
       },
     ],
   },
@@ -306,21 +319,47 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Content',
         fields: [
+          text('footer_logo_url', 'Logo URL'),
           text('footer_business_name', 'Business name'),
           text('footer_tagline', 'Tagline'),
+          text('footer_copyright_text', 'Copyright'),
+          toggle('footer_show_powered_by', 'Show "Powered by WebNegosyo"', true),
+          text('footer_powered_by_text', 'Powered-by text', 'Powered by WebNegosyo'),
+        ],
+      },
+      {
+        title: 'Contact',
+        fields: [
           text('footer_address', 'Address'),
           text('footer_phone', 'Phone'),
           text('footer_email', 'Email'),
-          text('footer_copyright_text', 'Copyright'),
-          toggle('footer_show_powered_by', 'Show "Powered by WebNegosyo"', true),
+          text('footer_whatsapp', 'WhatsApp'),
+          text('footer_viber', 'Viber'),
         ],
       },
       {
         title: 'Social links',
         fields: [
           text('footer_facebook_url', 'Facebook URL'),
+          text('footer_facebook_name', 'Facebook label'),
           text('footer_instagram_url', 'Instagram URL'),
+          text('footer_instagram_name', 'Instagram label'),
           text('footer_tiktok_url', 'TikTok URL'),
+          text('footer_tiktok_name', 'TikTok label'),
+          text('footer_twitter_url', 'Twitter / X URL'),
+          text('footer_twitter_name', 'Twitter / X label'),
+          text('footer_youtube_url', 'YouTube URL'),
+          text('footer_youtube_name', 'YouTube label'),
+        ],
+      },
+      {
+        title: 'Pages',
+        fields: [
+          note('note_footer_pages', 'Content shown on the public /about, /terms, /refund and /privacy routes. Leave blank to hide a page.'),
+          text('footer_about_us', 'About us'),
+          text('footer_terms_of_service', 'Terms of service'),
+          text('footer_refund_policy', 'Refund policy'),
+          text('footer_privacy_policy', 'Privacy policy'),
         ],
       },
       {
@@ -348,9 +387,11 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Settings',
         fields: [
-          toggle('flash_screen_is_active', 'Enable flash screen', false),
+          toggle('flash_screen_feature_enabled', 'Enable flash feature', false),
+          toggle('flash_screen_is_active', 'Active', false),
           text('flash_screen_title', 'Title', 'Loading menu...'),
           text('flash_screen_subtitle', 'Subtitle'),
+          text('flash_screen_image_url', 'Image URL'),
           number('flash_screen_duration_ms', 'Duration (ms)', 2000, 500, 15000),
           color('flash_screen_background_color', 'Background', null, 'primary_color'),
           color('flash_screen_text_color', 'Text', '#ffffff'),
@@ -458,17 +499,11 @@ export function buildPublishPayload(
   tenant: ValueBag
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {}
-  for (const [fieldId, field] of Object.entries(BRANDING_FIELD_INDEX)) {
+  for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]
     if (value === undefined || value === null) continue
-    // 'inherit' is an editor-only choice meaning "no mobile override" —
-    // persist it as null so storefronts fall back to the desktop value.
-    if (value === 'inherit' && field.type === 'select' && field.options?.includes('inherit')) {
-      payload[fieldId] = null
-      continue
-    }
     payload[fieldId] = value
   }
   if (isBlank(payload.primary_color)) {

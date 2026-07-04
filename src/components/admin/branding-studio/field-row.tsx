@@ -19,6 +19,8 @@ export interface FieldRowProps {
   inheritLabel: string
   onChange: (value: unknown) => void
   onClear: () => void
+  /** Options for `product`-type fields (the tenant's own menu items). */
+  productOptions?: readonly { value: string; label: string }[]
 }
 
 const HEX_COLOR_PATTERN = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -156,6 +158,28 @@ function NumberRow({ field, value, onChange }: FieldRowProps) {
   )
 }
 
+function ProductRow({ field, value, onChange, productOptions = [] }: FieldRowProps) {
+  const selected = typeof value === 'string' ? value : ''
+  return (
+    <div>
+      <div className="mb-1.5 text-[12.5px] font-semibold">{field.label}</div>
+      <select
+        value={selected}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.label}
+        className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12.5px] outline-none focus:border-neutral-800"
+      >
+        <option value="">None</option>
+        {productOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 function NoteRow({ field }: FieldRowProps) {
   return (
     <div className="rounded-lg bg-neutral-100 px-2.5 py-2 text-[11px] leading-relaxed text-neutral-500">
@@ -176,6 +200,8 @@ export function FieldRow(props: FieldRowProps) {
       return <TextRow {...props} />
     case 'number':
       return <NumberRow {...props} />
+    case 'product':
+      return <ProductRow {...props} />
     case 'note':
       return <NoteRow {...props} />
     default:

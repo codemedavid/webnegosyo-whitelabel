@@ -702,6 +702,43 @@ export async function updateTenantMessengerModeAction(
 }
 
 /**
+ * Toggle whether checkout auto-redirects the customer to Messenger after an
+ * order is placed. Tenant-admin (or superadmin) only. When disabled, the
+ * customer stays on the confirmation screen and sends the message manually.
+ */
+export async function updateTenantMessengerRedirectEnabledAction(
+  tenantId: string,
+  enabled: boolean
+) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const { data, error } = await supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update({ messenger_redirect_enabled: enabled } as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Revalidate relevant paths
+  revalidatePath(`/superadmin/tenants/${tenantId}`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+  }
+
+  return { success: true, enabled }
+}
+
+/**
  * Update a tenant's operating hours + timezone. Tenant-admin (or superadmin) only.
  * Operating hours drive advance-order scheduling slot windows; see src/lib/operating-hours.ts.
  * Input is sanitized via normalizeOperatingHours so the stored JSON is always well-formed.

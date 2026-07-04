@@ -402,6 +402,7 @@ export default async function SettingsPage({
           // This enables pre-filled message mode by default for simpler setups
           tenant.facebook_page_id ? 'webhook' : 'direct'
         )}
+        currentRedirectEnabled={tenant.messenger_redirect_enabled ?? true}
       />
 
       {/* Operating Hours (drives advance-order scheduling slots) */}
