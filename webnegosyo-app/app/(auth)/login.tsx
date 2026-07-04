@@ -14,7 +14,7 @@ import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
-import { colors, typography, radius, spacing } from "../../theme/colors";
+import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -106,6 +106,7 @@ export default function LoginScreen() {
     >
       <View style={styles.content}>
         <View style={styles.header}>
+          <Text style={styles.eyebrow}>Merchant Admin</Text>
           <Text style={styles.title}>WebNegosyo</Text>
           <Text style={styles.subtitle}>
             Run your store from anywhere — for any food or retail business
@@ -144,7 +145,7 @@ export default function LoginScreen() {
             activeOpacity={0.8}
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.textOnDark} />
             ) : (
               <Text style={styles.buttonText}>Sign In</Text>
             )}
@@ -188,13 +189,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
   header: { alignItems: "center", marginBottom: 48 },
-  title: { fontSize: 28, fontWeight: "700", color: colors.textPrimary },
-  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
+  eyebrow: { ...typography.eyebrow, color: colors.accent, marginBottom: spacing.sm },
+  title: { fontSize: 28, fontWeight: "800", color: colors.textPrimary },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: "center",
+  },
   form: { gap: spacing.lg },
   inputGroup: { gap: spacing.xs },
-  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "500", marginLeft: spacing.xs },
+  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginLeft: spacing.xs },
   input: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
@@ -203,22 +210,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.separator,
   },
-  button: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm },
+  button: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: spacing.sm,
+    ...shadow.sm,
+  },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#FFFFFF", fontSize: 17, fontWeight: "600" },
+  buttonText: { color: colors.textOnDark, fontSize: 17, fontWeight: "800" },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: spacing.xs },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.separator },
-  dividerText: { ...typography.caption, color: colors.textTertiary },
+  dividerText: { ...typography.eyebrow, color: colors.textTertiary },
   secondaryButton: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 16,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.separator,
+    ...shadow.sm,
   },
-  secondaryButtonText: { color: colors.primary, fontSize: 16, fontWeight: "600" },
+  secondaryButtonText: { color: colors.textPrimary, fontSize: 16, fontWeight: "700" },
   signupLink: { alignItems: "center", paddingVertical: spacing.sm },
   signupText: { ...typography.body, color: colors.textSecondary },
-  signupTextBold: { color: colors.primary, fontWeight: "600" },
+  signupTextBold: { color: colors.accent, fontWeight: "700" },
 });

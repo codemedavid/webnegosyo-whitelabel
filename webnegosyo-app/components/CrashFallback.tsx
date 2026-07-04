@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   body: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
   detailBox: {
     maxHeight: 140,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.separator,
@@ -61,11 +61,11 @@ const styles = StyleSheet.create({
   detailContent: { padding: spacing.md },
   detailText: { ...typography.caption, color: colors.textSecondary },
   actions: { gap: spacing.sm, marginTop: spacing.sm },
-  primaryButton: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, alignItems: "center" },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
+  primaryButton: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 14, alignItems: "center" },
+  primaryButtonText: { color: colors.textOnDark, fontSize: 16, fontWeight: "600" },
   secondaryButton: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     alignItems: "center",
     borderWidth: 1,

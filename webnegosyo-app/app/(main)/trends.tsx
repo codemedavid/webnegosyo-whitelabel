@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Refre
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
+import { formatPercent, buildTrendSeries, type TrendPoint } from "../../lib/analytics-utils";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { StatCard } from "../../components/StatCard";
@@ -41,33 +42,31 @@ interface PaymentMethodAnalytics {
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
-function BarChart({ data, valueKey, color, label }: {
-  data: DailyStat[];
-  valueKey: keyof DailyStat;
+function BarChart({ series, color, label, isMoney }: {
+  series: TrendPoint[];
   color: string;
   label: string;
+  isMoney: boolean;
 }) {
-  if (data.length === 0) return null;
+  if (series.length === 0) return null;
 
-  const values = data.map((d) => Number(d[valueKey]) || 0);
-  const maxVal = Math.max(...values, 1);
-  const isMoney = valueKey !== "totalOrders";
+  const maxVal = Math.max(...series.map((p) => p.value), 1);
   // Past ~10 bars the chart no longer fits the screen width, so switch to a
   // fixed-width scrollable strip with legible bars/labels instead of cramming.
-  const scroll = data.length > 10;
-  const barWidth = scroll ? 24 : Math.max(((SCREEN_WIDTH - 100) / data.length) - 6, 14);
+  const scroll = series.length > 10;
+  const barWidth = scroll ? 24 : Math.max(((SCREEN_WIDTH - 100) / series.length) - 6, 14);
 
   const bars = (
     <View style={[styles.barsContainer, scroll && styles.barsContainerScroll]}>
-      {data.map((d, i) => {
-        const height = values[i] > 0 ? Math.max((values[i] / maxVal) * 100, 4) : 0;
+      {series.map((point) => {
+        const height = point.value > 0 ? Math.max((point.value / maxVal) * 100, 4) : 0;
         return (
-          <View key={d.date} style={[styles.barWrapper, { width: barWidth + 8 }]}>
+          <View key={point.label} style={[styles.barWrapper, { width: barWidth + 8 }]}>
             <Text style={styles.barValue} numberOfLines={1}>
-              {isMoney ? formatPesoCompact(values[i]) : formatCount(values[i])}
+              {isMoney ? formatPesoCompact(point.value) : formatCount(point.value)}
             </Text>
             <View style={[styles.bar, { height, backgroundColor: color, width: barWidth }]} />
-            <Text style={styles.barLabel}>{d.date.slice(5)}</Text>
+            <Text style={styles.barLabel}>{point.label}</Text>
           </View>
         );
       })}
@@ -87,12 +86,10 @@ function BarChart({ data, valueKey, color, label }: {
   );
 }
 
-const PAYMENT_COLORS: Record<string, string> = {
-  Cash: "#6366F1",
-  GCash: "#10B981",
-  Card: "#F59E0B",
-  Unknown: "#94A3B8",
-};
+// Editorial stacked-bar palette: charcoal / coral / amber / taupe, with a
+// light taupe fallback for any extra methods.
+const STACK_PALETTE = [colors.primary, colors.accent, colors.warning, colors.textSecondary];
+const STACK_FALLBACK = colors.textTertiary;
 
 function StackedBarChart({ data, label }: {
   data: { date: string; methods: Record<string, number> }[];
@@ -108,6 +105,10 @@ function StackedBarChart({ data, label }: {
     }
   }
   const methods = Array.from(allMethods);
+  const colorFor = (method: string) => {
+    const index = methods.indexOf(method);
+    return index >= 0 && index < STACK_PALETTE.length ? STACK_PALETTE[index] : STACK_FALLBACK;
+  };
 
   const maxTotal = Math.max(
     ...data.map((d) => Object.values(d.methods).reduce((s, v) => s + v, 0)),
@@ -121,7 +122,7 @@ function StackedBarChart({ data, label }: {
       <View style={stackStyles.legend}>
         {methods.map((m) => (
           <View key={m} style={stackStyles.legendItem}>
-            <View style={[stackStyles.legendDot, { backgroundColor: PAYMENT_COLORS[m] ?? "#94A3B8" }]} />
+            <View style={[stackStyles.legendDot, { backgroundColor: colorFor(m) }]} />
             <Text style={stackStyles.legendText}>{m}</Text>
           </View>
         ))}
@@ -141,7 +142,7 @@ function StackedBarChart({ data, label }: {
                       key={m}
                       style={{
                         height: segmentHeight,
-                        backgroundColor: PAYMENT_COLORS[m] ?? "#94A3B8",
+                        backgroundColor: colorFor(m),
                       }}
                     />
                   );
@@ -176,6 +177,10 @@ export default function TrendsScreen() {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 600);
   }, []);
+
+  const revenueSeries = buildTrendSeries(trends, "totalRevenue");
+  const ordersSeries = buildTrendSeries(trends, "totalOrders");
+  const aovSeries = buildTrendSeries(trends, "avgOrderValue");
 
   return (
     <ScrollView
@@ -218,71 +223,82 @@ export default function TrendsScreen() {
         <EmptyState message="No orders in this period yet." />
       ) : (
         <>
+          <Text style={styles.eyebrow}>Overview</Text>
           <View style={styles.summaryRow}>
             <StatCard value={(trends ?? []).reduce((s, d) => s + d.totalOrders, 0)} label="Total Orders" />
             <StatCard value={formatPeso((trends ?? []).reduce((s, d) => s + d.totalRevenue, 0))} label="Total Revenue" />
           </View>
 
-          <BarChart data={trends ?? []} valueKey="totalRevenue" color={colors.primary} label="Daily Revenue" />
-          <BarChart data={trends ?? []} valueKey="totalOrders" color={colors.success} label="Daily Orders" />
-          <BarChart data={trends ?? []} valueKey="avgOrderValue" color={colors.warning} label="Avg Order Value" />
+          <Text style={styles.eyebrow}>Daily Trends</Text>
+          <BarChart series={revenueSeries} color={colors.accent} label="Daily Revenue" isMoney />
+          <BarChart series={ordersSeries} color={colors.primary} label="Daily Orders" isMoney={false} />
+          <BarChart series={aovSeries} color={colors.warning} label="Avg Order Value" isMoney />
         </>
       )}
 
       {/* Live cards below render independently of the trend series so they
           never disappear just because there are no daily bars yet. */}
       {!salesError && salesAnalytics && (
-        <Card title="Orders by Source" style={styles.chartCard}>
-          <View style={sourceStyles.container}>
-            <View style={sourceStyles.barRow}>
-              <Text style={sourceStyles.label}>Web</Text>
-              <View style={sourceStyles.barTrack}>
-                <View style={[sourceStyles.barFill, {
-                  width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.web / salesAnalytics.totalOrders) * 100 : 0}%`,
-                  backgroundColor: colors.primary,
-                }]} />
+        <>
+          <Text style={styles.eyebrow}>Order Sources</Text>
+          <Card title="Orders by Source" style={styles.chartCard}>
+            <View style={sourceStyles.container}>
+              <View style={sourceStyles.barRow}>
+                <Text style={sourceStyles.label}>Web</Text>
+                <View style={sourceStyles.barTrack}>
+                  <View style={[sourceStyles.barFill, {
+                    width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.web / salesAnalytics.totalOrders) * 100 : 0}%`,
+                    backgroundColor: colors.primary,
+                  }]} />
+                </View>
+                <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.web}</Text>
               </View>
-              <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.web}</Text>
-            </View>
-            <View style={sourceStyles.barRow}>
-              <Text style={sourceStyles.label}>App</Text>
-              <View style={sourceStyles.barTrack}>
-                <View style={[sourceStyles.barFill, {
-                  width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.mobile / salesAnalytics.totalOrders) * 100 : 0}%`,
-                  backgroundColor: colors.success,
-                }]} />
+              <View style={sourceStyles.barRow}>
+                <Text style={sourceStyles.label}>App</Text>
+                <View style={sourceStyles.barTrack}>
+                  <View style={[sourceStyles.barFill, {
+                    width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.mobile / salesAnalytics.totalOrders) * 100 : 0}%`,
+                    backgroundColor: colors.accent,
+                  }]} />
+                </View>
+                <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.mobile}</Text>
               </View>
-              <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.mobile}</Text>
             </View>
-          </View>
-        </Card>
+          </Card>
+        </>
       )}
 
       {/* Payment Trends — hidden if query not deployed */}
       {!paymentError && paymentAnalytics && paymentAnalytics.dailyBreakdown.length > 0 && (
-        <StackedBarChart data={paymentAnalytics.dailyBreakdown} label="Payment Trends" />
+        <>
+          <Text style={styles.eyebrow}>Payments</Text>
+          <StackedBarChart data={paymentAnalytics.dailyBreakdown} label="Payment Trends" />
+        </>
       )}
 
       {/* Cancellation Summary — hidden if query not deployed */}
       {!salesError && salesAnalytics && salesAnalytics.cancelledOrders > 0 && (
-        <Card title="Cancellations" style={styles.chartCard}>
-          <View style={cancelStyles.row}>
-            <View style={cancelStyles.metric}>
-              <Text style={cancelStyles.value}>{salesAnalytics.cancelledOrders}</Text>
-              <Text style={cancelStyles.label}>Cancelled</Text>
+        <>
+          <Text style={styles.eyebrow}>Cancellations</Text>
+          <Card style={cancelStyles.card}>
+            <View style={cancelStyles.row}>
+              <View style={cancelStyles.metric}>
+                <Text style={cancelStyles.value}>{salesAnalytics.cancelledOrders}</Text>
+                <Text style={cancelStyles.label}>Cancelled</Text>
+              </View>
+              <View style={cancelStyles.metric}>
+                <Text style={cancelStyles.value}>{formatPeso(salesAnalytics.cancelledRevenue)}</Text>
+                <Text style={cancelStyles.label}>Lost Revenue</Text>
+              </View>
+              <View style={cancelStyles.metric}>
+                <Text style={[cancelStyles.value, { color: colors.danger }]}>
+                  {formatPercent(salesAnalytics.cancellationRate * 100)}
+                </Text>
+                <Text style={cancelStyles.label}>Cancel Rate</Text>
+              </View>
             </View>
-            <View style={cancelStyles.metric}>
-              <Text style={cancelStyles.value}>{formatPeso(salesAnalytics.cancelledRevenue)}</Text>
-              <Text style={cancelStyles.label}>Lost Revenue</Text>
-            </View>
-            <View style={cancelStyles.metric}>
-              <Text style={[cancelStyles.value, { color: colors.danger }]}>
-                {(salesAnalytics.cancellationRate * 100).toFixed(1)}%
-              </Text>
-              <Text style={cancelStyles.label}>Cancel Rate</Text>
-            </View>
-          </View>
-        </Card>
+          </Card>
+        </>
       )}
     </ScrollView>
   );
@@ -292,6 +308,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: 60 },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.sm },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {
     paddingHorizontal: spacing.lg,
@@ -303,7 +320,7 @@ const styles = StyleSheet.create({
   },
   periodPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   periodText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
-  periodTextActive: { color: "#FFFFFF" },
+  periodTextActive: { color: colors.textOnDark },
   summaryRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg },
   chartCard: { marginBottom: spacing.lg },
   barsContainer: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 3, height: 140, paddingTop: spacing.sm },
@@ -328,14 +345,15 @@ const sourceStyles = StyleSheet.create({
   container: { gap: spacing.md },
   barRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   label: { ...typography.caption, color: colors.textSecondary, fontWeight: "500", width: 32 },
-  barTrack: { flex: 1, height: 20, backgroundColor: colors.separator, borderRadius: 4 },
+  barTrack: { flex: 1, height: 20, backgroundColor: colors.surfaceSubtle, borderRadius: 4 },
   barFill: { height: 20, borderRadius: 4 },
   value: { ...typography.body, color: colors.textPrimary, fontWeight: "600", width: 36, textAlign: "right" },
 });
 
 const cancelStyles = StyleSheet.create({
+  card: { backgroundColor: colors.dangerLight, marginBottom: spacing.lg },
   row: { flexDirection: "row", justifyContent: "space-around" },
   metric: { alignItems: "center" },
-  value: { fontSize: 20, fontWeight: "700", color: colors.textPrimary },
+  value: { fontSize: 20, fontWeight: "800", color: colors.textPrimary },
   label: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
 });

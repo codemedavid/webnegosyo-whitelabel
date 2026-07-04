@@ -18,6 +18,23 @@ const HOUR_SLOTS = [
   { label: "10pm", start: 22, end: 1 },
 ];
 
+// Warm editorial intensity ramp: quiet cells stay on the subtle surface,
+// then amber → coral → charcoal as order volume climbs.
+const HEATMAP_SCALE: { threshold: number; color: string }[] = [
+  { threshold: 0.25, color: colors.warningLight },
+  { threshold: 0.5, color: colors.warning },
+  { threshold: 0.75, color: colors.accent },
+  { threshold: 1, color: colors.primary },
+];
+
+const LIGHT_TEXT_INTENSITY = 0.5;
+
+function heatmapCellColor(intensity: number): string {
+  if (intensity === 0) return colors.surfaceSubtle;
+  const match = HEATMAP_SCALE.find((step) => intensity <= step.threshold);
+  return match?.color ?? colors.primary;
+}
+
 export function HeatmapGrid({ heatmap, peakHour, quietHour: _quietHour }: HeatmapGridProps) {
   // Aggregate into 4-hour slots per day
   const slotData: { day: number; slotIndex: number; count: number }[] = [];
@@ -62,17 +79,10 @@ export function HeatmapGrid({ heatmap, peakHour, quietHour: _quietHour }: Heatma
             return (
               <View
                 key={`${day}-${si}`}
-                style={[
-                  styles.cell,
-                  {
-                    backgroundColor: intensity === 0
-                      ? colors.separator
-                      : `rgba(99, 102, 241, ${0.15 + intensity * 0.85})`,
-                  },
-                ]}
+                style={[styles.cell, { backgroundColor: heatmapCellColor(intensity) }]}
               >
                 {count > 0 && (
-                  <Text style={[styles.cellText, intensity > 0.5 && styles.cellTextLight]}>
+                  <Text style={[styles.cellText, intensity > LIGHT_TEXT_INTENSITY && styles.cellTextLight]}>
                     {count}
                   </Text>
                 )}
@@ -112,8 +122,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cellText: { fontSize: 8, fontWeight: "600", color: colors.textSecondary },
-  cellTextLight: { color: "#FFFFFF" },
+  cellText: { fontSize: 8, fontWeight: "600", color: colors.textPrimary },
+  cellTextLight: { color: colors.textOnDark },
   annotationRow: { marginTop: spacing.sm, alignItems: "center" },
   annotationText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
 });

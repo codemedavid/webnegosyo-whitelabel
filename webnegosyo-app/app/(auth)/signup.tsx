@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
-import { colors, typography, radius, spacing } from "../../theme/colors";
+import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
 
 export default function SignupScreen() {
   const [businessName, setBusinessName] = useState("");
@@ -88,6 +88,7 @@ export default function SignupScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
+          <Text style={styles.eyebrow}>Get Started</Text>
           <Text style={styles.title}>Create your store</Text>
           <Text style={styles.subtitle}>
             WebNegosyo is open to any food or retail business. Tell us about
@@ -144,7 +145,7 @@ export default function SignupScreen() {
             activeOpacity={0.8}
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.textOnDark} />
             ) : (
               <Text style={styles.buttonText}>Submit request</Text>
             )}
@@ -183,8 +184,9 @@ function Field({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 32, paddingTop: 64 },
-  header: { marginBottom: spacing.xl ?? 32 },
-  title: { fontSize: 26, fontWeight: "700", color: colors.textPrimary },
+  header: { marginBottom: spacing.xxl },
+  eyebrow: { ...typography.eyebrow, color: colors.accent, marginBottom: spacing.sm },
+  title: { fontSize: 26, fontWeight: "800", color: colors.textPrimary },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
@@ -195,11 +197,11 @@ const styles = StyleSheet.create({
   label: {
     ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: "500",
+    fontWeight: "600",
     marginLeft: spacing.xs,
   },
   input: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
@@ -211,13 +213,14 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 16,
     alignItems: "center",
     marginTop: spacing.sm,
+    ...shadow.sm,
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#FFFFFF", fontSize: 17, fontWeight: "600" },
+  buttonText: { color: colors.textOnDark, fontSize: 17, fontWeight: "800" },
   backLink: { alignItems: "center", paddingVertical: spacing.sm },
   backText: { ...typography.body, color: colors.textSecondary },
   successContainer: {
@@ -227,12 +230,11 @@ const styles = StyleSheet.create({
   },
   successCheck: {
     fontSize: 56,
-    color: colors.primary,
+    color: colors.success,
     marginBottom: spacing.md,
   },
   successTitle: {
-    fontSize: 24,
-    fontWeight: "700",
+    ...typography.title,
     color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
@@ -240,6 +242,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     textAlign: "center",
-    marginBottom: spacing.xl ?? 32,
+    marginBottom: spacing.xxl,
   },
 });

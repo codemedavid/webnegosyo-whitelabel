@@ -175,7 +175,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
           </Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={handleBook} disabled={!!busy} activeOpacity={0.8}>
             {busy === "book" ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.textOnDark} />
             ) : (
               <Text style={styles.primaryText}>Book Lalamove Delivery</Text>
             )}
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   label: { ...typography.caption, color: colors.textSecondary },
   value: { ...typography.body, color: colors.textPrimary, fontWeight: "500" },
   muted: { ...typography.caption, color: colors.textTertiary, marginBottom: spacing.sm },
-  link: { ...typography.body, color: colors.primary },
+  link: { ...typography.body, color: colors.accent },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -206,15 +206,16 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     alignItems: "center",
   },
-  primaryText: { color: "#FFFFFF", ...typography.heading },
+  primaryText: { color: colors.textOnDark, ...typography.heading },
   secondaryBtn: {
     borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
+    borderColor: colors.separator,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
     alignItems: "center",
@@ -223,7 +224,7 @@ const styles = StyleSheet.create({
   dangerBtn: {
     borderWidth: 1,
     borderColor: colors.danger,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
     alignItems: "center",

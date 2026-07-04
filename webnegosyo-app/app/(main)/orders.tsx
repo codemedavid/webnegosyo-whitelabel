@@ -85,7 +85,10 @@ export default function OrdersScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>Orders</Text>
+        <View>
+          <Text style={styles.eyebrow}>Order Queue</Text>
+          <Text style={styles.title}>Orders</Text>
+        </View>
         <TouchableOpacity
           onPress={() => router.push("/(main)/scan")}
           style={styles.scanButton}
@@ -211,6 +214,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: spacing.md,
   },
+  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.xs },
   title: { ...typography.title, color: colors.textPrimary },
   scanButton: {
     backgroundColor: colors.primary,
@@ -218,7 +222,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  scanButtonText: { ...typography.caption, color: "#FFFFFF", fontWeight: "600" },
+  scanButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
   filterScroll: { maxHeight: 44 },
   filterContent: { paddingHorizontal: spacing.xl, gap: spacing.sm },
   filterPill: {
@@ -231,7 +235,7 @@ const styles = StyleSheet.create({
   },
   filterPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
-  filterTextActive: { color: "#FFFFFF" },
+  filterTextActive: { color: colors.textOnDark },
   list: { flex: 1 },
   listContent: { padding: spacing.xl, paddingTop: spacing.md },
   orderCard: {
@@ -251,17 +255,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: `${colors.primary}15`,
+    backgroundColor: colors.accentLight,
   },
-  orderTypeText: { ...typography.small, color: colors.primary, fontWeight: "700", textTransform: "uppercase" },
+  orderTypeText: { ...typography.small, color: colors.accent, fontWeight: "700", textTransform: "uppercase" },
   orderMeta: { ...typography.caption, color: colors.textSecondary },
   actionButton: {
     backgroundColor: colors.primary,
-    borderRadius: radius.sm,
+    borderRadius: radius.full,
     paddingVertical: 10,
     alignItems: "center",
     marginTop: spacing.md,
   },
-  actionText: { ...typography.body, color: "#FFFFFF", fontWeight: "600" },
+  actionText: { ...typography.body, color: colors.textOnDark, fontWeight: "600" },
   cancelText: { ...typography.caption, color: colors.danger, textAlign: "center", marginTop: spacing.sm, paddingVertical: spacing.xs },
 });

@@ -25,6 +25,6 @@ const styles = StyleSheet.create({
   container: { alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: 32, gap: 8 },
   title: { ...typography.heading, color: colors.textPrimary },
   message: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
-  button: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: radius.sm },
-  buttonText: { ...typography.body, color: "#FFFFFF", fontWeight: "600" },
+  button: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: radius.full },
+  buttonText: { ...typography.body, color: colors.textOnDark, fontWeight: "600" },
 });

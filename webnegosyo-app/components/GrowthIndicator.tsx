@@ -13,7 +13,7 @@ export function GrowthIndicator({ value }: GrowthIndicatorProps) {
   const color = isPositive ? colors.success : colors.danger;
 
   return (
-    <View style={[styles.container, { backgroundColor: isPositive ? colors.statusReady.bg : colors.statusCancelled.bg }]}>
+    <View style={[styles.container, { backgroundColor: isPositive ? colors.successLight : colors.dangerLight }]}>
       <Text style={[styles.text, { color }]}>
         {arrow} {pct}%
       </Text>

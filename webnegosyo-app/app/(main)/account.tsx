@@ -11,7 +11,7 @@ import {
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
-import { colors, typography, spacing, radius } from "../../theme/colors";
+import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 
 const SUPPORT_EMAIL = "support@webnegosyo.com";
@@ -159,7 +159,7 @@ export default function AccountScreen() {
             activeOpacity={0.8}
           >
             {deleting ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.textOnDark} />
             ) : (
               <Text style={styles.deleteButtonText}>Delete Account</Text>
             )}
@@ -174,42 +174,46 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: 60 },
   backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  backText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
+  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.xl },
   section: { marginBottom: spacing.lg },
   value: { ...typography.heading, color: colors.textPrimary },
   sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   demoNote: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
-    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    padding: spacing.lg,
     marginBottom: spacing.lg,
   },
   demoNoteText: { ...typography.caption, color: colors.textSecondary },
   signOutButton: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 16,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.separator,
+    ...shadow.sm,
   },
-  signOutText: { ...typography.heading, color: colors.primary },
+  signOutText: { ...typography.heading, color: colors.textPrimary },
   dangerZone: {
     marginTop: spacing.xxl,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.dangerLight,
     backgroundColor: colors.card,
-    padding: spacing.lg,
+    padding: spacing.xl,
+    ...shadow.sm,
   },
   dangerTitle: { ...typography.heading, color: colors.danger, marginBottom: spacing.xs },
   dangerBody: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg },
   deleteButton: {
     backgroundColor: colors.danger,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     alignItems: "center",
   },
-  deleteButtonText: { ...typography.heading, color: "#FFFFFF" },
+  deleteButtonText: { ...typography.heading, color: colors.textOnDark, fontWeight: "800" },
 });

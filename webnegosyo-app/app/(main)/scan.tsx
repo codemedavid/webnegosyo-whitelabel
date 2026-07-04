@@ -554,19 +554,19 @@ const styles = StyleSheet.create({
   closeText: { ...typography.body, color: colors.primary, fontWeight: "500" },
 
   // Camera
-  cameraWrap: { flex: 1, margin: spacing.xl, borderRadius: radius.lg, overflow: "hidden", backgroundColor: "#000" },
+  cameraWrap: { flex: 1, margin: spacing.xl, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.primary },
   overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   reticle: {
     width: 240,
     height: 240,
     borderWidth: 3,
-    borderColor: "#FFFFFF",
+    borderColor: colors.textOnDark,
     borderRadius: radius.lg,
     backgroundColor: "transparent",
   },
   overlayHint: {
     ...typography.body,
-    color: "#FFFFFF",
+    color: colors.textOnDark,
     marginTop: spacing.xl,
     textAlign: "center",
     paddingHorizontal: spacing.xl,
@@ -598,12 +598,12 @@ const styles = StyleSheet.create({
 
   primaryButton: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     paddingHorizontal: spacing.xxl,
     alignItems: "center",
   },
-  primaryButtonText: { color: "#FFFFFF", ...typography.heading },
+  primaryButtonText: { color: colors.textOnDark, ...typography.heading },
 
   // Preview
   previewWrap: { flex: 1 },
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   itemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.separator },
   slotLabel: {
     ...typography.small,
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: "600",
     marginBottom: 2,
     textTransform: "uppercase",
@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
   slideTrack: {
     height: SLIDE_HEIGHT,
     borderRadius: SLIDE_HEIGHT / 2,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceSubtle,
     borderWidth: 1,
     borderColor: colors.separator,
     justifyContent: "center",

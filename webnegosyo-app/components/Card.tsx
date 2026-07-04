@@ -19,5 +19,5 @@ export function Card({ children, title, style }: CardProps) {
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, ...shadow.sm },
-  title: { ...typography.caption, color: colors.textSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: spacing.sm },
+  title: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.sm },
 });

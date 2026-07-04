@@ -48,5 +48,5 @@ const styles = StyleSheet.create({
   },
   pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   pillText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
-  pillTextActive: { color: "#FFFFFF" },
+  pillTextActive: { color: colors.textOnDark },
 });

@@ -224,10 +224,10 @@ function BundleCard({ bundle }: { bundle: BundleGroup }) {
 
 const bundleStyles = StyleSheet.create({
   container: {
-    backgroundColor: `${colors.primary}08`,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: `${colors.primary}20`,
+    borderColor: colors.separator,
     marginVertical: spacing.xs,
     overflow: "hidden",
   },
@@ -272,7 +272,7 @@ const bundleStyles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
     borderTopWidth: 0.5,
-    borderTopColor: `${colors.primary}20`,
+    borderTopColor: colors.separator,
   },
   item: {
     flexDirection: "row",
@@ -286,7 +286,7 @@ const bundleStyles = StyleSheet.create({
   },
   slotLabel: {
     ...typography.small,
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: "600",
     marginBottom: 2,
     textTransform: "uppercase",
@@ -349,7 +349,10 @@ export default function OrderDetailScreen() {
       </TouchableOpacity>
 
       <View style={styles.statusHeader}>
-        <Text style={styles.title}>Order Details</Text>
+        <View>
+          <Text style={styles.eyebrow}>Order</Text>
+          <Text style={styles.title}>Order Details</Text>
+        </View>
         <Badge label={order.status} variant={order.status} />
       </View>
 
@@ -521,6 +524,7 @@ const styles = StyleSheet.create({
   backButton: { marginBottom: spacing.md },
   backText: { ...typography.body, color: colors.primary },
   statusHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg },
+  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.xs },
   title: { ...typography.title, color: colors.textPrimary },
   section: { marginBottom: spacing.md },
   value: { ...typography.heading, color: colors.textPrimary },
@@ -536,13 +540,13 @@ const styles = StyleSheet.create({
   totalLabel: { ...typography.heading, color: colors.textPrimary },
   totalValue: { ...typography.heading, color: colors.primary },
   actions: { marginTop: spacing.md, gap: spacing.sm },
-  primaryAction: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: "center" },
-  primaryActionText: { color: "#FFFFFF", ...typography.heading },
+  primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
+  primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
   reprintButton: {
     borderWidth: 1,
     borderColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     alignItems: "center",
   },
@@ -577,11 +581,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: `${colors.primary}15`,
+    backgroundColor: colors.accentLight,
   },
   tagText: {
     ...typography.small,
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: "600",
   },
   orderTypeRow: {
@@ -595,17 +599,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: `${colors.primary}15`,
+    backgroundColor: colors.accentLight,
   },
   orderTypeText: {
     ...typography.small,
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: "700",
     textTransform: "uppercase",
   },
   proofLink: {
     ...typography.body,
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: "600",
     marginTop: spacing.xs,
   },

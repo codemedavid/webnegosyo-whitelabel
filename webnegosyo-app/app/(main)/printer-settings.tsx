@@ -126,7 +126,7 @@ export default function PrinterSettingsScreen() {
         {printer && (
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.smallButton} onPress={handleTestPrint} disabled={testing}>
-              {testing ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.smallButtonText}>Test Print</Text>}
+              {testing ? <ActivityIndicator size="small" color={colors.textOnDark} /> : <Text style={styles.smallButtonText}>Test Print</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={[styles.smallButton, styles.dangerButton]} onPress={handleDisconnect}>
               <Text style={styles.smallButtonText}>Remove</Text>
@@ -168,7 +168,7 @@ export default function PrinterSettingsScreen() {
         <Card style={styles.section}>
           <TouchableOpacity style={styles.primaryButton} onPress={handleScan} disabled={scanning}>
             {scanning ? (
-              <ActivityIndicator size="small" color="#FFF" />
+              <ActivityIndicator size="small" color={colors.textOnDark} />
             ) : (
               <Text style={styles.primaryButtonText}>Scan for Printers</Text>
             )}
@@ -213,7 +213,7 @@ export default function PrinterSettingsScreen() {
           />
           <TouchableOpacity style={styles.primaryButton} onPress={handleConnectNetwork} disabled={connecting}>
             {connecting ? (
-              <ActivityIndicator size="small" color="#FFF" />
+              <ActivityIndicator size="small" color={colors.textOnDark} />
             ) : (
               <Text style={styles.primaryButtonText}>Connect</Text>
             )}
@@ -237,12 +237,12 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   smallButton: {
     backgroundColor: colors.primary,
-    borderRadius: radius.sm,
+    borderRadius: radius.full,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
   dangerButton: { backgroundColor: colors.danger },
-  smallButtonText: { ...typography.caption, color: "#FFFFFF", fontWeight: "600" },
+  smallButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   toggleLabel: { ...typography.heading, color: colors.textPrimary },
   toggleSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
@@ -258,15 +258,15 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   tabText: { ...typography.body, color: colors.textSecondary, fontWeight: "500" },
-  tabTextActive: { color: "#FFFFFF" },
+  tabTextActive: { color: colors.textOnDark },
   primaryButton: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: spacing.sm,
   },
-  primaryButtonText: { color: "#FFFFFF", ...typography.heading },
+  primaryButtonText: { color: colors.textOnDark, ...typography.heading },
   deviceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   connectText: { ...typography.body, color: colors.primary, fontWeight: "600" },
   inputLabel: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
   input: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.sm,
     padding: spacing.md,
     ...typography.body,
@@ -289,16 +289,16 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
   },
   warningBanner: {
-    backgroundColor: "#FFF3CD",
+    backgroundColor: colors.warningLight,
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: "#FFECB5",
+    borderColor: colors.warning,
   },
   warningText: {
     ...typography.caption,
-    color: "#856404",
+    color: colors.statusPending.text,
     textAlign: "center",
   },
 });
