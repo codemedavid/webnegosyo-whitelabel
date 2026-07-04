@@ -78,6 +78,13 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="growth"
+        options={{
+          tabBarLabel: "Growth",
+          tabBarIcon: ({ color }) => <TabIcon symbol="⇗" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="trends"
         options={{
           tabBarLabel: "Trends",
