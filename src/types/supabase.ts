@@ -1366,6 +1366,7 @@ export type Database = {
           messenger_page_id: string
           messenger_page_name: string | null
           messenger_redirect_mode: string | null
+          messenger_redirect_enabled: boolean | null
           messenger_username: string | null
           mobile_card_template: string | null
           mobile_grid_columns: number | null
@@ -1531,6 +1532,7 @@ export type Database = {
           messenger_page_id?: string
           messenger_page_name?: string | null
           messenger_redirect_mode?: string | null
+          messenger_redirect_enabled?: boolean | null
           messenger_username?: string | null
           mobile_card_template?: string | null
           mobile_grid_columns?: number | null
@@ -1696,6 +1698,7 @@ export type Database = {
           messenger_page_id?: string
           messenger_page_name?: string | null
           messenger_redirect_mode?: string | null
+          messenger_redirect_enabled?: boolean | null
           messenger_username?: string | null
           mobile_card_template?: string | null
           mobile_grid_columns?: number | null

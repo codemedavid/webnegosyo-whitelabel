@@ -17,7 +17,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, isMessengerRedirectEnabled } from '@/lib/cart-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
@@ -332,9 +332,18 @@ export function useCheckout(tenantSlug: string) {
     }
   }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
+  // Per-tenant toggle: whether checkout auto-opens Messenger after an order.
+  const messengerRedirectEnabled = isMessengerRedirectEnabled(tenant)
+
   // Countdown timer: redirect to Messenger after 3 seconds, auto-expand message if no URL
   useEffect(() => {
     if (!checkoutComplete) return
+    // When the Messenger redirect is turned off, never auto-open. Expand the
+    // order message so the customer can still send it manually.
+    if (!messengerRedirectEnabled) {
+      setMessageExpanded(true)
+      return
+    }
     if (!completedOrderData?.messengerUrl) {
       setMessageExpanded(true)
       return
@@ -353,7 +362,7 @@ export function useCheckout(tenantSlug: string) {
       })
     }, 1000)
     return () => clearInterval(interval)
-  }, [checkoutComplete, completedOrderData?.messengerUrl])
+  }, [checkoutComplete, completedOrderData?.messengerUrl, messengerRedirectEnabled])
 
   // Fetch the delivery fee when a delivery address is entered.
   // Two mutually-exclusive sources: Lalamove (when enabled — always wins) or the
@@ -391,10 +400,12 @@ export function useCheckout(tenantSlug: string) {
         deliveryLongitude: deliveryLng,
       })
 
-      // Delivery enabled but the store's pickup coordinates were never set: surface it
-      // instead of silently showing no fee (which reads as "delivery is broken").
+      // Delivery enabled but the store's pickup coordinates were never set. The customer
+      // already sees `plan.message` via setDeliveryFeeError, so this is a developer/support
+      // diagnostic only — keep it at warn level so it doesn't trip the Next.js dev error
+      // overlay for an already-handled state.
       if (plan.kind === 'misconfigured') {
-        console.error(
+        console.warn(
           `[Checkout] Delivery enabled for tenant ${tenant?.id} but restaurant coordinates are missing`
         )
         resetDeliveryState()

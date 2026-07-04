@@ -10,6 +10,7 @@ import {
   generateMessengerRefUrl,
   generateMessengerCombinedUrl,
   generateMessengerDirectUrl,
+  isMessengerRedirectEnabled,
 } from '@/lib/cart-utils'
 import type { CartItem, MenuItem, Variation, VariationOption, Addon } from '@/types/database'
 import { createTestMenuItem, createTestVariation, createTestAddon, createTestVariationOption } from '../../fixtures/menu-item.fixture'
@@ -440,6 +441,29 @@ describe('cart-utils', () => {
     test('trims whitespace from pageId', () => {
       const result = generateMessengerDirectUrl('  123  ')
       expect(result).toBe('https://www.messenger.com/t/123')
+    })
+  })
+
+  describe('isMessengerRedirectEnabled', () => {
+    test('returns true when the flag is explicitly true', () => {
+      expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: true })).toBe(true)
+    })
+
+    test('returns false when the flag is explicitly false', () => {
+      expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: false })).toBe(false)
+    })
+
+    test('defaults to true when the flag is undefined (backward compatible)', () => {
+      expect(isMessengerRedirectEnabled({})).toBe(true)
+    })
+
+    test('defaults to true when the flag is null', () => {
+      expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: null })).toBe(true)
+    })
+
+    test('defaults to true when the tenant is null or undefined', () => {
+      expect(isMessengerRedirectEnabled(null)).toBe(true)
+      expect(isMessengerRedirectEnabled(undefined)).toBe(true)
     })
   })
 })

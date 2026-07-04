@@ -62,6 +62,12 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
+  hero_kicker?: string; // Uppercase eyebrow above the hero title (rich presets)
+  hero_cta_primary_label?: string; // Primary hero button label (rich presets)
+  hero_cta_secondary_label?: string; // Secondary hero button label (rich presets)
+  hero_featured_product_id?: string | null; // Menu item featured in the hero product card
+  hero_image_url?: string | null; // Fallback hero tile image when no product is attached
+  hero_link_url?: string | null; // Where the fallback hero image links to when clicked
   hero_design?: Record<string, unknown> | null;  // HeroDesign JSON from hero designer
   card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon' | 'storefront'
   checkout_template?: string; // Checkout page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
@@ -70,6 +76,8 @@ export interface Tenant {
   mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
   mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
   mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
+  mobile_overrides?: Record<string, unknown>; // Per-device overrides { column: value } overlaid on mobile viewports
+
   // Storefront theme knobs (design-system presets; 'theme' = inherit tenant default)
   font_pair?: string; // 'theme' | 'elegant serif' | 'bold display' | 'modern sans' | 'warm editorial'
   card_roundness?: string; // 'theme' | 'sharp' | 'soft' | 'round'
@@ -94,6 +102,7 @@ export interface Tenant {
   messenger_page_id: string;
   messenger_username?: string;
   messenger_redirect_mode?: 'webhook' | 'direct'; // 'webhook' = m.me with ref+text, 'direct' = messenger.com/t/
+  messenger_redirect_enabled?: boolean; // Auto-open Messenger after checkout. Undefined/null = on (backward compatible)
   facebook_page_id?: string; // Reference to facebook_pages table
   is_active: boolean;
   mapbox_enabled: boolean;

@@ -399,6 +399,24 @@ export function generateMessengerDirectUrl(
 }
 
 /**
+ * Decide whether the checkout flow should automatically redirect the customer
+ * to Messenger after an order is placed.
+ *
+ * Controlled per-tenant via the `messenger_redirect_enabled` flag. The default
+ * is ON: any tenant where the flag is undefined or null (e.g. rows created
+ * before the column existed) keeps the historical auto-redirect behavior. Only
+ * an explicit `false` turns the redirect off.
+ *
+ * @param tenant - Tenant (or partial) carrying the redirect flag; may be null/undefined
+ * @returns true when the automatic Messenger redirect should fire
+ */
+export function isMessengerRedirectEnabled(
+  tenant: { messenger_redirect_enabled?: boolean | null } | null | undefined
+): boolean {
+  return tenant?.messenger_redirect_enabled !== false
+}
+
+/**
  * Calculate cart total including both regular items and bundles
  */
 export function calculateFullCartTotal(items: CartItem[], bundleItems: CartBundleItem[]): number {
