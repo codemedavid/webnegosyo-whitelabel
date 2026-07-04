@@ -16,6 +16,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { useSafeQuery } from "../../lib/hooks";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
+import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
 import {
   listProducts,
   listCategories,
@@ -104,7 +105,7 @@ export default function ProductManagementScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-    router.push({ pathname: "/(main)/product/[productId]", params: { productId: "new" } });
+    router.push(productHref(NEW_PRODUCT_ID));
   };
 
   const filtered = products.filter((p) => {
@@ -142,6 +143,7 @@ export default function ProductManagementScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
         contentContainerStyle={styles.filterRow}
       >
         <TouchableOpacity
@@ -173,6 +175,7 @@ export default function ProductManagementScreen() {
       </ScrollView>
 
       <ScrollView
+        style={styles.list}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -193,12 +196,7 @@ export default function ProductManagementScreen() {
                 key={product.id}
                 style={styles.row}
                 activeOpacity={0.7}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(main)/product/[productId]",
-                    params: { productId: product.id },
-                  })
-                }
+                onPress={() => router.push(productHref(product.id))}
                 accessibilityRole="button"
                 accessibilityLabel={`Edit ${product.name}`}
               >
@@ -267,7 +265,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.separator,
   },
-  filterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingBottom: spacing.sm },
+  filterScroll: { flexGrow: 0, flexShrink: 0 },
+  filterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingBottom: spacing.sm, alignItems: "center" },
   filterPill: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -279,6 +278,7 @@ const styles = StyleSheet.create({
   filterPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterPillText: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
   filterPillTextActive: { color: colors.textOnDark },
+  list: { flex: 1 },
   content: { padding: spacing.xl, paddingTop: spacing.sm },
   row: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm, ...shadow.sm },
   rowHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },

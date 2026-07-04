@@ -11,7 +11,6 @@ import {
   Image,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import { FunctionReference } from "convex/server";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
@@ -29,6 +28,8 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
+import { productHref } from "../../../lib/navigation";
+import { pickProductImage } from "../../../lib/image-picker";
 import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
 import { LoadingState } from "../../../components/LoadingState";
@@ -125,27 +126,23 @@ export default function ProductEditorScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const outcome = await pickProductImage();
+    if (outcome.status === "unavailable") {
+      Alert.alert(
+        "Photo picker unavailable",
+        "Update to the latest app build to add product photos."
+      );
+      return;
+    }
+    if (outcome.status === "permission-denied") {
       Alert.alert("Permission needed", "Allow photo access to add a product image.");
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (outcome.status === "canceled") return;
 
-    const asset = result.assets[0];
     setIsUploadingImage(true);
     try {
-      const upload = await uploadProductImage({
-        uri: asset.uri,
-        fileName: asset.fileName ?? "product.jpg",
-        mimeType: asset.mimeType ?? "image/jpeg",
-      });
+      const upload = await uploadProductImage(outcome.image);
       updateField("image_url", upload.url);
     } catch {
       Alert.alert("Upload failed", "Could not upload the image. Please try again.");
@@ -179,10 +176,7 @@ export default function ProductEditorScreen() {
     try {
       if (isNew) {
         const created = await createProduct(tenantId, candidate);
-        router.replace({
-          pathname: "/(main)/product/[productId]",
-          params: { productId: created.id },
-        });
+        router.replace(productHref(created.id));
       } else {
         await updateProduct(productId, tenantId, candidate);
       }
