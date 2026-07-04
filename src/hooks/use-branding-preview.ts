@@ -27,9 +27,24 @@ export function stripPreviewMeta(draft: BrandingPreviewDraft): BrandingPreviewDr
   return Object.fromEntries(entries)
 }
 
+const PREVIEW_SESSION_FLAG = 'wn-branding-preview'
+
 function isPreviewModeActive(): boolean {
   if (typeof window === 'undefined') return false
-  return new URLSearchParams(window.location.search).has(BRANDING_PREVIEW_PARAM)
+  const hasParam = new URLSearchParams(window.location.search).has(BRANDING_PREVIEW_PARAM)
+  // Navigating inside the preview iframe drops the query param, so remember
+  // preview mode for the session. Harmless if it lingers: with no editor
+  // posting drafts the hook returns null and nothing changes.
+  try {
+    if (hasParam) {
+      window.sessionStorage.setItem(PREVIEW_SESSION_FLAG, '1')
+      return true
+    }
+    return window.sessionStorage.getItem(PREVIEW_SESSION_FLAG) === '1'
+  } catch {
+    // Storage unavailable (privacy mode) — fall back to the param only.
+    return hasParam
+  }
 }
 
 /**
