@@ -5,8 +5,7 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { HeroDesign } from '@/types/hero-designer'
-import { HeroRenderer } from '@/components/customer/hero-renderer'
+import { StorefrontHero } from '@/components/customer/storefront-hero'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -56,13 +55,14 @@ export const LayoutMagazine = memo(function LayoutMagazine({
     onItemSelect,
     branding,
     cardTemplate,
+    allMenuItems,
     heroOverride,
     bannerOverride,
     currentSlide,
     setCurrentSlide,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-}: Omit<LayoutMagazineProps, 'allMenuItems' | 'mobileGridColumns' | 'tenantSlug'>) {
+}: Omit<LayoutMagazineProps, 'mobileGridColumns' | 'tenantSlug'>) {
     const activeColor = branding.menuCategoryActive || branding.primary
     const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
@@ -94,12 +94,16 @@ export const LayoutMagazine = memo(function LayoutMagazine({
 
     return (
         <div className="max-w-5xl mx-auto">
-            {/* Editorial Header */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
-                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
-                    (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
-                } />
-            ) : (
+            {/* Editorial Header — shared hero decision (preset wins on any layout) */}
+            <StorefrontHero
+                tenant={tenant}
+                branding={branding}
+                allMenuItems={allMenuItems}
+                onSelectProduct={onItemSelect}
+                heroOverride={heroOverride}
+                defaultTitle="Our Menu"
+                defaultDescription="Handcrafted with care"
+            >
                 <div className="mb-16 text-center">
                     <p
                         className="text-xs uppercase tracking-[0.3em] mb-4 font-medium"
@@ -126,7 +130,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                         {heroOverride?.description || tenant?.hero_description || 'Handcrafted with care'}
                     </p>
                 </div>
-            )}
+            </StorefrontHero>
 
             {/* Promotion Banners */}
             {showPromotionBanners && (

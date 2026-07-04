@@ -187,6 +187,9 @@ export interface ProductDetailSettings {
     enable_animations?: boolean
     animation_speed?: 'slow' | 'normal' | 'fast'
 
+    /** Per-device mobile overrides: { column_name: value } applied on mobile. */
+    mobile_overrides?: Record<string, unknown>
+
     created_at?: string
     updated_at?: string
 }

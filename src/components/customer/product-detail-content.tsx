@@ -14,7 +14,8 @@ import { toast } from 'sonner'
 import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpsell } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
-import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { useBrandingPreviewDraft, useBrandingPreviewTenant, useIsMobileViewport } from '@/hooks/use-branding-preview'
+import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
 import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
@@ -366,8 +367,31 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         handleIncreaseQuantity,
     } = useVariationState({ item, category })
 
-    // Merge customization settings with branding
-    const activeCustomization = customizationDraft || customization
+    // Merge customization settings with branding. The Branding Studio streams
+    // product-detail edits under __productDetailDraft (kept separate from the
+    // tenant-column draft because column names collide across the two stores);
+    // merge it over the saved settings so Studio edits preview live. The
+    // in-page pencil editor (customizationDraft) still takes priority when open.
+    const isMobileViewport = useIsMobileViewport()
+    const studioProductDraft = previewDraft?.__productDetailDraft as Partial<ProductDetailSettings> | undefined
+    const studioProductMobile = previewDraft?.__productMobileOverrides as OverrideMap | undefined
+    const savedProductMobile = (customization as { mobile_overrides?: OverrideMap } | null)?.mobile_overrides
+    const activeCustomization = useMemo(() => {
+        if (customizationDraft) return customizationDraft
+        // Saved settings, with the tenant's mobile overrides applied on a phone.
+        let base: Partial<ProductDetailSettings> | null = customization
+        if (isMobileViewport && base) {
+            base = applyMobileOverrides(base as Record<string, unknown>, savedProductMobile) as Partial<ProductDetailSettings>
+        }
+        // Studio preview: desktop product draft, then its mobile layer.
+        if (studioProductDraft && Object.keys(studioProductDraft).length > 0) {
+            base = { ...(base ?? {}), ...studioProductDraft } as Partial<ProductDetailSettings>
+        }
+        if (isMobileViewport && studioProductMobile) {
+            base = applyMobileOverrides((base ?? {}) as Record<string, unknown>, studioProductMobile) as Partial<ProductDetailSettings>
+        }
+        return base
+    }, [customizationDraft, studioProductDraft, studioProductMobile, savedProductMobile, customization, isMobileViewport])
 
     const themeColors = useMemo(() => {
         // Cast to expected type - draft may be Partial but merge function handles null
@@ -1126,13 +1150,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             updated_at: '',
                         } as MenuItem]}
                         previewColors={{
-                            background: customizationDraft?.checkout_modal_background_color || '#ffffff',
-                            title: customizationDraft?.checkout_modal_title_color || '#111111',
-                            description: customizationDraft?.checkout_modal_description_color || '#6b7280',
-                            price: customizationDraft?.checkout_modal_price_color || '#111111',
-                            button: customizationDraft?.checkout_modal_button_color || '#3b82f6',
-                            buttonText: customizationDraft?.checkout_modal_button_text_color || '#ffffff',
-                            border: customizationDraft?.checkout_modal_border_color || '#e5e7eb',
+                            background: activeCustomization?.checkout_modal_background_color || '#ffffff',
+                            title: activeCustomization?.checkout_modal_title_color || '#111111',
+                            description: activeCustomization?.checkout_modal_description_color || '#6b7280',
+                            price: activeCustomization?.checkout_modal_price_color || '#111111',
+                            button: activeCustomization?.checkout_modal_button_color || '#3b82f6',
+                            buttonText: activeCustomization?.checkout_modal_button_text_color || '#ffffff',
+                            border: activeCustomization?.checkout_modal_border_color || '#e5e7eb',
                         }}
                         zIndexClass="z-[58]"
                     />
@@ -1238,7 +1262,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
             </footer>
 
-            {isBrandAdmin && (
+            {isBrandAdmin && !previewDraft && (
                 <LazyProductDetailCustomizer
                     tenant={tenant}
                     onPreview={setCustomizationDraft}

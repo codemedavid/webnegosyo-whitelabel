@@ -8,6 +8,7 @@ import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/databa
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { CategoryIcon } from '@/components/shared/category-icon'
+import { StorefrontHero } from '@/components/customer/storefront-hero'
 
 interface LayoutSidebarProps {
     tenant: Tenant | null
@@ -47,18 +48,20 @@ export const LayoutSidebar = memo(function LayoutSidebar({
     tenant,
     categories,
     filteredItems,
+    allMenuItems,
     searchQuery,
     setSearchQuery,
     onItemSelect,
     branding,
     cardTemplate,
+    heroOverride,
     bannerOverride,
     currentSlide,
     setCurrentSlide,
     mobileGridColumns = 1,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-}: Omit<LayoutSidebarProps, 'allMenuItems' | 'activeCategory' | 'setActiveCategory' | 'heroOverride'>) {
+}: Omit<LayoutSidebarProps, 'activeCategory' | 'setActiveCategory'>) {
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)
@@ -133,7 +136,20 @@ export const LayoutSidebar = memo(function LayoutSidebar({
     }
 
     return (
-        <div className="flex gap-4 md:gap-6">
+        <>
+            {/* Hero Section — shared decision so a chosen hero_preset renders on
+                the sidebar layout too. requireExplicit keeps sidebar hero-less
+                unless a preset/design is set (zero regression). */}
+            <StorefrontHero
+                tenant={tenant}
+                branding={branding}
+                allMenuItems={allMenuItems}
+                onSelectProduct={onItemSelect}
+                heroOverride={heroOverride}
+                requireExplicit
+            />
+
+            <div className="flex gap-4 md:gap-6">
             {/* Sidebar - Visible on all devices now */}
             <aside className="flex flex-col w-20 md:w-24 lg:w-32 shrink-0 sticky top-24 h-[calc(100vh-100px)] overflow-y-auto scrollbar-hide pb-20">
                 {/* All Items Button */}
@@ -284,6 +300,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                     />
                 )}
             </div>
-        </div>
+            </div>
+        </>
     )
 })

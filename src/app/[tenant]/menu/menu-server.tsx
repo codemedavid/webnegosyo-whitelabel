@@ -24,6 +24,8 @@ export async function getMenuData(tenantSlug: string) {
       header_template, mobile_header_template, header_show_logo, header_show_name, header_show_cart, header_show_search,
       header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height,
       hero_title, hero_description, hero_title_color, hero_description_color, hero_design, hero_section_enabled,
+      hero_kicker, hero_cta_primary_label, hero_cta_secondary_label, hero_featured_product_id,
+      hero_image_url, hero_link_url,
       announcement_text, announcement_bg_color, announcement_text_color, is_announcement_visible,
       promotion_image_url,
       facebook_page_id,

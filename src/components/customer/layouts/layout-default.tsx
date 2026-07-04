@@ -8,10 +8,7 @@ import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
 // CategorySubmenu not currently used in this layout
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { HeroDesign } from '@/types/hero-designer'
-import { HeroRenderer } from '@/components/customer/hero-renderer'
-import { HeroPresetSection } from '@/components/customer/hero-preset'
-import { resolveHeroPreset } from '@/lib/storefront-theme'
+import { StorefrontHero } from '@/components/customer/storefront-hero'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 
@@ -53,6 +50,7 @@ export const LayoutDefault = memo(function LayoutDefault({
     tenantSlug,
     categories,
     filteredItems,
+    allMenuItems,
     activeCategory,
     setActiveCategory,
     searchQuery,
@@ -68,45 +66,23 @@ export const LayoutDefault = memo(function LayoutDefault({
     mobileGridColumns = 1,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-}: Omit<LayoutDefaultProps, 'allMenuItems'>) {
+}: LayoutDefaultProps) {
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
 
     return (
         <div>
-            {/* Hero Section */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
-                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className={
-                    (tenant.hero_design as unknown as HeroDesign).layoutMode === 'fullscreen' ? 'mb-6' : 'mb-16'
-                } />
-            ) : resolveHeroPreset(tenant?.hero_preset) ? (
-                <HeroPresetSection
-                    preset={resolveHeroPreset(tenant?.hero_preset)!}
-                    title={heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                    description={heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
-                    titleColor={heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary}
-                    descriptionColor={heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary}
-                    accentColor={branding.accent || branding.primary}
-                />
-            ) : (
-                <div className="text-center mb-16">
-                    <div className="inline-flex items-center gap-2 justify-center">
-                        <h1
-                            className="text-5xl font-serif font-bold mb-4"
-                            style={{ color: heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary }}
-                        >
-                            {heroOverride?.title || tenant?.hero_title || 'Our Menu'}
-                        </h1>
-                    </div>
-                    <p
-                        className="text-lg font-light hidden md:block"
-                        style={{ color: heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary }}
-                    >
-                        {heroOverride?.description || tenant?.hero_description || 'Your Smart Ordering Partner'}
-                    </p>
-                </div>
-            )}
+            {/* Hero Section — shared decision so hero_preset renders on every layout */}
+            <StorefrontHero
+                tenant={tenant}
+                branding={branding}
+                allMenuItems={allMenuItems}
+                onSelectProduct={onItemSelect}
+                heroOverride={heroOverride}
+                defaultTitle="Our Menu"
+                defaultDescription="Your Smart Ordering Partner"
+            />
 
             {/* Promotion Banners Carousel */}
             {showPromotionBanners && (
@@ -234,7 +210,7 @@ export const LayoutDefault = memo(function LayoutDefault({
                 </div>
             ) : (
                 // Show grouped view when no category is selected, regular grid when category is selected
-                <div className="relative">
+                <div id="storefront-menu" className="relative">
                     {activeCategory ? (
                         <MenuGrid
                             items={filteredItems}

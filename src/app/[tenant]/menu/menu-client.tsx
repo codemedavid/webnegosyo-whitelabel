@@ -50,6 +50,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   const tenant = useBrandingPreviewTenant(tenantProp)
   const previewDraft = useBrandingPreviewDraft()
   const isFlashPreview = previewDraft?.__previewSurface === 'flash'
+  // Branding Studio "Cart" surface previews the real drawer over the menu.
+  const isCartPreview = previewDraft?.__previewSurface === 'cart'
   const router = useRouter()
   const { addItem, item_count, setTenantContext } = useCart()
 
@@ -561,7 +563,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
 
 
       <CartDrawer
-        open={isCartOpen}
+        open={isCartOpen || isCartPreview}
         onClose={() => setIsCartOpen(false)}
         tenantSlug={tenantSlug}
         branding={branding}

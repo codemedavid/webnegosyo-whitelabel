@@ -94,6 +94,7 @@ export const VALID_DB_COLUMNS = new Set([
     'button_border_radius',
     'enable_animations',
     'animation_speed',
+    'mobile_overrides',
 ])
 
 /** Strip keys that aren't real DB columns + meta fields the DB manages */

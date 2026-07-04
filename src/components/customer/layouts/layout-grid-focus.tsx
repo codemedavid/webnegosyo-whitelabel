@@ -12,6 +12,7 @@ import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { HorizontalScrollSection } from '../horizontal-scroll-section'
 import { ResponsiveCategorySection } from '../responsive-category-section'
 import { CategoryIcon } from '@/components/shared/category-icon'
+import { StorefrontHero } from '@/components/customer/storefront-hero'
 
 interface LayoutGridFocusProps {
     tenant: Tenant | null
@@ -48,6 +49,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
     tenant,
     categories,
     filteredItems,
+    allMenuItems,
     activeCategory,
     setActiveCategory,
     searchQuery,
@@ -56,12 +58,13 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
     branding,
     cardTemplate,
     isLoading,
+    heroOverride,
     bannerOverride,
     currentSlide,
     setCurrentSlide,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-}: Omit<LayoutGridFocusProps, 'allMenuItems' | 'heroOverride' | 'tenantSlug' | 'mobileGridColumns'>) {
+}: Omit<LayoutGridFocusProps, 'tenantSlug' | 'mobileGridColumns'>) {
     // Get banners
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
@@ -79,6 +82,18 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
 
     return (
         <div>
+            {/* Hero Section — shared decision so a chosen hero_preset renders on
+                the grid-focus layout too. requireExplicit keeps it hero-less
+                unless a preset/design is set (zero regression). */}
+            <StorefrontHero
+                tenant={tenant}
+                branding={branding}
+                allMenuItems={allMenuItems}
+                onSelectProduct={onItemSelect}
+                heroOverride={heroOverride}
+                requireExplicit
+            />
+
             {/* Compact Search Bar */}
             {!isLoading && branding.searchBar.enabled && (
                 <div className="mb-4">

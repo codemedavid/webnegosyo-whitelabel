@@ -4,8 +4,7 @@ import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { SearchBar } from '../search-bar'
 import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { HeroDesign } from '@/types/hero-designer'
-import { HeroRenderer } from '@/components/customer/hero-renderer'
+import { StorefrontHero } from '@/components/customer/storefront-hero'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
@@ -55,13 +54,14 @@ export const LayoutList = memo(function LayoutList({
     onItemSelect,
     branding,
     cardTemplate = 'classic',
+    allMenuItems,
     heroOverride,
     bannerOverride,
     currentSlide,
     setCurrentSlide,
     menuEngineeringEnabled,
     hideCurrencySymbol,
-}: Omit<LayoutListProps, 'allMenuItems' | 'mobileGridColumns' | 'tenantSlug' | 'isLoading'>) {
+}: Omit<LayoutListProps, 'mobileGridColumns' | 'tenantSlug' | 'isLoading'>) {
     const activeColor = branding.menuCategoryActive || branding.primary
     const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
@@ -83,10 +83,17 @@ export const LayoutList = memo(function LayoutList({
 
     return (
         <div className="max-w-2xl mx-auto">
-            {/* Minimal Header */}
-            {tenant?.hero_section_enabled !== false && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).version !== 4 ? (
-                <HeroRenderer design={tenant.hero_design as unknown as HeroDesign} className="mb-8" />
-            ) : (
+            {/* Minimal Header — shared hero decision (preset wins on any layout) */}
+            <StorefrontHero
+                tenant={tenant}
+                branding={branding}
+                allMenuItems={allMenuItems}
+                onSelectProduct={onItemSelect}
+                heroOverride={heroOverride}
+                defaultTitle="Menu"
+                defaultDescription="Browse our offerings"
+                className="mb-8"
+            >
                 <div className="mb-8">
                     <div className="inline-flex items-center gap-2">
                         <h1
@@ -103,7 +110,7 @@ export const LayoutList = memo(function LayoutList({
                         {heroOverride?.description || tenant?.hero_description || 'Browse our offerings'}
                     </p>
                 </div>
-            )}
+            </StorefrontHero>
 
             {/* Search */}
             {branding.searchBar.enabled && (
