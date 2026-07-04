@@ -4,6 +4,7 @@ import {
   bucketByMonth,
   diagnoseGrowth,
   computeScaleTarget,
+  weightedMarginPercent,
   type DailyTrend,
 } from "./growth-metrics";
 
@@ -188,6 +189,30 @@ describe("diagnoseGrowth", () => {
   it("uses built-in benchmarks when none are provided", () => {
     const result = diagnoseGrowth({ avgOrdersPerDay: 1, avgOrderValue: 500, totalOrders: 7 });
     expect(result.bottleneck).toBe("customers");
+  });
+});
+
+describe("weightedMarginPercent", () => {
+  it("averages margins weighted by revenue, ignoring items without a margin", () => {
+    const margin = weightedMarginPercent([
+      { totalRevenue: 3000, marginPercent: 60 },
+      { totalRevenue: 1000, marginPercent: 20 },
+      { totalRevenue: 5000 }, // no cost set — excluded
+    ]);
+    // (3000×60 + 1000×20) ÷ 4000 = 50
+    expect(margin).toBe(50);
+  });
+
+  it("returns undefined when no item has a margin", () => {
+    expect(weightedMarginPercent([{ totalRevenue: 1000 }])).toBeUndefined();
+    expect(weightedMarginPercent([])).toBeUndefined();
+    expect(weightedMarginPercent(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined when margined items have zero revenue", () => {
+    expect(
+      weightedMarginPercent([{ totalRevenue: 0, marginPercent: 40 }]),
+    ).toBeUndefined();
   });
 });
 

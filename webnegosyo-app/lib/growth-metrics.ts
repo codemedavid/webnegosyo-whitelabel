@@ -215,6 +215,31 @@ function resolveBottleneck(
   return "healthy";
 }
 
+export interface MarginRow {
+  totalRevenue: number;
+  marginPercent?: number;
+}
+
+/**
+ * Portfolio margin, weighted by each item's revenue. Items without a cost
+ * (no marginPercent) are excluded; undefined when nothing has a margin.
+ */
+export function weightedMarginPercent(
+  rows: readonly MarginRow[] | undefined,
+): number | undefined {
+  if (!rows) return undefined;
+  const costed = rows.filter(
+    (row) => row.marginPercent !== undefined && row.totalRevenue > 0,
+  );
+  const revenue = costed.reduce((sum, row) => sum + row.totalRevenue, 0);
+  if (revenue <= 0) return undefined;
+  const weighted = costed.reduce(
+    (sum, row) => sum + row.totalRevenue * (row.marginPercent ?? 0),
+    0,
+  );
+  return weighted / revenue;
+}
+
 /** How many orders (or how big an AOV) it takes to hit a monthly target. */
 export function computeScaleTarget(input: ScaleTargetInput): ScaleTarget {
   const ordersNeededPerMonth = Math.ceil(
