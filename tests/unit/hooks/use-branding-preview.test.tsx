@@ -28,6 +28,10 @@ function postDraft(draft: Record<string, unknown>, origin = window.location.orig
   })
 }
 
+beforeEach(() => {
+  window.sessionStorage.clear()
+})
+
 describe('useBrandingPreviewDraft', () => {
   it('stays null when the preview query param is absent', () => {
     setSearch('')
@@ -38,6 +42,19 @@ describe('useBrandingPreviewDraft', () => {
 
   it('captures same-origin draft messages when preview mode is on', () => {
     setSearch(`?${BRANDING_PREVIEW_PARAM}=1`)
+    const { result } = renderHook(() => useBrandingPreviewDraft())
+    postDraft({ primary_color: '#ff0000' })
+    expect(result.current).toEqual({ primary_color: '#ff0000' })
+  })
+
+  it('stays active after in-preview navigation drops the query param', () => {
+    // The admin clicks a link inside the preview iframe: the next page load
+    // has no ?brandingPreview=1, but the session already entered preview mode.
+    setSearch(`?${BRANDING_PREVIEW_PARAM}=1`)
+    const first = renderHook(() => useBrandingPreviewDraft())
+    first.unmount()
+
+    setSearch('')
     const { result } = renderHook(() => useBrandingPreviewDraft())
     postDraft({ primary_color: '#ff0000' })
     expect(result.current).toEqual({ primary_color: '#ff0000' })
