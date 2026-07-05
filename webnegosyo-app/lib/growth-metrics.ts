@@ -16,6 +16,9 @@ export interface GrowthSummary {
   /** Orders ÷ full period length, not just days with sales. */
   avgOrdersPerDay: number;
   avgRevenuePerDay: number;
+  /** Orders ÷ days that had sales — the honest rate for sparse stores. */
+  avgOrdersPerActiveDay: number;
+  avgRevenuePerActiveDay: number;
   avgRevenuePerWeek: number;
   avgRevenuePerMonth: number;
   /** Revenue ÷ orders — the revenue:orders ratio. */
@@ -128,16 +131,19 @@ export function computeGrowthSummary(
   const totalOrders = trends.reduce((sum, day) => sum + day.totalOrders, 0);
   const totalRevenue = trends.reduce((sum, day) => sum + day.totalRevenue, 0);
   const avgRevenuePerDay = safeDivide(totalRevenue, options.periodDays);
+  const activeDays = trends.filter((day) => day.totalOrders > 0).length;
 
   return {
     totalOrders,
     totalRevenue,
     avgOrdersPerDay: safeDivide(totalOrders, options.periodDays),
     avgRevenuePerDay,
+    avgOrdersPerActiveDay: safeDivide(totalOrders, activeDays),
+    avgRevenuePerActiveDay: safeDivide(totalRevenue, activeDays),
     avgRevenuePerWeek: avgRevenuePerDay * DAYS_PER_WEEK,
     avgRevenuePerMonth: avgRevenuePerDay * DAYS_PER_MONTH,
     avgOrderValue: safeDivide(totalRevenue, totalOrders),
-    activeDays: trends.filter((day) => day.totalOrders > 0).length,
+    activeDays,
     revenuePerCustomer:
       options.totalCustomers !== undefined
         ? safeDivide(totalRevenue, options.totalCustomers)
