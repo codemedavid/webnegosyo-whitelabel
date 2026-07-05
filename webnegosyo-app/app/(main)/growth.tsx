@@ -177,9 +177,11 @@ export default function GrowthScreen() {
     totalCustomers: customers?.totalCustomers,
   });
   const marginPercent = weightedMarginPercent(productRows);
+  // Judge the customer lever on selling days, so a weekends-only store with a
+  // full queue isn't told it "lacks customers" just because it closes weekdays.
   const diagnosis = diagnoseGrowth(
     {
-      avgOrdersPerDay: summary.avgOrdersPerDay,
+      avgOrdersPerDay: summary.avgOrdersPerActiveDay,
       avgOrderValue: summary.avgOrderValue,
       totalOrders: summary.totalOrders,
       marginPercent,
@@ -243,20 +245,22 @@ export default function GrowthScreen() {
         <EmptyState message="No orders in this period yet. Your growth scorecard starts with the first sale." />
       ) : (
         <>
-          {/* Hero — monthly revenue pace on the dark ink surface */}
+          {/* Hero — actual revenue for the period on the dark ink surface */}
           <View style={styles.hero}>
-            <Text style={styles.heroEyebrow}>Monthly revenue pace</Text>
+            <Text style={styles.heroEyebrow}>Revenue · Last {daysBack} days</Text>
             <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
-              {formatPeso(summary.avgRevenuePerMonth, 0)}
+              {formatPeso(summary.totalRevenue, 0)}
             </Text>
             <Text style={styles.heroCaption}>
-              Based on the last {daysBack} days · {summary.activeDays} selling day{summary.activeDays === 1 ? "" : "s"}
+              {formatCount(summary.totalOrders)} order{summary.totalOrders === 1 ? "" : "s"} across{" "}
+              {summary.activeDays} selling day{summary.activeDays === 1 ? "" : "s"}
+              {customers ? ` · ${formatCount(customers.totalCustomers)} customer${customers.totalCustomers === 1 ? "" : "s"}` : ""}
             </Text>
             <View style={styles.heroDivider} />
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>{summary.avgOrdersPerDay.toFixed(1)}</Text>
-                <Text style={styles.heroStatLabel}>Orders / day</Text>
+                <Text style={styles.heroStatValue}>{formatCount(summary.totalOrders)}</Text>
+                <Text style={styles.heroStatLabel}>Orders</Text>
               </View>
               <View style={styles.heroStatSeparator} />
               <View style={styles.heroStat}>
@@ -280,9 +284,9 @@ export default function GrowthScreen() {
           <Card style={styles.sectionCard}>
             <LeverRow
               name="Customers"
-              value={`${summary.avgOrdersPerDay.toFixed(1)}/day`}
-              benchmark={`Healthy: ${DEFAULT_BENCHMARKS.minOrdersPerDay}+ orders a day`}
-              isPassing={summary.avgOrdersPerDay >= DEFAULT_BENCHMARKS.minOrdersPerDay}
+              value={`${summary.avgOrdersPerActiveDay.toFixed(1)}/day`}
+              benchmark={`Healthy: ${DEFAULT_BENCHMARKS.minOrdersPerDay}+ orders on a selling day`}
+              isPassing={summary.avgOrdersPerActiveDay >= DEFAULT_BENCHMARKS.minOrdersPerDay}
               isBottleneck={diagnosis.bottleneck === "customers"}
             />
             <LeverRow
@@ -314,19 +318,25 @@ export default function GrowthScreen() {
             </View>
           </Card>
 
-          {/* Averages — day / week / month at a glance */}
-          <Text style={styles.eyebrow}>Your averages</Text>
+          {/* Averages — what a selling day looks like, then the run-rate */}
+          <Text style={styles.eyebrow}>On a selling day</Text>
           <View style={styles.statRow}>
-            <StatCard value={formatPeso(summary.avgRevenuePerDay, 0)} label="Revenue / day" />
-            <StatCard value={formatPeso(summary.avgRevenuePerWeek, 0)} label="Revenue / week" />
-          </View>
-          <View style={styles.statRow}>
-            <StatCard value={formatPeso(summary.avgRevenuePerMonth, 0)} label="Revenue / month" />
             <StatCard
-              value={formatCount(summary.totalOrders)}
-              label="Orders"
-              hint={`${formatPeso(summary.totalRevenue, 0)} total`}
+              value={formatPeso(summary.avgRevenuePerActiveDay, 0)}
+              label="Revenue"
+              hint={`across ${summary.activeDays} selling day${summary.activeDays === 1 ? "" : "s"}`}
             />
+            <StatCard
+              value={summary.avgOrdersPerActiveDay.toFixed(1)}
+              label="Orders"
+              hint={`${formatPeso(summary.avgOrderValue, 0)} each`}
+            />
+          </View>
+
+          <Text style={styles.eyebrow}>Run-rate if this continues</Text>
+          <View style={styles.statRow}>
+            <StatCard value={formatPeso(summary.avgRevenuePerWeek, 0)} label="Per week" />
+            <StatCard value={formatPeso(summary.avgRevenuePerMonth, 0)} label="Per month" />
           </View>
           {customers && (
             <View style={styles.statRow}>
