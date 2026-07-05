@@ -10,6 +10,7 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
@@ -190,7 +191,10 @@ export default function TrendsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <Text style={styles.title}>Trends</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Trends</Text>
+        <WorkspaceSwitcher />
+      </View>
 
       <View style={styles.periodRow}>
         {[7, 14, 30].map((d) => (
@@ -307,7 +311,13 @@ export default function TrendsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: 60 },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  title: { ...typography.title, color: colors.textPrimary },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.sm },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
-import { formatPeso } from "../../lib/format";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
 import { router } from "expo-router";
@@ -11,8 +10,11 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-import { Badge } from "../../components/Badge";
 import { PeriodSelector } from "../../components/PeriodSelector";
+import { HeroRevenueCard } from "../../components/HeroRevenueCard";
+import { StatusPipeline } from "../../components/StatusPipeline";
+import { OrderCard } from "../../components/OrderCard";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -81,6 +83,27 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+function HeaderActions({ isConnected }: { isConnected: boolean }) {
+  return (
+    <View style={styles.headerRight}>
+      <TouchableOpacity
+        onPress={() => router.push("/(main)/scan")}
+        style={styles.scanButton}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => router.push("/(main)/printer-settings")} style={styles.printerButton}>
+        <Text style={{ fontSize: 20 }}>🖨</Text>
+        <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
+        <Text style={styles.accountText}>Account</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -108,6 +131,7 @@ export default function DashboardScreen() {
 
   const displayStats = period === "today" ? stats : periodStats;
   const isStatsLoading = period === "today" ? isLoading : periodLoading;
+  const periodLabel = DASHBOARD_PERIODS.find((p) => p.value === period)?.label ?? "Today";
 
   useEffect(() => {
     loadSaved();
@@ -119,22 +143,11 @@ export default function DashboardScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerText}>
             <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
           </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={() => router.push("/(main)/printer-settings")}
-              style={styles.printerButton}
-            >
-              <Text style={{ fontSize: 20 }}>🖨</Text>
-              <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
-              <Text style={styles.accountText}>Account</Text>
-            </TouchableOpacity>
-          </View>
+          <HeaderActions isConnected={isConnected} />
         </View>
         <ErrorState
           message={error ?? "Convex is not configured for this tenant. Please contact support."}
@@ -148,6 +161,13 @@ export default function DashboardScreen() {
   const confirmCount = queue?.confirmed?.length ?? 0;
   const preparingCount = queue?.preparing?.length ?? 0;
   const readyCount = queue?.ready?.length ?? 0;
+  const activeCount = pendingCount + confirmCount + preparingCount + readyCount;
+  const deliveredCount = displayStats?.statusCounts?.delivered ?? 0;
+
+  // Oldest pending first — those are the orders most at risk of a wait complaint.
+  const needsAttention = [...(queue?.pending ?? [])]
+    .sort((a, b) => a._creationTime - b._creationTime)
+    .slice(0, 5);
 
   return (
     <ScrollView
@@ -158,38 +178,18 @@ export default function DashboardScreen() {
       }
     >
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
-          <View style={styles.liveRow}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>Live · updates automatically</Text>
-          </View>
+          <Text style={styles.tenantName} numberOfLines={1}>{tenantName ?? "Dashboard"}</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={() => router.push("/(main)/scan")}
-            style={styles.scanButton}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(main)/printer-settings")}
-            style={styles.printerButton}
-          >
-            <Text style={{ fontSize: 20 }}>🖨</Text>
-            <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
-            <Text style={styles.accountText}>Account</Text>
-          </TouchableOpacity>
-        </View>
+        <HeaderActions isConnected={isConnected} />
+      </View>
+      <View style={styles.switcherRow}>
+        <WorkspaceSwitcher />
       </View>
 
-      {/* New-order alerts (ringtone + notification) are now mounted once at the
-          (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab —
-          not just here. Mounting them on the dashboard too would double-ring. */}
+      {/* New-order alerts (ringtone + notification) are mounted once at the
+          (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab. */}
 
       {isDemo && (
         <View style={styles.demoBanner}>
@@ -201,57 +201,59 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      <PeriodSelector periods={DASHBOARD_PERIODS} selected={period} onSelect={setPeriod} />
+
       {isStatsLoading ? (
         <LoadingState message="Loading dashboard..." />
       ) : (
         <>
-          <PeriodSelector periods={DASHBOARD_PERIODS} selected={period} onSelect={setPeriod} />
+          <HeroRevenueCard
+            revenue={displayStats?.totalRevenue ?? 0}
+            orderCount={displayStats?.totalOrders ?? 0}
+            avgOrder={displayStats?.avgOrderValue ?? 0}
+            periodLabel={periodLabel}
+            isLive={period === "today"}
+          />
+
           <View style={styles.statsRow}>
-            <StatCard value={displayStats?.totalOrders ?? 0} label={period === "today" ? "Orders Today" : "Total Orders"} />
-            <StatCard value={formatPeso(displayStats?.totalRevenue ?? 0, 0)} label="Revenue" />
-          </View>
-          <View style={styles.statsRow}>
-            <StatCard value={formatPeso(displayStats?.avgOrderValue ?? 0, 0)} label="Avg Order" />
-            <StatCard value={pendingCount + confirmCount + preparingCount + readyCount} label="Active Now" />
+            <StatCard value={activeCount} label="Active now" icon="🔥" hint="In the queue" />
+            <StatCard value={deliveredCount} label="Delivered" icon="✅" hint={periodLabel} />
           </View>
 
-          <Text style={styles.sectionTitle}>Order Queue</Text>
-          <View style={styles.queueRow}>
-            {([
-              { label: "Pending", count: pendingCount, color: colors.statusPending.bg, textColor: colors.statusPending.text },
-              { label: "Confirmed", count: confirmCount, color: colors.statusConfirmed.bg, textColor: colors.statusConfirmed.text },
-              { label: "Preparing", count: preparingCount, color: colors.statusPreparing.bg, textColor: colors.statusPreparing.text },
-              { label: "Ready", count: readyCount, color: colors.statusReady.bg, textColor: colors.statusReady.text },
-            ] as const).map((item) => (
-              <View key={item.label} style={[styles.queueItem, { backgroundColor: item.color }]}>
-                <Text style={[styles.queueCount, { color: item.textColor }]}>{item.count}</Text>
-                <Text style={[styles.queueLabel, { color: item.textColor }]}>{item.label}</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Order Queue</Text>
+            <TouchableOpacity onPress={() => router.push("/(main)/orders")}>
+              <Text style={styles.sectionLink}>View all →</Text>
+            </TouchableOpacity>
+          </View>
+          <StatusPipeline
+            stages={[
+              { key: "pending", label: "Pending", count: pendingCount },
+              { key: "confirmed", label: "Confirmed", count: confirmCount },
+              { key: "preparing", label: "Preparing", count: preparingCount },
+              { key: "ready", label: "Ready", count: readyCount },
+            ]}
+            onStagePress={(key) => router.push(`/(main)/orders?status=${key}`)}
+          />
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Needs Attention</Text>
+            {pendingCount > 0 && (
+              <View style={styles.attentionBadge}>
+                <Text style={styles.attentionBadgeText}>{pendingCount}</Text>
               </View>
-            ))}
+            )}
           </View>
-
-          <Text style={styles.sectionTitle}>Recent Pending</Text>
-          {pendingCount === 0 ? (
-            <EmptyState message="No pending orders" />
+          {needsAttention.length === 0 ? (
+            <EmptyState message="🎉 All caught up — no pending orders" />
           ) : (
-            (queue?.pending ?? []).slice(0, 5).map((order) => (
-              <TouchableOpacity
+            needsAttention.map((order) => (
+              <OrderCard
                 key={order._id}
-                style={styles.orderCard}
+                order={order}
+                compact
                 onPress={() => router.push(`/(main)/order/${order._id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.orderHeader}>
-                  <Text style={styles.orderName}>{order.customerName}</Text>
-                  <Text style={styles.orderTotal}>{formatPeso(order.total)}</Text>
-                </View>
-                <View style={styles.orderMeta}>
-                  <Text style={styles.orderMetaText}>
-                    {order.itemCount} item{order.itemCount !== 1 ? "s" : ""} · {order.orderType ?? "N/A"}
-                  </Text>
-                  <Badge label="pending" variant="pending" />
-                </View>
-              </TouchableOpacity>
+              />
             ))
           )}
         </>
@@ -262,14 +264,13 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.xxl },
+  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.sm },
+  switcherRow: { flexDirection: "row", marginBottom: spacing.lg },
+  headerText: { flex: 1, marginRight: spacing.sm },
   greeting: { ...typography.eyebrow, color: colors.textSecondary },
   tenantName: { ...typography.title, color: colors.textPrimary, marginTop: spacing.xs },
-  liveRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
-  liveText: { ...typography.small, color: colors.textTertiary },
-  logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
   accountText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
   demoBanner: {
     backgroundColor: colors.card,
@@ -282,19 +283,26 @@ const styles = StyleSheet.create({
   },
   demoBannerTitle: { ...typography.body, color: colors.accent, fontWeight: "700" },
   demoBannerBody: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  statsRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
-  sectionTitle: { ...typography.eyebrow, color: colors.textSecondary, marginTop: spacing.xl, marginBottom: spacing.md },
-  queueRow: { flexDirection: "row", gap: spacing.sm },
-  queueItem: { flex: 1, borderRadius: radius.md, padding: spacing.md, alignItems: "center" },
-  queueCount: { fontSize: 22, fontWeight: "800" },
-  queueLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
-  orderCard: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm, ...shadow.sm },
-  orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  orderName: { ...typography.heading, color: colors.textPrimary },
-  orderTotal: { ...typography.heading, color: colors.accent },
-  orderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
-  orderMetaText: { ...typography.caption, color: colors.textSecondary },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  statsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.md },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  sectionTitle: { ...typography.eyebrow, color: colors.textSecondary },
+  sectionLink: { ...typography.caption, color: colors.accent, fontWeight: "700" },
+  attentionBadge: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.statusPending.bg,
+    alignItems: "center",
+  },
+  attentionBadgeText: { fontSize: 12, fontWeight: "800", color: colors.statusPending.text },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   scanButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,

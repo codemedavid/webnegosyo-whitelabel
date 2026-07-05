@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
@@ -9,6 +9,8 @@ import { Badge } from "../../../components/Badge";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
+import { useOrderItemImages } from "../../../hooks/use-order-item-images";
+import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
@@ -28,6 +30,7 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 interface OrderItem {
+  menuItemId?: string;
   menuItemName: string;
   variation?: string;
   variationSelections?: { typeName: string; optionName: string; priceAdjustment: number }[];
@@ -136,6 +139,23 @@ function formatFieldLabel(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function ItemThumb({ url, name }: { url?: string; name: string }) {
+  if (url) {
+    return <Image source={{ uri: url }} style={thumbStyles.thumb} alt={name} />;
+  }
+  return (
+    <View style={[thumbStyles.thumb, thumbStyles.placeholder, { backgroundColor: getAvatarColor(name) }]}>
+      <Text style={thumbStyles.placeholderText}>{getInitials(name)}</Text>
+    </View>
+  );
+}
+
+const thumbStyles = StyleSheet.create({
+  thumb: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceSubtle, marginRight: spacing.md },
+  placeholder: { alignItems: "center", justifyContent: "center" },
+  placeholderText: { color: colors.textOnDark, fontWeight: "800", fontSize: 14 },
+});
+
 function groupBundleItems(items: OrderItem[]): { regularItems: OrderItem[]; bundles: BundleGroup[] } {
   const regularItems: OrderItem[] = [];
   const bundleMap = new Map<string, BundleGroup>();
@@ -162,7 +182,7 @@ function groupBundleItems(items: OrderItem[]): { regularItems: OrderItem[]; bund
   return { regularItems, bundles: Array.from(bundleMap.values()) };
 }
 
-function BundleCard({ bundle }: { bundle: BundleGroup }) {
+function BundleCard({ bundle, images }: { bundle: BundleGroup; images: Map<string, string> }) {
   const [expanded, setExpanded] = React.useState(true);
 
   return (
@@ -191,6 +211,7 @@ function BundleCard({ bundle }: { bundle: BundleGroup }) {
         <View style={bundleStyles.itemList}>
           {bundle.items.map((item, i) => (
             <View key={i} style={[bundleStyles.item, i < bundle.items.length - 1 && bundleStyles.itemBorder]}>
+              <ItemThumb url={item.menuItemId ? images.get(item.menuItemId) : undefined} name={item.menuItemName} />
               <View style={{ flex: 1 }}>
                 {item.slotName && (
                   <Text style={bundleStyles.slotLabel}>{item.slotName}</Text>
@@ -298,6 +319,11 @@ export default function OrderDetailScreen() {
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { printOrder, autoPrint, hasPrinter } = useOrderPrint();
+
+  const itemImageIds = (order?.items ?? [])
+    .map((it) => it.menuItemId)
+    .filter((id): id is string => !!id);
+  const { images: itemImages } = useOrderItemImages(itemImageIds);
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
@@ -409,6 +435,7 @@ export default function OrderDetailScreen() {
             <>
               {regularItems.map((item, i) => (
                 <View key={i} style={[styles.itemRow, i < regularItems.length - 1 && styles.itemBorder]}>
+                  <ItemThumb url={item.menuItemId ? itemImages.get(item.menuItemId) : undefined} name={item.menuItemName} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemName}>{item.menuItemName}</Text>
                     {item.variationSelections && item.variationSelections.length > 0 ? (
@@ -432,7 +459,7 @@ export default function OrderDetailScreen() {
                 </View>
               ))}
               {bundles.map((bundle) => (
-                <BundleCard key={bundle.bundleId} bundle={bundle} />
+                <BundleCard key={bundle.bundleId} bundle={bundle} images={itemImages} />
               ))}
             </>
           );
@@ -529,7 +556,7 @@ const styles = StyleSheet.create({
   section: { marginBottom: spacing.md },
   value: { ...typography.heading, color: colors.textPrimary },
   sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  itemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.sm },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.sm },
   itemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.separator },
   itemName: { ...typography.body, color: colors.textPrimary, fontWeight: "500" },
   itemDetail: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },

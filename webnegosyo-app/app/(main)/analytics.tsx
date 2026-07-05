@@ -17,6 +17,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { HeatmapGrid } from "../../components/HeatmapGrid";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getUpsellAnalyticsRef = "analytics:getUpsellAnalytics" as unknown as FunctionReference<"query">;
 const getBundleAnalyticsRef = "analytics:getBundleAnalytics" as unknown as FunctionReference<"query">;
@@ -115,7 +116,10 @@ export default function AnalyticsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <Text style={styles.title}>Analytics</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Analytics</Text>
+        <WorkspaceSwitcher />
+      </View>
 
       <View style={styles.periodRow}>
         {[7, 14, 30].map((d) => (
@@ -667,7 +671,13 @@ const barStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: 60 },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  title: { ...typography.title, color: colors.textPrimary },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {
     paddingHorizontal: spacing.lg,

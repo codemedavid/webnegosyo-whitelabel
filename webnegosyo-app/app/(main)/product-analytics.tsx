@@ -10,7 +10,6 @@ import {
   TextInput,
   Alert,
 } from "react-native";
-import { router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
@@ -22,6 +21,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { PeriodSelector } from "../../components/PeriodSelector";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getAllRef = "productAnalytics:getAll" as unknown as FunctionReference<"query">;
 const getPortfolioRef = "productAnalytics:getPortfolioSummary" as unknown as FunctionReference<"query">;
@@ -198,14 +198,7 @@ export default function ProductAnalyticsScreen() {
             <Text style={styles.title}>Products</Text>
             <Text style={styles.subtitle}>Sales performance for every menu item</Text>
           </View>
-          <TouchableOpacity
-            style={styles.manageButton}
-            onPress={() => router.push("/(main)/product-management")}
-            accessibilityRole="button"
-            accessibilityLabel="Manage products"
-          >
-            <Text style={styles.manageButtonText}>Manage</Text>
-          </TouchableOpacity>
+          <WorkspaceSwitcher />
         </View>
       </View>
 
@@ -322,13 +315,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  manageButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  manageButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   content: { padding: spacing.xl, paddingTop: spacing.md },

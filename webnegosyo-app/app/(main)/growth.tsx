@@ -32,6 +32,7 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
 const getCustomerInsightsRef = "analytics:getCustomerInsights" as unknown as FunctionReference<"query">;
@@ -59,13 +60,13 @@ interface ProductAnalyticsRow {
 const PERIOD_OPTIONS = [30, 60, 90] as const;
 const TARGET_MULTIPLIERS = [1.5, 2, 3] as const;
 
-// Visual identity per bottleneck: tint + strong color for the verdict card.
-const BOTTLENECK_STYLE: Record<GrowthBottleneck, { bg: string; fg: string; glyph: string }> = {
-  "no-data": { bg: colors.infoLight, fg: colors.info, glyph: "◌" },
-  customers: { bg: colors.warningLight, fg: colors.statusPending.text, glyph: "◎" },
-  aov: { bg: colors.accentLight, fg: colors.statusPreparing.text, glyph: "◈" },
-  margin: { bg: colors.dangerLight, fg: colors.statusCancelled.text, glyph: "◐" },
-  healthy: { bg: colors.successLight, fg: colors.statusReady.text, glyph: "●" },
+// Verdict card tint per bottleneck, matching the status-pill palette.
+const BOTTLENECK_STYLE: Record<GrowthBottleneck, { bg: string; fg: string }> = {
+  "no-data": { bg: colors.infoLight, fg: colors.info },
+  customers: { bg: colors.warningLight, fg: colors.statusPending.text },
+  aov: { bg: colors.accentLight, fg: colors.statusPreparing.text },
+  margin: { bg: colors.dangerLight, fg: colors.statusCancelled.text },
+  healthy: { bg: colors.successLight, fg: colors.statusReady.text },
 };
 
 /** One lever of the growth engine: label, value, and pass/fail vs benchmark. */
@@ -90,7 +91,6 @@ function LeverRow({ name, value, benchmark, isPassing, isBottleneck, isUnknown }
         <Text style={leverStyles.benchmark}>{benchmark}</Text>
       </View>
       <Text style={leverStyles.value}>{value}</Text>
-      {isBottleneck && <Text style={leverStyles.flag}>FIX THIS</Text>}
     </View>
   );
 }
@@ -101,21 +101,20 @@ const leverStyles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     gap: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: "transparent",
   },
-  rowBottleneck: { backgroundColor: colors.surfaceSubtle },
+  rowBottleneck: {
+    backgroundColor: colors.surfaceSubtle,
+    borderLeftColor: colors.accent,
+  },
   dot: { width: 10, height: 10, borderRadius: 5 },
   textBlock: { flex: 1 },
   name: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
   benchmark: { ...typography.small, color: colors.textTertiary, marginTop: 1 },
   value: { ...typography.heading, color: colors.textPrimary },
-  flag: {
-    ...typography.small,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    color: colors.accent,
-  },
 });
 
 /** Compact bar strip for weekly/monthly revenue buckets. */
@@ -208,8 +207,10 @@ export default function GrowthScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <Text style={styles.title}>Growth</Text>
-      <Text style={styles.subtitle}>Your scaling scorecard</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Growth</Text>
+        <WorkspaceSwitcher />
+      </View>
 
       <View style={styles.periodRow}>
         {PERIOD_OPTIONS.map((d) => (
@@ -277,9 +278,6 @@ export default function GrowthScreen() {
           {/* Growth engine — the three levers, bottleneck flagged */}
           <Text style={styles.eyebrow}>Growth engine</Text>
           <Card style={styles.sectionCard}>
-            <Text style={styles.equation}>
-              Revenue = Customers × Ticket size, kept by Margin
-            </Text>
             <LeverRow
               name="Customers"
               value={`${summary.avgOrdersPerDay.toFixed(1)}/day`}
@@ -308,7 +306,7 @@ export default function GrowthScreen() {
             />
             <View style={[styles.verdict, { backgroundColor: verdictStyle.bg }]}>
               <Text style={[styles.verdictTitle, { color: verdictStyle.fg }]}>
-                {verdictStyle.glyph}  {diagnosis.title}
+                {diagnosis.title}
               </Text>
               <Text style={[styles.verdictAdvice, { color: verdictStyle.fg }]}>
                 {diagnosis.advice}
@@ -325,9 +323,9 @@ export default function GrowthScreen() {
           <View style={styles.statRow}>
             <StatCard value={formatPeso(summary.avgRevenuePerMonth, 0)} label="Revenue / month" />
             <StatCard
-              value={`${formatPesoCompact(summary.avgOrderValue)} : 1`}
-              label="Revenue : orders"
-              hint={`${formatCount(summary.totalOrders)} orders · ${formatPeso(summary.totalRevenue, 0)}`}
+              value={formatCount(summary.totalOrders)}
+              label="Orders"
+              hint={`${formatPeso(summary.totalRevenue, 0)} total`}
             />
           </View>
           {customers && (
@@ -362,7 +360,7 @@ export default function GrowthScreen() {
           {/* Scale planner — what it takes to multiply the current pace */}
           <Text style={styles.eyebrow}>Scale planner</Text>
           <Card style={styles.sectionCard}>
-            <Text style={styles.plannerLead}>If you want to grow your monthly revenue…</Text>
+            <Text style={styles.plannerLead}>Grow monthly revenue by</Text>
             <View style={styles.multiplierRow}>
               {TARGET_MULTIPLIERS.map((m) => (
                 <TouchableOpacity
@@ -384,25 +382,22 @@ export default function GrowthScreen() {
             </Text>
             <View style={styles.pathRow}>
               <View style={styles.pathCard}>
-                <Text style={styles.pathEyebrow}>Path 1 · More customers</Text>
+                <Text style={styles.pathEyebrow}>More orders</Text>
                 <Text style={styles.pathValue}>+{formatCount(scaleTarget.additionalOrdersPerDay)}</Text>
                 <Text style={styles.pathCaption}>
-                  extra orders a day ({formatCount(scaleTarget.ordersNeededPerDay)}/day total)
+                  a day, {formatCount(scaleTarget.ordersNeededPerDay)}/day total
                 </Text>
               </View>
               <View style={styles.pathCard}>
-                <Text style={styles.pathEyebrow}>Path 2 · Bigger tickets</Text>
+                <Text style={styles.pathEyebrow}>Bigger basket</Text>
                 <Text style={styles.pathValue}>
                   {formatPeso(scaleTarget.aovNeededAtCurrentVolume, 0)}
                 </Text>
                 <Text style={styles.pathCaption}>
-                  per order at today&apos;s volume (now {formatPeso(summary.avgOrderValue, 0)})
+                  per order, from {formatPeso(summary.avgOrderValue, 0)} today
                 </Text>
               </View>
             </View>
-            <Text style={styles.plannerFootnote}>
-              Mix both: upsells and bundles raise the ticket while promos bring the orders.
-            </Text>
           </Card>
         </>
       )}
@@ -414,7 +409,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
   title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.sm },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {
@@ -460,13 +460,6 @@ const styles = StyleSheet.create({
   },
 
   sectionCard: { marginBottom: spacing.xl },
-  equation: {
-    ...typography.small,
-    color: colors.textTertiary,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
-  },
   verdict: { borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.md },
   verdictTitle: { ...typography.heading, fontSize: 15 },
   verdictAdvice: { ...typography.caption, marginTop: spacing.xs, lineHeight: 19 },
@@ -503,5 +496,4 @@ const styles = StyleSheet.create({
   pathEyebrow: { ...typography.small, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.4 },
   pathValue: { fontSize: 24, fontWeight: "800", color: colors.textPrimary, marginTop: spacing.sm },
   pathCaption: { ...typography.small, color: colors.textSecondary, marginTop: 2, lineHeight: 15 },
-  plannerFootnote: { ...typography.small, color: colors.textTertiary, marginTop: spacing.lg },
 });
