@@ -52,6 +52,8 @@ interface CustomerInsights {
   returnRate: number;
   /** Total spend ÷ unique customers, computed backend-side from one dataset. */
   avgRevenuePerCustomer: number;
+  /** Anonymous POS orders excluded from customer counts (backend ≥ v12). */
+  walkInOrders?: number;
 }
 
 interface ProductAnalyticsRow {
@@ -340,12 +342,16 @@ export default function GrowthScreen() {
               <StatCard
                 value={formatCount(customers.totalCustomers)}
                 label="Customers"
-                hint={`${formatPercent(customers.returnRate * 100)} come back`}
+                hint={
+                  customers.walkInOrders
+                    ? `+ ${formatCount(customers.walkInOrders)} walk-in order${customers.walkInOrders === 1 ? "" : "s"}`
+                    : `${formatPercent(customers.returnRate * 100)} come back`
+                }
               />
               <StatCard
                 value={formatPeso(customers.avgRevenuePerCustomer, 0)}
                 label="Spend / customer"
-                hint="repeat orders included"
+                hint="walk-ins excluded"
               />
             </View>
           )}

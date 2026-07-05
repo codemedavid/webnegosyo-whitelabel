@@ -27,7 +27,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // v11: new-order push now fires for EVERY order (pickup/delivery/counter) instead
 // of skipping qr_handoff/pos, and the push payload targets the high-importance
 // "orders" Android channel (channelId) so it rings the custom ringtone.
-const CURRENT_SCHEMA_VERSION = 11;
+// v12: getCustomerInsights no longer counts anonymous walk-in/POS orders
+// (placeholder contacts: "POS", "walk-in", blank…) as customers — they were
+// collapsing into one fake customer entry. They're reported separately as
+// walkInOrders/walkInRevenue, and per-customer averages cover identified
+// customers only (customerIdentity.ts).
+const CURRENT_SCHEMA_VERSION = 12;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
+import { isIdentifiableCustomer, customerKey } from "./customerIdentity";
 
 // Safety cap for queries that load large collections
 const QUERY_LIMIT = 10000;
@@ -482,16 +483,29 @@ export const getCustomerInsights = query({
       .order("desc")
       .take(QUERY_LIMIT);
 
-    // Group by customerContact (lowercased + trimmed)
+    // Group by customerContact (lowercased + trimmed). Anonymous walk-in/POS
+    // orders carry a placeholder contact and are NOT customers — they'd all
+    // collapse into one fake entry — so they are tallied separately instead.
     const customerMap = new Map<string, {
       name: string;
       orderCount: number;
       totalSpent: number;
       lastOrderDate: number;
     }>();
+    let walkInOrders = 0;
+    let walkInRevenue = 0;
+    let identifiedOrders = 0;
+    let identifiedRevenue = 0;
 
     for (const order of orders) {
-      const key = order.customerContact.toLowerCase().trim();
+      if (!isIdentifiableCustomer(order.customerContact)) {
+        walkInOrders += 1;
+        walkInRevenue += order.total;
+        continue;
+      }
+      identifiedOrders += 1;
+      identifiedRevenue += order.total;
+      const key = customerKey(order.customerContact);
       const existing = customerMap.get(key);
       if (existing) {
         existing.orderCount += 1;
@@ -528,11 +542,13 @@ export const getCustomerInsights = query({
       newCustomers,
       returningCustomers,
       returnRate: totalCustomers > 0 ? returningCustomers / totalCustomers : 0,
-      avgOrdersPerCustomer: totalCustomers > 0 ? orders.length / totalCustomers : 0,
-      avgRevenuePerCustomer: totalCustomers > 0
-        ? orders.reduce((s, o) => s + o.total, 0) / totalCustomers
-        : 0,
+      // Averages cover identified customers only, so anonymous walk-ins can't
+      // skew spend-per-customer.
+      avgOrdersPerCustomer: totalCustomers > 0 ? identifiedOrders / totalCustomers : 0,
+      avgRevenuePerCustomer: totalCustomers > 0 ? identifiedRevenue / totalCustomers : 0,
       topCustomers,
+      walkInOrders,
+      walkInRevenue,
     };
   },
 });
