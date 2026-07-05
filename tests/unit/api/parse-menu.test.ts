@@ -252,6 +252,52 @@ describe('POST /api/ai/parse-menu', () => {
         expect(body.data.items[0].price).toBe(120)
     })
 
+    test('strips a description that only re-lists the item\'s own variation options', async () => {
+        const menuWithDuplicatedVariationText = {
+            categories: [{ name: 'Fruit Soda Series', description: 'Refreshing drinks' }],
+            items: [
+                {
+                    name: 'Fruit Soda Promo',
+                    description: 'Strawberry • Lychee • Mango • Strawberry • Mango • Green Apple',
+                    category: 'Fruit Soda Series',
+                    price: 219.99,
+                    variations: [
+                        {
+                            name: 'Choose Size',
+                            isRequired: true,
+                            options: [
+                                { name: 'Strawberry • Lychee • Mango', priceModifier: 0 },
+                                { name: 'Strawberry • Mango • Green Apple', priceModifier: 110 },
+                            ],
+                        },
+                    ],
+                    note: 'Choose any 3 from the following',
+                },
+            ],
+        }
+
+        const jsonChunk = JSON.stringify(menuWithDuplicatedVariationText)
+        global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+            new Response(makeSSEStream([makeSseChunk(jsonChunk), 'data: [DONE]\n\n']), { status: 200 })
+        )
+
+        const { POST } = await import('@/app/api/ai/parse-menu/route')
+        const req = new NextRequest('http://localhost/api/ai/parse-menu', {
+            method: 'POST',
+            body: JSON.stringify({ menuText: 'Fruit Soda Promo P219.99' }),
+            headers: { 'Content-Type': 'application/json' },
+        })
+
+        const res = await POST(req)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+
+        expect(body.data.items[0].description).toBeUndefined()
+        expect(body.data.items[0].variations).toHaveLength(1)
+        expect(body.data.items[0].variations[0].options).toHaveLength(2)
+        expect(body.data.items[0].note).toBe('Choose any 3 from the following')
+    })
+
     test('strips markdown code fences from AI response', async () => {
         const wrapped = '```json\n' + JSON.stringify(VALID_PARSED_MENU) + '\n```'
         global.fetch = jest.fn<typeof fetch>().mockResolvedValue(

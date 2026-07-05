@@ -1,42 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { sanitizeParsedMenuData } from '@/lib/ai-menu-parser-utils'
+import type {
+    ParsedCategory,
+    ParsedVariation,
+    ParsedVariationType,
+    ParsedAddon,
+    ParsedMenuItem,
+    ParsedMenuData,
+} from '@/types/ai-menu-parser'
 
-// Define the expected structure from AI parsing
-export interface ParsedCategory {
-    name: string
-    description?: string
-    icon?: string
-}
-
-export interface ParsedVariation {
-    name: string
-    priceModifier: number
-}
-
-export interface ParsedVariationType {
-    name: string
-    isRequired: boolean
-    options: ParsedVariation[]
-}
-
-export interface ParsedAddon {
-    name: string
-    price: number
-}
-
-export interface ParsedMenuItem {
-    name: string
-    description?: string
-    category: string // Category name reference
-    price: number
-    variations?: ParsedVariationType[]
-    addons?: ParsedAddon[]
-    note?: string
-}
-
-export interface ParsedMenuData {
-    categories: ParsedCategory[]
-    items: ParsedMenuItem[]
+// Re-exported for backward compatibility with existing imports of these types
+// from this route module (e.g. the bulk-menu-import route).
+export type {
+    ParsedCategory,
+    ParsedVariation,
+    ParsedVariationType,
+    ParsedAddon,
+    ParsedMenuItem,
+    ParsedMenuData,
 }
 
 const SYSTEM_PROMPT = `You are a menu data extraction assistant. Your job is to parse unstructured restaurant menu text and extract it into a structured JSON format.
@@ -49,9 +31,16 @@ For prices:
 - Extract the numeric value (e.g., "P150" → 150, "₱1,350" → 1350)
 - If there are multiple price/size combinations, create variations
 
-For variations (size options with different prices):
-- Create a "variation_types" array with a "Size" or appropriate type name
-- Each option has: name, price_modifier (usually base price is 0, others are the difference)
+For variations (ANY selectable choice a customer must pick, whether or not it changes price):
+- Create a "variation_types" array for EVERY choice-based option group — sizes, flavors, spice levels, milk options, "choose N from the following" combos, etc. Do not limit variations to price-driven sizes only.
+- Each option has: name, priceModifier — usually base price is 0, others are the difference. If every option costs the same (e.g. a flavor pick with no upcharge), use priceModifier: 0 for all of them; still put them in "variations", not in the description.
+- If the menu lists a "choose N of these M options" pattern, put the underlying choices in a single variation_type's options (with priceModifier reflecting any listed price difference), and use "isRequired": true.
+
+CRITICAL — never duplicate variation data into description:
+- Anything you already captured as a variation option (a flavor, size, combo, etc.) must NOT also be spelled out again inside "description". Never repeat the same list of choices in both places.
+- "description" is for a short, genuinely descriptive sentence about the item (what it is, key ingredients) — never a restatement of the options already in "variations".
+- Instructional text like "Choose any 3 from the following" belongs in "note", not "description", and should never be copied verbatim as if it were the description.
+- If you cannot write a description that adds information beyond the variation names, omit the "description" field entirely rather than repeating the options.
 
 Output ONLY valid JSON in this exact format (no markdown, no explanation):
 {
@@ -61,7 +50,7 @@ Output ONLY valid JSON in this exact format (no markdown, no explanation):
   "items": [
     {
       "name": "Item Name",
-      "description": "Brief description",
+      "description": "Brief description that does not repeat variation option names",
       "category": "Category Name",
       "price": 100,
       "variations": [
@@ -72,12 +61,21 @@ Output ONLY valid JSON in this exact format (no markdown, no explanation):
             { "name": "Solo", "priceModifier": 0 },
             { "name": "Box of 6", "priceModifier": 200 }
           ]
+        },
+        {
+          "name": "Flavor",
+          "isRequired": true,
+          "options": [
+            { "name": "Strawberry", "priceModifier": 0 },
+            { "name": "Lychee", "priceModifier": 0 },
+            { "name": "Mango", "priceModifier": 0 }
+          ]
         }
       ],
       "addons": [
         { "name": "Extra Cheese", "price": 50 }
       ],
-      "note": "Any special notes about this item"
+      "note": "Any special notes about this item, e.g. 'Choose any 3 from the following'"
     }
   ]
 }
@@ -88,7 +86,7 @@ Important rules:
 - If an item has no variations, omit the variations field
 - Categories should use appropriate emoji icons
 - Use descriptive categories from the menu (e.g., "Bakes / Banana Loaf" → category "Banana Loaf" under parent info in description)
-- Keep descriptions concise but informative`
+- Keep descriptions concise but informative, and never a re-listing of variation options`
 
 /**
  * POST /api/ai/parse-menu
@@ -237,7 +235,7 @@ export async function POST(request: NextRequest) {
 
             return NextResponse.json({
                 success: true,
-                data: parsedMenu,
+                data: sanitizeParsedMenuData(parsedMenu),
             })
         } catch (parseError) {
             console.error('[Parse Menu] JSON parse error:', parseError)

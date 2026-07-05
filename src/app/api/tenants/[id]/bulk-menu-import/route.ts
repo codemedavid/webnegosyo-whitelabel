@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import type { ParsedMenuData } from '@/app/api/ai/parse-menu/route'
+import type { ParsedMenuData } from '@/types/ai-menu-parser'
 
 /**
  * POST /api/tenants/[id]/bulk-menu-import
