@@ -25,15 +25,16 @@ export interface GrowthSummary {
   avgOrderValue: number;
   /** Days in the period that had at least one order. */
   activeDays: number;
-  /** Revenue ÷ unique customers; only when a customer count is known. */
-  revenuePerCustomer?: number;
 }
+
+// Per-customer figures intentionally live outside this summary: mixing
+// getTrends revenue with getCustomerInsights' customer count produced
+// cross-source drift, so screens read avgRevenuePerCustomer straight from
+// the insights query, whose numerator and denominator share one dataset.
 
 export interface GrowthSummaryOptions {
   /** Calendar length of the selected period (e.g. 30 for "30 days"). */
   periodDays: number;
-  /** Unique customer count for the same period, when available. */
-  totalCustomers?: number;
 }
 
 export interface PeriodBucket {
@@ -144,10 +145,6 @@ export function computeGrowthSummary(
     avgRevenuePerMonth: avgRevenuePerDay * DAYS_PER_MONTH,
     avgOrderValue: safeDivide(totalRevenue, totalOrders),
     activeDays,
-    revenuePerCustomer:
-      options.totalCustomers !== undefined
-        ? safeDivide(totalRevenue, options.totalCustomers)
-        : undefined,
   };
 }
 

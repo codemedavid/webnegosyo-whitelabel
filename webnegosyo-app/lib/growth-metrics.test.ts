@@ -61,16 +61,6 @@ describe("computeGrowthSummary", () => {
     expect(summary.avgRevenuePerActiveDay).toBe(0);
   });
 
-  it("computes revenue per customer when a customer count is provided", () => {
-    const summary = computeGrowthSummary(week, { periodDays: 7, totalCustomers: 10 });
-    expect(summary.revenuePerCustomer).toBe(700);
-  });
-
-  it("leaves revenue per customer undefined without a customer count", () => {
-    const summary = computeGrowthSummary(week, { periodDays: 7 });
-    expect(summary.revenuePerCustomer).toBeUndefined();
-  });
-
   it("returns all zeros for an empty period without NaN/Infinity", () => {
     const summary = computeGrowthSummary([], { periodDays: 7 });
 
@@ -80,7 +70,7 @@ describe("computeGrowthSummary", () => {
     expect(summary.avgRevenuePerDay).toBe(0);
     expect(summary.avgOrderValue).toBe(0);
     expect(summary.activeDays).toBe(0);
-    expect(Object.values(summary).every((v) => v === undefined || Number.isFinite(v as number))).toBe(true);
+    expect(Object.values(summary).every((v) => Number.isFinite(v))).toBe(true);
   });
 
   it("guards against a zero or negative period", () => {

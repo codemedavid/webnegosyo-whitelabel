@@ -50,6 +50,8 @@ interface CustomerInsights {
   newCustomers: number;
   returningCustomers: number;
   returnRate: number;
+  /** Total spend ÷ unique customers, computed backend-side from one dataset. */
+  avgRevenuePerCustomer: number;
 }
 
 interface ProductAnalyticsRow {
@@ -172,10 +174,7 @@ export default function GrowthScreen() {
     setTimeout(() => setRefreshing(false), 600);
   }, []);
 
-  const summary = computeGrowthSummary(trends ?? [], {
-    periodDays: daysBack,
-    totalCustomers: customers?.totalCustomers,
-  });
+  const summary = computeGrowthSummary(trends ?? [], { periodDays: daysBack });
   const marginPercent = weightedMarginPercent(productRows);
   // Judge the customer lever on selling days, so a weekends-only store with a
   // full queue isn't told it "lacks customers" just because it closes weekdays.
@@ -270,9 +269,7 @@ export default function GrowthScreen() {
               <View style={styles.heroStatSeparator} />
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatValue}>
-                  {summary.revenuePerCustomer !== undefined
-                    ? formatPeso(summary.revenuePerCustomer, 0)
-                    : "—"}
+                  {customers ? formatPeso(customers.avgRevenuePerCustomer, 0) : "—"}
                 </Text>
                 <Text style={styles.heroStatLabel}>Per customer</Text>
               </View>
@@ -346,12 +343,9 @@ export default function GrowthScreen() {
                 hint={`${formatPercent(customers.returnRate * 100)} come back`}
               />
               <StatCard
-                value={
-                  summary.revenuePerCustomer !== undefined
-                    ? formatPeso(summary.revenuePerCustomer, 0)
-                    : "—"
-                }
-                label="Revenue / customer"
+                value={formatPeso(customers.avgRevenuePerCustomer, 0)}
+                label="Spend / customer"
+                hint="repeat orders included"
               />
             </View>
           )}
