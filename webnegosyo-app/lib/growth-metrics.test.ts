@@ -41,6 +41,26 @@ describe("computeGrowthSummary", () => {
     expect(summary.activeDays).toBe(3);
   });
 
+  it("computes per-selling-day averages over active days, not the calendar", () => {
+    // A sparse store: 5 orders / ₱864 on just 2 selling days in a 30-day window.
+    const sparse: DailyTrend[] = [
+      { date: "2026-06-10", totalOrders: 3, totalRevenue: 564, avgOrderValue: 188 },
+      { date: "2026-06-25", totalOrders: 2, totalRevenue: 300, avgOrderValue: 150 },
+    ];
+    const summary = computeGrowthSummary(sparse, { periodDays: 30 });
+
+    expect(summary.avgOrdersPerActiveDay).toBe(2.5);
+    expect(summary.avgRevenuePerActiveDay).toBe(432);
+    // Calendar-rate stays available for the bottleneck diagnosis.
+    expect(summary.avgOrdersPerDay).toBeCloseTo(5 / 30, 5);
+  });
+
+  it("returns zero per-selling-day averages when there are no active days", () => {
+    const summary = computeGrowthSummary([], { periodDays: 30 });
+    expect(summary.avgOrdersPerActiveDay).toBe(0);
+    expect(summary.avgRevenuePerActiveDay).toBe(0);
+  });
+
   it("computes revenue per customer when a customer count is provided", () => {
     const summary = computeGrowthSummary(week, { periodDays: 7, totalCustomers: 10 });
     expect(summary.revenuePerCustomer).toBe(700);
