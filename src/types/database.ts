@@ -567,6 +567,42 @@ export interface Order {
   payment_proof_public_id?: string | null;
   payment_proof_reference?: string | null;
   payment_proof_uploaded_at?: string | null;
+  /** Link to the derived customer profile this order rolled up into (nullable). */
+  customer_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A single most-ordered item in a customer's derived profile. */
+export interface CustomerTopItem {
+  name: string;
+  quantity: number;
+}
+
+/**
+ * Per-tenant customer profile derived from order history. Identity key is the
+ * normalized E.164 phone (email is the fallback). This is derived data, not an
+ * auth account — there is no password or login. Mirrors the `customers` table
+ * from migration `20260706120000_customer_identity.sql`.
+ */
+export interface Customer {
+  id: string;
+  tenant_id: string;
+  /** Normalized E.164 identity key; null only for email-only fallback identities. */
+  phone_e164: string | null;
+  email: string | null;
+  name: string | null;
+  first_order_at: string | null;
+  last_order_at: string | null;
+  order_count: number;
+  total_spent: number;
+  /** Generated column: round(total_spent / order_count, 2), or 0 when no orders. */
+  average_order_value: number;
+  /** Distinct channels used: dine_in / pickup / delivery. */
+  channels_used: string[];
+  top_items: CustomerTopItem[];
+  sms_consent: boolean;
+  sms_consent_at: string | null;
   created_at: string;
   updated_at: string;
 }
