@@ -151,7 +151,12 @@ interface OrderFactsRow {
   order_items: Array<{ menu_item_name: string | null; quantity: number | null }> | null
 }
 
-function rowToFacts(row: OrderFactsRow): CustomerOrderFacts {
+/**
+ * Map a raw `orders` row (with joined items) to the aggregate input shape.
+ * Exported for testing the DB→domain coercion in isolation: dirty totals become
+ * numbers, unnamed items are dropped, and consent is read out of customer_data.
+ */
+export function rowToFacts(row: OrderFactsRow): CustomerOrderFacts {
   const consent = row.customer_data?.sms_consent
   return {
     total: Number(row.total) || 0,

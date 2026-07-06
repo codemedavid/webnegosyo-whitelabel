@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@jest/globals'
 import {
   upsertCustomerFromOrder,
+  rowToFacts,
   type CustomerStore,
   type NewCustomerInput,
   type CustomerProfilePatch,
@@ -178,5 +179,61 @@ describe('upsertCustomerFromOrder', () => {
     const profile = customers.get('cust_1')!.profile!
     expect(profile.smsConsent).toBe(true)
     expect(profile.smsConsentAt).toBe('2026-03-01T10:00:00.000Z')
+  })
+})
+
+describe('rowToFacts', () => {
+  it('coerces a string total to a number and reads the channel', () => {
+    const facts = rowToFacts({
+      total: '349.50',
+      created_at: '2026-01-01T10:00:00.000Z',
+      order_type: 'Delivery',
+      customer_data: null,
+      order_items: [{ menu_item_name: 'Sisig', quantity: 2 }],
+    })
+
+    expect(facts.total).toBe(349.5)
+    expect(facts.channel).toBe('Delivery')
+    expect(facts.items).toEqual([{ name: 'Sisig', quantity: 2 }])
+    expect(facts.smsConsent).toBe(false)
+  })
+
+  it('drops items with no name and defaults dirty numbers to 0', () => {
+    const facts = rowToFacts({
+      total: null,
+      created_at: '2026-01-01T10:00:00.000Z',
+      order_type: null,
+      customer_data: {},
+      order_items: [
+        { menu_item_name: null, quantity: 3 },
+        { menu_item_name: 'Rice', quantity: null },
+      ],
+    })
+
+    expect(facts.total).toBe(0)
+    expect(facts.channel).toBeNull()
+    expect(facts.items).toEqual([{ name: 'Rice', quantity: 0 }])
+  })
+
+  it('reads sms_consent out of customer_data only when strictly true', () => {
+    expect(
+      rowToFacts({
+        total: 10,
+        created_at: '2026-01-01T10:00:00.000Z',
+        order_type: 'Dine-in',
+        customer_data: { sms_consent: true },
+        order_items: [],
+      }).smsConsent
+    ).toBe(true)
+
+    expect(
+      rowToFacts({
+        total: 10,
+        created_at: '2026-01-01T10:00:00.000Z',
+        order_type: 'Dine-in',
+        customer_data: { sms_consent: 'yes' },
+        order_items: [],
+      }).smsConsent
+    ).toBe(false)
   })
 })
