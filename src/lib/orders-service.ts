@@ -519,6 +519,29 @@ export async function createOrder(
 
   if (itemsError) throw itemsError
 
+  // Roll this order into the tenant's customer profile (identity + Regulars list).
+  // Best-effort and fully non-blocking: the order is already saved, so a failure
+  // here must never surface to checkout. Runs through the service-role client
+  // because customers is PII (RLS bypass) and this executes in the anon checkout
+  // path. Idempotent by construction (recompute-then-save), so retries are safe.
+  try {
+    const { createSupabaseCustomerStore, upsertCustomerFromOrder } = await import('@/lib/customers-service')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const store = createSupabaseCustomerStore(createAdminClient())
+    await upsertCustomerFromOrder(store, tenantId, {
+      orderId: orderData.id,
+      name: customerInfo?.name ?? null,
+      contact: customerInfo?.contact ?? null,
+      customerData: customerData ?? null,
+    })
+  } catch (customerError) {
+    console.error(
+      '[createOrder] customer profile upsert failed (non-blocking):',
+      customerError instanceof Error ? customerError.message : customerError,
+      { orderId: orderData.id, tenantId }
+    )
+  }
+
   // Generate a short-lived order token for secure public endpoint access
   // Wrapped in try-catch to prevent token generation failures from affecting the already-saved order
   let orderToken: string | undefined
