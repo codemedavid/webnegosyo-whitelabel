@@ -700,11 +700,77 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          average_order_value: number | null
+          channels_used: string[]
+          created_at: string
+          email: string | null
+          first_order_at: string | null
+          id: string
+          last_order_at: string | null
+          name: string | null
+          order_count: number
+          phone_e164: string | null
+          sms_consent: boolean
+          sms_consent_at: string | null
+          tenant_id: string
+          top_items: Json
+          total_spent: number
+          updated_at: string
+        }
+        Insert: {
+          average_order_value?: number | null
+          channels_used?: string[]
+          created_at?: string
+          email?: string | null
+          first_order_at?: string | null
+          id?: string
+          last_order_at?: string | null
+          name?: string | null
+          order_count?: number
+          phone_e164?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          tenant_id: string
+          top_items?: Json
+          total_spent?: number
+          updated_at?: string
+        }
+        Update: {
+          average_order_value?: number | null
+          channels_used?: string[]
+          created_at?: string
+          email?: string | null
+          first_order_at?: string | null
+          id?: string
+          last_order_at?: string | null
+          name?: string | null
+          order_count?: number
+          phone_e164?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          tenant_id?: string
+          top_items?: Json
+          total_spent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string
           customer_contact: string | null
           customer_data: Json | null
+          customer_id: string | null
           customer_name: string | null
           delivery_fee: number | null
           id: string
@@ -734,6 +800,7 @@ export type Database = {
           created_at?: string
           customer_contact?: string | null
           customer_data?: Json | null
+          customer_id?: string | null
           customer_name?: string | null
           delivery_fee?: number | null
           id?: string
@@ -763,6 +830,7 @@ export type Database = {
           created_at?: string
           customer_contact?: string | null
           customer_data?: Json | null
+          customer_id?: string | null
           customer_name?: string | null
           delivery_fee?: number | null
           id?: string
@@ -789,6 +857,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_order_type_id_fkey"
             columns: ["order_type_id"]
