@@ -1,0 +1,21 @@
+{
+  "//": "Standalone CommonJS config so ts-node can run repo scripts that import @/ modules. Kept separate from the Next.js tsconfig (esnext / bundler resolution / noEmit), which ts-node cannot execute directly.",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "baseUrl": "..",
+    "paths": { "@/*": ["./src/*"] },
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": false,
+    "types": ["node"]
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "files": true
+  },
+  "include": ["*.ts"]
+}
