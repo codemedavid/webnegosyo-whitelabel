@@ -41,7 +41,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
     webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://webnegosyo.com",
     consultationUrl:
-      process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ?? "https://m.me/webnegosyo",
+      process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ??
+      "https://m.me/webnegosyoofficial",
     eas: {
       projectId: "e4af765d-36fe-4248-990d-e0589d1a6c50",
     },
@@ -68,6 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         photosPermission: "Allow WebNegosyo to access your photos to add product images.",
       },
     ],
+    "./plugins/withThermalPrinterSimulatorFix.js",
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",

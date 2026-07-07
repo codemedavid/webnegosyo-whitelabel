@@ -47,6 +47,20 @@ export const colors = {
   statusReady: { bg: "#E7F3EE", text: "#065F46" },
   statusDelivered: { bg: "#EDEAE4", text: "#1D1815" },
   statusCancelled: { bg: "#F8E8E5", text: "#8C2A1E" },
+
+  // Ink hero surface (dark revenue card on the cream canvas)
+  heroInk: "#211B16",
+  heroInkElevated: "#2E251E",
+  heroInkText: "#FDFBF7",
+  heroInkMuted: "rgba(253,251,247,0.62)",
+
+  // Urgency signal for the age of an active order (drives the card accent dot)
+  urgencyFresh: "#047857",
+  urgencyWarning: "#F59E0B",
+  urgencyUrgent: "#C0392B",
+
+  // Deterministic avatar ring palette for customer initials
+  avatarPalette: ["#E4572E", "#F59E0B", "#047857", "#5B6472", "#B23E1B", "#334155"],
 } as const;
 
 export const typography = {

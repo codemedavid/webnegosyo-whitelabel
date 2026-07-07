@@ -6,7 +6,7 @@
 import { Linking } from "react-native";
 import Constants from "expo-constants";
 
-const DEFAULT_CONSULTATION_URL = "https://m.me/webnegosyo";
+const DEFAULT_CONSULTATION_URL = "https://m.me/webnegosyoofficial";
 
 export const CONSULTATION_MESSENGER_URL: string =
   Constants.expoConfig?.extra?.consultationUrl ?? DEFAULT_CONSULTATION_URL;

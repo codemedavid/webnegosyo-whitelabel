@@ -193,7 +193,9 @@ function BundleCard({ bundle, images }: { bundle: BundleGroup; images: Map<strin
         activeOpacity={0.7}
       >
         <View style={bundleStyles.headerLeft}>
-          <Text style={bundleStyles.icon}>📦</Text>
+          <View style={bundleStyles.bundleTag}>
+            <Text style={bundleStyles.bundleTagText}>Bundle</Text>
+          </View>
           <View>
             <Text style={bundleStyles.bundleName}>{bundle.bundleName}</Text>
             <Text style={bundleStyles.itemCount}>
@@ -203,7 +205,7 @@ function BundleCard({ bundle, images }: { bundle: BundleGroup; images: Map<strin
         </View>
         <View style={bundleStyles.headerRight}>
           <Text style={bundleStyles.bundleTotal}>₱{bundle.total.toFixed(2)}</Text>
-          <Text style={bundleStyles.chevron}>{expanded ? "▲" : "▼"}</Text>
+          <Text style={bundleStyles.chevron}>{expanded ? "Hide" : "Show"}</Text>
         </View>
       </TouchableOpacity>
 
@@ -263,8 +265,18 @@ const bundleStyles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  icon: {
-    fontSize: 20,
+  bundleTag: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentLight,
+  },
+  bundleTagText: {
+    ...typography.small,
+    color: colors.accent,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   bundleName: {
     ...typography.body,

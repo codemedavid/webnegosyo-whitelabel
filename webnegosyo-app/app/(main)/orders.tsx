@@ -149,7 +149,7 @@ export default function OrdersScreen() {
             style={styles.scanButton}
             activeOpacity={0.8}
           >
-            <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
+            <Text style={styles.scanButtonText}>Scan QR</Text>
           </TouchableOpacity>
         </View>
       </View>

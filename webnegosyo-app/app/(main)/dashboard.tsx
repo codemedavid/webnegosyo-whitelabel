@@ -91,10 +91,10 @@ function HeaderActions({ isConnected }: { isConnected: boolean }) {
         style={styles.scanButton}
         activeOpacity={0.8}
       >
-        <Text style={styles.scanButtonText}>⧉ Scan QR</Text>
+        <Text style={styles.scanButtonText}>Scan QR</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => router.push("/(main)/printer-settings")} style={styles.printerButton}>
-        <Text style={{ fontSize: 20 }}>🖨</Text>
+        <Text style={styles.printerText}>Printer</Text>
         <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
       </TouchableOpacity>
       <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
@@ -216,14 +216,14 @@ export default function DashboardScreen() {
           />
 
           <View style={styles.statsRow}>
-            <StatCard value={activeCount} label="Active now" icon="🔥" hint="In the queue" />
-            <StatCard value={deliveredCount} label="Delivered" icon="✅" hint={periodLabel} />
+            <StatCard value={activeCount} label="Active now" hint="In the queue" />
+            <StatCard value={deliveredCount} label="Delivered" hint={periodLabel} />
           </View>
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Order Queue</Text>
             <TouchableOpacity onPress={() => router.push("/(main)/orders")}>
-              <Text style={styles.sectionLink}>View all →</Text>
+              <Text style={styles.sectionLink}>View all</Text>
             </TouchableOpacity>
           </View>
           <StatusPipeline
@@ -245,7 +245,7 @@ export default function DashboardScreen() {
             )}
           </View>
           {needsAttention.length === 0 ? (
-            <EmptyState message="🎉 All caught up — no pending orders" />
+            <EmptyState message="You're all caught up — no pending orders" />
           ) : (
             needsAttention.map((order) => (
               <OrderCard
@@ -311,6 +311,7 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   scanButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "700" },
-  printerButton: { position: "relative", padding: spacing.sm },
-  printerDot: { position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4 },
+  printerButton: { position: "relative", paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  printerText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
+  printerDot: { position: "absolute", top: 2, right: 2, width: 8, height: 8, borderRadius: 4 },
 });
