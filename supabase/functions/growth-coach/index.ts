@@ -22,6 +22,9 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemma-4-26b-a4b-it";
 const FALLBACK_MODEL = "meta-llama/llama-3.3-70b-instruct";
 const MAX_TOKENS = 900;
+// The facts snapshot is small (~1–2 KB). Cap generously so an authenticated
+// client can't inflate token spend with an oversized payload.
+const MAX_FACTS_BYTES = 16_000;
 
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
@@ -124,9 +127,13 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid or expired session." }, 401);
     }
 
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_FACTS_BYTES) {
+      return json({ error: "Request payload too large." }, 413);
+    }
     let body: unknown;
     try {
-      body = await req.json();
+      body = JSON.parse(rawBody);
     } catch {
       return json({ error: "Invalid request body." }, 400);
     }
