@@ -28,6 +28,7 @@ import {
 } from "../../lib/growth-metrics";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
+import { GrowthCoachCard } from "../../components/GrowthCoachCard";
 import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
@@ -57,8 +58,10 @@ interface CustomerInsights {
 }
 
 interface ProductAnalyticsRow {
+  menuItemName?: string;
   totalRevenue: number;
   marginPercent?: number;
+  bcgClassification?: string;
 }
 
 const PERIOD_OPTIONS = [30, 60, 90] as const;
@@ -316,6 +319,32 @@ export default function GrowthScreen() {
               </Text>
             </View>
           </Card>
+
+          {/* AI Growth Coach — a Hormozi-style plan built from these numbers */}
+          <Text style={styles.eyebrow}>Ask the coach</Text>
+          <GrowthCoachCard
+            periodDays={daysBack}
+            summary={summary}
+            bottleneck={diagnosis.bottleneck}
+            marginPercent={marginPercent}
+            customers={
+              customers
+                ? {
+                    totalCustomers: customers.totalCustomers,
+                    returnRate: customers.returnRate,
+                    avgRevenuePerCustomer: customers.avgRevenuePerCustomer,
+                    walkInOrders: customers.walkInOrders,
+                  }
+                : undefined
+            }
+            products={(productRows ?? []).map((r) => ({
+              name: r.menuItemName,
+              totalRevenue: r.totalRevenue,
+              marginPercent: r.marginPercent,
+              bcgClassification: r.bcgClassification,
+            }))}
+            initialTarget={targetMonthlyRevenue}
+          />
 
           {/* Averages — what a selling day looks like, then the run-rate */}
           <Text style={styles.eyebrow}>On a selling day</Text>
