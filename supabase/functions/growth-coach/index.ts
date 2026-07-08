@@ -66,6 +66,35 @@ function isValidFacts(body: unknown): body is { targetMonthlyRevenue: number; ac
     typeof b.actual === "object" && b.actual !== null;
 }
 
+// The OpenRouter key lives in Supabase Vault (not an edge-function env secret)
+// so it can be provisioned entirely via SQL/MCP. We read it server-side with
+// the service-role client through a locked-down SECURITY DEFINER accessor
+// (public.growth_coach_openrouter_key, granted to service_role only). A plain
+// OPENROUTER_API_KEY env var still wins if one is ever set. Cached per instance
+// so we only hit the DB on the first request an instance serves.
+let cachedOpenrouterKey: string | null = null;
+
+async function resolveOpenrouterKey(
+  supabaseUrl: string,
+  serviceRoleKey: string | undefined,
+): Promise<string> {
+  const envKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (envKey) return envKey;
+  if (cachedOpenrouterKey) return cachedOpenrouterKey;
+  if (!serviceRoleKey) return "";
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data, error } = await admin.rpc("growth_coach_openrouter_key");
+  if (error || typeof data !== "string" || data.length === 0) {
+    if (error) console.error("[growth-coach] vault key lookup failed:", error.message);
+    return "";
+  }
+  cachedOpenrouterKey = data;
+  return data;
+}
+
 async function callOpenRouter(apiKey: string, model: string, facts: unknown) {
   return await fetch(OPENROUTER_URL, {
     method: "POST",
@@ -104,12 +133,9 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !anonKey) {
       return json({ error: "Server is not configured." }, 500);
-    }
-    if (!openrouterKey) {
-      return json({ error: "AI coach is not configured. Please contact support." }, 500);
     }
 
     // Identify the caller from their own JWT so only signed-in merchants can
@@ -139,6 +165,13 @@ Deno.serve(async (req) => {
     }
     if (!isValidFacts(body)) {
       return json({ error: "Invalid or incomplete growth data." }, 400);
+    }
+
+    // Resolve the key only after the caller is authenticated and the payload is
+    // valid, so unauthenticated/garbage requests never trigger a Vault lookup.
+    const openrouterKey = await resolveOpenrouterKey(supabaseUrl, serviceRoleKey);
+    if (!openrouterKey) {
+      return json({ error: "AI coach is not configured. Please contact support." }, 500);
     }
 
     const model = Deno.env.get("GROWTH_COACH_MODEL") ?? DEFAULT_MODEL;
