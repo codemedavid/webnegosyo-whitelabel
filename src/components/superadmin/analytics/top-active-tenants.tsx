@@ -10,29 +10,29 @@ interface TopActiveTenantsProps {
   rangeLabel: string
 }
 
-/* Revenue-aware leaderboard of the platform's top-grossing tenants.
+/* Leaderboard of the platform's most active tenants, ranked by order volume.
    Presentational server component — no state, no client boundary. */
 export function TopActiveTenants({ tenants, rangeLabel }: TopActiveTenantsProps) {
-  const maxGmv = tenants.reduce((max, t) => Math.max(max, t.gmv), 0) || 1
+  const maxOrders = tenants.reduce((max, t) => Math.max(max, t.orders), 0) || 1
 
   return (
     <Panel className="space-y-5">
       <SectionHeader
         icon={Trophy}
-        title="Top restaurants by revenue"
-        subtitle={`Ranked by gross merchandise value · ${rangeLabel}`}
+        title="Most active restaurants"
+        subtitle={`Ranked by orders · ${rangeLabel}`}
       />
 
       {tenants.length === 0 ? (
         <EmptyState
           icon={Trophy}
-          title="No revenue in this window"
+          title="No orders in this window"
           description="Try a longer range to see the leaderboard."
         />
       ) : (
         <ul className="space-y-2.5">
           {tenants.map((tenant, index) => {
-            const barWidth = Math.max(3, (tenant.gmv / maxGmv) * 100)
+            const barWidth = Math.max(3, (tenant.orders / maxOrders) * 100)
             const rank = index + 1
 
             return (
@@ -41,7 +41,7 @@ export function TopActiveTenants({ tenants, rangeLabel }: TopActiveTenantsProps)
                   href={`/superadmin/tenants/${tenant.tenantId}`}
                   className="group relative block overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.04]"
                 >
-                  {/* Relative GMV bar, sits behind the content as a subtle fill. */}
+                  {/* Relative order-volume bar, sits behind the content as a subtle fill. */}
                   <div
                     className="pointer-events-none absolute inset-y-0 left-0 bg-white/[0.04]"
                     style={{ width: `${barWidth}%` }}
