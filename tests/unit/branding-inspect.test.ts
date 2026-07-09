@@ -5,6 +5,8 @@ import {
   BRANDING_SCOPE_MAP,
   resolveBrandingScope,
   getScopeSectionIndex,
+  getBrandingSectionAnchorId,
+  getBrandingFieldAnchorId,
 } from '@/lib/branding-inspect'
 import {
   BRANDING_DRAFT_MESSAGE,
@@ -117,6 +119,35 @@ describe('getScopeSectionIndex', () => {
     expect(
       getScopeSectionIndex({ surfaceId: 'storefront', sectionTitle: 'Gone', label: 'Gone' })
     ).toBe(-1)
+  })
+})
+
+describe('field-level scopes', () => {
+  it('maps card details to their exact fields', () => {
+    expect(resolveBrandingScope('storefront/card-title')?.fieldId).toBe('card_title_color')
+    expect(resolveBrandingScope('storefront/card-price')?.fieldId).toBe('card_price_color')
+    expect(resolveBrandingScope('storefront/card-description')?.fieldId).toBe(
+      'card_description_color'
+    )
+  })
+
+  it('keeps every fieldId inside the fields of its mapped section', () => {
+    for (const [, target] of Object.entries(BRANDING_SCOPE_MAP)) {
+      if (!target.fieldId) continue
+      const sections =
+        target.surfaceId === 'product'
+          ? PRODUCT_DETAIL_SECTIONS
+          : BRANDING_SURFACES.find((s) => s.id === target.surfaceId)?.sections ?? []
+      const section = sections.find((s) => s.title === target.sectionTitle)
+      expect(section).toBeDefined()
+      const fieldIds = section!.fields.map((f) => f.id)
+      expect(fieldIds).toContain(target.fieldId)
+    }
+  })
+
+  it('exposes stable DOM anchors shared by the Studio panel and jump logic', () => {
+    expect(getBrandingSectionAnchorId(3)).toBe('branding-section-3')
+    expect(getBrandingFieldAnchorId('card_title_color')).toBe('branding-field-card_title_color')
   })
 })
 
