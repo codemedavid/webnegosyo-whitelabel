@@ -40,11 +40,16 @@ import {
   resolveMobileFieldValue,
   type OverrideMap,
 } from '@/lib/mobile-overrides'
+import { resolveBrandingScope, getScopeSectionIndex } from '@/lib/branding-inspect'
 import { FieldRow } from './field-row'
 import { PreviewFrame } from './preview-frame'
 import type { Tenant } from '@/types/database'
 
 const PUBLISHED_TOAST_MS = 2500
+/** How long a section header pulses after a click-to-inspect jump. */
+const SECTION_FLASH_MS = 1600
+/** Wait for the accordion to open before scrolling the section into view. */
+const SECTION_SCROLL_DELAY_MS = 60
 
 interface BrandingStudioProps {
   tenant: Tenant
@@ -83,6 +88,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const [publishedMobileProduct, setPublishedMobileProduct] = useState<OverrideMap | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
   const [showPublishedToast, setShowPublishedToast] = useState(false)
+  // Click-to-inspect: while on, the preview highlights hovered regions and a
+  // click jumps the panel to that region's settings section.
+  const [isInspecting, setIsInspecting] = useState(false)
+  const [flashSectionIndex, setFlashSectionIndex] = useState<number | null>(null)
 
   const isMobile = device === 'mobile'
 
@@ -185,6 +194,29 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const pickSurface = useCallback((id: BrandingSurface['id']) => {
     setSurfaceId(id)
     setOpenSections({ 0: true })
+  }, [])
+
+  // A region was clicked in the preview: jump to its surface, open exactly
+  // its section, pulse it, and drop back out of inspect mode (single-shot,
+  // DevTools-style).
+  const handleScopeSelected = useCallback((scope: string) => {
+    const target = resolveBrandingScope(scope)
+    if (!target) {
+      toast.error('No settings are mapped to that element yet')
+      return
+    }
+    const sectionIndex = getScopeSectionIndex(target)
+    setSurfaceId(target.surfaceId)
+    setOpenSections(sectionIndex >= 0 ? { [sectionIndex]: true } : { 0: true })
+    setIsInspecting(false)
+    if (sectionIndex < 0) return
+    setFlashSectionIndex(sectionIndex)
+    window.setTimeout(() => setFlashSectionIndex(null), SECTION_FLASH_MS)
+    window.setTimeout(() => {
+      document
+        .getElementById(`branding-section-${sectionIndex}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, SECTION_SCROLL_DELAY_MS)
   }, [])
 
   const applyValues = useCallback((values: Record<string, string>) => {
@@ -317,6 +349,22 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
         </div>
 
         <div className="flex-1" />
+
+        {/* click-to-inspect toggle */}
+        <button
+          type="button"
+          onClick={() => setIsInspecting((prev) => !prev)}
+          aria-pressed={isInspecting}
+          title="Hover the preview and click any element to open its settings"
+          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition-colors ${
+            isInspecting
+              ? 'bg-[#2A6FDB] text-white'
+              : 'bg-[#EFECE6] text-[#8B857B] hover:text-[#1D1815]'
+          }`}
+        >
+          <span aria-hidden="true">⌖</span>
+          {isInspecting ? 'Click an element…' : 'Inspect'}
+        </button>
 
         {/* device toggle */}
         <div className="flex gap-0.5 rounded-full bg-[#EFECE6] p-[3px]">
@@ -459,8 +507,15 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               )
               const visibleFields = section.fields.filter((f) => !f.mobileOnly || device === 'mobile')
               if (visibleFields.length === 0) return null
+              const isFlashing = flashSectionIndex === sectionIndex
               return (
-                <div key={section.title} className="border-b border-[#E5E0D6]">
+                <div
+                  key={section.title}
+                  id={`branding-section-${sectionIndex}`}
+                  className={`border-b border-[#E5E0D6] transition-colors duration-500 ${
+                    isFlashing ? 'bg-amber-100' : ''
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() =>
@@ -539,6 +594,8 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           productMobileOverrides={mergeMobileOverrides(savedMobileProduct, mobileProductDraft)}
           device={device}
           sampleItemId={sampleItemId}
+          inspectMode={isInspecting}
+          onScopeSelected={handleScopeSelected}
         />
       </div>
     </div>
