@@ -66,6 +66,21 @@ uncommitted work from a separate session; untouched by these commits).
 - No E2E test yet; a Playwright journey (toggle → hover → click → section
   opens) is the natural follow-up.
 
+## Round 2 — card bug + field-level inspect (2026-07-10)
+
+User report: clicking menu cards opened nothing, and clicking specific
+details (headline, price) should open the exact setting.
+
+| Task | Summary | RED evidence | GREEN evidence |
+|---|---|---|---|
+| Card click bug | Only default/sidebar layouts render through the tagged MenuGrid; grid-focus/magazine/mosaic/scroll render `MenuItemCard` directly with no tagged ancestor. Tag moved onto MenuItemCard's wrapper. | `tests/unit/menu-item-card-inspect.test.tsx` failed: no `data-branding-scope` on wrapper (commit `a7e8e86`) | 111 passed (commit `1270e3b`) |
+| Field-level scopes | `BrandingScopeTarget.fieldId` + `storefront/card-title|card-price|card-description` scopes; fieldId validated to belong to the mapped section; anchor helpers `getBrandingSectionAnchorId`/`getBrandingFieldAnchorId` | field-scope + anchor tests failed (commit `a7e8e86`) | same run |
+| Template tagging | title/price/description elements tagged in 10 card templates (classic, compact, elegant, glass, minimal, polaroid, modern, zen, storefront, brutalist; neon price). bold/magazine/neon-title don't consume the standard card color fields — card root falls back to the section. | — (declarative; keys guarded by registry test) | lint + tsc clean |
+| Studio field jump | `handleScopeSelected` scrolls to and pulses the exact field row (`branding-field-<id>` anchor) when the scope carries a fieldId | — | full suite green |
+
+Full suite after round 2: 1453 passed / 3 failed (same pre-existing
+`webnegosyo-app/` failures).
+
 ## Merge evidence (if checkpoints are squashed)
 
 RED→GREEN pairs: `923f44e`→`d3ef2d5` (registry), `9eedbbb`→`604f9aa`
