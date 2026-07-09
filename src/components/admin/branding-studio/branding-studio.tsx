@@ -40,7 +40,12 @@ import {
   resolveMobileFieldValue,
   type OverrideMap,
 } from '@/lib/mobile-overrides'
-import { resolveBrandingScope, getScopeSectionIndex } from '@/lib/branding-inspect'
+import {
+  resolveBrandingScope,
+  getScopeSectionIndex,
+  getBrandingSectionAnchorId,
+  getBrandingFieldAnchorId,
+} from '@/lib/branding-inspect'
 import { FieldRow } from './field-row'
 import { PreviewFrame } from './preview-frame'
 import type { Tenant } from '@/types/database'
@@ -92,6 +97,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   // click jumps the panel to that region's settings section.
   const [isInspecting, setIsInspecting] = useState(false)
   const [flashSectionIndex, setFlashSectionIndex] = useState<number | null>(null)
+  const [flashFieldId, setFlashFieldId] = useState<string | null>(null)
 
   const isMobile = device === 'mobile'
 
@@ -210,12 +216,21 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     setOpenSections(sectionIndex >= 0 ? { [sectionIndex]: true } : { 0: true })
     setIsInspecting(false)
     if (sectionIndex < 0) return
-    setFlashSectionIndex(sectionIndex)
-    window.setTimeout(() => setFlashSectionIndex(null), SECTION_FLASH_MS)
+    // Field-level scopes pulse the exact row; section scopes pulse the header.
+    if (target.fieldId) {
+      setFlashFieldId(target.fieldId)
+      window.setTimeout(() => setFlashFieldId(null), SECTION_FLASH_MS)
+    } else {
+      setFlashSectionIndex(sectionIndex)
+      window.setTimeout(() => setFlashSectionIndex(null), SECTION_FLASH_MS)
+    }
     window.setTimeout(() => {
+      const anchorId = target.fieldId
+        ? getBrandingFieldAnchorId(target.fieldId)
+        : getBrandingSectionAnchorId(sectionIndex)
       document
-        .getElementById(`branding-section-${sectionIndex}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        .getElementById(anchorId)
+        ?.scrollIntoView({ behavior: 'smooth', block: target.fieldId ? 'center' : 'start' })
     }, SECTION_SCROLL_DELAY_MS)
   }, [])
 
@@ -511,7 +526,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               return (
                 <div
                   key={section.title}
-                  id={`branding-section-${sectionIndex}`}
+                  id={getBrandingSectionAnchorId(sectionIndex)}
                   className={`border-b border-[#E5E0D6] transition-colors duration-500 ${
                     isFlashing ? 'bg-amber-100' : ''
                   }`}
@@ -551,8 +566,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                         const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
 
                         return (
-                          <FieldRow
+                          <div
                             key={field.id}
+                            id={getBrandingFieldAnchorId(field.id)}
+                            className={`rounded-md transition-colors duration-500 ${
+                              flashFieldId === field.id ? 'bg-amber-100' : ''
+                            }`}
+                          >
+                          <FieldRow
                             field={field}
                             productOptions={productOptions}
                             value={
@@ -573,6 +594,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                                 : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
                             }
                           />
+                          </div>
                         )
                       })}
                     </div>

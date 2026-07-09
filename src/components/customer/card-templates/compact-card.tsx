@@ -97,7 +97,7 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
           <div>
             <h3
               className="text-xs md:text-sm font-bold line-clamp-1 mb-0.5 md:mb-1"
-              style={{ color: branding.cardTitle }}
+              data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
             >
               {item.name}
             </h3>
@@ -105,7 +105,7 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
             {item.description && (
               <p
                 className="text-[10px] md:text-[11px] line-clamp-1 md:line-clamp-2 mb-0.5 md:mb-1"
-                style={{ color: branding.cardDescription }}
+                data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
               >
                 {item.description}
               </p>
@@ -134,7 +134,7 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
               )}
               <div
                 className="text-sm md:text-base font-bold"
-                style={{ color: branding.cardPrice }}
+                data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
               >
                 {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
               </div>

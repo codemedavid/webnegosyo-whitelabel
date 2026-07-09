@@ -154,6 +154,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuE
                         )}
                         <span
                             className="text-sm md:text-lg font-bold"
+                            data-branding-scope="storefront/card-price"
                             style={{
                                 color: branding.cardPrice,
                                 textShadow: `0 0 8px ${branding.primary}44`,

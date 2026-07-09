@@ -27,13 +27,19 @@ export interface BrandingScopeTarget {
   sectionTitle: string
   /** Short label shown on the hover highlight chip. */
   label: string
+  /**
+   * Optional field-level anchor: when set, the Studio scrolls to and pulses
+   * this exact field row (must belong to the mapped section).
+   */
+  fieldId?: string
 }
 
 const scope = (
   surfaceId: BrandingSurface['id'],
   sectionTitle: string,
-  label: string
-): BrandingScopeTarget => ({ surfaceId, sectionTitle, label })
+  label: string,
+  fieldId?: string
+): BrandingScopeTarget => ({ surfaceId, sectionTitle, label, fieldId })
 
 export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   // Global brand — the page canvas itself.
@@ -46,6 +52,9 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'storefront/category-nav': scope('storefront', 'Category navigation', 'Category navigation'),
   'storefront/search': scope('storefront', 'Search bar', 'Search bar'),
   'storefront/cards': scope('storefront', 'Layout & menu cards', 'Menu cards'),
+  'storefront/card-title': scope('storefront', 'Layout & menu cards', 'Card title', 'card_title_color'),
+  'storefront/card-price': scope('storefront', 'Layout & menu cards', 'Card price', 'card_price_color'),
+  'storefront/card-description': scope('storefront', 'Layout & menu cards', 'Card description', 'card_description_color'),
   'storefront/quickview': scope('storefront', 'Quick-view modal', 'Quick-view modal'),
 
   // Cart drawer.
@@ -97,6 +106,16 @@ export function resolveBrandingScope(scopeKey: unknown): BrandingScopeTarget | n
  * panel (the Studio keys open sections by index). -1 when the section title
  * no longer exists.
  */
+/** DOM id of a Studio accordion section — shared by the panel and jump logic. */
+export function getBrandingSectionAnchorId(sectionIndex: number): string {
+  return `branding-section-${sectionIndex}`
+}
+
+/** DOM id of a Studio field row — shared by the panel and jump logic. */
+export function getBrandingFieldAnchorId(fieldId: string): string {
+  return `branding-field-${fieldId}`
+}
+
 export function getScopeSectionIndex(target: BrandingScopeTarget): number {
   const sections =
     target.surfaceId === 'product'

@@ -97,7 +97,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
       <div className="p-2 md:p-3 text-center space-y-1 md:space-y-2">
         <h3
           className="text-xs md:text-sm font-semibold line-clamp-1"
-          style={{ color: branding.cardTitle }}
+          data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
         >
           {item.name}
         </h3>
@@ -105,7 +105,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
         {item.description && (
           <p
             className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
-            style={{ color: branding.cardDescription }}
+            data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
           >
             {item.description}
           </p>
@@ -122,7 +122,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
           )}
           <span
             className="text-sm md:text-base font-bold"
-            style={{ color: branding.cardPrice }}
+            data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
           </span>

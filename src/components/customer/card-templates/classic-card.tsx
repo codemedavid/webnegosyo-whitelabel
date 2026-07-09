@@ -101,7 +101,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
       <div className="p-2.5 md:p-4">
         <h3
           className="mb-1 text-sm md:text-lg font-bold line-clamp-1"
-          style={{ color: branding.cardTitle }}
+          data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
         >
           {item.name}
         </h3>
@@ -109,7 +109,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
         {item.description && (
           <p
             className="mb-2 text-xs md:text-sm line-clamp-1 md:line-clamp-2"
-            style={{ color: branding.cardDescription }}
+            data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
           >
             {item.description}
           </p>
@@ -126,7 +126,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
           )}
           <span
             className="text-sm md:text-lg font-bold"
-            style={{ color: branding.cardPrice }}
+            data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
           >
             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
           </span>

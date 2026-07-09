@@ -150,7 +150,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, men
             >
                 <h3
                     className="text-sm md:text-base font-semibold line-clamp-1"
-                    style={{ color: branding.cardTitle }}
+                    data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
                 </h3>
@@ -158,7 +158,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, men
                 {item.description && (
                     <p
                         className="text-xs md:text-sm line-clamp-1 md:line-clamp-2"
-                        style={{ color: branding.cardDescription, opacity: 0.85 }}
+                        data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription, opacity: 0.85 }}
                     >
                         {item.description}
                     </p>
@@ -171,7 +171,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, men
                                 {formatPrice(item.price, { hideCurrencySymbol })}
                             </span>
                         )}
-                        <span className="text-sm md:text-lg font-bold" style={{ color: branding.cardPrice }}>
+                        <span className="text-sm md:text-lg font-bold" data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}>
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>
                     </div>
