@@ -150,7 +150,7 @@ export function CartDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
+        <SheetContent data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
           <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${accent}20` }}>
             <SheetTitle className="flex items-center gap-2 text-base">
               <div

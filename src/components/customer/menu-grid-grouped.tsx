@@ -60,7 +60,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
   }
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12" data-branding-scope="storefront/cards">
       {groupedItems.map(({ category, items: categoryItems }) => (
         <section
           key={category.id}

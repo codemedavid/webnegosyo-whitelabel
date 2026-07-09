@@ -36,7 +36,7 @@ export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, tenantSlug
   const gridClass = `grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`
 
   return (
-    <div className={gridClass}>
+    <div className={gridClass} data-branding-scope="storefront/cards">
       {items.map((item) => (
         <PrefetchingCard
           key={item.id}

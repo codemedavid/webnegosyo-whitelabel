@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
+import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
@@ -327,6 +328,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   return (
     <div
       ref={rootRef}
+      data-branding-scope="global/palette"
       className="storefront-themed min-h-screen"
       style={{
         // Expose all --brand-* tokens (incl. the storefront theme knobs:
@@ -344,6 +346,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       )}
       {(showFlashScreen || isFlashPreview) && (
         <div
+          data-branding-scope="flash/settings"
           className="fixed inset-0 z-[120] flex items-center justify-center px-6"
           style={{
             backgroundColor: tenant?.flash_screen_background_color || '#111111',
@@ -384,6 +387,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
 
       {tenant?.is_announcement_visible && (
         <div
+          data-branding-scope="storefront/announcement"
           className="w-full text-center py-2 px-4 text-sm font-medium relative z-[51]"
           style={{
             backgroundColor: tenant?.announcement_bg_color || '#FFF4E5',
@@ -602,6 +606,9 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
           hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
         />
       )}
+
+      {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
+      <BrandingInspector />
 
       {/* Active Order Banner */}
       <ActiveOrderBanner

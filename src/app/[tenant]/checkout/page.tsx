@@ -11,6 +11,7 @@
 
 import { useParams } from 'next/navigation'
 import { useCheckout } from '@/hooks/useCheckout'
+import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { CheckoutTemplateRenderer } from '@/components/customer/checkout-templates'
 import {
   CheckoutLoading,
@@ -38,10 +39,14 @@ export default function CheckoutPage() {
 
   return (
     <>
-      <CheckoutTemplateRenderer template={template} checkout={checkout} />
+      <div data-branding-scope="checkout/colors">
+        <CheckoutTemplateRenderer template={template} checkout={checkout} />
+      </div>
       {/* Shared overlays — rendered for every design */}
       <PaymentDetailsDialog checkout={checkout} />
       <QrCodeDialog checkout={checkout} />
+      {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
+      <BrandingInspector />
     </>
   )
 }

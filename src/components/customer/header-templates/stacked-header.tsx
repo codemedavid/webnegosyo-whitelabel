@@ -9,6 +9,7 @@ import {
   HeaderSearch,
   headerShellClass,
   headerShellStyle,
+  HEADER_SCOPE_PROPS,
 } from './header-parts'
 
 export const StackedHeader = memo(function StackedHeader({
@@ -26,7 +27,7 @@ export const StackedHeader = memo(function StackedHeader({
   const verticalPad = config.height === 'compact' ? 'py-2.5' : config.height === 'tall' ? 'py-6' : 'py-4'
 
   return (
-    <header className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
+    <header {...HEADER_SCOPE_PROPS} className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
       <div className="container relative mx-auto px-4">
         {config.showCart && (
           <div className="absolute right-4 top-3 flex items-center gap-2">

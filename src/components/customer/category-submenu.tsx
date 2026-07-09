@@ -34,6 +34,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
 
   return (
     <nav
+      data-branding-scope="storefront/category-nav"
       className="sticky z-40 hidden md:block border-b backdrop-blur-sm"
       style={{
         top: 'var(--menu-header-h, 5rem)',

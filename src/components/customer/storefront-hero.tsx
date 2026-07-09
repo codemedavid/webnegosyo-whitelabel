@@ -105,6 +105,7 @@ export function StorefrontHero({
       document.getElementById('storefront-menu')?.scrollIntoView({ behavior: 'smooth' })
     }
     return (
+      <div data-branding-scope="storefront/hero">
       <HeroPresetSection
         preset={preset}
         title={title}
@@ -123,6 +124,7 @@ export function StorefrontHero({
         fallbackMedia={fallbackMedia}
         brandInitial={(tenant?.name || title).trim().charAt(0)}
       />
+      </div>
     )
   }
 
@@ -131,7 +133,7 @@ export function StorefrontHero({
   if (requireExplicit) return null
 
   return (
-    <div className="text-center mb-16">
+    <div className="text-center mb-16" data-branding-scope="storefront/hero">
       <div className="inline-flex items-center gap-2 justify-center">
         <h1 className="text-5xl font-serif font-bold mb-4" style={{ color: titleColor }}>
           {title}

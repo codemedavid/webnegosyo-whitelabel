@@ -40,6 +40,13 @@ type ElementSize = 'sm' | 'md' | 'lg'
 
 /* ----------------------------- shell helpers ----------------------------- */
 
+/**
+ * Branding Studio click-to-inspect tag — spread onto each template's root
+ * <header> so the editor's inspector can highlight it and jump to the
+ * Storefront → Header settings section (see src/lib/branding-inspect.ts).
+ */
+export const HEADER_SCOPE_PROPS = { 'data-branding-scope': 'storefront/header' } as const
+
 export function headerShellClass(config: HeaderConfig, extra?: string): string {
   return [
     config.sticky ? 'sticky top-0' : 'relative',
