@@ -1,0 +1,106 @@
+/**
+ * Branding Studio click-to-inspect protocol + scope registry.
+ *
+ * Storefront regions carry a `data-branding-scope="<surfaceId>/<region>"`
+ * attribute. Inside the editor's preview iframe, an inspector overlay
+ * (branding-inspector.tsx) highlights the hovered region and, on click, posts
+ * the scope key to the editor, which jumps to the matching surface + accordion
+ * section. This module is the single source of truth for which scope keys
+ * exist and where each one lands, kept pure so the mapping is unit-testable
+ * against BRANDING_SURFACES / PRODUCT_DETAIL_SECTIONS (the test fails if a
+ * section is renamed without updating the map).
+ */
+
+import { BRANDING_SURFACES, type BrandingSurface } from '@/lib/branding-registry'
+import { PRODUCT_DETAIL_SECTIONS } from '@/lib/product-detail-registry'
+
+/** Editor → iframe: turn the hover/click inspector on or off. */
+export const BRANDING_INSPECT_MODE_MESSAGE = 'wn-branding-inspect-mode'
+/** Iframe → editor: the merchant clicked a highlighted region. */
+export const BRANDING_SCOPE_SELECTED_MESSAGE = 'wn-branding-scope-selected'
+/** DOM attribute storefront regions are tagged with. */
+export const BRANDING_SCOPE_ATTRIBUTE = 'data-branding-scope'
+
+export interface BrandingScopeTarget {
+  surfaceId: BrandingSurface['id']
+  /** Accordion section title within the surface's settings panel. */
+  sectionTitle: string
+  /** Short label shown on the hover highlight chip. */
+  label: string
+}
+
+const scope = (
+  surfaceId: BrandingSurface['id'],
+  sectionTitle: string,
+  label: string
+): BrandingScopeTarget => ({ surfaceId, sectionTitle, label })
+
+export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
+  // Global brand — the page canvas itself.
+  'global/palette': scope('global', 'Brand palette', 'Brand palette'),
+
+  // Storefront (menu page) regions.
+  'storefront/announcement': scope('storefront', 'Announcement & promotions', 'Announcement bar'),
+  'storefront/header': scope('storefront', 'Header', 'Header'),
+  'storefront/hero': scope('storefront', 'Hero', 'Hero section'),
+  'storefront/category-nav': scope('storefront', 'Category navigation', 'Category navigation'),
+  'storefront/search': scope('storefront', 'Search bar', 'Search bar'),
+  'storefront/cards': scope('storefront', 'Layout & menu cards', 'Menu cards'),
+  'storefront/quickview': scope('storefront', 'Quick-view modal', 'Quick-view modal'),
+
+  // Cart drawer.
+  'cart/template': scope('cart', 'Template', 'Cart layout'),
+  'cart/colors': scope('cart', 'Colors', 'Cart'),
+
+  // Checkout page.
+  'checkout/template': scope('checkout', 'Template', 'Checkout layout'),
+  'checkout/colors': scope('checkout', 'Colors', 'Checkout'),
+
+  // "Before you go…" upsell interstitial.
+  'upsell/colors': scope('upsell', 'Colors', 'Checkout upsell'),
+
+  // Site footer.
+  'footer/theme': scope('footer', 'Theme', 'Footer theme'),
+  'footer/content': scope('footer', 'Content', 'Footer'),
+  'footer/contact': scope('footer', 'Contact', 'Footer contact'),
+  'footer/social': scope('footer', 'Social links', 'Footer social links'),
+  'footer/pages': scope('footer', 'Pages', 'Footer pages'),
+  'footer/custom-colors': scope('footer', 'Custom colors', 'Footer colors'),
+
+  // Flash / splash screen.
+  'flash/settings': scope('flash', 'Settings', 'Flash screen'),
+
+  // Product detail page (product_detail_settings registry).
+  'product/header': scope('product', 'Header & navigation', 'Product header'),
+  'product/image': scope('product', 'Image & lightbox', 'Product image'),
+  'product/info': scope('product', 'Product info', 'Product info'),
+  'product/variations': scope('product', 'Variations', 'Variations'),
+  'product/addons': scope('product', 'Add-ons', 'Add-ons'),
+  'product/related': scope('product', 'Related items', 'Related items'),
+  'product/sticky-footer': scope('product', 'Sticky footer & actions', 'Sticky footer'),
+  'product/layout': scope('product', 'Layout & motion', 'Page layout'),
+  'product/pairing': scope('product', 'Pairing pop-up ("Perfect with…")', 'Pairing pop-up'),
+  'product/checkout-upsell': scope('product', 'Checkout upsell sheet', 'Upsell sheet'),
+}
+
+/**
+ * Resolve an untrusted scope key (e.g. from a postMessage payload) to its
+ * editor target, or null when it is not a known scope.
+ */
+export function resolveBrandingScope(scopeKey: unknown): BrandingScopeTarget | null {
+  if (typeof scopeKey !== 'string') return null
+  return BRANDING_SCOPE_MAP[scopeKey] ?? null
+}
+
+/**
+ * Index of the target's accordion section within its surface's settings
+ * panel (the Studio keys open sections by index). -1 when the section title
+ * no longer exists.
+ */
+export function getScopeSectionIndex(target: BrandingScopeTarget): number {
+  const sections =
+    target.surfaceId === 'product'
+      ? PRODUCT_DETAIL_SECTIONS
+      : BRANDING_SURFACES.find((s) => s.id === target.surfaceId)?.sections ?? []
+  return sections.findIndex((section) => section.title === target.sectionTitle)
+}
