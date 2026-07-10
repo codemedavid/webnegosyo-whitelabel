@@ -2,6 +2,7 @@ import type { Metadata, ResolvingMetadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { ProductDetailContent } from '@/components/customer/product-detail-content'
+import { BrandingInspector } from '@/components/customer/branding-inspector'
 import {
     getCachedTenantBySlug,
     getCachedMenuItemById,
@@ -207,6 +208,8 @@ export default async function ProductDetailPage({ params }: Props) {
                     bundlesEnabled={!!tenant.bundles_enabled}
                     isBrandAdmin={isBrandAdmin}
                 />
+                {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
+                <BrandingInspector />
             </>
         )
     } catch (error) {

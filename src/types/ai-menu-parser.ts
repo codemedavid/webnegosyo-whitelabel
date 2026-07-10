@@ -34,7 +34,20 @@ export interface ParsedMenuItem {
     note?: string
 }
 
+/**
+ * A shared add-on section extracted once from the menu (e.g. "Add-ons for
+ * all milk teas: Pearls P20, Cream Cheese P30"). `appliesTo` holds category
+ * or item names, or ["*"] for every item. Distributed onto items by
+ * `applyAddonGroups` before import.
+ */
+export interface ParsedAddonGroup {
+    name: string
+    appliesTo: string[]
+    addons: ParsedAddon[]
+}
+
 export interface ParsedMenuData {
     categories: ParsedCategory[]
     items: ParsedMenuItem[]
+    addonGroups?: ParsedAddonGroup[]
 }

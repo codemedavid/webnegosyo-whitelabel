@@ -9,6 +9,7 @@ import {
   HeaderSearch,
   headerShellClass,
   headerShellStyle,
+  HEADER_SCOPE_PROPS,
 } from './header-parts'
 
 export const MinimalHeader = memo(function MinimalHeader({
@@ -25,7 +26,7 @@ export const MinimalHeader = memo(function MinimalHeader({
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
 
   return (
-    <header className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
+    <header {...HEADER_SCOPE_PROPS} className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
       <div className="container mx-auto px-4">
         <div className="flex h-14 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">

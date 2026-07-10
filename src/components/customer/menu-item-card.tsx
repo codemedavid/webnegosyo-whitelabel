@@ -17,7 +17,9 @@ interface MenuItemCardProps {
 
 export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: MenuItemCardProps) {
   return (
-    <div style={{ contentVisibility: 'auto' }}>
+    // Click-to-inspect tag lives on the card wrapper (not the grid) so every
+    // layout — grid-focus, magazine, mosaic, horizontal scroll — is covered.
+    <div style={{ contentVisibility: 'auto' }} data-branding-scope="storefront/cards">
       <CardTemplateRenderer
         template={template}
         item={item}

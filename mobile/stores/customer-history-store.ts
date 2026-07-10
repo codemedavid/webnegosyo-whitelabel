@@ -113,6 +113,41 @@ function extractCustomerIdentity(customerData: Record<string, string>): Customer
   return { name, phone, email }
 }
 
+const PH_E164 = /^\+63\d{10}$/
+
+/**
+ * Normalize a PH phone to E.164 (`+639XXXXXXXXX`), mirroring the web app's
+ * `src/lib/phone.ts` so the same person's orders join into one customer whether
+ * they checked out on the web or in the app. Returns '' if not confidently PH.
+ */
+function normalizePhoneE164(raw: string): string {
+  const trimmed = clean(raw)
+  if (!trimmed) return ''
+  let digits = trimmed.replace(/\D+/g, '')
+  if (!trimmed.startsWith('+') && digits.startsWith('00')) digits = digits.slice(2)
+  if (!digits) return ''
+  let candidate: string
+  if (digits.startsWith('63')) candidate = `+${digits}`
+  else if (digits.startsWith('0')) candidate = `+63${digits.slice(1)}`
+  else if (digits.length === 10 && digits.startsWith('9')) candidate = `+63${digits}`
+  else candidate = `+63${digits}`
+  return PH_E164.test(candidate) ? candidate : ''
+}
+
+/**
+ * The canonical value to store in an order's `customerContact`: normalized E.164
+ * phone first, then a lowercased email, resolved from whatever field the tenant
+ * form used. Returns '' for anonymous orders so analytics count them as walk-ins
+ * rather than collapsing them into one fake customer.
+ */
+export function resolveOrderContact(customerData: Record<string, string>): string {
+  const { phone, email } = extractCustomerIdentity(customerData)
+  const phoneE164 = normalizePhoneE164(phone)
+  if (phoneE164) return phoneE164
+  const normalizedEmail = normalizeEmail(email)
+  return normalizedEmail.includes('@') ? normalizedEmail : ''
+}
+
 export function resolveCustomerLookup(tenantId: string, customerData: Record<string, string>): CustomerLookup {
   const { name, phone, email } = extractCustomerIdentity(customerData)
 

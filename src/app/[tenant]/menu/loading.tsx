@@ -1,6 +1,13 @@
 'use client'
 
+import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
+
 export default function MenuLoading() {
+    // Branded flash while loading when enabled; otherwise the menu skeleton.
+    return <TenantFlashLoading fallback={<MenuSkeleton />} />
+}
+
+function MenuSkeleton() {
     return (
         <div className="min-h-screen bg-gray-50 animate-pulse">
             {/* Header skeleton */}

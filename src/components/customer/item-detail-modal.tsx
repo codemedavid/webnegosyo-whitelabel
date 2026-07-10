@@ -127,6 +127,7 @@ export function ItemDetailModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        data-branding-scope="storefront/quickview"
         className="!fixed w-[calc(100%-2rem)] max-w-md sm:max-w-lg flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !left-1/2 !-translate-x-1/2 !m-0 border shadow-2xl !bottom-4 sm:!top-1/2 sm:!bottom-auto sm:!-translate-y-1/2 h-[72vh] sm:h-auto sm:max-h-[68vh]"
         showCloseButton={false}
         style={{ backgroundColor: branding.modalBackground }}
@@ -169,13 +170,16 @@ export function ItemDetailModal({
                   {/* Top: Title */}
                   <div>
                     <h1
+                      data-branding-scope="storefront/quickview-title"
                       className="text-lg sm:text-xl font-bold line-clamp-2 mb-1.5"
                       style={{ color: branding.modalTitle }}
                     >
                       {item.name}
                     </h1>
                     {item.description && (
-                      <p className="text-xs sm:text-sm line-clamp-2 leading-relaxed"
+                      <p
+                        data-branding-scope="storefront/quickview-description"
+                        className="text-xs sm:text-sm line-clamp-2 leading-relaxed"
                         style={{ color: branding.modalDescription }}
                       >
                         {item.description}
@@ -191,6 +195,7 @@ export function ItemDetailModal({
                       </div>
                     )}
                     <div
+                      data-branding-scope="storefront/quickview-price"
                       className="text-xl sm:text-2xl font-bold"
                       style={{ color: branding.modalPrice }}
                     >

@@ -601,6 +601,27 @@ function RenderColumn({
 // Canvas renderer (shared by desktop/mobile)
 // ---------------------------------------------------------------------------
 
+/**
+ * Fallback canvas heights for legacy/partial designs that were persisted before
+ * `canvas` existed (or with a missing breakpoint). Without this a malformed
+ * `hero_design` reaching HeroRenderer crashes CanvasView during SSR.
+ */
+const FALLBACK_CANVAS_HEIGHT: Record<Breakpoint, number> = {
+  desktop: 600,
+  tablet: 500,
+  mobile: 500,
+}
+
+/** Resolve a canvas height for a breakpoint, tolerating a missing/partial canvas. */
+function resolveCanvasHeight(design: HeroDesign, breakpoint: Breakpoint): number {
+  const canvas = design.canvas
+  return (
+    canvas?.[breakpoint]?.height ??
+    canvas?.desktop?.height ??
+    FALLBACK_CANVAS_HEIGHT[breakpoint]
+  )
+}
+
 function CanvasView({
   design,
   breakpoint,
@@ -608,12 +629,13 @@ function CanvasView({
   design: HeroDesign
   breakpoint: Breakpoint
 }) {
-  const height = design.canvas[breakpoint]?.height ?? design.canvas.desktop.height
+  const height = resolveCanvasHeight(design, breakpoint)
+  const elements = useMemo(() => design.elements ?? [], [design.elements])
 
   // Build child map for containers
   const childrenByParent = useMemo(() => {
     const map = new Map<string, HeroElement[]>()
-    for (const el of design.elements) {
+    for (const el of elements) {
       if (el.parentId && (el.visibility?.[breakpoint] !== false)) {
         const siblings = map.get(el.parentId) ?? []
         siblings.push(el)
@@ -621,14 +643,14 @@ function CanvasView({
       }
     }
     return map
-  }, [design.elements, breakpoint])
+  }, [elements, breakpoint])
 
   // Root elements (no parentId), sorted
   const sortedElements = useMemo(() => {
-    return [...design.elements]
+    return [...elements]
       .filter((el) => (el.visibility?.[breakpoint] !== false) && !el.parentId)
       .sort((a, b) => a.zIndex - b.zIndex)
-  }, [design.elements, breakpoint])
+  }, [elements, breakpoint])
 
   return (
     <div

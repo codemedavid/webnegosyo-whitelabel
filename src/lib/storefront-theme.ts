@@ -51,6 +51,9 @@ export type HeroPreset =
   | 'banner'
   | 'collage'
   | 'minimal'
+  // Renders the merchant's own Hero Designer layout (tenant.hero_design) rather
+  // than a built-in preset. resolveHeroPreset() maps it to null like 'theme'.
+  | 'custom'
 
 /**
  * A coordinated storefront color palette — the seven color roles the reference
@@ -238,7 +241,7 @@ export const CATEGORY_NAV_STYLES: Record<Exclude<CategoryNavStyle, 'theme'>, tru
  * its own token — the resolver hands the token to the hero renderer, which maps
  * it to a layout without touching the branding colors or the hero copy.
  */
-export const HERO_PRESETS: Record<Exclude<HeroPreset, 'theme'>, true> = {
+export const HERO_PRESETS: Record<Exclude<HeroPreset, 'theme' | 'custom'>, true> = {
   centered: true,
   editorial: true,
   split: true,
@@ -283,7 +286,7 @@ export const CATEGORY_NAV_STYLE_OPTIONS: readonly CategoryNavStyle[] = [
 /** Selectable hero preset options — `'theme'` leads as the inherit default. */
 export const HERO_PRESET_OPTIONS: readonly HeroPreset[] = [
   'theme',
-  ...(Object.keys(HERO_PRESETS) as Exclude<HeroPreset, 'theme'>[]),
+  ...(Object.keys(HERO_PRESETS) as Exclude<HeroPreset, 'theme' | 'custom'>[]),
 ]
 
 /**
@@ -339,9 +342,9 @@ export function resolveCategoryNavStyle(
  */
 export function resolveHeroPreset(
   value: unknown
-): Exclude<HeroPreset, 'theme'> | null {
-  if (typeof value !== 'string' || value === 'theme') return null
-  const key = value as Exclude<HeroPreset, 'theme'>
+): Exclude<HeroPreset, 'theme' | 'custom'> | null {
+  if (typeof value !== 'string' || value === 'theme' || value === 'custom') return null
+  const key = value as Exclude<HeroPreset, 'theme' | 'custom'>
   return HERO_PRESETS[key] ? key : null
 }
 

@@ -1,0 +1,21 @@
+diff --git a/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx b/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx
+index 17e01d3..4e267bb 100644
+--- a/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx
++++ b/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx
+@@ -600,9 +600,15 @@ const NetPrinter = {
+   },
+ };
+ 
++// On iOS, NativeEventEmitter throws if given a null module. RNNetPrinter is
++// null on the simulator and on builds where the native module failed to
++// register, so guard against it to avoid crashing at module load. Consumers
++// must null-check NetPrinterEventEmitter before subscribing.
+ const NetPrinterEventEmitter =
+   Platform.OS === "ios"
+-    ? new NativeEventEmitter(RNNetPrinter)
++    ? RNNetPrinter
++      ? new NativeEventEmitter(RNNetPrinter)
++      : undefined
+     : new NativeEventEmitter();
+ 
+ export { BLEPrinter, NetPrinter, NetPrinterEventEmitter, USBPrinter };

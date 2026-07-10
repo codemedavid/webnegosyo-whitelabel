@@ -40,6 +40,13 @@ type ElementSize = 'sm' | 'md' | 'lg'
 
 /* ----------------------------- shell helpers ----------------------------- */
 
+/**
+ * Branding Studio click-to-inspect tag — spread onto each template's root
+ * <header> so the editor's inspector can highlight it and jump to the
+ * Storefront → Header settings section (see src/lib/branding-inspect.ts).
+ */
+export const HEADER_SCOPE_PROPS = { 'data-branding-scope': 'storefront/header' } as const
+
 export function headerShellClass(config: HeaderConfig, extra?: string): string {
   return [
     config.sticky ? 'sticky top-0' : 'relative',
@@ -94,7 +101,10 @@ export function HeaderLogo({
 
   if (tenant?.logo_url) {
     return (
-      <div className={`relative ${dim} flex-shrink-0 overflow-hidden ${radius}`}>
+      <div
+        data-branding-scope="storefront/header-logo"
+        className={`relative ${dim} flex-shrink-0 overflow-hidden ${radius}`}
+      >
         <OptimizedImage
           src={tenant.logo_url}
           alt={tenant.name || 'Logo'}
@@ -108,6 +118,7 @@ export function HeaderLogo({
 
   return (
     <div
+      data-branding-scope="storefront/header-logo"
       className={`flex ${dim} flex-shrink-0 items-center justify-center ${radius}`}
       style={{ backgroundColor: branding.primary }}
     >
@@ -140,11 +151,19 @@ export function HeaderTitle({
 
   return (
     <div className={`min-w-0 ${align === 'center' ? 'text-center' : ''}`}>
-      <h1 className={`${titleSize} font-bold leading-tight truncate`} style={{ color: titleColor }}>
+      <h1
+        data-branding-scope="storefront/header-title"
+        className={`${titleSize} font-bold leading-tight truncate`}
+        style={{ color: titleColor }}
+      >
         {name}
       </h1>
       {tagline ? (
-        <p className="mt-0.5 text-xs leading-tight sm:text-sm truncate" style={{ color: taglineColor }}>
+        <p
+          data-branding-scope="storefront/header-tagline"
+          className="mt-0.5 text-xs leading-tight sm:text-sm truncate"
+          style={{ color: taglineColor }}
+        >
           {tagline}
         </p>
       ) : null}
@@ -166,6 +185,7 @@ export function HeaderCartButton({
   return (
     <button
       type="button"
+      data-branding-scope="storefront/header-cart"
       onClick={onClick}
       className="relative p-2 transition-colors hover:opacity-80"
       style={{ color: branding.textSecondary }}

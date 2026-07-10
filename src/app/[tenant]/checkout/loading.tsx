@@ -1,6 +1,13 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
 
 export default function CheckoutLoading() {
+  // Branded flash while loading when the tenant enabled it; otherwise the
+  // existing checkout skeleton (zero regression for tenants without flash).
+  return <TenantFlashLoading fallback={<CheckoutSkeleton />} />
+}
+
+function CheckoutSkeleton() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20">
       <main className="container mx-auto px-4 py-8">

@@ -10,6 +10,7 @@ import {
   headerShellClass,
   headerShellStyle,
   rowHeightClass,
+  HEADER_SCOPE_PROPS,
 } from './header-parts'
 
 export const CenteredHeader = memo(function CenteredHeader({
@@ -26,7 +27,7 @@ export const CenteredHeader = memo(function CenteredHeader({
   const name = tenant?.name || tenantSlug.replace(/-/g, ' ')
 
   return (
-    <header className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
+    <header {...HEADER_SCOPE_PROPS} className={headerShellClass(config, className)} style={headerShellStyle(branding)}>
       <div className="container mx-auto px-4">
         {/* px-20 reserves room on both sides so the centered brand never slides
             under the absolutely-positioned cart on the same line. */}

@@ -150,7 +150,7 @@ export function CartDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
+        <SheetContent data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
           <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${accent}20` }}>
             <SheetTitle className="flex items-center gap-2 text-base">
               <div
@@ -179,7 +179,7 @@ export function CartDrawer({
               <ScrollArea className="flex-1 overflow-y-auto px-4">
                 <div className="space-y-3 pt-3 pb-4">
                   {items.map((item, index) => (
-                    <div key={item.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+                    <div key={item.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         <OptimizedImage
                           src={item.menu_item.image_url}
@@ -281,7 +281,7 @@ export function CartDrawer({
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
-                          <span className="font-bold text-sm" style={{ color: accent }}>
+                          <span data-branding-scope="cart/item-price" className="font-bold text-sm" style={{ color: accent }}>
                             {formatPrice(item.subtotal)}
                           </span>
                         </div>
@@ -290,7 +290,7 @@ export function CartDrawer({
                   ))}
 
                   {bundleItems.filter(bi => Array.isArray(bi.slots)).map((bundleItem, index) => (
-                    <div key={bundleItem.id} className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+                    <div key={bundleItem.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
                       <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         {(bundleItem.bundleImageUrl || bundleItem.slots?.[0]?.menuItemImage) ? (
                           <OptimizedImage
@@ -358,7 +358,7 @@ export function CartDrawer({
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
-                          <span className="font-bold text-sm" style={{ color: accent }}>
+                          <span data-branding-scope="cart/item-price" className="font-bold text-sm" style={{ color: accent }}>
                             {formatPrice(bundleItem.subtotal)}
                           </span>
                         </div>
@@ -368,7 +368,7 @@ export function CartDrawer({
                 </div>
               </ScrollArea>
 
-              <div className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${accent}20`, backgroundColor: palette.summaryBackground }}>
+              <div data-branding-scope="cart/summary" className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${accent}20`, backgroundColor: palette.summaryBackground }}>
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-gray-900" style={{ color: palette.text }}>Total</span>
                   <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(total)}</span>
@@ -395,6 +395,7 @@ export function CartDrawer({
                     </Button>
                   </Link>
                   <Button
+                    data-branding-scope="cart/checkout-button"
                     className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
                     style={{ backgroundColor: palette.button ?? accent, color: palette.accentText }}
                     onClick={handleCheckoutClick}

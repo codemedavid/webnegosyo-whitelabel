@@ -155,6 +155,7 @@ const VariationOptionButton = memo(function VariationOptionButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/variation-option"
             onClick={onSelect}
             className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
@@ -198,6 +199,7 @@ const LegacyVariationButton = memo(function LegacyVariationButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/variation-option"
             onClick={onSelect}
             className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
@@ -231,6 +233,7 @@ const AddonButton = memo(function AddonButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/addon-option"
             onClick={onToggle}
             className="w-full flex items-center justify-between p-3.5 border-2 transition-all duration-150 active:scale-[0.98]"
             style={isSelected ? dynamicStyles?.addonButtonSelected : dynamicStyles?.addonButton}
@@ -692,7 +695,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             style={cssVariables}
         >
             {/* Back Navigation */}
-            <header className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
+            <header data-branding-scope="product/header" className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
                 <div className="flex items-center justify-between gap-2">
                     <motion.button
                         onClick={handleGoBack}
@@ -726,6 +729,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
                 {/* Product Image - Hero */}
                 <div
+                    data-branding-scope="product/image"
                     className="relative w-full h-[50vh]"
                     style={{
                         backgroundColor: 'var(--pd-image-background)',
@@ -766,6 +770,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     )}
                     {hasDiscount && (
                         <div
+                            data-branding-scope="product/sale-badge"
                             className="absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
                             style={{
                                 backgroundColor: 'var(--pd-sale-badge-bg)',
@@ -778,7 +783,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
 
                 {/* Product Info */}
-                <div className="relative px-5 py-6" style={{ padding: 'var(--pd-section-padding)' }}>
+                <div data-branding-scope="product/info" className="relative px-5 py-6" style={{ padding: 'var(--pd-section-padding)' }}>
                     <AdminEditPencil
                         visible={isBrandAdmin}
                         onClick={() => openBrandingEditor('product_info', 'settings')}
@@ -823,6 +828,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Name & Meta */}
                     <div className="text-center mb-4">
                         <h1
+                            data-branding-scope="product/name"
                             className="mb-2"
                             style={dynamicStyles?.name}
                         >
@@ -853,6 +859,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Description */}
                     {item.description && (
                         <p
+                            data-branding-scope="product/description"
                             className="text-center leading-relaxed mb-6"
                             style={dynamicStyles?.description}
                         >
@@ -872,6 +879,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         return (
                             <div
                                 key={variationType.id}
+                                data-branding-scope="product/variations"
                                 className="mb-6"
                             >
                                 <div className="flex items-center justify-between gap-2 mb-3">
@@ -960,7 +968,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                     {/* Add-ons */}
                     {hasAddons && (
-                        <div className="mb-6">
+                        <div className="mb-6" data-branding-scope="product/addons">
                             <div className="flex items-center justify-between gap-2 mb-3">
                                 <h3
                                     className="text-base font-semibold"
@@ -996,7 +1004,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Inline Upgrade Section (McDonald's kiosk style) */}
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
-                        <div className="relative">
+                        <div className="relative" data-branding-scope="product/related">
                             <AdminEditPencil
                                 visible={isBrandAdmin}
                                 onClick={() => openBrandingEditor('related_items')}
@@ -1165,6 +1173,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Sticky Footer */}
             <footer
+                data-branding-scope="product/sticky-footer"
                 className={`${isSheet ? 'absolute' : 'fixed'} bottom-0 left-0 right-0 z-40 border-t`}
                 style={dynamicStyles?.footer}
             >
@@ -1193,6 +1202,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 </span>
                             )}
                             <span
+                                data-branding-scope="product/total-price"
                                 className="text-xl font-bold"
                                 style={{ color: 'var(--pd-total-price)' }}
                             >
@@ -1202,6 +1212,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                         {/* Quantity Controls */}
                         <div
+                            data-branding-scope="product/quantity"
                             className="flex items-center gap-1.5 rounded-full px-1.5"
                             style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                         >
@@ -1245,6 +1256,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     <Button
                         type="button"
                         variant="outline"
+                        data-branding-scope="product/buy-now"
                         onClick={handleBuyNow}
                         className="flex-1 h-12 font-semibold text-base border-2 transition-all active:scale-[0.98]"
                         style={dynamicStyles?.buttonBuyNow}
@@ -1253,6 +1265,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     </Button>
                     <Button
                         type="button"
+                        data-branding-scope="product/add-to-cart"
                         onClick={() => handleAddToCart(false)}
                         className="flex-1 h-12 font-semibold text-base transition-all active:scale-[0.98]"
                         style={dynamicStyles?.buttonAddToCart}

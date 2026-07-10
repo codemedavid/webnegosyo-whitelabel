@@ -9,6 +9,7 @@ import {
   HeaderCartButton,
   HeaderSearch,
   headerShellClass,
+  HEADER_SCOPE_PROPS,
 } from './header-parts'
 
 export const BannerHeader = memo(function BannerHeader({
@@ -34,6 +35,7 @@ export const BannerHeader = memo(function BannerHeader({
 
   return (
     <header
+      {...HEADER_SCOPE_PROPS}
       className={headerShellClass(config, className)}
       style={{ background, color: branding.headerFont, borderColor: branding.border }}
     >

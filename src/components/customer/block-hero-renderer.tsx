@@ -868,7 +868,7 @@ export function BlockHeroRenderer({ design, className }: BlockHeroRendererProps)
   if (!design.sections.length) return null
 
   return (
-    <div className={className}>
+    <div className={className} data-branding-scope="storefront/hero">
       {/* Desktop */}
       <BreakpointView
         design={design}

@@ -105,7 +105,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
             >
                 <h3
                     className="text-sm md:text-lg font-black uppercase tracking-tight line-clamp-1"
-                    style={{ color: branding.cardTitle }}
+                    data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
                 </h3>
@@ -113,7 +113,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                 {item.description && (
                     <p
                         className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
-                        style={{ color: branding.cardDescription }}
+                        data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
                     >
                         {item.description}
                     </p>
@@ -128,7 +128,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                         )}
                         <span
                             className="text-lg md:text-2xl font-black"
-                            style={{ color: branding.cardPrice, fontFamily: 'ui-monospace, monospace' }}
+                            data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice, fontFamily: 'ui-monospace, monospace' }}
                         >
                             {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>

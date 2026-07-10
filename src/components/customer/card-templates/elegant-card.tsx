@@ -123,7 +123,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
         <div>
           <h3
             className="text-sm md:text-lg font-semibold line-clamp-1 mb-1"
-            style={{ color: branding.cardTitle }}
+            data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
           >
             {item.name}
           </h3>
@@ -131,7 +131,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
           {item.description && (
             <p
               className="text-xs md:text-sm line-clamp-1 md:line-clamp-2 mb-1"
-              style={{ color: branding.cardDescription }}
+              data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
             >
               {item.description}
             </p>
@@ -160,7 +160,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
             )}
             <span
               className="text-base md:text-2xl font-bold"
-              style={{ color: branding.cardPrice }}
+              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
             >
               {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>

@@ -14,7 +14,7 @@ import { AdvanceOrderScheduler } from '@/components/checkout/advance-order-sched
 import { CartSummary } from '@/components/cart/cart-summary'
 import { Button } from '@/components/ui/button'
 import { useOrderStore } from '@/stores/order-store'
-import { resolveCustomerLookup, useCustomerHistoryHydrated, useCustomerHistoryStore } from '@/stores/customer-history-store'
+import { resolveCustomerLookup, resolveOrderContact, useCustomerHistoryHydrated, useCustomerHistoryStore } from '@/stores/customer-history-store'
 import { postOrderToSheets } from '@/lib/google-sheets'
 import {
   getAdvanceOrderConfig,
@@ -288,7 +288,9 @@ export default function CheckoutScreen() {
             path: 'orders:createOrder',
             args: {
               customerName: formValues.customer_name || null,
-              customerContact: formValues.customer_phone || formValues.customer_email || null,
+              // Resolve from any phone/email field the tenant form uses (normalized
+              // to match the web app) so the contact is a stable customer identity.
+              customerContact: resolveOrderContact(formValues),
               customerData: {
                 ...formValues,
                 ...(scheduledForISO

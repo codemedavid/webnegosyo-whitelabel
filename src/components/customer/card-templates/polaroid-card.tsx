@@ -96,7 +96,7 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
             <div className="py-2 px-0.5 space-y-1 md:py-4 md:px-1 md:space-y-1.5">
                 <h3
                     className="text-sm md:text-base font-semibold line-clamp-1"
-                    style={{ color: branding.cardTitle }}
+                    data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
                 </h3>
@@ -104,7 +104,7 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
                 {item.description && (
                     <p
                         className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
-                        style={{ color: branding.cardDescription }}
+                        data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
                     >
                         {item.description}
                     </p>
@@ -117,7 +117,7 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
                                 {formatPrice(item.price, { hideCurrencySymbol })}
                             </span>
                         )}
-                        <span className="text-sm md:text-lg font-bold" style={{ color: branding.cardPrice }}>
+                        <span className="text-sm md:text-lg font-bold" data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}>
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>
                     </div>

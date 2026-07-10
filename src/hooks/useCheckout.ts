@@ -43,6 +43,7 @@ import { resolveDeliveryQuotePlan } from '@/lib/delivery-quote'
 import { createClient } from '@/lib/supabase/client'
 import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { savePendingOrder } from '@/lib/qr-pending-order'
+import { resolveOrderContact } from '@/lib/customer-identity'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
@@ -680,7 +681,10 @@ export function useCheckout(tenantSlug: string) {
         orderTypeId: orderType,
         orderType: selectedOrderType?.type ?? selectedOrderType?.name ?? '',
         customerName: customerData.customer_name || '',
-        customerContact: customerData.customer_phone || customerData.customer_email || '',
+        // Resolve from any phone/email field the tenant form uses (not just the
+        // literal customer_phone/customer_email keys) so the stored contact is a
+        // stable per-customer identity for analytics.
+        customerContact: resolveOrderContact({ name: customerData.customer_name, customerData }),
         customerData: {
           ...customerData,
           ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
@@ -1020,7 +1024,7 @@ export function useCheckout(tenantSlug: string) {
 
         const customerInfo = {
           name: snapshotCustomerData.customer_name || undefined,
-          contact: snapshotCustomerData.customer_phone || snapshotCustomerData.customer_email || undefined,
+          contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
         }
 
         const validDeliveryFeeForOrder = (deliveryFee && deliveryFeeAddress === snapshotCustomerData.delivery_address) ? deliveryFee : undefined

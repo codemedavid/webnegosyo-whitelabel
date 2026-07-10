@@ -151,6 +151,7 @@ export function FooterView({ config, interactive = true }: FooterViewProps) {
 
   return (
     <footer
+      data-branding-scope="footer/content"
       style={{ backgroundColor: colors.background, color: colors.text }}
       className="w-full"
     >

@@ -122,7 +122,7 @@ export const StorefrontCard = memo(function StorefrontCard({
         <div className="px-0.5">
           <h3
             className="line-clamp-2 text-base font-bold leading-tight md:text-[1.35rem] md:leading-tight"
-            style={{ color: branding.cardTitle }}
+            data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
           >
             {item.name}
           </h3>
@@ -139,7 +139,7 @@ export const StorefrontCard = memo(function StorefrontCard({
 
             <span
               className="text-[0.95rem] font-medium md:text-lg"
-              style={{ color: branding.cardPrice }}
+              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
             >
               {item.variations.length > 0 ? 'from ' : ''}
               {formatPrice(displayPrice, { hideCurrencySymbol })}

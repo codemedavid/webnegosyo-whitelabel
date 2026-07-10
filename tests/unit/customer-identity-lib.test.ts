@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@jest/globals'
 import {
   resolveCustomerIdentity,
+  resolveOrderContact,
   isIdentifiableContact,
   computeCustomerAggregate,
   type CustomerOrderInput,
@@ -44,6 +45,45 @@ describe('resolveCustomerIdentity', () => {
     expect(resolveCustomerIdentity({ contact: 'POS' }).identityKey).toBeNull()
     expect(resolveCustomerIdentity({ contact: 'walk-in' }).identityKey).toBeNull()
     expect(resolveCustomerIdentity({ name: 'Guest' }).identityKey).toBeNull()
+  })
+})
+
+describe('resolveOrderContact', () => {
+  it('stores the normalized E.164 phone from the standard field', () => {
+    expect(resolveOrderContact({ customerData: { customer_phone: '0917 123 4567' } })).toBe(
+      '+639171234567'
+    )
+  })
+
+  it('resolves the phone even when the form field is named differently', () => {
+    // This is the exact bug: tenant forms often name their phone field `phone`,
+    // `mobile`, or `contact_number` instead of `customer_phone`, so the old
+    // `customerData.customer_phone` read dropped the identity and every order
+    // collapsed into one fake customer.
+    expect(resolveOrderContact({ customerData: { contact_number: '09171234567' } })).toBe(
+      '+639171234567'
+    )
+    expect(resolveOrderContact({ customerData: { mobile: '09171234567' } })).toBe(
+      '+639171234567'
+    )
+  })
+
+  it('two customers with different phones resolve to different contacts', () => {
+    const a = resolveOrderContact({ customerData: { phone: '09171234567' } })
+    const b = resolveOrderContact({ customerData: { phone: '09980001122' } })
+    expect(a).not.toBe(b)
+  })
+
+  it('falls back to email when there is no phone', () => {
+    expect(resolveOrderContact({ customerData: { customer_email: 'Ana@Example.com' } })).toBe(
+      'ana@example.com'
+    )
+  })
+
+  it('returns empty string for anonymous / walk-in orders (counted as walk-ins)', () => {
+    expect(resolveOrderContact({ name: 'Guest' })).toBe('')
+    expect(resolveOrderContact({ contact: 'POS' })).toBe('')
+    expect(resolveOrderContact({ customerData: {} })).toBe('')
   })
 })
 

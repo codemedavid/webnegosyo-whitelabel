@@ -15,6 +15,10 @@ import {
   BRANDING_READY_MESSAGE,
   type BrandingPreviewDraft,
 } from '@/hooks/use-branding-preview'
+import {
+  BRANDING_INSPECT_MODE_MESSAGE,
+  BRANDING_SCOPE_SELECTED_MESSAGE,
+} from '@/lib/branding-inspect'
 import { getPreviewTarget } from './preview-routes'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
@@ -34,6 +38,10 @@ interface PreviewFrameProps {
   device: 'desktop' | 'mobile'
   /** A real menu item id so the product surface can preview the item page. */
   sampleItemId?: string | null
+  /** While true the framed storefront highlights hovered branded regions. */
+  inspectMode?: boolean
+  /** Called with the scope key when a highlighted region is clicked. */
+  onScopeSelected?: (scope: string) => void
 }
 
 export function PreviewFrame({
@@ -45,6 +53,8 @@ export function PreviewFrame({
   productMobileOverrides,
   device,
   sampleItemId,
+  inspectMode = false,
+  onScopeSelected,
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -52,6 +62,7 @@ export function PreviewFrame({
   const mobileOverridesRef = useRef(mobileOverrides)
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
+  const inspectModeRef = useRef(inspectMode)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const previewPath = useMemo(() => {
@@ -75,6 +86,12 @@ export function PreviewFrame({
       },
       window.location.origin
     )
+    // Ride inspect mode on every draft send so a freshly (re)loaded or
+    // navigated iframe always knows the current mode.
+    frameWindow.postMessage(
+      { type: BRANDING_INSPECT_MODE_MESSAGE, enabled: inspectModeRef.current },
+      window.location.origin
+    )
   }, [])
 
   // Stream draft changes (debounced — color pickers fire on every drag tick).
@@ -91,19 +108,36 @@ export function PreviewFrame({
     }
   }, [draft, productDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
 
+  // Push inspect-mode changes immediately (no debounce — it's a UI toggle).
+  useEffect(() => {
+    inspectModeRef.current = inspectMode
+    const frameWindow = iframeRef.current?.contentWindow
+    if (!frameWindow) return
+    frameWindow.postMessage(
+      { type: BRANDING_INSPECT_MODE_MESSAGE, enabled: inspectMode },
+      window.location.origin
+    )
+  }, [inspectMode])
+
   // Re-send the current draft whenever the framed page announces readiness
-  // (initial load and any in-iframe navigation).
+  // (initial load and any in-iframe navigation), and surface click-to-inspect
+  // selections coming back from the framed storefront.
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
-      const data = event.data as { type?: unknown } | null
-      if (data && typeof data === 'object' && data.type === BRANDING_READY_MESSAGE) {
+      const data = event.data as { type?: unknown; scope?: unknown } | null
+      if (!data || typeof data !== 'object') return
+      if (data.type === BRANDING_READY_MESSAGE) {
         postDraft()
+        return
+      }
+      if (data.type === BRANDING_SCOPE_SELECTED_MESSAGE && typeof data.scope === 'string') {
+        onScopeSelected?.(data.scope)
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [postDraft])
+  }, [postDraft, onScopeSelected])
 
   const isMobile = device === 'mobile'
 

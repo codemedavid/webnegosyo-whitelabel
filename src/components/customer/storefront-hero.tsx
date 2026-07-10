@@ -7,6 +7,7 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
 import { HeroPresetSection } from '@/components/customer/hero-preset'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
+import { shouldUseCustomHero } from '@/lib/hero-mode'
 import { formatPrice } from '@/lib/cart-utils'
 
 /**
@@ -71,8 +72,10 @@ export function StorefrontHero({
   if (tenant?.hero_section_enabled === false) return null
 
   const heroDesign = tenant?.hero_design as Record<string, unknown> | null | undefined
-  const hasHeroDesign = !!heroDesign && Object.keys(heroDesign).length > 0
-  if (hasHeroDesign) {
+  // Use the custom Hero Designer layout when the merchant picked "custom" (or a
+  // legacy design predates the dropdown). A concrete preset choice wins over a
+  // lingering design, so the preset path below handles those.
+  if (shouldUseCustomHero(tenant)) {
     // v4 block heroes render at the page top level (BlockHeroRenderer); skip here
     // so we never double-render.
     if (heroDesign!.version === 4) return null
@@ -105,6 +108,7 @@ export function StorefrontHero({
       document.getElementById('storefront-menu')?.scrollIntoView({ behavior: 'smooth' })
     }
     return (
+      <div data-branding-scope="storefront/hero">
       <HeroPresetSection
         preset={preset}
         title={title}
@@ -117,12 +121,18 @@ export function StorefrontHero({
         kicker={tenant?.hero_kicker || undefined}
         ctaPrimaryLabel={tenant?.hero_cta_primary_label || undefined}
         ctaSecondaryLabel={tenant?.hero_cta_secondary_label || undefined}
+        kickerColor={tenant?.hero_kicker_color || undefined}
+        ctaPrimaryColor={tenant?.hero_cta_primary_color || undefined}
+        ctaPrimaryTextColor={tenant?.hero_cta_primary_text_color || undefined}
+        ctaSecondaryTextColor={tenant?.hero_cta_secondary_text_color || undefined}
+        sectionBackground={tenant?.hero_background_color || undefined}
         onPrimaryCta={scrollToMenu}
         onSecondaryCta={scrollToMenu}
         featuredProduct={featuredProduct}
         fallbackMedia={fallbackMedia}
         brandInitial={(tenant?.name || title).trim().charAt(0)}
       />
+      </div>
     )
   }
 
@@ -131,13 +141,25 @@ export function StorefrontHero({
   if (requireExplicit) return null
 
   return (
-    <div className="text-center mb-16">
+    <div
+      className="text-center mb-16"
+      data-branding-scope="storefront/hero"
+      style={tenant?.hero_background_color ? { background: tenant.hero_background_color } : undefined}
+    >
       <div className="inline-flex items-center gap-2 justify-center">
-        <h1 className="text-5xl font-serif font-bold mb-4" style={{ color: titleColor }}>
+        <h1
+          data-branding-scope="storefront/hero-title"
+          className="text-5xl font-serif font-bold mb-4"
+          style={{ color: titleColor }}
+        >
           {title}
         </h1>
       </div>
-      <p className="text-lg font-light hidden md:block" style={{ color: descriptionColor }}>
+      <p
+        data-branding-scope="storefront/hero-description"
+        className="text-lg font-light hidden md:block"
+        style={{ color: descriptionColor }}
+      >
         {description}
       </p>
     </div>

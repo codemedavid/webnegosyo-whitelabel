@@ -114,7 +114,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
             )}
             <span
               className="text-sm md:text-xl font-black"
-              style={{ color: branding.cardPrice }}
+              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
             >
               {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
             </span>
@@ -161,7 +161,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
       >
         <h3
           className="text-sm md:text-base font-black line-clamp-1"
-          style={{ color: branding.cardTitle }}
+          data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
         >
           {item.name}
         </h3>
@@ -169,7 +169,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
         {item.description && (
           <p
             className="mt-1 text-[11px] md:text-xs line-clamp-1 md:line-clamp-2"
-            style={{ color: branding.cardDescription }}
+            data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
           >
             {item.description}
           </p>

@@ -90,7 +90,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
             <div className="px-1 pt-2.5 pb-1 space-y-1 md:px-2 md:pt-4 md:pb-2 md:space-y-1.5">
                 <h3
                     className="text-xs md:text-sm font-medium line-clamp-1 tracking-wide"
-                    style={{ color: branding.cardTitle }}
+                    data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
                 </h3>
@@ -98,7 +98,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
                 {item.description && (
                     <p
                         className="text-[11px] md:text-xs line-clamp-1 md:line-clamp-2 leading-relaxed"
-                        style={{ color: branding.cardDescription, opacity: 0.7 }}
+                        data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription, opacity: 0.7 }}
                     >
                         {item.description}
                     </p>
@@ -113,7 +113,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
                         )}
                         <span
                             className="text-sm md:text-base font-semibold tracking-tight"
-                            style={{ color: branding.cardPrice }}
+                            data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
                         >
                             {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
                         </span>

@@ -11,7 +11,18 @@ module.exports = {
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
-      { tsconfig: { jsx: "react-jsx", esModuleInterop: true } },
+      {
+        tsconfig: { jsx: "react-jsx", esModuleInterop: true },
+        // Transpile third-party source (the thermal printer library) without
+        // type-checking it; our own lib/theme code is still fully checked.
+        diagnostics: { exclude: ["**/node_modules/**"] },
+      },
     ],
   },
+  // The thermal printer library ships TypeScript source (src/index.tsx), so it
+  // must be transformed rather than ignored. Everything else in node_modules
+  // stays ignored.
+  transformIgnorePatterns: [
+    "/node_modules/(?!@haroldtran/react-native-thermal-printer/)",
+  ],
 };

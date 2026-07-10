@@ -3,6 +3,8 @@ import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { NavigationProgress } from '@/components/shared/navigation-progress'
 import { SiteFooter } from '@/components/customer/site-footer'
+import { TenantFlashProvider } from '@/components/customer/flash-screen-loader'
+import { resolveFlashScreenBranding } from '@/lib/flash-loader'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -34,14 +36,18 @@ export default async function TenantLayout({ params, children }: Props) {
     const { tenant: tenantSlug } = await params
     const tenant = await getCachedTenantBySlug(tenantSlug)
     const primaryColor = (tenant?.primary_color as string) || undefined
+    // Resolve the branded flash loading state once (we have the tenant here) so
+    // every route-level loading.tsx can pick it up via context without needing
+    // access to route params. `null` when the tenant hasn't enabled the flash.
+    const flashBranding = resolveFlashScreenBranding(tenant)
 
     return (
-        <>
+        <TenantFlashProvider branding={flashBranding}>
             <Suspense fallback={null}>
                 <NavigationProgress color={primaryColor} />
             </Suspense>
             {children}
             <SiteFooter tenant={tenant} />
-        </>
+        </TenantFlashProvider>
     )
 }
