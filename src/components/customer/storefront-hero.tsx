@@ -7,6 +7,7 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
 import { HeroPresetSection } from '@/components/customer/hero-preset'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
+import { shouldUseCustomHero } from '@/lib/hero-mode'
 import { formatPrice } from '@/lib/cart-utils'
 
 /**
@@ -71,8 +72,10 @@ export function StorefrontHero({
   if (tenant?.hero_section_enabled === false) return null
 
   const heroDesign = tenant?.hero_design as Record<string, unknown> | null | undefined
-  const hasHeroDesign = !!heroDesign && Object.keys(heroDesign).length > 0
-  if (hasHeroDesign) {
+  // Use the custom Hero Designer layout when the merchant picked "custom" (or a
+  // legacy design predates the dropdown). A concrete preset choice wins over a
+  // lingering design, so the preset path below handles those.
+  if (shouldUseCustomHero(tenant)) {
     // v4 block heroes render at the page top level (BlockHeroRenderer); skip here
     // so we never double-render.
     if (heroDesign!.version === 4) return null

@@ -9,7 +9,7 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product'
+export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners'
 
 export interface BrandingField {
   id: string
@@ -56,6 +56,9 @@ const note = (id: string, label: string): BrandingField => ({ id, label, type: '
 // A picker whose options are the tenant's own menu items (supplied at runtime,
 // not statically). Stored value is the selected menu item id, or '' for none.
 const product = (id: string, label: string): BrandingField => ({ id, label, type: 'product', default: '' })
+// An inline manager for the tenant's promotion banners (image + title +
+// description, add/remove/reorder). Stored value is a PromotionBanner[].
+const banners = (id: string, label: string): BrandingField => ({ id, label, type: 'banners' })
 
 const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
 const CARD_TEMPLATE_OPTIONS = [
@@ -122,7 +125,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('announcement_bg_color', 'Background', '#FFF4E5'),
           color('announcement_text_color', 'Text color', '#663C00'),
           toggle('is_promotion_visible', 'Show promotion banners', false),
-          note('note_promotion_banners', 'Promotion banner images are uploaded in Admin → Settings → Banners.'),
+          banners('promotion_banners', 'Promotion banners'),
         ],
       },
       {
@@ -152,7 +155,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Hero',
         fields: [
           toggle('hero_section_enabled', 'Show hero section', true),
-          select('hero_preset', 'Style', ['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal'], 'theme'),
+          select('hero_preset', 'Style', ['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal', 'custom'], 'theme'),
           text('hero_kicker', 'Kicker (eyebrow)', 'Now serving'),
           text('hero_title', 'Title', 'Welcome to our menu'),
           text('hero_description', 'Description', 'Order your favorites for pickup or delivery.'),
@@ -163,7 +166,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           text('hero_link_url', 'Fallback image link', '/menu/item/… or https://…'),
           color('hero_title_color', 'Title color', null, 'text_primary_color'),
           color('hero_description_color', 'Description color', null, 'text_secondary_color'),
-          note('note_hero_designer', 'Kicker and buttons appear on the richer hero styles (editorial, split, collage, centered, banner, minimal). A featured product turns the hero tile into a product card (image, price, Add to cart). With no product, paste a Fallback image URL (and optional link) to show a clickable image instead. Need a fully custom hero? Use the Hero Designer for block-level layouts.'),
+          note('note_hero_designer', 'Kicker and buttons appear on the richer hero styles (editorial, split, collage, centered, banner, minimal). A featured product turns the hero tile into a product card (image, price, Add to cart). With no product, paste a Fallback image URL (and optional link) to show a clickable image instead. Pick the "custom" style to render the layout you built in the Hero Designer (block-level, fully custom) — it opens from Admin → Hero Designer.'),
         ],
       },
       {

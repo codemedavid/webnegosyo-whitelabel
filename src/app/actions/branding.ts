@@ -31,7 +31,7 @@ const brandingSchema = z.object({
     brand_color: cssColorString().optional().or(z.literal('')),
     storefront_palette: z.enum(['theme', 'warm editorial', 'fine dining', 'cafe soft', 'bold diner', 'fresh green']).optional(),
     category_nav_style: z.enum(['theme', 'pills', 'chips', 'underline']).optional(),
-    hero_preset: z.enum(['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal']).optional(),
+    hero_preset: z.enum(['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal', 'custom']).optional(),
     // Core colors
     primary_color: cssColorString().min(1),
     secondary_color: cssColorString().min(1),
@@ -162,12 +162,17 @@ const brandingSchema = z.object({
     // Promotion banners
     promotion_image_url: z.string().optional().or(z.literal('')),
     is_promotion_visible: z.boolean().optional(),
-    promotion_banners: z.array(z.object({
-        id: z.string(),
-        imageUrl: z.string(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-    })).optional(),
+    // Accepts '' too so a "Reset section" (which blanks every field) clears the
+    // banners to an empty list rather than failing schema validation.
+    promotion_banners: z.union([
+        z.array(z.object({
+            id: z.string(),
+            imageUrl: z.string(),
+            title: z.string().optional(),
+            description: z.string().optional(),
+        })),
+        z.literal(''),
+    ]).optional(),
     // Footer
     footer_enabled: z.boolean().optional(),
     footer_theme: z.enum(['auto', 'light', 'dark', 'brand', 'midnight', 'minimal', 'custom']).optional(),
@@ -338,7 +343,10 @@ export async function saveBrandingAction(
         // "no featured product", which must persist as NULL, not ''.
         const updatePayload = {
             ...parsed,
-            promotion_banners: parsed.promotion_banners as PromotionBanner[] | undefined,
+            promotion_banners:
+                parsed.promotion_banners === ''
+                    ? ([] as PromotionBanner[])
+                    : (parsed.promotion_banners as PromotionBanner[] | undefined),
             ...(parsed.hero_featured_product_id === ''
                 ? { hero_featured_product_id: null }
                 : {}),
