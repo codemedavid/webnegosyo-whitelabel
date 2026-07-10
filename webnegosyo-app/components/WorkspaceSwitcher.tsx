@@ -13,20 +13,29 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
-import { WORKSPACES, defaultTabHref, getWorkspace } from "../lib/workspaces";
+import { getWorkspace } from "../lib/workspaces";
+import { allowedWorkspaces } from "../lib/staff-permissions";
 import { useWorkspaceStore } from "../stores/workspace-store";
+import { useAuthStore } from "../stores/auth-store";
 
 export function WorkspaceSwitcher() {
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const [isOpen, setIsOpen] = useState(false);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  // Restricted staff only see views holding at least one permitted tab.
+  const visibleWorkspaces = allowedWorkspaces({ role, isOwner, permissions });
   const active = getWorkspace(workspace);
 
   const handleSelect = (key: typeof workspace) => {
     setIsOpen(false);
     if (key === workspace) return;
     setWorkspace(key);
-    router.replace(defaultTabHref(key) as never);
+    const target = visibleWorkspaces.find((w) => w.key === key);
+    const landingTab = target?.defaultTab ?? getWorkspace(key).defaultTab;
+    router.replace(`/(main)/${landingTab}` as never);
   };
 
   return (
@@ -46,7 +55,7 @@ export function WorkspaceSwitcher() {
         <Pressable style={styles.backdrop} onPress={() => setIsOpen(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.sheetTitle}>Views</Text>
-            {WORKSPACES.map((w) => {
+            {visibleWorkspaces.map((w) => {
               const isActive = w.key === workspace;
               return (
                 <TouchableOpacity

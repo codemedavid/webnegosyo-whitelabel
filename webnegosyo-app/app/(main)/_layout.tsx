@@ -5,6 +5,7 @@ import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { isTabInWorkspace } from "../../lib/workspaces";
+import { isTabAllowed } from "../../lib/staff-permissions";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 
@@ -42,9 +43,16 @@ export default function MainLayout() {
   // The app is split into focused views (Operations / Insights / Products).
   // Only the active view's tabs are visible; the rest keep href: null so
   // their routes still exist for direct navigation (e.g. order detail push).
+  // Restricted staff additionally only see tabs they hold permission for.
   const workspace = useWorkspaceStore((s) => s.workspace);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const caller = { role, isOwner, permissions };
   const show = (tab: string) =>
-    isTabInWorkspace(tab, workspace) ? undefined : null;
+    isTabInWorkspace(tab, workspace) && isTabAllowed(caller, tab)
+      ? undefined
+      : null;
 
   return (
     <>
