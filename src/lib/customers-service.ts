@@ -25,6 +25,7 @@ import {
   type CustomerOrderItemInput,
 } from '@/lib/customer-identity'
 import type { Customer } from '@/types/database'
+import type { CustomersPagination } from '@/lib/customers-pagination'
 
 /** Facts about a single order the aggregate is computed from. */
 export interface CustomerOrderFacts {
@@ -287,6 +288,25 @@ const SORT_COLUMN: Record<CustomersSort, string> = {
 }
 
 /**
+ * Apply the shared name/phone search filter + sort to a customers query.
+ * Extracted so the list and the paginated read build the query identically.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function applyCustomerFilters(query: any, params?: CustomersListParams) {
+  const search = params?.search?.trim()
+  if (search) {
+    const { normalizePhoneE164 } = await import('@/lib/phone')
+    const phone = normalizePhoneE164(search)
+    query = phone
+      ? query.or(`name.ilike.%${search}%,phone_e164.eq.${phone}`)
+      : query.ilike('name', `%${search}%`)
+  }
+
+  const sortColumn = SORT_COLUMN[params?.sort ?? 'recent']
+  return query.order(sortColumn, { ascending: false, nullsFirst: false })
+}
+
+/**
  * Fetch a tenant's customers for the owner list. Admin-gated + RLS-scoped: the
  * caller must be an admin of `tenantId` (or superadmin).
  */
@@ -301,18 +321,7 @@ export async function getCustomersByTenant(
   const supabase = await createClient()
 
   let query = supabase.from('customers').select('*').eq('tenant_id', tenantId)
-
-  const search = params?.search?.trim()
-  if (search) {
-    const { normalizePhoneE164 } = await import('@/lib/phone')
-    const phone = normalizePhoneE164(search)
-    query = phone
-      ? query.or(`name.ilike.%${search}%,phone_e164.eq.${phone}`)
-      : query.ilike('name', `%${search}%`)
-  }
-
-  const sortColumn = SORT_COLUMN[params?.sort ?? 'recent']
-  query = query.order(sortColumn, { ascending: false, nullsFirst: false })
+  query = await applyCustomerFilters(query, params)
 
   const limit = params?.limit ?? 50
   const offset = params?.offset ?? 0
@@ -321,6 +330,59 @@ export async function getCustomersByTenant(
   const { data, error } = await query
   if (error) throw error
   return (data ?? []) as unknown as Customer[]
+}
+
+export interface PaginatedCustomersResult {
+  customers: Customer[]
+  pagination: CustomersPagination
+}
+
+/** Page size for the owner Customers list. */
+const CUSTOMERS_PAGE_SIZE = 50
+
+/**
+ * Fetch one page of a tenant's customers plus a total count, so the owner list
+ * can page through more than the first window. Admin-gated + RLS-scoped. The
+ * requested page (from the URL) is normalized by `computeCustomersPagination`,
+ * which owns the offset/range/clamp math and is unit-tested in isolation.
+ */
+export async function getCustomersPage(
+  tenantId: string,
+  params?: CustomersListParams & { page?: number; pageSize?: number }
+): Promise<PaginatedCustomersResult> {
+  const { verifyTenantAdmin } = await import('@/lib/admin-service')
+  await verifyTenantAdmin(tenantId)
+
+  const { createClient } = await import('@/lib/supabase/server')
+  const { computeCustomersPagination } = await import('@/lib/customers-pagination')
+  const supabase = await createClient()
+
+  const pageSize = params?.pageSize ?? CUSTOMERS_PAGE_SIZE
+
+  // First count the matching rows so we know how many pages exist and can clamp
+  // an out-of-range requested page before fetching the actual window.
+  let countQuery = supabase
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+  countQuery = await applyCustomerFilters(countQuery, params)
+  const { count, error: countError } = await countQuery
+  if (countError) throw countError
+
+  const pagination = computeCustomersPagination(count ?? 0, params?.page ?? 1, pageSize)
+
+  if (pagination.totalCount === 0) {
+    return { customers: [], pagination }
+  }
+
+  let query = supabase.from('customers').select('*').eq('tenant_id', tenantId)
+  query = await applyCustomerFilters(query, params)
+  query = query.range(pagination.offset, pagination.offset + pagination.limit - 1)
+
+  const { data, error } = await query
+  if (error) throw error
+
+  return { customers: (data ?? []) as unknown as Customer[], pagination }
 }
 
 export interface CustomerOrderSummary {

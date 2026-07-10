@@ -1,37 +1,90 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
+import { Button } from '@/components/ui/button'
 import { getCachedTenantBySlug } from '@/lib/cache'
-import { getCustomersByTenant } from '@/lib/customers-service'
+import { getCustomersPage } from '@/lib/customers-service'
 import { CustomersList } from '@/components/admin/customers-list'
 import { CustomersSkeleton } from '@/components/admin/customers-skeleton'
 import type { Tenant } from '@/types/database'
 
 interface CustomersPageProps {
   params: Promise<{ tenant: string }>
+  searchParams: Promise<{ page?: string }>
 }
-
-// Load the tenant's most-recently-active customers. Search and re-sort happen
-// client-side over this loaded page in CustomersList; server-side sort and
-// pagination via getCustomersByTenant's params remain a follow-up.
-const CUSTOMERS_PAGE_SIZE = 100
 
 async function CustomersContent({
   tenantId,
   tenantSlug,
+  page,
 }: {
   tenantId: string
   tenantSlug: string
+  page: number
 }) {
-  const customers = await getCustomersByTenant(tenantId, {
-    sort: 'recent',
-    limit: CUSTOMERS_PAGE_SIZE,
-  }).catch(() => [])
+  const { customers, pagination } = await getCustomersPage(tenantId, { page }).catch(() => ({
+    customers: [],
+    pagination: {
+      currentPage: 1,
+      totalPages: 0,
+      offset: 0,
+      limit: 50,
+      hasPreviousPage: false,
+      hasNextPage: false,
+      rangeStart: 0,
+      rangeEnd: 0,
+      totalCount: 0,
+    },
+  }))
 
-  return <CustomersList customers={customers} tenantSlug={tenantSlug} />
+  const basePath = `/${tenantSlug}/admin/customers`
+
+  return (
+    <>
+      <CustomersList customers={customers} tenantSlug={tenantSlug} />
+
+      {pagination.totalPages > 1 && (
+        <nav
+          className="flex items-center justify-between border-t pt-4"
+          aria-label="Customers pagination"
+        >
+          <p className="text-sm text-muted-foreground">
+            Showing {pagination.rangeStart}–{pagination.rangeEnd} of {pagination.totalCount}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              disabled={!pagination.hasPreviousPage}
+              className={!pagination.hasPreviousPage ? 'pointer-events-none opacity-50' : ''}
+            >
+              <Link href={`${basePath}?page=${pagination.currentPage - 1}`} aria-label="Previous page">
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              disabled={!pagination.hasNextPage}
+              className={!pagination.hasNextPage ? 'pointer-events-none opacity-50' : ''}
+            >
+              <Link href={`${basePath}?page=${pagination.currentPage + 1}`} aria-label="Next page">
+                Next <ChevronRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </nav>
+      )}
+    </>
+  )
 }
 
-export default async function CustomersPage({ params }: CustomersPageProps) {
+export default async function CustomersPage({ params, searchParams }: CustomersPageProps) {
   const { tenant: tenantSlug } = await params
+  const { page: pageParam } = await searchParams
 
   const tenantData = await getCachedTenantBySlug(tenantSlug)
 
@@ -40,6 +93,7 @@ export default async function CustomersPage({ params }: CustomersPageProps) {
   }
 
   const tenant: Tenant = tenantData
+  const page = parseInt(pageParam ?? '1', 10)
 
   return (
     <div className="space-y-6">
@@ -58,7 +112,7 @@ export default async function CustomersPage({ params }: CustomersPageProps) {
       </div>
 
       <Suspense fallback={<CustomersSkeleton />}>
-        <CustomersContent tenantId={tenant.id} tenantSlug={tenantSlug} />
+        <CustomersContent tenantId={tenant.id} tenantSlug={tenantSlug} page={page} />
       </Suspense>
     </div>
   )
