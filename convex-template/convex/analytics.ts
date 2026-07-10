@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
-import { isIdentifiableCustomer, customerKey } from "./customerIdentity";
+import { resolveAnalyticsContact } from "./customerIdentity";
 
 // Safety cap for queries that load large collections
 const QUERY_LIMIT = 10000;
@@ -483,9 +483,10 @@ export const getCustomerInsights = query({
       .order("desc")
       .take(QUERY_LIMIT);
 
-    // Group by customerContact (lowercased + trimmed). Anonymous walk-in/POS
-    // orders carry a placeholder contact and are NOT customers — they'd all
-    // collapse into one fake entry — so they are tallied separately instead.
+    // Group by a canonical identity resolved from each order's contact and
+    // customerData (normalized phone, then email). Anonymous walk-in/POS orders
+    // resolve to "" and are NOT customers — they'd collapse into one fake entry
+    // — so they are tallied separately instead.
     const customerMap = new Map<string, {
       name: string;
       orderCount: number;
@@ -498,14 +499,16 @@ export const getCustomerInsights = query({
     let identifiedRevenue = 0;
 
     for (const order of orders) {
-      if (!isIdentifiableCustomer(order.customerContact)) {
+      // Resolve one canonical key per real person from the stored contact OR
+      // customerData (recovers legacy/cross-channel orders). Blank => walk-in.
+      const key = resolveAnalyticsContact(order.customerContact, order.customerData);
+      if (!key) {
         walkInOrders += 1;
         walkInRevenue += order.total;
         continue;
       }
       identifiedOrders += 1;
       identifiedRevenue += order.total;
-      const key = customerKey(order.customerContact);
       const existing = customerMap.get(key);
       if (existing) {
         existing.orderCount += 1;

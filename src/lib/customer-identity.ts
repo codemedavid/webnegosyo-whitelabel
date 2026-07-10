@@ -125,6 +125,21 @@ export function resolveCustomerIdentity(input: CustomerIdentityInput): CustomerI
   return { phoneE164, email, name, identityKey }
 }
 
+/**
+ * The canonical value to store in an order's `customerContact`.
+ *
+ * Every order write path (web checkout, QR handoff, mobile, server upsert) must
+ * funnel through this so the stored contact is a stable identity — normalized
+ * E.164 phone first, then a valid email — regardless of which form field the
+ * tenant named their phone/email input. Returns `''` (never a placeholder or a
+ * junk value) when the order is genuinely anonymous, so downstream analytics
+ * count it as a walk-in instead of collapsing many orders into one fake customer.
+ */
+export function resolveOrderContact(input: CustomerIdentityInput): string {
+  const { phoneE164, email } = resolveCustomerIdentity(input)
+  return phoneE164 ?? email ?? ''
+}
+
 function toIso(value: string | number): string | null {
   const date = typeof value === 'number' ? new Date(value) : new Date(value)
   const ms = date.getTime()

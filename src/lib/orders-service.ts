@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
+import { resolveOrderContact } from '@/lib/customer-identity'
 import type { Order } from '@/types/database'
 
 export interface OrderWithItems extends Order {
@@ -624,7 +625,12 @@ export async function createOrderConvex(
   // Do NOT send fields not in the schema (tenantId, paymentMethodId, paymentMethodQrCodeUrl)
   const mutationArgs: Record<string, unknown> = {
     customerName: customerInfo?.name ?? 'Guest',
-    customerContact: customerInfo?.contact ?? '',
+    // Prefer the caller-resolved contact, but fall back to resolving from the raw
+    // form data so orders never lose their customer identity (which would
+    // collapse every anonymous-looking order into one fake customer in analytics).
+    customerContact:
+      (customerInfo?.contact && customerInfo.contact.trim()) ||
+      resolveOrderContact({ name: customerInfo?.name, contact: customerInfo?.contact, customerData }),
     customerData: convexCustomerData,
     total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
     source: 'web' as const,

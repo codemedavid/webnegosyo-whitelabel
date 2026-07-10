@@ -32,7 +32,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // collapsing into one fake customer entry. They're reported separately as
 // walkInOrders/walkInRevenue, and per-customer averages cover identified
 // customers only (customerIdentity.ts).
-const CURRENT_SCHEMA_VERSION = 12;
+// v13: getCustomerInsights now resolves a canonical identity per order via
+// resolveAnalyticsContact (customerIdentity.ts) — normalized PH E.164 phone,
+// then email, from customerContact OR customerData. Recovers legacy orders whose
+// identity lived only in customerData and merges cross-channel phone formats
+// (09... vs +639...), fixing the "1 customer" undercount without a data backfill.
+const CURRENT_SCHEMA_VERSION = 13;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
