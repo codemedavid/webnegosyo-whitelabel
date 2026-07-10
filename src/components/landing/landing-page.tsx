@@ -15,6 +15,7 @@ import { FeatureJourney } from './feature-journey'
 import { SocialProofSection } from './social-proof'
 import { FAQSection, PricingSection } from './pricing-faq'
 import { FinalCTASection } from './final-cta'
+import { SceneErrorBoundary } from './scene-error-boundary'
 import { LANDING_COLORS } from './landing-theme'
 
 const HeroCanvas = dynamic(() => import('./hero-canvas'), { ssr: false })
@@ -64,7 +65,13 @@ export function LandingPage() {
       {/* Immersive scene: fixed 3D canvas behind the hero + feature journey */}
       <div ref={sceneRef} className="relative">
         <motion.div className="fixed inset-0 z-0" style={{ opacity: canvasOpacity }} aria-hidden>
-          {shouldReduceMotion ? <StaticSceneFallback /> : <HeroCanvas progress={sceneProgress} />}
+          {shouldReduceMotion ? (
+            <StaticSceneFallback />
+          ) : (
+            <SceneErrorBoundary fallback={<StaticSceneFallback />}>
+              <HeroCanvas progress={sceneProgress} />
+            </SceneErrorBoundary>
+          )}
           {/* Ambient glow behind the phone */}
           <div
             className="pointer-events-none absolute left-1/2 top-1/2 h-[60vmin] w-[60vmin] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
