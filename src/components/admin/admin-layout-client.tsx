@@ -5,15 +5,20 @@ import { Sidebar, MobileSidebar, adminSidebarItems, type SidebarEntry } from '@/
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
+import {
+  filterSidebarEntriesByPermission,
+  type PermissionHolder,
+} from '@/lib/staff-permissions'
 import { useMemo } from 'react'
 
 interface AdminLayoutClientProps {
   children: React.ReactNode
   tenantSlug: string
   tenant: Tenant
+  caller?: PermissionHolder
 }
 
-export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutClientProps) {
+export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: AdminLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   // Branding Studio is a full-screen workspace with its own top bar — no
@@ -41,9 +46,13 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
   }
 
   const basePath = `/${tenantSlug}`
-  const itemsWithBasePath: SidebarEntry[] = useMemo(
-    () =>
-      adminSidebarItems.map((entry) => {
+  const itemsWithBasePath: SidebarEntry[] = useMemo(() => {
+    // Restricted staff only see the sections they were granted; hrefs are
+    // permission-mapped before the tenant prefix is prepended.
+    const permitted = caller
+      ? filterSidebarEntriesByPermission(adminSidebarItems, caller)
+      : adminSidebarItems
+    return permitted.map((entry) => {
         if ('children' in entry) {
           return {
             ...entry,
@@ -54,9 +63,8 @@ export function AdminLayoutClient({ children, tenantSlug, tenant }: AdminLayoutC
           }
         }
         return { ...entry, href: `${basePath}${entry.href}` }
-      }),
-    [basePath]
-  )
+      })
+  }, [basePath, caller])
 
   const sidebarProps = {
     items: itemsWithBasePath,

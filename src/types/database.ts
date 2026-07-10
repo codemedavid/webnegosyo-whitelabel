@@ -474,6 +474,13 @@ export interface AppUser {
   user_id: string;
   role: 'superadmin' | 'admin';
   tenant_id: string | null;
+  /** Tenant owner — full access, manages staff. Backfilled for pre-staff admins. */
+  is_owner?: boolean;
+  /** Per-feature permission keys; null = full access (owners, legacy admins). */
+  permissions?: string[] | null;
+  display_name?: string | null;
+  /** Denormalized login email so staff lists render without reading auth.users. */
+  email?: string | null;
   created_at: string;
   updated_at: string;
 }

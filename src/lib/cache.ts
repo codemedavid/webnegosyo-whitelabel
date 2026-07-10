@@ -125,7 +125,7 @@ export const getCachedCurrentUserRole = cache(async () => {
 
   const { data: userRole } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, is_owner, permissions')
     .eq('user_id', user.id)
     .maybeSingle()
 

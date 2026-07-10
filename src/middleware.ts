@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolveTenantSlugFromRequest } from '@/lib/tenant'
+import { hasPermission, permissionForAdminPath } from '@/lib/staff-permissions'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -158,12 +159,17 @@ export async function middleware(request: NextRequest) {
     // Verify user is admin of this specific tenant or superadmin
     const { data: appUser } = await supabase
       .from('app_users')
-      .select('role, tenant_id')
+      .select('role, tenant_id, is_owner, permissions')
       .eq('user_id', user.id)
       .maybeSingle()
 
     // Cast for TypeScript
-    const userRole = appUser as { role: string; tenant_id: string | null } | null
+    const userRole = appUser as {
+      role: string
+      tenant_id: string | null
+      is_owner?: boolean | null
+      permissions?: string[] | null
+    } | null
 
     // If superadmin, allow access to any tenant admin
     if (userRole?.role === 'superadmin') {
@@ -183,6 +189,14 @@ export async function middleware(request: NextRequest) {
       const tenantData = tenant as { id: string } | null
 
       if (tenantData && userRole.tenant_id === tenantData.id) {
+        // Staff with restricted permissions may only open feature sections
+        // they were granted; everything else bounces to the dashboard.
+        const requiredPermission = permissionForAdminPath(pathname)
+        if (requiredPermission && !hasPermission(userRole, requiredPermission)) {
+          url.pathname = `/${tenantSlug}/admin`
+          url.searchParams.set('denied', requiredPermission)
+          return NextResponse.redirect(url)
+        }
         return supabaseResponse
       }
     }

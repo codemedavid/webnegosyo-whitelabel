@@ -7,6 +7,11 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Category, MenuItem } from '@/types/database'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
+import {
+  canManageStaff,
+  hasPermission,
+  type StaffPermissionKey,
+} from '@/lib/staff-permissions'
 import { z } from 'zod'
 
 // ============================================
@@ -135,7 +140,7 @@ export async function verifyTenantAdmin(tenantId: string) {
   // Check if user is admin of this tenant or superadmin
   const { data: userRoleData, error: roleError } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, is_owner, permissions')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -143,10 +148,15 @@ export async function verifyTenantAdmin(tenantId: string) {
     throw new Error('Unauthorized: User role not found')
   }
 
-  const userRole: { role: string; tenant_id: string | null } = userRoleData
+  const userRole: {
+    role: string
+    tenant_id: string | null
+    is_owner?: boolean | null
+    permissions?: string[] | null
+  } = userRoleData
 
-  const isAuthorized = 
-    userRole.role === 'superadmin' || 
+  const isAuthorized =
+    userRole.role === 'superadmin' ||
     (userRole.role === 'admin' && userRole.tenant_id === tenantId)
 
   if (!isAuthorized) {
@@ -154,6 +164,33 @@ export async function verifyTenantAdmin(tenantId: string) {
   }
 
   return { user, userRole }
+}
+
+/**
+ * Verify the caller is admin of the tenant AND holds the given feature
+ * permission (owners, superadmins, and legacy null-permission admins pass).
+ */
+export async function verifyTenantPermission(
+  tenantId: string,
+  permission: StaffPermissionKey
+) {
+  const result = await verifyTenantAdmin(tenantId)
+  if (!hasPermission(result.userRole, permission)) {
+    throw new Error('Unauthorized: Missing permission for this feature')
+  }
+  return result
+}
+
+/**
+ * Verify the caller is the tenant owner (or a superadmin). Required for
+ * staff management and credential settings.
+ */
+export async function verifyTenantOwner(tenantId: string) {
+  const result = await verifyTenantAdmin(tenantId)
+  if (!canManageStaff(result.userRole)) {
+    throw new Error('Unauthorized: Only the store owner can manage this')
+  }
+  return result
 }
 
 /**

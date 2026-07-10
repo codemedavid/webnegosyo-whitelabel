@@ -17,6 +17,10 @@ export type Database = {
       app_users: {
         Row: {
           created_at: string
+          display_name: string | null
+          email: string | null
+          is_owner: boolean
+          permissions: string[] | null
           role: string
           tenant_id: string | null
           updated_at: string
@@ -24,6 +28,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          display_name?: string | null
+          email?: string | null
+          is_owner?: boolean
+          permissions?: string[] | null
           role: string
           tenant_id?: string | null
           updated_at?: string
@@ -31,6 +39,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          display_name?: string | null
+          email?: string | null
+          is_owner?: boolean
+          permissions?: string[] | null
           role?: string
           tenant_id?: string | null
           updated_at?: string
