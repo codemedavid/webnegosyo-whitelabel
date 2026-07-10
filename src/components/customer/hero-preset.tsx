@@ -83,6 +83,16 @@ interface HeroPresetSectionProps {
   toneColor?: string
   /** Second tile background. Defaults to the title color (dark). */
   toneColor2?: string
+  /** Kicker/eyebrow color. Defaults to the accent color. */
+  kickerColor?: string
+  /** Primary CTA background. Defaults to the accent color. */
+  ctaPrimaryColor?: string
+  /** Primary CTA text. Defaults to the accent ink color. */
+  ctaPrimaryTextColor?: string
+  /** Secondary (outline) CTA text. Defaults to the title color. */
+  ctaSecondaryTextColor?: string
+  /** Hero section background. Defaults to transparent (page background). */
+  sectionBackground?: string
   isBrandAdmin?: boolean
   onEdit?: () => void
 }
@@ -106,6 +116,7 @@ function Kicker({ text, color }: { text?: string; color: string }) {
   return (
     <div
       data-testid="hero-kicker"
+      data-branding-scope="storefront/hero-kicker"
       className="mb-4 text-xs font-bold uppercase tracking-[0.3em]"
       style={{ color }}
     >
@@ -121,9 +132,11 @@ interface CtaProps {
   fg: string
   variant?: 'solid' | 'outline' | 'offset'
   borderColor?: string
+  /** Click-to-inspect scope key tagged on the button. */
+  scope?: string
 }
 
-function Cta({ label, onClick, bg, fg, variant = 'solid', borderColor }: CtaProps) {
+function Cta({ label, onClick, bg, fg, variant = 'solid', borderColor, scope }: CtaProps) {
   if (!label) return null
   const base =
     'inline-flex items-center justify-center rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-[0.08em] transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
@@ -131,6 +144,7 @@ function Cta({ label, onClick, bg, fg, variant = 'solid', borderColor }: CtaProp
     return (
       <button
         type="button"
+        data-branding-scope={scope}
         onClick={onClick}
         className={base}
         style={{ background: 'transparent', color: fg, border: `1.5px solid ${borderColor ?? fg}` }}
@@ -143,6 +157,7 @@ function Cta({ label, onClick, bg, fg, variant = 'solid', borderColor }: CtaProp
     return (
       <button
         type="button"
+        data-branding-scope={scope}
         onClick={onClick}
         className={`${base} hover:translate-x-[2px] hover:translate-y-[2px]`}
         style={{ background: bg, color: fg, boxShadow: `4px 4px 0 ${borderColor ?? '#1D1815'}` }}
@@ -152,7 +167,13 @@ function Cta({ label, onClick, bg, fg, variant = 'solid', borderColor }: CtaProp
     )
   }
   return (
-    <button type="button" onClick={onClick} className={base} style={{ background: bg, color: fg }}>
+    <button
+      type="button"
+      data-branding-scope={scope}
+      onClick={onClick}
+      className={base}
+      style={{ background: bg, color: fg }}
+    >
       {label}
     </button>
   )
@@ -327,6 +348,11 @@ export function HeroPresetSection({
   accentInkColor = '#ffffff',
   toneColor,
   toneColor2,
+  kickerColor,
+  ctaPrimaryColor,
+  ctaPrimaryTextColor,
+  ctaSecondaryTextColor,
+  sectionBackground,
   isBrandAdmin = false,
   onEdit,
 }: HeroPresetSectionProps) {
@@ -335,25 +361,37 @@ export function HeroPresetSection({
   const initial = (brandInitial || title.trim().charAt(0) || '•').toUpperCase()
   const tone = toneColor || accentColor
   const tone2 = toneColor2 || titleColor
+  const kickerInk = kickerColor ?? accentColor
+  const ctaBg = ctaPrimaryColor ?? accentColor
+  const ctaFg = ctaPrimaryTextColor ?? accentInkColor
+  const ctaSecondaryFg = ctaSecondaryTextColor ?? titleColor
+  const sectionStyle = sectionBackground ? { background: sectionBackground } : undefined
 
   const primary = (
-    <Cta label={ctaPrimaryLabel} onClick={onPrimaryCta} bg={accentColor} fg={accentInkColor} />
+    <Cta
+      label={ctaPrimaryLabel}
+      onClick={onPrimaryCta}
+      bg={ctaBg}
+      fg={ctaFg}
+      scope="storefront/hero-cta-primary"
+    />
   )
   const secondaryOutline = (
     <Cta
       label={ctaSecondaryLabel}
       onClick={onSecondaryCta}
       bg="transparent"
-      fg={titleColor}
+      fg={ctaSecondaryFg}
       variant="outline"
       borderColor={accentColor}
+      scope="storefront/hero-cta-secondary"
     />
   )
 
   if (preset === 'editorial') {
     return (
-      <div className="mb-16 text-center">
-        <Kicker text={kicker} color={accentColor} />
+      <div className="mb-16 text-center" style={sectionStyle}>
+        <Kicker text={kicker} color={kickerInk} />
         <div className="inline-flex items-start justify-center gap-2">
           <h1
             data-branding-scope="storefront/hero-title"
@@ -382,13 +420,14 @@ export function HeroPresetSection({
 
   if (preset === 'split') {
     return (
-      <div className="mb-16 grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
+      <div className="mb-16 grid items-center gap-10 md:grid-cols-[1.2fr_1fr]" style={sectionStyle}>
         <div>
           {kicker && (
             <div
               data-testid="hero-kicker"
+              data-branding-scope="storefront/hero-kicker"
               className="mb-5 inline-block rounded-full px-3.5 py-1.5 text-xs font-extrabold uppercase tracking-[0.1em]"
-              style={{ background: titleColor, color: accentInkColor }}
+              style={{ background: kickerColor ?? titleColor, color: accentInkColor }}
             >
               {kicker}
             </div>
@@ -414,10 +453,11 @@ export function HeroPresetSection({
             <Cta
               label={ctaPrimaryLabel}
               onClick={onPrimaryCta}
-              bg={accentColor}
-              fg={accentInkColor}
+              bg={ctaBg}
+              fg={ctaFg}
               variant="offset"
               borderColor={titleColor}
+              scope="storefront/hero-cta-primary"
             />
           </div>
         </div>
@@ -445,13 +485,15 @@ export function HeroPresetSection({
     return (
       <div
         className="mb-16 flex flex-wrap items-center gap-8 rounded-2xl px-8 py-11"
-        style={{ background: accentColor, color: accentInkColor }}
+        style={{ background: sectionBackground ?? accentColor, color: accentInkColor }}
       >
         <div className="min-w-[16rem] flex-1">
           {kicker && (
             <div
               data-testid="hero-kicker"
+              data-branding-scope="storefront/hero-kicker"
               className="mb-2.5 text-xs font-extrabold uppercase tracking-[0.2em] opacity-80"
+              style={kickerColor ? { color: kickerColor } : undefined}
             >
               {kicker}
             </div>
@@ -474,14 +516,21 @@ export function HeroPresetSection({
           </p>
         </div>
         <div className="flex min-w-[13.75rem] flex-col gap-2.5">
-          <Cta label={ctaPrimaryLabel} onClick={onPrimaryCta} bg="#ffffff" fg={accentColor} />
+          <Cta
+            label={ctaPrimaryLabel}
+            onClick={onPrimaryCta}
+            bg={ctaPrimaryColor ?? '#ffffff'}
+            fg={ctaPrimaryTextColor ?? accentColor}
+            scope="storefront/hero-cta-primary"
+          />
           <Cta
             label={ctaSecondaryLabel}
             onClick={onSecondaryCta}
             bg="rgba(255,255,255,0.16)"
-            fg={accentInkColor}
+            fg={ctaSecondaryTextColor ?? accentInkColor}
             variant="outline"
             borderColor="rgba(255,255,255,0.5)"
+            scope="storefront/hero-cta-secondary"
           />
         </div>
       </div>
@@ -490,9 +539,9 @@ export function HeroPresetSection({
 
   if (preset === 'collage') {
     return (
-      <div className="mb-16 grid items-center gap-10 md:grid-cols-2">
+      <div className="mb-16 grid items-center gap-10 md:grid-cols-2" style={sectionStyle}>
         <div>
-          <Kicker text={kicker} color={accentColor} />
+          <Kicker text={kicker} color={kickerInk} />
           <div className="inline-flex items-start gap-2">
             <h1
               data-branding-scope="storefront/hero-title"
@@ -535,8 +584,8 @@ export function HeroPresetSection({
 
   if (preset === 'minimal') {
     return (
-      <div className="mb-16 max-w-2xl">
-        <Kicker text={kicker} color={accentColor} />
+      <div className="mb-16 max-w-2xl" style={sectionStyle}>
+        <Kicker text={kicker} color={kickerInk} />
         <div className="inline-flex items-start gap-2">
           <h1
             data-branding-scope="storefront/hero-title"
@@ -562,7 +611,7 @@ export function HeroPresetSection({
   // 'centered' — big centered heading, single CTA, then a 3-tile image band.
   return (
     <div className="mb-16 text-center">
-      <Kicker text={kicker} color={accentColor} />
+      <Kicker text={kicker} color={kickerInk} />
       <div className="inline-flex items-start justify-center gap-2">
         <h1
           data-branding-scope="storefront/hero-title"

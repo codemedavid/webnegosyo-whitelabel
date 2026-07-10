@@ -69,6 +69,9 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   // Hero text elements (tagged in hero-preset + the plain fallback hero).
   'storefront/hero-title': scope('storefront', 'Hero', 'Hero title', 'hero_title_color'),
   'storefront/hero-description': scope('storefront', 'Hero', 'Hero description', 'hero_description_color'),
+  'storefront/hero-kicker': scope('storefront', 'Hero', 'Hero kicker', 'hero_kicker_color'),
+  'storefront/hero-cta-primary': scope('storefront', 'Hero', 'Primary button', 'hero_cta_primary_color'),
+  'storefront/hero-cta-secondary': scope('storefront', 'Hero', 'Secondary button', 'hero_cta_secondary_text_color'),
 
   // Cart drawer.
   'cart/template': scope('cart', 'Template', 'Cart layout'),

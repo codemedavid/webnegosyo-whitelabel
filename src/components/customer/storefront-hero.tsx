@@ -121,6 +121,11 @@ export function StorefrontHero({
         kicker={tenant?.hero_kicker || undefined}
         ctaPrimaryLabel={tenant?.hero_cta_primary_label || undefined}
         ctaSecondaryLabel={tenant?.hero_cta_secondary_label || undefined}
+        kickerColor={tenant?.hero_kicker_color || undefined}
+        ctaPrimaryColor={tenant?.hero_cta_primary_color || undefined}
+        ctaPrimaryTextColor={tenant?.hero_cta_primary_text_color || undefined}
+        ctaSecondaryTextColor={tenant?.hero_cta_secondary_text_color || undefined}
+        sectionBackground={tenant?.hero_background_color || undefined}
         onPrimaryCta={scrollToMenu}
         onSecondaryCta={scrollToMenu}
         featuredProduct={featuredProduct}
@@ -136,7 +141,11 @@ export function StorefrontHero({
   if (requireExplicit) return null
 
   return (
-    <div className="text-center mb-16" data-branding-scope="storefront/hero">
+    <div
+      className="text-center mb-16"
+      data-branding-scope="storefront/hero"
+      style={tenant?.hero_background_color ? { background: tenant.hero_background_color } : undefined}
+    >
       <div className="inline-flex items-center gap-2 justify-center">
         <h1
           data-branding-scope="storefront/hero-title"

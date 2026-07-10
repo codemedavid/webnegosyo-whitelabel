@@ -62,6 +62,11 @@ export interface Tenant {
   hero_description?: string;
   hero_title_color?: string;
   hero_description_color?: string;
+  hero_background_color?: string; // Hero section background (blank = page background)
+  hero_kicker_color?: string; // Kicker/eyebrow color (blank = accent)
+  hero_cta_primary_color?: string; // Primary hero button background (blank = accent)
+  hero_cta_primary_text_color?: string; // Primary hero button text (blank = button primary text)
+  hero_cta_secondary_text_color?: string; // Secondary hero button text (blank = hero title color)
   hero_kicker?: string; // Uppercase eyebrow above the hero title (rich presets)
   hero_cta_primary_label?: string; // Primary hero button label (rich presets)
   hero_cta_secondary_label?: string; // Secondary hero button label (rich presets)

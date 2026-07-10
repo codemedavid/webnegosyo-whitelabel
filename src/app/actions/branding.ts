@@ -132,6 +132,11 @@ const brandingSchema = z.object({
     hero_link_url: z.string().max(2048).optional().or(z.literal('')),
     hero_title_color: cssColorString().optional().or(z.literal('')),
     hero_description_color: cssColorString().optional().or(z.literal('')),
+    hero_background_color: cssColorString().optional().or(z.literal('')),
+    hero_kicker_color: cssColorString().optional().or(z.literal('')),
+    hero_cta_primary_color: cssColorString().optional().or(z.literal('')),
+    hero_cta_primary_text_color: cssColorString().optional().or(z.literal('')),
+    hero_cta_secondary_text_color: cssColorString().optional().or(z.literal('')),
     // Layout settings
     card_template: z.string().optional(),
     checkout_template: z.string().optional(),
