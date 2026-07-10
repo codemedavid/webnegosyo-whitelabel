@@ -356,6 +356,7 @@ export function HeroPresetSection({
         <Kicker text={kicker} color={accentColor} />
         <div className="inline-flex items-start justify-center gap-2">
           <h1
+            data-branding-scope="storefront/hero-title"
             className="font-serif font-bold leading-[1.05]"
             style={{ color: titleColor, fontSize: 'clamp(2.75rem, 7vw, 5.25rem)' }}
           >
@@ -365,6 +366,7 @@ export function HeroPresetSection({
         </div>
         <div className="mx-auto my-8 h-px w-14" style={{ background: accentColor }} />
         <p
+          data-branding-scope="storefront/hero-description"
           className="mx-auto mb-10 hidden max-w-xl text-lg font-light leading-relaxed md:block"
           style={{ color: descriptionColor }}
         >
@@ -393,6 +395,7 @@ export function HeroPresetSection({
           )}
           <div className="inline-flex items-start gap-2">
             <h1
+              data-branding-scope="storefront/hero-title"
               className="font-serif font-bold uppercase leading-[0.98]"
               style={{ color: titleColor, fontSize: 'clamp(2.875rem, 7vw, 5.75rem)' }}
             >
@@ -401,6 +404,7 @@ export function HeroPresetSection({
             {edit}
           </div>
           <p
+            data-branding-scope="storefront/hero-description"
             className="mb-8 mt-6 hidden max-w-md text-lg font-light leading-relaxed md:block"
             style={{ color: descriptionColor }}
           >
@@ -454,6 +458,7 @@ export function HeroPresetSection({
           )}
           <div className="inline-flex items-start gap-2">
             <h1
+              data-branding-scope="storefront/hero-title"
               className="mb-2.5 font-serif font-black leading-[1.05]"
               style={{ fontSize: 'clamp(2rem, 4.5vw, 3.25rem)' }}
             >
@@ -461,7 +466,12 @@ export function HeroPresetSection({
             </h1>
             {edit}
           </div>
-          <p className="hidden text-base font-medium opacity-90 md:block">{description}</p>
+          <p
+            data-branding-scope="storefront/hero-description"
+            className="hidden text-base font-medium opacity-90 md:block"
+          >
+            {description}
+          </p>
         </div>
         <div className="flex min-w-[13.75rem] flex-col gap-2.5">
           <Cta label={ctaPrimaryLabel} onClick={onPrimaryCta} bg="#ffffff" fg={accentColor} />
@@ -485,6 +495,7 @@ export function HeroPresetSection({
           <Kicker text={kicker} color={accentColor} />
           <div className="inline-flex items-start gap-2">
             <h1
+              data-branding-scope="storefront/hero-title"
               className="font-serif font-bold leading-[1.12]"
               style={{ color: titleColor, fontSize: 'clamp(2.5rem, 5.5vw, 4rem)' }}
             >
@@ -493,6 +504,7 @@ export function HeroPresetSection({
             {edit}
           </div>
           <p
+            data-branding-scope="storefront/hero-description"
             className="mb-8 mt-5 hidden max-w-md text-lg font-light leading-relaxed md:block"
             style={{ color: descriptionColor }}
           >
@@ -527,6 +539,7 @@ export function HeroPresetSection({
         <Kicker text={kicker} color={accentColor} />
         <div className="inline-flex items-start gap-2">
           <h1
+            data-branding-scope="storefront/hero-title"
             className="font-sans font-extrabold uppercase leading-[1.1] tracking-[0.02em]"
             style={{ color: titleColor, fontSize: 'clamp(2.125rem, 4.5vw, 3.375rem)' }}
           >
@@ -535,6 +548,7 @@ export function HeroPresetSection({
           {edit}
         </div>
         <p
+          data-branding-scope="storefront/hero-description"
           className="mb-7 mt-4 hidden max-w-md text-base font-light leading-relaxed md:block"
           style={{ color: descriptionColor }}
         >
@@ -551,6 +565,7 @@ export function HeroPresetSection({
       <Kicker text={kicker} color={accentColor} />
       <div className="inline-flex items-start justify-center gap-2">
         <h1
+          data-branding-scope="storefront/hero-title"
           className="mx-auto max-w-3xl font-sans font-extrabold leading-[1.05]"
           style={{ color: titleColor, fontSize: 'clamp(2.625rem, 6vw, 4.625rem)' }}
         >
@@ -559,6 +574,7 @@ export function HeroPresetSection({
         {edit}
       </div>
       <p
+        data-branding-scope="storefront/hero-description"
         className="mx-auto mb-8 mt-5 hidden max-w-lg text-lg font-light leading-relaxed md:block"
         style={{ color: descriptionColor }}
       >

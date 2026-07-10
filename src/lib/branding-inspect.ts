@@ -56,10 +56,27 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'storefront/card-price': scope('storefront', 'Layout & menu cards', 'Card price', 'card_price_color'),
   'storefront/card-description': scope('storefront', 'Layout & menu cards', 'Card description', 'card_description_color'),
   'storefront/quickview': scope('storefront', 'Quick-view modal', 'Quick-view modal'),
+  'storefront/quickview-title': scope('storefront', 'Quick-view modal', 'Quick-view title', 'modal_title_color'),
+  'storefront/quickview-price': scope('storefront', 'Quick-view modal', 'Quick-view price', 'modal_price_color'),
+  'storefront/quickview-description': scope('storefront', 'Quick-view modal', 'Quick-view description', 'modal_description_color'),
+
+  // Header elements (shared header-parts pieces used by every template).
+  'storefront/header-logo': scope('storefront', 'Header', 'Logo', 'header_logo_shape'),
+  'storefront/header-title': scope('storefront', 'Header', 'Business name', 'header_font_color'),
+  'storefront/header-tagline': scope('storefront', 'Header', 'Tagline', 'header_tagline_color'),
+  'storefront/header-cart': scope('storefront', 'Header', 'Cart button', 'menu_cart_badge_background_color'),
+
+  // Hero text elements (tagged in hero-preset + the plain fallback hero).
+  'storefront/hero-title': scope('storefront', 'Hero', 'Hero title', 'hero_title_color'),
+  'storefront/hero-description': scope('storefront', 'Hero', 'Hero description', 'hero_description_color'),
 
   // Cart drawer.
   'cart/template': scope('cart', 'Template', 'Cart layout'),
   'cart/colors': scope('cart', 'Colors', 'Cart'),
+  'cart/item': scope('cart', 'Colors', 'Cart item', 'cart_card_background_color'),
+  'cart/item-price': scope('cart', 'Colors', 'Item price', 'cart_accent_color'),
+  'cart/summary': scope('cart', 'Colors', 'Order summary', 'cart_summary_background_color'),
+  'cart/checkout-button': scope('cart', 'Colors', 'Checkout button', 'cart_button_color'),
 
   // Checkout page.
   'checkout/template': scope('checkout', 'Template', 'Checkout layout'),
@@ -90,6 +107,18 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/layout': scope('product', 'Layout & motion', 'Page layout'),
   'product/pairing': scope('product', 'Pairing pop-up ("Perfect with…")', 'Pairing pop-up'),
   'product/checkout-upsell': scope('product', 'Checkout upsell sheet', 'Upsell sheet'),
+
+  // Product detail elements — each maps to its exact product_detail_settings field.
+  'product/name': scope('product', 'Product info', 'Product name', 'product_name_color'),
+  'product/description': scope('product', 'Product info', 'Description', 'description_color'),
+  'product/sale-badge': scope('product', 'Image & lightbox', 'Sale badge', 'sale_badge_background_color'),
+  'product/variation-option': scope('product', 'Variations', 'Variation option', 'variation_option_background_color'),
+  'product/addon-option': scope('product', 'Add-ons', 'Add-on option', 'addon_background_color'),
+  'product/related-item': scope('product', 'Related items', 'Related item', 'related_item_background_color'),
+  'product/quantity': scope('product', 'Sticky footer & actions', 'Quantity controls', 'quantity_controls_background'),
+  'product/add-to-cart': scope('product', 'Sticky footer & actions', 'Add to Cart button', 'add_to_cart_button_background'),
+  'product/buy-now': scope('product', 'Sticky footer & actions', 'Buy Now button', 'buy_now_button_background'),
+  'product/total-price': scope('product', 'Sticky footer & actions', 'Total price', 'total_price_color'),
 }
 
 /**

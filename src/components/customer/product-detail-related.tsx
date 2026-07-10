@@ -23,6 +23,7 @@ const RelatedItemCard = memo(function RelatedItemCard({
     return (
         <motion.button
             key={relatedItem.id}
+            data-branding-scope="product/related-item"
             onClick={onClick}
             className="flex-shrink-0 w-32 text-left group"
             initial={{ opacity: 0, x: 20 }}

@@ -170,13 +170,16 @@ export function ItemDetailModal({
                   {/* Top: Title */}
                   <div>
                     <h1
+                      data-branding-scope="storefront/quickview-title"
                       className="text-lg sm:text-xl font-bold line-clamp-2 mb-1.5"
                       style={{ color: branding.modalTitle }}
                     >
                       {item.name}
                     </h1>
                     {item.description && (
-                      <p className="text-xs sm:text-sm line-clamp-2 leading-relaxed"
+                      <p
+                        data-branding-scope="storefront/quickview-description"
+                        className="text-xs sm:text-sm line-clamp-2 leading-relaxed"
                         style={{ color: branding.modalDescription }}
                       >
                         {item.description}
@@ -192,6 +195,7 @@ export function ItemDetailModal({
                       </div>
                     )}
                     <div
+                      data-branding-scope="storefront/quickview-price"
                       className="text-xl sm:text-2xl font-bold"
                       style={{ color: branding.modalPrice }}
                     >

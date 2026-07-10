@@ -155,6 +155,7 @@ const VariationOptionButton = memo(function VariationOptionButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/variation-option"
             onClick={onSelect}
             className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
@@ -198,6 +199,7 @@ const LegacyVariationButton = memo(function LegacyVariationButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/variation-option"
             onClick={onSelect}
             className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
             style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
@@ -231,6 +233,7 @@ const AddonButton = memo(function AddonButton({
     return (
         <button
             type="button"
+            data-branding-scope="product/addon-option"
             onClick={onToggle}
             className="w-full flex items-center justify-between p-3.5 border-2 transition-all duration-150 active:scale-[0.98]"
             style={isSelected ? dynamicStyles?.addonButtonSelected : dynamicStyles?.addonButton}
@@ -767,6 +770,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     )}
                     {hasDiscount && (
                         <div
+                            data-branding-scope="product/sale-badge"
                             className="absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
                             style={{
                                 backgroundColor: 'var(--pd-sale-badge-bg)',
@@ -824,6 +828,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Name & Meta */}
                     <div className="text-center mb-4">
                         <h1
+                            data-branding-scope="product/name"
                             className="mb-2"
                             style={dynamicStyles?.name}
                         >
@@ -854,6 +859,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Description */}
                     {item.description && (
                         <p
+                            data-branding-scope="product/description"
                             className="text-center leading-relaxed mb-6"
                             style={dynamicStyles?.description}
                         >
@@ -1196,6 +1202,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 </span>
                             )}
                             <span
+                                data-branding-scope="product/total-price"
                                 className="text-xl font-bold"
                                 style={{ color: 'var(--pd-total-price)' }}
                             >
@@ -1205,6 +1212,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                         {/* Quantity Controls */}
                         <div
+                            data-branding-scope="product/quantity"
                             className="flex items-center gap-1.5 rounded-full px-1.5"
                             style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                         >
@@ -1248,6 +1256,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     <Button
                         type="button"
                         variant="outline"
+                        data-branding-scope="product/buy-now"
                         onClick={handleBuyNow}
                         className="flex-1 h-12 font-semibold text-base border-2 transition-all active:scale-[0.98]"
                         style={dynamicStyles?.buttonBuyNow}
@@ -1256,6 +1265,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     </Button>
                     <Button
                         type="button"
+                        data-branding-scope="product/add-to-cart"
                         onClick={() => handleAddToCart(false)}
                         className="flex-1 h-12 font-semibold text-base transition-all active:scale-[0.98]"
                         style={dynamicStyles?.buttonAddToCart}

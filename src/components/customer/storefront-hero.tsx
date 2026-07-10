@@ -138,11 +138,19 @@ export function StorefrontHero({
   return (
     <div className="text-center mb-16" data-branding-scope="storefront/hero">
       <div className="inline-flex items-center gap-2 justify-center">
-        <h1 className="text-5xl font-serif font-bold mb-4" style={{ color: titleColor }}>
+        <h1
+          data-branding-scope="storefront/hero-title"
+          className="text-5xl font-serif font-bold mb-4"
+          style={{ color: titleColor }}
+        >
           {title}
         </h1>
       </div>
-      <p className="text-lg font-light hidden md:block" style={{ color: descriptionColor }}>
+      <p
+        data-branding-scope="storefront/hero-description"
+        className="text-lg font-light hidden md:block"
+        style={{ color: descriptionColor }}
+      >
         {description}
       </p>
     </div>
