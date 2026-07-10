@@ -122,6 +122,58 @@ describe('getScopeSectionIndex', () => {
   })
 })
 
+describe('element-level scopes (inspect every storefront element)', () => {
+  /**
+   * Every specific element a merchant can see must be clickable in inspect
+   * mode and land on the exact field that styles it. Key: scope key →
+   * [sectionTitle, fieldId]. These are the elements merchants asked to
+   * configure directly: header parts, hero text, quick-view details, cart
+   * drawer rows/summary/buttons, and every product-detail element.
+   */
+  const expectedElementScopes: Record<string, [string, string]> = {
+    // Header elements (Storefront → Header)
+    'storefront/header-logo': ['Header', 'header_logo_shape'],
+    'storefront/header-title': ['Header', 'header_font_color'],
+    'storefront/header-tagline': ['Header', 'header_tagline_color'],
+    'storefront/header-cart': ['Header', 'menu_cart_badge_background_color'],
+    // Hero text elements (Storefront → Hero)
+    'storefront/hero-title': ['Hero', 'hero_title_color'],
+    'storefront/hero-description': ['Hero', 'hero_description_color'],
+    // Quick-view modal elements (Storefront → Quick-view modal)
+    'storefront/quickview-title': ['Quick-view modal', 'modal_title_color'],
+    'storefront/quickview-price': ['Quick-view modal', 'modal_price_color'],
+    'storefront/quickview-description': ['Quick-view modal', 'modal_description_color'],
+    // Cart drawer elements (Cart → Colors)
+    'cart/item': ['Colors', 'cart_card_background_color'],
+    'cart/item-price': ['Colors', 'cart_accent_color'],
+    'cart/summary': ['Colors', 'cart_summary_background_color'],
+    'cart/checkout-button': ['Colors', 'cart_button_color'],
+    // Product detail elements (product_detail_settings registry)
+    'product/name': ['Product info', 'product_name_color'],
+    'product/description': ['Product info', 'description_color'],
+    'product/sale-badge': ['Image & lightbox', 'sale_badge_background_color'],
+    'product/variation-option': ['Variations', 'variation_option_background_color'],
+    'product/addon-option': ['Add-ons', 'addon_background_color'],
+    'product/related-item': ['Related items', 'related_item_background_color'],
+    'product/quantity': ['Sticky footer & actions', 'quantity_controls_background'],
+    'product/add-to-cart': ['Sticky footer & actions', 'add_to_cart_button_background'],
+    'product/buy-now': ['Sticky footer & actions', 'buy_now_button_background'],
+    'product/total-price': ['Sticky footer & actions', 'total_price_color'],
+  }
+
+  it.each(Object.entries(expectedElementScopes))(
+    '%s resolves to its exact section and field',
+    (scopeKey, [sectionTitle, fieldId]) => {
+      const target = resolveBrandingScope(scopeKey)
+      expect(target).not.toBeNull()
+      expect(target?.sectionTitle).toBe(sectionTitle)
+      expect(target?.fieldId).toBe(fieldId)
+      // The section must actually exist so the jump lands somewhere.
+      expect(getScopeSectionIndex(target!)).toBeGreaterThanOrEqual(0)
+    }
+  )
+})
+
 describe('field-level scopes', () => {
   it('maps card details to their exact fields', () => {
     expect(resolveBrandingScope('storefront/card-title')?.fieldId).toBe('card_title_color')
