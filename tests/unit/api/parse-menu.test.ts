@@ -2,11 +2,12 @@
  * @jest-environment node
  *
  * Tests for POST /api/ai/parse-menu
- * Mocks the OpenRouter API (meta-llama/llama-3.3-70b-instruct) and Supabase auth.
+ * Mocks the OpenRouter API (PARSE_MENU_MODEL) and Supabase auth.
  */
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import { NextRequest } from 'next/server'
+import { PARSE_MENU_MODEL, PARSE_MENU_MAX_TOKENS } from '@/lib/ai-menu-parser-request'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -191,10 +192,10 @@ describe('POST /api/ai/parse-menu', () => {
         expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
 
         const requestBody = JSON.parse(init.body as string)
-        expect(requestBody.model).toBe('meta-llama/llama-3.3-70b-instruct')
+        expect(requestBody.model).toBe(PARSE_MENU_MODEL)
         expect(requestBody.temperature).toBe(0.2)
         expect(requestBody.top_p).toBe(0.7)
-        expect(requestBody.max_tokens).toBe(1024)
+        expect(requestBody.max_tokens).toBe(PARSE_MENU_MAX_TOKENS)
         expect(requestBody.stream).toBe(true)
         expect(requestBody.messages[0].role).toBe('system')
         expect(requestBody.messages[1].role).toBe('user')
