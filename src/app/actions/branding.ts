@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
     writeBrandingWithClient,
@@ -35,8 +35,8 @@ export async function saveBrandingAction(
 ): Promise<SaveBrandingResult> {
     try {
         if (!ctx) {
-            // Verify caller is admin of this tenant (or superadmin)
-            await verifyTenantAdmin(tenantId)
+            // Verify caller is admin of this tenant with store_setup permission
+            await verifyTenantPermission(tenantId, 'store_setup')
         }
 
         const supabase = ctx?.client ?? (await createClient())

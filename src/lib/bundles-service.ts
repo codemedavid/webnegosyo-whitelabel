@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { Bundle, BundleWithSlots, MenuItem, Category } from '@/types/database'
@@ -103,7 +103,7 @@ export async function getBundleById(bundleId: string, tenantId: string): Promise
  * Create a new bundle with slots
  */
 export async function createBundle(tenantId: string, input: BundleInput, ctx?: ProvisioningCtx): Promise<BundleWithSlots> {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
   const validated = bundleSchema.parse(input)
   const supabase = ctx?.client ?? createAdminClient()
 
@@ -184,7 +184,7 @@ export async function updateBundle(
   tenantId: string,
   input: BundleInput
 ): Promise<BundleWithSlots> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const validated = bundleSchema.parse(input)
   const supabase = createAdminClient()
 
@@ -265,7 +265,7 @@ export async function updateBundle(
  * Delete a bundle (cascades to bundle_slots and bundle_slot_price_overrides)
  */
 export async function deleteBundle(bundleId: string, tenantId: string): Promise<void> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
 
   const { error } = await supabase
@@ -285,7 +285,7 @@ export async function toggleBundleActive(
   tenantId: string,
   isActive: boolean
 ): Promise<Bundle> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
 
   const { data, error } = await supabase
@@ -306,7 +306,7 @@ export async function toggleBundleActive(
  * Reorder bundles by setting display_order from array position
  */
 export async function reorderBundles(tenantId: string, bundleIds: string[]): Promise<void> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
 
   const updates = bundleIds.map((id, index) =>

@@ -314,8 +314,8 @@ export async function getCustomersByTenant(
   tenantId: string,
   params?: CustomersListParams
 ): Promise<Customer[]> {
-  const { verifyTenantAdmin } = await import('@/lib/admin-service')
-  await verifyTenantAdmin(tenantId)
+  const { verifyTenantPermission } = await import('@/lib/admin-service')
+  await verifyTenantPermission(tenantId, 'customers')
 
   const { createClient } = await import('@/lib/supabase/server')
   const supabase = await createClient()
@@ -350,8 +350,8 @@ export async function getCustomersPage(
   tenantId: string,
   params?: CustomersListParams & { page?: number; pageSize?: number }
 ): Promise<PaginatedCustomersResult> {
-  const { verifyTenantAdmin } = await import('@/lib/admin-service')
-  await verifyTenantAdmin(tenantId)
+  const { verifyTenantPermission } = await import('@/lib/admin-service')
+  await verifyTenantPermission(tenantId, 'customers')
 
   const { createClient } = await import('@/lib/supabase/server')
   const { computeCustomersPagination } = await import('@/lib/customers-pagination')
@@ -406,8 +406,8 @@ export async function getCustomerDetail(
   tenantId: string,
   customerId: string
 ): Promise<CustomerDetail | null> {
-  const { verifyTenantAdmin } = await import('@/lib/admin-service')
-  await verifyTenantAdmin(tenantId)
+  const { verifyTenantPermission } = await import('@/lib/admin-service')
+  await verifyTenantPermission(tenantId, 'customers')
 
   const { createClient } = await import('@/lib/supabase/server')
   const supabase = await createClient()

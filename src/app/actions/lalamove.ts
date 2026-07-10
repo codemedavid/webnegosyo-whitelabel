@@ -209,8 +209,8 @@ export async function createLalamoveOrderAction(
   metadata?: Record<string, unknown>
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
 
     const supabase = await createClient()
 
@@ -330,8 +330,8 @@ export async function syncLalamoveOrderAction(
   lalamoveOrderId: string
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
 
     const supabase = await createClient()
 
@@ -415,8 +415,8 @@ export async function addPriorityFeeAction(
   amount: string
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
 
     const parsed = Number(amount)
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -461,8 +461,8 @@ export async function cancelLalamoveOrderAction(
   lalamoveOrderId: string
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
 
     const supabase = await createClient()
 

@@ -98,8 +98,8 @@ export async function promoteItemAction(
   isFeatured: boolean
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'analytics')
 
     const supabase = (await import('@/lib/supabase/server')).createClient
     const client = await supabase()
@@ -257,8 +257,8 @@ export async function setCheckoutUpsellItemsAction(
   selectedItemIds: string[]
 ) {
   try {
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'analytics')
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
 

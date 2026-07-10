@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import { heroDesignSchema } from '@/lib/hero-designer-schemas'
 import { heroBlockDesignSchema } from '@/lib/hero-block-schemas'
 import { z } from 'zod'
@@ -33,7 +33,7 @@ export async function saveHeroDesignAction(
     const supabase = await createClient()
 
     // Verify caller is admin of this tenant (or superadmin)
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, 'store_setup')
 
     // Validate input (null means "reset to default")
     if (design && typeof design === 'object' && 'version' in design && (design as { version: number }).version === 4) {
@@ -93,7 +93,7 @@ export async function updateHeroSectionEnabledAction(
   try {
     const supabase = await createClient()
 
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, 'store_setup')
 
     const validated = z.boolean().parse(enabled)
 

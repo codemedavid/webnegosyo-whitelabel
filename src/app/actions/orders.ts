@@ -381,8 +381,8 @@ export async function updatePaymentStatusAction(
     const supabase = await (await import('@/lib/supabase/server')).createClient()
 
     // Verify admin access
-    const { verifyTenantAdmin } = await import('@/lib/admin-service')
-    await verifyTenantAdmin(tenantId)
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
 
     const query = supabase
       .from('orders')

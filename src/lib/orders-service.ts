@@ -4,7 +4,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
 import { resolveOrderContact } from '@/lib/customer-identity'
@@ -49,7 +49,7 @@ export async function getOrdersByTenant(
   tenantId: string,
   params?: OrdersPaginationParams
 ): Promise<OrderWithItems[] | PaginatedOrdersResult> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
@@ -122,7 +122,7 @@ export async function getOrdersByTenant(
 }
 
 export async function getOrderById(orderId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
@@ -145,7 +145,7 @@ export async function updateOrderStatus(
   tenantId: string,
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
@@ -244,7 +244,7 @@ export async function updateOrderStatus(
 }
 
 export const getOrderStats = cache(async function getOrderStats(tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
