@@ -19,6 +19,7 @@ import {
   BarChart3,
   Cog,
   Box,
+  Users,
   Menu,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -656,6 +657,11 @@ export const adminSidebarItems: SidebarEntry[] = [
     label: 'Orders',
     href: '/admin/orders',
     icon: ShoppingBag,
+  },
+  {
+    label: 'Customers',
+    href: '/admin/customers',
+    icon: Users,
   },
   {
     label: 'Settings',
