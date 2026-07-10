@@ -17,12 +17,15 @@ import {
   CartRemoveDialog,
   CartUpsellInterstitial,
 } from '@/components/customer/cart-templates/cart-shared'
+import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
 import type { CartTemplate } from '@/lib/cart-templates'
 
 export default function CartPage() {
   const cart = useCartView()
 
-  if (cart.isLoading) return <CartLoading />
+  // Branded flash while the cart hydrates when the tenant enabled it; otherwise
+  // the existing cart skeleton.
+  if (cart.isLoading) return <TenantFlashLoading fallback={<CartLoading />} />
   if (!cart.tenant) return <CartNotFound />
 
   const template = (cart.tenant.cart_template || 'classic') as CartTemplate

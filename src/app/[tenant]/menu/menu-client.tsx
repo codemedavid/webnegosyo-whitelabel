@@ -22,6 +22,8 @@ import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
+import { buildFlashScreenBranding } from '@/lib/flash-loader'
 
 interface MenuClientProps {
   tenant: Tenant | null
@@ -75,43 +77,16 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   const [selectedBundle, setSelectedBundle] = useState<BundleWithSlots | null>(null)
   // The item shown in the product-detail bottom sheet (null = closed).
   const [sheetItem, setSheetItem] = useState<MenuItem | null>(null)
-  const flashScreenEnabled = Boolean(tenant?.flash_screen_feature_enabled && tenant?.flash_screen_is_active)
-  const [showFlashScreen, setShowFlashScreen] = useState(flashScreenEnabled)
+  // The branded flash now serves as the real loading state via each route's
+  // loading.tsx (see TenantFlashLoading), so the menu no longer runs its own
+  // timed once-per-session overlay. We only render it here for the Branding
+  // Studio "flash" surface preview.
 
   useEffect(() => {
     if (tenant) {
       setTenantContext(tenant.id, tenant.slug)
     }
   }, [tenant, setTenantContext])
-
-  useEffect(() => {
-    if (!flashScreenEnabled) {
-      setShowFlashScreen(false)
-      return
-    }
-
-    try {
-      const storageKey = `flash-screen-seen:${tenant?.id ?? tenantSlug}`
-      const hasSeenFlash = window.sessionStorage.getItem(storageKey) === '1'
-      if (hasSeenFlash) {
-        setShowFlashScreen(false)
-        return
-      }
-
-      window.sessionStorage.setItem(storageKey, '1')
-    } catch {
-      // Ignore storage errors (private browsing, blocked storage, etc.)
-    }
-
-    setShowFlashScreen(true)
-    const durationMsRaw = tenant?.flash_screen_duration_ms ?? 2000
-    const durationMs = Math.min(15000, Math.max(500, durationMsRaw))
-    const timer = window.setTimeout(() => {
-      setShowFlashScreen(false)
-    }, durationMs)
-
-    return () => window.clearTimeout(timer)
-  }, [flashScreenEnabled, tenant?.flash_screen_duration_ms, tenant?.id, tenantSlug])
 
   // Virtual "Bundles" category + adapted bundle items
   const { categoriesWithBundles, allItemsWithBundles } = useMemo(() => {
@@ -344,45 +319,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         // display font/weight to headings. Scoped to this storefront root only.
         <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
       )}
-      {(showFlashScreen || isFlashPreview) && (
-        <div
-          data-branding-scope="flash/settings"
-          className="fixed inset-0 z-[120] flex items-center justify-center px-6"
-          style={{
-            backgroundColor: tenant?.flash_screen_background_color || '#111111',
-            color: tenant?.flash_screen_text_color || '#ffffff',
-          }}
-        >
-          <div className="flex w-full max-w-sm flex-col items-center text-center">
-            {(tenant?.flash_screen_image_url || tenant?.logo_url) ? (
-              <div className="mb-6 h-24 w-24 overflow-hidden rounded-full border border-white/20 bg-white/10">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={tenant?.flash_screen_image_url || tenant?.logo_url || ''}
-                  alt={tenant?.name || 'Brand logo'}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/10 text-3xl font-bold">
-                {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
-              </div>
-            )}
-
-            <h2 className="text-2xl font-semibold">
-              {tenant?.flash_screen_title || 'Loading menu...'}
-            </h2>
-
-            {tenant?.flash_screen_subtitle && (
-              <p className="mt-2 text-sm opacity-90">{tenant.flash_screen_subtitle}</p>
-            )}
-
-            <div
-              className="mt-8 h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent"
-              aria-label="Loading"
-            />
-          </div>
-        </div>
+      {isFlashPreview && (
+        <FlashScreenLoader branding={buildFlashScreenBranding(tenant)} />
       )}
 
       {tenant?.is_announcement_visible && (
