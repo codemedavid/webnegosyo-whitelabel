@@ -125,6 +125,44 @@ describe('CustomersList', () => {
     expect(names).toEqual(['Ben Reyes', 'Ana Cruz'])
   })
 
+  it('re-sorts by most frequent (highest order count first)', () => {
+    const customers = [
+      makeCustomer({ id: 'a', name: 'Ana Cruz', order_count: 2 }),
+      makeCustomer({ id: 'b', name: 'Ben Reyes', order_count: 9, phone_e164: '+639998887777' }),
+    ]
+
+    render(<CustomersList customers={customers} tenantSlug="acme" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /most frequent/i }))
+
+    const names = screen.getAllByTestId('customer-name').map((el) => el.textContent)
+    expect(names).toEqual(['Ben Reyes', 'Ana Cruz'])
+  })
+
+  it('shows a no-results message when the search matches no customer', () => {
+    const customers = [makeCustomer({ id: 'a', name: 'Ana Cruz' })]
+
+    render(<CustomersList customers={customers} tenantSlug="acme" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search customers/i), {
+      target: { value: 'zzz-nobody' },
+    })
+
+    expect(screen.queryByText('Ana Cruz')).not.toBeInTheDocument()
+    expect(screen.getByText(/no customers match/i)).toBeInTheDocument()
+  })
+
+  it('notes when an opened customer has no recorded items', () => {
+    const customers = [makeCustomer({ id: 'a', name: 'Ana Cruz', top_items: [] })]
+
+    render(<CustomersList customers={customers} tenantSlug="acme" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /ana cruz/i }))
+
+    const detail = screen.getByTestId('customer-detail-a')
+    expect(within(detail).getByText(/no items recorded/i)).toBeInTheDocument()
+  })
+
   it('reveals a customer\'s most-ordered items when their row is opened', () => {
     const customers = [
       makeCustomer({
