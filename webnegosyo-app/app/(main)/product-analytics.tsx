@@ -22,6 +22,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { PeriodSelector } from "../../components/PeriodSelector";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ProfitInsights } from "../../components/ProfitInsights";
 
 const getAllRef = "productAnalytics:getAll" as unknown as FunctionReference<"query">;
 const getPortfolioRef = "productAnalytics:getPortfolioSummary" as unknown as FunctionReference<"query">;
@@ -33,6 +34,8 @@ interface AnalyticsRow {
   menuItemName?: string;
   totalUnitsSold: number;
   totalRevenue: number;
+  totalCost?: number;
+  totalProfit?: number;
   marginPercent?: number;
   avgDailyUnits: number;
   bcgClassification: string;
@@ -223,6 +226,15 @@ export default function ProductAnalyticsScreen() {
           </View>
         )}
 
+        {merged.length > 0 && <ProfitInsights rows={merged} />}
+
+        {merged.length > 0 && (
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>All products</Text>
+            <Text style={styles.sectionHint}>Tap an item to set its cost price</Text>
+          </View>
+        )}
+
         {isLoading && menuItems.length === 0 ? (
           <LoadingState message="Loading products..." />
         ) : merged.length === 0 ? (
@@ -319,6 +331,9 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   content: { padding: spacing.xl, paddingTop: spacing.md },
   chipsRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
+  sectionHead: { marginTop: spacing.xl, marginBottom: spacing.sm },
+  sectionTitle: { ...typography.heading, color: colors.textPrimary },
+  sectionHint: { ...typography.small, color: colors.textTertiary, marginTop: 2 },
   chip: { flex: 1, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: "center" },
   chipCount: { fontSize: 20, fontWeight: "800" },
   chipLabel: { fontSize: 10, fontWeight: "700", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.5 },
