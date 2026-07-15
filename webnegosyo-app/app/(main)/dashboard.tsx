@@ -195,8 +195,8 @@ export default function DashboardScreen() {
         <View style={styles.demoBanner}>
           <Text style={styles.demoBannerTitle}>You&apos;re viewing a demo store</Text>
           <Text style={styles.demoBannerBody}>
-            Browse real-time orders and analytics with sample data. To manage
-            your own store, sign out and tap &quot;Create your store.&quot;
+            Browse real-time orders and analytics with sample data. Sign out and
+            sign in with your merchant account to manage your own store.
           </Text>
         </View>
       )}

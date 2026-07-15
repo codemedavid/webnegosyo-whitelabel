@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
@@ -167,18 +167,6 @@ export default function LoginScreen() {
               Explore Demo — no account needed
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.signupLink}
-            onPress={() => router.push("/(auth)/signup" as Href)}
-            disabled={isLoading}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.signupText}>
-              New here?{" "}
-              <Text style={styles.signupTextBold}>Create your store</Text>
-            </Text>
-          </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -233,7 +221,4 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   secondaryButtonText: { color: colors.textPrimary, fontSize: 16, fontWeight: "700" },
-  signupLink: { alignItems: "center", paddingVertical: spacing.sm },
-  signupText: { ...typography.body, color: colors.textSecondary },
-  signupTextBold: { color: colors.accent, fontWeight: "700" },
 });
