@@ -10,6 +10,8 @@ export interface Tenant {
   name: string;
   slug: string; // URL-safe identifier
   domain?: string;
+  /** IANA timezone driving the daily order-number reset boundary (default 'Asia/Manila'). */
+  timezone?: string;
   logo_url: string;
   primary_color: string;
   secondary_color: string;
@@ -569,6 +571,14 @@ export interface Order {
   payment_proof_uploaded_at?: string | null;
   /** Link to the derived customer profile this order rolled up into (nullable). */
   customer_id?: string | null;
+  /**
+   * Per-tenant, daily-resetting display number (01, 02, ... 100+). Assigned by a
+   * DB trigger at insert time; absent on orders created before the feature shipped.
+   * Display only — never the primary key. See `formatDailyOrderNumber`.
+   */
+  daily_number?: number | null;
+  /** Tenant-local calendar date this order's daily_number belongs to (YYYY-MM-DD). */
+  order_date?: string | null;
   created_at: string;
   updated_at: string;
 }
