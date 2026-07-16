@@ -21,8 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { formatPrice } from '@/lib/cart-utils'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
 import type { OrderWithItems } from '@/lib/orders-service'
 
@@ -77,14 +79,29 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [orderTypeFilter, setOrderTypeFilter] = useState<string>('all')
+  const [search, setSearch] = useState<string>('')
 
   // Extract unique order types from orders
   const orderTypes = Array.from(new Set(orders.map(o => o.order_type).filter(Boolean))) as string[]
 
+  const query = search.trim().toLowerCase().replace(/^#/, '')
+
+  const matchesSearch = (order: OrderWithItems): boolean => {
+    if (!query) return true
+    // Match the display number ("5", "05"), the raw daily number, the customer
+    // name, or the UUID fallback slice — whichever the merchant typed.
+    const displayNumber = formatDailyOrderNumber(order.daily_number, order.id).toLowerCase().replace('#', '')
+    return (
+      displayNumber.includes(query) ||
+      (order.daily_number != null && String(order.daily_number) === query) ||
+      (order.customer_name?.toLowerCase().includes(query) ?? false)
+    )
+  }
+
   const filteredOrders = orders.filter((order) => {
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
     const matchesType = orderTypeFilter === 'all' || order.order_type === orderTypeFilter
-    return matchesStatus && matchesType
+    return matchesStatus && matchesType && matchesSearch(order)
   })
 
   if (orders.length === 0) {
@@ -101,7 +118,15 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
 
   return (
     <>
-      <div className="flex gap-4 mb-6">
+      <div className="flex flex-wrap gap-4 mb-6">
+        <Input
+          type="search"
+          inputMode="numeric"
+          placeholder="Search order # or customer"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-[220px]"
+        />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Filter by status" />
@@ -142,7 +167,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
+                    <CardTitle className="text-lg">Order {formatDailyOrderNumber(order.daily_number, order.id)}</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
                     </p>

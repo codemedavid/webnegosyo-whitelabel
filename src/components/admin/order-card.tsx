@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 interface OrderCardProps {
@@ -56,7 +57,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
+            <CardTitle className="text-lg">Order {formatDailyOrderNumber(order.daily_number, order.id)}</CardTitle>
             <p className="text-sm text-muted-foreground">
               {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
             </p>

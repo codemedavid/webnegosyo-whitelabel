@@ -26,6 +26,8 @@ export interface TrackingData {
   orderType?: string
   customerName?: string
   createdAt: string
+  /** Per-tenant, daily-resetting display number; absent on pre-feature orders. */
+  dailyNumber?: number | null
   isTerminal: boolean
   /** Pre-computed, hydration-safe label for a scheduled (advance) order, or null for ASAP. */
   scheduledLabel?: string | null
@@ -112,6 +114,7 @@ async function fetchFromConvex(
     orderType: order.orderType,
     customerName: order.customerName,
     createdAt: new Date(order._creationTime).toISOString(),
+    dailyNumber: order.dailyNumber as number | null | undefined,
     isTerminal,
     scheduledLabel: getOrderScheduledLabel({
       scheduled_for: null,
@@ -129,7 +132,7 @@ async function fetchFromSupabase(
     .from('orders')
     .select(`
       id, status, total, delivery_fee, service_charge_amount, order_type, customer_name, created_at,
-      scheduled_for, customer_data,
+      daily_number, scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
     .eq('id', orderId)
@@ -158,6 +161,7 @@ async function fetchFromSupabase(
     orderType: o.order_type,
     customerName: o.customer_name,
     createdAt: o.created_at,
+    dailyNumber: o.daily_number as number | null | undefined,
     isTerminal,
     scheduledLabel: getOrderScheduledLabel({
       scheduled_for: o.scheduled_for ?? null,

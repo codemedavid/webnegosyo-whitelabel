@@ -30,6 +30,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
 import { OrderStatusManagement } from '@/components/admin/order-status-management'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
@@ -111,7 +112,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <DialogTitle className="text-2xl font-bold">
-                    Order #{order.id.slice(0, 8).toUpperCase()}
+                    Order {formatDailyOrderNumber(order.daily_number, order.id)}
                   </DialogTitle>
                   <Badge className={currentStatus.color} variant="outline">
                     <StatusIcon className="mr-1.5 h-3.5 w-3.5" />

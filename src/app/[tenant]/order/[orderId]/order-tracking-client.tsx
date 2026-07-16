@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
@@ -114,7 +115,7 @@ export function OrderTrackingClient({
 
   const currentIndex = getStatusIndex(trackingData.status)
   const isCancelled = trackingData.status === 'cancelled'
-  const shortId = orderId.slice(0, 8).toUpperCase()
+  const shortId = formatDailyOrderNumber(trackingData.dailyNumber, orderId).replace(/^#/, '')
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/30 to-white">
