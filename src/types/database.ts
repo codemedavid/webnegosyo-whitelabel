@@ -10,8 +10,6 @@ export interface Tenant {
   name: string;
   slug: string; // URL-safe identifier
   domain?: string;
-  /** IANA timezone driving the daily order-number reset boundary (default 'Asia/Manila'). */
-  timezone?: string;
   logo_url: string;
   primary_color: string;
   secondary_color: string;
