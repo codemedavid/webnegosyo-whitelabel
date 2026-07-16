@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useTheme } from '@/theme/provider'
 import { useOrderRealtime } from '@/lib/queries/use-order-realtime'
 import { formatPrice } from '@/lib/cart-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 
 const STATUS_STEPS = [
   { key: 'pending', label: 'Pending', icon: 'time-outline' as const },
@@ -44,7 +45,7 @@ export default function OrderStatusScreen() {
       {/* Order info header */}
       <View style={[styles.header, { backgroundColor: theme.cards, borderBottomColor: theme.border }]}>
         <Text style={[styles.orderId, { color: theme.textMuted }]}>
-          Order #{order.id.slice(0, 8).toUpperCase()}
+          Order {formatDailyOrderNumber(order.daily_number, order.id)}
         </Text>
         <Text style={[styles.orderTotal, { color: theme.buttonPrimary }]}>
           {formatPrice(order.total)}

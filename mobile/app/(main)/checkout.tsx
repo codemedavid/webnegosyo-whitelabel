@@ -275,6 +275,10 @@ export default function CheckoutScreen() {
 
     try {
       let orderId: string | null = null
+      // Populated on the Supabase path (order row is returned). On the Convex
+      // path only the id comes back, so the confirmation screen falls back to
+      // the UUID slice; the live order-status screen still shows the real number.
+      let orderDailyNumber: number | null = null
 
       // Create order in Convex (if tenant has Convex configured) or Supabase
       if (tenant.convex_deployment_url) {
@@ -393,6 +397,7 @@ export default function CheckoutScreen() {
           console.warn('Order creation failed, proceeding to Messenger...', orderError)
         } else if (order) {
           orderId = (order as { id: string }).id
+          orderDailyNumber = (order as { daily_number?: number | null }).daily_number ?? null
           const itemsToInsert = orderItems.map(oi => ({
             order_id: orderId!,
             ...oi,
@@ -455,6 +460,7 @@ export default function CheckoutScreen() {
         messengerMessage: message,
         messengerUrl: messengerUrl || '',
         orderId,
+        dailyNumber: orderDailyNumber,
         scheduledForLabel,
       })
 

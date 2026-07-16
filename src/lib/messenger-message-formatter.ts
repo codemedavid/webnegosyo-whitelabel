@@ -6,6 +6,7 @@
 import type { Order, Tenant } from '@/types/database'
 import { formatPrice } from './cart-utils'
 import { getOrderScheduledLabel } from './advance-order-utils'
+import { formatDailyOrderNumber } from './order-number'
 
 /**
  * Format order details into a message for Messenger
@@ -13,8 +14,15 @@ import { getOrderScheduledLabel } from './advance-order-utils'
 export function formatOrderMessage(order: Order, tenant: Tenant): string {
   const lines = [
     `🍽️ New Order from ${tenant.name}`,
-    '',
   ]
+
+  // Daily order number header — lets the merchant match this chat to the order
+  // in their queue. Falls back to the UUID slice for pre-feature orders.
+  const orderNumber = formatDailyOrderNumber(order.daily_number, order.id)
+  if (orderNumber) {
+    lines.push(`🧾 Order ${orderNumber}`)
+  }
+  lines.push('')
 
   // Add order type information
   if (order.order_type) {

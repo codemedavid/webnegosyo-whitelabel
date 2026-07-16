@@ -15,6 +15,8 @@ export interface CompletedOrderData {
   messengerMessage: string
   messengerUrl: string
   orderId: string | null
+  /** Per-tenant, daily-resetting display number; null when unknown (Convex path). */
+  dailyNumber?: number | null
   /** Human label for an advance/scheduled order, e.g. "Tue, Jun 18 · 5:00 PM"; null = ASAP. */
   scheduledForLabel?: string | null
 }

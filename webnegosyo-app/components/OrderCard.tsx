@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
+import { formatDailyOrderNumber } from "../lib/order-number";
 import {
   getInitials,
   getAvatarColor,
@@ -15,6 +16,8 @@ import {
 export interface OrderCardOrder {
   _id: string;
   _creationTime: number;
+  /** Per-tenant, daily-resetting display number; absent on pre-feature orders. */
+  dailyNumber?: number | null;
   customerName: string;
   customerContact?: string;
   total: number;
@@ -90,6 +93,13 @@ export function OrderCard({
       </View>
 
       <View style={styles.metaRow}>
+        {formatDailyOrderNumber(order.dailyNumber, order._id) ? (
+          <View style={styles.numberChip}>
+            <Text style={styles.numberLabel}>
+              {formatDailyOrderNumber(order.dailyNumber, order._id)}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.typeChip}>
           <Text style={styles.typeLabel}>{typeMeta.label}</Text>
         </View>
@@ -190,6 +200,18 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: radius.full,
     backgroundColor: colors.accentLight,
+  },
+  numberChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  numberLabel: {
+    ...typography.small,
+    color: colors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   typeLabel: {
     ...typography.small,

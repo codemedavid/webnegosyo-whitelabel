@@ -11,6 +11,7 @@ import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
+import { formatDailyOrderNumber } from "../../../lib/order-number";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
@@ -54,6 +55,8 @@ interface BundleGroup {
 interface OrderDetail {
   _id: string;
   _creationTime: number;
+  /** Per-tenant, daily-resetting display number; absent on pre-feature orders. */
+  dailyNumber?: number | null;
   customerName: string;
   customerContact: string;
   customerData?: Record<string, unknown>;
@@ -388,7 +391,7 @@ export default function OrderDetailScreen() {
 
       <View style={styles.statusHeader}>
         <View>
-          <Text style={styles.eyebrow}>Order</Text>
+          <Text style={styles.eyebrow}>Order {formatDailyOrderNumber(order.dailyNumber, order._id)}</Text>
           <Text style={styles.title}>Order Details</Text>
         </View>
         <Badge label={order.status} variant={order.status} />

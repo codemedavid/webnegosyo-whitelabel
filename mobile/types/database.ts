@@ -290,6 +290,8 @@ export interface FacebookPage {
 export interface Order {
   id: string;
   tenant_id: string;
+  /** Per-tenant, daily-resetting display number; absent on pre-feature orders. */
+  daily_number?: number | null;
   order_type_id?: string;
   order_type?: string;
   customer_name?: string;

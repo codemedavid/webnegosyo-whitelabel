@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme, CONFIRMATION_OVERRIDES } from '@/theme/provider'
 import { formatPrice } from '@/lib/cart-utils'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import { openMessenger } from '@/lib/messenger-linking'
 import { useOrderStore } from '@/stores/order-store'
 import { Button } from '@/components/ui/button'
@@ -102,7 +103,7 @@ export default function OrderConfirmationScreen() {
           </Text>
           {orderId ? (
             <Text style={[styles.orderIdText, { color: c.footerNote }]}>
-              Order #{orderId.slice(0, 8).toUpperCase()}
+              Order {formatDailyOrderNumber(completedOrder?.dailyNumber, orderId)}
             </Text>
           ) : null}
         </View>
