@@ -32,7 +32,11 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // collapsing into one fake customer entry. They're reported separately as
 // walkInOrders/walkInRevenue, and per-customer averages cover identified
 // customers only (customerIdentity.ts).
-const CURRENT_SCHEMA_VERSION = 12;
+// v13: daily-resetting order display number — orders gain dailyNumber/orderDate,
+// a new dailyOrderCounters table + allocateDailyOrderNumber in createOrder assign
+// a per-day sequence (01, 02, ... 100+) that resets each PH-local day. Bumping
+// forces every tenant deployment to receive the new schema + mutation.
+const CURRENT_SCHEMA_VERSION = 13;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

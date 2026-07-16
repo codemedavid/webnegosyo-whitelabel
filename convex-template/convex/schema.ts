@@ -26,6 +26,11 @@ export default defineSchema({
     ),
     clientOrderId: v.optional(v.string()),
     itemCount: v.number(),
+    // Per-day, daily-resetting display number (01, 02, ... 100+). Assigned at
+    // creation from dailyOrderCounters. Display only — never the identifier.
+    dailyNumber: v.optional(v.number()),
+    // Merchant-local calendar date ("YYYY-MM-DD") the dailyNumber belongs to.
+    orderDate: v.optional(v.string()),
     paymentMethod: v.optional(v.string()),
     paymentMethodDetails: v.optional(v.string()),
     paymentStatus: v.optional(v.string()),
@@ -108,6 +113,14 @@ export default defineSchema({
     key: v.string(),
     value: v.string(),
   }).index("by_key", ["key"]),
+
+  // Source of the next daily order number for this (per-tenant) deployment.
+  // One row per merchant-local day. Convex OCC serializes the read-modify-write
+  // in createOrder, so concurrent orders never collide on a number.
+  dailyOrderCounters: defineTable({
+    orderDate: v.string(),
+    lastNumber: v.number(),
+  }).index("by_date", ["orderDate"]),
 
   pushTokens: defineTable({
     userId: v.string(),

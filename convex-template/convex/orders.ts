@@ -1,7 +1,35 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { localDayStartMs } from "./time";
+import { localDayStartMs, localDateKey } from "./time";
+import type { MutationCtx } from "./_generated/server";
+
+// --- HELPERS ---
+
+/**
+ * Allocate the next daily order number for `orderDate` ("YYYY-MM-DD", merchant
+ * local). Reads the day's counter, increments it (or seeds it at 1), and returns
+ * the new value. Convex OCC retries the enclosing mutation on a write conflict,
+ * so concurrent orders on the same day get distinct, gap-free numbers.
+ */
+async function allocateDailyOrderNumber(
+  ctx: MutationCtx,
+  orderDate: string
+): Promise<number> {
+  const counter = await ctx.db
+    .query("dailyOrderCounters")
+    .withIndex("by_date", (q) => q.eq("orderDate", orderDate))
+    .first();
+
+  if (counter) {
+    const next = counter.lastNumber + 1;
+    await ctx.db.patch(counter._id, { lastNumber: next });
+    return next;
+  }
+
+  await ctx.db.insert("dailyOrderCounters", { orderDate, lastNumber: 1 });
+  return 1;
+}
 
 // --- MUTATIONS ---
 
@@ -90,10 +118,17 @@ export const createOrder = mutation({
     // pickups, audibly notifies the merchant.
     const skipPending = args.source === "qr_handoff" || args.source === "pos";
 
+    // Assign the daily-resetting display number. Placed AFTER the idempotency
+    // guard so a retried clientOrderId never consumes a second number.
+    const orderDate = localDateKey(Date.now());
+    const dailyNumber = await allocateDailyOrderNumber(ctx, orderDate);
+
     const orderId = await ctx.db.insert("orders", {
       ...orderData,
       status: skipPending ? "confirmed" : "pending",
       paymentStatus: "pending",
+      dailyNumber,
+      orderDate,
     });
 
     for (const item of items) {
