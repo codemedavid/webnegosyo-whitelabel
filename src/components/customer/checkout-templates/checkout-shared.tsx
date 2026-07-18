@@ -20,9 +20,22 @@ import { toast } from 'sonner'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { PaymentProofField } from '@/components/customer/payment-proof-field'
 import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
+import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
 
-/** Full-screen loading state (shared across designs). */
+/**
+ * Full-screen loading state (shared across designs).
+ *
+ * Reuses the tenant's branded flash splash (via TenantFlashLoading, fed by the
+ * [tenant] layout's TenantFlashProvider) so the client-side checkout load matches
+ * the route-level loading.tsx and the menu. Tenants without the flash feature see
+ * the existing orange spinner — zero regression. Kept propless so it also works
+ * as the next/dynamic() `loading` fallback for the lazy design chunks.
+ */
 export function CheckoutLoading() {
+  return <TenantFlashLoading fallback={<CheckoutSpinner />} />
+}
+
+function CheckoutSpinner() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
       <div className="text-center">
