@@ -17,15 +17,19 @@ const DEFAULT_TEXT_COLOR = '#ffffff'
 interface FlashScreenProps {
   /** Tenant branding source; null while it is still being fetched. */
   tenant?: Tenant | null
-  /** Route slug — used for the initial-letter fallback when no name/logo. */
-  tenantSlug: string
+  /**
+   * Route slug — used for the initial-letter fallback when no name/logo.
+   * Optional: when FlashScreen is used as a next/dynamic loading fallback it
+   * receives no props, so it must render without a slug.
+   */
+  tenantSlug?: string
   /** Title shown when the tenant has no configured flash title. */
   fallbackTitle?: string
 }
 
 export function FlashScreen({ tenant, tenantSlug, fallbackTitle = 'Loading menu...' }: FlashScreenProps) {
   const imageUrl = tenant?.flash_screen_image_url || tenant?.logo_url || ''
-  const initial = (tenant?.name?.charAt(0) || tenantSlug.charAt(0) || '?').toUpperCase()
+  const initial = (tenant?.name?.charAt(0) || tenantSlug?.charAt(0) || '?').toUpperCase()
   const title = tenant?.flash_screen_title || fallbackTitle
 
   return (

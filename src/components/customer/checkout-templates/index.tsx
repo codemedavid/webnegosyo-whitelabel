@@ -13,28 +13,33 @@
 import dynamic from 'next/dynamic'
 import type { CheckoutTemplate } from '@/lib/checkout-templates'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
-import { CheckoutLoading } from './checkout-shared'
+import { FlashScreen } from '@/components/customer/flash-screen'
+
+// Propless loader for the design-chunk download window. next/dynamic's `loading`
+// receives no branding, so this shows a neutral flash splash. (The branded,
+// tenant-aware splash is rendered by the page shell via CheckoutLoading.)
+const ChunkLoading = () => <FlashScreen fallbackTitle="Loading checkout..." />
 
 // Lazily-loaded checkout designs — only the active design's chunk is fetched.
 const ClassicCheckout = dynamic(
   () => import('./classic-checkout').then((m) => ({ default: m.ClassicCheckout })),
-  { loading: CheckoutLoading },
+  { loading: ChunkLoading },
 )
 const ModernCheckout = dynamic(
   () => import('./modern-checkout').then((m) => ({ default: m.ModernCheckout })),
-  { loading: CheckoutLoading },
+  { loading: ChunkLoading },
 )
 const WizardCheckout = dynamic(
   () => import('./wizard-checkout').then((m) => ({ default: m.WizardCheckout })),
-  { loading: CheckoutLoading },
+  { loading: ChunkLoading },
 )
 const MinimalCheckout = dynamic(
   () => import('./minimal-checkout').then((m) => ({ default: m.MinimalCheckout })),
-  { loading: CheckoutLoading },
+  { loading: ChunkLoading },
 )
 const ExpressCheckout = dynamic(
   () => import('./express-checkout').then((m) => ({ default: m.ExpressCheckout })),
-  { loading: CheckoutLoading },
+  { loading: ChunkLoading },
 )
 
 interface CheckoutDesignProps {

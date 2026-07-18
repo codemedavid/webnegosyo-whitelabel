@@ -31,7 +31,7 @@ import type { Tenant } from '@/types/database'
  * splash picks up brand colors/logo as soon as it resolves; until then it
  * degrades to a neutral dark splash.
  */
-export function CheckoutLoading({ tenant, tenantSlug }: { tenant?: Tenant | null; tenantSlug: string }) {
+export function CheckoutLoading({ tenant, tenantSlug }: { tenant?: Tenant | null; tenantSlug?: string } = {}) {
   return <FlashScreen tenant={tenant} tenantSlug={tenantSlug} fallbackTitle="Loading checkout..." />
 }
 

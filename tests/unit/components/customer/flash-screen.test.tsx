@@ -77,4 +77,11 @@ describe('FlashScreen', () => {
     render(<FlashScreen tenant={null} tenantSlug="mcbels" />)
     expect(screen.getByLabelText('Loading')).toBeInTheDocument()
   })
+
+  it('renders without throwing when neither tenant nor slug is provided', () => {
+    // The dynamic() loading fallback renders FlashScreen with no props.
+    render(<FlashScreen />)
+    expect(screen.getByText('Loading menu...')).toBeInTheDocument()
+    expect(screen.getByText('?')).toBeInTheDocument()
+  })
 })
