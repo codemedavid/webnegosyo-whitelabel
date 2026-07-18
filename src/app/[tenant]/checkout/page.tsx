@@ -26,7 +26,7 @@ export default function CheckoutPage() {
   const tenantSlug = params.tenant as string
   const checkout = useCheckout(tenantSlug)
 
-  if (checkout.isLoading) return <CheckoutLoading />
+  if (checkout.isLoading) return <CheckoutLoading tenant={checkout.tenant} tenantSlug={tenantSlug} />
   if (!checkout.tenant) return <CheckoutNotFound />
 
   // Order confirmation / thank-you view (shared across all designs)

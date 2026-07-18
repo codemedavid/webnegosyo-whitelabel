@@ -20,6 +20,7 @@ import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
+import { FlashScreen } from '@/components/customer/flash-screen'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 
 interface MenuClientProps {
@@ -343,43 +344,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
       )}
       {(showFlashScreen || isFlashPreview) && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center px-6"
-          style={{
-            backgroundColor: tenant?.flash_screen_background_color || '#111111',
-            color: tenant?.flash_screen_text_color || '#ffffff',
-          }}
-        >
-          <div className="flex w-full max-w-sm flex-col items-center text-center">
-            {(tenant?.flash_screen_image_url || tenant?.logo_url) ? (
-              <div className="mb-6 h-24 w-24 overflow-hidden rounded-full border border-white/20 bg-white/10">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={tenant?.flash_screen_image_url || tenant?.logo_url || ''}
-                  alt={tenant?.name || 'Brand logo'}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/10 text-3xl font-bold">
-                {tenant?.name?.charAt(0).toUpperCase() || tenantSlug.charAt(0).toUpperCase()}
-              </div>
-            )}
-
-            <h2 className="text-2xl font-semibold">
-              {tenant?.flash_screen_title || 'Loading menu...'}
-            </h2>
-
-            {tenant?.flash_screen_subtitle && (
-              <p className="mt-2 text-sm opacity-90">{tenant.flash_screen_subtitle}</p>
-            )}
-
-            <div
-              className="mt-8 h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent"
-              aria-label="Loading"
-            />
-          </div>
-        </div>
+        <FlashScreen tenant={tenant} tenantSlug={tenantSlug} />
       )}
 
       {tenant?.is_announcement_visible && (

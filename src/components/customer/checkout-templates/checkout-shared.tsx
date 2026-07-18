@@ -20,17 +20,19 @@ import { toast } from 'sonner'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { PaymentProofField } from '@/components/customer/payment-proof-field'
 import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
+import { FlashScreen } from '@/components/customer/flash-screen'
+import type { Tenant } from '@/types/database'
 
-/** Full-screen loading state (shared across designs). */
-export function CheckoutLoading() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
-      <div className="text-center">
-        <div className="h-16 w-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading checkout...</p>
-      </div>
-    </div>
-  )
+/**
+ * Full-screen loading state (shared across designs).
+ *
+ * Renders the tenant's branded flash/splash screen so checkout matches the
+ * menu's loading experience. The tenant is set before loading finishes, so the
+ * splash picks up brand colors/logo as soon as it resolves; until then it
+ * degrades to a neutral dark splash.
+ */
+export function CheckoutLoading({ tenant, tenantSlug }: { tenant?: Tenant | null; tenantSlug: string }) {
+  return <FlashScreen tenant={tenant} tenantSlug={tenantSlug} fallbackTitle="Loading checkout..." />
 }
 
 /** Restaurant-not-found state (shared across designs). */
