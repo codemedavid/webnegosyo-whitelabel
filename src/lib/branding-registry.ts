@@ -23,6 +23,13 @@ export interface BrandingField {
   inheritsFrom?: string
   /** Only shown while the mobile preview is active. */
   mobileOnly?: boolean
+  /**
+   * Edits always target the field's real tenant column, never the per-device
+   * `mobile_overrides` map — even while the mobile tab is active. For mobileOnly
+   * settings (e.g. `mobile_grid_columns`) that already have a dedicated column
+   * the storefront reads directly; routing them through overrides drops the save.
+   */
+  columnBacked?: boolean
   placeholder?: string
   min?: number
   max?: number
@@ -202,7 +209,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         fields: [
           select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'),
           select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'),
-          { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true },
+          { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true, columnBacked: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
           color('card_title_color', 'Title text', null, 'text_primary_color'),
@@ -484,6 +491,15 @@ export function getInheritSourceLabel(fieldId: string, draft: ValueBag, tenant: 
     currentId = field.inheritsFrom
   }
   return 'Default'
+}
+
+/**
+ * True when a field's edits should write to its real tenant column rather than
+ * the per-device `mobile_overrides` map. Desktop always edits the column; on the
+ * mobile tab only `columnBacked` fields do (the rest become mobile overrides).
+ */
+export function editsTenantColumn(field: BrandingField, isMobile: boolean): boolean {
+  return !isMobile || field.columnBacked === true
 }
 
 /** All editable field ids belonging to one surface. */

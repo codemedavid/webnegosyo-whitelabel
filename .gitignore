@@ -59,3 +59,6 @@ public/downloads/*.dmg
 
 # Local Claude Code agent config / session state (machine-local, not product code)
 /.claude/
+
+# Apple auth keys (never commit)
+*.p8

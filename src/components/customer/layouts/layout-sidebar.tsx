@@ -149,13 +149,13 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                 requireExplicit
             />
 
-            <div className="flex gap-4 md:gap-6">
+            <div className="flex gap-2 md:gap-3">
             {/* Sidebar - Visible on all devices now */}
-            <aside className="flex flex-col w-20 md:w-24 lg:w-32 shrink-0 sticky top-24 h-[calc(100vh-100px)] overflow-y-auto scrollbar-hide pb-20">
+            <aside className="flex flex-col w-16 md:w-20 lg:w-24 shrink-0 sticky top-24 h-[calc(100vh-100px)] overflow-y-auto scrollbar-hide pb-20">
                 {/* All Items Button */}
                 <button
                     onClick={() => scrollToCategory(null)}
-                    className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all mb-2"
+                    className="flex flex-col items-center gap-1 px-1 py-1.5 rounded-xl transition-all mb-1.5"
                     style={{
                         backgroundColor: !activeSection ? `${activeColor}15` : 'transparent',
                         color: !activeSection ? activeColor : inactiveColor,
@@ -175,7 +175,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                     <button
                         key={category.id}
                         onClick={() => scrollToCategory(category.id)}
-                        className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all"
+                        className="flex flex-col items-center gap-1 px-1 py-1.5 rounded-xl transition-all"
                         style={{
                             backgroundColor: activeSection === category.id ? `${activeColor}15` : 'transparent',
                             color: activeSection === category.id ? activeColor : inactiveColor,

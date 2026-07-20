@@ -23,6 +23,7 @@ import {
   isFieldSet,
   resolveFieldValue,
   buildPublishPayload,
+  editsTenantColumn,
   type BrandingSurface,
 } from '@/lib/branding-registry'
 import { saveBrandingAction, type BrandingInput } from '@/app/actions/branding'
@@ -514,12 +515,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
             {/* Accordion sections */}
             {(isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections).map((section, sectionIndex) => {
               const isOpen = !!openSections[sectionIndex]
-              const activeDraft = isMobile
-                ? (isProductSurface ? mobileProductDraft : mobileDraft)
-                : (isProductSurface ? productDraft : draft)
-              const isSectionDirty = section.fields.some(
-                (f) => f.type !== 'note' && Object.prototype.hasOwnProperty.call(activeDraft, f.id)
-              )
+              const columnDraft = isProductSurface ? productDraft : draft
+              const overrideDraft = isProductSurface ? mobileProductDraft : mobileDraft
+              const isSectionDirty = section.fields.some((f) => {
+                if (f.type === 'note') return false
+                // Column-backed fields stay in the tenant-column draft even on mobile.
+                const bag = editsTenantColumn(f, isMobile) ? columnDraft : overrideDraft
+                return Object.prototype.hasOwnProperty.call(bag, f.id)
+              })
               const visibleFields = section.fields.filter((f) => !f.mobileOnly || device === 'mobile')
               if (visibleFields.length === 0) return null
               const isFlashing = flashSectionIndex === sectionIndex
@@ -565,6 +568,11 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                         const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
                         const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
 
+                        // Column-backed fields (e.g. mobile_grid_columns) always
+                        // edit their real tenant column, even on the mobile tab —
+                        // the storefront reads that column directly.
+                        const usesMobilePath = !editsTenantColumn(field, isMobile)
+
                         return (
                           <div
                             key={field.id}
@@ -577,19 +585,19 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                             field={field}
                             productOptions={productOptions}
                             value={
-                              isMobile
+                              usesMobilePath
                                 ? resolveMobileFieldValue(field.id, activeMobileDraft, activeSavedMobile, desktopValue)
                                 : desktopValue
                             }
-                            isSet={isMobile ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
-                            inheritLabel={isMobile ? 'Desktop' : desktopInherit}
+                            isSet={usesMobilePath ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
+                            inheritLabel={usesMobilePath ? 'Desktop' : desktopInherit}
                             onChange={(value) =>
-                              isMobile
+                              usesMobilePath
                                 ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
                                 : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
                             }
                             onClear={() =>
-                              isMobile
+                              usesMobilePath
                                 ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
                                 : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
                             }
