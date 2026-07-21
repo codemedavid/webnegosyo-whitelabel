@@ -12,7 +12,8 @@ const { createMcpTokenVerifier } = require('@/lib/mcp/auth-adapter')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
 const client = {} as never
-const req = new Request('https://example.com/api/mcp/mcp')
+// The adapter ignores req; use a dummy (jsdom lacks a global Request).
+const req = {} as Request
 
 beforeEach(() => {
   verifyMcpKey.mockReset()
