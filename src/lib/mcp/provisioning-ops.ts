@@ -7,6 +7,7 @@ import { createUpsellPair } from '@/lib/menu-engineering-service'
 import { createBundle } from '@/lib/bundles-service'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
+import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
 
 /**
  * A provisioning operation is the unit both the remote MCP tools and any REST
@@ -29,10 +30,37 @@ const UUID = z.string().uuid()
 /** Passthrough record for payloads whose deep shape a service validates. */
 const looseRecord = z.record(z.string(), z.unknown())
 
-/** `{ tenantId, ...rest }` where the service validates `rest`. */
+/**
+ * `{ tenantId, ...rest }` as a passthrough ZodObject. It MUST be a ZodObject (not
+ * an intersection or record): the MCP SDK advertises a tool's JSON schema by
+ * running the Zod `input` through `normalizeObjectSchema`, which only recognizes
+ * raw shapes and ZodObjects — anything else normalizes to `undefined` and the SDK
+ * then advertises an empty `{ type: 'object', properties: {} }`, leaving the model
+ * with no fields to send. `.passthrough()` keeps the "service validates the rest"
+ * design (extra keys flow through untouched) while still exposing `.shape`.
+ */
 function tenantScoped<S extends z.ZodRawShape>(extra?: S) {
-    return z.object({ tenantId: UUID }).and(extra ? z.object(extra) : looseRecord)
+    return z.object(extra ? { tenantId: UUID, ...extra } : { tenantId: UUID }).passthrough()
 }
+
+/**
+ * create_tenant envelope. Advertises the fields the model must supply (deep
+ * validation still runs in createTenantSupabase via tenantSchema); `.passthrough()`
+ * lets any additional tenant column flow through. See tenantScoped for why this
+ * has to be a ZodObject rather than a bare record.
+ */
+const createTenantEnvelope = z
+    .object({
+        name: z.string().min(2).describe('Restaurant / tenant display name'),
+        slug: z.string().min(2).describe('URL slug: lowercase letters, numbers and dashes only'),
+        primary_color: z.string().min(1).describe('Primary brand color, hex (e.g. #1a1a1a)'),
+        secondary_color: z.string().min(1).describe('Secondary brand color, hex'),
+        messenger_page_id: z.string().min(1).describe('Facebook Messenger page id that receives orders'),
+        domain: z.string().optional().describe('Optional custom domain (e.g. shop.example.com)'),
+        logo_url: z.string().optional().describe('Optional logo image URL'),
+        accent_color: z.string().optional().describe('Optional accent color, hex'),
+    })
+    .passthrough()
 
 /** Strips tenantId from an envelope, returning the remaining payload. */
 function withoutTenantId(input: Record<string, unknown>): Record<string, unknown> {
@@ -52,7 +80,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'create_tenant',
         description: 'Create a new white-labeled tenant (restaurant). Requires name, slug, primary/secondary colors and a Messenger page id.',
-        input: looseRecord,
+        input: createTenantEnvelope,
         execute: (ctx, input) => createTenantSupabase(input as never, ctx),
     }),
     op({
@@ -118,13 +146,17 @@ const ops: ProvisioningOp<unknown>[] = [
         name: 'configure_integration',
         description: 'Configure a tenant\'s integrations/settings (Lalamove, distance delivery, feature flags, Convex). Envelope: { tenantId, ...tenant fields }.',
         input: tenantScoped(),
-        execute: (ctx, input) => updateTenantSupabase((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+        execute: (ctx, input) => {
+            const payload = withoutTenantId(input as Record<string, unknown>)
+            assertNoTenantDeactivation(payload)
+            return updateTenantSupabase((input as { tenantId: string }).tenantId, payload as never, ctx)
+        },
     }),
     // Reads
     op({
         name: 'list_tenants',
         description: 'List all tenants (id, name, slug). No input.',
-        input: z.object({}).optional().or(looseRecord),
+        input: z.object({}).passthrough(),
         execute: async () => {
             const { data, error } = await listTenantsSupabase()
             if (error) throw error
@@ -143,6 +175,13 @@ const ops: ProvisioningOp<unknown>[] = [
     }),
 ]
 
+// Fail-closed at import: a destructive-named op must never make it into the
+// registry. If one is ever added, the module throws on load rather than quietly
+// exposing a delete tool to the superadmin-authenticated MCP.
+for (const o of ops) {
+    assertNonDestructiveOpName(o.name)
+}
+
 export const PROVISIONING_OPS: Record<string, ProvisioningOp<unknown>> = Object.fromEntries(
     ops.map((o) => [o.name, o]),
 )
@@ -157,6 +196,9 @@ export function listOps(): ProvisioningOp<unknown>[] {
  * schema violation (deep field errors surface from the service writer).
  */
 export async function executeOp(name: string, ctx: ProvisioningCtx, rawInput: unknown): Promise<unknown> {
+    // Runtime fail-closed: reject any destructive op name before it can reach a
+    // registry lookup or a service writer, even if one were somehow registered.
+    assertNonDestructiveOpName(name)
     const found = PROVISIONING_OPS[name]
     if (!found) {
         throw new Error(`Unknown op: ${name}`)
