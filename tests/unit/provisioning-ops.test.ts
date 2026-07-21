@@ -29,8 +29,7 @@ import type { ProvisioningCtx } from '@/lib/provisioning/context'
 // `undefined`, and the SDK then advertises an empty `{type:object,properties:{}}`
 // — leaving the model unable to pass any fields (e.g. create_tenant name/slug).
 // We import the real SDK helper so this test reflects exactly what clients see.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { normalizeObjectSchema } = require('@modelcontextprotocol/sdk/server/zod-compat.js') // eslint-disable-line @typescript-eslint/no-require-imports
+import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 
 // Under next/jest (SWC), top-level ES imports run before the in-place jest.mock
 // registers, so a static `import` of the SUT would bind the real services.
@@ -81,14 +80,14 @@ describe('advertised MCP input schemas (client-visible)', () => {
     // If normalizeObjectSchema returns undefined, the MCP SDK falls back to an
     // empty parameter schema and the model cannot pass ANY arguments — which is
     // why create_tenant "could not be accessed": it was called with {}.
-    const offenders = (listOps() as Array<{ name: string; input: unknown }>)
+    const offenders = (listOps() as Array<{ name: string; input: never }>)
       .filter((op) => normalizeObjectSchema(op.input) === undefined)
       .map((op) => op.name)
     expect(offenders).toEqual([])
   })
 
   it('create_tenant advertises its required fields so the model knows what to send', () => {
-    const create = (PROVISIONING_OPS as Record<string, { input: unknown }>)['create_tenant']
+    const create = (PROVISIONING_OPS as Record<string, { input: never }>)['create_tenant']
     const normalized = normalizeObjectSchema(create.input) as { shape?: Record<string, unknown> } | undefined
     expect(normalized).toBeDefined()
     const keys = Object.keys(normalized?.shape ?? {})
