@@ -19,6 +19,8 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 | 1c — Integrations ctx (`updateTenantSupabase`, `createPaymentMethod`) | ✅ done |
 | 2 — Provisioning-ops registry (`executeOp` dispatch) | ✅ done (`@/lib/mcp/provisioning-ops`, 11 ops) |
 | 3 — Remote MCP transport at `/api/mcp/[transport]` + connection docs | ✅ done (`mcp-handler` + SDK; `register-tools` + `auth-adapter`; key-mint script; README) |
+| 4A — Superadmin MCP Keys UI (generate/copy-once/revoke) | ✅ done (`mcp-keys-service` + `actions/mcp-keys` + `/superadmin/mcp-keys` page + sidebar link) |
+| 4B — OAuth "automatic login" (no copy-paste) | ⬜ pending (Large; DCR + authorize/token + JWT; needs live connector testing) |
 | 6 — E2E/docs + final coverage | ⬜ pending (live smoke test against a deployed URL) |
 
 ## Test specification
@@ -39,6 +41,9 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 | 13 | `executeOp` dispatches each op to the correct service writer with tenantId + ctx (tenantId not leaked into payloads) | `tests/unit/provisioning-ops.test.ts` | unit | PASS | `jest provisioning-ops` |
 | 14 | `registerProvisioningTools` registers one MCP tool per op (name/description/inputSchema), dispatches tools/call via executeOp, returns text content, wraps errors as isError | `tests/unit/mcp-register-tools.test.ts` | unit | PASS | `jest mcp-register-tools` |
 | 15 | `createMcpTokenVerifier` maps a valid key → AuthInfo (clientId=keyId, scopes), returns undefined (→401) on invalid/absent token | `tests/unit/mcp-auth-adapter.test.ts` | unit | PASS | `jest mcp-auth-adapter` |
+| 16 | `listMcpKeys` maps rows to summaries, never selects/returns `key_hash`, surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
+| 17 | `createMcpKey` stores only the hash, returns plaintext once, validates label, records creator, surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
+| 18 | `revokeMcpKey` stamps `revoked_at` on the target id and returns the updated summary; surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
 
 RED→GREEN was verified for every file (module-missing RED for mcp-auth / branding-service / provisioning-ops; `verifyTenantAdmin`/cookie-client RED for the seam + integrations), each committed as a separate checkpoint.
 
