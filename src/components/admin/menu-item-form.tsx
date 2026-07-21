@@ -14,6 +14,8 @@ import { CategoryIcon } from '@/components/shared/category-icon'
 import type { MenuItem, Category, VariationType, VariationOption, BcgClassification } from '@/types/database'
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
+import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
+import { attachEntriesToAddons } from '@/lib/addon-library-utils'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -222,6 +224,16 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     const updated = [...addons]
     updated[index] = { ...updated[index], [field]: value }
     setAddons(updated)
+  }
+
+  const attachFromLibrary = (entries: Parameters<typeof attachEntriesToAddons>[1]) => {
+    setAddons((prev) => {
+      const merged = attachEntriesToAddons(prev, entries)
+      if (merged.length === prev.length) {
+        toast.info('Those add-ons are already on this item')
+      }
+      return merged
+    })
   }
 
   // New Variation Types handlers
@@ -613,6 +625,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         onAddAddon={addAddon}
         onRemoveAddon={removeAddon}
         onUpdateAddon={updateAddon}
+        headerAction={<AddonLibraryPicker tenantId={tenantId} onAttach={attachFromLibrary} />}
       />
 
       <div className="flex justify-end gap-2">

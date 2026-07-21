@@ -632,6 +632,7 @@ export const adminSidebarItems: SidebarEntry[] = [
     children: [
       { label: 'Menu Management', href: '/admin/menu', icon: UtensilsCrossed },
       { label: 'Categories', href: '/admin/categories', icon: FolderTree },
+      { label: 'Add-ons', href: '/admin/addons', icon: Box },
       { label: 'Bundles', href: '/admin/bundles', icon: Box },
     ],
   },

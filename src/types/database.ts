@@ -226,6 +226,15 @@ export interface Tenant {
   convex_deployment_url?: string | null;
   convex_deploy_key?: string | null;
   convex_schema_version?: number;
+  // Order backend selection — see src/lib/order-backend.ts (single source of truth).
+  // 'convex' = own Convex deployment | 'supabase' = own separate Supabase project | 'platform' = shared platform Supabase (legacy default).
+  order_backend?: "convex" | "supabase" | "platform";
+  // Per-tenant Supabase order-project credentials (only when order_backend = 'supabase').
+  supabase_order_url?: string | null;
+  supabase_order_anon_key?: string | null;
+  supabase_order_service_key?: string | null;
+  supabase_order_db_url?: string | null;
+  supabase_order_schema_version?: number;
   // Mobile app
   app_enabled?: boolean;
   ios_app_store_id?: string | null;
@@ -297,6 +306,22 @@ export interface Addon {
   name: string; // "Extra Cheese", "No Onions"
   price: number;
   is_default?: boolean;
+}
+
+// Reusable per-tenant add-on definition. Attaching one to a menu item copies a
+// {id, name, price} Addon snapshot into MenuItem.addons (snapshot-on-attach).
+export interface AddonLibraryEntry {
+  id: string;
+  tenant_id: string;
+  name: string;
+  price: number;
+  // When set, this entry was prefilled from an existing menu item.
+  source_menu_item_id?: string | null;
+  image_url?: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MenuItem {

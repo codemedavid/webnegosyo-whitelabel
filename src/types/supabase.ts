@@ -172,6 +172,60 @@ export type Database = {
           },
         ]
       }
+      addon_library: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          price: number
+          source_menu_item_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          price?: number
+          source_menu_item_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          price?: number
+          source_menu_item_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_library_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_library_source_menu_item_id_fkey"
+            columns: ["source_menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bundles: {
         Row: {
           created_at: string
@@ -1349,6 +1403,12 @@ export type Database = {
           convex_deploy_key: string | null
           convex_deployment_url: string | null
           convex_schema_version: number | null
+          order_backend: string | null
+          supabase_order_anon_key: string | null
+          supabase_order_db_url: string | null
+          supabase_order_schema_version: number | null
+          supabase_order_service_key: string | null
+          supabase_order_url: string | null
           created_at: string
           domain: string | null
           email_notifications_enabled: boolean
@@ -1515,6 +1575,12 @@ export type Database = {
           convex_deploy_key?: string | null
           convex_deployment_url?: string | null
           convex_schema_version?: number | null
+          order_backend?: string | null
+          supabase_order_anon_key?: string | null
+          supabase_order_db_url?: string | null
+          supabase_order_schema_version?: number | null
+          supabase_order_service_key?: string | null
+          supabase_order_url?: string | null
           created_at?: string
           domain?: string | null
           email_notifications_enabled?: boolean
@@ -1681,6 +1747,12 @@ export type Database = {
           convex_deploy_key?: string | null
           convex_deployment_url?: string | null
           convex_schema_version?: number | null
+          order_backend?: string | null
+          supabase_order_anon_key?: string | null
+          supabase_order_db_url?: string | null
+          supabase_order_schema_version?: number | null
+          supabase_order_service_key?: string | null
+          supabase_order_url?: string | null
           created_at?: string
           domain?: string | null
           email_notifications_enabled?: boolean

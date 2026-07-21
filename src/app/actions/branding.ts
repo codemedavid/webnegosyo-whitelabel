@@ -10,9 +10,12 @@ import {
     type SaveBrandingResult,
 } from '@/lib/branding-service'
 
-// Re-export types so existing importers of these from the action keep working.
-// (A 'use server' module may only export async functions and types, not values.)
-export type { BrandingInput, SaveBrandingResult }
+// NOTE: Do not re-export these types from this 'use server' module. Turbopack's
+// server-action transform treats every export (including `export type`) as a
+// runtime server-action entry and wraps them in ensureServerEntryExports([...]),
+// which throws "BrandingInput is not defined" at page-data collection because
+// types are erased. Importers must pull BrandingInput/SaveBrandingResult straight
+// from '@/lib/branding-service' instead.
 
 /**
  * Save branding settings and revalidate cached pages for instant updates.
