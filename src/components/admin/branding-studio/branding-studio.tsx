@@ -26,7 +26,8 @@ import {
   editsTenantColumn,
   type BrandingSurface,
 } from '@/lib/branding-registry'
-import { saveBrandingAction, type BrandingInput } from '@/app/actions/branding'
+import { saveBrandingAction } from '@/app/actions/branding'
+import type { BrandingInput } from '@/lib/branding-service'
 import {
   PRODUCT_DETAIL_SECTIONS,
   getProductDetailFieldIds,

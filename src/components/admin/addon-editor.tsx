@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +17,8 @@ interface AddonEditorProps {
   onAddAddon: () => void
   onRemoveAddon: (index: number) => void
   onUpdateAddon: (index: number, field: string, value: string | number | boolean) => void
+  // Optional slot for extra header controls (e.g. the library picker).
+  headerAction?: ReactNode
 }
 
 export function AddonEditor({
@@ -23,15 +26,19 @@ export function AddonEditor({
   onAddAddon,
   onRemoveAddon,
   onUpdateAddon,
+  headerAction,
 }: AddonEditorProps) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Add-ons</CardTitle>
-        <Button type="button" variant="outline" size="sm" onClick={onAddAddon}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Add-on
-        </Button>
+        <div className="flex items-center gap-2">
+          {headerAction}
+          <Button type="button" variant="outline" size="sm" onClick={onAddAddon}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Add-on
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {addons.length === 0 ? (
