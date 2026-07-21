@@ -300,8 +300,8 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
   return data as unknown as TenantRow
 }
 
-export async function updateTenantSupabase(id: string, input: TenantInput): Promise<TenantRow> {
-  const supabase = await createClient()
+export async function updateTenantSupabase(id: string, input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
+  const supabase = ctx?.client ?? (await createClient())
 
   // Get old tenant to clear old domain from cache
   const { data: oldTenantData } = await supabase
@@ -313,10 +313,10 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
   const oldTenant = oldTenantData as { domain: string | null } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
-  if (await isSlugTaken(parsed.slug, id)) {
+  if (await isSlugTaken(parsed.slug, id, ctx)) {
     throw new Error('Slug is already taken')
   }
-  if (parsed.domain && (await isDomainTaken(parsed.domain, id))) {
+  if (parsed.domain && (await isDomainTaken(parsed.domain, id, ctx))) {
     throw new Error('Domain is already taken')
   }
 
