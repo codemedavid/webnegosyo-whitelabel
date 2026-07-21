@@ -15,10 +15,10 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 |---|---|
 | 0 — Bearer-key auth (`mcp-auth` + `mcp_api_keys` table) | ✅ done, migration applied |
 | 1 — Injectable `ProvisioningCtx` seam on MVP writers | ✅ done (tenant, category, menu item, addon-library, upsell, bundle) |
-| 1b — Branding writer extraction (cookie-free) | ⬜ pending |
-| 1c — Integrations ctx (`updateTenantSupabase`, `createPaymentMethod`) | ⬜ pending |
-| 2 — HTTP admin API (`/api/admin/*`, Bearer-authed, service-role) | ⬜ pending |
-| 3 — Remote MCP tools at `/api/mcp/[transport]` | ⬜ pending |
+| 1b — Branding writer extraction (cookie-free) | ✅ done (`@/lib/branding-service`, `saveBrandingAction` delegates + ctx path) |
+| 1c — Integrations ctx (`updateTenantSupabase`, `createPaymentMethod`) | ✅ done |
+| 2 — Provisioning-ops registry (`executeOp` dispatch) | ✅ done (`@/lib/mcp/provisioning-ops`, 11 ops) |
+| 3 — Remote MCP transport at `/api/mcp/[transport]` + connection docs | ⬜ pending (transport lib choice) |
 | 6 — E2E/docs + final coverage | ⬜ pending |
 
 ## Test specification
@@ -32,16 +32,22 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 | 6 | `createCategory` with a ProvisioningCtx uses the injected client and never touches the cookie client | `tests/unit/admin-service-provisioning.test.ts` | unit | PASS | `jest admin-service-provisioning` |
 | 7 | MCP path still injects `tenant_id` and still validates input (rejects short name) | `tests/unit/admin-service-provisioning.test.ts` | unit | PASS | `jest admin-service-provisioning` |
 | 8 | A DB error from the injected client surfaces to the caller | `tests/unit/admin-service-provisioning.test.ts` | unit | PASS | `jest admin-service-provisioning` |
+| 9 | `buildBrandingUpdatePayload` normalizes promotion_banners ''→[] and empty hero uuid/url→null | `tests/unit/branding-service.test.ts` | unit | PASS | `jest branding-service` |
+| 10 | `writeBrandingWithClient` updates via injected client, validates, retries on missing column, surfaces DB errors | `tests/unit/branding-service.test.ts` | unit | PASS | `jest branding-service` |
+| 11 | `updateTenantSupabase`/`createPaymentMethod` with ctx use the injected client, skip cookie auth | `tests/unit/integrations-provisioning.test.ts` | unit | PASS | `jest integrations-provisioning` |
+| 12 | Ops registry exposes named ops; `executeOp` rejects unknown op + missing tenantId | `tests/unit/provisioning-ops.test.ts` | unit | PASS | `jest provisioning-ops` |
+| 13 | `executeOp` dispatches each op to the correct service writer with tenantId + ctx (tenantId not leaked into payloads) | `tests/unit/provisioning-ops.test.ts` | unit | PASS | `jest provisioning-ops` |
 
-RED→GREEN was verified for both files (module-missing RED for mcp-auth; `verifyTenantAdmin` cookie-path RED for the seam), each committed as a separate checkpoint.
+RED→GREEN was verified for every file (module-missing RED for mcp-auth / branding-service / provisioning-ops; `verifyTenantAdmin`/cookie-client RED for the seam + integrations), each committed as a separate checkpoint.
+
+**Jest-under-next/jest note:** top-level ES `import`s execute *before* an in-place `jest.mock` registers (SWC does not hoist the mock above imports). To mock service modules the SUT imports, `provisioning-ops.test.ts` uses inline `jest.fn()` factories + `jest.requireMock` and `require`s the SUT after the mocks register. Directly-injected stubs (the ProvisioningCtx seam) remain the preferred, transform-agnostic pattern.
 
 ## Coverage and known gaps
-- `npx jest --config jest.config.cjs tests/unit/mcp-auth.test.ts tests/unit/admin-service-provisioning.test.ts` → **18 passed**.
+- `npx jest --config jest.config.cjs tests/unit/{mcp-auth,admin-service-provisioning,branding-service,integrations-provisioning,provisioning-ops}.test.ts` → **36 passed** (5 suites).
+- `npx tsc --noEmit` on all edited source files (`branding-service`, `actions/branding`, `tenants-service`, `payment-methods-service`, `mcp/provisioning-ops`) → clean.
 - Pre-existing, unrelated failures outside this work: `webnegosyo-app/lib/order-item-images.test.ts` (3) and several `tsc` errors in `product-detail-theme`/`revalidate-menu`/`supabase-deploy` test files. None reference files edited here.
-- Remaining seam writers (branding, `updateTenantSupabase`, `createPaymentMethod`) not yet threaded — see pending phases.
 
 ## Next actions
-1. Extract a pure `buildBrandingUpdatePayload` + client-based branding writer; have `saveBrandingAction` delegate; add ctx path.
-2. Thread ctx into `updateTenantSupabase` and `createPaymentMethod`.
-3. Build `/api/admin/*` route handlers (Bearer → `verifyMcpKey` → `createAdminClient()` → writers with ctx), `{success,data,error}` envelope.
-4. Add remote MCP tools at `app/api/mcp/[transport]/route.ts`; connection README for Claude + ChatGPT.
+1. **Phase 3 — remote MCP transport** at `app/api/mcp/[transport]/route.ts`: Bearer → `verifyMcpKey(createAdminClient())` → build `ProvisioningCtx` → advertise `listOps()` as MCP tools → `tools/call` dispatches through `executeOp`. Transport lib TBD (`mcp-handler` adapter vs hand-rolled JSON-RPC vs SDK direct).
+2. Connection README for Claude remote connectors + ChatGPT custom connectors (one Bearer-keyed URL).
+3. A superadmin UI/CLI to mint an `smk_live_` key via `generateApiKey()` (only the hash is stored).
