@@ -405,6 +405,55 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
   return data as unknown as MenuItem
 }
 
+/**
+ * Update ONLY the image of an existing menu item — a focused, partial write that
+ * leaves every other column untouched (unlike updateMenuItem, which replaces the
+ * whole record from a full MenuItemInput). Used by the remote MCP to point an
+ * item at an already-hosted image URL; when a service-role `ctx` is supplied the
+ * tenant-admin session check is skipped (the MCP is superadmin-authenticated).
+ */
+export async function updateMenuItemImage(
+  itemId: string,
+  tenantId: string,
+  imageUrl: string,
+  ctx?: ProvisioningCtx,
+) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
+
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ image_url: imageUrl } as any)
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as unknown as MenuItem
+}
+
+/**
+ * List a tenant's menu items (id, name, image_url) for provisioning flows so a
+ * caller (e.g. the MCP) can resolve an item by name before updating it. Uses the
+ * service-role `ctx` client when provided so it bypasses RLS the same way the
+ * other MCP reads do.
+ */
+export async function listMenuItemsForProvisioning(tenantId: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('id, name, image_url, category_id, price, is_available')
+    .eq('tenant_id', tenantId)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
 export async function deleteMenuItem(itemId: string, tenantId: string) {
   await verifyTenantAdmin(tenantId)
   

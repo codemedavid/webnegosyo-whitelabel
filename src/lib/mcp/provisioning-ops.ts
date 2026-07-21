@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createTenantSupabase, updateTenantSupabase, listTenantsSupabase, getTenantBySlugSupabase } from '@/lib/tenants-service'
-import { createCategory, createMenuItem } from '@/lib/admin-service'
+import { createCategory, createMenuItem, updateMenuItemImage, listMenuItemsForProvisioning } from '@/lib/admin-service'
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
 import { createUpsellPair } from '@/lib/menu-engineering-service'
 import { createBundle } from '@/lib/bundles-service'
@@ -96,6 +96,20 @@ const ops: ProvisioningOp<unknown>[] = [
         execute: (ctx, input) => createMenuItem((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
     }),
     op({
+        name: 'update_menu_item_image',
+        description:
+            "Set an existing menu item's image to an already-hosted image URL (the MCP cannot upload binary files). Envelope: { tenantId, itemId, imageUrl }. Use list_menu_items first to resolve itemId by name.",
+        input: z.object({
+            tenantId: UUID,
+            itemId: UUID.describe('Id of the existing menu item to update'),
+            imageUrl: z.string().url().describe('Publicly reachable image URL to set on the item'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; itemId: string; imageUrl: string }
+            return updateMenuItemImage(i.itemId, i.tenantId, i.imageUrl, ctx)
+        },
+    }),
+    op({
         name: 'add_addon_library_entry',
         description: 'Create a reusable addon-library entry (shared addon group) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
@@ -162,6 +176,12 @@ const ops: ProvisioningOp<unknown>[] = [
             if (error) throw error
             return data
         },
+    }),
+    op({
+        name: 'list_menu_items',
+        description: "List a tenant's menu items (id, name, image_url, price) so an item can be resolved by name before updating it. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listMenuItemsForProvisioning((input as { tenantId: string }).tenantId, ctx),
     }),
     op({
         name: 'get_tenant',
