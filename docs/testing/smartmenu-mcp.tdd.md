@@ -20,7 +20,7 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 | 2 — Provisioning-ops registry (`executeOp` dispatch) | ✅ done (`@/lib/mcp/provisioning-ops`, 11 ops) |
 | 3 — Remote MCP transport at `/api/mcp/[transport]` + connection docs | ✅ done (`mcp-handler` + SDK; `register-tools` + `auth-adapter`; key-mint script; README) |
 | 4A — Superadmin MCP Keys UI (generate/copy-once/revoke) | ✅ done (`mcp-keys-service` + `actions/mcp-keys` + `/superadmin/mcp-keys` page + sidebar link) |
-| 4B — OAuth "automatic login" (no copy-paste) | ⬜ pending (Large; DCR + authorize/token + JWT; needs live connector testing) |
+| 4B — OAuth "automatic login" (no copy-paste) | ✅ core done (JWT + service + adapter + discovery/authorize/token/register routes + migration applied); ⬜ live connector smoke test pending |
 | 6 — E2E/docs + final coverage | ⬜ pending (live smoke test against a deployed URL) |
 
 ## Test specification
@@ -44,13 +44,21 @@ Journeys derived during this TDD run from the `/ecc:plan` output in-session (no 
 | 16 | `listMcpKeys` maps rows to summaries, never selects/returns `key_hash`, surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
 | 17 | `createMcpKey` stores only the hash, returns plaintext once, validates label, records creator, surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
 | 18 | `revokeMcpKey` stamps `revoked_at` on the target id and returns the updated summary; surfaces DB errors | `tests/unit/mcp-keys-service.test.ts` | unit | PASS | `jest mcp-keys-service` |
+| 19 | HS256 access tokens round-trip claims with an injected clock and reject tampered/re-signed/expired/malformed tokens | `tests/unit/mcp-oauth-jwt.test.ts` | unit | PASS | `jest mcp-oauth-jwt` |
+| 20 | `verifyPkce` accepts a correct S256/plain verifier and rejects a wrong one (constant-time) | `tests/unit/mcp-oauth-service.test.ts` | unit | PASS | `jest mcp-oauth-service` |
+| 21 | `registerClient` (DCR) stores a public client with a generated id, rejects empty redirect_uris | `tests/unit/mcp-oauth-service.test.ts` | unit | PASS | `jest mcp-oauth-service` |
+| 22 | `issueAuthorizationCode` persists code hash + PKCE + subject; `exchangeAuthorizationCode` enforces single-use, expiry, client + redirect_uri binding, PKCE, and issues JWT+refresh (hash-only) | `tests/unit/mcp-oauth-service.test.ts` | unit | PASS | `jest mcp-oauth-service` |
+| 23 | `refreshAccessToken` issues a new JWT for a valid token and rejects a revoked one | `tests/unit/mcp-oauth-service.test.ts` | unit | PASS | `jest mcp-oauth-service` |
+| 24 | Token verifier accepts a valid OAuth JWT (no key-store hit), rejects expired/wrong-secret, still routes `smk_live_` keys to the legacy path | `tests/unit/mcp-auth-adapter.test.ts` | unit | PASS | `jest mcp-auth-adapter` |
+| 25 | Discovery metadata resolves the origin from proxy headers and advertises endpoints + PKCE S256 + public-client auth; `getJwtSecret` throws when unset | `tests/unit/mcp-oauth-metadata.test.ts` | unit | PASS | `jest mcp-oauth-metadata` |
 
 RED→GREEN was verified for every file (module-missing RED for mcp-auth / branding-service / provisioning-ops; `verifyTenantAdmin`/cookie-client RED for the seam + integrations), each committed as a separate checkpoint.
 
 **Jest-under-next/jest note:** top-level ES `import`s execute *before* an in-place `jest.mock` registers (SWC does not hoist the mock above imports). To mock service modules the SUT imports, `provisioning-ops.test.ts` uses inline `jest.fn()` factories + `jest.requireMock` and `require`s the SUT after the mocks register. Directly-injected stubs (the ProvisioningCtx seam) remain the preferred, transform-agnostic pattern.
 
 ## Coverage and known gaps
-- `npx jest --config jest.config.cjs tests/unit/{mcp-auth,admin-service-provisioning,branding-service,integrations-provisioning,provisioning-ops,mcp-register-tools,mcp-auth-adapter}.test.ts` → **42 passed** (7 suites).
+- `npx jest --config jest.config.cjs tests/unit/{mcp-auth,mcp-keys-service,mcp-oauth-jwt,mcp-oauth-service,mcp-oauth-metadata,mcp-auth-adapter,mcp-register-tools,provisioning-ops}.test.ts` → **68 passed** (8 suites). (Earlier suites branding/integrations/admin-service still green.)
+- **OAuth integration surface not unit-tested:** the `/authorize`, `/token`, `/register` HTTP handlers (they use module-level `createAdminClient`/cookie `createClient`). The pure core they delegate to (jwt, oauth-service, config, discovery metadata) is covered. These need a live smoke test against a deployed URL with `MCP_OAUTH_JWT_SECRET` set, driving Claude + ChatGPT through the browser-login flow. Migration `20260721130000_mcp_oauth` applied to remote DB; `mcp_oauth_codes` intentionally has RLS-on + no policy (service-role-only, deny-all otherwise).
 - `npx tsc --noEmit` on all new/edited source (`branding-service`, `actions/branding`, `tenants-service`, `payment-methods-service`, `mcp/provisioning-ops`, `mcp/register-tools`, `mcp/auth-adapter`, `api/mcp/[transport]/route`) → clean. ESLint on the new files → clean.
 - **Not unit-tested (integration surface):** the `route.ts` adapter wiring and the `mint-mcp-key.mjs` script (syntax-checked only). These need a live smoke test against a deployed URL with a real minted key.
 - Pre-existing, unrelated failures outside this work: `webnegosyo-app/lib/order-item-images.test.ts` (3) and several `tsc` errors in `product-detail-theme`/`revalidate-menu`/`supabase-deploy` test files. None reference files edited here.
