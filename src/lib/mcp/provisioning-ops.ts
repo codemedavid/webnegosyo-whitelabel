@@ -125,7 +125,7 @@ const ops: ProvisioningOp<unknown>[] = [
         name: 'list_tenants',
         description: 'List all tenants (id, name, slug). No input.',
         input: z.object({}).optional().or(looseRecord),
-        execute: async (ctx) => {
+        execute: async () => {
             const { data, error } = await listTenantsSupabase()
             if (error) throw error
             return data
