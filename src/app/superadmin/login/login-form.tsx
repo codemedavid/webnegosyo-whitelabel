@@ -13,6 +13,13 @@ export default function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const unauthorized = params.get('unauthorized') === '1'
+  // Safe internal return path (e.g. the OAuth /authorize URL). Reject anything
+  // that isn't a same-origin absolute path to avoid open-redirects.
+  const rawRedirect = params.get('redirect')
+  const redirectTo =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
+      ? rawRedirect
+      : '/superadmin'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -47,7 +54,13 @@ export default function LoginForm() {
       }
 
       toast.success('Welcome back!')
-      router.replace('/superadmin')
+      // Full navigation (not router.replace) so an external return path like the
+      // OAuth /authorize route handler runs on the server with fresh cookies.
+      if (redirectTo === '/superadmin') {
+        router.replace('/superadmin')
+      } else {
+        window.location.assign(redirectTo)
+      }
     })
   }
 

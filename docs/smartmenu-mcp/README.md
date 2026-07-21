@@ -48,6 +48,36 @@ claude mcp add --transport http smartmenu https://<your-platform-domain>/api/mcp
 - **MCP Server URL:** `https://<your-platform-domain>/api/mcp/mcp`
 - **Authentication:** Bearer / Access token → paste the `smk_live_…` key
 
+## Automatic login (OAuth) — no key to paste
+
+Instead of minting and pasting a key, connect with a **browser login**. When the
+connector hits the MCP endpoint unauthenticated, it discovers the OAuth server
+and opens a login window; you sign in with your **existing superadmin account**
+and the connector receives a token automatically (it also refreshes silently).
+
+**Setup (one-time):** set a signing secret in the app environment:
+
+```bash
+MCP_OAUTH_JWT_SECRET=<a long random string, e.g. `openssl rand -hex 32`>
+```
+
+Without it, the OAuth token endpoint returns a clear 500 and only static keys
+work. Both auth modes coexist — a `smk_live_…` key still works for scripts/CI.
+
+**Connect Claude:** Settings → Connectors → Add custom connector → URL
+`https://<your-platform-domain>/api/mcp/mcp`, and choose **OAuth** (not a token).
+Claude registers itself (Dynamic Client Registration), sends you to the login
+page, and finishes automatically.
+
+**Connect ChatGPT:** Settings → Connectors → Custom MCP connector → same URL →
+**OAuth**. Same browser-login flow.
+
+**Endpoints** (advertised via `/.well-known/oauth-authorization-server`):
+`/api/mcp/oauth/authorize` · `/api/mcp/oauth/token` · `/api/mcp/oauth/register`.
+Authorization codes and refresh tokens are stored **hash-only**; access tokens
+are short-lived stateless JWTs. Revoke a session by stamping `revoked_at` on the
+matching `mcp_oauth_tokens` row.
+
 ## Tools
 
 Every tool is dispatched through the shared provisioning-ops registry (`src/lib/mcp/provisioning-ops.ts`), validated with Zod, and executed with a service-role client. Writers are the same ones the web admin uses — the MCP path just injects a `ProvisioningCtx` so cookie auth is skipped (the Bearer key already proves superadmin authority).
