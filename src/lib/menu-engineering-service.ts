@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { BcgClassification, MenuItem, UpsellPair, UpsellPairWithItems } from '@/types/database'
 import { z } from 'zod'
@@ -145,15 +146,15 @@ export async function getMenuItemsByBcgClassification(
 // Upsell Pairs
 // ============================================
 
-export async function createUpsellPair(tenantId: string, input: UpsellPairInput) {
-  await verifyTenantAdmin(tenantId)
+export async function createUpsellPair(tenantId: string, input: UpsellPairInput, ctx?: ProvisioningCtx) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
   const validated = upsellPairInputSchema.parse(input)
 
   if (validated.source_item_id === validated.target_item_id) {
     throw new Error('Source and target items must be different')
   }
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
   const { data, error } = await supabase
     .from('upsell_pairs')
     .insert({
