@@ -29,6 +29,13 @@ const handler = createMcpHandler(
     { basePath: '/api/mcp', maxDuration: 60, disableSse: true },
 )
 
-const authHandler = withMcpAuth(handler, createMcpTokenVerifier(adminClient), { required: true })
+// `resourceMetadataPath` makes 401 responses carry a WWW-Authenticate header
+// pointing at the protected-resource metadata, so an OAuth-capable client
+// (Claude/ChatGPT) can discover the authorization server and log in — no
+// copy-pasted key. Legacy `smk_live_` keys still work (verifier accepts both).
+const authHandler = withMcpAuth(handler, createMcpTokenVerifier(adminClient), {
+    required: true,
+    resourceMetadataPath: '/.well-known/oauth-protected-resource',
+})
 
 export { authHandler as GET, authHandler as POST, authHandler as DELETE }

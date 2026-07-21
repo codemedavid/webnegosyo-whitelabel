@@ -145,7 +145,7 @@ describe('exchangeAuthorizationCode', () => {
     // the code is marked consumed and only the refresh token HASH is stored
     expect(stub.updates.some((u) => u.table === 'mcp_oauth_codes' && 'consumed_at' in u.payload)).toBe(true)
     const refreshInsert = stub.inserts.find((i) => i.table === 'mcp_oauth_tokens')
-    expect(refreshInsert?.payload.token_hash).toBe(createHash('sha256').update(result.refresh_token).digest('hex'))
+    expect(refreshInsert?.payload.token_hash).toBe(createHash('sha256').update(result.refresh_token as string).digest('hex'))
     expect(JSON.stringify(refreshInsert?.payload)).not.toContain(result.refresh_token)
   })
 
