@@ -6,6 +6,7 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Category, MenuItem } from '@/types/database'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { z } from 'zod'
 
 // ============================================
@@ -158,11 +159,11 @@ export const getCategoriesByTenant = cache(async (tenantId: string) => {
   return data as unknown as Category[]
 })
 
-export async function createCategory(tenantId: string, input: CategoryInput) {
-  await verifyTenantAdmin(tenantId)
-  
+export async function createCategory(tenantId: string, input: CategoryInput, ctx?: ProvisioningCtx) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
+
   const validated = categorySchema.parse(input)
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
 
   const { data, error } = await supabase
     .from('categories')
@@ -353,11 +354,11 @@ export const getMenuItemById = cache(async (itemId: string, tenantId: string) =>
   return data as unknown as MenuItem
 })
 
-export async function createMenuItem(tenantId: string, input: MenuItemInput) {
-  await verifyTenantAdmin(tenantId)
-  
+export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx?: ProvisioningCtx) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
+
   const validated = menuItemSchema.parse(input)
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
 
   const { data, error } = await supabase
     .from('menu_items')

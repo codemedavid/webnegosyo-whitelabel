@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { PostgrestError } from '@supabase/supabase-js'
 import type { Tenant as TenantRow, Database } from '@/types/database'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { normalizeDomain, clearDomainCache } from '@/lib/tenant'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
@@ -174,8 +175,8 @@ export async function listTenantsSupabase(): Promise<{ data: TenantRow[]; error:
   return { data: (data as unknown as TenantRow[]) || [], error }
 }
 
-export async function isSlugTaken(slug: string, excludeId?: string) {
-  const supabase = await createClient()
+export async function isSlugTaken(slug: string, excludeId?: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? (await createClient())
   let query = supabase.from('tenants').select('id').eq('slug', slug)
   if (excludeId) query = query.neq('id', excludeId)
   const { data, error } = await query
@@ -183,13 +184,13 @@ export async function isSlugTaken(slug: string, excludeId?: string) {
   return (data || []).length > 0
 }
 
-export async function isDomainTaken(domain: string | null, excludeId?: string): Promise<boolean> {
+export async function isDomainTaken(domain: string | null, excludeId?: string, ctx?: ProvisioningCtx): Promise<boolean> {
   if (!domain) return false // Empty domain is always available
 
   const normalized = normalizeDomain(domain)
   if (!normalized) return false // Invalid domain is considered available (validation will catch it)
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
   let query = supabase.from('tenants').select('id').eq('domain', normalized)
   if (excludeId) query = query.neq('id', excludeId)
   const { data, error } = await query
@@ -197,13 +198,13 @@ export async function isDomainTaken(domain: string | null, excludeId?: string): 
   return (data || []).length > 0
 }
 
-export async function createTenantSupabase(input: TenantInput): Promise<TenantRow> {
-  const supabase = await createClient()
+export async function createTenantSupabase(input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
+  const supabase = ctx?.client ?? (await createClient())
   const parsed = tenantSchema.parse(input)
-  if (await isSlugTaken(parsed.slug)) {
+  if (await isSlugTaken(parsed.slug, undefined, ctx)) {
     throw new Error('Slug is already taken')
   }
-  if (parsed.domain && (await isDomainTaken(parsed.domain))) {
+  if (parsed.domain && (await isDomainTaken(parsed.domain, undefined, ctx))) {
     throw new Error('Domain is already taken')
   }
   const insertPayload: TenantsInsert & DeliveryFeeColumns = {
@@ -299,8 +300,8 @@ export async function createTenantSupabase(input: TenantInput): Promise<TenantRo
   return data as unknown as TenantRow
 }
 
-export async function updateTenantSupabase(id: string, input: TenantInput): Promise<TenantRow> {
-  const supabase = await createClient()
+export async function updateTenantSupabase(id: string, input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
+  const supabase = ctx?.client ?? (await createClient())
 
   // Get old tenant to clear old domain from cache
   const { data: oldTenantData } = await supabase
@@ -312,10 +313,10 @@ export async function updateTenantSupabase(id: string, input: TenantInput): Prom
   const oldTenant = oldTenantData as { domain: string | null } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
-  if (await isSlugTaken(parsed.slug, id)) {
+  if (await isSlugTaken(parsed.slug, id, ctx)) {
     throw new Error('Slug is already taken')
   }
-  if (parsed.domain && (await isDomainTaken(parsed.domain, id))) {
+  if (parsed.domain && (await isDomainTaken(parsed.domain, id, ctx))) {
     throw new Error('Domain is already taken')
   }
 

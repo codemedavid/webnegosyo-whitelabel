@@ -5,6 +5,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import type { PaymentMethod } from '@/types/database'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
 export interface PaymentMethodWithOrderTypes extends PaymentMethod {
   order_types: string[] // Array of order_type_ids
@@ -73,11 +74,12 @@ export async function createPaymentMethod(
   qrCodeUrl?: string,
   isActive: boolean = true,
   orderTypes: string[] = [],
-  requirePaymentProof: boolean = false
+  requirePaymentProof: boolean = false,
+  ctx?: ProvisioningCtx
 ) {
-  await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantAdmin(tenantId)
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
 
   // Get the next order_index
   const { data: lastMethod } = await supabase

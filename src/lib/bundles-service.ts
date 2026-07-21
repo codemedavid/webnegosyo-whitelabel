@@ -6,6 +6,7 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { Bundle, BundleWithSlots, MenuItem, Category } from '@/types/database'
 
@@ -101,10 +102,10 @@ export async function getBundleById(bundleId: string, tenantId: string): Promise
 /**
  * Create a new bundle with slots
  */
-export async function createBundle(tenantId: string, input: BundleInput): Promise<BundleWithSlots> {
-  await verifyTenantAdmin(tenantId)
+export async function createBundle(tenantId: string, input: BundleInput, ctx?: ProvisioningCtx): Promise<BundleWithSlots> {
+  if (!ctx) await verifyTenantAdmin(tenantId)
   const validated = bundleSchema.parse(input)
-  const supabase = createAdminClient()
+  const supabase = ctx?.client ?? createAdminClient()
 
   const { slots, ...bundleData } = validated
 
