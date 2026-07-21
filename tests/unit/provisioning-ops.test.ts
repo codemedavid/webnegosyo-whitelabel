@@ -23,6 +23,14 @@ jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUps
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
+// The MCP SDK derives each tool's advertised JSON schema by first passing the
+// op's Zod `input` through `normalizeObjectSchema`. It ONLY returns a schema for
+// raw shapes and ZodObjects; a record/intersection/union normalizes to
+// `undefined`, and the SDK then advertises an empty `{type:object,properties:{}}`
+// — leaving the model unable to pass any fields (e.g. create_tenant name/slug).
+// We import the real SDK helper so this test reflects exactly what clients see.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeObjectSchema } = require('@modelcontextprotocol/sdk/server/zod-compat.js') // eslint-disable-line @typescript-eslint/no-require-imports
 
 // Under next/jest (SWC), top-level ES imports run before the in-place jest.mock
 // registers, so a static `import` of the SUT would bind the real services.
@@ -65,6 +73,26 @@ describe('provisioning ops registry', () => {
 
   it('throws on an unknown op name', async () => {
     await expect(executeOp('does_not_exist', ctx, {})).rejects.toThrow(/unknown op/i)
+  })
+})
+
+describe('advertised MCP input schemas (client-visible)', () => {
+  it('every op advertises an object schema the SDK can expose (never the empty fallback)', () => {
+    // If normalizeObjectSchema returns undefined, the MCP SDK falls back to an
+    // empty parameter schema and the model cannot pass ANY arguments — which is
+    // why create_tenant "could not be accessed": it was called with {}.
+    const offenders = (listOps() as Array<{ name: string; input: unknown }>)
+      .filter((op) => normalizeObjectSchema(op.input) === undefined)
+      .map((op) => op.name)
+    expect(offenders).toEqual([])
+  })
+
+  it('create_tenant advertises its required fields so the model knows what to send', () => {
+    const create = (PROVISIONING_OPS as Record<string, { input: unknown }>)['create_tenant']
+    const normalized = normalizeObjectSchema(create.input) as { shape?: Record<string, unknown> } | undefined
+    expect(normalized).toBeDefined()
+    const keys = Object.keys(normalized?.shape ?? {})
+    expect(keys).toEqual(expect.arrayContaining(['name', 'slug', 'primary_color', 'secondary_color']))
   })
 })
 
@@ -118,5 +146,45 @@ describe('executeOp dispatch', () => {
   it('rejects an op payload missing its required tenantId', async () => {
     await expect(executeOp('add_category', ctx, { name: 'Drinks' })).rejects.toThrow()
     expect(createCategory).not.toHaveBeenCalled()
+  })
+})
+
+describe('destructive-op guardrail (safe by contract)', () => {
+  it('registers no op whose name implies deletion/removal', () => {
+    const ops = listOps() as Array<{ name: string }>
+    const offenders = ops
+      .map((o) => o.name)
+      .filter((name) => /(^|_)(delete|drop|remove|destroy|deprovision|truncate|purge|wipe|teardown|erase)(_|$)/i.test(name))
+    expect(offenders).toEqual([])
+  })
+
+  it('refuses to dispatch a destructive op name before it can ever reach a service', async () => {
+    for (const name of ['delete_tenant', 'drop_menu_item', 'deprovision_tenant']) {
+      await expect(executeOp(name, ctx, { tenantId: TENANT })).rejects.toThrow(/destructive/i)
+    }
+    // The generic "unknown op" path must not be what stops these.
+    expect(updateTenantSupabase).not.toHaveBeenCalled()
+  })
+})
+
+describe('tenant-deactivation guardrail', () => {
+  it('refuses to deactivate a tenant through configure_integration', async () => {
+    await expect(
+      executeOp('configure_integration', ctx, {
+        tenantId: TENANT,
+        name: 'Acme', slug: 'acme', primary_color: '#111', secondary_color: '#222', messenger_page_id: '1',
+        is_active: false,
+      }),
+    ).rejects.toThrow(/deactivat/i)
+    expect(updateTenantSupabase).not.toHaveBeenCalled()
+  })
+
+  it('still allows configure_integration when is_active is not being turned off', async () => {
+    await executeOp('configure_integration', ctx, {
+      tenantId: TENANT,
+      name: 'Acme', slug: 'acme', primary_color: '#111', secondary_color: '#222', messenger_page_id: '1',
+      lalamove_enabled: true,
+    })
+    expect(updateTenantSupabase).toHaveBeenCalledWith(TENANT, expect.objectContaining({ lalamove_enabled: true }), ctx)
   })
 })
