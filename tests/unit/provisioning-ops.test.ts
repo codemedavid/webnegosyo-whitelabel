@@ -17,6 +17,7 @@ jest.mock('@/lib/admin-service', () => ({
   createMenuItem: jest.fn(),
   updateMenuItemImage: jest.fn(),
   setMenuItemImageFromData: jest.fn(),
+  updateMenuItemFields: jest.fn(),
   listMenuItemsForProvisioning: jest.fn(),
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
@@ -39,7 +40,7 @@ import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-comp
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/tenants-service') as any
-const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, listMenuItemsForProvisioning } = jest.requireMock('@/lib/admin-service') as any
+const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, updateMenuItemFields, listMenuItemsForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
@@ -56,6 +57,7 @@ beforeEach(() => {
   createMenuItem.mockReset().mockResolvedValue({ id: 'item_1' } as never)
   updateMenuItemImage.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://cdn.example.com/biscoff.png' } as never)
   setMenuItemImageFromData.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://ik.imagekit.io/demo/menu-items/biscoff.png' } as never)
+  updateMenuItemFields.mockReset().mockResolvedValue({ id: 'item_1', description: 'Updated description text' } as never)
   listMenuItemsForProvisioning.mockReset().mockResolvedValue([
     { id: 'item_1', name: 'Biscoff Frappe', image_url: null },
     { id: 'item_2', name: 'Strawberry Soda', image_url: null },
@@ -71,7 +73,7 @@ describe('provisioning ops registry', () => {
     const names = ops.map((o) => o.name)
     expect(names).toEqual(expect.arrayContaining([
       'create_tenant', 'add_category', 'add_menu_item', 'update_branding', 'configure_integration',
-      'list_menu_items', 'update_menu_item_image', 'upload_menu_item_image',
+      'list_menu_items', 'update_menu_item_image', 'upload_menu_item_image', 'update_menu_item',
     ]))
     for (const op of ops) {
       expect(typeof op.description).toBe('string')
@@ -184,6 +186,32 @@ describe('executeOp dispatch', () => {
       executeOp('upload_menu_item_image', ctx, { tenantId: TENANT, itemId: ITEM }),
     ).rejects.toThrow()
     expect(setMenuItemImageFromData).not.toHaveBeenCalled()
+  })
+
+  it('update_menu_item routes editable fields (minus tenantId/itemId) to updateMenuItemFields with ctx', async () => {
+    await executeOp('update_menu_item', ctx, {
+      tenantId: TENANT,
+      itemId: ITEM,
+      description: 'A rich, velvety Biscoff frappe topped with crumbles',
+      price: 149,
+    })
+    expect(updateMenuItemFields).toHaveBeenCalledWith(
+      ITEM,
+      TENANT,
+      expect.objectContaining({ description: 'A rich, velvety Biscoff frappe topped with crumbles', price: 149 }),
+      ctx,
+    )
+    // tenantId/itemId must not leak into the field patch
+    const patch = updateMenuItemFields.mock.calls[0][2]
+    expect(patch).not.toHaveProperty('tenantId')
+    expect(patch).not.toHaveProperty('itemId')
+  })
+
+  it('update_menu_item rejects a payload missing itemId', async () => {
+    await expect(
+      executeOp('update_menu_item', ctx, { tenantId: TENANT, description: 'whatever text here' }),
+    ).rejects.toThrow()
+    expect(updateMenuItemFields).not.toHaveBeenCalled()
   })
 
   it('update_branding forwards tenantId, tenantSlug, branding and ctx', async () => {
