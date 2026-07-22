@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createTenantSupabase, updateTenantSupabase, listTenantsSupabase, getTenantBySlugSupabase } from '@/lib/tenants-service'
-import { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, listMenuItemsForProvisioning } from '@/lib/admin-service'
+import { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, updateMenuItemFields, listMenuItemsForProvisioning } from '@/lib/admin-service'
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
 import { createUpsellPair } from '@/lib/menu-engineering-service'
 import { createBundle } from '@/lib/bundles-service'
@@ -107,6 +107,38 @@ const ops: ProvisioningOp<unknown>[] = [
         execute: (ctx, input) => {
             const i = input as { tenantId: string; itemId: string; imageUrl: string }
             return updateMenuItemImage(i.itemId, i.tenantId, i.imageUrl, ctx)
+        },
+    }),
+    op({
+        name: 'update_menu_item',
+        description:
+            "Update fields of an EXISTING menu item (partial — only the fields you pass are changed; omit the rest). Editable: name, description, price, discounted_price, category_id, variation_types (grouped size/spice etc.), variations (legacy flat), addons, is_available, is_featured, badge_text, show_in_checkout_upsell, order. Envelope: { tenantId, itemId, ...fields }. Use list_menu_items first to resolve itemId by name. For the item's image use upload_menu_item_image (bytes) or update_menu_item_image (hosted URL).",
+        input: z
+            .object({
+                tenantId: UUID,
+                itemId: UUID.describe('Id of the existing menu item to update (resolve via list_menu_items)'),
+                name: z.string().optional().describe('New display name (min 2 chars)'),
+                description: z.string().optional().describe('New description (min 10 chars)'),
+                price: z.number().optional().describe('New base price'),
+                discounted_price: z.number().nullable().optional().describe('Sale price, or null to clear'),
+                category_id: UUID.optional().describe('Move the item to a different category'),
+                variation_types: z.array(z.unknown()).optional().describe('Grouped variation types with nested options; replaces the current set'),
+                variations: z.array(z.unknown()).optional().describe('Legacy flat variations; replaces the current set'),
+                addons: z.array(z.unknown()).optional().describe('Addon list; replaces the current set'),
+                is_available: z.boolean().optional(),
+                is_featured: z.boolean().optional(),
+                badge_text: z.string().nullable().optional(),
+                show_in_checkout_upsell: z.boolean().optional(),
+                order: z.number().int().optional(),
+            })
+            .passthrough(),
+        execute: (ctx, input) => {
+            const record = input as Record<string, unknown>
+            const { tenantId, itemId } = record as { tenantId: string; itemId: string }
+            const fields = { ...record }
+            delete fields.tenantId
+            delete fields.itemId
+            return updateMenuItemFields(itemId, tenantId, fields as never, ctx)
         },
     }),
     op({

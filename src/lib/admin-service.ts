@@ -78,8 +78,43 @@ export const menuItemSchema = z.object({
   order: z.number().int().min(0).default(0),
 })
 
+/**
+ * Partial-update schema for a menu item: every field optional and NO defaults, so
+ * omitting a field leaves that column untouched (unlike menuItemSchema, whose
+ * `.default()`s would overwrite columns on a partial write). Deep field rules
+ * (min lengths, nested variation shapes) are reused from menuItemSchema's parts.
+ * Used by updateMenuItemFields (the MCP `update_menu_item` op).
+ */
+export const menuItemUpdateSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  price: z.number().positive('Price must be positive'),
+  discounted_price: z.number().positive().nullable(),
+  image_url: z.string().url('Must be a valid URL').or(z.literal('')),
+  category_id: z.string().uuid('Must select a category'),
+  variation_types: z.array(variationTypeSchema),
+  variations: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    price_modifier: z.number(),
+    is_default: z.boolean().optional(),
+  })),
+  addons: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    price: z.number(),
+  })),
+  is_available: z.boolean(),
+  is_featured: z.boolean(),
+  bcg_classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']),
+  badge_text: z.string().nullable(),
+  show_in_checkout_upsell: z.boolean(),
+  order: z.number().int().min(0),
+}).partial()
+
 export type CategoryInput = z.infer<typeof categorySchema>
 export type MenuItemInput = z.input<typeof menuItemSchema>
+export type MenuItemUpdateInput = z.input<typeof menuItemUpdateSchema>
 
 // ============================================
 // Authentication & Authorization
@@ -426,6 +461,46 @@ export async function updateMenuItemImage(
     .from('menu_items')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ image_url: imageUrl } as any)
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as unknown as MenuItem
+}
+
+/**
+ * Partial update of an existing menu item: writes ONLY the fields provided
+ * (name, description, price, variation_types, addons, ...) and leaves every other
+ * column untouched. Unlike updateMenuItem (a full-record replace that needs a
+ * complete MenuItemInput), this supports editing one attribute at a time — the
+ * shape the remote MCP needs. When a service-role `ctx` is supplied the
+ * tenant-admin session check is skipped (the MCP is superadmin-authenticated).
+ */
+export async function updateMenuItemFields(
+  itemId: string,
+  tenantId: string,
+  input: MenuItemUpdateInput,
+  ctx?: ProvisioningCtx,
+) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
+
+  const validated = menuItemUpdateSchema.parse(input)
+  // Drop undefined keys so omitted fields are never written (partial semantics).
+  const patch = Object.fromEntries(
+    Object.entries(validated).filter(([, value]) => value !== undefined),
+  )
+  if (Object.keys(patch).length === 0) {
+    throw new Error('No fields provided to update')
+  }
+
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(patch as any)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
     .select()
