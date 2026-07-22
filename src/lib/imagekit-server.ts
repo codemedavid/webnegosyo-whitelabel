@@ -42,6 +42,78 @@ export interface UploadAuthParams {
   publicKey: string
 }
 
+const IMAGEKIT_UPLOAD_ENDPOINT = 'https://upload.imagekit.io/api/v1/files/upload'
+
+export interface ImageKitServerUploadResult {
+  /** Full delivery URL */
+  url: string
+  /** Opaque ImageKit file id (used for deletion) */
+  fileId: string
+  /** Path relative to the URL endpoint (leading slash normalized away) */
+  filePath: string
+}
+
+interface ServerUploadOptions {
+  folder: string
+  fileName: string
+}
+
+/**
+ * Server-side upload of a base64 image to ImageKit. Used by flows that already
+ * hold the image bytes (e.g. the MCP, whose clients generate image files but have
+ * no hosting of their own) rather than a browser that can sign a client upload.
+ *
+ * ImageKit authorizes server uploads with HTTP Basic auth (private key as the
+ * username), so no token/signature is needed here. Accepts either a raw base64
+ * string or a `data:` URI (the prefix is stripped before sending).
+ *
+ * Throws when credentials are missing, the upload is non-2xx, or the response is
+ * missing required fields — callers must not proceed as if the image was hosted.
+ */
+export async function uploadBase64ToImageKit(
+  base64: string,
+  { folder, fileName }: ServerUploadOptions,
+): Promise<ImageKitServerUploadResult> {
+  const creds = getCredentials()
+  if (!creds) {
+    throw new Error('Image upload is not configured.')
+  }
+
+  // Accept a data URI or a bare base64 string; ImageKit wants only the payload.
+  const commaIndex = base64.indexOf(',')
+  const payload = base64.startsWith('data:') && commaIndex !== -1 ? base64.slice(commaIndex + 1) : base64
+
+  const auth = Buffer.from(`${creds.privateKey}:`).toString('base64')
+  const form = new FormData()
+  form.append('file', payload)
+  form.append('fileName', fileName)
+  form.append('folder', folder)
+  form.append('useUniqueFileName', 'true')
+
+  const res = await fetch(IMAGEKIT_UPLOAD_ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}` },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    console.error('[imagekit] server upload failed', { status: res.status, detail })
+    throw new Error(`ImageKit upload failed (${res.status}).`)
+  }
+
+  const json = (await res.json()) as { url?: string; fileId?: string; filePath?: string }
+  if (!json.url || !json.fileId || !json.filePath) {
+    throw new Error('ImageKit upload response was missing required fields.')
+  }
+
+  return {
+    url: json.url,
+    fileId: json.fileId,
+    filePath: json.filePath.replace(/^\//, ''),
+  }
+}
+
 /**
  * Generate the { token, expire, signature, publicKey } a browser/mobile client
  * needs to upload directly to the ImageKit upload endpoint. Returns null when
