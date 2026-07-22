@@ -436,6 +436,32 @@ export async function updateMenuItemImage(
 }
 
 /**
+ * Upload raw base64 image bytes to ImageKit, then set the resulting hosted URL on
+ * the menu item. This is the MCP path for clients that generate an image file but
+ * have no hosting of their own (the URL-only `updateMenuItemImage` cannot serve
+ * them). The upload is awaited first: if it throws, the row is never touched.
+ */
+export async function setMenuItemImageFromData(
+  itemId: string,
+  tenantId: string,
+  imageBase64: string,
+  fileName: string,
+  ctx?: ProvisioningCtx,
+) {
+  if (!ctx) await verifyTenantAdmin(tenantId)
+
+  // Lazily import so the `server-only` upload module is not pulled into any
+  // client bundle that transitively imports this service.
+  const { uploadBase64ToImageKit } = await import('@/lib/imagekit-server')
+  const { url } = await uploadBase64ToImageKit(imageBase64, {
+    folder: `menu-items/${tenantId}`,
+    fileName,
+  })
+
+  return updateMenuItemImage(itemId, tenantId, url, ctx)
+}
+
+/**
  * List a tenant's menu items (id, name, image_url) for provisioning flows so a
  * caller (e.g. the MCP) can resolve an item by name before updating it. Uses the
  * service-role `ctx` client when provided so it bypasses RLS the same way the

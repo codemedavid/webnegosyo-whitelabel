@@ -16,6 +16,7 @@ jest.mock('@/lib/admin-service', () => ({
   createCategory: jest.fn(),
   createMenuItem: jest.fn(),
   updateMenuItemImage: jest.fn(),
+  setMenuItemImageFromData: jest.fn(),
   listMenuItemsForProvisioning: jest.fn(),
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
@@ -38,7 +39,7 @@ import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-comp
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/tenants-service') as any
-const { createCategory, createMenuItem, updateMenuItemImage, listMenuItemsForProvisioning } = jest.requireMock('@/lib/admin-service') as any
+const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, listMenuItemsForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
@@ -54,6 +55,7 @@ beforeEach(() => {
   createCategory.mockReset().mockResolvedValue({ id: 'cat_1' } as never)
   createMenuItem.mockReset().mockResolvedValue({ id: 'item_1' } as never)
   updateMenuItemImage.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://cdn.example.com/biscoff.png' } as never)
+  setMenuItemImageFromData.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://ik.imagekit.io/demo/menu-items/biscoff.png' } as never)
   listMenuItemsForProvisioning.mockReset().mockResolvedValue([
     { id: 'item_1', name: 'Biscoff Frappe', image_url: null },
     { id: 'item_2', name: 'Strawberry Soda', image_url: null },
@@ -69,7 +71,7 @@ describe('provisioning ops registry', () => {
     const names = ops.map((o) => o.name)
     expect(names).toEqual(expect.arrayContaining([
       'create_tenant', 'add_category', 'add_menu_item', 'update_branding', 'configure_integration',
-      'list_menu_items', 'update_menu_item_image',
+      'list_menu_items', 'update_menu_item_image', 'upload_menu_item_image',
     ]))
     for (const op of ops) {
       expect(typeof op.description).toBe('string')
@@ -159,6 +161,29 @@ describe('executeOp dispatch', () => {
       }),
     ).rejects.toThrow()
     expect(updateMenuItemImage).not.toHaveBeenCalled()
+  })
+
+  it('upload_menu_item_image uploads base64 bytes and sets the image on an existing item', async () => {
+    await executeOp('upload_menu_item_image', ctx, {
+      tenantId: TENANT,
+      itemId: ITEM,
+      imageBase64: 'data:image/png;base64,aGVsbG8=',
+      fileName: 'biscoff.png',
+    })
+    expect(setMenuItemImageFromData).toHaveBeenCalledWith(
+      ITEM,
+      TENANT,
+      'data:image/png;base64,aGVsbG8=',
+      'biscoff.png',
+      ctx,
+    )
+  })
+
+  it('upload_menu_item_image rejects a payload missing the image data', async () => {
+    await expect(
+      executeOp('upload_menu_item_image', ctx, { tenantId: TENANT, itemId: ITEM }),
+    ).rejects.toThrow()
+    expect(setMenuItemImageFromData).not.toHaveBeenCalled()
   })
 
   it('update_branding forwards tenantId, tenantSlug, branding and ctx', async () => {

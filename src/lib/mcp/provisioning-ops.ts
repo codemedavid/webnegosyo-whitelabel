@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createTenantSupabase, updateTenantSupabase, listTenantsSupabase, getTenantBySlugSupabase } from '@/lib/tenants-service'
-import { createCategory, createMenuItem, updateMenuItemImage, listMenuItemsForProvisioning } from '@/lib/admin-service'
+import { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, listMenuItemsForProvisioning } from '@/lib/admin-service'
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
 import { createUpsellPair } from '@/lib/menu-engineering-service'
 import { createBundle } from '@/lib/bundles-service'
@@ -107,6 +107,21 @@ const ops: ProvisioningOp<unknown>[] = [
         execute: (ctx, input) => {
             const i = input as { tenantId: string; itemId: string; imageUrl: string }
             return updateMenuItemImage(i.itemId, i.tenantId, i.imageUrl, ctx)
+        },
+    }),
+    op({
+        name: 'upload_menu_item_image',
+        description:
+            "Upload a generated/local image (base64) to hosting and set it as an existing menu item's image — use this when you have image bytes but no public URL. Envelope: { tenantId, itemId, imageBase64, fileName }. imageBase64 may be a raw base64 string or a data: URI. Use list_menu_items first to resolve itemId by name. For an already-hosted image, use update_menu_item_image instead.",
+        input: z.object({
+            tenantId: UUID,
+            itemId: UUID.describe('Id of the existing menu item to update'),
+            imageBase64: z.string().min(1).describe('Image bytes as base64 (raw or a data: URI)'),
+            fileName: z.string().min(1).describe('File name for the upload, e.g. "biscoff-frappe.png"'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; itemId: string; imageBase64: string; fileName: string }
+            return setMenuItemImageFromData(i.itemId, i.tenantId, i.imageBase64, i.fileName, ctx)
         },
     }),
     op({
