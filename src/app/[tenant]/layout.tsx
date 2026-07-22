@@ -5,6 +5,7 @@ import { NavigationProgress } from '@/components/shared/navigation-progress'
 import { SiteFooter } from '@/components/customer/site-footer'
 import { TenantFlashProvider } from '@/components/customer/flash-screen-loader'
 import { resolveFlashScreenBranding } from '@/lib/flash-loader'
+import { resolveTenantFavicon } from '@/lib/tenant-favicon'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -29,6 +30,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
             template: `%s | ${tenant.name}`,
         },
         description: tenant.hero_description || `Welcome to ${tenant.name}`,
+        // Use the merchant's own logo as the browser-tab favicon; falls back to
+        // the platform favicon.ico when the tenant has no logo.
+        icons: resolveTenantFavicon(tenant),
     }
 }
 
