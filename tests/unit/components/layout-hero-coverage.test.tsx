@@ -73,3 +73,21 @@ describe('Layout hero coverage — sidebar & grid-focus honor hero_preset', () =
     expect(screen.getByTestId('hero-tile-initial')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar category rail is click-to-inspect tagged', () => {
+  // The sidebar renders its own category navigation rail (not the shared
+  // CategorySubmenu, which carries the scope), so without an explicit tag the
+  // Branding Studio's inspect mode could not select it on the sidebar layout.
+  it('tags the category navigation rail with the category-nav scope', () => {
+    const { container } = render(
+      <LayoutSidebar
+        {...baseProps}
+        categories={[{ id: 'c1', name: 'Mains', icon: '🍽️' } as never]}
+        tenant={tenant({ page_layout: 'sidebar' })}
+      />
+    )
+    expect(
+      container.querySelector('[data-branding-scope="storefront/category-nav"]')
+    ).not.toBeNull()
+  })
+})

@@ -1,6 +1,5 @@
-import fs from 'fs'
-import path from 'path'
 import { CART_CHECKOUT_PAGE_COLOR_COLUMNS } from '@/lib/branding-utils'
+import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 
 /**
  * Regression guard for the "cart/checkout page colors save but the editor
@@ -16,15 +15,7 @@ import { CART_CHECKOUT_PAGE_COLOR_COLUMNS } from '@/lib/branding-utils'
  * This fails if any palette column is missing from the projection.
  */
 describe('menu-server tenant projection — branding round-trip', () => {
-  const source = fs.readFileSync(
-    path.join(process.cwd(), 'src/app/[tenant]/menu/menu-server.tsx'),
-    'utf8'
-  )
-  // Inspect only the tenants .select(`...`) projection, not the whole file.
-  const projection = source.slice(
-    source.indexOf("from('tenants')"),
-    source.indexOf(".eq('slug'")
-  )
+  const projection = TENANT_STOREFRONT_SELECT
 
   it('selects every cart & checkout page color column so the editor reads back saved values', () => {
     const missing = CART_CHECKOUT_PAGE_COLOR_COLUMNS.filter((col) => !projection.includes(col))
