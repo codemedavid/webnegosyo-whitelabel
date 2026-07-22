@@ -151,7 +151,10 @@ export const LayoutSidebar = memo(function LayoutSidebar({
 
             <div className="flex gap-2 md:gap-3">
             {/* Sidebar - Visible on all devices now */}
-            <aside className="flex flex-col w-16 md:w-20 lg:w-24 shrink-0 sticky top-24 h-[calc(100vh-100px)] overflow-y-auto scrollbar-hide pb-20">
+            <aside
+                data-branding-scope="storefront/category-nav"
+                className="flex flex-col w-16 md:w-20 lg:w-24 shrink-0 sticky top-24 h-[calc(100vh-100px)] overflow-y-auto scrollbar-hide pb-20"
+            >
                 {/* All Items Button */}
                 <button
                     onClick={() => scrollToCategory(null)}
