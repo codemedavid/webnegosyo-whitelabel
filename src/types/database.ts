@@ -324,6 +324,74 @@ export interface AddonLibraryEntry {
   updated_at: string;
 }
 
+// ============================================
+// Inventory system (Phase A: costing foundation)
+// ============================================
+
+export type InventoryUnitDimension = 'weight' | 'volume' | 'count';
+
+// Per-tenant unit of measure. to_base_factor = base units per one of this unit.
+export interface InventoryUnitRow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  abbreviation: string;
+  dimension: InventoryUnitDimension;
+  to_base_factor: number;
+  is_base: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Ingredient / raw material. Prep items (is_prep) derive cost from a prep recipe.
+export interface InventoryItem {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sku?: string | null;
+  category?: string | null;
+  stock_unit_id: string;
+  unit_cost: number;
+  is_prep: boolean;
+  image_url?: string | null;
+  current_qty: number; // Phase B
+  reorder_level: number; // Phase B
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RecipeTargetType = 'menu_item' | 'variation_option' | 'addon' | 'prep_item';
+
+// Bill of materials for one costable target.
+export interface Recipe {
+  id: string;
+  tenant_id: string;
+  target_type: RecipeTargetType;
+  menu_item_id?: string | null;
+  variation_option_id?: string | null;
+  addon_id?: string | null;
+  prep_item_id?: string | null;
+  yield_quantity?: number | null;
+  yield_unit_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecipeComponent {
+  id: string;
+  tenant_id: string;
+  recipe_id: string;
+  inventory_item_id: string;
+  quantity: number;
+  unit_id: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MenuItem {
   id: string;
   tenant_id: string;
