@@ -37,7 +37,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
           <button
             type="button"
-            onClick={() => cart.router.back()}
+            onClick={cart.exitToMenu}
             aria-label="Go back"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
           >

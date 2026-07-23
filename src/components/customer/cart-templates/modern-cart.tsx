@@ -40,7 +40,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
         <div className="container mx-auto flex h-16 items-center gap-3 px-4 md:h-20">
           <button
             type="button"
-            onClick={() => cart.router.back()}
+            onClick={cart.exitToMenu}
             aria-label="Go back"
             className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
           >

@@ -15,6 +15,7 @@ import {
   CartLoading,
   CartNotFound,
   CartRemoveDialog,
+  CartEditDialog,
   CartUpsellInterstitial,
 } from '@/components/customer/cart-templates/cart-shared'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
@@ -35,6 +36,7 @@ export default function CartPage() {
       <CartTemplateRenderer template={template} cart={cart} />
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
+      <CartEditDialog cart={cart} />
       <CartUpsellInterstitial cart={cart} />
     </>
   )

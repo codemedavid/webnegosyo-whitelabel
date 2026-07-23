@@ -6,7 +6,9 @@ import {
   calculateCartItemSubtotal,
   calculateFullCartTotal,
   getFullCartItemCount,
-  generateCartItemId,
+  makeCartItem,
+  replaceCartItem,
+  MAX_CART_ITEM_QUANTITY,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
@@ -29,6 +31,14 @@ interface CartContextType extends Cart {
     upsellSourceItemId?: string
   ) => void
   removeItem: (cartItemId: string) => void
+  updateItemConfiguration: (
+    cartItemId: string,
+    menuItem: MenuItem,
+    variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
+    addons: Addon[],
+    quantity: number,
+    specialInstructions?: string
+  ) => void
   updateQuantity: (cartItemId: string, quantity: number) => void
   clearCart: () => void
   getItem: (cartItemId: string) => CartItem | undefined
@@ -51,7 +61,7 @@ function getCartStorageKey(tenantSlug?: string | null): string {
   return tenantSlug ? `${CART_STORAGE_KEY_PREFIX}${tenantSlug}` : LEGACY_CART_STORAGE_KEY
 }
 const CART_SYNC_DEBOUNCE_MS = 5000 // 5 seconds debounce for Messenger sync after last change
-const MAX_QUANTITY = 99
+const MAX_QUANTITY = MAX_CART_ITEM_QUANTITY
 
 // Helper functions for localStorage
 /**
@@ -571,20 +581,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setBundleItems([])
       }
 
-      const subtotal = calculateCartItemSubtotal(
-        menuItem.price,
+      // Build the fully-formed cart item (id + subtotal + variation format)
+      // through the shared helper so add + edit paths never drift.
+      const newItem = makeCartItem(
+        menuItem,
         variationOrVariations,
         addons,
-        quantity
+        quantity,
+        specialInstructions,
+        upsellSource ? { upsellSource, upsellSourceItemId } : undefined
       )
-
-      // Determine if using new or legacy variation format
-      const isNewFormat = variationOrVariations && typeof variationOrVariations === 'object' && !('price_modifier' in variationOrVariations)
-
-      // Generate cart item ID based on format
-      const cartItemId = isNewFormat
-        ? generateCartItemId(menuItem.id, variationOrVariations as { [typeId: string]: VariationOption }, addons.map((a) => a.id))
-        : generateCartItemId(menuItem.id, (variationOrVariations as Variation)?.id, addons.map((a) => a.id))
+      const cartItemId = newItem.id
 
       setItems((prevItems) => {
         const existingItemIndex = prevItems.findIndex((item) => item.id === cartItemId)
@@ -611,22 +618,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           return updatedItems
         }
 
-        // Add new item with appropriate format
-        const newItem: CartItem = {
-          id: cartItemId,
-          menu_item: menuItem,
-          // Store variations in appropriate format
-          ...(isNewFormat
-            ? { selected_variations: variationOrVariations as { [typeId: string]: VariationOption } }
-            : { selected_variation: variationOrVariations as Variation | undefined }
-          ),
-          selected_addons: addons,
-          quantity,
-          special_instructions: specialInstructions,
-          subtotal,
-          ...(upsellSource ? { upsellSource, upsellSourceItemId } : {}),
-        }
-
+        // Add new item (already built via makeCartItem above)
         return [...prevItems, newItem]
       })
     },
@@ -636,6 +628,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const removeItem = useCallback((cartItemId: string) => {
     setItems((prevItems) => prevItems.filter((item) => item.id !== cartItemId))
   }, [])
+
+  // Replace an existing cart line item with a newly chosen configuration
+  // (e.g. changing the flavor/variation, add-ons, quantity, or note of just one
+  // of several same-product lines). If the new configuration matches another
+  // existing line, the two are merged.
+  const updateItemConfiguration = useCallback(
+    (
+      cartItemId: string,
+      menuItem: MenuItem,
+      variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
+      addons: Addon[],
+      quantity: number,
+      specialInstructions?: string
+    ) => {
+      const clampedQuantity = Math.min(Math.max(1, quantity), MAX_QUANTITY)
+      const newItem = makeCartItem(menuItem, variationOrVariations, addons, clampedQuantity, specialInstructions)
+      setItems((prevItems) => replaceCartItem(prevItems, cartItemId, newItem, MAX_QUANTITY))
+    },
+    []
+  )
 
   const updateQuantity = useCallback((cartItemId: string, quantity: number) => {
     if (quantity <= 0) {
@@ -735,6 +747,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setTenantContext,
     addItem,
     removeItem,
+    updateItemConfiguration,
     updateQuantity,
     clearCart,
     getItem,
@@ -755,6 +768,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setTenantContext,
     addItem,
     removeItem,
+    updateItemConfiguration,
     updateQuantity,
     clearCart,
     getItem,

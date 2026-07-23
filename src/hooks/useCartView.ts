@@ -17,13 +17,13 @@ import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { toast } from 'sonner'
-import type { Tenant, CartItem, MenuItem } from '@/types/database'
+import type { Tenant, CartItem, MenuItem, Variation, Addon, VariationOption } from '@/types/database'
 
 export function useCartView() {
   const params = useParams()
   const router = useRouter()
   const tenantSlug = params.tenant as string
-  const { items, bundleItems, total, updateQuantity, removeItem, removeBundleFromCart, updateBundleQuantity } = useCart()
+  const { items, bundleItems, total, updateQuantity, updateItemConfiguration, removeItem, removeBundleFromCart, updateBundleQuantity } = useCart()
 
   const [fetchedTenant, setTenant] = useState<Tenant | null>(null)
   // Branding Studio live preview — merges the editor's unsaved draft over the
@@ -33,6 +33,7 @@ export function useCartView() {
   const [isNavigating, setIsNavigating] = useState(false)
   const navigationCompletedRef = useRef(false)
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
+  const [itemToEdit, setItemToEdit] = useState<CartItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
   const [prefetchedItems, setPrefetchedItems] = useState<MenuItem[] | null>(null)
 
@@ -105,6 +106,29 @@ export function useCartView() {
     setItemToRemove(null)
   }
 
+  // Commit an edited cart line (new flavor/variation, add-ons, quantity, note).
+  const handleUpdateItem = useCallback(
+    (
+      cartItemId: string,
+      menuItem: MenuItem,
+      variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
+      addons: Addon[],
+      quantity: number,
+      specialInstructions?: string
+    ) => {
+      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions)
+      setItemToEdit(null)
+    },
+    [updateItemConfiguration]
+  )
+
+  // Reliable in-cart "exit": always return to the menu. Using router.back()
+  // exits the whole browser when the cart is the entry point (e.g. opened from
+  // a Messenger link with no in-app history).
+  const exitToMenu = useCallback(() => {
+    router.push(`/${tenantSlug}/menu`)
+  }, [router, tenantSlug])
+
   const navigateToCheckout = useCallback(async () => {
     if (isNavigating) return
     setIsNavigating(true)
@@ -163,6 +187,12 @@ export function useCartView() {
     handleDecreaseQuantity,
     handleConfirmRemove,
     handleCancelRemove,
+    // edit-item dialog
+    itemToEdit,
+    setItemToEdit,
+    handleUpdateItem,
+    // reliable exit back to the menu
+    exitToMenu,
     // checkout navigation + interstitial
     isNavigating,
     requestCheckout,
