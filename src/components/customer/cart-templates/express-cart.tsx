@@ -23,7 +23,7 @@ import {
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 
 export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
-  const { router, tenant, items, bundleItems, total } = cart
+  const { tenant, items, bundleItems, total } = cart
 
   if (!tenant) return null
 
@@ -40,7 +40,7 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={cart.exitToMenu}
             aria-label="Go back"
             className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 transition-colors touch-manipulation"
           >

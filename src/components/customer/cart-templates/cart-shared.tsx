@@ -27,6 +27,12 @@ const CheckoutUpsellModal = dynamic(
   { ssr: false },
 )
 
+// Lazy-loaded — only fetched when the customer taps "Edit" on a cart line.
+const ItemDetailModal = dynamic(
+  () => import('@/components/customer/item-detail-modal').then((m) => ({ default: m.ItemDetailModal })),
+  { ssr: false },
+)
+
 /** Full-screen loading state (shared across cart designs). */
 export function CartLoading() {
   return (
@@ -75,6 +81,28 @@ export function CartRemoveDialog({ cart }: { cart: UseCartViewReturn }) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+/**
+ * Edit-item dialog (shared across cart designs). Lets the customer change the
+ * flavor/variation, add-ons, quantity, or note of a single cart line — so two
+ * same-product lines with different flavors can each be corrected independently.
+ */
+export function CartEditDialog({ cart }: { cart: UseCartViewReturn }) {
+  const { itemToEdit, setItemToEdit, handleUpdateItem, branding } = cart
+  if (!itemToEdit) return null
+  return (
+    <ItemDetailModal
+      item={itemToEdit.menu_item}
+      editItem={itemToEdit}
+      open={!!itemToEdit}
+      onClose={() => setItemToEdit(null)}
+      onAddToCart={(menuItem, variation, addons, quantity, specialInstructions) =>
+        handleUpdateItem(itemToEdit.id, menuItem, variation, addons, quantity, specialInstructions)
+      }
+      branding={branding}
+    />
   )
 }
 

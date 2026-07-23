@@ -9,7 +9,7 @@
 
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag, Package } from 'lucide-react'
+import { Minus, Plus, Trash2, Pencil, ArrowLeft, ShoppingBag, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -22,8 +22,8 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     router, tenantSlug, tenant,
     items, bundleItems, total,
     updateQuantity, removeBundleFromCart, updateBundleQuantity,
-    setItemToRemove, handleDecreaseQuantity,
-    isNavigating, requestCheckout,
+    setItemToRemove, setItemToEdit, handleDecreaseQuantity,
+    isNavigating, requestCheckout, exitToMenu,
   } = cart
 
   if (!tenant) return null
@@ -35,7 +35,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
+          <Button variant="ghost" size="icon" onClick={exitToMenu} aria-label="Back to menu" className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -111,14 +111,28 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                               </div>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-10 w-10 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation"
-                            onClick={() => setItemToRemove(item)}
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
+                          <div className="flex items-center">
+                            {((item.menu_item.variation_types?.length ?? 0) > 0 || item.menu_item.variations.length > 0 || item.menu_item.addons.length > 0) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full touch-manipulation"
+                                onClick={() => setItemToEdit(item)}
+                                aria-label="Edit item"
+                              >
+                                <Pencil className="h-4.5 w-4.5" />
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-10 w-10 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation"
+                              onClick={() => setItemToRemove(item)}
+                              aria-label="Remove item"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </div>
                         </div>
 
                         {item.selected_addons.length > 0 && (

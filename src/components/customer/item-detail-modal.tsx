@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import type { MenuItem, Variation, Addon, VariationOption } from '@/types/database'
+import type { MenuItem, Variation, Addon, VariationOption, CartItem } from '@/types/database'
 import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { toast } from 'sonner'
@@ -26,6 +26,13 @@ interface ItemDetailModalProps {
     specialInstructions?: string
   ) => void
   branding: BrandingColors
+  /**
+   * When provided, the modal opens in "edit" mode: it seeds the current
+   * selections from this cart line, the CTA reads "Update Cart", and submitting
+   * calls `onAddToCart` with the edited configuration (the caller replaces the
+   * existing line). Used to change a single item's flavor/variation from the cart.
+   */
+  editItem?: CartItem | null
 }
 
 export function ItemDetailModal({
@@ -34,7 +41,9 @@ export function ItemDetailModal({
   onClose,
   onAddToCart,
   branding,
+  editItem,
 }: ItemDetailModalProps) {
+  const isEditMode = !!editItem
   // Legacy single variation
   const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>()
   // New grouped variations: map of type ID -> selected option
@@ -57,17 +66,27 @@ export function ItemDetailModal({
     }
   }
 
-  // Initialize default selections
+  // Seed selections whenever the modal opens. In edit mode, seed from the cart
+  // line being edited; otherwise seed the item's default selections.
   useEffect(() => {
-    if (!item) return
+    if (!open || !item) return
 
-    // Legacy variations
-    if (item.variations.length > 0 && !selectedVariation) {
+    if (editItem) {
+      setSelectedVariation(editItem.selected_variation)
+      setSelectedVariations(editItem.selected_variations ?? {})
+      setSelectedAddons(editItem.selected_addons ?? [])
+      setQuantity(editItem.quantity)
+      setSpecialInstructions(editItem.special_instructions ?? '')
+      return
+    }
+
+    // Add mode: legacy variations
+    if (item.variations.length > 0) {
       const defaultVar = item.variations.find((v) => v.is_default) || item.variations[0]
       setSelectedVariation(defaultVar)
     }
 
-    // New variation types
+    // Add mode: new variation types
     if (item.variation_types && item.variation_types.length > 0) {
       const defaults: { [typeId: string]: VariationOption } = {}
       item.variation_types.forEach(type => {
@@ -78,7 +97,7 @@ export function ItemDetailModal({
       })
       setSelectedVariations(defaults)
     }
-  }, [item, selectedVariation])
+  }, [open, item, editItem])
 
   if (!item) return null
 
@@ -109,7 +128,7 @@ export function ItemDetailModal({
     // Pass the appropriate variation format
     const variationData = useNewVariations ? selectedVariations : selectedVariation
     onAddToCart(item, variationData, selectedAddons, quantity, specialInstructions)
-    toast.success(`Added ${item.name} to cart`)
+    toast.success(isEditMode ? `Updated ${item.name}` : `Added ${item.name} to cart`)
     handleOpenChange(false)
   }
 
@@ -465,7 +484,7 @@ export function ItemDetailModal({
               }}
             >
               <span className="flex items-center justify-center gap-2">
-                <span>Add to Cart</span>
+                <span>{isEditMode ? 'Update Cart' : 'Add to Cart'}</span>
                 <span className="font-bold">•</span>
                 <span>{formatPrice(totalPrice)}</span>
               </span>

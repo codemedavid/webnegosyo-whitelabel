@@ -15,7 +15,7 @@
 
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { Minus, Plus, Trash2, ShoppingBag, Package } from 'lucide-react'
+import { Minus, Plus, Trash2, Pencil, ShoppingBag, Package } from 'lucide-react'
 import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
 import { getCartPalette } from '@/lib/branding-utils'
@@ -28,8 +28,11 @@ function useCartPalette(cart: UseCartViewReturn) {
 
 /** A single cart line item with image, variations, addons, quantity stepper. */
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
-  const { updateQuantity, setItemToRemove, handleDecreaseQuantity } = cart
+  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity } = cart
   const p = useCartPalette(cart)
+  const mi = item.menu_item
+  const canEdit =
+    (mi.variation_types?.length ?? 0) > 0 || mi.variations.length > 0 || mi.addons.length > 0
 
   return (
     <div
@@ -53,13 +56,24 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
           <div>
             <div className="flex items-start justify-between gap-3 mb-1.5">
               <h3 className="text-base md:text-lg font-bold text-gray-900 line-clamp-1" style={{ color: p.text }}>{item.menu_item.name}</h3>
-              <button
-                className="h-9 w-9 -mt-1 -mr-1 inline-flex items-center justify-center text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation transition-colors"
-                onClick={() => setItemToRemove(item)}
-                aria-label="Remove item"
-              >
-                <Trash2 className="h-4.5 w-4.5" />
-              </button>
+              <div className="flex items-center -mt-1 -mr-1 flex-shrink-0">
+                {canEdit && (
+                  <button
+                    className="h-9 w-9 inline-flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full touch-manipulation transition-colors"
+                    onClick={() => setItemToEdit(item)}
+                    aria-label="Edit item"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  className="h-9 w-9 inline-flex items-center justify-center text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation transition-colors"
+                  onClick={() => setItemToRemove(item)}
+                  aria-label="Remove item"
+                >
+                  <Trash2 className="h-4.5 w-4.5" />
+                </button>
+              </div>
             </div>
 
             {item.selected_variation && (

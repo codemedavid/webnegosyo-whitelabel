@@ -23,7 +23,7 @@ import {
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 
 export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
-  const { tenant, items, bundleItems, router } = cart
+  const { tenant, items, bundleItems } = cart
 
   if (!tenant) return null
 
@@ -42,7 +42,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
         <div className="mx-auto flex h-16 max-w-xl items-center gap-3 px-5 md:px-0">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={cart.exitToMenu}
             aria-label="Go back"
             className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
           >

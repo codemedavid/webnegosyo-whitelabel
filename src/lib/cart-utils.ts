@@ -1,4 +1,7 @@
-import type { CartItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
+import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
+
+/** Maximum quantity allowed for a single cart line item. */
+export const MAX_CART_ITEM_QUANTITY = 99
 
 /**
  * Calculate the subtotal for a cart item including variations and add-ons
@@ -75,6 +78,95 @@ export function generateCartItemId(
     parts.push(addonIds.sort().join('-'))
   }
   return parts.join('_')
+}
+
+/**
+ * Build a fully-formed CartItem from a menu item and the customer's selections.
+ *
+ * Centralizes cart-item construction (id + subtotal + variation-format
+ * detection) so both "add to cart" and "edit cart item" share one code path and
+ * never drift. Uses the menu item's list price for the subtotal to match the
+ * historical add-to-cart behavior (discounts are reconciled on refresh).
+ */
+export function makeCartItem(
+  menuItem: MenuItem,
+  variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
+  addons: Addon[],
+  quantity: number,
+  specialInstructions?: string,
+  upsell?: { upsellSource?: CartItem['upsellSource']; upsellSourceItemId?: string }
+): CartItem {
+  const isNewFormat =
+    !!variationOrVariations &&
+    typeof variationOrVariations === 'object' &&
+    !('price_modifier' in variationOrVariations)
+
+  const cartItemId = isNewFormat
+    ? generateCartItemId(
+        menuItem.id,
+        variationOrVariations as { [typeId: string]: VariationOption },
+        addons.map((a) => a.id)
+      )
+    : generateCartItemId(menuItem.id, (variationOrVariations as Variation | undefined)?.id, addons.map((a) => a.id))
+
+  const subtotal = calculateCartItemSubtotal(menuItem.price, variationOrVariations, addons, quantity)
+
+  return {
+    id: cartItemId,
+    menu_item: menuItem,
+    ...(isNewFormat
+      ? { selected_variations: variationOrVariations as { [typeId: string]: VariationOption } }
+      : { selected_variation: variationOrVariations as Variation | undefined }),
+    selected_addons: addons,
+    quantity,
+    special_instructions: specialInstructions,
+    subtotal,
+    ...(upsell?.upsellSource
+      ? { upsellSource: upsell.upsellSource, upsellSourceItemId: upsell.upsellSourceItemId }
+      : {}),
+  }
+}
+
+/**
+ * Immutably replace one cart line item with an edited configuration.
+ *
+ * This powers "edit item" from the cart (e.g. changing the flavor of just one
+ * of two same-product lines). Behavior:
+ * - If `oldCartItemId` is not in the cart, the array is returned unchanged.
+ * - If the edited configuration collides with a *different* existing line (same
+ *   id), the two lines are merged and their quantities summed (clamped to
+ *   `maxQuantity`); the old line is dropped.
+ * - Otherwise the edited item replaces the old one in place, preserving order.
+ */
+export function replaceCartItem(
+  items: CartItem[],
+  oldCartItemId: string,
+  newItem: CartItem,
+  maxQuantity: number = MAX_CART_ITEM_QUANTITY
+): CartItem[] {
+  const oldIndex = items.findIndex((item) => item.id === oldCartItemId)
+  if (oldIndex === -1) return items
+
+  const collisionIndex = items.findIndex((item, idx) => idx !== oldIndex && item.id === newItem.id)
+
+  if (collisionIndex !== -1) {
+    const target = items[collisionIndex]
+    const mergedQuantity = Math.min(target.quantity + newItem.quantity, maxQuantity)
+    const mergedVariations = target.selected_variations || target.selected_variation
+    const mergedSubtotal = calculateCartItemSubtotal(
+      target.menu_item.price,
+      mergedVariations,
+      target.selected_addons,
+      mergedQuantity
+    )
+    const merged: CartItem = { ...target, quantity: mergedQuantity, subtotal: mergedSubtotal }
+
+    return items
+      .filter((_, idx) => idx !== oldIndex)
+      .map((item) => (item.id === newItem.id ? merged : item))
+  }
+
+  return items.map((item, idx) => (idx === oldIndex ? newItem : item))
 }
 
 /**
