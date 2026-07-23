@@ -65,7 +65,10 @@ const note = (id: string, label: string): BrandingField => ({ id, label, type: '
 const product = (id: string, label: string): BrandingField => ({ id, label, type: 'product', default: '' })
 // An inline manager for the tenant's promotion banners (image + title +
 // description, add/remove/reorder). Stored value is a PromotionBanner[].
-const banners = (id: string, label: string): BrandingField => ({ id, label, type: 'banners' })
+// Always `columnBacked`: the value is an array, which the scalar-only
+// `mobile_overrides` map rejects — so it must edit its tenant column even on
+// the mobile tab. Banner content is shared across devices anyway.
+const banners = (id: string, label: string): BrandingField => ({ id, label, type: 'banners', columnBacked: true })
 
 const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
 const CARD_TEMPLATE_OPTIONS = [
