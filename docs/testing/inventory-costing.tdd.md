@@ -50,5 +50,20 @@ Final: `32 passed, 32 total` across the 3 suites. `eslint` clean on new sources.
 - **Not yet covered (subsequent slices):** Supabase CRUD services + server
   actions, the live migration apply, weighted-moving-average recompute (Phase B),
   order-driven stock depletion (Phase B), and both UIs (web admin + webnegosyo-app).
-- The migration `20260722120000_inventory_core.sql` is written but **not applied**
-  to the live Supabase project pending owner approval.
+- The migration `20260722120000_inventory_core.sql` was **applied to the live
+  Supabase project** on 2026-07-23 (name `inventory_core`). Apply was gated by a
+  pre-flight audit confirming: none of the 4 new tables or the `inventory_enabled`
+  column pre-existed, and all dependencies (`tenants`, `menu_items`, `app_users`,
+  `set_updated_at()`) were present. Post-apply verification confirmed RLS enabled
+  with admin + superadmin policies on all 4 tables, `inventory_enabled` defaulting
+  to `false` (every existing tenant opted-out — feature dark until toggled), and
+  the temp RLS helper dropped. `get_advisors(security)` reported **no new
+  warnings** attributable to these tables.
+- `src/types/supabase.ts` was updated **surgically** (4 table blocks + the
+  `tenants.inventory_enabled` field added by hand) rather than by full
+  regenerate-from-live. A full regenerate was attempted and reverted because the
+  live remote DB lags local migrations (`order_backend`, `checkout_leads`, convex
+  version columns not yet pushed), so regenerating would have deleted type
+  definitions the codebase still depends on. `tsc --noEmit` error count is
+  unchanged from baseline (13, all in unrelated pre-existing test files); zero
+  new errors touch inventory or the types file.

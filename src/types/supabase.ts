@@ -14,6 +14,258 @@ export type Database = {
   }
   public: {
     Tables: {
+      inventory_units: {
+        Row: {
+          abbreviation: string
+          created_at: string | null
+          dimension: string
+          id: string
+          is_active: boolean
+          is_base: boolean
+          name: string
+          tenant_id: string
+          to_base_factor: number
+          updated_at: string | null
+        }
+        Insert: {
+          abbreviation: string
+          created_at?: string | null
+          dimension: string
+          id?: string
+          is_active?: boolean
+          is_base?: boolean
+          name: string
+          tenant_id: string
+          to_base_factor?: number
+          updated_at?: string | null
+        }
+        Update: {
+          abbreviation?: string
+          created_at?: string | null
+          dimension?: string
+          id?: string
+          is_active?: boolean
+          is_base?: boolean
+          name?: string
+          tenant_id?: string
+          to_base_factor?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_units_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_items: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          current_qty: number
+          id: string
+          image_url: string | null
+          is_active: boolean
+          is_prep: boolean
+          name: string
+          reorder_level: number
+          sku: string | null
+          stock_unit_id: string
+          tenant_id: string
+          unit_cost: number
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_prep?: boolean
+          name: string
+          reorder_level?: number
+          sku?: string | null
+          stock_unit_id: string
+          tenant_id: string
+          unit_cost?: number
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_prep?: boolean
+          name?: string
+          reorder_level?: number
+          sku?: string | null
+          stock_unit_id?: string
+          tenant_id?: string
+          unit_cost?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_items_stock_unit_id_fkey"
+            columns: ["stock_unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipes: {
+        Row: {
+          addon_id: string | null
+          created_at: string | null
+          id: string
+          menu_item_id: string | null
+          notes: string | null
+          prep_item_id: string | null
+          target_type: string
+          tenant_id: string
+          updated_at: string | null
+          variation_option_id: string | null
+          yield_quantity: number | null
+          yield_unit_id: string | null
+        }
+        Insert: {
+          addon_id?: string | null
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          notes?: string | null
+          prep_item_id?: string | null
+          target_type: string
+          tenant_id: string
+          updated_at?: string | null
+          variation_option_id?: string | null
+          yield_quantity?: number | null
+          yield_unit_id?: string | null
+        }
+        Update: {
+          addon_id?: string | null
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          notes?: string | null
+          prep_item_id?: string | null
+          target_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+          variation_option_id?: string | null
+          yield_quantity?: number | null
+          yield_unit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_prep_item_id_fkey"
+            columns: ["prep_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_yield_unit_id_fkey"
+            columns: ["yield_unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipe_components: {
+        Row: {
+          created_at: string | null
+          id: string
+          inventory_item_id: string
+          quantity: number
+          recipe_id: string
+          sort_order: number
+          tenant_id: string
+          unit_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id: string
+          quantity?: number
+          recipe_id: string
+          sort_order?: number
+          tenant_id: string
+          unit_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id?: string
+          quantity?: number
+          recipe_id?: string
+          sort_order?: number
+          tenant_id?: string
+          unit_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipe_components_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_users: {
         Row: {
           created_at: string
@@ -1476,6 +1728,7 @@ export type Database = {
           hide_currency_symbol: boolean
           id: string
           ios_app_store_id: string | null
+          inventory_enabled: boolean
           is_active: boolean
           is_announcement_visible: boolean | null
           is_promotion_visible: boolean | null
@@ -1648,6 +1901,7 @@ export type Database = {
           hide_currency_symbol?: boolean
           id?: string
           ios_app_store_id?: string | null
+          inventory_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
           is_promotion_visible?: boolean | null
@@ -1820,6 +2074,7 @@ export type Database = {
           hide_currency_symbol?: boolean
           id?: string
           ios_app_store_id?: string | null
+          inventory_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
           is_promotion_visible?: boolean | null
