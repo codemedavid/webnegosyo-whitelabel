@@ -362,7 +362,12 @@ export interface InventoryItem {
   updated_at: string;
 }
 
-export type RecipeTargetType = 'menu_item' | 'variation_option' | 'addon' | 'prep_item';
+export type RecipeTargetType =
+  | 'menu_item'
+  | 'variation_option'
+  | 'addon'
+  | 'modifier_option'
+  | 'prep_item';
 
 // Bill of materials for one costable target.
 export interface Recipe {
@@ -372,6 +377,8 @@ export interface Recipe {
   menu_item_id?: string | null;
   variation_option_id?: string | null;
   addon_id?: string | null;
+  // Stable JSON id of a unified ModifierOption (target_type === 'modifier_option').
+  modifier_option_id?: string | null;
   prep_item_id?: string | null;
   yield_quantity?: number | null;
   yield_unit_id?: string | null;
@@ -392,6 +399,49 @@ export interface RecipeComponent {
   updated_at: string;
 }
 
+// ============================================
+// Unified Modifier Groups
+// ============================================
+// One model that supersedes both grouped `variation_types` and flat `addons`.
+// A group carries selection rules (min/max), each option carries a price
+// modifier plus optional per-option cost and stock. Legacy columns are kept and
+// normalized into this shape on read (see src/lib/modifier-groups.ts), so this
+// is purely additive and backward compatible.
+
+// How an option's remaining stock is tracked.
+//   'none'   → not tracked (always available)
+//   'simple' → a per-option unit count (`stock_qty`), decremented per sale
+//   'recipe' → derived from an attached inventory recipe (deducts ingredients)
+export type ModifierStockMode = 'none' | 'simple' | 'recipe';
+
+export interface ModifierOption {
+  id: string;
+  name: string; // "Large", "Extra Cheese", "Hot"
+  price_modifier: number; // +0, +2, +5 (added to base price)
+  image_url?: string;
+  is_default?: boolean;
+  display_order: number;
+  // Cost / margin — recipe cost (via recipes table, keyed by this id) overrides
+  // manual_cost; see resolveOptionCost in src/lib/modifier-groups.ts.
+  manual_cost?: number;
+  // Stock
+  stock_mode?: ModifierStockMode; // defaults to 'none'
+  stock_qty?: number; // remaining units when stock_mode === 'simple'
+  // Explicit merchant availability toggle (false hides the option regardless of stock).
+  is_available?: boolean;
+}
+
+export interface ModifierGroup {
+  id: string;
+  name: string; // "Size", "Add-ons", "Spice Level"
+  display_order: number;
+  // Selection rules. min_select === 0 → optional; max_select === 1 → single-select
+  // (variation-style); max_select === null → unlimited (add-on style).
+  min_select: number;
+  max_select: number | null;
+  options: ModifierOption[];
+}
+
 export interface MenuItem {
   id: string;
   tenant_id: string;
@@ -401,7 +451,10 @@ export interface MenuItem {
   price: number;
   discounted_price?: number;
   image_url: string;
-  // New grouped variation system
+  // Unified modifier groups (supersedes variation_types + addons). When present,
+  // this is the source of truth; otherwise it is derived from the legacy fields.
+  modifier_groups?: ModifierGroup[];
+  // New grouped variation system (legacy once modifier_groups is adopted)
   variation_types?: VariationType[];
   // Legacy flat variation system (kept for backward compatibility)
   variations: Variation[];

@@ -133,6 +133,7 @@ export type Database = {
           created_at: string | null
           id: string
           menu_item_id: string | null
+          modifier_option_id: string | null
           notes: string | null
           prep_item_id: string | null
           target_type: string
@@ -147,6 +148,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           menu_item_id?: string | null
+          modifier_option_id?: string | null
           notes?: string | null
           prep_item_id?: string | null
           target_type: string
@@ -161,6 +163,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           menu_item_id?: string | null
+          modifier_option_id?: string | null
           notes?: string | null
           prep_item_id?: string | null
           target_type?: string
@@ -791,6 +794,7 @@ export type Database = {
           image_url: string
           is_available: boolean
           is_featured: boolean
+          modifier_groups: Json
           name: string
           order: number
           price: number
@@ -813,6 +817,7 @@ export type Database = {
           image_url: string
           is_available?: boolean
           is_featured?: boolean
+          modifier_groups?: Json
           name: string
           order?: number
           price: number
@@ -835,6 +840,7 @@ export type Database = {
           image_url?: string
           is_available?: boolean
           is_featured?: boolean
+          modifier_groups?: Json
           name?: string
           order?: number
           price?: number
@@ -1741,6 +1747,7 @@ export type Database = {
           id: string
           ios_app_store_id: string | null
           inventory_enabled: boolean
+          modifier_groups_enabled: boolean
           is_active: boolean
           is_announcement_visible: boolean | null
           is_promotion_visible: boolean | null
@@ -1914,6 +1921,7 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
           is_promotion_visible?: boolean | null
@@ -2087,6 +2095,7 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
           is_promotion_visible?: boolean | null
