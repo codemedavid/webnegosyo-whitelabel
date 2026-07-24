@@ -1,4 +1,9 @@
 import { supabase } from "./supabase";
+import {
+  normalizeModifierGroups,
+  type ModifierGroup,
+  type ModifierSource,
+} from "./modifier-groups";
 
 export interface Product {
   id: string;
@@ -31,11 +36,74 @@ export interface ProductInput {
   category_id: string;
   is_available: boolean;
   is_featured: boolean;
+  // Unified variations + add-ons. Optional so callers that never touch options
+  // (e.g. the availability toggle) stay untouched and backward compatible.
+  modifier_groups?: ModifierGroup[];
 }
+
+/** Pristine form values for adding a new product. */
+export const EMPTY_PRODUCT_INPUT: ProductInput = {
+  name: "",
+  description: "",
+  price: 0,
+  discounted_price: null,
+  image_url: "",
+  category_id: "",
+  is_available: true,
+  is_featured: false,
+};
 
 export interface ValidationResult {
   valid: boolean;
   errors: Record<string, string>;
+}
+
+/** All editor state derived from a loaded product (or a fresh add). */
+export interface EditorFormState {
+  form: ProductInput;
+  priceText: string;
+  discountedPriceText: string;
+  modifierGroups: ModifierGroup[];
+}
+
+/**
+ * Resolve the product editor's initial state from a loaded row, or a clean slate
+ * when `loaded` is null.
+ *
+ * The editor screen is a persistent tab screen that never unmounts, so it is
+ * reused when the user goes from editing a product to adding a new one. Passing
+ * `null` here (the add path) returns a fresh {@link EMPTY_PRODUCT_INPUT} copy so
+ * the previous product's data can never leak into the "New Product" form.
+ */
+export function buildEditorFormState(
+  loaded: (Partial<Product> & ModifierSource) | null
+): EditorFormState {
+  if (!loaded) {
+    return {
+      form: { ...EMPTY_PRODUCT_INPUT },
+      priceText: "",
+      discountedPriceText: "",
+      modifierGroups: [],
+    };
+  }
+
+  const form: ProductInput = {
+    name: loaded.name ?? "",
+    description: loaded.description ?? "",
+    price: loaded.price ?? 0,
+    discounted_price: loaded.discounted_price ?? null,
+    image_url: loaded.image_url ?? "",
+    category_id: loaded.category_id ?? "",
+    is_available: loaded.is_available ?? true,
+    is_featured: loaded.is_featured ?? false,
+  };
+
+  return {
+    form,
+    priceText: String(form.price),
+    discountedPriceText: form.discounted_price ? String(form.discounted_price) : "",
+    modifierGroups: normalizeModifierGroups(loaded),
+  };
 }
 
 const POSTGREST_SPECIAL_CHARS = /[%_\\*,.()!=><]/g;
