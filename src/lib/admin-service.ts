@@ -232,7 +232,7 @@ export const getCategoriesByTenant = cache(async (tenantId: string) => {
 })
 
 export async function createCategory(tenantId: string, input: CategoryInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = categorySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
@@ -252,7 +252,7 @@ export async function createCategory(tenantId: string, input: CategoryInput, ctx
 }
 
 export async function updateCategory(categoryId: string, tenantId: string, input: CategoryInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const validated = categorySchema.parse(input)
   const supabase = await createClient()
@@ -273,7 +273,7 @@ export async function updateCategory(categoryId: string, tenantId: string, input
 }
 
 export async function deleteCategory(categoryId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -287,7 +287,7 @@ export async function deleteCategory(categoryId: string, tenantId: string) {
 }
 
 export async function reorderCategories(tenantId: string, categoryIds: string[]) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -427,7 +427,7 @@ export const getMenuItemById = cache(async (itemId: string, tenantId: string) =>
 })
 
 export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = menuItemSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
@@ -451,7 +451,7 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx
 }
 
 export async function updateMenuItem(itemId: string, tenantId: string, input: MenuItemInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const validated = menuItemSchema.parse(input)
   const supabase = await createClient()
@@ -490,7 +490,7 @@ export async function updateMenuItemImage(
   imageUrl: string,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const supabase = ctx?.client ?? (await createClient())
 
@@ -521,7 +521,7 @@ export async function updateMenuItemFields(
   input: MenuItemUpdateInput,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = menuItemUpdateSchema.parse(input)
   // Drop undefined keys so omitted fields are never written (partial semantics).
@@ -560,7 +560,7 @@ export async function setMenuItemImageFromData(
   fileName: string,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   // Lazily import so the `server-only` upload module is not pulled into any
   // client bundle that transitively imports this service.
@@ -593,7 +593,7 @@ export async function listMenuItemsForProvisioning(tenantId: string, ctx?: Provi
 }
 
 export async function deleteMenuItem(itemId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -607,7 +607,7 @@ export async function deleteMenuItem(itemId: string, tenantId: string) {
 }
 
 export async function toggleMenuItemAvailability(itemId: string, tenantId: string, isAvailable: boolean) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
