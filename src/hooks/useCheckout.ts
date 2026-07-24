@@ -44,6 +44,7 @@ import { createClient } from '@/lib/supabase/client'
 import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { savePendingOrder } from '@/lib/qr-pending-order'
 import { resolveOrderContact } from '@/lib/customer-identity'
+import { normalizeCustomerData } from '@/lib/customer-field-normalization'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
@@ -566,6 +567,10 @@ export function useCheckout(tenantSlug: string) {
     setIsProcessing(true)
 
     try {
+      // Canonicalize every form field (phone → E.164, email lowercased, text
+      // whitespace-collapsed) before it is written into the QR payload so the
+      // vendor scanner persists a clean customer record.
+      const normalizedCustomerData = normalizeCustomerData(customerData, formFields)
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
 
@@ -680,13 +685,13 @@ export function useCheckout(tenantSlug: string) {
         tenantSlug,
         orderTypeId: orderType,
         orderType: selectedOrderType?.type ?? selectedOrderType?.name ?? '',
-        customerName: customerData.customer_name || '',
+        customerName: normalizedCustomerData.customer_name || '',
         // Resolve from any phone/email field the tenant form uses (not just the
         // literal customer_phone/customer_email keys) so the stored contact is a
         // stable per-customer identity for analytics.
-        customerContact: resolveOrderContact({ name: customerData.customer_name, customerData }),
+        customerContact: resolveOrderContact({ name: normalizedCustomerData.customer_name, customerData: normalizedCustomerData }),
         customerData: {
-          ...customerData,
+          ...normalizedCustomerData,
           ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
         },
         items: qrItems,
@@ -832,6 +837,11 @@ export function useCheckout(tenantSlug: string) {
     setIsProcessing(true)
 
     try {
+      // Canonicalize every form field (phone → E.164, email lowercased, text
+      // whitespace-collapsed) up front so the Messenger message, the confirmation
+      // snapshot, and the persisted order all carry the same clean values.
+      const normalizedCustomerData = normalizeCustomerData(customerData, formFields)
+
       // Get selected payment method details for snapshot
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
 
@@ -857,7 +867,7 @@ export function useCheckout(tenantSlug: string) {
         items,
         tenant.name,
         orderTypeInfo,
-        customerData,
+        normalizedCustomerData,
         paymentMethodInfo,
         formFieldsMeta,
         serviceChargeAmount || undefined,
@@ -913,7 +923,7 @@ export function useCheckout(tenantSlug: string) {
       const snapshotItems = [...items]
       const snapshotBundleItems = [...bundleItems]
       const snapshotTotal = total
-      const snapshotCustomerData = { ...customerData }
+      const snapshotCustomerData = { ...normalizedCustomerData }
 
       setCompletedOrderData({
         items: snapshotItems,
@@ -1027,8 +1037,11 @@ export function useCheckout(tenantSlug: string) {
           contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
         }
 
-        const validDeliveryFeeForOrder = (deliveryFee && deliveryFeeAddress === snapshotCustomerData.delivery_address) ? deliveryFee : undefined
-        const validQuotationId = (quotationId && deliveryFeeAddress === snapshotCustomerData.delivery_address) ? quotationId : undefined
+        // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
+        // is captured from the un-normalized customerData.delivery_address), so a
+        // whitespace-only normalization difference never drops a valid fee.
+        const validDeliveryFeeForOrder = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
+        const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
 
         // Fire-and-forget: save order + send proactive webhook
         createOrderAction(
