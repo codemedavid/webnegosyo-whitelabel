@@ -52,6 +52,31 @@ export const variationTypeSchema = z.object({
   options: z.array(variationOptionSchema).min(1, 'At least one option is required'),
 })
 
+// Unified modifier groups (supersedes variation_types + addons). Each option
+// carries a price modifier plus optional per-option cost and stock. Legacy
+// columns are kept synced by the editor for backward compatibility.
+export const modifierOptionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Option name is required'),
+  price_modifier: z.number(),
+  image_url: z.string().url('Must be a valid URL').optional().nullable(),
+  is_default: z.boolean().optional(),
+  display_order: z.number().int().min(0),
+  manual_cost: z.number().min(0).optional(),
+  stock_mode: z.enum(['none', 'simple', 'recipe']).optional(),
+  stock_qty: z.number().min(0).optional(),
+  is_available: z.boolean().optional(),
+})
+
+export const modifierGroupSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Group name is required'),
+  display_order: z.number().int().min(0),
+  min_select: z.number().int().min(0),
+  max_select: z.number().int().min(1).nullable(),
+  options: z.array(modifierOptionSchema).min(1, 'At least one option is required'),
+})
+
 export const menuItemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
@@ -61,6 +86,8 @@ export const menuItemSchema = z.object({
   // delivery URL or an empty string; missing values normalize to ''.
   image_url: z.string().url('Must be a valid URL').or(z.literal('')).optional().default(''),
   category_id: z.string().uuid('Must select a category'),
+  // Unified modifier groups (new canonical model; empty = derive from legacy)
+  modifier_groups: z.array(modifierGroupSchema).optional().default([]),
   // New grouped variation types
   variation_types: z.array(variationTypeSchema).optional().default([]),
   // Legacy variations (kept for backward compatibility)
@@ -442,6 +469,8 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modifier_groups: validated.modifier_groups as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
     .single()
@@ -464,6 +493,8 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
       variations: validated.variations as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modifier_groups: validated.modifier_groups as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .eq('id', itemId)

@@ -22,9 +22,16 @@ import {
   listCategories,
   validateProductInput,
   calculateMargin,
+  buildEditorFormState,
   type ProductInput,
   type Category,
 } from "../../../lib/products";
+import {
+  validateModifierGroups,
+  serializeModifierGroups,
+  type ModifierGroup,
+} from "../../../lib/modifier-groups";
+import { ModifierGroupsEditor } from "../../../components/ModifierGroupsEditor";
 import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
@@ -67,6 +74,8 @@ export default function ProductEditorScreen() {
   const [form, setForm] = useState<ProductInput>(EMPTY_INPUT);
   const [priceText, setPriceText] = useState("");
   const [discountedPriceText, setDiscountedPriceText] = useState("");
+  const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
+  const [modifierErrors, setModifierErrors] = useState<Record<string, string>>({});
   const [costText, setCostText] = useState("");
   const [isSavingCost, setIsSavingCost] = useState(false);
 
@@ -76,36 +85,41 @@ export default function ProductEditorScreen() {
   );
   const setCost = useSafeMutation(setCostRef);
 
+  // The editor is a persistent tab screen that never unmounts, so it is reused
+  // when the user goes Edit(A) → back → Add. Always derive state from
+  // buildEditorFormState (null on the add path) so the previous product's data
+  // can never leak into a fresh "New Product" form.
+  const applyEditorState = (
+    loaded: Parameters<typeof buildEditorFormState>[0]
+  ) => {
+    const state = buildEditorFormState(loaded);
+    setForm(state.form);
+    setPriceText(state.priceText);
+    setDiscountedPriceText(state.discountedPriceText);
+    setModifierGroups(state.modifierGroups);
+    setErrors({});
+    setModifierErrors({});
+  };
+
   useEffect(() => {
     if (!tenantId) return;
     (async () => {
       const cats = await listCategories(tenantId);
       setCategories(cats);
-      if (!isNew) {
+      if (isNew) {
+        applyEditorState(null);
+      } else {
         const { data } = await supabase
           .from("menu_items")
           .select("*")
           .eq("id", productId)
           .eq("tenant_id", tenantId)
           .single();
-        if (data) {
-          const loaded: ProductInput = {
-            name: data.name ?? "",
-            description: data.description ?? "",
-            price: data.price ?? 0,
-            discounted_price: data.discounted_price ?? null,
-            image_url: data.image_url ?? "",
-            category_id: data.category_id ?? "",
-            is_available: data.is_available ?? true,
-            is_featured: data.is_featured ?? false,
-          };
-          setForm(loaded);
-          setPriceText(String(loaded.price));
-          setDiscountedPriceText(loaded.discounted_price ? String(loaded.discounted_price) : "");
-        }
+        applyEditorState(data ?? null);
       }
       setIsLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, productId, isNew]);
 
   useEffect(() => {
@@ -164,14 +178,18 @@ export default function ProductEditorScreen() {
       ...form,
       price: isNaN(price) ? 0 : price,
       discounted_price: discountedPrice !== null && !isNaN(discountedPrice) ? discountedPrice : null,
+      modifier_groups: serializeModifierGroups(modifierGroups),
     };
 
     const validation = validateProductInput(candidate);
-    if (!validation.valid) {
+    const modifierValidation = validateModifierGroups(modifierGroups);
+    if (!validation.valid || !modifierValidation.valid) {
       setErrors(validation.errors);
+      setModifierErrors(modifierValidation.errors);
       return;
     }
     setErrors({});
+    setModifierErrors({});
     setIsSaving(true);
     try {
       if (isNew) {
@@ -340,6 +358,15 @@ export default function ProductEditorScreen() {
             trackColor={{ false: colors.separator, true: colors.primary }}
           />
         </View>
+      </Card>
+
+      <Card title="Variations & Options" style={styles.card}>
+        <ModifierGroupsEditor
+          groups={modifierGroups}
+          errors={modifierErrors}
+          onChange={setModifierGroups}
+          disabled={isSaving}
+        />
       </Card>
 
       {!isNew && (

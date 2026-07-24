@@ -169,6 +169,8 @@ export interface Tenant {
   checkout_summary_background_color?: string;
   // Menu engineering
   menu_engineering_enabled?: boolean;
+  // Unified modifier groups editor (variations + add-ons + per-option cost/stock)
+  modifier_groups_enabled?: boolean;
   hide_currency_symbol?: boolean;
   checkout_upsell_enabled?: boolean;
   checkout_upsell_title?: string;

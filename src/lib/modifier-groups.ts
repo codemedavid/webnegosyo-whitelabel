@@ -26,9 +26,8 @@ export const LEGACY_VARIATION_GROUP_NAME = 'Options'
 export const LEGACY_ADDON_GROUP_NAME = 'Add-ons'
 
 /** Subset of a menu item that carries modifier data (all optional/legacy). */
-export type ModifierSource = Pick<
-  MenuItem,
-  'modifier_groups' | 'variation_types' | 'variations' | 'addons'
+export type ModifierSource = Partial<
+  Pick<MenuItem, 'modifier_groups' | 'variation_types' | 'variations' | 'addons'>
 >
 
 /**
