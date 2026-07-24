@@ -44,3 +44,56 @@ GREEN evidence: `Tests: 26 passed, 26 total`.
 ## Merge evidence (RED/GREEN)
 - RED: `test: RED reproducer for unified modifier-groups normalizer` (a7f4cec) — 26 failing.
 - GREEN: `feat: implement unified modifier-groups normalizer (GREEN)` (715b1dc) — 26 passing.
+
+---
+
+# Phase 1 — Web admin (unified editor + legacy sync)
+
+**Scope of this section**: the unified Modifier Groups editor and the
+serialization contract that keeps legacy columns synced on save. Recipe-attach
+inventory CRUD, Modifier Library evolution, and margin display remain pending
+(see gaps below).
+
+## User journeys covered (Phase 1)
+- As a merchant, I want one editor to build both single-select groups (e.g. Size)
+  and multi-select groups (e.g. Extras) with per-group rules (required, allow
+  multiple, max) and per-option price / manual cost / stock mode / image.
+- As the platform, when a merchant saves the unified model, I want the legacy
+  `variation_types` / `addons` columns kept in sync so storefront, POS, and
+  mobile (not yet reading `modifier_groups`) keep rendering unchanged.
+- As a merchant enabling the flag on a legacy item, I want the editor seeded
+  from that item's existing variations/add-ons (via the Phase 0 normalizer).
+
+## Task report
+| Plan task | Summary | Validation command | Result |
+|---|---|---|---|
+| Form serialization + legacy sync | `src/lib/modifier-groups-form.ts` — factories, immutable rule toggles (`setGroupRequired`/`setGroupMultiple`), `serializeGroups` cleanup, `splitGroupsToLegacyColumns` backward-compat mirror. | `npx jest tests/unit/modifier-groups-form.test.ts` | RED 14 (module missing) → GREEN 14/14 |
+| Persistence | `admin-service.ts`: `modifierGroupSchema`/`modifierOptionSchema`; `menuItemSchema.modifier_groups`; write `modifier_groups` on create + update. | `npx tsc --noEmit` (clean) | PASS |
+| Editor UI + wiring | `modifier-groups-editor.tsx` (new); `menu-item-form.tsx` seeds via normalizer, saves `modifier_groups` + derived legacy columns, gated by `modifier_groups_enabled`; flag threaded from both admin pages. | `npx next lint` (touched files) | PASS (no warnings/errors) |
+
+RED evidence: `Cannot find module '@/lib/modifier-groups-form'` — compile-time RED for the intended reason.
+GREEN evidence: `Tests: 14 passed, 14 total`. Full suite: `3 failed, 2030 passed` (the 3 are the pre-existing `webnegosyo-app` printer/image failures).
+
+## Test specification (Phase 1)
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | `createModifierGroup` → optional single-select, no options | `createModifierGroup › …` | unit | PASS |
+| 2 | `createModifierOption` → zero-price, stock_mode 'none' | `createModifierOption › …` | unit | PASS |
+| 3 | `setGroupMultiple(true)` clears max cap; original untouched (immutable) | `setGroupMultiple › …` (3) | unit | PASS |
+| 4 | `setGroupMultiple(false)` caps max at 1 and clamps min ≤ 1 | `setGroupMultiple › switching to single-select…` | unit | PASS |
+| 5 | `setGroupRequired` raises/drops min_select, preserving max | `setGroupRequired › …` (2) | unit | PASS |
+| 6 | `serializeGroups` drops blank options, drops empty groups, trims, reindexes | `serializeGroups › …` (3) | unit | PASS |
+| 7 | single-select group → variation_type (is_required from min_select) | `splitGroupsToLegacyColumns › maps a single-select…` | unit | PASS |
+| 8 | multi-select group → addons (price from price_modifier) | `splitGroupsToLegacyColumns › flattens…` | unit | PASS |
+| 9 | mixed groups split correctly; legacy flat `variations` never emitted | `splitGroupsToLegacyColumns › handles mixed…` | unit | PASS |
+| 10 | finite max > 1 treated as multi-select | `splitGroupsToLegacyColumns › treats a finite max…` | unit | PASS |
+
+## Coverage & known gaps (Phase 1)
+- **Pending in Phase 1**: minimal inventory admin CRUD (units/ingredients/recipes) so an option's `stock_mode='recipe'` can attach a real recipe; Modifier Library (evolve Add-on Library into reusable groups); per-option/per-item margin display in the editor. The editor already captures `manual_cost` and `stock_mode`; recipe attach + margin surface are the next slice.
+- Migration `20260724120000_modifier_groups.sql` still **not applied** to live DB — must be applied before the flag is turned on for any tenant (otherwise `modifier_groups` write fails). No tenant has `modifier_groups_enabled=true` yet, so production is unaffected.
+- Editor component is presentational; covered by the pure serialization tests it delegates to, not by a separate render test.
+
+## Merge evidence (Phase 1 RED/GREEN)
+- RED: `test: RED reproducer for modifier-groups form serialization` — 14 failing (module missing).
+- GREEN: `feat: modifier-groups form serialization + legacy-column sync (GREEN)` — 14 passing.
+- Editor + wiring: `feat: unified Modifier Groups editor wired into menu-item form (Phase 1)`.
