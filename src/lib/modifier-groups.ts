@@ -38,8 +38,90 @@ export type ModifierSource = Pick<
  * → legacy flat `variations` + `addons`. Groups and their options are returned
  * sorted by `display_order`.
  */
-export function normalizeModifierGroups(_item: ModifierSource): ModifierGroup[] {
-  throw new Error('not implemented')
+export function normalizeModifierGroups(item: ModifierSource): ModifierGroup[] {
+  // 1. Explicit unified payload wins.
+  if (item.modifier_groups && item.modifier_groups.length > 0) {
+    return sortGroups(item.modifier_groups)
+  }
+
+  const groups: ModifierGroup[] = []
+
+  // 2. Grouped variation_types → single-select groups. Fall back to legacy flat
+  //    variations only when no grouped types exist.
+  if (item.variation_types && item.variation_types.length > 0) {
+    groups.push(...item.variation_types.map(groupFromVariationType))
+  } else if (item.variations && item.variations.length > 0) {
+    groups.push(groupFromLegacyVariations(item.variations))
+  }
+
+  // 3. Add-ons → one optional multi-select group.
+  if (item.addons && item.addons.length > 0) {
+    groups.push(groupFromAddons(item.addons))
+  }
+
+  return sortGroups(groups)
+}
+
+function sortGroups(groups: readonly ModifierGroup[]): ModifierGroup[] {
+  return [...groups]
+    .sort((a, b) => a.display_order - b.display_order)
+    .map((g) => ({
+      ...g,
+      options: [...g.options].sort((a, b) => a.display_order - b.display_order),
+    }))
+}
+
+function groupFromVariationType(type: VariationType): ModifierGroup {
+  return {
+    id: type.id,
+    name: type.name,
+    display_order: type.display_order,
+    min_select: type.is_required ? 1 : 0,
+    max_select: 1, // variation types are single-select
+    options: type.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      price_modifier: o.price_modifier,
+      image_url: o.image_url,
+      is_default: o.is_default,
+      display_order: o.display_order,
+    })),
+  }
+}
+
+function groupFromLegacyVariations(variations: readonly Variation[]): ModifierGroup {
+  return {
+    id: 'legacy-variations',
+    name: LEGACY_VARIATION_GROUP_NAME,
+    display_order: 0,
+    min_select: 0,
+    max_select: 1, // legacy variations were single-select
+    options: variations.map((v, index) => ({
+      id: v.id,
+      name: v.name,
+      price_modifier: v.price_modifier,
+      is_default: v.is_default,
+      display_order: index,
+    })),
+  }
+}
+
+function groupFromAddons(addons: readonly Addon[]): ModifierGroup {
+  return {
+    id: 'legacy-addons',
+    name: LEGACY_ADDON_GROUP_NAME,
+    // Sort after variation groups by default.
+    display_order: 1000,
+    min_select: 0,
+    max_select: null, // add-ons are unlimited multi-select
+    options: addons.map((a, index) => ({
+      id: a.id,
+      name: a.name,
+      price_modifier: a.price, // an add-on's price is a price modifier
+      is_default: a.is_default,
+      display_order: index,
+    })),
+  }
 }
 
 export interface SelectionValidationResult {
@@ -52,10 +134,29 @@ export interface SelectionValidationResult {
  * `max_select === null` means unlimited.
  */
 export function validateGroupSelection(
-  _group: ModifierGroup,
-  _selectedOptionIds: readonly string[],
+  group: ModifierGroup,
+  selectedOptionIds: readonly string[],
 ): SelectionValidationResult {
-  throw new Error('not implemented')
+  const count = selectedOptionIds.length
+
+  if (count < group.min_select) {
+    return {
+      valid: false,
+      error:
+        group.min_select === 1
+          ? `Please choose an option for ${group.name}.`
+          : `Please choose at least ${group.min_select} for ${group.name}.`,
+    }
+  }
+
+  if (group.max_select !== null && count > group.max_select) {
+    return {
+      valid: false,
+      error: `Choose at most ${group.max_select} for ${group.name}.`,
+    }
+  }
+
+  return { valid: true }
 }
 
 /**
@@ -63,11 +164,12 @@ export function validateGroupSelection(
  * Rounded to cents.
  */
 export function computeModifierSubtotal(
-  _basePrice: number,
-  _selectedOptions: readonly ModifierOption[],
-  _quantity: number,
+  basePrice: number,
+  selectedOptions: readonly ModifierOption[],
+  quantity: number,
 ): number {
-  throw new Error('not implemented')
+  const modifierTotal = selectedOptions.reduce((sum, o) => sum + o.price_modifier, 0)
+  return Math.round((basePrice + modifierTotal) * quantity * 100) / 100
 }
 
 /**
@@ -75,8 +177,15 @@ export function computeModifierSubtotal(
  * always hides it; `simple` stock at/below zero hides it; `recipe` stock is
  * resolved elsewhere (best-effort available here).
  */
-export function isOptionAvailable(_option: ModifierOption): boolean {
-  throw new Error('not implemented')
+export function isOptionAvailable(option: ModifierOption): boolean {
+  if (option.is_available === false) {
+    return false
+  }
+  if (option.stock_mode === 'simple') {
+    return (option.stock_qty ?? 0) > 0
+  }
+  // 'none' | 'recipe' | undefined → available (recipe stock resolved elsewhere)
+  return true
 }
 
 /**
@@ -86,8 +195,11 @@ export function isOptionAvailable(_option: ModifierOption): boolean {
  * recipe cost of 0).
  */
 export function resolveOptionCost(
-  _manualCost: number | undefined,
-  _recipeCost: number | undefined,
+  manualCost: number | undefined,
+  recipeCost: number | undefined,
 ): number {
-  throw new Error('not implemented')
+  if (recipeCost !== undefined) {
+    return recipeCost
+  }
+  return manualCost ?? 0
 }
