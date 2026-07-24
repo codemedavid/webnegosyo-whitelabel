@@ -26,7 +26,8 @@ function group(overrides: Partial<ModifierGroup> = {}): ModifierGroup {
     name: overrides.name ?? 'Group',
     display_order: overrides.display_order ?? 0,
     min_select: overrides.min_select ?? 0,
-    max_select: overrides.max_select ?? 1,
+    // Respect an explicit null (unlimited); only default when the key is absent.
+    max_select: 'max_select' in overrides ? overrides.max_select! : 1,
     options: overrides.options ?? [option()],
   }
 }
