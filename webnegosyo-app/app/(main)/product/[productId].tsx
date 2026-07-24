@@ -119,7 +119,6 @@ export default function ProductEditorScreen() {
       }
       setIsLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, productId, isNew]);
 
   useEffect(() => {
@@ -263,7 +262,11 @@ export default function ProductEditorScreen() {
 
       <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage} activeOpacity={0.8}>
         {form.image_url ? (
-          <Image source={{ uri: form.image_url }} style={styles.image} />
+          <Image
+            source={{ uri: form.image_url }}
+            style={styles.image}
+            accessibilityLabel={form.name ? `${form.name} photo` : "Product photo"}
+          />
         ) : (
           <Text style={styles.imagePlaceholder}>{isUploadingImage ? "Uploading..." : "+ Add Photo"}</Text>
         )}
