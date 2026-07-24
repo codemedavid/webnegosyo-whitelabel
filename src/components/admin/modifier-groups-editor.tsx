@@ -15,10 +15,13 @@ import {
   setGroupMultiple,
   setGroupRequired,
 } from '@/lib/modifier-groups-form'
+import { computeOptionMargin } from '@/lib/modifier-margin'
 
 interface ModifierGroupsEditorProps {
   groups: ModifierGroup[]
   onChange: (groups: ModifierGroup[]) => void
+  /** Base item price, used for live per-option margin. */
+  basePrice: number
 }
 
 /**
@@ -28,7 +31,7 @@ interface ModifierGroupsEditorProps {
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
-export function ModifierGroupsEditor({ groups, onChange }: ModifierGroupsEditorProps) {
+export function ModifierGroupsEditor({ groups, onChange, basePrice }: ModifierGroupsEditorProps) {
   const addGroup = () => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
   }
@@ -105,6 +108,7 @@ export function ModifierGroupsEditor({ groups, onChange }: ModifierGroupsEditorP
               <ModifierGroupCard
                 key={group.id}
                 group={group}
+                basePrice={basePrice}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
                 onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
@@ -126,6 +130,7 @@ export function ModifierGroupsEditor({ groups, onChange }: ModifierGroupsEditorP
 
 interface ModifierGroupCardProps {
   group: ModifierGroup
+  basePrice: number
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
   onToggleRequired: (required: boolean) => void
@@ -142,6 +147,7 @@ interface ModifierGroupCardProps {
 
 function ModifierGroupCard({
   group,
+  basePrice,
   onRemoveGroup,
   onUpdateName,
   onToggleRequired,
@@ -231,6 +237,7 @@ function ModifierGroupCard({
               <ModifierOptionRow
                 key={option.id}
                 option={option}
+                basePrice={basePrice}
                 onRemove={() => onRemoveOption(optionIndex)}
                 onUpdate={(field, value) => onUpdateOption(optionIndex, field, value)}
               />
@@ -244,12 +251,22 @@ function ModifierGroupCard({
 
 interface ModifierOptionRowProps {
   option: ModifierOption
+  basePrice: number
   onRemove: () => void
   onUpdate: <K extends keyof ModifierOption>(field: K, value: ModifierOption[K]) => void
 }
 
-function ModifierOptionRow({ option, onRemove, onUpdate }: ModifierOptionRowProps) {
+function ModifierOptionRow({ option, basePrice, onRemove, onUpdate }: ModifierOptionRowProps) {
   const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
+  // Live margin preview from the manual cost the merchant enters. Recipe-backed
+  // cost is resolved server-side; the editor shows the manual estimate.
+  const margin = computeOptionMargin(basePrice, option)
+  const marginTone =
+    margin.marginPercent >= 60
+      ? 'text-green-600'
+      : margin.marginPercent >= 30
+        ? 'text-amber-600'
+        : 'text-red-600'
 
   return (
     <div className="border rounded-md p-3 space-y-3 bg-gray-50">
@@ -328,6 +345,13 @@ function ModifierOptionRow({ option, onRemove, onUpdate }: ModifierOptionRowProp
           )}
         </div>
       </div>
+
+      {margin.price > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Sells at ₱{margin.price.toFixed(2)} · cost ₱{margin.cost.toFixed(2)} ·{' '}
+          <span className={marginTone}>{margin.marginPercent.toFixed(0)}% margin</span>
+        </p>
+      )}
 
       <div className="space-y-2">
         <Label className="text-xs">Option image (optional)</Label>

@@ -544,7 +544,11 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
       </Card>
 
       {modifierGroupsEnabled ? (
-        <ModifierGroupsEditor groups={modifierGroups} onChange={setModifierGroups} />
+        <ModifierGroupsEditor
+          groups={modifierGroups}
+          onChange={setModifierGroups}
+          basePrice={parseFloat(formData.price) || 0}
+        />
       ) : (
       <>
       {/* Variation System Selector */}
