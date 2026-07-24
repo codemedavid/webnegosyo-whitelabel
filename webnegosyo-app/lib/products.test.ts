@@ -8,6 +8,8 @@ import {
   deleteProduct,
   toggleProductAvailability,
   listCategories,
+  buildEditorFormState,
+  EMPTY_PRODUCT_INPUT,
   type ProductInput,
 } from "./products";
 
@@ -104,6 +106,76 @@ describe("validateProductInput", () => {
   it("accepts a null discounted price", () => {
     const result = validateProductInput({ ...validInput, discounted_price: null });
     expect(result.valid).toBe(true);
+  });
+});
+
+describe("buildEditorFormState", () => {
+  // Regression guard for the add-after-edit bug: the product editor is a
+  // persistent tab screen that never unmounts, so switching from editing a
+  // product to adding a new one reuses the same component. If the create path
+  // does not explicitly reset, the "New Product" form shows the previously
+  // edited product's data. buildEditorFormState must return a clean slate when
+  // there is no loaded product.
+  it("returns a blank form and empty text fields for a fresh add (null)", () => {
+    const state = buildEditorFormState(null);
+    expect(state.form).toEqual(EMPTY_PRODUCT_INPUT);
+    expect(state.priceText).toBe("");
+    expect(state.discountedPriceText).toBe("");
+    expect(state.modifierGroups).toEqual([]);
+  });
+
+  it("does not leak the EMPTY_PRODUCT_INPUT singleton (returns a fresh copy)", () => {
+    const state = buildEditorFormState(null);
+    expect(state.form).not.toBe(EMPTY_PRODUCT_INPUT);
+  });
+
+  it("maps a loaded product into the form and text fields", () => {
+    const state = buildEditorFormState({
+      name: "Iced Latte",
+      description: "A refreshing iced latte with espresso and milk.",
+      price: 120,
+      discounted_price: 99,
+      image_url: "https://img/latte.jpg",
+      category_id: "cat-1",
+      is_available: true,
+      is_featured: true,
+    });
+    expect(state.form.name).toBe("Iced Latte");
+    expect(state.form.category_id).toBe("cat-1");
+    expect(state.form.is_featured).toBe(true);
+    expect(state.priceText).toBe("120");
+    expect(state.discountedPriceText).toBe("99");
+  });
+
+  it("leaves the discounted price text empty when there is no discount", () => {
+    const state = buildEditorFormState({
+      name: "Espresso",
+      description: "A single shot of espresso, strong and bold.",
+      price: 90,
+      discounted_price: null,
+      image_url: "",
+      category_id: "cat-1",
+      is_available: true,
+      is_featured: false,
+    });
+    expect(state.discountedPriceText).toBe("");
+  });
+
+  it("normalizes an item's legacy variations/addons into editable modifier groups", () => {
+    const state = buildEditorFormState({
+      name: "Burger",
+      description: "A juicy grilled beef burger with all the fixings.",
+      price: 150,
+      discounted_price: null,
+      image_url: "",
+      category_id: "cat-1",
+      is_available: true,
+      is_featured: false,
+      addons: [{ id: "a1", name: "Extra Cheese", price: 20 }],
+    });
+    expect(state.modifierGroups.length).toBe(1);
+    expect(state.modifierGroups[0].options[0].name).toBe("Extra Cheese");
+    expect(state.modifierGroups[0].options[0].price_modifier).toBe(20);
   });
 });
 
@@ -213,6 +285,39 @@ describe("createProduct", () => {
       expect.objectContaining({ tenant_id: "tenant-1", name: validInput.name })
     );
     expect(result.id).toBe("new-1");
+  });
+});
+
+describe("createProduct with modifier groups", () => {
+  it("persists modifier_groups on insert", async () => {
+    const chain: any = {};
+    ["insert", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "new-1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+
+    await createProduct("tenant-1", {
+      ...validInput,
+      modifier_groups: [
+        {
+          id: "g1",
+          name: "Size",
+          display_order: 0,
+          min_select: 1,
+          max_select: 1,
+          options: [{ id: "o1", name: "Large", price_modifier: 20, display_order: 0 }],
+        },
+      ],
+    });
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modifier_groups: expect.arrayContaining([
+          expect.objectContaining({ name: "Size" }),
+        ]),
+      })
+    );
   });
 });
 
