@@ -70,10 +70,11 @@ describe('normalizeCustomerFieldValue', () => {
     expect(normalizeCustomerFieldValue('  X@Y.COM ', 'email')).toBe('x@y.com')
   })
 
-  it('routes text/textarea/select through whitespace collapse', () => {
+  it('routes text/textarea/select/number through whitespace collapse', () => {
     expect(normalizeCustomerFieldValue('  a   b ', 'text')).toBe('a b')
     expect(normalizeCustomerFieldValue('  a   b ', 'textarea')).toBe('a b')
     expect(normalizeCustomerFieldValue('  a   b ', 'select')).toBe('a b')
+    expect(normalizeCustomerFieldValue('  5 ', 'number')).toBe('5')
   })
 })
 
