@@ -35,9 +35,10 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
     >
       {/* Image Container */}
       <div className="relative aspect-square overflow-hidden bg-muted">
-        {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+        {(item.image_url || branding.logoUrl) && (
           <OptimizedImage
             src={item.image_url}
+            fallbackSrc={branding.logoUrl}
             alt={item.name}
             fill
             className="object-cover transition-opacity group-hover:opacity-90"

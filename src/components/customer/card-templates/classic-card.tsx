@@ -35,9 +35,10 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
     >
       {/* Image Container */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+        {(item.image_url || branding.logoUrl) && (
           <OptimizedImage
             src={item.image_url}
+            fallbackSrc={branding.logoUrl}
             alt={item.name}
             fill
             className="object-cover transition-transform group-hover:scale-105"

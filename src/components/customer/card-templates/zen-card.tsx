@@ -30,9 +30,10 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
         >
             {/* Image — soft rounded, no border */}
             <div className="relative aspect-[1/1] overflow-hidden rounded-2xl md:rounded-3xl bg-muted">
-                {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
+                        fallbackSrc={branding.logoUrl}
                         alt={item.name}
                         fill
                         className="object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-105"

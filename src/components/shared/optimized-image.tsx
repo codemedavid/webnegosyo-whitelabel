@@ -1,10 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import Image, { ImageProps } from 'next/image'
 import { transformImageUrl, isOptimizableImageUrl } from '@/lib/imagekit-utils'
 
 interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
     src: string | null | undefined
+    /**
+     * Image to display when `src` is empty OR when the primary image fails to
+     * load. Used to fall back to the tenant logo for menu item images.
+     * When both `src` and `fallbackSrc` are empty, nothing is rendered.
+     */
+    fallbackSrc?: string | null
     /** 
      * If true, always use Cloudinary transformations for Cloudinary URLs
      * instead of Next.js Image Optimization. This is more reliable for
@@ -95,6 +102,7 @@ function estimateRenderedWidthFromSizes(sizes?: string): number | null {
  */
 export function OptimizedImage({
     src,
+    fallbackSrc,
     alt,
     useCloudinaryTransform = true,
     cloudinaryQuality = 'auto',
@@ -104,18 +112,36 @@ export function OptimizedImage({
     fill,
     sizes,
     priority,
+    onError,
     ...props
 }: OptimizedImageProps) {
-    // Handle null/undefined src
-    if (!src) {
+    // Tracks whether the primary image failed to load so we can swap to the
+    // fallback. Reset naturally on remount (cards are keyed by item id).
+    const [primaryFailed, setPrimaryFailed] = useState(false)
+
+    // Resolve the effective source: use the fallback when the primary is empty
+    // or has errored. Render nothing only when neither source is available.
+    const useFallback = !src || primaryFailed
+    const resolvedSrc = useFallback ? (fallbackSrc || null) : src
+    if (!resolvedSrc) {
         return null
+    }
+
+    // Only wire the error-swap while showing the primary image AND a fallback
+    // exists to swap to — prevents an infinite error loop on the fallback.
+    const showingPrimary = !useFallback
+    const handleError: ImageProps['onError'] = (event) => {
+        onError?.(event)
+        if (showingPrimary && fallbackSrc) {
+            setPrimaryFailed(true)
+        }
     }
 
     // Determine loading strategy: priority overrides lazy
     const loadingProp = priority ? undefined : (lazy ? 'lazy' : 'eager')
 
     // If it's a CDN URL (ImageKit or legacy Cloudinary) use CDN transforms
-    if (useCloudinaryTransform && isOptimizableImageUrl(src)) {
+    if (useCloudinaryTransform && isOptimizableImageUrl(resolvedSrc)) {
         // Calculate dimensions for transformation.
         // For fill images, estimate a practical max width from `sizes` to avoid loading originals.
         const estimatedFillWidth = fill ? estimateRenderedWidthFromSizes(sizes) : null
@@ -136,12 +162,12 @@ export function OptimizedImage({
         const cropMode = transformWidth && transformHeight ? 'fill' : 'limit'
 
         // Apply CDN transformations
-        const transformedUrl = transformImageUrl(src, {
+        const transformedUrl = transformImageUrl(resolvedSrc, {
             width: transformWidth,
             height: transformHeight,
             quality: cloudinaryQuality,
             crop: cropMode,
-        }) || src
+        }) || resolvedSrc
 
         // Use unoptimized prop to bypass Next.js optimization
         return (
@@ -157,6 +183,7 @@ export function OptimizedImage({
                 decoding="async"
                 unoptimized
                 {...props}
+                onError={handleError}
             />
         )
     }
@@ -164,7 +191,7 @@ export function OptimizedImage({
     // For non-Cloudinary URLs, use standard Next.js Image optimization
     return (
         <Image
-            src={src}
+            src={resolvedSrc}
             alt={alt}
             width={width}
             height={height}
@@ -174,6 +201,7 @@ export function OptimizedImage({
             loading={loadingProp}
             decoding="async"
             {...props}
+            onError={handleError}
         />
     )
 }

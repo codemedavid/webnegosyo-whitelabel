@@ -41,9 +41,10 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
     >
       {/* Image Container */}
       <div className="relative aspect-[16/10] overflow-hidden bg-muted">
-        {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+        {(item.image_url || branding.logoUrl) && (
           <OptimizedImage
             src={item.image_url}
+            fallbackSrc={branding.logoUrl}
             alt={item.name}
             fill
             className="object-cover transition-all duration-500 group-hover:scale-105"

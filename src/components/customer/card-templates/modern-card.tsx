@@ -32,9 +32,10 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
     >
       {/* Image Container with gradient overlay */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        {typeof item.image_url === 'string' && item.image_url ? (
+        {(item.image_url || branding.logoUrl) ? (
           <OptimizedImage
             src={item.image_url}
+            fallbackSrc={branding.logoUrl}
             alt={item.name}
             fill
             className="object-cover transition-transform group-hover:scale-110"

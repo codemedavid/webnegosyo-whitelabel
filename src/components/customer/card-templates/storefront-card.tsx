@@ -35,9 +35,10 @@ export const StorefrontCard = memo(function StorefrontCard({
           className="relative aspect-square overflow-hidden rounded-[22px] md:rounded-[26px] shadow-sm transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lg"
           style={{ backgroundColor: branding.primary }}
         >
-          {typeof item.image_url === 'string' && item.image_url.length > 0 ? (
+          {(item.image_url || branding.logoUrl) ? (
             <OptimizedImage
               src={item.image_url}
+              fallbackSrc={branding.logoUrl}
               alt={item.name}
               fill
               className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"

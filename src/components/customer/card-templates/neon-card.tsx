@@ -46,9 +46,10 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuE
         >
             {/* Image Container */}
             <div className="relative aspect-[4/3] overflow-hidden">
-                {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
+                        fallbackSrc={branding.logoUrl}
                         alt={item.name}
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-110 brightness-90"

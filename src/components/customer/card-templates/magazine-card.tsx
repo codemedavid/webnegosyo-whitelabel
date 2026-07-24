@@ -30,9 +30,10 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
         >
             {/* Full-bleed image */}
             <div className="relative aspect-[3/4] overflow-hidden bg-muted">
-                {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
+                        fallbackSrc={branding.logoUrl}
                         alt={item.name}
                         fill
                         className="object-cover transition-transform duration-700 group-hover:scale-110"

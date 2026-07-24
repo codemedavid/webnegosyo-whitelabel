@@ -68,6 +68,10 @@ export interface BrandingColors {
   secondary: string
   accent?: string
 
+  // Tenant logo URL, used as the fallback image for menu items that have no
+  // image (or whose image fails to load). `null` when the tenant has no logo.
+  logoUrl: string | null
+
   // Storefront theme knobs (design-system presets). `null` = inherit the
   // tenant's existing default, so an unset knob is a no-op for every consumer.
   headingFont: string | null
@@ -141,6 +145,7 @@ export const DEFAULT_BRANDING: BrandingColors = {
   primary: '#111111',
   secondary: '#666666',
   accent: '#ffd700',
+  logoUrl: null,
   headingFont: null,
   headingWeight: null,
   bodyFont: null,
@@ -227,6 +232,7 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     primary: get('primary_color', '') || p?.text || DEFAULT_BRANDING.primary,
     secondary: get('secondary_color', '') || p?.muted || DEFAULT_BRANDING.secondary,
     accent: get('brand_color', '') || get('accent_color', '') || p?.accent || DEFAULT_BRANDING.accent || '',
+    logoUrl: get('logo_url', '') || null,
     headingFont: fontPair ? fontPair.heading : null,
     headingWeight: fontPair ? fontPair.headingWeight : null,
     bodyFont: fontPair ? fontPair.body : null,

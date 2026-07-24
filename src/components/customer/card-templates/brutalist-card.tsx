@@ -41,9 +41,10 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
         >
             {/* Image Container */}
             <div className="relative aspect-[3/2] overflow-hidden bg-muted">
-                {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
+                        fallbackSrc={branding.logoUrl}
                         alt={item.name}
                         fill
                         className="object-cover transition-transform duration-200 group-hover:scale-105"

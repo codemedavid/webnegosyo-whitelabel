@@ -36,9 +36,10 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
       <div className="flex items-stretch">
         {/* Image - Left side */}
         <div className="relative w-24 sm:w-28 md:w-32 flex-shrink-0 overflow-hidden bg-muted">
-          {typeof item.image_url === 'string' && item.image_url ? (
+          {(item.image_url || branding.logoUrl) ? (
             <OptimizedImage
               src={item.image_url}
+              fallbackSrc={branding.logoUrl}
               alt={item.name}
               fill
               className="object-cover transition-transform group-hover:scale-110"

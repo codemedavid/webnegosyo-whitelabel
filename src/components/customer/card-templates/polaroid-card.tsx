@@ -43,9 +43,10 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
         >
             {/* Image — like a polaroid photo */}
             <div className="relative aspect-square overflow-hidden bg-muted" style={{ borderRadius: '2px' }}>
-                {typeof item.image_url === 'string' && item.image_url.length > 0 && (
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
+                        fallbackSrc={branding.logoUrl}
                         alt={item.name}
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-105"

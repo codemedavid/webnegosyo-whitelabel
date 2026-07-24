@@ -34,6 +34,26 @@ describe('getTenantBranding', () => {
   })
 })
 
+describe('getTenantBranding — logo fallback', () => {
+  it('exposes the tenant logo_url as logoUrl for image fallbacks', () => {
+    const branding = getTenantBranding({ logo_url: 'https://cdn.test/brand-logo.png' })
+    expect(branding.logoUrl).toBe('https://cdn.test/brand-logo.png')
+  })
+
+  it('returns null logoUrl when the tenant has no logo', () => {
+    expect(getTenantBranding({}).logoUrl).toBeNull()
+  })
+
+  it('returns null logoUrl when logo_url is an empty string', () => {
+    expect(getTenantBranding({ logo_url: '' }).logoUrl).toBeNull()
+  })
+
+  it('DEFAULT_BRANDING has a null logoUrl', () => {
+    expect(DEFAULT_BRANDING.logoUrl).toBeNull()
+    expect(getTenantBranding(null).logoUrl).toBeNull()
+  })
+})
+
 describe('getTenantBranding — storefront theme knobs', () => {
   it('lets brand_color override the accent color', () => {
     const branding = getTenantBranding({ accent_color: '#ffd700', brand_color: '#E4572E' })
