@@ -4,7 +4,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { OrderType, CustomerFormField } from '@/types/database'
 import { z } from 'zod'
 
@@ -87,7 +87,7 @@ export async function getEnabledOrderTypesByTenant(tenantId: string) {
 }
 
 export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -103,7 +103,7 @@ export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
 }
 
 export async function createOrderType(tenantId: string, input: OrderTypeInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const validated = orderTypeSchema.parse(input)
   const supabase = await createClient()
@@ -123,7 +123,7 @@ export async function createOrderType(tenantId: string, input: OrderTypeInput) {
 }
 
 export async function updateOrderType(orderTypeId: string, tenantId: string, input: OrderTypeInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const validated = orderTypeSchema.parse(input)
   const supabase = await createClient()
@@ -142,7 +142,7 @@ export async function updateOrderType(orderTypeId: string, tenantId: string, inp
 }
 
 export async function deleteOrderType(orderTypeId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   // Use admin client to bypass RLS for updating orders
   const adminClient = createAdminClient()
@@ -184,7 +184,7 @@ export async function deleteOrderType(orderTypeId: string, tenantId: string) {
 }
 
 export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: string, enabled: boolean) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -202,7 +202,7 @@ export async function toggleOrderTypeEnabled(orderTypeId: string, tenantId: stri
 }
 
 export async function toggleOrderTypeAdvanceOrder(orderTypeId: string, tenantId: string, enabled: boolean) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -224,7 +224,7 @@ export async function toggleOrderTypeAdvanceOrder(orderTypeId: string, tenantId:
  * This can be called manually or automatically
  */
 export async function initializeOrderTypesForTenant(tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -271,7 +271,7 @@ export async function getCustomerFormFieldsByOrderType(orderTypeId: string, tena
 }
 
 export async function getCustomerFormFieldById(fieldId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -287,7 +287,7 @@ export async function getCustomerFormFieldById(fieldId: string, tenantId: string
 }
 
 export async function createCustomerFormField(tenantId: string, orderTypeId: string, input: CustomerFormFieldInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const validated = customerFormFieldSchema.parse(input)
   const supabase = await createClient()
@@ -308,7 +308,7 @@ export async function createCustomerFormField(tenantId: string, orderTypeId: str
 }
 
 export async function updateCustomerFormField(fieldId: string, tenantId: string, input: CustomerFormFieldInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const validated = customerFormFieldSchema.parse(input)
   const supabase = await createClient()
@@ -327,7 +327,7 @@ export async function updateCustomerFormField(fieldId: string, tenantId: string,
 }
 
 export async function deleteCustomerFormField(fieldId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -341,7 +341,7 @@ export async function deleteCustomerFormField(fieldId: string, tenantId: string)
 }
 
 export async function reorderCustomerFormFields(fieldIds: string[], tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 

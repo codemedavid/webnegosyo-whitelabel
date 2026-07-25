@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { BcgClassification, MenuItem, UpsellPair, UpsellPairWithItems } from '@/types/database'
@@ -49,7 +49,7 @@ export async function updateBcgClassification(
   tenantId: string,
   classification: BcgClassification
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics')
   bcgClassificationSchema.parse(classification)
 
   const supabase = await createClient()
@@ -69,7 +69,7 @@ export async function bulkUpdateBcgClassification(
   tenantId: string,
   updates: { itemId: string; classification: BcgClassification }[]
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics')
 
   const supabase = await createClient()
   const results = await Promise.all(
@@ -102,7 +102,7 @@ export async function updateBadgeText(
   tenantId: string,
   badgeText: string | null
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics')
 
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -147,7 +147,7 @@ export async function getMenuItemsByBcgClassification(
 // ============================================
 
 export async function createUpsellPair(tenantId: string, input: UpsellPairInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
   const validated = upsellPairInputSchema.parse(input)
 
   if (validated.source_item_id === validated.target_item_id) {
@@ -175,7 +175,7 @@ export async function createUpsellPair(tenantId: string, input: UpsellPairInput,
 }
 
 export async function deleteUpsellPair(pairId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics')
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -625,7 +625,7 @@ export async function updateCheckoutUpsellSettings(
   tenantId: string,
   input: CheckoutUpsellSettingsInput
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics')
   const validated = checkoutUpsellSettingsSchema.parse(input)
 
   const supabase = await createClient()

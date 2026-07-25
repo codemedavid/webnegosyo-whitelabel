@@ -76,7 +76,7 @@ function useAuthInit() {
       try {
         const { data: appUser } = await supabase
           .from("app_users")
-          .select("tenant_id")
+          .select("tenant_id, role, is_owner, permissions")
           .eq("user_id", data.session.user.id)
           .in("role", ["admin", "superadmin"])
           .single();
@@ -105,6 +105,9 @@ function useAuthInit() {
           convexUrl: tenant.convex_deployment_url ?? null,
           isLoading: false,
           isAuthenticated: true,
+          isOwner: appUser.is_owner ?? false,
+          permissions: appUser.permissions ?? null,
+          role: appUser.role ?? null,
         });
       } catch {
         setAuth({ isLoading: false });

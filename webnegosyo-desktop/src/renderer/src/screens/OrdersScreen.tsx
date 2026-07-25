@@ -9,6 +9,7 @@ import { OrderCard } from '../components/OrderCard'
 import { OrderDetail } from '../components/OrderDetail'
 import { SettingsDialog } from '../components/SettingsDialog'
 import { PosScreen } from './PosScreen'
+import { hasPermission } from '../lib/staff-permissions'
 import type { AppSettings, Order } from '../../../shared/types'
 
 type Queue = Record<'pending' | 'confirmed' | 'preparing' | 'ready', Order[]>
@@ -27,12 +28,17 @@ interface Toast {
 }
 
 export function OrdersScreen(): React.JSX.Element {
-  const { tenantName, logout } = useAuthStore()
+  const { tenantName, logout, role, isOwner, permissions } = useAuthStore()
+  // Restricted staff only see the tabs they were granted. Owners, superadmins,
+  // and legacy admins (null permissions) see both.
+  const caller = { role, isOwner, permissions }
+  const canSeeOrders = hasPermission(caller, 'orders')
+  const canSeePos = hasPermission(caller, 'pos')
   const isOnline = useSyncStore((s) => s.isOnline)
   const pendingCount = useSyncStore((s) => s.pendingCount)
   const isSyncing = useSyncStore((s) => s.isSyncing)
   const queue = useQuery(getRealtimeQueueRef, {}) as Queue | undefined
-  const [tab, setTab] = useState<'orders' | 'pos'>('orders')
+  const [tab, setTab] = useState<'orders' | 'pos'>(canSeeOrders ? 'orders' : 'pos')
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -95,15 +101,19 @@ export function OrdersScreen(): React.JSX.Element {
           </span>
         )}
         <div className="tab-switch">
-          <button
-            className={`tab${tab === 'orders' ? ' active' : ''}`}
-            onClick={() => setTab('orders')}
-          >
-            Orders
-          </button>
-          <button className={`tab${tab === 'pos' ? ' active' : ''}`} onClick={() => setTab('pos')}>
-            POS
-          </button>
+          {canSeeOrders && (
+            <button
+              className={`tab${tab === 'orders' ? ' active' : ''}`}
+              onClick={() => setTab('orders')}
+            >
+              Orders
+            </button>
+          )}
+          {canSeePos && (
+            <button className={`tab${tab === 'pos' ? ' active' : ''}`} onClick={() => setTab('pos')}>
+              POS
+            </button>
+          )}
         </div>
         <span className="spacer" />
         <span className={`autoprint-badge${settings?.autoPrintEnabled ? ' on' : ''}`}>
@@ -117,9 +127,16 @@ export function OrdersScreen(): React.JSX.Element {
         </button>
       </div>
 
-      {tab === 'pos' && <PosScreen onToast={pushToast} />}
+      {!canSeeOrders && !canSeePos && (
+        <div className="center-fill">
+          <p>Your account has no POS or orders access for this store.</p>
+          <p>Ask the store owner to grant permissions in Settings → Staff.</p>
+        </div>
+      )}
 
-      {tab === 'orders' && (
+      {tab === 'pos' && canSeePos && <PosScreen onToast={pushToast} />}
+
+      {tab === 'orders' && canSeeOrders && (
       <div className="board">
         {COLUMNS.map((col) => {
           const orders = queue?.[col.key] ?? []

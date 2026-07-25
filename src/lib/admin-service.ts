@@ -7,6 +7,11 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Category, MenuItem } from '@/types/database'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
+import {
+  canManageStaff,
+  hasPermission,
+  type StaffPermissionKey,
+} from '@/lib/staff-permissions'
 import { z } from 'zod'
 
 // ============================================
@@ -47,6 +52,31 @@ export const variationTypeSchema = z.object({
   options: z.array(variationOptionSchema).min(1, 'At least one option is required'),
 })
 
+// Unified modifier groups (supersedes variation_types + addons). Each option
+// carries a price modifier plus optional per-option cost and stock. Legacy
+// columns are kept synced by the editor for backward compatibility.
+export const modifierOptionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Option name is required'),
+  price_modifier: z.number(),
+  image_url: z.string().url('Must be a valid URL').optional().nullable(),
+  is_default: z.boolean().optional(),
+  display_order: z.number().int().min(0),
+  manual_cost: z.number().min(0).optional(),
+  stock_mode: z.enum(['none', 'simple', 'recipe']).optional(),
+  stock_qty: z.number().min(0).optional(),
+  is_available: z.boolean().optional(),
+})
+
+export const modifierGroupSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Group name is required'),
+  display_order: z.number().int().min(0),
+  min_select: z.number().int().min(0),
+  max_select: z.number().int().min(1).nullable(),
+  options: z.array(modifierOptionSchema).min(1, 'At least one option is required'),
+})
+
 export const menuItemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
@@ -56,6 +86,8 @@ export const menuItemSchema = z.object({
   // delivery URL or an empty string; missing values normalize to ''.
   image_url: z.string().url('Must be a valid URL').or(z.literal('')).optional().default(''),
   category_id: z.string().uuid('Must select a category'),
+  // Unified modifier groups (new canonical model; empty = derive from legacy)
+  modifier_groups: z.array(modifierGroupSchema).optional().default([]),
   // New grouped variation types
   variation_types: z.array(variationTypeSchema).optional().default([]),
   // Legacy variations (kept for backward compatibility)
@@ -135,7 +167,7 @@ export async function verifyTenantAdmin(tenantId: string) {
   // Check if user is admin of this tenant or superadmin
   const { data: userRoleData, error: roleError } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, is_owner, permissions')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -143,10 +175,15 @@ export async function verifyTenantAdmin(tenantId: string) {
     throw new Error('Unauthorized: User role not found')
   }
 
-  const userRole: { role: string; tenant_id: string | null } = userRoleData
+  const userRole: {
+    role: string
+    tenant_id: string | null
+    is_owner?: boolean | null
+    permissions?: string[] | null
+  } = userRoleData
 
-  const isAuthorized = 
-    userRole.role === 'superadmin' || 
+  const isAuthorized =
+    userRole.role === 'superadmin' ||
     (userRole.role === 'admin' && userRole.tenant_id === tenantId)
 
   if (!isAuthorized) {
@@ -154,6 +191,33 @@ export async function verifyTenantAdmin(tenantId: string) {
   }
 
   return { user, userRole }
+}
+
+/**
+ * Verify the caller is admin of the tenant AND holds the given feature
+ * permission (owners, superadmins, and legacy null-permission admins pass).
+ */
+export async function verifyTenantPermission(
+  tenantId: string,
+  permission: StaffPermissionKey
+) {
+  const result = await verifyTenantAdmin(tenantId)
+  if (!hasPermission(result.userRole, permission)) {
+    throw new Error('Unauthorized: Missing permission for this feature')
+  }
+  return result
+}
+
+/**
+ * Verify the caller is the tenant owner (or a superadmin). Required for
+ * staff management and credential settings.
+ */
+export async function verifyTenantOwner(tenantId: string) {
+  const result = await verifyTenantAdmin(tenantId)
+  if (!canManageStaff(result.userRole)) {
+    throw new Error('Unauthorized: Only the store owner can manage this')
+  }
+  return result
 }
 
 /**
@@ -195,7 +259,7 @@ export const getCategoriesByTenant = cache(async (tenantId: string) => {
 })
 
 export async function createCategory(tenantId: string, input: CategoryInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = categorySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
@@ -215,7 +279,7 @@ export async function createCategory(tenantId: string, input: CategoryInput, ctx
 }
 
 export async function updateCategory(categoryId: string, tenantId: string, input: CategoryInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const validated = categorySchema.parse(input)
   const supabase = await createClient()
@@ -236,7 +300,7 @@ export async function updateCategory(categoryId: string, tenantId: string, input
 }
 
 export async function deleteCategory(categoryId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -250,7 +314,7 @@ export async function deleteCategory(categoryId: string, tenantId: string) {
 }
 
 export async function reorderCategories(tenantId: string, categoryIds: string[]) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -390,7 +454,7 @@ export const getMenuItemById = cache(async (itemId: string, tenantId: string) =>
 })
 
 export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = menuItemSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
@@ -405,6 +469,8 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modifier_groups: validated.modifier_groups as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
     .single()
@@ -414,7 +480,7 @@ export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx
 }
 
 export async function updateMenuItem(itemId: string, tenantId: string, input: MenuItemInput) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const validated = menuItemSchema.parse(input)
   const supabase = await createClient()
@@ -427,6 +493,8 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
       variations: validated.variations as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       addons: validated.addons as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modifier_groups: validated.modifier_groups as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .eq('id', itemId)
@@ -453,7 +521,7 @@ export async function updateMenuItemImage(
   imageUrl: string,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const supabase = ctx?.client ?? (await createClient())
 
@@ -484,7 +552,7 @@ export async function updateMenuItemFields(
   input: MenuItemUpdateInput,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = menuItemUpdateSchema.parse(input)
   // Drop undefined keys so omitted fields are never written (partial semantics).
@@ -523,7 +591,7 @@ export async function setMenuItemImageFromData(
   fileName: string,
   ctx?: ProvisioningCtx,
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   // Lazily import so the `server-only` upload module is not pulled into any
   // client bundle that transitively imports this service.
@@ -556,7 +624,7 @@ export async function listMenuItemsForProvisioning(tenantId: string, ctx?: Provi
 }
 
 export async function deleteMenuItem(itemId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 
@@ -570,7 +638,7 @@ export async function deleteMenuItem(itemId: string, tenantId: string) {
 }
 
 export async function toggleMenuItemAvailability(itemId: string, tenantId: string, isAvailable: boolean) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   
   const supabase = await createClient()
 

@@ -15,6 +15,11 @@ interface AuthState {
    * without an account and without altering real merchant data.
    */
   isDemo: boolean;
+  /** Tenant owner — full access. Staff accounts are false. */
+  isOwner: boolean;
+  /** Per-feature permission keys; null = full access (owner/legacy admins). */
+  permissions: string[] | null;
+  role: string | null;
   setAuth: (data: Partial<AuthState>) => void;
   clear: () => void;
 }
@@ -28,6 +33,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
+  isOwner: false,
+  permissions: null,
+  role: null,
   setAuth: (data) => set(data),
   clear: () =>
     set({
@@ -39,5 +47,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,
+      isOwner: false,
+      permissions: null,
+      role: null,
     }),
 }));

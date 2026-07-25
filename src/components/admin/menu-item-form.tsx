@@ -11,10 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { CategoryIcon } from '@/components/shared/category-icon'
-import type { MenuItem, Category, VariationType, VariationOption, BcgClassification } from '@/types/database'
+import type { MenuItem, Category, VariationType, VariationOption, BcgClassification, ModifierGroup } from '@/types/database'
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
+import { ModifierGroupsEditor } from '@/components/admin/modifier-groups-editor'
+import { normalizeModifierGroups } from '@/lib/modifier-groups'
+import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
@@ -30,6 +33,8 @@ interface MenuItemFormProps {
   tenantId: string
   tenantSlug: string
   menuEngineeringEnabled?: boolean
+  modifierGroupsEnabled?: boolean
+  inventoryEnabled?: boolean
   convexUrl?: string
 }
 
@@ -60,7 +65,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, convexUrl }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, inventoryEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: item?.name || '',
@@ -79,6 +84,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
   const [variations, setVariations] = useState(item?.variations || [])
   const [variationTypes, setVariationTypes] = useState(item?.variation_types || [])
   const [addons, setAddons] = useState(item?.addons || [])
+  // Unified editor state. Seeded from the item's existing modifiers (explicit
+  // modifier_groups OR derived from legacy variation_types/variations/addons) so
+  // enabling the flag on a legacy item shows its current options.
+  const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>(() =>
+    modifierGroupsEnabled ? normalizeModifierGroups(item ?? {}) : []
+  )
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [useNewVariations, setUseNewVariations] = useState(
@@ -131,6 +142,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
       // Import actions
       const { createMenuItemAction, updateMenuItemAction } = await import('@/app/actions/menu-items')
       
+      // With the unified editor on, `modifier_groups` is canonical and the
+      // legacy columns are derived from it so surfaces that don't yet read the
+      // new model (storefront, POS, mobile) keep rendering.
+      const cleanGroups = modifierGroupsEnabled ? serializeGroups(modifierGroups) : []
+      const legacy = modifierGroupsEnabled ? splitGroupsToLegacyColumns(cleanGroups) : null
+
       const input = {
         name: formData.name,
         description: formData.description,
@@ -138,10 +155,11 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
         image_url: formData.image_url,
         category_id: formData.category_id,
-        // Include both formats for backward compatibility
-        variation_types: useNewVariations ? variationTypes : [],
-        variations: useNewVariations ? [] : variations,
-        addons,
+        modifier_groups: cleanGroups,
+        // Include legacy formats for backward compatibility
+        variation_types: legacy ? legacy.variation_types : useNewVariations ? variationTypes : [],
+        variations: legacy ? legacy.variations : useNewVariations ? [] : variations,
+        addons: legacy ? legacy.addons : addons,
         is_available: formData.is_available,
         is_featured: formData.is_featured,
         show_in_checkout_upsell: formData.show_in_checkout_upsell,
@@ -526,6 +544,20 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         </CardContent>
       </Card>
 
+      {modifierGroupsEnabled ? (
+        <ModifierGroupsEditor
+          groups={modifierGroups}
+          onChange={setModifierGroups}
+          basePrice={parseFloat(formData.price) || 0}
+          recipeContext={{
+            tenantId,
+            tenantSlug,
+            menuItemId: item?.id,
+            inventoryEnabled: inventoryEnabled ?? false,
+          }}
+        />
+      ) : (
+      <>
       {/* Variation System Selector */}
       <Card>
         <CardHeader>
@@ -627,6 +659,8 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         onUpdateAddon={updateAddon}
         headerAction={<AddonLibraryPicker tenantId={tenantId} onAttach={attachFromLibrary} />}
       />
+      </>
+      )}
 
       <div className="flex justify-end gap-2">
         <Button

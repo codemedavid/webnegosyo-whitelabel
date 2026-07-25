@@ -44,14 +44,16 @@ function buildItem(line: CartLine): BuiltItem {
       : line.selectedVariation?.name
 
   const addons = line.selectedAddons.map((a) => ({ name: a.name, price: a.price ?? 0 }))
-  const basePrice = line.item.discounted_price ?? line.item.price
+  // Per-unit price of the configured line (base + variations + add-ons), NOT the
+  // bare menu price — order consumers multiply it by quantity.
+  const unitPrice = line.unitPrice
 
   return {
     payload: {
       menuItemId: String(line.item.id),
       menuItemName: line.item.name,
       quantity: line.quantity,
-      price: basePrice,
+      price: unitPrice,
       subtotal: line.subtotal,
       specialInstructions: line.specialInstructions,
       variation: variationString,
@@ -61,7 +63,7 @@ function buildItem(line: CartLine): BuiltItem {
     receipt: {
       menuItemName: line.item.name,
       quantity: line.quantity,
-      price: basePrice,
+      price: unitPrice,
       subtotal: line.subtotal,
       variation: variationString,
       variationSelections: variationSelections.length > 0 ? variationSelections : undefined,

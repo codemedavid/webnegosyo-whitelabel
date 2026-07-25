@@ -1,19 +1,22 @@
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug } from '@/lib/cache'
+import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { createClient } from '@/lib/supabase/server'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { updateTenantBrandingForAdminAction } from '@/actions/tenants'
-import { Separator } from '@/components/ui/separator'
-import { ResetButton } from '@/components/admin/reset-button'
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
 import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 import { FlashScreenCard } from '@/components/admin/flash-screen-card'
 import { FooterManagerCard } from '@/components/admin/footer/footer-manager-card'
 import { OperatingHoursCard } from '@/components/admin/operating-hours-card'
 import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
+import { StaffManagementCard } from '@/components/admin/staff-management-card'
+import { AccountSettingsCard } from '@/components/admin/account-settings-card'
+import { LalamoveKeysCard } from '@/components/admin/lalamove-keys-card'
+import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
+import { listStaffAction } from '@/app/actions/staff'
+import type { StaffRecord } from '@/lib/staff-service'
 
 export default async function SettingsPage({
   params,
@@ -26,6 +29,22 @@ export default async function SettingsPage({
 
   if (!tenant) {
     return <div>Tenant not found</div>
+  }
+
+  const userRole = await getCachedCurrentUserRole()
+  const caller = userRole ?? { role: 'admin', tenant_id: null }
+  const isOwner = canManageStaff(caller)
+  const hasSettingsAccess = hasPermission(caller, 'settings')
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  let staff: StaffRecord[] = []
+  if (isOwner) {
+    const staffResult = await listStaffAction(tenant.id)
+    staff = staffResult.success ? staffResult.data : []
   }
 
   return (
@@ -72,425 +91,96 @@ export default async function SettingsPage({
         </CardContent>
       </Card>
 
-      {/* Branding Customization */}
-      <Card>
-        <CardHeader>
-          <CardTitle>🎨 Branding Customization</CardTitle>
-          <CardDescription>Customize your brand colors, cards, and modal appearance</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            action={async (formData: FormData) => {
-              'use server'
-              const input = {
-                primary_color: String(formData.get('primary_color') || ''),
-                secondary_color: String(formData.get('secondary_color') || ''),
-                accent_color: String(formData.get('accent_color') || ''),
-                background_color: String(formData.get('background_color') || ''),
-                header_color: String(formData.get('header_color') || ''),
-                header_font_color: String(formData.get('header_font_color') || ''),
-                cards_color: String(formData.get('cards_color') || ''),
-                cards_border_color: String(formData.get('cards_border_color') || ''),
-                card_title_color: String(formData.get('card_title_color') || ''),
-                card_price_color: String(formData.get('card_price_color') || ''),
-                card_description_color: String(formData.get('card_description_color') || ''),
-                modal_background_color: String(formData.get('modal_background_color') || ''),
-                modal_title_color: String(formData.get('modal_title_color') || ''),
-                modal_price_color: String(formData.get('modal_price_color') || ''),
-                modal_description_color: String(formData.get('modal_description_color') || ''),
-                button_primary_color: String(formData.get('button_primary_color') || ''),
-                button_primary_text_color: String(formData.get('button_primary_text_color') || ''),
-                button_secondary_color: String(formData.get('button_secondary_color') || ''),
-                button_secondary_text_color: String(formData.get('button_secondary_text_color') || ''),
-                text_primary_color: String(formData.get('text_primary_color') || ''),
-                text_secondary_color: String(formData.get('text_secondary_color') || ''),
-                text_muted_color: String(formData.get('text_muted_color') || ''),
-                border_color: String(formData.get('border_color') || ''),
-                success_color: String(formData.get('success_color') || ''),
-                warning_color: String(formData.get('warning_color') || ''),
-                error_color: String(formData.get('error_color') || ''),
-                link_color: String(formData.get('link_color') || ''),
-                shadow_color: String(formData.get('shadow_color') || ''),
-              }
-              await updateTenantBrandingForAdminAction(tenant.id, input)
-            }}
-            className="space-y-8"
-          >
-            {/* Core Brand Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Core Brand Colors</h3>
-                <p className="text-sm text-muted-foreground">Main colors that define your brand identity</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="primary_color"
-                  label="Primary Color"
-                  value={tenant.primary_color}
-                  description="Main brand color"
-                />
-                <ColorPicker
-                  id="secondary_color"
-                  label="Secondary Color"
-                  value={tenant.secondary_color}
-                  description="Secondary brand color"
-                />
-                <ColorPicker
-                  id="accent_color"
-                  label="Accent Color"
-                  value={tenant.accent_color || ''}
-                  description="Highlight color"
-                />
-              </div>
-            </div>
+      {/* Staff & Permissions — owner only */}
+      {isOwner && (
+        <StaffManagementCard tenantId={tenant.id} tenantSlug={tenantSlug} staff={staff} />
+      )}
 
-            {/* Layout Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Layout & Background</h3>
-                <p className="text-sm text-muted-foreground">Overall page and section backgrounds</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="background_color"
-                  label="Page Background"
-                  value={tenant.background_color || ''}
-                  description="Main page background"
-                />
-                <ColorPicker
-                  id="header_color"
-                  label="Header Background"
-                  value={tenant.header_color || ''}
-                  description="Top navigation bar"
-                />
-                <ColorPicker
-                  id="header_font_color"
-                  label="Header Text"
-                  value={tenant.header_font_color || ''}
-                  description="Text in header"
-                />
-                <ColorPicker
-                  id="border_color"
-                  label="Borders"
-                  value={tenant.border_color || ''}
-                  description="General borders"
-                />
-              </div>
-            </div>
+      {/* Account — every admin manages their own credentials */}
+      <AccountSettingsCard currentEmail={user?.email ?? ''} />
 
-            {/* Menu Card Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Menu Cards</h3>
-                <p className="text-sm text-muted-foreground">Customize how menu items appear on cards</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="cards_color"
-                  label="Card Background"
-                  value={tenant.cards_color || ''}
-                  description="Card background color"
-                />
-                <ColorPicker
-                  id="cards_border_color"
-                  label="Card Border"
-                  value={tenant.cards_border_color || ''}
-                  description="Card outline color"
-                />
-                <ColorPicker
-                  id="card_title_color"
-                  label="Card Title"
-                  value={tenant.card_title_color || ''}
-                  description="Item name on cards"
-                />
-                <ColorPicker
-                  id="card_price_color"
-                  label="Card Price"
-                  value={tenant.card_price_color || ''}
-                  description="Price on cards"
-                />
-                <ColorPicker
-                  id="card_description_color"
-                  label="Card Description"
-                  value={tenant.card_description_color || ''}
-                  description="Description text"
-                />
-              </div>
-            </div>
-
-            {/* Modal/Dialog Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Item Detail Modal</h3>
-                <p className="text-sm text-muted-foreground">Customize the popup when viewing item details</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="modal_background_color"
-                  label="Modal Background"
-                  value={tenant.modal_background_color || ''}
-                  description="Modal popup background"
-                />
-                <ColorPicker
-                  id="modal_title_color"
-                  label="Modal Title"
-                  value={tenant.modal_title_color || ''}
-                  description="Item name in modal"
-                />
-                <ColorPicker
-                  id="modal_price_color"
-                  label="Modal Price"
-                  value={tenant.modal_price_color || ''}
-                  description="Price in modal"
-                />
-                <ColorPicker
-                  id="modal_description_color"
-                  label="Modal Description"
-                  value={tenant.modal_description_color || ''}
-                  description="Description in modal"
-                />
-              </div>
-            </div>
-
-            {/* Button Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Buttons</h3>
-                <p className="text-sm text-muted-foreground">Customize button appearance</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="button_primary_color"
-                  label="Primary Button"
-                  value={tenant.button_primary_color || ''}
-                  description="Main action buttons"
-                />
-                <ColorPicker
-                  id="button_primary_text_color"
-                  label="Primary Button Text"
-                  value={tenant.button_primary_text_color || ''}
-                  description="Text on primary buttons"
-                />
-                <ColorPicker
-                  id="button_secondary_color"
-                  label="Secondary Button"
-                  value={tenant.button_secondary_color || ''}
-                  description="Secondary actions"
-                />
-                <ColorPicker
-                  id="button_secondary_text_color"
-                  label="Secondary Button Text"
-                  value={tenant.button_secondary_text_color || ''}
-                  description="Text on secondary buttons"
-                />
-              </div>
-            </div>
-
-            {/* Text Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Text Colors</h3>
-                <p className="text-sm text-muted-foreground">General text colors throughout the app</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="text_primary_color"
-                  label="Primary Text"
-                  value={tenant.text_primary_color || ''}
-                  description="Main content text"
-                />
-                <ColorPicker
-                  id="text_secondary_color"
-                  label="Secondary Text"
-                  value={tenant.text_secondary_color || ''}
-                  description="Less prominent text"
-                />
-                <ColorPicker
-                  id="text_muted_color"
-                  label="Muted Text"
-                  value={tenant.text_muted_color || ''}
-                  description="Subtle, disabled text"
-                />
-              </div>
-            </div>
-
-            {/* State Colors */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Status & State Colors</h3>
-                <p className="text-sm text-muted-foreground">Colors for success, warnings, errors, and links</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <ColorPicker
-                  id="success_color"
-                  label="Success"
-                  value={tenant.success_color || ''}
-                  description="Success messages"
-                />
-                <ColorPicker
-                  id="warning_color"
-                  label="Warning"
-                  value={tenant.warning_color || ''}
-                  description="Warning messages"
-                />
-                <ColorPicker
-                  id="error_color"
-                  label="Error"
-                  value={tenant.error_color || ''}
-                  description="Error messages"
-                />
-                <ColorPicker
-                  id="link_color"
-                  label="Links"
-                  value={tenant.link_color || ''}
-                  description="Clickable links"
-                />
-              </div>
-            </div>
-
-            {/* Shadow */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Effects</h3>
-                <p className="text-sm text-muted-foreground">Shadow and visual effects</p>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2 sm:col-span-2 lg:col-span-3">
-                  <Label htmlFor="shadow_color">Shadow Color (rgba format allowed)</Label>
-                  <Input
-                    id="shadow_color"
-                    name="shadow_color"
-                    defaultValue={tenant.shadow_color || ''}
-                    type="text"
-                    className="font-mono text-sm"
-                    placeholder="rgba(0, 0, 0, 0.1)"
-                  />
-                  <p className="text-xs text-muted-foreground">Example: rgba(0, 0, 0, 0.1)</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 flex gap-3">
-              <Button type="submit" size="lg">
-                💾 Save All Branding
-              </Button>
-              <ResetButton />
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Storefront Footer */}
-      <FooterManagerCard tenant={tenant} />
-
-      {/* Facebook Messenger Integration */}
-      <FacebookConnectionCard tenant={tenant} />
-
-      {/* Messenger Redirect Mode */}
-      <MessengerModeCard
-        tenantId={tenant.id}
-        currentMode={tenant.messenger_redirect_mode || (
-          // Default to 'direct' when no Facebook page is connected (only username configured)
-          // This enables pre-filled message mode by default for simpler setups
-          tenant.facebook_page_id ? 'webhook' : 'direct'
-        )}
-        currentRedirectEnabled={tenant.messenger_redirect_enabled ?? true}
-      />
-
-      {/* Operating Hours (drives advance-order scheduling slots) */}
-      <OperatingHoursCard
-        tenantId={tenant.id}
-        initialHours={tenant.operating_hours ?? null}
-        initialTimezone={tenant.timezone ?? null}
-      />
-
-      {/* Distance-Based Delivery Fee */}
-      <DeliverySettingsForm
-        tenantId={tenant.id}
-        tenantSlug={tenant.slug}
-        mapboxEnabled={tenant.mapbox_enabled ?? true}
-        lalamoveEnabled={tenant.lalamove_enabled ?? false}
-        initial={{
-          distance_delivery_enabled: tenant.distance_delivery_enabled ?? false,
-          delivery_price_per_km: tenant.delivery_price_per_km ?? null,
-          delivery_min_fee: tenant.delivery_min_fee ?? null,
-          delivery_radius_km: tenant.delivery_radius_km ?? null,
-          restaurant_address: tenant.restaurant_address ?? '',
-          restaurant_latitude: tenant.restaurant_latitude ?? null,
-          restaurant_longitude: tenant.restaurant_longitude ?? null,
-        }}
-      />
-
-      {tenant.flash_screen_feature_enabled && (
-        <FlashScreenCard
+      {/* Lalamove API keys — owner only, when the feature is enabled */}
+      {isOwner && tenant.lalamove_enabled && (
+        <LalamoveKeysCard
           tenantId={tenant.id}
-          initialSettings={{
-            isActive: tenant.flash_screen_is_active ?? false,
-            title: tenant.flash_screen_title || 'Loading menu...',
-            subtitle: tenant.flash_screen_subtitle || '',
-            imageUrl: tenant.flash_screen_image_url || '',
-            backgroundColor: tenant.flash_screen_background_color || '#111111',
-            textColor: tenant.flash_screen_text_color || '#ffffff',
-            durationMs: tenant.flash_screen_duration_ms || 2000,
-          }}
+          tenantSlug={tenantSlug}
+          hasExistingKeys={Boolean(tenant.lalamove_api_key && tenant.lalamove_secret_key)}
         />
       )}
 
-      {/* Account */}
+      {/* Branding moved to the Branding Studio workspace */}
       <Card>
         <CardHeader>
-          <CardTitle>Account</CardTitle>
-          <CardDescription>Manage your account preferences</CardDescription>
+          <CardTitle>Branding</CardTitle>
+          <CardDescription>
+            Colors, cards, and storefront appearance now live in the Branding Studio.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Contact the platform administrator to update your restaurant settings or advanced branding options.
-          </p>
+          <Button asChild variant="outline">
+            <Link href={`/${tenantSlug}/admin/branding`}>Open Branding Studio</Link>
+          </Button>
         </CardContent>
       </Card>
-    </div>
-  )
-}
 
-// Reusable ColorPicker component
-function ColorPicker({
-  id,
-  label,
-  value,
-  description
-}: {
-  id: string
-  label: string
-  value: string
-  description?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="font-medium">{label}</Label>
-      <div className="flex items-center gap-3">
-        <Input
-          id={id}
-          name={id}
-          defaultValue={value}
-          type="color"
-          className="h-11 w-14 p-1 border rounded-md cursor-pointer"
-        />
-        <div
-          className="h-11 w-14 rounded-md border border-gray-300 shadow-sm"
-          style={{ backgroundColor: value }}
-          aria-hidden="true"
-        />
-      </div>
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+      {hasSettingsAccess && (
+        <>
+          {/* Storefront Footer */}
+          <FooterManagerCard tenant={tenant} />
+
+          {/* Facebook Messenger Integration */}
+          <FacebookConnectionCard tenant={tenant} />
+
+          {/* Messenger Redirect Mode */}
+          <MessengerModeCard
+            tenantId={tenant.id}
+            currentMode={tenant.messenger_redirect_mode || (
+              // Default to 'direct' when no Facebook page is connected (only username configured)
+              // This enables pre-filled message mode by default for simpler setups
+              tenant.facebook_page_id ? 'webhook' : 'direct'
+            )}
+            currentRedirectEnabled={tenant.messenger_redirect_enabled ?? true}
+          />
+
+          {/* Operating Hours (drives advance-order scheduling slots) */}
+          <OperatingHoursCard
+            tenantId={tenant.id}
+            initialHours={tenant.operating_hours ?? null}
+            initialTimezone={tenant.timezone ?? null}
+          />
+
+          {/* Distance-Based Delivery Fee */}
+          <DeliverySettingsForm
+            tenantId={tenant.id}
+            tenantSlug={tenant.slug}
+            mapboxEnabled={tenant.mapbox_enabled ?? true}
+            lalamoveEnabled={tenant.lalamove_enabled ?? false}
+            initial={{
+              distance_delivery_enabled: tenant.distance_delivery_enabled ?? false,
+              delivery_price_per_km: tenant.delivery_price_per_km ?? null,
+              delivery_min_fee: tenant.delivery_min_fee ?? null,
+              delivery_radius_km: tenant.delivery_radius_km ?? null,
+              restaurant_address: tenant.restaurant_address ?? '',
+              restaurant_latitude: tenant.restaurant_latitude ?? null,
+              restaurant_longitude: tenant.restaurant_longitude ?? null,
+            }}
+          />
+
+          {tenant.flash_screen_feature_enabled && (
+            <FlashScreenCard
+              tenantId={tenant.id}
+              initialSettings={{
+                isActive: tenant.flash_screen_is_active ?? false,
+                title: tenant.flash_screen_title || 'Loading menu...',
+                subtitle: tenant.flash_screen_subtitle || '',
+                imageUrl: tenant.flash_screen_image_url || '',
+                backgroundColor: tenant.flash_screen_background_color || '#111111',
+                textColor: tenant.flash_screen_text_color || '#ffffff',
+                durationMs: tenant.flash_screen_duration_ms || 2000,
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   )

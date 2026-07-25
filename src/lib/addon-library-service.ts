@@ -11,7 +11,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { AddonLibraryEntry } from '@/types/database'
 import { addonLibraryEntrySchema, type AddonLibraryInput } from '@/lib/addon-library-utils'
@@ -49,7 +49,7 @@ export async function createAddonLibraryEntry(
   input: AddonLibraryInput,
   ctx?: ProvisioningCtx,
 ): Promise<AddonLibraryEntry> {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
   const validated = addonLibraryEntrySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
 
@@ -68,7 +68,7 @@ export async function updateAddonLibraryEntry(
   tenantId: string,
   input: AddonLibraryInput,
 ): Promise<AddonLibraryEntry> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const validated = addonLibraryEntrySchema.parse(input)
   const supabase = await createClient()
 
@@ -85,7 +85,7 @@ export async function updateAddonLibraryEntry(
 }
 
 export async function deleteAddonLibraryEntry(entryId: string, tenantId: string): Promise<void> {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = await createClient()
 
   const { error } = await supabase

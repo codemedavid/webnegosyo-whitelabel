@@ -3,7 +3,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import type { PaymentMethod } from '@/types/database'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
@@ -16,7 +16,7 @@ export interface PaymentMethodWithOrderTypes extends PaymentMethod {
 // ============================================
 
 export async function getPaymentMethodsByTenant(tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
   
@@ -42,7 +42,7 @@ export async function getPaymentMethodsByTenant(tenantId: string) {
 }
 
 export async function getPaymentMethodById(paymentMethodId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
   
@@ -77,7 +77,7 @@ export async function createPaymentMethod(
   requirePaymentProof: boolean = false,
   ctx?: ProvisioningCtx
 ) {
-  if (!ctx) await verifyTenantAdmin(tenantId)
+  if (!ctx) await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = ctx?.client ?? (await createClient())
 
@@ -141,7 +141,7 @@ export async function updatePaymentMethod(
     require_payment_proof?: boolean
   }
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const supabase = await createClient()
 
@@ -163,7 +163,7 @@ export async function updatePaymentMethodOrderTypes(
   tenantId: string,
   orderTypeIds: string[]
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
 
@@ -209,7 +209,7 @@ export async function updatePaymentMethodOrderTypes(
 }
 
 export async function deletePaymentMethod(paymentMethodId: string, tenantId: string) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
 
@@ -224,7 +224,7 @@ export async function deletePaymentMethod(paymentMethodId: string, tenantId: str
 }
 
 export async function reorderPaymentMethods(tenantId: string, paymentMethodIds: string[]) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
 
@@ -247,7 +247,7 @@ export async function togglePaymentMethodStatus(
   tenantId: string,
   isActive: boolean
 ) {
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, 'store_setup')
   
   const supabase = await createClient()
 

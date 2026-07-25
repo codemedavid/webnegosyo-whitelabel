@@ -157,5 +157,9 @@ export interface PosTenantCache {
   tenantSlug: string
   tenantName: string
   convexUrl: string | null
+  /** Staff permission snapshot; refreshed on every online login/restore. */
+  role?: string | null
+  isOwner?: boolean
+  permissions?: string[] | null
   updatedAt: number
 }

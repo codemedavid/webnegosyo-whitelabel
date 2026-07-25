@@ -38,10 +38,15 @@ export default async function AdminLayout({
   const tenant: Tenant = tenantData
 
   // Verify authorization - need to cast userRole to access properties
-  type UserRoleType = { role: string; tenant_id: string | null }
+  type UserRoleType = {
+    role: string
+    tenant_id: string | null
+    is_owner?: boolean | null
+    permissions?: string[] | null
+  }
   const role = userRole as UserRoleType
-  const isAuthorized = 
-    role.role === 'superadmin' || 
+  const isAuthorized =
+    role.role === 'superadmin' ||
     (role.role === 'admin' && role.tenant_id === tenant.id)
 
   if (!isAuthorized) {
@@ -49,7 +54,15 @@ export default async function AdminLayout({
   }
 
   return (
-    <AdminLayoutClient tenantSlug={tenantSlug} tenant={tenant}>
+    <AdminLayoutClient
+      tenantSlug={tenantSlug}
+      tenant={tenant}
+      caller={{
+        role: role.role,
+        is_owner: role.is_owner ?? false,
+        permissions: role.permissions ?? null,
+      }}
+    >
       {children}
     </AdminLayoutClient>
   )

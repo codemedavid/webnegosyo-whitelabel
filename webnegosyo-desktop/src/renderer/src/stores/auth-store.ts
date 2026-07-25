@@ -9,6 +9,10 @@ interface AuthState {
   tenantSlug: string | null
   tenantName: string | null
   convexUrl: string | null
+  /** Staff permission snapshot (null permissions = full access). */
+  role: string | null
+  isOwner: boolean
+  permissions: string[] | null
   error: string | null
   login: (email: string, password: string) => Promise<void>
   restore: () => Promise<void>
@@ -20,10 +24,13 @@ async function resolveTenant(userId: string): Promise<{
   tenantSlug: string
   tenantName: string
   convexUrl: string | null
+  role: string | null
+  isOwner: boolean
+  permissions: string[] | null
 }> {
   const { data: appUser, error: appUserError } = await supabase
     .from('app_users')
-    .select('tenant_id, role')
+    .select('tenant_id, role, is_owner, permissions')
     .eq('user_id', userId)
     .in('role', ['admin', 'superadmin'])
     .single()
@@ -47,6 +54,10 @@ async function resolveTenant(userId: string): Promise<{
     tenantSlug: tenant.slug as string,
     tenantName: tenant.name as string,
     convexUrl: (tenant.convex_deployment_url as string | null) ?? null,
+    role: (appUser.role as string | null) ?? null,
+    isOwner: Boolean((appUser as { is_owner?: boolean }).is_owner),
+    permissions:
+      ((appUser as { permissions?: string[] | null }).permissions as string[] | null) ?? null,
   }
 }
 
@@ -58,6 +69,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  role: null,
+  isOwner: false,
+  permissions: null,
   error: null,
 
   login: async (email, password) => {
@@ -119,6 +133,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           tenantSlug: cached.tenantSlug,
           tenantName: cached.tenantName,
           convexUrl: cached.convexUrl,
+          role: cached.role ?? null,
+          isOwner: cached.isOwner ?? false,
+          permissions: cached.permissions ?? null,
         })
         return
       }
@@ -136,6 +153,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       tenantSlug: null,
       tenantName: null,
       convexUrl: null,
+      role: null,
+      isOwner: false,
+      permissions: null,
       error: null,
     })
   },

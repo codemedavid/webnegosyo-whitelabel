@@ -58,7 +58,7 @@ export default function LoginScreen() {
 
       const { data: appUser, error: appUserError } = await supabase
         .from("app_users")
-        .select("tenant_id, role")
+        .select("tenant_id, role, is_owner, permissions")
         .eq("user_id", authData.user.id)
         .in("role", ["admin", "superadmin"])
         .single();
@@ -87,6 +87,9 @@ export default function LoginScreen() {
         convexUrl: tenant.convex_deployment_url ?? null,
         isLoading: false,
         isAuthenticated: true,
+        isOwner: appUser.is_owner ?? false,
+        permissions: appUser.permissions ?? null,
+        role: appUser.role ?? null,
       });
 
       router.replace("/(main)/dashboard");
