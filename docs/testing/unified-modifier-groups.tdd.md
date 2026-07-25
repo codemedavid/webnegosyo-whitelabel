@@ -153,16 +153,64 @@ GREEN evidence: `Tests: 7 passed, 7 total`.
 - GREEN: `feat: recipe-target mapping + inventory ingredients/recipes services (GREEN)` (2a9652c) — 7 passing.
 - Actions: `feat: inventory server actions (units/ingredients/recipes-by-target)` (e52875c).
 
-## Handoff — resume Phase 1a UI next session
-1. `src/app/[tenant]/admin/inventory/page.tsx` — mirror `admin/addons/page.tsx`
-   (resolve tenant via `getCachedTenantBySlug`, seed units via
-   `seedInventoryUnitsAction` on first load, render manager).
-2. `src/components/admin/inventory-manager.tsx` — units + ingredients tables
-   (client), calling the `inventory.ts` actions.
-3. Recipe-attach control in `modifier-groups-editor.tsx`'s `ModifierOptionRow`
-   (shown when `stock_mode==='recipe'`): ingredient picker + quantity/unit lines,
-   target `{ type: 'modifier_option', menuItemId, modifierOptionId: option.id }`,
-   persisted via `saveRecipeForTargetAction`. Needs `menuItemId` threaded into the
-   editor (new items have no id yet — attach recipe only after first save, or
-   disable with a hint).
-4. Add an Inventory nav link (gate behind `inventory_enabled`).
+## Phase 1a UI — inventory admin (DONE this session)
+
+Delivered the inventory admin surface on top of the tested backend:
+
+- **`src/lib/inventory/inventory-form.ts`** (TDD, 11/11) — pure draft↔input
+  coercion for the manager. `buildIngredientInput` / `buildUnitInput` trim text,
+  map blank sku/category → null, blank cost/reorder → 0, and reuse the service
+  zod schemas so client and server raise identical messages;
+  `ingredientToDraft` / `unitToDraft` round-trip a row into the edit dialog.
+- **`src/app/[tenant]/admin/inventory/page.tsx`** — server page, `notFound()`
+  when `inventory_enabled` is false, seeds default units on first visit
+  (idempotent) and loads ingredients.
+- **`src/components/admin/inventory-manager.tsx`** — client, Ingredients + Units
+  tabs with create/edit/delete dialogs over the `inventory.ts` actions.
+- **Sidebar** — "Inventory" link under Menu, hidden unless `inventory_enabled`;
+  `permissionForAdminPath` maps `inventory` → `menu` so restricted staff without
+  the menu permission don't see it. `Tenant.inventory_enabled` added to the
+  hand-written type (column already existed in DB / `supabase.ts`).
+
+### Test specification (Phase 1a UI)
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 8 | Ingredient draft trims name and coerces numeric strings | `buildIngredientInput › trims the name…` | unit | PASS |
+| 9 | Blank sku/category → null (not "") | `… maps blank sku and category to null` | unit | PASS |
+| 10 | Blank cost/reorder → 0 | `… treats blank cost and reorder level as zero` | unit | PASS |
+| 11 | is_prep / is_active flags pass through | `… passes through the is_prep and is_active flags` | unit | PASS |
+| 12 | Empty name → "Name is required" | `… throws a friendly error when the name is empty` | unit | PASS |
+| 13 | Missing stock unit → "A stock unit is required" | `… throws a friendly error when no stock unit is chosen` | unit | PASS |
+| 14 | Negative unit cost rejected | `… rejects a negative unit cost` | unit | PASS |
+| 15 | Ingredient row round-trips to an editable draft | `ingredientToDraft › round-trips…` | unit | PASS |
+| 16 | Unit draft trims text, coerces factor | `buildUnitInput › trims text and coerces…` | unit | PASS |
+| 17 | Conversion factor ≤ 0 rejected | `… throws when the conversion factor is zero or negative` | unit | PASS |
+| 18 | Unit row round-trips to an editable draft | `unitToDraft › round-trips…` | unit | PASS |
+
+RED: 4 fixture-uuid failures on first run (invalid RFC variant), then module-missing compile RED confirmed before impl.
+GREEN commit: `feat: inventory form-mapping helpers + inventory_enabled flag (GREEN)`.
+UI commit: `feat: inventory admin page + manager (units/ingredients CRUD)`.
+
+## Handoff — the one remaining Phase 1a item
+
+**Recipe-attach control inside `modifier-groups-editor.tsx`'s `ModifierOptionRow`**
+(shown when `stock_mode==='recipe'`): ingredient picker + quantity/unit lines,
+target `{ type: 'modifier_option', menuItemId, modifierOptionId: option.id }`,
+persisted via `saveRecipeForTargetAction` (already built + type-clean).
+
+Design notes for whoever picks this up:
+- Recipe persistence is a **separate server round-trip** from the product form's
+  "Save" button — the recipe is not part of the group JSON. Treat the attach
+  control as its own save/load, seeded from `getRecipeForTargetAction`.
+- A recipe keys on `modifier_option_id = option.id`, so it can only be attached
+  once **both** the menu item and the option are persisted (new items have no
+  `menuItemId`; unsaved options aren't in the DB yet). Gate the control on
+  `menuItemId` present + item saved, else show a "Save the item first" hint.
+- Thread `menuItemId` + the tenant's ingredients/units list down through
+  `ModifierGroupsEditor` → `ModifierGroupCard` → `ModifierOptionRow`.
+- Reuse `inventory-form`-style pure coercion for the component lines and TDD it
+  before wiring the UI.
+
+Migration `20260724120000_modifier_groups.sql` (adds `recipes.modifier_option_id`
++ the `modifier_option` target) still **not applied** to the live DB — required
+before a modifier-option recipe can be saved in production.
