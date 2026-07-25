@@ -1,6 +1,7 @@
 'use client'
 
-import { Plus, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Library, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,6 +38,10 @@ interface ModifierGroupsEditorProps {
   basePrice: number
   /** Enables the per-option recipe-attach control when inventory is on. */
   recipeContext?: ModifierRecipeContext
+  /** Optional slot rendered beside "Add Group" (e.g. the library picker). */
+  headerAction?: ReactNode
+  /** When provided, each group card gets a "Save to library" control. */
+  onSaveGroupToLibrary?: (group: ModifierGroup) => void
 }
 
 /**
@@ -46,7 +51,7 @@ interface ModifierGroupsEditorProps {
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
-export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext }: ModifierGroupsEditorProps) {
+export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, headerAction, onSaveGroupToLibrary }: ModifierGroupsEditorProps) {
   const addGroup = () => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
   }
@@ -107,10 +112,13 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
             option.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={addGroup}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Group
-        </Button>
+        <div className="flex items-center gap-2">
+          {headerAction}
+          <Button type="button" variant="outline" size="sm" onClick={addGroup}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Group
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {groups.length === 0 ? (
@@ -125,6 +133,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 group={group}
                 basePrice={basePrice}
                 recipeContext={recipeContext}
+                onSaveToLibrary={onSaveGroupToLibrary ? () => onSaveGroupToLibrary(group) : undefined}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
                 onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
@@ -148,6 +157,7 @@ interface ModifierGroupCardProps {
   group: ModifierGroup
   basePrice: number
   recipeContext?: ModifierRecipeContext
+  onSaveToLibrary?: () => void
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
   onToggleRequired: (required: boolean) => void
@@ -166,6 +176,7 @@ function ModifierGroupCard({
   group,
   basePrice,
   recipeContext,
+  onSaveToLibrary,
   onRemoveGroup,
   onUpdateName,
   onToggleRequired,
@@ -225,15 +236,29 @@ function ModifierGroupCard({
             )}
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onRemoveGroup}
-          className="text-red-500 hover:text-red-600"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onSaveToLibrary && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onSaveToLibrary}
+              title="Save this group as reusable in your library"
+            >
+              <Library className="mr-1 h-4 w-4" />
+              Save to library
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onRemoveGroup}
+            className="text-red-500 hover:text-red-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="ml-4 space-y-3 border-l-2 pl-4">

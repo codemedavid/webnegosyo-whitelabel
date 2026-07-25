@@ -16,9 +16,12 @@ import { VariationGroupsEditor } from '@/components/admin/variation-groups-edito
 import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor } from '@/components/admin/modifier-groups-editor'
+import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
+import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
+import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -252,6 +255,36 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
       }
       return merged
     })
+  }
+
+  const attachGroupsFromLibrary = (entries: Parameters<typeof attachEntriesToGroups>[1]) => {
+    setModifierGroups((prev) => {
+      const merged = attachEntriesToGroups(prev, entries)
+      if (merged.length === prev.length) {
+        toast.info('Those groups are already on this item')
+      } else {
+        toast.success('Added from library')
+      }
+      return merged
+    })
+  }
+
+  const saveGroupToLibrary = async (group: ModifierGroup) => {
+    const draft = buildLibraryDraftFromGroup(group)
+    if (!draft.name.trim()) {
+      toast.error('Give the group a name before saving it to the library')
+      return
+    }
+    if (draft.options.length === 0) {
+      toast.error('Add at least one option before saving to the library')
+      return
+    }
+    const result = await createModifierGroupLibraryEntryAction(tenantId, tenantSlug, draft)
+    if (!result.success) {
+      toast.error(result.error ?? 'Failed to save group to library')
+      return
+    }
+    toast.success(`"${draft.name}" saved to your modifier library`)
   }
 
   // New Variation Types handlers
@@ -555,6 +588,8 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             menuItemId: item?.id,
             inventoryEnabled: inventoryEnabled ?? false,
           }}
+          headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
+          onSaveGroupToLibrary={saveGroupToLibrary}
         />
       ) : (
       <>
