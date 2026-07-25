@@ -206,6 +206,7 @@ export default async function ProductDetailPage({ params }: Props) {
                     hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
                     upsellBundles={upsellBundles}
                     bundlesEnabled={!!tenant.bundles_enabled}
+                    modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
                     isBrandAdmin={isBrandAdmin}
                 />
                 {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
