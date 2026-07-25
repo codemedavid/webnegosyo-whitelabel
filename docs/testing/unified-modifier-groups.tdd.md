@@ -191,26 +191,62 @@ RED: 4 fixture-uuid failures on first run (invalid RFC variant), then module-mis
 GREEN commit: `feat: inventory form-mapping helpers + inventory_enabled flag (GREEN)`.
 UI commit: `feat: inventory admin page + manager (units/ingredients CRUD)`.
 
-## Handoff — the one remaining Phase 1a item
+## Phase 1a recipe-attach control (DONE this session)
 
-**Recipe-attach control inside `modifier-groups-editor.tsx`'s `ModifierOptionRow`**
-(shown when `stock_mode==='recipe'`): ingredient picker + quantity/unit lines,
-target `{ type: 'modifier_option', menuItemId, modifierOptionId: option.id }`,
-persisted via `saveRecipeForTargetAction` (already built + type-clean).
+Wired the recipe-attach control onto recipe-stock modifier options, closing
+Phase 1a.
 
-Design notes for whoever picks this up:
-- Recipe persistence is a **separate server round-trip** from the product form's
-  "Save" button — the recipe is not part of the group JSON. Treat the attach
-  control as its own save/load, seeded from `getRecipeForTargetAction`.
-- A recipe keys on `modifier_option_id = option.id`, so it can only be attached
-  once **both** the menu item and the option are persisted (new items have no
-  `menuItemId`; unsaved options aren't in the DB yet). Gate the control on
-  `menuItemId` present + item saved, else show a "Save the item first" hint.
-- Thread `menuItemId` + the tenant's ingredients/units list down through
-  `ModifierGroupsEditor` → `ModifierGroupCard` → `ModifierOptionRow`.
-- Reuse `inventory-form`-style pure coercion for the component lines and TDD it
-  before wiring the UI.
+- **`src/lib/inventory/recipe-form.ts`** (TDD, 9/9) — pure form logic:
+  `buildRecipeInput` drops fully-blank lines, coerces quantities, maps blank
+  notes→null and validates via `recipeInputSchema`; `recipeFormFromData`
+  round-trips an existing recipe (null → one blank line); `estimateRecipeCost`
+  converts each line to the ingredient's stock unit × unit cost, skipping
+  unknown/cross-dimension lines rather than throwing.
+- **`src/components/admin/modifier-option-recipe-editor.tsx`** — loads
+  ingredients/units + existing recipe via the `inventory.ts` actions on mount,
+  edits component lines with a live cost estimate, saves via
+  `saveRecipeForTargetAction` (empty → `deleteRecipeForTargetAction`). Its own
+  server round-trip, independent of the product form's Save.
+- **`modifier-groups-editor.tsx`** — `ModifierRecipeContext` threaded
+  `ModifierGroupsEditor → ModifierGroupCard → ModifierOptionRow`. The control
+  renders when `stock_mode==='recipe'` + `inventoryEnabled` + `menuItemId`; falls
+  back to "enable Inventory" / "save the item first" hints otherwise.
+- **`menu-item-form.tsx`** + both menu pages (`menu/new`, `menu/[id]`) pass
+  `inventoryEnabled` / `recipeContext` (`menuItemId = item?.id`, undefined for
+  new items).
 
-Migration `20260724120000_modifier_groups.sql` (adds `recipes.modifier_option_id`
-+ the `modifier_option` target) still **not applied** to the live DB — required
-before a modifier-option recipe can be saved in production.
+### Test specification (Phase 1a recipe-attach)
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 19 | Blank trailing lines dropped, quantity coerced, notes trimmed | `buildRecipeInput › drops fully-blank trailing lines…` | unit | PASS |
+| 20 | Blank notes → null | `… maps blank notes to null` | unit | PASS |
+| 21 | Ingredient chosen but no unit → "A unit is required" | `… rejects a line with a chosen ingredient but no unit` | unit | PASS |
+| 22 | Blank quantity on a filled line → 0 | `… treats blank quantity on a filled line as zero` | unit | PASS |
+| 23 | No recipe yet → one blank line | `recipeFormFromData › returns a single blank line…` | unit | PASS |
+| 24 | Existing recipe round-trips to string lines | `… round-trips an existing recipe…` | unit | PASS |
+| 25 | Cost = qty→stock-unit × unit cost | `estimateRecipeCost › sums quantity converted…` | unit | PASS |
+| 26 | Unknown ingredient/unit lines ignored | `… ignores lines whose ingredient or unit is unknown` | unit | PASS |
+| 27 | All-blank form → 0, no throw | `… returns 0 for an all-blank form…` | unit | PASS |
+
+RED: module-missing compile RED, then 2 fixture-uuid failures fixed (impl correct).
+GREEN commit: `feat: recipe-form helpers for modifier-option recipe editor (GREEN)`.
+UI commit: `feat: recipe-attach control on recipe-stock modifier options`.
+
+## Migration status — APPLIED
+`20260724120000_modifier_groups.sql` **applied to the live DB via Supabase MCP**
+this session (idempotent, additive). Verified: `menu_items.modifier_groups`,
+`recipes.modifier_option_id`, `tenants.modifier_groups_enabled`, the
+`idx_recipes_modifier_option_uq` partial unique index, and the extended
+`recipes_target_type_ck` check (now includes `modifier_option`) all present.
+`inventory_core` + `staff_management` were already applied. Production is now
+ready for modifier-option recipes; no tenant has `inventory_enabled` /
+`modifier_groups_enabled` on yet.
+
+## Known gaps / follow-ups (post Phase 1a)
+- Component-level React tests for the two new client editors are not included
+  (jsdom + server-action mocking); the pure logic they delegate to is fully
+  TDD-covered (inventory-form 11/11, recipe-form 9/9).
+- Pre-existing unrelated failures in `webnegosyo-app/lib/printer-native-load` and
+  `order-item-images` (mobile native-module mocking) — untouched by this work.
+- Later phases still pending: storefront rendering (2), stock ledger (3),
+  desktop POS (4), mobile (5); plus Phase 1c Modifier Library.
