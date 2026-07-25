@@ -250,3 +250,74 @@ ready for modifier-option recipes; no tenant has `inventory_enabled` /
   `order-item-images` (mobile native-module mocking) — untouched by this work.
 - Later phases still pending: storefront rendering (2), stock ledger (3),
   desktop POS (4), mobile (5); plus Phase 1c Modifier Library.
+
+---
+
+# Phase 2 (Storefront) — modifier-groups rendering on the product page
+
+**Scope this session (user-chosen "bounded slice"):** pure selection adapter +
+`useModifierGroups` hook + `ModifierGroupsSelector` presentational component,
+wired into the **main product detail page** (`product-detail-content.tsx`) with a
+storefront read of `modifier_groups_enabled`. Secondary surfaces
+(`item-detail-modal.tsx`, `product-detail-sheet.tsx`) explicitly deferred.
+
+## Design — adapter over the existing cart pipeline
+Rather than extend `CartItem` / `calculateCartItemSubtotal`, the selection is
+projected back into the legacy `selected_variations` / `selected_addons` shapes
+at the boundary (`mapSelectionToCartFormat`). Single-select groups
+(`max_select === 1`) → a variation entry; multi-select groups → add-ons whose
+`price` is the option `price_modifier`. Result: pricing, cart-id generation,
+order-item unit price, and the messenger message all work unchanged, and the
+cart subtotal equals `computeModifierSubtotal` exactly (asserted in a parity
+test).
+
+## Zero-regression gating
+The new path activates only when `modifier_groups_enabled` **and** the item
+carries an explicit `modifier_groups` payload (`useModifierGroups().active`).
+Legacy items (`variation_types` / `variations` / `addons`) take the untouched
+existing path — the three legacy sections are gated behind `!useGroups`.
+
+## Test specification
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|--------------------|-----------|------|--------|
+| 28 | Single-select default = is_default (else first available when required); optional single-select empty | `tests/unit/modifier-groups-cart.test.ts` | unit | PASS |
+| 29 | Multi-select default = only is_default options | same | unit | PASS |
+| 30 | Default skips an unavailable option for a required single-select | same | unit | PASS |
+| 31 | Single-select toggle replaces; multi toggles; capped multi ignores over-cap add; removal always allowed | same | unit | PASS |
+| 32 | `toggleOption` never mutates its input | same | unit | PASS |
+| 33 | Single-select → `selected_variations`; multi → `selected_addons` (price = price_modifier) | same | unit | PASS |
+| 34 | Cart subtotal via `calculateCartItemSubtotal` == `computeModifierSubtotal` (pricing parity) | same | unit | PASS |
+| 35 | `validateAllGroups` reports the first unmet required group | same | unit | PASS |
+| 36 | Hook inactive when no modifier_groups; active + seeds defaults otherwise | `tests/unit/hooks/useModifierGroups.test.ts` | unit | PASS |
+| 37 | Hook total price = (base + defaults) × qty; discounted price used as base | same | unit | PASS |
+| 38 | Hook toggle (single replace / multi add) reflects in price + cartFormat | same | unit | PASS |
+| 39 | Hook validate: valid by default, invalid once a required group is cleared | same | unit | PASS |
+| 40 | Hook quantity clamps to [1, 99] | same | unit | PASS |
+| 41 | Selector renders group names + option labels; forwards `onToggle(group, id)` | `tests/unit/modifier-groups-selector.test.tsx` | unit | PASS |
+| 42 | Selector marks selected option `aria-pressed`; required/optional indicator shown | same | unit | PASS |
+| 43 | Selector disables unavailable (sold-out) option and suppresses its toggle | same | unit | PASS |
+| 44 | Selector renders nothing for empty groups | same | unit | PASS |
+
+RED→GREEN checkpoints (this branch):
+- `test: RED spec for storefront modifier-groups selection adapter`
+- `feat: storefront modifier-groups selection adapter (GREEN)`
+- `feat: useModifierGroups storefront hook (GREEN)`
+- `feat: ModifierGroupsSelector presentational storefront component (GREEN)`
+- `feat: render unified modifier groups on the product detail page`
+
+Suite result: adapter 19/19, hook 9/9, selector 7/7; `product-detail-content`
+render suite 9/9 still green (no regression). Changed files typecheck + lint
+clean.
+
+## Known gaps / follow-ups (Phase 2)
+- **`product-detail-sheet.tsx`** (menu-grid quick-view) is a thin wrapper around
+  `ProductDetailContent`; it does NOT yet forward `modifierGroupsEnabled`, so
+  groups won't appear in the sheet until that one-line prop forward is added.
+  Deferred per the bounded-slice scope.
+- **`item-detail-modal.tsx`** has its own selection UI (calls
+  `calculateCartItemSubtotal` directly) and is not yet modifier-groups aware.
+  Deferred.
+- Component-level render test of `product-detail-content` in the `useGroups`
+  branch is not added; the branch delegates entirely to the hook + selector,
+  which are unit-covered (tests 36–44).
