@@ -17,8 +17,10 @@ jest.mock('@/lib/admin-service', () => ({
   createMenuItem: jest.fn(),
   updateMenuItemImage: jest.fn(),
   setMenuItemImageFromData: jest.fn(),
+  setMenuItemImageFromUrl: jest.fn(),
   updateMenuItemFields: jest.fn(),
   listMenuItemsForProvisioning: jest.fn(),
+  listCategoriesForProvisioning: jest.fn(),
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
@@ -40,7 +42,7 @@ import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-comp
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/tenants-service') as any
-const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, updateMenuItemFields, listMenuItemsForProvisioning } = jest.requireMock('@/lib/admin-service') as any
+const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
@@ -57,10 +59,14 @@ beforeEach(() => {
   createMenuItem.mockReset().mockResolvedValue({ id: 'item_1' } as never)
   updateMenuItemImage.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://cdn.example.com/biscoff.png' } as never)
   setMenuItemImageFromData.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://ik.imagekit.io/demo/menu-items/biscoff.png' } as never)
+  setMenuItemImageFromUrl.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://ik.imagekit.io/demo/menu-items/d1.png' } as never)
   updateMenuItemFields.mockReset().mockResolvedValue({ id: 'item_1', description: 'Updated description text' } as never)
   listMenuItemsForProvisioning.mockReset().mockResolvedValue([
     { id: 'item_1', name: 'Biscoff Frappe', image_url: null },
     { id: 'item_2', name: 'Strawberry Soda', image_url: null },
+  ] as never)
+  listCategoriesForProvisioning.mockReset().mockResolvedValue([
+    { id: 'cat_1', name: 'Drinks', order: 0, is_active: true },
   ] as never)
   saveBrandingAction.mockReset().mockResolvedValue({ success: true } as never)
   createPaymentMethod.mockReset().mockResolvedValue({ id: 'pm_1' } as never)
@@ -74,6 +80,7 @@ describe('provisioning ops registry', () => {
     expect(names).toEqual(expect.arrayContaining([
       'create_tenant', 'add_category', 'add_menu_item', 'update_branding', 'configure_integration',
       'list_menu_items', 'update_menu_item_image', 'upload_menu_item_image', 'update_menu_item',
+      'import_menu_item_image_from_url', 'list_categories',
     ]))
     for (const op of ops) {
       expect(typeof op.description).toBe('string')
@@ -186,6 +193,50 @@ describe('executeOp dispatch', () => {
       executeOp('upload_menu_item_image', ctx, { tenantId: TENANT, itemId: ITEM }),
     ).rejects.toThrow()
     expect(setMenuItemImageFromData).not.toHaveBeenCalled()
+  })
+
+  it('import_menu_item_image_from_url re-hosts a remote link on ImageKit for an existing item', async () => {
+    await executeOp('import_menu_item_image_from_url', ctx, {
+      tenantId: TENANT,
+      itemId: ITEM,
+      sourceUrl: 'https://drive.google.com/file/d/1AbCdEf/view?usp=sharing',
+      fileName: 'D1-sizzling-sisig.png',
+    })
+    expect(setMenuItemImageFromUrl).toHaveBeenCalledWith(
+      ITEM,
+      TENANT,
+      'https://drive.google.com/file/d/1AbCdEf/view?usp=sharing',
+      'D1-sizzling-sisig.png',
+      ctx,
+    )
+  })
+
+  it('import_menu_item_image_from_url works without a fileName hint', async () => {
+    await executeOp('import_menu_item_image_from_url', ctx, {
+      tenantId: TENANT,
+      itemId: ITEM,
+      sourceUrl: 'https://cdn.example.com/menu/d1.png',
+    })
+    expect(setMenuItemImageFromUrl).toHaveBeenCalledWith(
+      ITEM,
+      TENANT,
+      'https://cdn.example.com/menu/d1.png',
+      undefined,
+      ctx,
+    )
+  })
+
+  it('import_menu_item_image_from_url rejects a non-URL source', async () => {
+    await expect(
+      executeOp('import_menu_item_image_from_url', ctx, { tenantId: TENANT, itemId: ITEM, sourceUrl: 'nope' }),
+    ).rejects.toThrow()
+    expect(setMenuItemImageFromUrl).not.toHaveBeenCalled()
+  })
+
+  it('list_categories routes to listCategoriesForProvisioning so category_id can be resolved by name', async () => {
+    const result = await executeOp('list_categories', ctx, { tenantId: TENANT })
+    expect(listCategoriesForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Drinks' })]))
   })
 
   it('update_menu_item routes editable fields (minus tenantId/itemId) to updateMenuItemFields with ctx', async () => {
