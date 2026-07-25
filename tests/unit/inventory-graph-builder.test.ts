@@ -96,6 +96,45 @@ describe('resolveConfiguredRecipeIds', () => {
     expect(resolved.baseRecipeId).toBeNull()
   })
 
+  // ---- Unified modifier options ------------------------------------------
+  // Modifier options are option deltas, so their recipes join optionRecipeIds
+  // and the return shape stays identical for every existing caller.
+
+  const modRecipe: Recipe = {
+    id: 'modSpicy', tenant_id: 't', target_type: 'modifier_option', menu_item_id: 'm1',
+    variation_option_id: null, addon_id: null, modifier_option_id: 'mod_spicy',
+    prep_item_id: null, yield_quantity: null, yield_unit_id: null, notes: null,
+    created_at: '', updated_at: '',
+  }
+
+  test('includes the recipe of a selected unified modifier option', () => {
+    const resolved = resolveConfiguredRecipeIds('m1', [], [], [...recipes, modRecipe], ['mod_spicy'])
+    expect(resolved.optionRecipeIds).toEqual(['modSpicy'])
+  })
+
+  test('excludes modifier options that were not selected', () => {
+    const resolved = resolveConfiguredRecipeIds('m1', [], [], [...recipes, modRecipe], [])
+    expect(resolved.optionRecipeIds).toEqual([])
+  })
+
+  test('excludes a modifier option belonging to a different menu item', () => {
+    const foreign: Recipe = { ...modRecipe, id: 'foreign', menu_item_id: 'm2' }
+    const resolved = resolveConfiguredRecipeIds('m1', [], [], [...recipes, foreign], ['mod_spicy'])
+    expect(resolved.optionRecipeIds).toEqual([])
+  })
+
+  test('combines legacy variation options and unified modifier options', () => {
+    const resolved = resolveConfiguredRecipeIds(
+      'm1', ['opt_large'], [], [...recipes, modRecipe], ['mod_spicy'],
+    )
+    expect(resolved.optionRecipeIds).toEqual(['optL', 'modSpicy'])
+  })
+
+  test('omitting the modifier argument keeps the pre-existing behavior', () => {
+    const resolved = resolveConfiguredRecipeIds('m1', ['opt_large'], ['addon_cheese'], [...recipes, modRecipe])
+    expect(resolved).toEqual({ baseRecipeId: 'base', optionRecipeIds: ['optL'], addonRecipeIds: ['addC'] })
+  })
+
   test('composes end-to-end with computeConfiguredCost', () => {
     const flour = item({ id: 'flour', stock_unit_id: 'u_g', unit_cost: 0.05 })
     const cheese = item({ id: 'cheese', stock_unit_id: 'u_g', unit_cost: 0.3 })
