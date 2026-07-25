@@ -311,13 +311,17 @@ render suite 9/9 still green (no regression). Changed files typecheck + lint
 clean.
 
 ## Known gaps / follow-ups (Phase 2)
-- **`product-detail-sheet.tsx`** (menu-grid quick-view) is a thin wrapper around
-  `ProductDetailContent`; it does NOT yet forward `modifierGroupsEnabled`, so
-  groups won't appear in the sheet until that one-line prop forward is added.
-  Deferred per the bounded-slice scope.
-- **`item-detail-modal.tsx`** has its own selection UI (calls
-  `calculateCartItemSubtotal` directly) and is not yet modifier-groups aware.
-  Deferred.
+- **`product-detail-sheet.tsx`** (menu-grid quick-view) — DONE. It wraps
+  `ProductDetailContent` and now forwards `modifier_groups_enabled` from the
+  tenant, so groups render in the primary quick-view path too. Commit:
+  `feat: forward modifier_groups_enabled to the menu quick-view sheet`.
+- **`item-detail-modal.tsx`** — STILL DEFERRED. It has its own ~500-line
+  selection UI (calls `calculateCartItemSubtotal` directly) and doubles as the
+  **cart-line editor** (seeds from `selected_variations`/`selected_addons`).
+  Making it modifier-groups aware needs a NEW reverse adapter
+  (`cartFormat → ModifierSelection`, the inverse of `mapSelectionToCartFormat`)
+  for edit-mode round-trip, plus selector integration. Genuine additional
+  surface, not a one-liner.
 - Component-level render test of `product-detail-content` in the `useGroups`
   branch is not added; the branch delegates entirely to the hook + selector,
   which are unit-covered (tests 36–44).
