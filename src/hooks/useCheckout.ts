@@ -33,6 +33,8 @@ import {
   formatScheduledFor,
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
+import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
+import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
 import { getPaymentProofError } from '@/lib/payment-proof'
@@ -158,6 +160,11 @@ export function useCheckout(tenantSlug: string) {
     () => normalizeOperatingHours(tenant?.operating_hours ?? null),
     [tenant?.operating_hours],
   )
+  // Operating-hours enforcement. A scheduled (advance) order is always allowed —
+  // pre-ordering while the shop is shut is the point of the feature — so only
+  // ASAP checkouts are gated.
+  const openStatus = useStoreOpenStatus(tenant)
+
   const scheduleDates = advanceConfig.enabled
     ? generateScheduleDates(advanceConfig, now, operatingHours).filter(d => generateTimeSlots(advanceConfig, d.value, now, operatingHours).length > 0)
     : []
@@ -171,6 +178,21 @@ export function useCheckout(tenantSlug: string) {
   const scheduledForISO = scheduledDateObj ? scheduledDateObj.toISOString() : null
   const scheduledForLabel = scheduledDateObj ? formatScheduledFor(scheduledDateObj) : null
   const isScheduleValid = scheduledDateObj ? isValidScheduledTime(advanceConfig, scheduledDateObj, now, operatingHours) : true
+
+  /**
+   * Refuse an ASAP checkout while the shop is outside its operating hours.
+   * Returns true (and surfaces the reason) when the submit must be aborted.
+   * Scheduled orders bypass this — see `openStatus` above.
+   */
+  const isOrderingClosed = (): boolean => {
+    if (!openStatus.isOrderingBlocked || isScheduling) return false
+    toast.error(
+      openStatus.nextOpenLabel
+        ? `${STORE_CLOSED_MESSAGE}. Opens ${openStatus.nextOpenLabel}.`
+        : `${STORE_CLOSED_MESSAGE}.`
+    )
+    return true
+  }
 
   // Derived totals shared by every design so they never recompute the fee/total rules.
   const validDeliveryFee = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address)
@@ -568,6 +590,7 @@ export function useCheckout(tenantSlug: string) {
   // written to Convex or Supabase here — the vendor scanner is the sole writer.
   const handleQrHandoff = () => {
     if (!tenant || isProcessing || !orderType) return
+    if (isOrderingClosed()) return
 
     setIsProcessing(true)
 
@@ -826,6 +849,7 @@ export function useCheckout(tenantSlug: string) {
 
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
+    if (isOrderingClosed()) return
 
     // Enforce per-method payment-proof requirement (screenshot OR reference).
     const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
@@ -1131,6 +1155,8 @@ export function useCheckout(tenantSlug: string) {
     tenantSlug,
     router,
     branding,
+    // operating-hours enforcement (designs render the closed notice)
+    openStatus,
     // tenant / loading
     tenant,
     isLoading,

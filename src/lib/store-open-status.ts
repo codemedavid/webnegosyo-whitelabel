@@ -232,6 +232,15 @@ export function getStoreOpenStatus(
 /** Copy shown wherever an order is refused because the shop is shut. */
 export const STORE_CLOSED_MESSAGE = 'Ordering is currently closed'
 
+export interface ClosedOrderOptions {
+  /**
+   * The order is scheduled for a future time (advance / pre-order). Closing time
+   * gates ASAP orders only — pre-ordering while the shop is shut is the entire
+   * point of the advance-order system, so these are always allowed through.
+   */
+  isScheduled?: boolean
+}
+
 /**
  * Server-side order guard. Returns a customer-facing error string when the order
  * must be refused, or null when it may proceed. This is the only enforcement a
@@ -240,7 +249,10 @@ export const STORE_CLOSED_MESSAGE = 'Ordering is currently closed'
 export function getClosedOrderError(
   source: StoreHoursSource | null | undefined,
   now: Date = new Date(),
+  options: ClosedOrderOptions = {},
 ): string | null {
+  if (options.isScheduled) return null
+
   const status = getStoreOpenStatus(source, now)
   if (!status.isOrderingBlocked) return null
   return status.nextOpenLabel

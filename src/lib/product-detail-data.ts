@@ -66,6 +66,10 @@ export interface SelectedTenant {
     pairing_rules_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
     convex_deployment_url?: string | null
+    // Operating hours + storefront enforcement (see src/lib/store-open-status.ts)
+    operating_hours?: unknown
+    timezone?: string | null
+    enforce_operating_hours?: boolean | null
     convex_schema_version?: number
     // Search bar branding fields
     search_bar_enabled?: boolean

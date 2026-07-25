@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import { AnnouncementBar } from '@/components/customer/announcement-bar'
+import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
+import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
+import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
@@ -155,8 +158,20 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   const [currentSlide, setCurrentSlide] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
 
+  // Operating-hours enforcement. Resolves after mount (the page is ISR-cached, so
+  // the server's answer would be stale) and re-checks every minute.
+  const openStatus = useStoreOpenStatus(tenant)
+
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
+    if (openStatus.isOrderingBlocked) {
+      toast.error(
+        openStatus.nextOpenLabel
+          ? `${STORE_CLOSED_MESSAGE}. Opens ${openStatus.nextOpenLabel}.`
+          : `${STORE_CLOSED_MESSAGE}.`
+      )
+      return
+    }
     if (isBundleMenuItem(item)) {
       setSelectedBundle(item._bundleData)
       return
@@ -183,7 +198,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       // Customers get the instant bottom sheet instead of a route navigation.
       setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin])
+  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
 
   // Device resolution: the Branding Studio's per-device choice wins over any
   // legacy mobile_* column, which in turn wins over the desktop column.
@@ -328,6 +343,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       )}
 
       <AnnouncementBar tenant={tenant} />
+      <StoreClosedBanner status={openStatus} />
       {desktopHeader === mobileHeader ? (
         <MenuHeaderRenderer
           template={desktopHeader}

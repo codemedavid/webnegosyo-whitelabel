@@ -17,6 +17,9 @@ import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpse
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant, useIsMobileViewport } from '@/hooks/use-branding-preview'
+import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
+import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
+import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -305,6 +308,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // server, so when a preview draft is streaming we merge it over the tenant
     // and recompute branding client-side for real-time accuracy.
     const tenant = useBrandingPreviewTenant(tenantProp)
+    // Operating-hours enforcement: resolves after mount (this page is cached), so
+    // the closed notice and the disabled actions appear a frame after hydration.
+    const openStatus = useStoreOpenStatus(tenant)
     const previewDraft = useBrandingPreviewDraft()
     const branding = useMemo(
         () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
@@ -631,6 +637,14 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [bundlesEnabled, upsellBundles, item.category_id])
 
     const handleAddToCart = useCallback((skipNavigation = false) => {
+        if (openStatus.isOrderingBlocked) {
+            toast.error(
+                openStatus.nextOpenLabel
+                    ? `${STORE_CLOSED_MESSAGE}. Opens ${openStatus.nextOpenLabel}.`
+                    : `${STORE_CLOSED_MESSAGE}.`
+            )
+            return
+        }
         // Check required selections. Modifier-groups path validates via the
         // adapter; the legacy path checks required variation types directly.
         if (useGroups) {
@@ -682,7 +696,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -1298,6 +1312,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     </div>
                 </div>
 
+                <StoreClosedBanner status={openStatus} />
+
                 {/* Action Buttons */}
                 <div className="relative px-5 pb-5 pt-2 flex gap-3">
                     <AdminEditPencil
@@ -1311,7 +1327,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         variant="outline"
                         data-branding-scope="product/buy-now"
                         onClick={handleBuyNow}
-                        className="flex-1 h-12 font-semibold text-base border-2 transition-all active:scale-[0.98]"
+                        disabled={openStatus.isOrderingBlocked}
+                        className="flex-1 h-12 font-semibold text-base border-2 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                         style={dynamicStyles?.buttonBuyNow}
                     >
                         {themeColors.buyNowButtonLabel}
@@ -1320,7 +1337,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         type="button"
                         data-branding-scope="product/add-to-cart"
                         onClick={() => handleAddToCart(false)}
-                        className="flex-1 h-12 font-semibold text-base transition-all active:scale-[0.98]"
+                        disabled={openStatus.isOrderingBlocked}
+                        className="flex-1 h-12 font-semibold text-base transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                         style={dynamicStyles?.buttonAddToCart}
                     >
                         {themeColors.addToCartButtonLabel}

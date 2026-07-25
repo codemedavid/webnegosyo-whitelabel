@@ -4,6 +4,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
@@ -355,6 +356,24 @@ export async function createOrder(
 
   const supabase = await createClient()
 
+  // SERVER-SIDE OPERATING-HOURS VALIDATION: the client already blocks the UI, but
+  // that is bypassable. This is the authoritative check. Scheduled (advance) orders
+  // are exempt — pre-ordering while the shop is shut is the point of that feature.
+  const { data: hoursRow } = await supabase
+    .from('tenants')
+    .select('operating_hours, timezone, enforce_operating_hours')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  const closedError = getClosedOrderError(
+    hoursRow as StoreHoursSource | null,
+    new Date(),
+    { isScheduled: !!scheduledForISO },
+  )
+  if (closedError) {
+    throw new Error(closedError)
+  }
+
   // SERVER-SIDE PRICE VALIDATION: Verify prices against database
   const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
   const { data: dbItems, error: priceCheckError } = await supabase
@@ -611,6 +630,25 @@ export async function createOrderConvex(
   serviceChargeAmount?: number,
   scheduledForISO?: string
 ) {
+  // Same authoritative operating-hours guard as the Supabase path — a Convex tenant
+  // must not be the one storefront where a closed shop still takes ASAP orders.
+  // Hours live in Supabase (the tenants table) regardless of the order backend.
+  const supabase = await createClient()
+  const { data: hoursRow } = await supabase
+    .from('tenants')
+    .select('operating_hours, timezone, enforce_operating_hours')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  const closedError = getClosedOrderError(
+    hoursRow as StoreHoursSource | null,
+    new Date(),
+    { isScheduled: !!scheduledForISO },
+  )
+  if (closedError) {
+    throw new Error(closedError)
+  }
+
   const convex = createConvexServerClient(convexUrl, convexKey)
 
   // Convex `orders` has no scheduled_for column, but customerData is `v.any()`, so we

@@ -746,7 +746,8 @@ export async function updateTenantMessengerRedirectEnabledAction(
 export async function updateOperatingHoursAction(
   tenantId: string,
   operatingHours: OperatingHours | null,
-  timezone?: string
+  timezone?: string,
+  enforceOperatingHours?: boolean
 ) {
   const supabase = await createClient()
 
@@ -759,7 +760,11 @@ export async function updateOperatingHoursAction(
   const { data, error } = await supabase
     .from('tenants')
     // Cast through unknown to satisfy strict generic constraints (columns added via migration).
-    .update({ operating_hours: normalized, timezone: tz } as unknown as never)
+    .update({
+      operating_hours: normalized,
+      timezone: tz,
+      enforce_operating_hours: enforceOperatingHours === true,
+    } as unknown as never)
     .eq('id', tenantId)
     .select('id, slug')
     .single()
@@ -775,7 +780,12 @@ export async function updateOperatingHoursAction(
     revalidatePath(`/${updated.slug}/checkout`)
   }
 
-  return { success: true, operating_hours: normalized, timezone: tz }
+  return {
+    success: true,
+    operating_hours: normalized,
+    timezone: tz,
+    enforce_operating_hours: enforceOperatingHours === true,
+  }
 }
 
 /**

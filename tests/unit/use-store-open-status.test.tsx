@@ -14,7 +14,7 @@
 
 import { renderHook, act } from '@testing-library/react'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
-import type { StoreHoursSource } from '@/lib/store-open-status'
+import type { StoreHoursSource, StoreOpenStatus } from '@/lib/store-open-status'
 import type { OperatingHours } from '@/lib/operating-hours'
 
 const OPEN_WEEK: OperatingHours = {}
@@ -38,15 +38,23 @@ describe('useStoreOpenStatus', () => {
   })
 
   afterEach(() => {
-    jest.runOnlyPendingTimers()
     jest.useRealTimers()
   })
 
   it('reports open on the first render so the ISR-cached HTML always hydrates cleanly', () => {
     jest.setSystemTime(MON_2300)
-    const { result } = renderHook(() => useStoreOpenStatus(ENFORCING))
-    // The value captured during the very first render pass, before effects flush.
-    expect(result.all[0]).toMatchObject({ isOpen: true, isOrderingBlocked: false })
+    // Record the value produced by every render pass; index 0 is the first one,
+    // which is what the server would have emitted.
+    const renders: StoreOpenStatus[] = []
+    renderHook(() => {
+      const status = useStoreOpenStatus(ENFORCING)
+      renders.push(status)
+      return status
+    })
+
+    expect(renders[0]).toMatchObject({ isOpen: true, isOrderingBlocked: false })
+    // ...and it does not stay wrong: a later pass reflects the real clock.
+    expect(renders[renders.length - 1].isOrderingBlocked).toBe(true)
   })
 
   it('reflects the real clock after mount', () => {
