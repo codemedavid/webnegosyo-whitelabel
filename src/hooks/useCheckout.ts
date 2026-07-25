@@ -17,7 +17,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, isMessengerRedirectEnabled, calculateCartItemUnitPrice } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty } from '@/lib/cart-utils'
+import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
@@ -329,13 +330,17 @@ export function useCheckout(tenantSlug: string) {
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
   useEffect(() => {
-    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && items.length === 0) {
+    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && isCheckoutCartEmpty(items, bundleItems)) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
+  }, [items.length, bundleItems.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
-  // Per-tenant toggle: whether checkout auto-opens Messenger after an order.
-  const messengerRedirectEnabled = isMessengerRedirectEnabled(tenant)
+  // Per-order-type toggle: when off, checkout never touches Messenger and the
+  // CTA reads "Complete Order" instead of "Send Order via Messenger".
+  const messengerEnabled = isMessengerEnabledForOrderType(selectedOrderTypeData)
+
+  // Auto-open Messenger only when BOTH the tenant switch and the order type allow it.
+  const messengerRedirectEnabled = isMessengerRedirectEnabledForOrderType(tenant, selectedOrderTypeData)
 
   // Countdown timer: redirect to Messenger after 3 seconds, auto-expand message if no URL
   useEffect(() => {
@@ -904,7 +909,7 @@ export function useCheckout(tenantSlug: string) {
 
       // Build Messenger URL without order ID first (we don't have it yet)
       let messengerUrl: string | null = null
-      if (pageId && pageId.trim() !== '') {
+      if (messengerEnabled && pageId && pageId.trim() !== '') {
         if (useDirectMode) {
           messengerUrl = generateMessengerDirectUrl(pageId)
         } else {
@@ -1080,7 +1085,7 @@ export function useCheckout(tenantSlug: string) {
             }
 
             // Proactive webhook send
-            if (!useDirectMode && isFacebookPageConnected && result.data?.id && result.orderToken) {
+            if (messengerEnabled && !useDirectMode && isFacebookPageConnected && result.data?.id && result.orderToken) {
               fetch('/api/messenger/send-order-public', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1135,6 +1140,7 @@ export function useCheckout(tenantSlug: string) {
     orderType,
     setOrderType,
     selectedOrderTypeData,
+    messengerEnabled,
     // customer form
     formFields,
     customerData,

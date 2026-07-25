@@ -93,6 +93,31 @@ describe('writeBrandingWithClient', () => {
     expect(update).toHaveBeenCalledTimes(2)
   })
 
+  it('drops mobile_overrides on the retry so an unmigrated database still saves branding', async () => {
+    // mobile_overrides ships with a migration. Before it is applied the first
+    // update fails with "column does not exist"; if the retry keeps sending the
+    // column the whole publish fails and the merchant loses every edit.
+    const single = jest
+      .fn<() => Promise<{ data: unknown; error: unknown }>>()
+      .mockResolvedValueOnce({ data: null, error: { code: '42703', message: 'column "mobile_overrides" does not exist' } })
+      .mockResolvedValueOnce({ data: { id: TENANT }, error: null })
+    const select = jest.fn((_cols: string) => ({ single }))
+    const eq = jest.fn((_col: string, _val: unknown) => ({ select }))
+    const update = jest.fn((_payload: unknown) => ({ eq }))
+    const client = { from: jest.fn((_t: string) => ({ update })) } as unknown as ProvisioningCtx['client']
+
+    const result = await writeBrandingWithClient(
+      client,
+      TENANT,
+      brandingInput({ mobile_overrides: { page_layout: 'sidebar' } }),
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.skippedFields).toContain('mobile_overrides')
+    const retryPayload = update.mock.calls[1][0] as Record<string, unknown>
+    expect(retryPayload).not.toHaveProperty('mobile_overrides')
+  })
+
   it('surfaces a non-column database error as a failure', async () => {
     const { client } = makeUpdateStub({ code: '23505', message: 'unique violation' })
     const result = await writeBrandingWithClient(client, TENANT, brandingInput())

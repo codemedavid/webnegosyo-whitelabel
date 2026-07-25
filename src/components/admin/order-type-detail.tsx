@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +38,7 @@ import {
 } from '@/app/actions/order-types'
 import { toast } from 'sonner'
 import { getAdvanceOrderConfig, formatLeadTime } from '@/lib/advance-order-utils'
+import { isMessengerEnabledForOrderType } from '@/lib/messenger-availability'
 import type { OrderType, CustomerFormField } from '@/types/database'
 
 interface OrderTypeDetailProps {
@@ -76,6 +77,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     description: orderType.description || '',
     note: orderType.note || '',
     is_enabled: orderType.is_enabled,
+    messenger_enabled: isMessengerEnabledForOrderType(orderType),
     service_charge_enabled: orderType.service_charge_enabled ?? false,
     service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
     service_charge_value: orderType.service_charge_value ?? 0,
@@ -103,6 +105,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           description: formData.description || undefined,
           note: formData.note || undefined,
           is_enabled: formData.is_enabled,
+          messenger_enabled: formData.messenger_enabled,
           order_index: orderType.order_index,
           service_charge_enabled: formData.service_charge_enabled,
           service_charge_type: formData.service_charge_type,
@@ -259,6 +262,26 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                 id="enabled"
                 checked={formData.is_enabled}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_enabled: checked })}
+              />
+            </div>
+
+            {/* Messenger */}
+            <div className="flex items-center justify-between border-t pt-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="messenger_enabled" className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Send via Messenger
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.messenger_enabled
+                    ? 'Checkout sends the order to Facebook Messenger'
+                    : 'Checkout completes the order in place — the button reads "Complete Order"'}
+                </p>
+              </div>
+              <Switch
+                id="messenger_enabled"
+                checked={formData.messenger_enabled}
+                onCheckedChange={(checked) => setFormData({ ...formData, messenger_enabled: checked })}
               />
             </div>
 

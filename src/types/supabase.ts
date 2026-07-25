@@ -973,6 +973,7 @@ export type Database = {
           description: string | null
           id: string
           is_enabled: boolean
+          messenger_enabled: boolean
           name: string
           note: string | null
           order_index: number
@@ -990,6 +991,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_enabled?: boolean
+          messenger_enabled?: boolean
           name: string
           note?: string | null
           order_index?: number
@@ -1007,6 +1009,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_enabled?: boolean
+          messenger_enabled?: boolean
           name?: string
           note?: string | null
           order_index?: number

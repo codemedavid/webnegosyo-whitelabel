@@ -20,6 +20,7 @@ import {
   UtensilsCrossed, Package, Truck, Check, Clock, Zap, CalendarClock, CalendarDays, QrCode, Copy, CreditCard,
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
+import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -614,8 +615,12 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
  * states exactly like the original and drives `handleProceedToPayment`.
  */
 export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
-  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal } = checkout
+  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled } = checkout
   const { accent, accentText, button } = useAccent(checkout)
+  const ctaLabel = resolveCheckoutCtaLabel({
+    hasPaymentMethods: paymentMethods.length > 0,
+    isMessengerEnabled: messengerEnabled,
+  })
 
   return (
     <button
@@ -633,10 +638,10 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
       ) : paymentMethods.length > 0 ? (
         <>
           <CreditCard className="h-5 w-5" />
-          <span>Proceed to Payment · {formatPrice(grandTotal)}</span>
+          <span>{ctaLabel} · {formatPrice(grandTotal)}</span>
         </>
       ) : (
-        <span>Send Order via Messenger · {formatPrice(grandTotal)}</span>
+        <span>{ctaLabel} · {formatPrice(grandTotal)}</span>
       )}
     </button>
   )

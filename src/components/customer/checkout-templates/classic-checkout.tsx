@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
+import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -33,12 +34,13 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     formFields, customerData, setCustomerData,
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount,
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
-    isProcessing, handleProceedToPayment,
+    isProcessing, handleProceedToPayment, messengerEnabled,
   } = checkout
 
   if (!tenant) return null
 
   const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
+  const ctaLabel = resolveCheckoutCtaLabel({ hasPaymentMethods: paymentMethods.length > 0, isMessengerEnabled: messengerEnabled })
   const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
 
   return (
@@ -618,7 +620,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 <div className="flex-1">
                   <h3 className="font-semibold text-yellow-900 mb-1">No Payment Methods Available</h3>
                   <p className="text-sm text-yellow-800">
-                    No payment methods have been set up for this order type yet. You can still proceed with your order, and payment details will be discussed via Messenger.
+                    No payment methods have been set up for this order type yet. You can still proceed with your order, and payment details will be discussed {messengerEnabled ? 'via Messenger' : 'directly with the store'}.
                   </p>
                 </div>
               </div>
@@ -628,12 +630,14 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
             <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3" style={{ color: palette.text }}>
               <MessageCircle className="h-6 w-6 text-orange-500" style={{ color: accentColor }} />
-              {paymentMethods.length > 0 ? 'Complete Order' : 'Complete Order via Messenger'}
+              {paymentMethods.length > 0 || !messengerEnabled ? 'Complete Order' : 'Complete Order via Messenger'}
             </h2>
             <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>
               {paymentMethods.length > 0
                 ? `After selecting your payment method, click below to complete your order with ${tenant.name}.`
-                : `Click the button below to send your order to ${tenant.name} via Facebook Messenger. You'll be redirected to Messenger with your order details pre-filled.`
+                : messengerEnabled
+                  ? `Click the button below to send your order to ${tenant.name} via Facebook Messenger. You'll be redirected to Messenger with your order details pre-filled.`
+                  : `Click the button below to send your order to ${tenant.name}.`
               }
             </p>
 
@@ -652,12 +656,12 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               ) : paymentMethods.length > 0 ? (
                 <>
                   <CreditCard className="mr-3 h-6 w-6" />
-                  Proceed to Payment
+                  {ctaLabel}
                 </>
               ) : (
                 <>
-                  <MessageCircle className="mr-3 h-6 w-6" />
-                  Send Order via Messenger
+                  {messengerEnabled ? <MessageCircle className="mr-3 h-6 w-6" /> : <Check className="mr-3 h-6 w-6" />}
+                  {ctaLabel}
                 </>
               )}
             </Button>

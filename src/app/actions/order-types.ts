@@ -50,6 +50,7 @@ export async function createOrderTypeAction(
     description?: string
     note?: string
     is_enabled?: boolean
+    messenger_enabled?: boolean
     order_index?: number
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
@@ -85,6 +86,7 @@ export async function updateOrderTypeAction(
     description?: string
     note?: string
     is_enabled?: boolean
+    messenger_enabled?: boolean
     order_index?: number
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
@@ -181,6 +183,7 @@ export async function reorderOrderTypesAction(
         description: existing.description,
         note: existing.note,
         is_enabled: existing.is_enabled,
+        messenger_enabled: existing.messenger_enabled,
         order_index: index,
         service_charge_enabled: existing.service_charge_enabled,
         service_charge_type: existing.service_charge_type,

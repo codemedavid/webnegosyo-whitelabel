@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
+import { useModifierGroups } from '@/hooks/useModifierGroups'
+import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
@@ -61,6 +63,7 @@ interface ProductDetailContentProps {
     hideCurrencySymbol?: boolean
     upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
+    modifierGroupsEnabled?: boolean
     isBrandAdmin?: boolean
     /**
      * 'page' (default) renders as the full-page route. 'sheet' adapts navigation
@@ -287,6 +290,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     hideCurrencySymbol,
     upsellBundles = [],
     bundlesEnabled = false,
+    modifierGroupsEnabled = false,
     isBrandAdmin = false,
     mode = 'page',
     onClose,
@@ -369,6 +373,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         handleDecreaseQuantity,
         handleIncreaseQuantity,
     } = useVariationState({ item, category })
+
+    // Unified modifier groups (Phase 2). Active only for items authored with the
+    // new editor AND when the tenant flag is on; legacy items keep the path above.
+    const mg = useModifierGroups({ item })
+    const useGroups = modifierGroupsEnabled && mg.active
+    const effectiveQuantity = useGroups ? mg.quantity : quantity
+    const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice
+    const effectiveIncreaseQuantity = useGroups ? mg.incrementQuantity : handleIncreaseQuantity
+    const effectiveDecreaseQuantity = useGroups ? mg.decrementQuantity : handleDecreaseQuantity
+    const showCustomizations = useGroups ? mg.groups.length > 0 : hasCustomizations
 
     // Merge customization settings with branding. The Branding Studio streams
     // product-detail edits under __productDetailDraft (kept separate from the
@@ -570,6 +584,14 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const getSelectedSummary = useMemo(() => {
         const parts: string[] = []
 
+        if (useGroups) {
+            const names = mg.groups.flatMap((group) => {
+                const selectedIds = mg.selection[group.id] ?? []
+                return group.options.filter((o) => selectedIds.includes(o.id)).map((o) => o.name)
+            })
+            return names.length > 0 ? names.join(', ') : themeColors.footerEmptySummaryText
+        }
+
         if (useNewVariations && item.variation_types) {
             item.variation_types.forEach(type => {
                 const selected = selectedVariations[type.id]
@@ -586,14 +608,19 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
 
         return parts.length > 0 ? parts.join(', ') : themeColors.footerEmptySummaryText
-    }, [useNewVariations, item.variation_types, selectedVariations, selectedVariation, selectedAddons, themeColors.footerEmptySummaryText])
+    }, [useGroups, mg.groups, mg.selection, useNewVariations, item.variation_types, selectedVariations, selectedVariation, selectedAddons, themeColors.footerEmptySummaryText])
 
     // Helper to add the current item to cart with current selections
     const addCurrentItemToCart = useCallback(() => {
-        const variationData = useNewVariations ? selectedVariations : selectedVariation
-        addItem(item, variationData, selectedAddons, quantity)
+        if (useGroups) {
+            const { selectedVariations: mgVariations, selectedAddons: mgAddons } = mg.cartFormat
+            addItem(item, mgVariations, mgAddons, mg.quantity)
+        } else {
+            const variationData = useNewVariations ? selectedVariations : selectedVariation
+            addItem(item, variationData, selectedAddons, quantity)
+        }
         toast.success(`Added ${item.name} to cart`)
-    }, [useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem])
+    }, [useGroups, mg.cartFormat, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem])
 
     const matchingBundle = useMemo(() => {
         if (!bundlesEnabled || !upsellBundles?.length) return null
@@ -603,8 +630,15 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [bundlesEnabled, upsellBundles, item.category_id])
 
     const handleAddToCart = useCallback((skipNavigation = false) => {
-        // Check if required variation types have selections
-        if (useNewVariations && item.variation_types) {
+        // Check required selections. Modifier-groups path validates via the
+        // adapter; the legacy path checks required variation types directly.
+        if (useGroups) {
+            const result = mg.validate()
+            if (!result.valid) {
+                toast.error(result.error ?? 'Please complete your selection')
+                return
+            }
+        } else if (useNewVariations && item.variation_types) {
             const missingRequired = item.variation_types.find(
                 type => type.is_required && !selectedVariations[type.id]
             )
@@ -647,7 +681,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -868,12 +902,25 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     )}
 
                     {/* Divider */}
-                    {hasCustomizations && (
+                    {showCustomizations && (
                         <div className="border-t mb-6" style={{ borderColor: 'var(--pd-border)' }} />
                     )}
 
+                    {/* Unified Modifier Groups (Phase 2) — replaces the legacy
+                        variation/add-on sections for items authored with the new editor. */}
+                    {useGroups && (
+                        <div className="mb-6">
+                            <ModifierGroupsSelector
+                                groups={mg.groups}
+                                selection={mg.selection}
+                                onToggle={mg.toggle}
+                                hideCurrencySymbol={hideCurrencySymbol}
+                            />
+                        </div>
+                    )}
+
                     {/* Variation Types (New System) */}
-                    {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
+                    {!useGroups && hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
                         const selectedOption = selectedVariations[variationType.id]
 
                         return (
@@ -925,7 +972,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     })}
 
                     {/* Legacy Variations */}
-                    {!useNewVariations && hasVariations && (
+                    {!useGroups && !useNewVariations && hasVariations && (
                         <div className="mb-6">
                             <div className="flex items-center justify-between gap-2 mb-3">
                                 <div className="flex items-center gap-2">
@@ -967,7 +1014,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     )}
 
                     {/* Add-ons */}
-                    {hasAddons && (
+                    {!useGroups && hasAddons && (
                         <div className="mb-6" data-branding-scope="product/addons">
                             <div className="flex items-center justify-between gap-2 mb-3">
                                 <h3
@@ -1198,7 +1245,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                     className="text-xs line-through mr-2"
                                     style={{ color: 'var(--pd-original-price)' }}
                                 >
-                                    {formatPrice(item.price * quantity, { hideCurrencySymbol })}
+                                    {formatPrice(item.price * effectiveQuantity, { hideCurrencySymbol })}
                                 </span>
                             )}
                             <span
@@ -1206,7 +1253,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 className="text-xl font-bold"
                                 style={{ color: 'var(--pd-total-price)' }}
                             >
-                                {formatPrice(totalPrice, { hideCurrencySymbol })}
+                                {formatPrice(effectiveTotalPrice, { hideCurrencySymbol })}
                             </span>
                         </div>
 
@@ -1218,8 +1265,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         >
                             <button
                                 type="button"
-                                onClick={handleDecreaseQuantity}
-                                disabled={quantity <= 1}
+                                onClick={effectiveDecreaseQuantity}
+                                disabled={effectiveQuantity <= 1}
                                 className="h-9 w-9 rounded-full flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all"
                                 style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                                 aria-label="Decrease quantity"
@@ -1230,11 +1277,11 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 className="w-8 text-center text-base font-semibold select-none"
                                 style={{ color: 'var(--pd-qty-text)' }}
                             >
-                                {quantity}
+                                {effectiveQuantity}
                             </span>
                             <button
                                 type="button"
-                                onClick={handleIncreaseQuantity}
+                                onClick={effectiveIncreaseQuantity}
                                 className="h-9 w-9 rounded-full flex items-center justify-center active:scale-95 transition-all"
                                 style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                                 aria-label="Increase quantity"

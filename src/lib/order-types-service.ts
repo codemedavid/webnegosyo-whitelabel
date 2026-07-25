@@ -18,6 +18,8 @@ export const orderTypeSchema = z.object({
   description: z.string().optional(),
   note: z.string().optional(),
   is_enabled: z.boolean(),
+  /** When false, checkout for this order type skips Messenger entirely. */
+  messenger_enabled: z.boolean().optional(),
   order_index: z.number().int().min(0),
   service_charge_enabled: z.boolean().optional(),
   service_charge_type: z.enum(['percentage', 'fixed']).optional(),
