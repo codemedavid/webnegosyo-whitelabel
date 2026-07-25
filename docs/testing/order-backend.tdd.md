@@ -80,8 +80,8 @@ RED: `runTenantSupabaseDeploy` not exported. GREEN: 5 passed. The `"use server"`
 `order-backend` (19) + `supabase-deploy` (9) + `supabase-sql-runner` (4) + `supabase-order-schema` (11) + `supabase-deploy-orchestrator` (5) = **48 passed, 48 total.** Lint clean on all new files.
 
 ## Still not built (tracked in the plan)
-- P3 per-tenant client factory (`src/lib/supabase/tenant-order-client.ts`)
-- P4 checkout write routing (`src/app/actions/orders.ts`)
+- ~~P3 per-tenant client factory~~ — **done, see Increments 6–7 below**
+- ~~P4 checkout write routing~~ — **done, see Increments 6–7 below**
 - P5 web admin read + realtime routing
 - P6 mobile app Supabase fallback
 - P7 push notifications for Supabase tenants
@@ -96,3 +96,84 @@ RED: `runTenantSupabaseDeploy` not exported. GREEN: 5 passed. The `"use server"`
 ## Notes
 - Three-state model (`convex | supabase | platform`) chosen over a binary to avoid silently rerouting existing no-Convex tenants (who write to the shared platform DB) into a per-tenant Supabase project they do not have.
 - No commits made: the working tree contains unrelated in-progress work (addon-library), so checkpoints are deferred per "commit only when asked."
+
+---
+
+# TDD Evidence: Per-Tenant Order Backend — Client Factory + Checkout Routing (P3–P4)
+
+**Date**: 2026-07-25
+**Scope of this increment**: the platform migration finally applied to production, the per-tenant client factory (P3), and checkout write routing (P4). P5–P8 remain unbuilt.
+
+## Decisions taken into this increment
+- **Anon-key realtime reads are an accepted trade-off** (operator decision, this session). The tenant order bundle exposes `orders` / `order_items` via a permissive SELECT policy reachable with the project's anon key. Blast radius is one tenant's own project, and it matches the precedent already set by the unauthenticated QR-handoff Convex mutations. The alternatives considered and declined for now: proxying realtime through the platform with the service-role key, or provisioning real auth users per tenant project. Documented in the module header of `src/lib/supabase/tenant-order-client.ts`.
+
+## User Journeys Covered
+- As the platform, I want a single seam that produces the right Supabase client for a tenant's own order project — service-role for writes, anon for realtime — so no call site invents its own credential handling.
+- As a merchant on the Supabase backend, I want my checkout orders written into my own project, not the shared platform database.
+- As the platform, I want a half-configured Supabase tenant to fail checkout loudly rather than silently write into the shared platform database, which would split that merchant's orders across two backends unnoticed.
+- As a merchant, I want an order to never appear in my queue without its line items.
+
+## Task Report
+| Task | Summary | Validation command | RED → GREEN |
+|---|---|---|---|
+| Apply platform migration | Applied `20260721000000_order_backend.sql` to production via `mcp__supabase__apply_migration`. It had **never been applied** — `information_schema` showed zero of the six columns, so every P0–P2 artifact was unreachable in prod. | `select order_backend, count(*) … group by order_backend` | n/a (DDL). Post-apply: **45 tenants → `convex`** (all 45 have a Convex URL), **120 → `platform`** (none do). Backfill preserved routing exactly; zero tenants changed behavior. |
+| P3 client factory | `src/lib/supabase/tenant-order-client.ts` — `createTenantOrderWriteClient` (service-role, stateless) and `createTenantOrderRealtimeClient` (anon). Client construction injected so tests never open a connection. | `npx jest tests/unit/tenant-order-client.test.ts` | RED: `Cannot find module '@/lib/supabase/tenant-order-client'`. GREEN: **11 passed, 11 total**. |
+| Token minting split | Extracted `generateOrderTokenPair()` from `createOrderToken` in `src/lib/order-token.ts`. `createOrderToken` still UPDATEs the platform project; the tenant path needs the hash without touching the wrong database. Behavior-preserving for the platform path. | covered indirectly by the tenant-writer suite | n/a |
+| P4 tenant writer | `src/lib/tenant-supabase-orders.ts` — pure `buildTenantOrderRow` / `buildTenantOrderItemRows` plus `createOrderTenantSupabase` against an injected client. | `npx jest tests/unit/tenant-supabase-orders.test.ts` | RED: `Cannot find module '@/lib/tenant-supabase-orders'`. GREEN: **19 passed, 19 total**. |
+| P4 checkout routing | `src/app/actions/orders.ts` — added the `supabase_order_*` + `order_backend` columns to the tenant SELECT, and a `resolveOrderBackend(tenantConfig) === 'supabase'` branch ahead of the Convex branch, gated by `assertOrderBackendReady`. | `npx tsc --noEmit` (clean for `src/`), full suite | n/a — see "Coverage & Known Gaps" |
+
+## Test Specification
+| # | What is guaranteed | Test file | Type | Result |
+|---|---|---|---|---|
+| 28 | The write client is built from the tenant URL + service-role key | `tenant-order-client.test.ts` | unit | PASS |
+| 29 | The write client never uses the anon key | `tenant-order-client.test.ts` | unit | PASS |
+| 30 | The write client is stateless (`autoRefreshToken`/`persistSession` false) | `tenant-order-client.test.ts` | unit | PASS |
+| 31 | Missing project URL throws, naming the column | `tenant-order-client.test.ts` | unit | PASS |
+| 32 | Missing service-role key throws, naming the credential | `tenant-order-client.test.ts` | unit | PASS |
+| 33 | No client is constructed at all when credentials are incomplete | `tenant-order-client.test.ts` | unit | PASS |
+| 34 | The realtime client is built from the tenant URL + anon key | `tenant-order-client.test.ts` | unit | PASS |
+| 35 | The service-role key never reaches the realtime client | `tenant-order-client.test.ts` | unit | PASS |
+| 36 | Missing anon key throws, naming the credential | `tenant-order-client.test.ts` | unit | PASS |
+| 37 | Subscribing does not require the service-role key | `tenant-order-client.test.ts` | unit | PASS |
+| 38 | Both clients work with no injected factory (real default path) | `tenant-order-client.test.ts` | unit | PASS |
+| 39 | Order total = item subtotals + delivery fee + service charge | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 40 | Missing fee/charge are treated as zero, not NaN | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 41 | The row is scoped to the tenant | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 42 | New orders start `pending` on both status axes | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 43 | Payment proof lands in real columns, not smuggled into `customer_data` (unlike the Convex path) | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 44 | `payment_proof_uploaded_at` is set only when a proof was supplied | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 45 | An advance-order schedule is a real `scheduled_for` column | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 46 | ASAP orders leave `scheduled_for` null | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 47 | The token hash + expiry ride in the INSERT (no follow-up UPDATE, no tokenless window) | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 48 | The plaintext token is never written to the database | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 49 | Every line item is attached to the created order | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 50 | Missing addons default to `[]` (valid for the `text[]` column) | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 51 | Object addons are flattened to names so `text[]` stays valid | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 52 | Orders and items are both written to the tenant project | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 53 | The created order and plaintext token are returned to the caller | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 54 | A rejected order insert throws with the underlying message | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 55 | Items are not written when the order insert failed | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 56 | A failed item write rolls the order back (no line-item-less ghost order) | `tenant-supabase-orders.test.ts` | unit | PASS |
+| 57 | An empty order is rejected before any database call | `tenant-supabase-orders.test.ts` | unit | PASS |
+
+## Combined status
+`order-backend` (19) + `supabase-deploy` (9) + `supabase-sql-runner` (4) + `supabase-order-schema` (11) + `supabase-deploy-orchestrator` (5) + `tenant-order-client` (11) + `tenant-supabase-orders` (19) = **78 passed, 78 total.**
+
+## Coverage & Known Gaps
+- Validation: `npx jest <the 7 suites above>` → 7 suites passed, 78 tests passed.
+- Full suite: **2327 passed, 4 failed** at time of writing. Both failing suites are `webnegosyo-app/lib/printer-native-load.test.ts` and `webnegosyo-app/lib/order-item-images.test.ts` — mobile native-module/test-setup failures, pre-existing and unrelated to this change (no file in this increment is imported by either).
+- `npm run lint`: 83 errors repo-wide, **none in any file touched by this increment** (verified by grepping the lint output for each changed path). They are concentrated in `webnegosyo-desktop/` and pre-date this work.
+- `npx tsc --noEmit`: clean across `src/`. Remaining errors are in pre-existing test files.
+- **The `createOrderAction` branch itself is not unit-tested.** It is a `"use server"` action with heavy I/O; the same posture as the untested Convex branch beside it. The branch body is deliberately thin — every decision it makes (`resolveOrderBackend`, `assertOrderBackendReady`, row construction, the write) is covered by the tested helpers it calls. An E2E against a real tenant project is the honest way to close this and is **not yet done**: no order has been written to a real per-tenant Supabase project through checkout.
+- No tenant is currently set to `order_backend = 'supabase'` in production, so this path is dormant until superadmin flips one (which needs P8, or a manual DB update plus a Deploy Schema run).
+
+## Merge evidence (checkpoints)
+| Stage | Commit |
+|---|---|
+| P3 RED  | `eb7eeee` test: add reproducer for per-tenant Supabase order client factory |
+| P3 GREEN | `59a778e` feat: per-tenant Supabase order client factory |
+| P3 refactor | `48de3cb` refactor: make the default-factory test assert both client surfaces |
+| P4 RED | `7adc8fb` test: add reproducer for tenant Supabase order writes |
+| P4 GREEN | ⚠️ **not a dedicated commit** — see below |
+
+⚠️ **Checkpoint anomaly, recorded honestly.** A concurrent session working in this same repository ran a broad `git add`, and the P4 implementation files (`src/lib/tenant-supabase-orders.ts`, `src/lib/order-token.ts`, the `src/app/actions/orders.ts` routing branch) were swept into two unrelated commits belonging to that session's operating-hours feature: `7f33b1e` and `e7be13e`. The code is intact and its tests are green, but the P4 GREEN checkpoint is not isolated and those two commits mix two features. History was deliberately **not** rewritten, because the other session is still working on this branch and a rebase would break it.
