@@ -171,6 +171,8 @@ export interface Tenant {
   menu_engineering_enabled?: boolean;
   // Unified modifier groups editor (variations + add-ons + per-option cost/stock)
   modifier_groups_enabled?: boolean;
+  // Inventory & costing (ingredients, units, recipes)
+  inventory_enabled?: boolean;
   hide_currency_symbol?: boolean;
   checkout_upsell_enabled?: boolean;
   checkout_upsell_title?: string;
