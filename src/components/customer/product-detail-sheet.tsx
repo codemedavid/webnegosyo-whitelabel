@@ -225,6 +225,7 @@ export function ProductDetailSheet({
                             menuEngineeringEnabled={menuEngineeringEnabled}
                             pairingRulesEnabled={pairingRulesEnabled}
                             bundlesEnabled={bundlesEnabled}
+                            modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
                             hideCurrencySymbol={hideCurrencySymbol}
                             isBrandAdmin={false}
                             suppressAutoUpgrade={suppressAutoUpgrade}
