@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOrderTokenPair, type OrderTokenPair } from "@/lib/order-token";
-import { resolveOrderContact } from "@/lib/customers-service";
+import { resolveOrderContact } from "@/lib/customer-identity";
 
 /**
  * Order writes against a tenant's OWN Supabase project (`order_backend = 'supabase'`).

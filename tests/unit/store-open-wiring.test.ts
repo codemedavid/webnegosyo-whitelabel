@@ -83,4 +83,10 @@ describe('getClosedOrderError (server-side guard)', () => {
   it('tells the customer when ordering reopens', () => {
     expect(getClosedOrderError(source(), MON_2300)).toContain('tomorrow at 9:00 AM')
   })
+
+  it('still accepts a scheduled order placed while the store is closed', () => {
+    // Pre-ordering at midnight for tomorrow lunch is the whole point of advance
+    // orders — closing time must gate ASAP orders only.
+    expect(getClosedOrderError(source(), MON_2300, { isScheduled: true })).toBeNull()
+  })
 })
