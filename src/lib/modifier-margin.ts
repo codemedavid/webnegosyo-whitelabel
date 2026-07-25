@@ -6,7 +6,7 @@
  * show live per-option and per-item margin without duplicating the math in JSX.
  */
 
-import { resolveOptionCost } from '@/lib/modifier-groups'
+import { resolveOptionCostForOption } from '@/lib/inventory/cost-mode'
 import { computeMargin, type Margin } from '@/lib/inventory/costing'
 import type { ModifierOption } from '@/types/database'
 
@@ -17,8 +17,9 @@ export interface PricedMargin extends Margin {
 
 /**
  * Live margin for a single option. Price = base item price + the option's price
- * modifier. Cost follows `resolveOptionCost` — an attached recipe cost overrides
- * the manual cost, else the manual cost, else 0.
+ * modifier. Cost follows the option's `cost_mode` — its manual cost in simple
+ * mode, its attached recipe cost in composite mode. Options with no mode keep
+ * the legacy rule (recipe overrides manual).
  */
 export function computeOptionMargin(
   basePrice: number,
@@ -26,7 +27,7 @@ export function computeOptionMargin(
   recipeCost?: number,
 ): PricedMargin {
   const price = basePrice + option.price_modifier
-  const cost = resolveOptionCost(option.manual_cost, recipeCost)
+  const cost = resolveOptionCostForOption(option, recipeCost)
   return { price, cost, ...computeMargin(price, cost) }
 }
 
