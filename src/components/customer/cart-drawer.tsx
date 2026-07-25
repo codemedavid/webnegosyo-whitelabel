@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, Minus, Plus, Trash2, Pencil, Package } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, Pencil, Package, ArrowLeft } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
   Sheet,
@@ -170,9 +170,20 @@ export function CartDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
+        <SheetContent hideCloseButton data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
           <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${accent}20` }}>
             <SheetTitle className="flex items-center gap-2 text-base">
+              {/* Explicit back control: the default corner X is easy to miss on a
+                  phone, so the drawer owns a labelled affordance instead. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Back to menu"
+                className="h-8 w-8 -ml-2 flex-shrink-0 text-gray-600 hover:bg-gray-100 touch-manipulation"
+                onClick={onClose}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
               <div
                 className="flex h-8 w-8 items-center justify-center rounded-full flex-shrink-0"
                 style={{ backgroundColor: accent }}

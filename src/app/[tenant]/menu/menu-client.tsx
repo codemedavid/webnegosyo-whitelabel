@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { CartDrawer } from '@/components/customer/cart-drawer'
+import { AnnouncementBar } from '@/components/customer/announcement-bar'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
@@ -323,18 +324,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         <FlashScreenLoader branding={buildFlashScreenBranding(tenant)} />
       )}
 
-      {tenant?.is_announcement_visible && (
-        <div
-          data-branding-scope="storefront/announcement"
-          className="w-full text-center py-2 px-4 text-sm font-medium relative z-[51]"
-          style={{
-            backgroundColor: tenant?.announcement_bg_color || '#FFF4E5',
-            color: tenant?.announcement_text_color || '#663C00'
-          }}
-        >
-          {tenant?.announcement_text || 'Welcome!'}
-        </div>
-      )}
+      <AnnouncementBar tenant={tenant} />
       {desktopHeader === mobileHeader ? (
         <MenuHeaderRenderer
           template={desktopHeader}
