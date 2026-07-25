@@ -13,27 +13,19 @@
  */
 
 import { cache } from 'react'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { Recipe, RecipeComponent } from '@/types/database'
 import { buildRecipeTargetColumns, type RecipeTarget } from '@/lib/inventory/recipe-target'
+import {
+  recipeComponentInputSchema,
+  recipeInputSchema,
+  type RecipeComponentInput,
+  type RecipeInput,
+} from '@/lib/inventory/schemas'
 
-export const recipeComponentInputSchema = z.object({
-  inventory_item_id: z.string().uuid('An ingredient is required'),
-  quantity: z.number().min(0, 'Quantity cannot be negative'),
-  unit_id: z.string().uuid('A unit is required'),
-})
-
-export type RecipeComponentInput = z.infer<typeof recipeComponentInputSchema>
-
-export const recipeInputSchema = z.object({
-  notes: z.string().trim().optional().nullable(),
-  components: z.array(recipeComponentInputSchema),
-})
-
-export type RecipeInput = z.infer<typeof recipeInputSchema>
+export { recipeComponentInputSchema, recipeInputSchema, type RecipeComponentInput, type RecipeInput }
 
 export interface RecipeWithComponents {
   recipe: Recipe

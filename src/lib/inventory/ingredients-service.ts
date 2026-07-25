@@ -8,25 +8,13 @@
  */
 
 import { cache } from 'react'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryItem } from '@/types/database'
+import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/schemas'
 
-export const ingredientInputSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  sku: z.string().trim().optional().nullable(),
-  category: z.string().trim().optional().nullable(),
-  stock_unit_id: z.string().uuid('A stock unit is required'),
-  unit_cost: z.number().min(0, 'Unit cost cannot be negative').default(0),
-  is_prep: z.boolean().default(false),
-  image_url: z.string().url().optional().nullable(),
-  reorder_level: z.number().min(0).default(0),
-  is_active: z.boolean().default(true),
-})
-
-export type IngredientInput = z.infer<typeof ingredientInputSchema>
+export { ingredientInputSchema, type IngredientInput }
 
 export const getIngredients = cache(async (tenantId: string): Promise<InventoryItem[]> => {
   const supabase = await createClient()

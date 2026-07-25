@@ -7,8 +7,12 @@
  * shows the same messages the server would raise.
  */
 
-import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/ingredients-service'
-import { unitInputSchema, type UnitInput } from '@/lib/inventory/units-service'
+import {
+  ingredientInputSchema,
+  unitInputSchema,
+  type IngredientInput,
+  type UnitInput,
+} from '@/lib/inventory/schemas'
 import type {
   InventoryItem,
   InventoryUnitRow,

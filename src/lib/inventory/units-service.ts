@@ -11,23 +11,14 @@
  */
 
 import { cache } from 'react'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryUnitRow } from '@/types/database'
 import { buildDefaultUnitInserts } from '@/lib/inventory/default-units'
+import { unitInputSchema, type UnitInput } from '@/lib/inventory/schemas'
 
-export const unitInputSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  abbreviation: z.string().trim().min(1, 'Abbreviation is required'),
-  dimension: z.enum(['weight', 'volume', 'count']),
-  to_base_factor: z.number().positive('Conversion factor must be greater than zero'),
-  is_base: z.boolean().default(false),
-  is_active: z.boolean().default(true),
-})
-
-export type UnitInput = z.infer<typeof unitInputSchema>
+export { unitInputSchema, type UnitInput }
 
 // ============================================
 // DB access (tenant-scoped, mirrors addon-library-service.ts)
