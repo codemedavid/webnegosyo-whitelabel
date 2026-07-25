@@ -83,6 +83,6 @@ Full suite: `npx jest` → `Tests: 12 failed, 2142 passed, 2154 total`.
 ## Known gaps
 
 - **4 pre-existing failing suites, none related to this change:** `webnegosyo-app/lib/printer-native-load.test.ts` and `webnegosyo-app/lib/order-item-images.test.ts` (React Native / mock-hoisting), plus two untracked WIP files (`tests/unit/checkout-cart-empty-guard.test.ts`, `tests/unit/mobile-overrides.test.ts`) that import exports which do not exist yet. None import any module touched here.
-- **The migration is not applied.** `supabase/migrations/20260725120000_order_type_messenger_toggle.sql` must be run before the admin toggle can persist; until then `messenger_enabled` is absent and every order type reads as enabled (the intended safe default).
+- ~~The migration is not applied.~~ **Applied** via Supabase MCP as `20260725...order_type_messenger_toggle`. Verified: column is `boolean NOT NULL DEFAULT true`; all 463 existing order types backfilled to `true` (zero behavior change). A write round-trip on the `webnegosyo-coffee` demo tenant confirmed the toggle persists and reads back; the row was restored to `true` afterwards.
 - **No E2E coverage** of the full "toggle off in admin → customer sees Complete Order" round trip; the seam is covered at the unit + component level only.
 - **Mobile apps not updated.** `mobile/` uses its own checkout; it still assumes Messenger is available for every order type.
