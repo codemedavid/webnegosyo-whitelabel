@@ -13,9 +13,13 @@
  * half-filled form never breaks the preview.
  */
 
-import { recipeInputSchema, type RecipeInput } from '@/lib/inventory/recipes-service'
+import {
+  recipeInputSchema,
+  type RecipeInput,
+  type RecipeWithComponents,
+} from '@/lib/inventory/recipes-service'
 import { convertQuantity, type InventoryUnit } from '@/lib/inventory/unit-conversion'
-import type { InventoryItem, InventoryUnitRow, RecipeWithComponents } from '@/types/database'
+import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 
 export interface RecipeLineDraft {
   inventory_item_id: string

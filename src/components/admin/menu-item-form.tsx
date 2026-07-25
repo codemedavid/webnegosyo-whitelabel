@@ -34,6 +34,7 @@ interface MenuItemFormProps {
   tenantSlug: string
   menuEngineeringEnabled?: boolean
   modifierGroupsEnabled?: boolean
+  inventoryEnabled?: boolean
   convexUrl?: string
 }
 
@@ -64,7 +65,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, convexUrl }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, inventoryEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: item?.name || '',
@@ -548,6 +549,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           groups={modifierGroups}
           onChange={setModifierGroups}
           basePrice={parseFloat(formData.price) || 0}
+          recipeContext={{
+            tenantId,
+            tenantSlug,
+            menuItemId: item?.id,
+            inventoryEnabled: inventoryEnabled ?? false,
+          }}
         />
       ) : (
       <>

@@ -16,12 +16,27 @@ import {
   setGroupRequired,
 } from '@/lib/modifier-groups-form'
 import { computeOptionMargin } from '@/lib/modifier-margin'
+import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
+
+/**
+ * Context needed to attach an inventory recipe to a recipe-stock option.
+ * `menuItemId` is undefined for a not-yet-saved item — recipes key on it, so the
+ * attach control is disabled with a hint until the item is saved once.
+ */
+export interface ModifierRecipeContext {
+  tenantId: string
+  tenantSlug: string
+  menuItemId?: string
+  inventoryEnabled: boolean
+}
 
 interface ModifierGroupsEditorProps {
   groups: ModifierGroup[]
   onChange: (groups: ModifierGroup[]) => void
   /** Base item price, used for live per-option margin. */
   basePrice: number
+  /** Enables the per-option recipe-attach control when inventory is on. */
+  recipeContext?: ModifierRecipeContext
 }
 
 /**
@@ -31,7 +46,7 @@ interface ModifierGroupsEditorProps {
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
-export function ModifierGroupsEditor({ groups, onChange, basePrice }: ModifierGroupsEditorProps) {
+export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext }: ModifierGroupsEditorProps) {
   const addGroup = () => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
   }
@@ -109,6 +124,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice }: ModifierGr
                 key={group.id}
                 group={group}
                 basePrice={basePrice}
+                recipeContext={recipeContext}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
                 onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
@@ -131,6 +147,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice }: ModifierGr
 interface ModifierGroupCardProps {
   group: ModifierGroup
   basePrice: number
+  recipeContext?: ModifierRecipeContext
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
   onToggleRequired: (required: boolean) => void
@@ -148,6 +165,7 @@ interface ModifierGroupCardProps {
 function ModifierGroupCard({
   group,
   basePrice,
+  recipeContext,
   onRemoveGroup,
   onUpdateName,
   onToggleRequired,
@@ -238,6 +256,7 @@ function ModifierGroupCard({
                 key={option.id}
                 option={option}
                 basePrice={basePrice}
+                recipeContext={recipeContext}
                 onRemove={() => onRemoveOption(optionIndex)}
                 onUpdate={(field, value) => onUpdateOption(optionIndex, field, value)}
               />
@@ -252,11 +271,12 @@ function ModifierGroupCard({
 interface ModifierOptionRowProps {
   option: ModifierOption
   basePrice: number
+  recipeContext?: ModifierRecipeContext
   onRemove: () => void
   onUpdate: <K extends keyof ModifierOption>(field: K, value: ModifierOption[K]) => void
 }
 
-function ModifierOptionRow({ option, basePrice, onRemove, onUpdate }: ModifierOptionRowProps) {
+function ModifierOptionRow({ option, basePrice, recipeContext, onRemove, onUpdate }: ModifierOptionRowProps) {
   const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
   // Live margin preview from the manual cost the merchant enters. Recipe-backed
   // cost is resolved server-side; the editor shows the manual estimate.
@@ -338,13 +358,27 @@ function ModifierOptionRow({ option, basePrice, onRemove, onUpdate }: ModifierOp
               className="mt-1"
             />
           )}
-          {stockMode === 'recipe' && (
+          {stockMode === 'recipe' && !recipeContext?.inventoryEnabled && (
             <p className="text-[11px] text-muted-foreground mt-1">
-              Attach a recipe in Inventory to deduct ingredients per sale.
+              Enable Inventory for this store to attach a recipe.
+            </p>
+          )}
+          {stockMode === 'recipe' && recipeContext?.inventoryEnabled && !recipeContext.menuItemId && (
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Save the item first, then attach a recipe to deduct ingredients per sale.
             </p>
           )}
         </div>
       </div>
+
+      {stockMode === 'recipe' && recipeContext?.inventoryEnabled && recipeContext.menuItemId && (
+        <ModifierOptionRecipeEditor
+          tenantId={recipeContext.tenantId}
+          tenantSlug={recipeContext.tenantSlug}
+          menuItemId={recipeContext.menuItemId}
+          modifierOptionId={option.id}
+        />
+      )}
 
       {margin.price > 0 && (
         <p className="text-xs text-muted-foreground">
