@@ -1,4 +1,4 @@
-# TDD Evidence — Inventory cost mode + per-target cost breakdown (Phase 1a)
+# TDD Evidence — Inventory cost mode + costing read path (Phase 1a–1b)
 
 ## Source
 
@@ -10,8 +10,9 @@ inline plan agreed in session, which resolved two open questions:
 2. **Order depletion** — Convex first, then the per-tenant Supabase order
    backend (Phase 4; not part of this run).
 
-This report covers **Phase 1a only**: the pure core. The costing service, server
-action, and admin UI wiring are the remaining Phase 1 work.
+This report covers **Phase 1a** (the pure core) and **Phase 1b** (the costing
+read path). The admin UI wiring — the Simple/Composite toggle and the
+`menu_items.cost_mode` migration — is the remaining Phase 1 work.
 
 ## User journeys
 
@@ -65,6 +66,46 @@ exists instead of two implementations.
 - **GREEN**: `npx jest --testPathPatterns="modifier|inventory|recipe"`
   → `Test Suites: 21 passed, Tests: 227 passed`, stable across 3 consecutive runs.
 
+### Task 4 — Unified modifier options in configured-cost resolution
+
+`resolveConfiguredRecipeIds` now matches `target_type='modifier_option'` by
+`modifier_option_id`, returning those recipes in `optionRecipeIds` where the
+costing core already sums option deltas.
+
+- **RED**: `npx jest --testPathPatterns="inventory-graph-builder"`
+  → `Tests: 2 failed, 10 passed` — `optionRecipeIds` was `[]` where
+  `['modSpicy']` was expected. All 6 pre-existing tests passed.
+- **GREEN**: `npx jest --testPathPatterns="inventory|recipe|modifier"`
+  → `Test Suites: 21 passed, Tests: 232 passed`.
+- **Why it mattered**: this was a pre-existing gap, harmless while nothing
+  consumed the function, but Phase 4 order depletion relies on it to explode an
+  order into ingredients — modifier options would have silently depleted nothing.
+- **Backward compatibility**: `selectedModifierOptionIds` is optional and last,
+  and the return shape is unchanged. A dedicated test asserts that omitting the
+  argument reproduces the exact prior result.
+
+### Task 5 — Costing read path
+
+Added `src/lib/inventory/costing-service.ts` (`getCostingGraph`,
+`getMenuItemCost`) and `getMenuItemCostAction` in `src/app/actions/inventory.ts`.
+
+- **RED**: `npx jest --testPathPatterns="inventory-costing-service"`
+  → `Test Suites: 1 failed` — `Cannot find module '@/lib/inventory/costing-service'`.
+- **GREEN**: same command → `Tests: 7 passed`; full targeted run
+  `npx jest --testPathPatterns="inventory|recipe|modifier"`
+  → `Test Suites: 22 passed, Tests: 239 passed`.
+- **Design**: the row fetch is injectable via `CostingFetchDeps`, mirroring
+  `TenantOrderWriteDeps` in `tenant-supabase-orders.ts`, so assembly and error
+  handling are unit-tested without a Supabase client.
+- **Guarantees**: rows project into a priceable graph; an empty tenant yields an
+  empty graph rather than an error; rows are fetched once per call; a broken
+  recipe is reported in `errors`; **a fetch failure propagates** instead of
+  degrading to an empty graph, which would render a confident ₱0 on every item.
+- **Build**: `npm run build` → compiled successfully. This is the guard against
+  the client/server boundary leak that previously broke PR #22 — `costing-service`
+  imports `next/headers` via the Supabase server client and must never reach a
+  client bundle.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result | Evidence |
@@ -80,6 +121,15 @@ exists instead of two implementations.
 | 9 | A cyclic or missing-ingredient recipe is reported without losing other rows | same | unit | PASS | same |
 | 10 | Option margin honors an explicit cost mode | `modifier-margin.test.ts` | unit | PASS | `npx jest modifier-margin` |
 | 11 | Legacy option margin behavior is unchanged | `modifier-margin.test.ts` (5 pre-existing) + `modifier-groups.test.ts` | unit | PASS | `npx jest modifier` |
+| 12 | A selected unified modifier option contributes its recipe to the configured cost | `inventory-graph-builder.test.ts` | unit | PASS | `npx jest inventory-graph-builder` |
+| 13 | Unselected / other-item modifier options are excluded | same | unit | PASS | same |
+| 14 | Omitting the new modifier argument reproduces the prior result exactly | same | unit | PASS | same |
+| 15 | Tenant rows project into a graph the costing core can price | `inventory-costing-service.test.ts` | unit | PASS | `npx jest inventory-costing-service` |
+| 16 | An empty tenant yields an empty graph, not an error | same | unit | PASS | same |
+| 17 | Rows are fetched once per call | same | unit | PASS | same |
+| 18 | A broken recipe surfaces as an error rather than throwing | same | unit | PASS | same |
+| 19 | A fetch failure propagates instead of reporting a false ₱0 cost | same | unit | PASS | same |
+| 20 | The server-only costing service never reaches a client bundle | `npm run build` | build | PASS | compiled successfully |
 
 ## Coverage and known gaps
 
@@ -93,8 +143,24 @@ All files            |     100 |    93.54 |     100 |     100 |
   cost-mode.ts       |     100 |      100 |     100 |     100 |
 ```
 
-Above the 80% threshold. Uncovered branches are `describeTarget`'s id fallback
-chain (cosmetic string building) and the non-`Error` throw path.
+Phase 1b modules:
+
+```
+npx jest --testPathPatterns="inventory-cost|graph-builder" --coverage \
+  --collectCoverageFrom="src/lib/inventory/costing-service.ts" \
+  --collectCoverageFrom="src/lib/inventory/graph-builder.ts"
+
+File                | % Stmts | % Branch | % Funcs | % Lines | Uncovered
+All files           |   90.62 |      100 |     100 |   90.62 |
+  costing-service.ts|   77.17 |      100 |     100 |   77.17 | 46-66
+  graph-builder.ts  |     100 |      100 |     100 |     100 |
+```
+
+Both above the 80% threshold. Uncovered: `describeTarget`'s id fallback chain
+(cosmetic string building), the non-`Error` throw path, and
+`costing-service.ts:46-66` — the Supabase default fetcher, which is the injected
+boundary itself and is deliberately exercised by the build rather than by a unit
+test.
 
 **Known gaps / not done in this run:**
 
@@ -102,12 +168,11 @@ chain (cosmetic string building) and the non-`Error` throw path.
   `menu_items.cost_mode` column, and no backfill — deliberate, because the
   `undefined` = legacy branch means existing data needs no migration to keep
   working. The column arrives with the Phase 1 UI.
-- The costing **read path** (`getCostingGraph`, `getMenuItemCost`, the server
-  action) and the admin UI toggle are the remaining Phase 1 work.
-- `resolveConfiguredRecipeIds` in `graph-builder.ts` still resolves only
-  `variation_option` and `addon` targets, not unified `modifier_option`. Not a
-  regression (pre-existing), but it must be closed before Phase 4 order
-  depletion, which relies on it to explode an order into ingredients.
+- The admin UI toggle is the remaining Phase 1 work. **`getMenuItemCostAction`
+  has no caller yet** — the read path is built and tested but not yet displayed,
+  so a merchant still sees only the manual cost.
+- No caller passes `selectedModifierOptionIds` to `resolveConfiguredRecipeIds`
+  yet; the capability exists ahead of its Phase 4 consumer.
 - No integration/RLS/E2E coverage — unchanged from before this run (Phase 7).
 
 ## Environment note
@@ -137,5 +202,10 @@ Consequences for this evidence:
 | `f9ddd99` | GREEN — cost-mode resolver + cost-breakdown module |
 | `c3c3e06` | RED — reproducer for cost-mode-aware option margin |
 | `53c0da1` | GREEN — margin honors cost_mode; `resolveOptionCost` delegates |
+| `33b54c9` | docs — Phase 1a evidence |
+| `8a3fab5` | RED — reproducer for unified modifier options in configured cost |
+| `16deb4d` | GREEN — modifier-option recipes resolved into optionRecipeIds |
+| `64ac34c` | RED — reproducer for the inventory costing read path |
+| `1af1b8f` | GREEN — costing read path + getMenuItemCostAction |
 
 Lint: `npx eslint` over the five changed files → clean.
