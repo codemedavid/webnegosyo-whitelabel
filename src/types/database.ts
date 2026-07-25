@@ -259,6 +259,9 @@ export interface Tenant {
   // Drives advance-order slot windows. null = unset (advance scheduler uses default 08:00–22:00).
   operating_hours?: Record<string, { closed: boolean; open: string; close: string }> | null;
   timezone?: string | null;
+  // Opt-in: show a closed notice and refuse new orders outside operating_hours.
+  // false (default) = hours only constrain advance-order slots. See src/lib/store-open-status.ts.
+  enforce_operating_hours?: boolean | null;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)

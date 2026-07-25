@@ -103,12 +103,13 @@ export async function createOrderAction(
       return { success: false, error: 'Order must contain at least one item' }
     }
 
-    // Check if tenant has Convex configured AND that the tenant is active.
+    // Resolve where this tenant's orders live (Convex / their own Supabase /
+    // the shared platform DB) AND that the tenant is active.
     // Using is_active check prevents order creation for deactivated tenants.
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()

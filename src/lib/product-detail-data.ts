@@ -6,6 +6,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { getComplementaryItems } from '@/lib/complementary-pairs-service'
 import type { MenuItem, Category, Variation, VariationType, Addon, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
@@ -93,60 +94,7 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
 
         const { data, error } = await supabase
             .from('tenants')
-            .select(`
-                id,
-                slug,
-                name,
-                logo_url,
-                primary_color,
-                secondary_color,
-                background_color,
-                text_primary_color,
-                text_secondary_color,
-                text_muted_color,
-                border_color,
-                header_color,
-                header_font_color,
-                cards_color,
-                cards_border_color,
-                card_title_color,
-                card_price_color,
-                card_description_color,
-                modal_background_color,
-                modal_title_color,
-                modal_price_color,
-                modal_description_color,
-                button_primary_color,
-                button_primary_text_color,
-                button_secondary_color,
-                button_secondary_text_color,
-                link_color,
-                shadow_color,
-                success_color,
-                warning_color,
-                error_color,
-                accent_color,
-                is_active,
-                menu_engineering_enabled,
-                hide_currency_symbol,
-                checkout_upsell_enabled,
-                checkout_upsell_title,
-                checkout_upsell_subtitle,
-                checkout_upsell_max_items,
-                bundles_enabled,
-                pairing_rules_enabled,
-                convex_deployment_url,
-                convex_schema_version,
-                search_bar_enabled,
-                search_bar_background,
-                search_bar_text,
-                search_bar_placeholder,
-                search_bar_icon,
-                search_bar_border,
-                search_bar_focus_ring,
-                search_bar_radius,
-                search_bar_style
-            `)
+            .select(PRODUCT_DETAIL_TENANT_SELECT)
             .eq('slug', slug)
             .eq('is_active', true)
             .maybeSingle()

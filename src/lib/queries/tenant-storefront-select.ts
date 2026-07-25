@@ -38,6 +38,7 @@ export const TENANT_STOREFRONT_SELECT = `
   promotion_image_url,
   facebook_page_id,
   promotion_banners, is_promotion_visible,
+  operating_hours, timezone, enforce_operating_hours,
   mapbox_enabled, lalamove_enabled, enable_order_management,
   convex_deployment_url, convex_schema_version,
   mobile_grid_columns, mobile_overrides,

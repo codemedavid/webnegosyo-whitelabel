@@ -11,6 +11,34 @@ import { createClient } from '@/lib/supabase/server'
 // Token TTL in milliseconds (15 minutes)
 const TOKEN_TTL_MS = 15 * 60 * 1000
 
+/** A freshly minted token plus the hash and expiry that get persisted. */
+export interface OrderTokenPair {
+    /** Plaintext token — returned to the caller, never stored. */
+    token: string
+    /** SHA-256 of the token — this is what the order row holds. */
+    tokenHash: string
+    expiresAt: string
+}
+
+/**
+ * Mint a token without touching any database.
+ *
+ * Split out so the per-tenant Supabase order path can write the hash directly
+ * into its INSERT (see `src/lib/tenant-supabase-orders.ts`) instead of issuing a
+ * follow-up UPDATE against the platform project, which is the wrong database
+ * entirely for those orders.
+ */
+export function generateOrderTokenPair(): OrderTokenPair {
+    // Generate a random 32-byte token
+    const token = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString()
+
+    // Store token hash with the order (we store hash, not plain token)
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+
+    return { token, tokenHash, expiresAt }
+}
+
 /**
  * Generate a cryptographically secure order token
  * Stores the token with the order for later verification
@@ -18,12 +46,7 @@ const TOKEN_TTL_MS = 15 * 60 * 1000
 export async function createOrderToken(orderId: string): Promise<string> {
     const supabase = await createClient()
 
-    // Generate a random 32-byte token
-    const token = crypto.randomBytes(32).toString('hex')
-    const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString()
-
-    // Store token hash with the order (we store hash, not plain token)
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+    const { token, tokenHash, expiresAt } = generateOrderTokenPair()
 
     // Update order with token and check for errors
     // Use count: 'exact' to get the number of affected rows for validation
