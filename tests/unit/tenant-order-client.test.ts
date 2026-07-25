@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals'
+import { describe, it, expect } from '@jest/globals'
 import {
   createTenantOrderWriteClient,
   createTenantOrderRealtimeClient,
@@ -136,16 +136,15 @@ describe('createTenantOrderRealtimeClient', () => {
 })
 
 describe('default client factory', () => {
-  it('is used when no factory is injected', () => {
-    // Arrange: no factory argument at all — exercises the real @supabase/supabase-js
-    // path to prove the module wires a working default rather than requiring DI.
-    const spy = jest.fn()
+  it('builds a real client when no factory is injected', () => {
+    // Arrange / Act: no factory argument at all — exercises the real
+    // @supabase/supabase-js path to prove the module ships a working default
+    // rather than only functioning under dependency injection.
+    const writeClient = createTenantOrderWriteClient(makeCredentials())
+    const realtimeClient = createTenantOrderRealtimeClient(makeCredentials())
 
-    // Act
-    const client = createTenantOrderWriteClient(makeCredentials())
-
-    // Assert: a real client exposes `.from()`.
-    expect(typeof client.from).toBe('function')
-    expect(spy).not.toHaveBeenCalled()
+    // Assert: real clients expose the query and channel surfaces callers rely on.
+    expect(typeof writeClient.from).toBe('function')
+    expect(typeof realtimeClient.channel).toBe('function')
   })
 })
