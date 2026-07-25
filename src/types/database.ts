@@ -448,6 +448,12 @@ export interface RecipeComponent {
 //   'recipe' → derived from an attached inventory recipe (deducts ingredients)
 export type ModifierStockMode = 'none' | 'simple' | 'recipe';
 
+// How a costable target's cost is determined.
+//   'simple'    → a manual number typed by the merchant
+//   'composite' → rolled up from an attached inventory recipe
+// Absent = legacy (recipe cost overrides the manual cost).
+export type CostMode = 'simple' | 'composite';
+
 export interface ModifierOption {
   id: string;
   name: string; // "Large", "Extra Cheese", "Hot"
@@ -455,8 +461,12 @@ export interface ModifierOption {
   image_url?: string;
   is_default?: boolean;
   display_order: number;
-  // Cost / margin — recipe cost (via recipes table, keyed by this id) overrides
-  // manual_cost; see resolveOptionCost in src/lib/modifier-groups.ts.
+  // Cost / margin. `cost_mode` decides which cost is authoritative:
+  //   'simple'    → manual_cost
+  //   'composite' → the attached recipe (recipes table, keyed by this id)
+  // Absent on options saved before cost modes existed, which keep the legacy
+  // rule (recipe overrides manual_cost). See src/lib/inventory/cost-mode.ts.
+  cost_mode?: CostMode;
   manual_cost?: number;
   // Stock
   stock_mode?: ModifierStockMode; // defaults to 'none'
