@@ -328,6 +328,24 @@ export interface AddonLibraryEntry {
   updated_at: string;
 }
 
+// Reusable modifier-group library entry. Stores a whole group definition (name +
+// selection rules + option list) once; attaching copies a fresh-id snapshot into
+// menu_items.modifier_groups (snapshot-on-attach, like AddonLibraryEntry).
+export interface ModifierGroupLibraryEntry {
+  id: string;
+  tenant_id: string;
+  name: string;
+  min_select: number;
+  max_select: number | null;
+  options: ModifierOption[];
+  // When set, this entry was prefilled from an existing menu item's group.
+  source_menu_item_id?: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================
 // Inventory system (Phase A: costing foundation)
 // ============================================
