@@ -371,12 +371,37 @@ items, mirroring the existing `addon_library` snapshot-on-attach model.
 Suite result: `modifier-library-utils` 12/12; full `modifier*` group 125/125.
 New files typecheck + lint clean.
 
+### Phase 1c admin UI — picker + save-to-library (commit `2356a7c`)
+
+Snapshot-on-attach and prefill arithmetic stay in the tested `attachEntriesToGroups`
+/ `buildLibraryDraftFromGroup` helpers; the UI is a thin container.
+
+- `ModifierLibraryPicker` — dialog that loads the tenant's **active** library
+  entries via `getModifierGroupLibraryAction`, multi-selects, and hands the chosen
+  entries to `onAttach`. RED (`modifier-library-picker.test.tsx`, module-missing)
+  → GREEN (3 RTL tests).
+- `ModifierGroupsEditor` — new `headerAction` slot (hosts the picker) + optional
+  per-group **Save to library** button via `onSaveGroupToLibrary`.
+- `menu-item-form` — `attachGroupsFromLibrary` (snapshots onto the item, skips
+  dupes) and `saveGroupToLibrary` (`buildLibraryDraftFromGroup` →
+  `createModifierGroupLibraryEntryAction`).
+
+| # | What is guaranteed | Test | Result |
+|---|--------------------|------|--------|
+| 13 | Picker loads and lists only `is_active` entries on open; calls action with tenantId | `loads and lists only active library entries when opened` | PASS |
+| 14 | Empty active library shows an empty-state message | `shows an empty-state message when the library has no active entries` | PASS |
+| 15 | Selected entries handed back verbatim through `onAttach` | `hands the selected entries back through onAttach` | PASS |
+
+Suite: `modifier-library` group 15/15 (12 utils + 3 picker). Touched components
+typecheck + lint clean.
+
 ### Known gaps / follow-ups (Phase 1c)
-- **Migration not yet applied to the DB.** `20260725120000_modifier_group_library.sql`
-  is additive-only (CREATE TABLE IF NOT EXISTS + RLS DO-blocks, zero destructive
-  statements). Generated `src/types/supabase.ts` was updated by hand to match;
-  run the normal apply + `generate_typescript_types` to reconcile.
-- **Admin UI picker deferred.** No editor surface yet lets an admin manage the
-  library or click-attach a group. Pure helpers + service are ready to wire; the
-  UI (library manager tab + per-item "Add from library" picker) is a separate
-  slice.
+- **Migration applied.** `20260725120000_modifier_group_library.sql` was applied to
+  the live DB via MCP (RLS enabled, 0 rows). `src/types/supabase.ts` was updated by
+  hand to match; a `generate_typescript_types` run would reconcile it formally.
+- **No standalone library manager page.** Authoring is create-and-attach: "Save to
+  library" per group + the picker cover create + reuse. Editing/deleting existing
+  library entries via a dedicated `/admin` page (like `/admin/addons`) is deferred —
+  service + actions (`update`/`delete`) already exist to wire it.
+- **Storefront edit-mode round-trip** (`item-detail-modal.tsx`) still deferred from
+  Phase 2 (needs the reverse `cartFormat → ModifierSelection` adapter).
