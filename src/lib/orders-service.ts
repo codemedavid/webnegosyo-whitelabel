@@ -9,6 +9,11 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
 import { resolveOrderContact } from '@/lib/customer-identity'
+import {
+  summarizeOrderStats,
+  startOfTodayISO,
+  type OrderStatsRow,
+} from '@/lib/order-stats'
 import type { Order } from '@/types/database'
 
 export interface OrderWithItems extends Order {
@@ -249,36 +254,15 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
 
   const supabase = await createClient()
 
-  // Get today's orders
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
   const { data: orders, error } = await supabase
     .from('orders')
     .select('status, total, created_at')
     .eq('tenant_id', tenantId)
-    .gte('created_at', today.toISOString())
+    .gte('created_at', startOfTodayISO())
 
   if (error) throw error
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ordersData = orders as any[] || []
-
-  // Revenue and order count exclude cancelled orders so a cancellation
-  // immediately lowers the figures (matching the Convex dashboard semantics).
-  // Per-status counts still cover all rows so the breakdown stays complete.
-  const completedOrders = ordersData.filter(o => o.status !== 'cancelled')
-
-  const stats = {
-    todayOrders: completedOrders.length || 0,
-    todayRevenue: completedOrders.reduce((sum, order) => sum + Number(order.total), 0) || 0,
-    pendingOrders: ordersData.filter(o => o.status === 'pending').length || 0,
-    confirmedOrders: ordersData.filter(o => o.status === 'confirmed').length || 0,
-    preparingOrders: ordersData.filter(o => o.status === 'preparing').length || 0,
-    readyOrders: ordersData.filter(o => o.status === 'ready').length || 0,
-  }
-
-  return stats
+  return summarizeOrderStats(orders as OrderStatsRow[] | null)
 })
 
 // ============================================

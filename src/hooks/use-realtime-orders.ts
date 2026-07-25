@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 
 interface RealtimeOrder {
   id: string
@@ -18,6 +18,13 @@ interface RealtimeOrder {
 
 interface UseRealtimeOrdersOptions {
   tenantId: string
+  /**
+   * The project holding this tenant's orders. Omit for tenants on the shared
+   * platform database; pass a client built from the tenant's own Supabase
+   * credentials when `order_backend = 'supabase'`, otherwise the queue
+   * subscribes to a project that will never receive their orders.
+   */
+  client?: SupabaseClient
   onNewOrder?: (order: RealtimeOrder) => void
   onOrderUpdate?: (order: RealtimeOrder) => void
   enabled?: boolean
@@ -25,18 +32,22 @@ interface UseRealtimeOrdersOptions {
 
 export function useRealtimeOrders({
   tenantId,
+  client,
   onNewOrder,
   onOrderUpdate,
   enabled = true,
 }: UseRealtimeOrdersOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null)
+  // The channel must be removed from the very client it was created on;
+  // rebuilding a client here would leave the subscription open forever.
+  const clientRef = useRef<SupabaseClient | null>(null)
   const [isConnected, setIsConnected] = useState(false)
 
   const cleanup = useCallback(() => {
-    if (channelRef.current) {
-      const supabase = createClient()
-      supabase.removeChannel(channelRef.current)
+    if (channelRef.current && clientRef.current) {
+      clientRef.current.removeChannel(channelRef.current)
       channelRef.current = null
+      clientRef.current = null
       setIsConnected(false)
     }
   }, [])
@@ -44,7 +55,8 @@ export function useRealtimeOrders({
   useEffect(() => {
     if (!enabled || !tenantId) return
 
-    const supabase = createClient()
+    const supabase = client ?? createClient()
+    clientRef.current = supabase
 
     const channel = supabase
       .channel(`admin-orders:${tenantId}`)
@@ -79,7 +91,7 @@ export function useRealtimeOrders({
     channelRef.current = channel
 
     return cleanup
-  }, [tenantId, enabled, onNewOrder, onOrderUpdate, cleanup])
+  }, [tenantId, client, enabled, onNewOrder, onOrderUpdate, cleanup])
 
   return { isConnected }
 }

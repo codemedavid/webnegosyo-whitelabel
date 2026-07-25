@@ -2,6 +2,7 @@ import {
   buildTenantOrdersPage,
   fetchTenantOrdersPage,
   fetchTenantOrderById,
+  fetchTenantOrderStats,
 } from "@/lib/tenant-supabase-orders-read";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -18,6 +19,7 @@ interface QueryCall {
   select?: string;
   count?: string;
   eq: Array<[string, unknown]>;
+  gte: Array<[string, unknown]>;
   order?: [string, { ascending: boolean }];
   range?: [number, number];
   single?: boolean;
@@ -48,6 +50,10 @@ function makeFakeClient(result: FakeResult) {
         call.eq.push([column, value]);
         return builder;
       },
+      gte(column: string, value: unknown) {
+        call.gte.push([column, value]);
+        return builder;
+      },
       order(column: string, options: { ascending: boolean }) {
         call.order = [column, options];
         return builder;
@@ -69,7 +75,7 @@ function makeFakeClient(result: FakeResult) {
 
   const client = {
     from(table: string) {
-      const call: QueryCall = { table, eq: [] };
+      const call: QueryCall = { table, eq: [], gte: [] };
       calls.push(call);
       return makeBuilder(call);
     },
@@ -227,6 +233,51 @@ describe("fetchTenantOrdersPage", () => {
     const page = await fetchTenantOrdersPage(client, "tenant-1");
 
     expect(page.orders).toEqual([]);
+  });
+});
+
+describe("fetchTenantOrderStats", () => {
+  it("summarizes today's orders from the tenant project", async () => {
+    const { client } = makeFakeClient({
+      data: [
+        { status: "pending", total: 100 },
+        { status: "cancelled", total: 999 },
+      ],
+      error: null,
+    });
+
+    const stats = await fetchTenantOrderStats(client, "tenant-1");
+
+    expect(stats.todayOrders).toBe(1);
+    expect(stats.todayRevenue).toBe(100);
+    expect(stats.pendingOrders).toBe(1);
+  });
+
+  it("only reads orders from today onward", async () => {
+    const { client, calls } = makeFakeClient({ data: [], error: null });
+
+    await fetchTenantOrderStats(client, "tenant-1");
+
+    expect(calls[0].gte.map(([column]) => column)).toContain("created_at");
+  });
+
+  it("scopes the stats query to the tenant", async () => {
+    const { client, calls } = makeFakeClient({ data: [], error: null });
+
+    await fetchTenantOrderStats(client, "tenant-1");
+
+    expect(calls[0].eq).toContainEqual(["tenant_id", "tenant-1"]);
+  });
+
+  it("throws when the tenant project rejects the stats read", async () => {
+    const { client } = makeFakeClient({
+      data: null,
+      error: { message: "relation \"orders\" does not exist" },
+    });
+
+    await expect(fetchTenantOrderStats(client, "tenant-1")).rejects.toThrow(
+      /does not exist/
+    );
   });
 });
 
