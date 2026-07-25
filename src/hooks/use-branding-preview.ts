@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
+import { applyMobileOverrides, mergeMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 
 export const BRANDING_PREVIEW_PARAM = 'brandingPreview'
 export const BRANDING_DRAFT_MESSAGE = 'wn-branding-draft'
@@ -102,6 +102,36 @@ export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
   }, [isEnabled])
 
   return isEnabled ? draft : null
+}
+
+/**
+ * The mobile override map in effect for the current render: the tenant's saved
+ * `mobile_overrides` with the Studio's unpublished mobile draft layered on top
+ * (a blanked draft entry removes the key — back to inheriting desktop). Empty
+ * on a desktop viewport.
+ *
+ * Consumers need the map itself, not just the merged tenant, to know WHICH
+ * fields have a distinct mobile value — see resolveStorefrontLayout.
+ */
+export function selectEffectiveMobileOverrides(
+  tenant: { mobile_overrides?: unknown } | null | undefined,
+  draft: BrandingPreviewDraft | null,
+  isMobile: boolean
+): OverrideMap {
+  if (!isMobile) return {}
+  const saved = (tenant?.mobile_overrides as OverrideMap | undefined) ?? {}
+  const draftOverrides = draft?.__mobileOverrides as OverrideMap | undefined
+  return draftOverrides ? mergeMobileOverrides(saved, draftOverrides) : saved
+}
+
+/** Hook form of selectEffectiveMobileOverrides for the storefront pages. */
+export function useMobileOverrides(tenant: { mobile_overrides?: unknown } | null | undefined): OverrideMap {
+  const draft = useBrandingPreviewDraft()
+  const isMobile = useIsMobileViewport()
+  return useMemo(
+    () => selectEffectiveMobileOverrides(tenant, draft, isMobile),
+    [tenant, draft, isMobile]
+  )
 }
 
 /**

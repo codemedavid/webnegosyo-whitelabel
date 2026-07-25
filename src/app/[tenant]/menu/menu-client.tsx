@@ -22,7 +22,8 @@ import { bundleToMenuItem, isBundleMenuItem } from '@/lib/bundle-adapter'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
-import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { useBrandingPreviewDraft, useBrandingPreviewTenant, useMobileOverrides } from '@/hooks/use-branding-preview'
+import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
 
@@ -52,6 +53,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
   // every branding consumer below re-renders in real time.
   const tenant = useBrandingPreviewTenant(tenantProp)
+  // Which fields carry a distinct mobile value (empty on a desktop viewport).
+  const mobileOverrides = useMobileOverrides(tenantProp)
   const previewDraft = useBrandingPreviewDraft()
   const isFlashPreview = previewDraft?.__previewSurface === 'flash'
   // Branding Studio "Cart" surface previews the real drawer over the menu.
@@ -181,19 +184,17 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
     }
   }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin])
 
-  // 'inherit' is the Branding Studio's explicit "same as desktop" choice —
-  // treat it (and blank/null) as "fall back to the desktop value".
-  const mobileOrDesktop = (mobileValue: string | null | undefined, desktopValue: string): string =>
-    mobileValue && mobileValue !== 'inherit' ? mobileValue : desktopValue
+  // Device resolution: the Branding Studio's per-device choice wins over any
+  // legacy mobile_* column, which in turn wins over the desktop column.
+  const deviceLayout = resolveStorefrontLayout(tenant, mobileOverrides)
+  const desktopLayout = deviceLayout.desktopLayout as PageLayout
+  const mobileLayout = deviceLayout.mobileLayout as PageLayout
+  const desktopCard = deviceLayout.desktopCard as CardTemplate
+  const mobileCard = deviceLayout.mobileCard as CardTemplate
+  const needsDualRender = deviceLayout.needsDualRender
 
-  const desktopLayout = (tenant?.page_layout || 'default') as PageLayout
-  const mobileLayout = mobileOrDesktop(tenant?.mobile_page_layout, desktopLayout) as PageLayout
-  const desktopCard = (tenant?.card_template || 'classic') as CardTemplate
-  const mobileCard = mobileOrDesktop(tenant?.mobile_card_template, desktopCard) as CardTemplate
-  const needsDualRender = mobileLayout !== desktopLayout || mobileCard !== desktopCard
-
-  const desktopHeader = (tenant?.header_template || 'classic') as HeaderTemplate
-  const mobileHeader = mobileOrDesktop(tenant?.mobile_header_template, desktopHeader) as HeaderTemplate
+  const desktopHeader = deviceLayout.desktopHeader as HeaderTemplate
+  const mobileHeader = deviceLayout.mobileHeader as HeaderTemplate
   const headerConfig = useMemo<HeaderConfig>(() => getHeaderConfig(tenant), [tenant])
 
   // When the header carries its own inline search, suppress the layout's search bar

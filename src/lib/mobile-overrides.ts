@@ -47,6 +47,26 @@ export function resolveMobileFieldValue(
 }
 
 /**
+ * Pick a template/layout value for the mobile viewport.
+ *
+ * Precedence: the Branding Studio's per-device choice (from `mobile_overrides`)
+ * → a legacy dedicated `mobile_*` column written by the old editor → the
+ * desktop value. Without this order a stale legacy column silently shadows the
+ * Studio's choice, so publishing a mobile layout appears to do nothing.
+ * `'inherit'` is the editor's explicit "same as desktop" and counts as blank.
+ */
+export function resolveDeviceTemplate(
+  overrideValue: unknown,
+  legacyValue: string | null | undefined,
+  desktopValue: string
+): string {
+  const override = typeof overrideValue === 'string' ? overrideValue : ''
+  if (override && override !== 'inherit') return override
+  if (legacyValue && legacyValue !== 'inherit') return legacyValue
+  return desktopValue
+}
+
+/**
  * Overlay a saved override map over a base object (tenant columns or product
  * settings) at runtime. Blank override values are ignored so a stray empty
  * entry can never blank out a real desktop value. Returns a new object.

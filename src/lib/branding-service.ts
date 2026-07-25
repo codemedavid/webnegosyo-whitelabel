@@ -280,6 +280,7 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'flash_screen_duration_ms',
     'mobile_page_layout',
     'mobile_card_template',
+    'mobile_overrides',
     'header_template',
     'mobile_header_template',
     'header_show_logo',
