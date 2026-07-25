@@ -1,7 +1,16 @@
 import { z } from 'zod'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createTenantSupabase, updateTenantSupabase, listTenantsSupabase, getTenantBySlugSupabase } from '@/lib/tenants-service'
-import { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, updateMenuItemFields, listMenuItemsForProvisioning } from '@/lib/admin-service'
+import {
+    createCategory,
+    createMenuItem,
+    updateMenuItemImage,
+    setMenuItemImageFromData,
+    setMenuItemImageFromUrl,
+    updateMenuItemFields,
+    listMenuItemsForProvisioning,
+    listCategoriesForProvisioning,
+} from '@/lib/admin-service'
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
 import { createUpsellPair } from '@/lib/menu-engineering-service'
 import { createBundle } from '@/lib/bundles-service'
@@ -157,6 +166,25 @@ const ops: ProvisioningOp<unknown>[] = [
         },
     }),
     op({
+        name: 'import_menu_item_image_from_url',
+        description:
+            "PREFERRED way to set a menu item's photo from a link: downloads the image at sourceUrl, re-hosts it on the platform's own image CDN (ImageKit), then sets it on the item. Accepts Google Drive / Dropbox share links (rewritten to their direct-download form) and ordinary image URLs. Envelope: { tenantId, itemId, sourceUrl, fileName? }. Use list_menu_items first to resolve itemId (match the item code such as D1 / SP1 in the name or description). Call once per item. Fails without touching the item if the link does not serve an actual image — a Drive link must be shared as 'Anyone with the link'.",
+        input: z.object({
+            tenantId: UUID,
+            itemId: UUID.describe('Id of the existing menu item to update (resolve via list_menu_items)'),
+            sourceUrl: z.string().url().describe('Link to the source image (Drive/Dropbox share link or direct image URL)'),
+            fileName: z
+                .string()
+                .min(1)
+                .optional()
+                .describe('Optional name to store the asset under, e.g. "D1-sizzling-sisig.jpg"'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; itemId: string; sourceUrl: string; fileName?: string }
+            return setMenuItemImageFromUrl(i.itemId, i.tenantId, i.sourceUrl, i.fileName, ctx)
+        },
+    }),
+    op({
         name: 'add_addon_library_entry',
         description: 'Create a reusable addon-library entry (shared addon group) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
@@ -229,6 +257,13 @@ const ops: ProvisioningOp<unknown>[] = [
         description: "List a tenant's menu items (id, name, image_url, price) so an item can be resolved by name before updating it. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listMenuItemsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'list_categories',
+        description:
+            "List a tenant's menu categories (id, name, order, is_active) so a category_id can be resolved by name before adding or moving a menu item. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listCategoriesForProvisioning((input as { tenantId: string }).tenantId, ctx),
     }),
     op({
         name: 'get_tenant',

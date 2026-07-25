@@ -147,6 +147,7 @@ export default async function SettingsPage({
             tenantId={tenant.id}
             initialHours={tenant.operating_hours ?? null}
             initialTimezone={tenant.timezone ?? null}
+            initialEnforce={tenant.enforce_operating_hours === true}
           />
 
           {/* Distance-Based Delivery Fee */}

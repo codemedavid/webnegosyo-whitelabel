@@ -37,6 +37,37 @@ describe('computeOptionMargin', () => {
     expect(result.price).toBe(0)
     expect(result.marginPercent).toBe(0)
   })
+
+  // ---- Explicit cost mode --------------------------------------------------
+  // The three cases above cover legacy options (no cost_mode) and must keep
+  // passing unchanged — they are the regression guard for existing tenants.
+
+  it('ignores an attached recipe cost when the option is in simple mode', () => {
+    const result = computeOptionMargin(
+      100,
+      option({ price_modifier: 0, cost_mode: 'simple', manual_cost: 30 }),
+      45,
+    )
+    expect(result.cost).toBe(30)
+  })
+
+  it('ignores a stale manual cost when the option is in composite mode', () => {
+    const result = computeOptionMargin(
+      100,
+      option({ price_modifier: 0, cost_mode: 'composite', manual_cost: 30 }),
+      45,
+    )
+    expect(result.cost).toBe(45)
+  })
+
+  it('costs a composite option at zero until a recipe is attached', () => {
+    const result = computeOptionMargin(
+      100,
+      option({ price_modifier: 0, cost_mode: 'composite', manual_cost: 30 }),
+    )
+    expect(result.cost).toBe(0)
+    expect(result.marginPercent).toBe(100)
+  })
 })
 
 describe('computeItemMarginSummary', () => {

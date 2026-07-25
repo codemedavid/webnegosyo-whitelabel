@@ -493,6 +493,63 @@ export type Database = {
           },
         ]
       }
+      modifier_group_library: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          max_select: number | null
+          min_select: number
+          name: string
+          options: Json
+          source_menu_item_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          max_select?: number | null
+          min_select?: number
+          name: string
+          options?: Json
+          source_menu_item_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          max_select?: number | null
+          min_select?: number
+          name?: string
+          options?: Json
+          source_menu_item_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifier_group_library_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "modifier_group_library_source_menu_item_id_fkey"
+            columns: ["source_menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bundles: {
         Row: {
           created_at: string

@@ -325,3 +325,83 @@ clean.
 - Component-level render test of `product-detail-content` in the `useGroups`
   branch is not added; the branch delegates entirely to the hook + selector,
   which are unit-covered (tests 36–44).
+
+---
+
+## Phase 1c — Modifier Library (reusable groups)
+
+**Intent:** let a tenant define a whole modifier group once (name + min/max
+selection rules + option list) and attach fresh-id snapshots of it to many menu
+items, mirroring the existing `addon_library` snapshot-on-attach model.
+
+### User journeys
+- As an admin, I define a reusable group (e.g. "Size") in a library so I don't
+  rebuild it per item.
+- As an admin, I attach a library group to an item; it lands as an independent
+  snapshot so later library edits never retroactively mutate that item.
+- As an admin, attaching a group whose name already exists on the item is a
+  no-op (no duplicate groups).
+
+### RED → GREEN
+- RED: `test: add reproducer for modifier library snapshot/attach helpers` —
+  `tests/unit/modifier-library-utils.test.ts` failed to compile (module +
+  `ModifierGroupLibraryEntry` type absent).
+- GREEN: `feat: modifier library snapshot/attach pure helpers (GREEN)` — added
+  `src/lib/modifier-library-utils.ts` + the type. 12/12 pass.
+- Wiring: `feat: modifier_group_library table + server service` — additive
+  migration `20260725120000_modifier_group_library.sql` (CREATE TABLE + RLS
+  mirroring addon_library) and `src/lib/modifier-library-service.ts` (tenant CRUD).
+
+### Test specification
+| # | What is guaranteed | Test | Result |
+|---|--------------------|------|--------|
+| 1 | Minimal group parses; min_select→0, max_select→null, is_active→true defaults | `modifierGroupLibraryEntrySchema accepts a minimal single-select group` | PASS |
+| 2 | Empty group name rejected | `rejects an empty group name` | PASS |
+| 3 | Group with zero options rejected | `rejects a group with no options` | PASS |
+| 4 | `max_select < min_select` rejected | `rejects max_select smaller than min_select` | PASS |
+| 5 | Unlimited multi-select (max null) with a min allowed | `allows unlimited multi-select` | PASS |
+| 6 | Attach produces fresh group id + fresh option ids (no library ids leak) | `produces a group with a fresh id and fresh option ids` | PASS |
+| 7 | Name + rules + option definitions preserved on attach | `preserves the group name, selection rules, and option definitions` | PASS |
+| 8 | Per-item stock (`stock_mode`/`stock_qty`) never copied into snapshot | `does not carry per-item stock state into the snapshot` | PASS |
+| 9 | Draft prefilled from an item group strips runtime ids | `prefills a draft from an existing item group, stripping ids` | PASS |
+| 10 | Attach appends immutably (original array untouched) | `appends snapshots of entries to the existing groups (immutable)` | PASS |
+| 11 | Duplicate group name (case-insensitive) skipped | `skips an entry whose group name already exists` | PASS |
+| 12 | New groups ordered after current max display_order | `assigns display_order after the current maximum` | PASS |
+
+Suite result: `modifier-library-utils` 12/12; full `modifier*` group 125/125.
+New files typecheck + lint clean.
+
+### Phase 1c admin UI — picker + save-to-library (commit `2356a7c`)
+
+Snapshot-on-attach and prefill arithmetic stay in the tested `attachEntriesToGroups`
+/ `buildLibraryDraftFromGroup` helpers; the UI is a thin container.
+
+- `ModifierLibraryPicker` — dialog that loads the tenant's **active** library
+  entries via `getModifierGroupLibraryAction`, multi-selects, and hands the chosen
+  entries to `onAttach`. RED (`modifier-library-picker.test.tsx`, module-missing)
+  → GREEN (3 RTL tests).
+- `ModifierGroupsEditor` — new `headerAction` slot (hosts the picker) + optional
+  per-group **Save to library** button via `onSaveGroupToLibrary`.
+- `menu-item-form` — `attachGroupsFromLibrary` (snapshots onto the item, skips
+  dupes) and `saveGroupToLibrary` (`buildLibraryDraftFromGroup` →
+  `createModifierGroupLibraryEntryAction`).
+
+| # | What is guaranteed | Test | Result |
+|---|--------------------|------|--------|
+| 13 | Picker loads and lists only `is_active` entries on open; calls action with tenantId | `loads and lists only active library entries when opened` | PASS |
+| 14 | Empty active library shows an empty-state message | `shows an empty-state message when the library has no active entries` | PASS |
+| 15 | Selected entries handed back verbatim through `onAttach` | `hands the selected entries back through onAttach` | PASS |
+
+Suite: `modifier-library` group 15/15 (12 utils + 3 picker). Touched components
+typecheck + lint clean.
+
+### Known gaps / follow-ups (Phase 1c)
+- **Migration applied.** `20260725120000_modifier_group_library.sql` was applied to
+  the live DB via MCP (RLS enabled, 0 rows). `src/types/supabase.ts` was updated by
+  hand to match; a `generate_typescript_types` run would reconcile it formally.
+- **No standalone library manager page.** Authoring is create-and-attach: "Save to
+  library" per group + the picker cover create + reuse. Editing/deleting existing
+  library entries via a dedicated `/admin` page (like `/admin/addons`) is deferred —
+  service + actions (`update`/`delete`) already exist to wire it.
+- **Storefront edit-mode round-trip** (`item-detail-modal.tsx`) still deferred from
+  Phase 2 (needs the reverse `cartFormat → ModifierSelection` adapter).

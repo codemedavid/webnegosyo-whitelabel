@@ -10,6 +10,9 @@ import {
   createOrderConvex,
 } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
+import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
+import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
@@ -103,12 +106,13 @@ export async function createOrderAction(
       return { success: false, error: 'Order must contain at least one item' }
     }
 
-    // Check if tenant has Convex configured AND that the tenant is active.
+    // Resolve where this tenant's orders live (Convex / their own Supabase /
+    // the shared platform DB) AND that the tenant is active.
     // Using is_active check prevents order creation for deactivated tenants.
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -317,6 +321,52 @@ export async function createOrderAction(
           payment_proof_reference: paymentProof?.reference || undefined,
         }
       : effectiveCustomerData
+
+    // Route to the tenant's OWN Supabase project when that is the selected
+    // backend. Checked before the Convex branch so an explicit selection always
+    // wins; `assertOrderBackendReady` makes a half-configured tenant fail loudly
+    // instead of silently writing into the shared platform database, which would
+    // split that merchant's orders across two backends unnoticed.
+    if (resolveOrderBackend(tenantConfig) === 'supabase') {
+      assertOrderBackendReady(tenantConfig)
+
+      // The order type lives on the platform; carry its display name across so
+      // the merchant queue doesn't render every order as "N/A".
+      let orderTypeName: string | null = null
+      if (orderTypeId) {
+        const { data: otNameRow } = await supabaseAdmin
+          .from('order_types')
+          .select('name')
+          .eq('id', orderTypeId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle()
+        orderTypeName = (otNameRow as { name?: string } | null)?.name ?? null
+      }
+
+      const tenantClient = createTenantOrderWriteClient(tenantConfig)
+      const result = await createOrderTenantSupabase(tenantClient, {
+        tenantId,
+        items,
+        customerInfo,
+        orderTypeId,
+        orderTypeName,
+        customerData: effectiveCustomerData,
+        deliveryFee: effectiveDeliveryFee,
+        lalamoveQuotationId,
+        paymentMethodId,
+        paymentMethodName,
+        paymentMethodDetails,
+        paymentMethodQrCodeUrl,
+        serviceChargeAmount,
+        scheduledForISO: validatedScheduledISO,
+        paymentProof,
+      })
+
+      await firePostHogNotification(result.order.id, items)
+      let trackingToken: string | undefined
+      try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
+    }
 
     if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
       // Route to Convex (prices already validated above)

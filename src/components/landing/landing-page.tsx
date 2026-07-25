@@ -11,8 +11,11 @@ import {
   ScrollProgressBar,
 } from './landing-chrome'
 import { LandingHero } from './landing-hero'
+import { ProblemSection } from './problem-section'
+import { CapabilitiesSection } from './capabilities-section'
+import { HowItWorksSection } from './how-it-works'
 import { FeatureJourney } from './feature-journey'
-import { SocialProofSection } from './social-proof'
+import { SocialProofSection, StatsBand } from './social-proof'
 import { FAQSection, PricingSection } from './pricing-faq'
 import { FinalCTASection } from './final-cta'
 import { SceneErrorBoundary } from './scene-error-boundary'
@@ -48,12 +51,13 @@ export function LandingPage() {
   const sceneRef = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
 
-  // 0 → top of page, 1 → hero + feature journey fully scrolled past. Drives the 3D phone.
+  // 0 → top of page, 1 → hero fully scrolled past. Drives the 3D phone and fades it out
+  // before the content sections so the rest of the page reads on a solid background.
   const { scrollYProgress: sceneProgress } = useScroll({
     target: sceneRef,
     offset: ['start start', 'end start'],
   })
-  const canvasOpacity = useTransform(sceneProgress, [0, 0.9, 1], [1, 1, 0])
+  const canvasOpacity = useTransform(sceneProgress, [0, 0.75, 1], [1, 1, 0])
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: LANDING_COLORS.ink }}>
@@ -62,7 +66,7 @@ export function LandingPage() {
       <GrainOverlay />
       <LandingNav />
 
-      {/* Immersive scene: fixed 3D canvas behind the hero + feature journey */}
+      {/* Immersive scene: fixed 3D canvas behind the hero only */}
       <div ref={sceneRef} className="relative">
         <motion.div className="fixed inset-0 z-0" style={{ opacity: canvasOpacity }} aria-hidden>
           {shouldReduceMotion ? (
@@ -81,11 +85,15 @@ export function LandingPage() {
 
         <div className="relative z-10">
           <LandingHero />
-          <FeatureMarquee />
-          <FeatureJourney />
         </div>
       </div>
 
+      <FeatureMarquee />
+      <ProblemSection />
+      <CapabilitiesSection />
+      <HowItWorksSection />
+      <FeatureJourney />
+      <StatsBand />
       <SocialProofSection />
       <PricingSection />
       <FAQSection />

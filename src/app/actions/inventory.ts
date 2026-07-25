@@ -23,6 +23,7 @@ import {
   deleteRecipeForTarget,
   type RecipeInput,
 } from '@/lib/inventory/recipes-service'
+import { getMenuItemCost } from '@/lib/inventory/costing-service'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
 
 function zodErrorMessage(error: z.ZodError): string {
@@ -155,6 +156,18 @@ export async function deleteIngredientAction(
 // ============================================
 // Recipes (keyed by target — incl. modifier options)
 // ============================================
+
+/**
+ * Recipe-derived cost of every costable target on one menu item, for the live
+ * margin display in the product editor.
+ */
+export async function getMenuItemCostAction(tenantId: string, menuItemId: string) {
+  try {
+    return { success: true as const, data: await getMenuItemCost(tenantId, menuItemId) }
+  } catch (error) {
+    return fail(error, 'Failed to compute menu item cost')
+  }
+}
 
 export async function getRecipeForTargetAction(tenantId: string, target: RecipeTarget) {
   try {

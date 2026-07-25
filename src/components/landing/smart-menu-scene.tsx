@@ -16,13 +16,17 @@ interface PhoneKeyframe {
   scale: number
 }
 
+// The scene spans the hero only, so the phone makes one calm move as the hero
+// scrolls away rather than swinging across several sections.
 const PHONE_KEYFRAMES: readonly PhoneKeyframe[] = [
-  { at: 0.0, x: 0, y: -0.55, z: 0, rotY: -0.22, scale: 1.05 },
-  { at: 0.3, x: 1.75, y: 0.05, z: 0, rotY: -0.55, scale: 1 },
-  { at: 0.54, x: -1.75, y: 0.05, z: 0, rotY: 0.55, scale: 1 },
-  { at: 0.78, x: 1.75, y: 0.05, z: 0, rotY: -0.45, scale: 1 },
-  { at: 1.0, x: 0, y: 0.4, z: -3.2, rotY: 0, scale: 0.85 },
+  { at: 0.0, x: 0, y: -0.35, z: 0, rotY: -0.3, scale: 1.05 },
+  { at: 0.5, x: 0.2, y: 0.2, z: -0.8, rotY: -0.14, scale: 1 },
+  { at: 1.0, x: 0, y: 0.8, z: -2.8, rotY: 0.06, scale: 0.88 },
 ] as const
+
+/** On wide screens the phone sits to the right of the hero copy instead of behind it. */
+const WIDE_SCREEN_X_OFFSET = 2.05
+const WIDE_SCREEN_MIN_WIDTH = 1024
 
 const DAMP_SPEED = 4
 
@@ -116,11 +120,13 @@ function SmartMenuPhone({ progress }: { progress: MotionValue<number> }) {
     // On narrow screens the phone sits behind the copy — push it back so the
     // headline stays legible instead of fighting the bright menu screen.
     const isNarrow = state.size.width < 768
+    const isWide = state.size.width >= WIDE_SCREEN_MIN_WIDTH
+    const targetX = frame.x + (isWide ? WIDE_SCREEN_X_OFFSET : 0)
     const targetY = frame.y + floatY + (isNarrow ? -0.5 : 0)
-    const targetZ = frame.z + (isNarrow ? -2.2 : 0)
-    const targetScale = frame.scale * (isNarrow ? 0.9 : 1)
+    const targetZ = frame.z + (isNarrow ? -3.6 : 0)
+    const targetScale = frame.scale * (isNarrow ? 0.82 : 1)
 
-    group.position.x = THREE.MathUtils.damp(group.position.x, frame.x, DAMP_SPEED, delta)
+    group.position.x = THREE.MathUtils.damp(group.position.x, targetX, DAMP_SPEED, delta)
     group.position.y = THREE.MathUtils.damp(group.position.y, targetY, DAMP_SPEED, delta)
     group.position.z = THREE.MathUtils.damp(group.position.z, targetZ, DAMP_SPEED, delta)
     group.rotation.y = THREE.MathUtils.damp(group.rotation.y, frame.rotY, DAMP_SPEED, delta)

@@ -5,20 +5,36 @@ import { UtensilsCrossed, FolderTree, TrendingUp, DollarSign, ShoppingBag, Clock
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { getOrderStats } from '@/lib/orders-service'
+import { getTenantSupabaseOrderStats } from '@/lib/tenant-order-queue'
+import {
+  resolveOrderBackend,
+  hasTenantSupabaseOrderCredentials,
+} from '@/lib/order-backend'
+import type { OrderStats } from '@/lib/order-stats'
 import { Button } from '@/components/ui/button'
 import { DashboardSkeleton } from '@/components/admin/dashboard-skeleton'
 import { ConvexDashboardStats } from '@/components/admin/convex-dashboard-stats'
 import type { Tenant } from '@/types/database'
 
+const EMPTY_ORDER_STATS: OrderStats = {
+  todayOrders: 0,
+  todayRevenue: 0,
+  pendingOrders: 0,
+  confirmedOrders: 0,
+  preparingOrders: 0,
+  readyOrders: 0,
+}
+
 async function DashboardContent({
   tenantSlug,
-  tenantId,
-  convexUrl,
+  tenant,
 }: {
   tenantSlug: string
-  tenantId: string
-  convexUrl: string | null
+  tenant: Tenant
 }) {
+  const tenantId = tenant.id
+  const backend = resolveOrderBackend(tenant)
+  const convexUrl = backend === 'convex' ? tenant.convex_deployment_url : null
   const ordersHref = `/${tenantSlug}/admin/orders`
 
   // Fetch menu/category data in both paths; only fetch Supabase order stats when Convex is not configured.
@@ -42,14 +58,14 @@ async function DashboardContent({
     )
   }
 
-  const orderStats = await getOrderStats(tenantId).catch(() => ({
-    todayOrders: 0,
-    todayRevenue: 0,
-    pendingOrders: 0,
-    confirmedOrders: 0,
-    preparingOrders: 0,
-    readyOrders: 0,
-  }))
+  // Tenants on their own Supabase project read the same figures from that
+  // project; everyone else reads the shared platform database.
+  const loadOrderStats =
+    backend === 'supabase' && hasTenantSupabaseOrderCredentials(tenant)
+      ? getTenantSupabaseOrderStats(tenant)
+      : getOrderStats(tenantId)
+
+  const orderStats = await loadOrderStats.catch(() => EMPTY_ORDER_STATS)
 
   const stats = [
     {
@@ -214,11 +230,7 @@ export default async function AdminDashboard({
       </div>
 
       <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent
-          tenantSlug={tenantSlug}
-          tenantId={tenant.id}
-          convexUrl={tenant.convex_deployment_url ?? null}
-        />
+        <DashboardContent tenantSlug={tenantSlug} tenant={tenant} />
       </Suspense>
     </div>
   )

@@ -4,10 +4,16 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
 import { resolveOrderContact } from '@/lib/customer-identity'
+import {
+  summarizeOrderStats,
+  startOfTodayISO,
+  type OrderStatsRow,
+} from '@/lib/order-stats'
 import type { Order } from '@/types/database'
 
 export interface OrderWithItems extends Order {
@@ -248,36 +254,15 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
 
   const supabase = await createClient()
 
-  // Get today's orders
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
   const { data: orders, error } = await supabase
     .from('orders')
     .select('status, total, created_at')
     .eq('tenant_id', tenantId)
-    .gte('created_at', today.toISOString())
+    .gte('created_at', startOfTodayISO())
 
   if (error) throw error
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ordersData = orders as any[] || []
-
-  // Revenue and order count exclude cancelled orders so a cancellation
-  // immediately lowers the figures (matching the Convex dashboard semantics).
-  // Per-status counts still cover all rows so the breakdown stays complete.
-  const completedOrders = ordersData.filter(o => o.status !== 'cancelled')
-
-  const stats = {
-    todayOrders: completedOrders.length || 0,
-    todayRevenue: completedOrders.reduce((sum, order) => sum + Number(order.total), 0) || 0,
-    pendingOrders: ordersData.filter(o => o.status === 'pending').length || 0,
-    confirmedOrders: ordersData.filter(o => o.status === 'confirmed').length || 0,
-    preparingOrders: ordersData.filter(o => o.status === 'preparing').length || 0,
-    readyOrders: ordersData.filter(o => o.status === 'ready').length || 0,
-  }
-
-  return stats
+  return summarizeOrderStats(orders as OrderStatsRow[] | null)
 })
 
 // ============================================
@@ -354,6 +339,24 @@ export async function createOrder(
   }
 
   const supabase = await createClient()
+
+  // SERVER-SIDE OPERATING-HOURS VALIDATION: the client already blocks the UI, but
+  // that is bypassable. This is the authoritative check. Scheduled (advance) orders
+  // are exempt — pre-ordering while the shop is shut is the point of that feature.
+  const { data: hoursRow } = await supabase
+    .from('tenants')
+    .select('operating_hours, timezone, enforce_operating_hours')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  const closedError = getClosedOrderError(
+    hoursRow as StoreHoursSource | null,
+    new Date(),
+    { isScheduled: !!scheduledForISO },
+  )
+  if (closedError) {
+    throw new Error(closedError)
+  }
 
   // SERVER-SIDE PRICE VALIDATION: Verify prices against database
   const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
@@ -611,6 +614,25 @@ export async function createOrderConvex(
   serviceChargeAmount?: number,
   scheduledForISO?: string
 ) {
+  // Same authoritative operating-hours guard as the Supabase path — a Convex tenant
+  // must not be the one storefront where a closed shop still takes ASAP orders.
+  // Hours live in Supabase (the tenants table) regardless of the order backend.
+  const supabase = await createClient()
+  const { data: hoursRow } = await supabase
+    .from('tenants')
+    .select('operating_hours, timezone, enforce_operating_hours')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  const closedError = getClosedOrderError(
+    hoursRow as StoreHoursSource | null,
+    new Date(),
+    { isScheduled: !!scheduledForISO },
+  )
+  if (closedError) {
+    throw new Error(closedError)
+  }
+
   const convex = createConvexServerClient(convexUrl, convexKey)
 
   // Convex `orders` has no scheduled_for column, but customerData is `v.any()`, so we

@@ -16,6 +16,8 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
+import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { toast } from 'sonner'
 import type { Tenant, CartItem, MenuItem, Variation, Addon, VariationOption } from '@/types/database'
 
@@ -38,6 +40,9 @@ export function useCartView() {
   const [prefetchedItems, setPrefetchedItems] = useState<MenuItem[] | null>(null)
 
   const showInterstitial = !!(tenant?.menu_engineering_enabled && tenant?.checkout_upsell_enabled)
+  // Operating-hours enforcement: the cart is the last screen before checkout, so
+  // this is where a shop that closed mid-session stops the flow.
+  const openStatus = useStoreOpenStatus(tenant)
   const branding = useMemo(() => getTenantBranding(tenant), [tenant])
   const cartSignature = useMemo(
     () => items.map((ci) => ci.menu_item.id).sort().join(','),
@@ -152,12 +157,20 @@ export function useCartView() {
   // Checkout button entry point: show the upsell interstitial if enabled,
   // otherwise navigate straight to checkout. Used by every cart design.
   const requestCheckout = useCallback(() => {
+    if (openStatus.isOrderingBlocked) {
+      toast.error(
+        openStatus.nextOpenLabel
+          ? `${STORE_CLOSED_MESSAGE}. Opens ${openStatus.nextOpenLabel}.`
+          : `${STORE_CLOSED_MESSAGE}.`
+      )
+      return
+    }
     if (showInterstitial) {
       setShowUpsellModal(true)
       return
     }
     navigateToCheckout()
-  }, [showInterstitial, navigateToCheckout])
+  }, [showInterstitial, navigateToCheckout, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
 
   // The interstitial's "continue" action: close it and proceed to checkout.
   const onUpsellContinue = useCallback(() => {
@@ -193,6 +206,8 @@ export function useCartView() {
     handleUpdateItem,
     // reliable exit back to the menu
     exitToMenu,
+    // operating-hours enforcement (designs render the closed notice)
+    openStatus,
     // checkout navigation + interstitial
     isNavigating,
     requestCheckout,

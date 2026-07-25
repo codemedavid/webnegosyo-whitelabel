@@ -605,6 +605,56 @@ export async function setMenuItemImageFromData(
 }
 
 /**
+ * Ingest an image that lives at a remote URL (a Drive/Dropbox share link, a
+ * supplier CDN) into ImageKit, then point the menu item at the ImageKit URL. This
+ * is the MCP path for "here is a link to the photo": storing the foreign URL via
+ * `updateMenuItemImage` would leave the menu pointing at an HTML interstitial or
+ * a link that later rots. Fetch and upload are awaited first, so a failure at
+ * either step leaves the row untouched.
+ */
+export async function setMenuItemImageFromUrl(
+  itemId: string,
+  tenantId: string,
+  sourceUrl: string,
+  fileName?: string,
+  ctx?: ProvisioningCtx,
+) {
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+
+  // Lazily import so the `server-only` modules are not pulled into any client
+  // bundle that transitively imports this service.
+  const { fetchRemoteImageAsBase64 } = await import('@/lib/imagekit-remote')
+  const { uploadBase64ToImageKit } = await import('@/lib/imagekit-server')
+
+  const remote = await fetchRemoteImageAsBase64(sourceUrl, fileName)
+  const { url } = await uploadBase64ToImageKit(remote.base64, {
+    folder: `menu-items/${tenantId}`,
+    fileName: remote.fileName,
+  })
+
+  return updateMenuItemImage(itemId, tenantId, url, ctx)
+}
+
+/**
+ * List a tenant's categories (id, name, order) for provisioning flows so a caller
+ * (e.g. the MCP) can resolve the `category_id` an item needs without guessing.
+ * Uses the service-role `ctx` client when provided so it bypasses RLS the same
+ * way the other MCP reads do.
+ */
+export async function listCategoriesForProvisioning(tenantId: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, order, is_active')
+    .eq('tenant_id', tenantId)
+    .order('order', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+/**
  * List a tenant's menu items (id, name, image_url) for provisioning flows so a
  * caller (e.g. the MCP) can resolve an item by name before updating it. Uses the
  * service-role `ctx` client when provided so it bypasses RLS the same way the
@@ -615,7 +665,9 @@ export async function listMenuItemsForProvisioning(tenantId: string, ctx?: Provi
 
   const { data, error } = await supabase
     .from('menu_items')
-    .select('id, name, image_url, category_id, price, is_available')
+    // description is included so callers can match items by a code (D1, SP1, ...)
+    // that the merchant put in the description rather than the name.
+    .select('id, name, description, image_url, category_id, price, is_available')
     .eq('tenant_id', tenantId)
     .order('name', { ascending: true })
 

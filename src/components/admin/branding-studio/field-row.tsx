@@ -285,6 +285,46 @@ function BannersRow({ field, value, onChange }: FieldRowProps) {
   )
 }
 
+/**
+ * Single-image field: upload to ImageKit or paste a URL, with a clear control.
+ * Both inputs write the same string value, so a merchant without ImageKit
+ * configured can still point at an externally hosted image.
+ */
+function ImageRow({ field, value, onChange }: FieldRowProps) {
+  const url = typeof value === 'string' ? value : ''
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <div className="flex-1 text-[12.5px] font-semibold">{field.label}</div>
+        {url && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label="Remove image"
+            className="text-[11px] font-bold text-red-500 underline hover:text-red-700"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      <ImageUpload
+        currentImageUrl={url}
+        onImageUploaded={(uploadedUrl) => onChange(uploadedUrl)}
+        folder="page-backgrounds"
+        label={field.label}
+      />
+      <input
+        value={url}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder}
+        aria-label={`${field.label} URL`}
+        className="mt-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12.5px] outline-none focus:border-neutral-800"
+      />
+    </div>
+  )
+}
+
 function NoteRow({ field }: FieldRowProps) {
   return (
     <div className="rounded-lg bg-neutral-100 px-2.5 py-2 text-[11px] leading-relaxed text-neutral-500">
@@ -309,6 +349,8 @@ export function FieldRow(props: FieldRowProps) {
       return <ProductRow {...props} />
     case 'banners':
       return <BannersRow {...props} />
+    case 'image':
+      return <ImageRow {...props} />
     case 'note':
       return <NoteRow {...props} />
     default:

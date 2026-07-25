@@ -11,6 +11,7 @@
  * `ModifierGroup[]` shape either way, so every consumer reads one model.
  */
 
+import { resolveCostByMode } from '@/lib/inventory/cost-mode'
 import type {
   Addon,
   MenuItem,
@@ -188,17 +189,18 @@ export function isOptionAvailable(option: ModifierOption): boolean {
 }
 
 /**
- * Effective per-option cost. A recipe-derived cost (when a recipe is attached)
- * overrides the manual cost; otherwise the manual cost is used; otherwise 0.
- * `recipeCost === undefined` means no recipe is attached (distinct from a real
- * recipe cost of 0).
+ * Effective per-option cost under the **legacy** rule: a recipe-derived cost
+ * (when a recipe is attached) overrides the manual cost; otherwise the manual
+ * cost; otherwise 0. `recipeCost === undefined` means no recipe is attached
+ * (distinct from a real recipe cost of 0).
+ *
+ * Kept as the mode-less entry point for callers that have no `ModifierOption`
+ * in hand. Prefer `resolveOptionCostForOption` in `@/lib/inventory/cost-mode`,
+ * which honors the option's explicit Simple/Composite choice.
  */
 export function resolveOptionCost(
   manualCost: number | undefined,
   recipeCost: number | undefined,
 ): number {
-  if (recipeCost !== undefined) {
-    return recipeCost
-  }
-  return manualCost ?? 0
+  return resolveCostByMode(undefined, manualCost, recipeCost)
 }

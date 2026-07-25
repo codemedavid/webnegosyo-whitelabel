@@ -4,39 +4,43 @@ import { useRef, useState } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Play } from 'lucide-react'
-import { CTAButton, SectionTag } from './cta-button'
+import { AccentText, CTAButton, SectionHeading } from './cta-button'
 import { LANDING_COLORS, PRICE_LABEL, STATS } from './landing-theme'
 
 const VIEWPORT = { once: true, amount: 0.3 } as const
 
-function StatsBand() {
+export function StatsBand() {
   return (
-    <div className="mx-auto grid max-w-5xl grid-cols-2 gap-px overflow-hidden rounded-3xl border border-white/8 bg-white/8 md:grid-cols-4">
-      {STATS.map((stat, i) => (
-        <motion.div
-          key={stat.label}
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.6, delay: i * 0.08 }}
-          className="flex flex-col items-center gap-1 px-6 py-8 text-center"
-          style={{ backgroundColor: LANDING_COLORS.inkSoft }}
-        >
-          <span
-            className="text-[clamp(1.8rem,4vw,2.6rem)] font-black tracking-[-0.03em]"
-            style={{
-              background: `linear-gradient(120deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.gold})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            {stat.value}
-          </span>
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">
-            {stat.label}
-          </span>
-        </motion.div>
-      ))}
+    <div className="relative z-10" style={{ backgroundColor: LANDING_COLORS.ink }}>
+      <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-20">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-white/8 bg-white/8 md:grid-cols-4">
+          {STATS.map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.55, delay: i * 0.08 }}
+              className="flex flex-col items-center gap-1 px-5 py-8 text-center"
+              style={{ backgroundColor: LANDING_COLORS.inkSoft }}
+            >
+              <span
+                className="text-[clamp(1.8rem,4vw,2.6rem)] font-black tracking-[-0.03em]"
+                style={{
+                  background: `linear-gradient(120deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.gold})`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                {stat.value}
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">
+                {stat.label}
+              </span>
+            </motion.div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -48,7 +52,7 @@ function DemoVideo() {
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={VIEWPORT}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto mt-16 w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10"
+      className="relative mx-auto mt-14 w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10"
       style={{ aspectRatio: '16/9', boxShadow: `0 40px 120px ${LANDING_COLORS.brand}1f` }}
     >
       <iframe
@@ -84,7 +88,7 @@ function TestimonialVideo() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={VIEWPORT}
       transition={{ duration: 0.6 }}
-      className="relative mx-auto w-full max-w-[560px] cursor-pointer overflow-hidden rounded-3xl border border-white/10"
+      className="relative mx-auto w-full max-w-[460px] cursor-pointer overflow-hidden rounded-3xl border border-white/10"
       onClick={handlePlayClick}
     >
       <video
@@ -98,13 +102,13 @@ function TestimonialVideo() {
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-colors hover:bg-black/25">
           <div
-            className="flex h-20 w-20 items-center justify-center rounded-full transition-transform duration-200 hover:scale-110"
+            className="flex h-18 w-18 items-center justify-center rounded-full p-5 transition-transform duration-200 hover:scale-110"
             style={{
               backgroundColor: `${LANDING_COLORS.brand}e6`,
               boxShadow: `0 0 60px ${LANDING_COLORS.brand}80`,
             }}
           >
-            <Play className="ml-1 h-9 w-9 fill-white text-white" />
+            <Play className="ml-0.5 h-8 w-8 fill-white text-white" />
           </div>
         </div>
       )}
@@ -114,20 +118,21 @@ function TestimonialVideo() {
 
 function TestimonialCards() {
   return (
-    <div className="relative mx-auto mt-4 flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-center md:gap-10">
+    <div className="relative mx-auto mt-8 flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-center md:gap-10">
       <motion.div
         initial={{ opacity: 0, y: 40, rotate: -6 }}
         whileInView={{ opacity: 1, y: 0, rotate: -3 }}
         viewport={VIEWPORT}
         transition={{ duration: 0.55, delay: 0.05 }}
-        className="w-full max-w-[320px] overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-white shadow-2xl"
       >
         <Image
           src="/testimonial1.jpg"
           alt="Client testimonial — praising the hero banner feature"
           width={320}
           height={400}
-          className="h-auto w-full" style={{ width: '100%', height: 'auto' }}
+          className="h-auto w-full"
+          style={{ width: '100%', height: 'auto' }}
         />
       </motion.div>
 
@@ -136,14 +141,15 @@ function TestimonialCards() {
         whileInView={{ opacity: 1, y: 0, rotate: 2 }}
         viewport={VIEWPORT}
         transition={{ duration: 0.55, delay: 0.15 }}
-        className="w-full max-w-[320px] overflow-hidden rounded-2xl bg-white shadow-2xl md:mt-12"
+        className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-white shadow-2xl md:mt-10"
       >
         <Image
           src="/testimonial2.png"
           alt="Facebook review from Kenya Mendoza recommending WebNegosyo"
           width={320}
           height={120}
-          className="h-auto w-full" style={{ width: '100%', height: 'auto' }}
+          className="h-auto w-full"
+          style={{ width: '100%', height: 'auto' }}
         />
       </motion.div>
     </div>
@@ -152,40 +158,34 @@ function TestimonialCards() {
 
 export function SocialProofSection() {
   return (
-    <section className="relative z-10 py-24 md:py-32" style={{ backgroundColor: LANDING_COLORS.ink }}>
+    <section
+      id="proof"
+      className="relative z-10 scroll-mt-20 py-24 md:py-32"
+      style={{ backgroundColor: LANDING_COLORS.ink }}
+    >
       <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <StatsBand />
+        <SectionHeading
+          tag="See it in action"
+          title={
+            <>
+              Panoorin ang Smart Menu <AccentText>habang nagbebenta</AccentText>
+            </>
+          }
+          body="Ito ang eksaktong karanasan ng customer mo — mula sa pagbukas ng link hanggang sa checkout."
+        />
+        <DemoVideo />
 
-        <div className="mt-24 text-center md:mt-32">
-          <SectionTag>See It In Action</SectionTag>
-          <motion.h2
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={VIEWPORT}
-            transition={{ duration: 0.6 }}
-            className="text-[clamp(2rem,5.5vw,3.4rem)] font-black uppercase leading-[1.02] tracking-[-0.04em] text-white"
-          >
-            Watch the Smart Menu
-            <br />
-            do the selling.
-          </motion.h2>
-          <DemoVideo />
-        </div>
-
-        <div className="mt-24 text-center md:mt-32">
-          <SectionTag>Real Results</SectionTag>
-          <motion.h2
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={VIEWPORT}
-            transition={{ duration: 0.6 }}
-            className="mb-12 text-[clamp(2rem,5.5vw,3.4rem)] font-black uppercase leading-[1.02] tracking-[-0.04em] text-white"
-          >
-            What people are saying
-          </motion.h2>
-          <TestimonialVideo />
-          <TestimonialCards />
-          <p className="mx-auto mt-10 max-w-xl text-[11px] leading-relaxed text-white/25">
+        <div className="mt-24 md:mt-32">
+          <SectionHeading
+            tag="Real results"
+            title="Ano ang sinasabi ng mga merchant"
+            body="Mga totoong negosyanteng gumagamit na ng Smart Menu ngayon."
+          />
+          <div className="mt-12">
+            <TestimonialVideo />
+            <TestimonialCards />
+          </div>
+          <p className="mx-auto mt-10 max-w-xl text-center text-[11px] leading-relaxed text-white/25">
             Individual experiences presented here may not be typical. Their background, education,
             effort, and application affected their experience.
           </p>
@@ -208,12 +208,12 @@ export function SocialProofSection() {
               alt="Smart Menu product preview"
               width={720}
               height={520}
-              className="mx-auto h-auto w-full max-w-[720px] rounded-2xl"
+              className="mx-auto h-auto w-full max-w-[680px] rounded-2xl"
               style={{ width: '100%', height: 'auto' }}
             />
           </div>
           <div className="px-6 pb-12 pt-10">
-            <CTAButton>Join 100+ Restaurants — {PRICE_LABEL}</CTAButton>
+            <CTAButton>Sumali sa 100+ restaurants — {PRICE_LABEL}</CTAButton>
             <p className="mt-3 text-xs text-white/30">One-time investment. Lifetime returns.</p>
           </div>
         </motion.div>

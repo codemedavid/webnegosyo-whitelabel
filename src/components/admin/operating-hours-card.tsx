@@ -25,12 +25,14 @@ interface OperatingHoursCardProps {
   tenantId: string
   initialHours: OperatingHours | null
   initialTimezone: string | null
+  initialEnforce: boolean
 }
 
-export function OperatingHoursCard({ tenantId, initialHours, initialTimezone }: OperatingHoursCardProps) {
+export function OperatingHoursCard({ tenantId, initialHours, initialTimezone, initialEnforce }: OperatingHoursCardProps) {
   const [hours, setHours] = useState<OperatingHours>(
     () => normalizeOperatingHours(initialHours) ?? buildDefaultOperatingHours()
   )
+  const [enforce, setEnforce] = useState(initialEnforce)
   const [isSaving, setIsSaving] = useState(false)
   const timezone = initialTimezone || 'Asia/Manila'
 
@@ -56,7 +58,7 @@ export function OperatingHoursCard({ tenantId, initialHours, initialTimezone }: 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      const result = await updateOperatingHoursAction(tenantId, hours, timezone)
+      const result = await updateOperatingHoursAction(tenantId, hours, timezone, enforce)
       if ('error' in result && result.error) {
         toast.error(result.error)
       } else {
@@ -81,6 +83,23 @@ export function OperatingHoursCard({ tenantId, initialHours, initialTimezone }: 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Opt-in: without this, hours only shape advance-order slots and the
+            storefront keeps accepting ASAP orders around the clock. */}
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3">
+          <div className="max-w-md">
+            <div className="font-medium">Close the storefront outside these hours</div>
+            <p className="text-sm text-muted-foreground">
+              Shows an &ldquo;Ordering is currently closed&rdquo; notice and stops new orders until you
+              reopen. Scheduled / advance orders still go through.
+            </p>
+          </div>
+          <Switch
+            checked={enforce}
+            onCheckedChange={setEnforce}
+            aria-label="Close the storefront outside operating hours"
+          />
+        </div>
+
         {DAY_LABELS.map(({ key, label }) => {
           const day = hours[key] ?? { closed: false, open: '09:00', close: '21:00' }
           return (

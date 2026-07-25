@@ -6,6 +6,12 @@ import { getOrdersByTenant } from '@/lib/orders-service'
 import { RealtimeOrdersWrapper } from '@/components/admin/realtime-orders-wrapper'
 import { ConvexOrdersWrapper } from '@/components/admin/convex-orders-wrapper'
 import { OrdersSkeleton } from '@/components/admin/orders-skeleton'
+import { getTenantSupabaseOrdersPage } from '@/lib/tenant-order-queue'
+import {
+  resolveOrderBackend,
+  hasTenantSupabaseOrderCredentials,
+} from '@/lib/order-backend'
+import type { OrderWithItems } from '@/lib/orders-service'
 import type { Tenant } from '@/types/database'
 import type { PaginatedOrdersResult } from '@/lib/orders-service'
 
@@ -18,13 +24,65 @@ interface OrdersPageProps {
   }>
 }
 
-async function OrdersContent({ 
-  tenantSlug, 
-  tenantId, 
-  page, 
-  status, 
-  orderType 
-}: { 
+const EMPTY_PAGE = {
+  orders: [],
+  totalCount: 0,
+  currentPage: 1,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false,
+}
+
+/**
+ * Queue for a tenant whose orders live in their own Supabase project. Reads go
+ * through the service-role client server side; only the anon key reaches the
+ * browser, for the realtime subscription.
+ */
+async function TenantSupabaseOrdersContent({
+  tenantSlug,
+  tenant,
+  page,
+  status,
+  orderType,
+}: {
+  tenantSlug: string
+  tenant: Tenant
+  page: number
+  status?: string
+  orderType?: string
+}) {
+  const result = await getTenantSupabaseOrdersPage(tenant, {
+    page,
+    limit: 20,
+    status,
+    orderType,
+  }).catch(() => EMPTY_PAGE)
+
+  return (
+    <RealtimeOrdersWrapper
+      initialOrders={result.orders as unknown as OrderWithItems[]}
+      tenantSlug={tenantSlug}
+      tenantId={tenant.id}
+      realtimeUrl={tenant.supabase_order_url ?? undefined}
+      realtimeAnonKey={tenant.supabase_order_anon_key ?? undefined}
+      pagination={{
+        currentPage: result.currentPage,
+        totalPages: result.totalPages,
+        totalCount: result.totalCount,
+        hasNextPage: result.hasNextPage,
+        hasPreviousPage: result.hasPreviousPage,
+      }}
+    />
+  )
+}
+
+async function OrdersContent({
+  tenantSlug,
+  tenantId,
+  page,
+  status,
+  orderType
+}: {
   tenantSlug: string
   tenantId: string
   page: number
@@ -70,29 +128,13 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
   const page = parseInt(searchParamsData.page || '1', 10)
   const status = searchParamsData.status
   const orderType = searchParamsData.orderType
-
-  // If tenant has Convex configured, use Convex-powered orders with real-time subscriptions
-  if (tenant.convex_deployment_url) {
-    return (
-      <div className="space-y-6">
-        <Breadcrumbs
-          items={[
-            { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-            { label: 'Orders' },
-          ]}
-        />
-
-        <div>
-          <h1 className="text-3xl font-bold">Orders</h1>
-          <p className="text-muted-foreground">Manage customer orders</p>
-        </div>
-
-        <ConvexOrdersWrapper
-          convexUrl={tenant.convex_deployment_url}
-        />
-      </div>
-    )
-  }
+  const backend = resolveOrderBackend(tenant)
+  // A tenant marked `convex` without a deployment URL has nothing to render, so
+  // it keeps falling back to the platform queue exactly as it did before.
+  const showConvex = backend === 'convex' && Boolean(tenant.convex_deployment_url)
+  const showTenantSupabase = backend === 'supabase'
+  const isTenantSupabaseConfigured =
+    showTenantSupabase && hasTenantSupabaseOrderCredentials(tenant)
 
   return (
     <div className="space-y-6">
@@ -108,23 +150,54 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
         <p className="text-muted-foreground">Manage customer orders</p>
       </div>
 
-      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-        <Info className="mt-0.5 size-4 shrink-0" />
-        <div>
-          <p className="font-medium">Limited Mode</p>
-          <p className="text-blue-700">Real-time order management with analytics requires Convex setup. Contact support to enable full features.</p>
-        </div>
-      </div>
+      {showConvex && <ConvexOrdersWrapper convexUrl={tenant.convex_deployment_url!} />}
 
-      <Suspense fallback={<OrdersSkeleton />}>
-        <OrdersContent
-          tenantSlug={tenantSlug}
-          tenantId={tenant.id}
-          page={page}
-          status={status}
-          orderType={orderType}
-        />
-      </Suspense>
+      {isTenantSupabaseConfigured && (
+        <Suspense fallback={<OrdersSkeleton />}>
+          <TenantSupabaseOrdersContent
+            tenantSlug={tenantSlug}
+            tenant={tenant}
+            page={page}
+            status={status}
+            orderType={orderType}
+          />
+        </Suspense>
+      )}
+
+      {showTenantSupabase && !isTenantSupabaseConfigured && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-medium">Order backend not configured</p>
+            <p className="text-amber-800">
+              This store is set to use its own Supabase project, but its credentials are
+              incomplete. Orders cannot be shown until they are added. Contact support.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!showConvex && !showTenantSupabase && (
+        <>
+          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            <Info className="mt-0.5 size-4 shrink-0" />
+            <div>
+              <p className="font-medium">Limited Mode</p>
+              <p className="text-blue-700">Real-time order management with analytics requires Convex setup. Contact support to enable full features.</p>
+            </div>
+          </div>
+
+          <Suspense fallback={<OrdersSkeleton />}>
+            <OrdersContent
+              tenantSlug={tenantSlug}
+              tenantId={tenant.id}
+              page={page}
+              status={status}
+              orderType={orderType}
+            />
+          </Suspense>
+        </>
+      )}
     </div>
   )
 }

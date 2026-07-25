@@ -16,6 +16,15 @@ export interface Tenant {
   accent_color?: string;
   // Extended branding colors
   background_color?: string;
+
+  // Custom page background (storefront + product detail); see src/lib/background-overlay.ts
+  background_image_url?: string | null; // Image behind the page; null/blank = none
+  background_image_opacity?: number | null; // 0-100 percent; null = 100
+  background_image_fit?: string | null; // 'cover' | 'contain' | 'repeat'; null = cover
+  background_image_position?: string | null; // 'center' | 'top' | 'bottom'; null = center
+  background_image_attachment?: string | null; // 'scroll' | 'fixed'; null = scroll
+  background_overlay_color?: string | null; // Hex tint over the image; null = #000000
+  background_overlay_opacity?: number | null; // 0-100 percent; null/0 = no tint layer
   header_color?: string;
   header_font_color?: string;
   cards_color?: string;
@@ -250,6 +259,9 @@ export interface Tenant {
   // Drives advance-order slot windows. null = unset (advance scheduler uses default 08:00–22:00).
   operating_hours?: Record<string, { closed: boolean; open: string; close: string }> | null;
   timezone?: string | null;
+  // Opt-in: show a closed notice and refuse new orders outside operating_hours.
+  // false (default) = hours only constrain advance-order slots. See src/lib/store-open-status.ts.
+  enforce_operating_hours?: boolean | null;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
@@ -322,6 +334,24 @@ export interface AddonLibraryEntry {
   // When set, this entry was prefilled from an existing menu item.
   source_menu_item_id?: string | null;
   image_url?: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Reusable modifier-group library entry. Stores a whole group definition (name +
+// selection rules + option list) once; attaching copies a fresh-id snapshot into
+// menu_items.modifier_groups (snapshot-on-attach, like AddonLibraryEntry).
+export interface ModifierGroupLibraryEntry {
+  id: string;
+  tenant_id: string;
+  name: string;
+  min_select: number;
+  max_select: number | null;
+  options: ModifierOption[];
+  // When set, this entry was prefilled from an existing menu item's group.
+  source_menu_item_id?: string | null;
   is_active: boolean;
   display_order: number;
   created_at: string;
@@ -418,6 +448,12 @@ export interface RecipeComponent {
 //   'recipe' → derived from an attached inventory recipe (deducts ingredients)
 export type ModifierStockMode = 'none' | 'simple' | 'recipe';
 
+// How a costable target's cost is determined.
+//   'simple'    → a manual number typed by the merchant
+//   'composite' → rolled up from an attached inventory recipe
+// Absent = legacy (recipe cost overrides the manual cost).
+export type CostMode = 'simple' | 'composite';
+
 export interface ModifierOption {
   id: string;
   name: string; // "Large", "Extra Cheese", "Hot"
@@ -425,8 +461,12 @@ export interface ModifierOption {
   image_url?: string;
   is_default?: boolean;
   display_order: number;
-  // Cost / margin — recipe cost (via recipes table, keyed by this id) overrides
-  // manual_cost; see resolveOptionCost in src/lib/modifier-groups.ts.
+  // Cost / margin. `cost_mode` decides which cost is authoritative:
+  //   'simple'    → manual_cost
+  //   'composite' → the attached recipe (recipes table, keyed by this id)
+  // Absent on options saved before cost modes existed, which keep the legacy
+  // rule (recipe overrides manual_cost). See src/lib/inventory/cost-mode.ts.
+  cost_mode?: CostMode;
   manual_cost?: number;
   // Stock
   stock_mode?: ModifierStockMode; // defaults to 'none'

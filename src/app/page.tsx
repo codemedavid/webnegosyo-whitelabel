@@ -7,13 +7,26 @@ import { getTenantSlugFromHeaders } from '@/lib/tenant'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+const TITLE = 'WebNegosyo — Online Ordering Website na Kusang Nag-a-upsell'
+const DESCRIPTION =
+  'Sarili mong online ordering website para sa food business — smart menu na nag-a-automate ng upsells, bundles, at upgrades. Dine-in, pick-up at delivery. One-time ₱3,899, walang monthly fee, live in 48 hours.'
+
 export const metadata: Metadata = {
-  title: 'WebNegosyo - You Can Sell More With Smart Menu',
-  description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses. One-time ₱3,899.',
-  keywords: ['smart menu', 'restaurant menu engineering', 'upsell system', 'food business Philippines', 'online ordering', 'bundle system', 'average order value'],
+  title: TITLE,
+  description: DESCRIPTION,
+  keywords: [
+    'online ordering website',
+    'smart menu',
+    'restaurant menu engineering',
+    'upsell system',
+    'food business Philippines',
+    'QR menu',
+    'bundle system',
+    'average order value',
+  ],
   openGraph: {
-    title: 'WebNegosyo - You Can Sell More With Smart Menu',
-    description: 'Smart Menu System na nag-a-automate ng upsells, bundles, at upgrades para sa food businesses.',
+    title: TITLE,
+    description: DESCRIPTION,
     type: 'website',
   },
   robots: {

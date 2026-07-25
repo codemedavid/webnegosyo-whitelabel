@@ -89,22 +89,38 @@ export function buildCostingGraph(
 
 /**
  * Resolve the recipe ids that make up a given item configuration: its base
- * recipe, the recipes for the selected variation options, and the recipes for
- * the selected addons. Options/addons are matched by their stable JSON ids.
+ * recipe, the recipes for the selected variation options and unified modifier
+ * options, and the recipes for the selected addons. All are matched by their
+ * stable JSON ids.
+ *
+ * Unified modifier options are option deltas, so their recipes are returned in
+ * `optionRecipeIds` alongside legacy variation options — one summed bucket, and
+ * an unchanged return shape for existing callers. `selectedModifierOptionIds`
+ * is last and optional so pre-existing call sites keep working untouched.
  */
 export function resolveConfiguredRecipeIds(
   menuItemId: string,
   selectedOptionIds: readonly string[],
   selectedAddonIds: readonly string[],
   recipeRows: readonly Recipe[],
+  selectedModifierOptionIds: readonly string[] = [],
 ): ConfiguredCostInput {
   const forItem = recipeRows.filter((r) => r.menu_item_id === menuItemId)
 
   const baseRecipeId = forItem.find((r) => r.target_type === 'menu_item')?.id ?? null
 
   const optionSet = new Set(selectedOptionIds)
+  const modifierOptionSet = new Set(selectedModifierOptionIds)
   const optionRecipeIds = forItem
-    .filter((r) => r.target_type === 'variation_option' && r.variation_option_id && optionSet.has(r.variation_option_id))
+    .filter(
+      (r) =>
+        (r.target_type === 'variation_option' &&
+          r.variation_option_id &&
+          optionSet.has(r.variation_option_id)) ||
+        (r.target_type === 'modifier_option' &&
+          r.modifier_option_id &&
+          modifierOptionSet.has(r.modifier_option_id)),
+    )
     .map((r) => r.id)
 
   const addonSet = new Set(selectedAddonIds)

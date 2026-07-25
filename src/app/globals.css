@@ -191,3 +191,13 @@
   60% { transform: scale(1.2); }
   100% { transform: scale(1); opacity: 1; }
 }
+
+/* Landing hero: the copy is centered on small screens and moves to the left
+   column on desktop, where the 3D phone occupies the right half.
+   Written as an unlayered rule because Tailwind emits `text-left` after
+   `text-center`, which makes a `lg:text-left` variant lose the cascade. */
+@media (min-width: 1024px) {
+  .landing-hero-copy {
+    text-align: left;
+  }
+}
