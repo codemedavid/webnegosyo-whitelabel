@@ -17,7 +17,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
@@ -330,10 +330,10 @@ export function useCheckout(tenantSlug: string) {
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
   useEffect(() => {
-    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && items.length === 0) {
+    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && isCheckoutCartEmpty(items, bundleItems)) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
+  }, [items.length, bundleItems.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
   // Per-order-type toggle: when off, checkout never touches Messenger and the
   // CTA reads "Complete Order" instead of "Send Order via Messenger".

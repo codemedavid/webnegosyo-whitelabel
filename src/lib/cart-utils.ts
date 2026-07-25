@@ -534,6 +534,15 @@ export function calculateFullCartTotal(items: CartItem[], bundleItems: CartBundl
 }
 
 /**
+ * A checkout cart is empty only when it has neither regular items nor bundles.
+ * The checkout empty-guard must use this instead of `items.length === 0`,
+ * otherwise a bundle-only cart (empty `items`) bounces the customer to the menu.
+ */
+export function isCheckoutCartEmpty(items: CartItem[], bundleItems: CartBundleItem[]): boolean {
+  return items.length === 0 && bundleItems.length === 0
+}
+
+/**
  * Get total item count including bundles (uses new slot-based CartBundleItem shape)
  */
 export function getFullCartItemCount(items: CartItem[], bundleItems: CartBundleItem[]): number {
