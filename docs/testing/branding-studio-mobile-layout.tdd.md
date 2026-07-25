@@ -58,8 +58,13 @@ branches** (`storefront-device-layout.ts` 100%, `mobile-overrides.ts` 85.88%,
 
 - No end-to-end test drives the Studio UI in a browser; the fix is covered at
   the pure-resolution and projection layers.
-- `supabase/migrations/20260725130000_backfill_mobile_layout_overrides.sql` is
-  **not applied yet**. It is display-only convergence: the runtime keeps the
-  legacy fallback, so rendering is already correct without it, but until it runs
-  the Studio's mobile tab shows "inherits Desktop" for the 11 tenants whose
-  phone layout still comes from a legacy column.
+- `supabase/migrations/20260725130000_backfill_mobile_layout_overrides.sql` was
+  **applied to production on 2026-07-25** (via the Supabase MCP, migration
+  `backfill_mobile_layout_overrides`). Post-checks: 0 tenants left with a legacy
+  layout/card/header value missing from `mobile_overrides`; existing override
+  keys were preserved (`super6` kept `page_layout: default` rather than taking
+  the legacy `sidebar`), and legacy-only tenants converged
+  (`kape-muna-kapebilidad` → `{page_layout: mosaic, card_template: polaroid}`).
+- `super6` carries `header_template: compact` on mobile, which is not one of the
+  registry's header options. That predates this work (the legacy column held it)
+  and renders the same as before; the Studio will show it as an unknown value.
