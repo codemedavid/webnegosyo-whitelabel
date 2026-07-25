@@ -20,11 +20,11 @@ jest.mock('@/lib/imagekit-server', () => ({
     uploadBase64ToImageKit: jest.fn(),
 }))
 
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { fetchRemoteImageAsBase64 } = jest.requireMock('@/lib/imagekit-remote') as any
 const { uploadBase64ToImageKit } = jest.requireMock('@/lib/imagekit-server') as any
 const { setMenuItemImageFromUrl } = require('@/lib/admin-service')
-/* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
@@ -76,7 +76,7 @@ describe('setMenuItemImageFromUrl', () => {
     it('passes an explicit file name through to the fetch so codes like D1 are preserved', async () => {
         const { ctx } = makeUpdateStub({ id: ITEM, image_url: HOSTED })
 
-        await setMenuItemImageFromUrl(ITEM, TENANT, 'https://cdn.example.com/x', 'D1-sizzling-sisig.png', undefined, ctx)
+        await setMenuItemImageFromUrl(ITEM, TENANT, 'https://cdn.example.com/x', 'D1-sizzling-sisig.png', ctx)
 
         expect(fetchRemoteImageAsBase64).toHaveBeenCalledWith('https://cdn.example.com/x', 'D1-sizzling-sisig.png')
     })

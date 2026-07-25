@@ -7,7 +7,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 // the bytes are fetched and re-hosted on ImageKit instead.
 // `next/jest` stubs the `server-only` import, so the module loads under jest.
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-require-imports */
 function loadModule() {
     let mod: typeof import('@/lib/imagekit-remote')
     jest.isolateModules(() => {
@@ -16,7 +16,7 @@ function loadModule() {
     // @ts-expect-error assigned inside isolateModules
     return mod
 }
-/* eslint-enable @typescript-eslint/no-var-requires */
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const originalFetch = global.fetch
 
