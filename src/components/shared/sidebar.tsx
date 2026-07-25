@@ -65,6 +65,7 @@ function useFilteredItems(
   menuEngineeringEnabled?: boolean,
   bundlesEnabled?: boolean,
   convexConfigured?: boolean,
+  inventoryEnabled?: boolean,
 ) {
   const hiddenPaths = useMemo(() => {
     const paths = new Set<string>()
@@ -77,8 +78,9 @@ function useFilteredItems(
       if (!convexConfigured) paths.add('/product-analytics')
     }
     if (!bundlesEnabled) paths.add('/bundles')
+    if (!inventoryEnabled) paths.add('/inventory')
     return paths
-  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured])
+  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled])
 
   const shouldHide = useCallback(
     (href: string) => Array.from(hiddenPaths).some((p) => href.includes(p)),
@@ -152,16 +154,17 @@ interface SidebarProps {
   menuEngineeringEnabled?: boolean
   bundlesEnabled?: boolean
   convexConfigured?: boolean
+  inventoryEnabled?: boolean
 }
 
 // ─── Desktop Sidebar ──────────────────────────────────────────────────────────
 
-export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured)
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled)
 
   // Auto-expand group containing active route
   useEffect(() => {
@@ -415,12 +418,12 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
 
 // ─── Mobile Header + Sheet ────────────────────────────────────────────────────
 
-export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured }: SidebarProps) {
+export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled }: SidebarProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured)
+  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled)
   const pageTitle = useActivePageTitle(filteredItems)
 
   // Auto-expand active group on open
@@ -633,6 +636,7 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Menu Management', href: '/admin/menu', icon: UtensilsCrossed },
       { label: 'Categories', href: '/admin/categories', icon: FolderTree },
       { label: 'Add-ons', href: '/admin/addons', icon: Box },
+      { label: 'Inventory', href: '/admin/inventory', icon: Box },
       { label: 'Bundles', href: '/admin/bundles', icon: Box },
     ],
   },

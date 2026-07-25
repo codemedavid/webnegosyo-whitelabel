@@ -110,6 +110,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   menu: 'menu',
   categories: 'menu',
   bundles: 'menu',
+  inventory: 'menu',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
