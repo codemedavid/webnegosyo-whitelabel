@@ -97,3 +97,72 @@ GREEN evidence: `Tests: 14 passed, 14 total`. Full suite: `3 failed, 2030 passed
 - RED: `test: RED reproducer for modifier-groups form serialization` — 14 failing (module missing).
 - GREEN: `feat: modifier-groups form serialization + legacy-column sync (GREEN)` — 14 passing.
 - Editor + wiring: `feat: unified Modifier Groups editor wired into menu-item form (Phase 1)`.
+
+---
+
+# Phase 1a — Inventory recipe-attach backend (recipe-target + services + actions)
+
+**Scope of this section**: the data path that lets a modifier option with
+`stock_mode='recipe'` carry a real inventory recipe — the pure target→column
+mapping, the ingredients/recipes service layer, and server actions. The admin
+UI (`/admin/inventory` page + in-editor recipe-attach control) is deferred to a
+following session (see gaps).
+
+## User journeys covered (Phase 1a)
+- As the platform, I want a recipe addressed by any of the five costable targets
+  (menu item, variation option, addon, **modifier option**, prep item) to map to
+  exactly the right `recipes` columns, so the partial unique indexes hold and no
+  target's id leaks into another's column.
+- As a merchant, I want ingredients (raw + prep) I can create/edit/delete, and a
+  recipe I can save against a target that replaces its component lines wholesale.
+
+## Task report
+| Plan task | Summary | Validation command | Result |
+|---|---|---|---|
+| Recipe target mapping | `src/lib/inventory/recipe-target.ts` — `buildRecipeTargetColumns(target)` for all 5 target types; trims + requires the target's id; nulls every other column. | `npx jest tests/unit/recipe-target.test.ts` | RED 0/7 (module missing) → GREEN 7/7 |
+| Ingredients service | `src/lib/inventory/ingredients-service.ts` — `ingredientInputSchema` + tenant-scoped CRUD over `inventory_items`, mirrors `units-service.ts`. | `npx tsc --noEmit` (no errors in file) | PASS |
+| Recipes service | `src/lib/inventory/recipes-service.ts` — `getRecipeForTarget`, `saveRecipeForTarget` (upsert + wholesale component replace), `deleteRecipeForTarget`, `getRecipesForMenuItem`; keyed via `buildRecipeTargetColumns`. | `npx tsc --noEmit` (no errors in file) | PASS |
+| Server actions | `src/app/actions/inventory.ts` — units/ingredients/recipes-by-target actions, `{success,data|error}` envelope, `revalidatePath`. | `npx tsc --noEmit` (no errors in file) | PASS |
+
+RED evidence: `Cannot find module '@/lib/inventory/recipe-target'` — compile-time RED for the intended reason.
+GREEN evidence: `Tests: 7 passed, 7 total`.
+
+## Test specification (Phase 1a)
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | menu_item → menu_item_id only, all other target cols null | `buildRecipeTargetColumns › keys a menu_item…` | unit | PASS |
+| 2 | variation_option → menu_item_id + variation_option_id | `… keys a variation_option…` | unit | PASS |
+| 3 | addon → menu_item_id + addon_id | `… keys an addon…` | unit | PASS |
+| 4 | modifier_option → menu_item_id + modifier_option_id (unified path) | `… keys a modifier_option…` | unit | PASS |
+| 5 | prep_item → prep_item_id only, no menu_item_id | `… keys a prep_item…` | unit | PASS |
+| 6 | Blank required id throws a labelled error | `… rejects a target whose required id is blank` | unit | PASS |
+| 7 | Id fields are trimmed | `… trims surrounding whitespace…` | unit | PASS |
+
+## Coverage & known gaps (Phase 1a)
+- **Deferred to next session** (pure UI, no new testable logic): `/admin/inventory`
+  page + `InventoryManager` (units/ingredients tables), and the recipe-attach
+  control inside the modifier option row wired to `saveRecipeForTargetAction`.
+- Service DB wrappers are thin Supabase calls (like `units-service.ts`) — the
+  tested part is the pure `buildRecipeTargetColumns` they delegate keying to.
+- Migration `20260724120000_modifier_groups.sql` (adds `recipes.modifier_option_id`
+  + `modifier_option` target) still **not applied** to live DB — required before
+  `saveRecipeForTarget` with a modifier_option target will succeed in production.
+
+## Merge evidence (Phase 1a RED/GREEN)
+- RED: `test: RED reproducer for recipe-target column mapping` (e2f88cc) — 7 failing (module missing).
+- GREEN: `feat: recipe-target mapping + inventory ingredients/recipes services (GREEN)` (2a9652c) — 7 passing.
+- Actions: `feat: inventory server actions (units/ingredients/recipes-by-target)` (e52875c).
+
+## Handoff — resume Phase 1a UI next session
+1. `src/app/[tenant]/admin/inventory/page.tsx` — mirror `admin/addons/page.tsx`
+   (resolve tenant via `getCachedTenantBySlug`, seed units via
+   `seedInventoryUnitsAction` on first load, render manager).
+2. `src/components/admin/inventory-manager.tsx` — units + ingredients tables
+   (client), calling the `inventory.ts` actions.
+3. Recipe-attach control in `modifier-groups-editor.tsx`'s `ModifierOptionRow`
+   (shown when `stock_mode==='recipe'`): ingredient picker + quantity/unit lines,
+   target `{ type: 'modifier_option', menuItemId, modifierOptionId: option.id }`,
+   persisted via `saveRecipeForTargetAction`. Needs `menuItemId` threaded into the
+   editor (new items have no id yet — attach recipe only after first save, or
+   disable with a hint).
+4. Add an Inventory nav link (gate behind `inventory_enabled`).
