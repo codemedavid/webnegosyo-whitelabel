@@ -23,7 +23,7 @@ import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 function makeCheckout(overrides: Partial<UseCheckoutReturn> = {}): UseCheckoutReturn {
   return {
     tenant: { id: 'tenant-1', name: 'Island Silog' },
-    branding: null,
+    branding: { checkoutAccent: '#ff6b00' },
     paymentMethods: [],
     isProcessing: false,
     handleProceedToPayment: jest.fn(),

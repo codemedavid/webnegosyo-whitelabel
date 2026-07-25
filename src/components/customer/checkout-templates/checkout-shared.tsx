@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
+import { resolveFinalSubmitLabel } from '@/lib/messenger-availability'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { PaymentProofField } from '@/components/customer/payment-proof-field'
 import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
@@ -61,7 +62,7 @@ export function CheckoutNotFound() {
 export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
     tenant, completedOrderData, redirectCountdown, trackingOrderId, trackingToken,
-    messageExpanded, setMessageExpanded, router, tenantSlug,
+    messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
   } = checkout
 
   if (!tenant || !completedOrderData) return null
@@ -187,9 +188,14 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             </div>
           )}
 
-          {/* Messenger Redirect Section */}
+          {/* Messenger Redirect Section — skipped when the order type has Messenger turned off */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-            {completedOrderData.messengerUrl ? (
+            {!messengerEnabled ? (
+              <div className="space-y-2 text-center">
+                <p className="text-sm font-medium text-gray-900">Your order has been sent to {tenant.name}.</p>
+                <p className="text-sm text-gray-600">They&apos;ll confirm it shortly — no further action needed.</p>
+              </div>
+            ) : completedOrderData.messengerUrl ? (
               <div className="space-y-4">
                 {/* Countdown redirect indicator */}
                 <div className="text-center space-y-2">
@@ -302,7 +308,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 </Button>
 
                 <p className="text-xs text-gray-400 text-center">
-                  Paste this in Messenger or any chat app
+                  {messengerEnabled ? 'Paste this in Messenger or any chat app' : 'A copy of your order for your records'}
                 </p>
               </div>
             )}
@@ -344,7 +350,7 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
     serviceChargeAmount, isProcessing, handleCheckout, setShowPaymentDetails,
     handleCopyText, copiedText,
     paymentProofUrl, paymentProofReference, setPaymentProofReference,
-    handlePaymentProofUploaded, handleRemovePaymentProof,
+    handlePaymentProofUploaded, handleRemovePaymentProof, messengerEnabled,
   } = checkout
 
   if (!showPaymentDetails || !selectedPaymentMethod) return null
@@ -482,7 +488,11 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
               </div>
               <div className="flex-1 text-sm text-blue-800">
                 <p className="font-medium mb-1">Next Step:</p>
-                <p>After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.</p>
+                <p>
+                  {messengerEnabled
+                    ? 'After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.'
+                    : 'After completing payment, click the button below to submit your order to the restaurant.'}
+                </p>
               </div>
             </div>
           </div>
@@ -511,8 +521,8 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
                 </>
               ) : (
                 <>
-                  <MessageCircle className="h-5 w-5 mr-2" />
-                  Order Now
+                  {messengerEnabled ? <MessageCircle className="h-5 w-5 mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
+                  {resolveFinalSubmitLabel({ isMessengerEnabled: messengerEnabled })}
                 </>
               )}
             </Button>

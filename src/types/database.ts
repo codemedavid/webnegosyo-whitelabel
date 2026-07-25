@@ -632,6 +632,8 @@ export interface OrderType {
   description?: string;
   note?: string;
   is_enabled: boolean;
+  /** When false, checkout for this order type skips Messenger and shows "Complete Order". */
+  messenger_enabled: boolean;
   service_charge_enabled: boolean;
   service_charge_type: "percentage" | "fixed";
   service_charge_value: number;
