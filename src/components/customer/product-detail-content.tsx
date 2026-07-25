@@ -25,6 +25,7 @@ import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as i
 import { UpsellOrchestratorProvider } from '@/lib/upsell-orchestrator'
 import dynamic from 'next/dynamic'
 import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
+import { BackgroundOverlayLayer } from './background-overlay-layer'
 import { motion } from 'framer-motion'
 const InlineUpgradeSection = dynamic(
   () => import('./inline-upgrade-section').then((m) => ({ default: m.InlineUpgradeSection })),
@@ -761,6 +762,11 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Main Content - Scrollable */}
             <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
+                {/* Tenant's custom page background. Skipped in sheet mode, where
+                    the storefront underneath already paints it. */}
+                {!isSheet && (
+                    <BackgroundOverlayLayer tenant={tenant as unknown as Record<string, unknown>} />
+                )}
                 {/* Product Image - Hero */}
                 <div
                     data-branding-scope="product/image"

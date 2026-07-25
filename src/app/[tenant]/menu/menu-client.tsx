@@ -25,6 +25,7 @@ import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant, useMobileOverrides } from '@/hooks/use-branding-preview'
 import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
+import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
 
 interface MenuClientProps {
@@ -321,6 +322,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         // display font/weight to headings. Scoped to this storefront root only.
         <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
       )}
+      <BackgroundOverlayLayer tenant={tenant as Record<string, unknown> | null} />
       {isFlashPreview && (
         <FlashScreenLoader branding={buildFlashScreenBranding(tenant)} />
       )}

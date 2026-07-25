@@ -21,6 +21,14 @@ export interface SelectedTenant {
     primary_color: string | null
     secondary_color: string | null
     background_color: string | null
+    // Custom page background (see src/lib/background-overlay.ts)
+    background_image_url?: string | null
+    background_image_opacity?: number | null
+    background_image_fit?: string | null
+    background_image_position?: string | null
+    background_image_attachment?: string | null
+    background_overlay_color?: string | null
+    background_overlay_opacity?: number | null
     text_primary_color: string | null
     text_secondary_color: string | null
     text_muted_color: string | null

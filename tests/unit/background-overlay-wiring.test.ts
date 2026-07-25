@@ -16,6 +16,9 @@ const registryFieldIds = BRANDING_SURFACES.flatMap((surface) =>
   surface.sections.flatMap((section) => section.fields.map((field) => field.id))
 )
 
+/** brandingSchema always requires the two core brand colors. */
+const BASE_BRANDING = { primary_color: '#111111', secondary_color: '#666666' }
+
 describe('background overlay wiring', () => {
   it.each([...BACKGROUND_OVERLAY_COLUMNS])('selects %s on the storefront query', (column) => {
     expect(selectedColumns).toContain(column)
@@ -31,6 +34,7 @@ describe('background overlay wiring', () => {
 
   it('accepts a full background overlay payload', () => {
     const parsed = brandingSchema.safeParse({
+      ...BASE_BRANDING,
       background_image_url: 'https://cdn.example.com/bg.jpg',
       background_image_opacity: 60,
       background_image_fit: 'cover',
@@ -44,15 +48,15 @@ describe('background overlay wiring', () => {
   })
 
   it('accepts clearing the background image URL', () => {
-    expect(brandingSchema.safeParse({ background_image_url: '' }).success).toBe(true)
+    expect(brandingSchema.safeParse({ ...BASE_BRANDING, background_image_url: '' }).success).toBe(true)
   })
 
   it('rejects an out-of-range opacity', () => {
-    expect(brandingSchema.safeParse({ background_overlay_opacity: 140 }).success).toBe(false)
+    expect(brandingSchema.safeParse({ ...BASE_BRANDING, background_overlay_opacity: 140 }).success).toBe(false)
   })
 
   it('rejects an unknown image fit', () => {
-    expect(brandingSchema.safeParse({ background_image_fit: 'stretch' }).success).toBe(false)
+    expect(brandingSchema.safeParse({ ...BASE_BRANDING, background_image_fit: 'stretch' }).success).toBe(false)
   })
 
   it('exposes the image field as an upload-capable image control', () => {

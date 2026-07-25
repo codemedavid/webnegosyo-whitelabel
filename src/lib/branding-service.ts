@@ -34,6 +34,16 @@ export const brandingSchema = z.object({
     secondary_color: cssColorString().min(1),
     accent_color: cssColorString().optional().or(z.literal('')),
     background_color: cssColorString().optional().or(z.literal('')),
+    // Custom page background: image + tint overlay. Opacities are 0..100
+    // percents (the editor renders sliders); the storefront converts them to
+    // 0..1 fractions in src/lib/background-overlay.ts.
+    background_image_url: z.string().url().max(2048).optional().or(z.literal('')),
+    background_image_opacity: z.number().int().min(0).max(100).optional(),
+    background_image_fit: z.enum(['cover', 'contain', 'repeat']).optional(),
+    background_image_position: z.enum(['center', 'top', 'bottom']).optional(),
+    background_image_attachment: z.enum(['scroll', 'fixed']).optional(),
+    background_overlay_color: cssColorString().optional().or(z.literal('')),
+    background_overlay_opacity: z.number().int().min(0).max(100).optional(),
     header_color: cssColorString().optional().or(z.literal('')),
     header_font_color: cssColorString().optional().or(z.literal('')),
     // Card colors
@@ -225,7 +235,7 @@ export type SaveBrandingResult = {
     skippedFields?: string[]
 }
 
-const ROLLOUT_DEPENDENT_FIELDS = [
+export const ROLLOUT_DEPENDENT_FIELDS = [
     'checkout_modal_background_color',
     'checkout_modal_title_color',
     'checkout_modal_description_color',
@@ -306,6 +316,13 @@ const ROLLOUT_DEPENDENT_FIELDS = [
     'hero_featured_product_id',
     'hero_image_url',
     'hero_link_url',
+    'background_image_url',
+    'background_image_opacity',
+    'background_image_fit',
+    'background_image_position',
+    'background_image_attachment',
+    'background_overlay_color',
+    'background_overlay_opacity',
 ] as const
 
 export function isMissingColumnError(error: { code?: string; message?: string; details?: string; hint?: string } | null): boolean {
@@ -340,6 +357,7 @@ export function buildBrandingUpdatePayload(parsed: BrandingInput): Record<string
             : {}),
         // Empty hero media strings persist as NULL so "unset" stays unset.
         ...(parsed.hero_image_url === '' ? { hero_image_url: null } : {}),
+        ...(parsed.background_image_url === '' ? { background_image_url: null } : {}),
         ...(parsed.hero_link_url === '' ? { hero_link_url: null } : {}),
     }
 }

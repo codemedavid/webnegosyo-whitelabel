@@ -9,7 +9,7 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners'
+export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
 export interface BrandingField {
   id: string
@@ -69,6 +69,9 @@ const product = (id: string, label: string): BrandingField => ({ id, label, type
 // `mobile_overrides` map rejects — so it must edit its tenant column even on
 // the mobile tab. Banner content is shared across devices anyway.
 const banners = (id: string, label: string): BrandingField => ({ id, label, type: 'banners', columnBacked: true })
+// An image field: upload (ImageKit) or paste a URL. Stored value is the URL.
+const image = (id: string, label: string, placeholder = 'https://…/photo.jpg'): BrandingField =>
+  ({ id, label, type: 'image', default: '', placeholder })
 
 const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
 const CARD_TEMPLATE_OPTIONS = [
@@ -127,6 +130,19 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     glyph: 'S',
     description: 'Menu page — announcement, header, hero, navigation, search and menu cards.',
     sections: [
+      {
+        title: 'Page background',
+        fields: [
+          image('background_image_url', 'Background image'),
+          number('background_image_opacity', 'Image opacity (%)', 100, 0, 100),
+          select('background_image_fit', 'Image fit', ['cover', 'contain', 'repeat'], 'cover'),
+          select('background_image_position', 'Image position', ['center', 'top', 'bottom'], 'center'),
+          select('background_image_attachment', 'Scroll behaviour', ['scroll', 'fixed'], 'scroll'),
+          color('background_overlay_color', 'Overlay tint', '#000000'),
+          number('background_overlay_opacity', 'Overlay opacity (%)', 0, 0, 100),
+          note('note_page_background', 'Sits behind the menu and product pages, on top of the Page background color. Leave the image blank to tint the page with the overlay alone; set Overlay opacity to 0 to show the image untinted. A dark tint at 30–50% keeps text readable over busy photos.'),
+        ],
+      },
       {
         title: 'Announcement & promotions',
         fields: [

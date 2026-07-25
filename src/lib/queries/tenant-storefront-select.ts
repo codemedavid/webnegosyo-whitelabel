@@ -12,6 +12,9 @@
 export const TENANT_STOREFRONT_SELECT = `
   id, slug, name, logo_url, domain,
   primary_color, secondary_color, background_color, accent_color,
+  background_image_url, background_image_opacity, background_image_fit,
+  background_image_position, background_image_attachment,
+  background_overlay_color, background_overlay_opacity,
   text_primary_color, text_secondary_color, text_muted_color,
   border_color, header_color, header_font_color,
   cards_color, cards_border_color, card_title_color, card_price_color, card_description_color,

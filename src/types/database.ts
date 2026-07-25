@@ -16,6 +16,15 @@ export interface Tenant {
   accent_color?: string;
   // Extended branding colors
   background_color?: string;
+
+  // Custom page background (storefront + product detail); see src/lib/background-overlay.ts
+  background_image_url?: string | null; // Image behind the page; null/blank = none
+  background_image_opacity?: number | null; // 0-100 percent; null = 100
+  background_image_fit?: string | null; // 'cover' | 'contain' | 'repeat'; null = cover
+  background_image_position?: string | null; // 'center' | 'top' | 'bottom'; null = center
+  background_image_attachment?: string | null; // 'scroll' | 'fixed'; null = scroll
+  background_overlay_color?: string | null; // Hex tint over the image; null = #000000
+  background_overlay_opacity?: number | null; // 0-100 percent; null/0 = no tint layer
   header_color?: string;
   header_font_color?: string;
   cards_color?: string;
