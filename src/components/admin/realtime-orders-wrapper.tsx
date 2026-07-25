@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRealtimeOrders } from '@/hooks/use-realtime-orders'
+import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
 import {
   playNotificationSound,
   showOrderNotification,
@@ -17,6 +18,13 @@ interface RealtimeOrdersWrapperProps {
   initialOrders: OrderWithItems[]
   tenantSlug: string
   tenantId: string
+  /**
+   * The tenant's own Supabase project, when their orders live there. Only the
+   * URL and anon key cross to the browser — the service-role key stays server
+   * side. Omit for tenants on the shared platform database.
+   */
+  realtimeUrl?: string
+  realtimeAnonKey?: string
   pagination?: {
     currentPage: number
     totalPages: number
@@ -30,6 +38,8 @@ export function RealtimeOrdersWrapper({
   initialOrders,
   tenantSlug,
   tenantId,
+  realtimeUrl,
+  realtimeAnonKey,
   pagination,
 }: RealtimeOrdersWrapperProps) {
   const router = useRouter()
@@ -76,8 +86,22 @@ export function RealtimeOrdersWrapper({
     }))
   }, [])
 
+  // Built once per credential pair: a new client on every render would tear the
+  // channel down and re-subscribe in a loop.
+  const tenantClient = useMemo(
+    () =>
+      realtimeUrl && realtimeAnonKey
+        ? createTenantOrderRealtimeClient({
+            supabase_order_url: realtimeUrl,
+            supabase_order_anon_key: realtimeAnonKey,
+          })
+        : undefined,
+    [realtimeUrl, realtimeAnonKey]
+  )
+
   const { isConnected } = useRealtimeOrders({
     tenantId,
+    client: tenantClient,
     onNewOrder: handleNewOrder,
     onOrderUpdate: handleOrderUpdate,
   })
