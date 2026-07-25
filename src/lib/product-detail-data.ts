@@ -7,6 +7,7 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
+import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 import { getComplementaryItems } from '@/lib/complementary-pairs-service'
 import type { MenuItem, Category, Variation, VariationType, Addon, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
@@ -96,19 +97,18 @@ export const getCachedTenantBySlug = cache(async (slug: string): Promise<Selecte
     try {
         const supabase = await createClient()
 
-        const { data, error } = await supabase
-            .from('tenants')
-            .select(PRODUCT_DETAIL_TENANT_SELECT)
-            .eq('slug', slug)
-            .eq('is_active', true)
-            .maybeSingle()
+        const { tenant, error } = await fetchActiveTenantBySlug<SelectedTenant>(
+            asTenantQueryClient(supabase),
+            slug,
+            PRODUCT_DETAIL_TENANT_SELECT
+        )
 
         if (error) {
-            console.error('Error fetching tenant:', JSON.stringify(error, null, 2))
+            console.error('Error fetching tenant:', error)
             return null
         }
 
-        return data as unknown as SelectedTenant | null
+        return tenant
     } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedTenantBySlug:', errMsg)
