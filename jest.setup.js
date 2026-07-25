@@ -78,6 +78,25 @@ if (typeof global.ResizeObserver === 'undefined') {
   }
 }
 
+// jsdom ships no IntersectionObserver, but framer-motion constructs one for any
+// `whileInView` animation. Without this, rendering a scroll-revealed section
+// throws "IntersectionObserver is not defined".
+if (typeof global.IntersectionObserver === 'undefined') {
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor() {
+      this.root = null
+      this.rootMargin = ''
+      this.thresholds = []
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return []
+    }
+  }
+}
+
 // Suppress console warnings during tests
 const originalWarn = console.warn
 console.warn = (...args) => {
