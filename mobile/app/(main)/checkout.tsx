@@ -7,7 +7,7 @@ import { useOrderTypes } from '@/lib/queries/use-order-types'
 import { useFormFields } from '@/lib/queries/use-form-fields'
 import { usePaymentMethods } from '@/lib/queries/use-payment-methods'
 import { supabase } from '@/lib/supabase'
-import { formatPrice, generateMessengerMessage, generateMessengerUrl, generateMessengerCombinedUrl, generateMessengerDirectUrl } from '@/lib/cart-utils'
+import { formatPrice, generateMessengerMessage, generateMessengerUrl, generateMessengerCombinedUrl, generateMessengerDirectUrl, calculateCartItemUnitPrice } from '@/lib/cart-utils'
 import { DynamicForm } from '@/components/checkout/dynamic-form'
 import { PaymentMethodCard } from '@/components/checkout/payment-method-card'
 import { AdvanceOrderScheduler } from '@/components/checkout/advance-order-scheduler'
@@ -317,7 +317,13 @@ export default function CheckoutScreen() {
                 menuItemId: String(item.menu_item.id),
                 menuItemName: item.menu_item.name,
                 quantity: item.quantity,
-                price: item.menu_item.discounted_price ?? item.menu_item.price,
+                // Per-unit price must include variation modifiers and add-ons:
+                // the server enforces subtotal = price × quantity.
+                price: calculateCartItemUnitPrice(
+                  item.menu_item.discounted_price ?? item.menu_item.price,
+                  item.selected_variations ?? item.selected_variation,
+                  item.selected_addons
+                ),
                 subtotal: item.subtotal,
                 specialInstructions: item.special_instructions || null,
                 variation: item.selected_variations
@@ -325,7 +331,7 @@ export default function CheckoutScreen() {
                   : item.selected_variation?.name || null,
                 addons: item.selected_addons.map((a) => ({
                   name: a.name,
-                  price: 0,
+                  price: a.price,
                 })),
               })),
             },
@@ -352,7 +358,11 @@ export default function CheckoutScreen() {
             variation: variationText,
             addons: item.selected_addons.map(a => a.name),
             quantity: item.quantity,
-            price: item.menu_item.discounted_price ?? item.menu_item.price,
+            price: calculateCartItemUnitPrice(
+              item.menu_item.discounted_price ?? item.menu_item.price,
+              item.selected_variations ?? item.selected_variation,
+              item.selected_addons
+            ),
             subtotal: item.subtotal,
             special_instructions: item.special_instructions || null,
           }

@@ -17,7 +17,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, isMessengerRedirectEnabled } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, isMessengerRedirectEnabled, calculateCartItemUnitPrice } from '@/lib/cart-utils'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
@@ -577,15 +577,14 @@ export function useCheckout(tenantSlug: string) {
       // Map cart items to QrOrderItemV1 — mirrors the OrderItem construction
       // used in the Messenger/createOrderAction path below.
       const qrItems: QrOrderItemV1[] = items.map(item => {
-        let itemPrice = item.menu_item.price
-        if (item.selected_variation) {
-          itemPrice += item.selected_variation.price_modifier
-        }
-        if (item.selected_variations) {
-          itemPrice += Object.values(item.selected_variations).reduce(
-            (sum, option) => sum + option.price_modifier, 0
-          )
-        }
+        // Per-unit price MUST include add-ons: the server enforces
+        // subtotal = price × quantity, so an add-on missing here is deleted
+        // from the customer's total.
+        const itemPrice = calculateCartItemUnitPrice(
+          item.menu_item.price,
+          item.selected_variations ?? item.selected_variation,
+          item.selected_addons
+        )
 
         const variationSelections: QrOrderItemV1['variationSelections'] = []
         let variationText = ''
@@ -964,16 +963,13 @@ export function useCheckout(tenantSlug: string) {
           bundleName?: string
           slotName?: string
         }> = snapshotItems.map(item => {
-          let itemPrice = item.menu_item.price
-          if (item.selected_variation) {
-            itemPrice += item.selected_variation.price_modifier
-          }
-          if (item.selected_variations) {
-            const modifierSum = Object.values(item.selected_variations).reduce(
-              (sum, option) => sum + option.price_modifier, 0
-            )
-            itemPrice += modifierSum
-          }
+          // Includes add-ons — see the QR path above; the server clamps
+          // subtotal to price × quantity.
+          const itemPrice = calculateCartItemUnitPrice(
+            item.menu_item.price,
+            item.selected_variations ?? item.selected_variation,
+            item.selected_addons
+          )
 
           let variationText = ''
           if (item.selected_variation) {

@@ -35,6 +35,22 @@ export function calculateCartItemSubtotal(
 }
 
 /**
+ * Per-unit price of a configured line: base + variation modifiers + add-ons.
+ *
+ * This is the `price` stored on an order item. It MUST include add-ons: the
+ * server enforces `subtotal = price × quantity` and recomputes the order total
+ * from those subtotals, so any modifier missing here is silently deleted from
+ * the customer's total.
+ */
+export function calculateCartItemUnitPrice(
+  basePrice: number,
+  variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
+  addons: Addon[]
+): number {
+  return calculateCartItemSubtotal(basePrice, variationOrVariations, addons, 1)
+}
+
+/**
  * Calculate the total price of all items in the cart
  */
 export function calculateCartTotal(items: CartItem[]): number {
