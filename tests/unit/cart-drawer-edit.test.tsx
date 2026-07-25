@@ -72,13 +72,20 @@ jest.mock('@/components/customer/item-detail-modal', () => ({
     onClose: () => void
   }) =>
     open ? (
-      <div data-testid="edit-modal">
+      /* `pointerEvents: auto` mirrors what real Radix dialog content sets: an
+         open Sheet puts `pointer-events: none` on everything outside it. */
+      <div data-testid="edit-modal" style={{ pointerEvents: 'auto' }}>
         <span data-testid="edit-modal-cart-item-id">{editItem?.id}</span>
         <span data-testid="edit-modal-quantity">{editItem?.quantity}</span>
-        <button onClick={() => onAddToCart(item!, undefined, [], 3, 'less ice')}>
+        {/* Queried by testid, not role: the open Radix Sheet marks sibling DOM
+            aria-hidden, which hides this plain-div stub from role queries. The
+            real modal portals out, so this is a harness artifact only. */}
+        <button data-testid="commit-edit" onClick={() => onAddToCart(item!, undefined, [], 3, 'less ice')}>
           Commit Edit
         </button>
-        <button onClick={onClose}>Close Edit</button>
+        <button data-testid="close-edit" onClick={onClose}>
+          Close Edit
+        </button>
       </div>
     ) : null,
 }))
@@ -175,7 +182,7 @@ describe('CartDrawer edit line item', () => {
 
     // Act
     await user.click(screen.getAllByRole('button', { name: /edit item/i })[1])
-    await user.click(screen.getByRole('button', { name: /commit edit/i }))
+    await user.click(screen.getByTestId('commit-edit'))
 
     // Assert — routed through the cart's edit path with the right line id
     expect(mockUpdateItemConfiguration).toHaveBeenCalledTimes(1)
@@ -200,7 +207,7 @@ describe('CartDrawer edit line item', () => {
     // Act
     await user.click(screen.getAllByRole('button', { name: /edit item/i })[0])
     expect(screen.getByTestId('edit-modal')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /commit edit/i }))
+    await user.click(screen.getByTestId('commit-edit'))
 
     // Assert
     expect(screen.queryByTestId('edit-modal')).not.toBeInTheDocument()
@@ -213,7 +220,7 @@ describe('CartDrawer edit line item', () => {
 
     // Act
     await user.click(screen.getAllByRole('button', { name: /edit item/i })[0])
-    await user.click(screen.getByRole('button', { name: /close edit/i }))
+    await user.click(screen.getByTestId('close-edit'))
 
     // Assert
     expect(screen.queryByTestId('edit-modal')).not.toBeInTheDocument()

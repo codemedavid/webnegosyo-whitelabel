@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, Minus, Plus, Trash2, Package } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, Pencil, Package } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
   Sheet,
@@ -27,6 +27,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
 import type { CartItem, CartBundleItem, MenuItem, Tenant } from '@/types/database'
@@ -67,8 +68,9 @@ export function CartDrawer({
   // the drawer's existing defaults — zero change for tenants who set nothing.
   const palette = getCartPalette(tenant ?? null, branding)
   const accent = palette.accent
-  const { items, total, updateQuantity, removeItem, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
+  const { items, total, updateQuantity, removeItem, updateItemConfiguration, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
+  const [itemToEdit, setItemToEdit] = useState<CartItem | null>(null)
   const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
   const [prefetchedUpsellItems, setPrefetchedUpsellItems] = useState<MenuItem[] | undefined>(undefined)
@@ -131,6 +133,24 @@ export function CartDrawer({
   const handleCancelRemove = () => {
     setItemToRemove(null)
   }
+
+  // Commit an edited cart line (new flavor/variation, add-ons, quantity, note).
+  // Routed through updateItemConfiguration so only the clicked line changes —
+  // a sibling line of the same product with a different flavor is untouched.
+  const handleUpdateItem = useCallback(
+    (
+      cartItemId: string,
+      menuItem: Parameters<typeof updateItemConfiguration>[1],
+      variationOrVariations: Parameters<typeof updateItemConfiguration>[2],
+      addons: Parameters<typeof updateItemConfiguration>[3],
+      quantity: number,
+      specialInstructions?: string
+    ) => {
+      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions)
+      setItemToEdit(null)
+    },
+    [updateItemConfiguration]
+  )
 
   const handleDecreaseBundleQuantity = (bundle: CartBundleItem) => {
     if (bundle.quantity <= 1) {
@@ -234,14 +254,27 @@ export function CartDrawer({
                               </div>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
-                            onClick={() => setItemToRemove(item)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Edit item ${item.menu_item.name}`}
+                              className="h-8 w-8 text-gray-500 hover:bg-gray-100 touch-manipulation"
+                              style={{ color: accent }}
+                              onClick={() => setItemToEdit(item)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove item ${item.menu_item.name}`}
+                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
+                              onClick={() => setItemToRemove(item)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
 
                         {(item.selected_addons.length > 0 || item.special_instructions) && (
@@ -412,6 +445,22 @@ export function CartDrawer({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Edit Item Dialog — re-opens the line's configuration (flavor/variation,
+          add-ons, quantity, note) so a wrong pick can be corrected in place
+          instead of deleting the line and rebuilding it from the menu. */}
+      {itemToEdit && (
+        <ItemDetailModal
+          item={itemToEdit.menu_item}
+          editItem={itemToEdit}
+          open={!!itemToEdit}
+          onClose={() => setItemToEdit(null)}
+          onAddToCart={(menuItem, variation, addons, quantity, specialInstructions) =>
+            handleUpdateItem(itemToEdit.id, menuItem, variation, addons, quantity, specialInstructions)
+          }
+          branding={branding}
+        />
+      )}
 
       {/* Remove Item Confirmation Dialog */}
       <AlertDialog open={!!itemToRemove} onOpenChange={(open) => !open && handleCancelRemove()}>

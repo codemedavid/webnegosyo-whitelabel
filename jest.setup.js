@@ -67,6 +67,17 @@ jest.mock('@upstash/redis', () => ({
 // Export for use in tests
 global.mockRedis = mockRedis
 
+// jsdom ships no ResizeObserver, but Radix primitives (ScrollArea, Select,
+// Popover) construct one on mount. Without this, any test that renders them
+// throws "ResizeObserver is not defined".
+if (typeof global.ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 // Suppress console warnings during tests
 const originalWarn = console.warn
 console.warn = (...args) => {
