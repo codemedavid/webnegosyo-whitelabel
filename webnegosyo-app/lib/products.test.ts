@@ -321,6 +321,111 @@ describe("createProduct with modifier groups", () => {
   });
 });
 
+/**
+ * The storefront, customer app and desktop POS still read the legacy
+ * `variation_types` / `addons` columns. Writing only `modifier_groups` makes
+ * add-ons authored in this app invisible everywhere else, so every write must
+ * mirror the unified groups into the legacy columns.
+ */
+describe("legacy column mirroring on save", () => {
+  const addonGroup = {
+    id: "g-addons",
+    name: "Add-ons",
+    display_order: 1,
+    min_select: 0,
+    max_select: null,
+    options: [
+      { id: "o-cheese", name: "Extra Cheese", price_modifier: 20, display_order: 0 },
+    ],
+  };
+  const sizeGroup = {
+    id: "g-size",
+    name: "Size",
+    display_order: 0,
+    min_select: 1,
+    max_select: 1,
+    options: [{ id: "o-l", name: "Large", price_modifier: 20, display_order: 0 }],
+  };
+
+  function mockInsertChain() {
+    const chain: any = {};
+    ["insert", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "new-1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  function mockUpdateChain() {
+    const chain: any = {};
+    ["update", "eq", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  it("writes multi-select options to the addons column on insert", async () => {
+    const chain = mockInsertChain();
+
+    await createProduct("tenant-1", {
+      ...validInput,
+      modifier_groups: [sizeGroup, addonGroup] as any,
+    });
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addons: [
+          { id: "o-cheese", name: "Extra Cheese", price: 20, is_default: undefined },
+        ],
+        variation_types: [expect.objectContaining({ name: "Size" })],
+        variations: [],
+      })
+    );
+  });
+
+  it("writes multi-select options to the addons column on update", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", {
+      ...validInput,
+      modifier_groups: [addonGroup] as any,
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addons: [
+          { id: "o-cheese", name: "Extra Cheese", price: 20, is_default: undefined },
+        ],
+        variation_types: [],
+      })
+    );
+  });
+
+  it("clears the legacy columns when every group is removed", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", { ...validInput, modifier_groups: [] });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ addons: [], variation_types: [], variations: [] })
+    );
+  });
+
+  it("leaves the legacy columns untouched when the caller omits modifier_groups", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", validInput);
+
+    const payload = chain.update.mock.calls[0][0];
+    expect(payload).not.toHaveProperty("addons");
+    expect(payload).not.toHaveProperty("variation_types");
+    expect(payload).not.toHaveProperty("modifier_groups");
+  });
+});
+
 describe("updateProduct", () => {
   it("updates only the given product for the given tenant", async () => {
     const chain: any = {};

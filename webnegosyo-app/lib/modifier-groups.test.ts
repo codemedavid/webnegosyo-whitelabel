@@ -2,6 +2,7 @@ import {
   normalizeModifierGroups,
   validateModifierGroups,
   serializeModifierGroups,
+  splitGroupsToLegacyColumns,
   LEGACY_ADDON_GROUP_NAME,
   LEGACY_VARIATION_GROUP_NAME,
   type ModifierGroup,
@@ -159,5 +160,100 @@ describe("serializeModifierGroups", () => {
     const input: ModifierGroup[] = [{ ...sizeGroup, display_order: 42 }];
     serializeModifierGroups(input);
     expect(input[0].display_order).toBe(42);
+  });
+});
+
+const addonGroup: ModifierGroup = {
+  id: "g-addon",
+  name: "Add-ons",
+  display_order: 1,
+  min_select: 0,
+  max_select: null,
+  options: [
+    { id: "o-cheese", name: "Extra Cheese", price_modifier: 20, display_order: 0 },
+    { id: "o-bacon", name: "Bacon", price_modifier: 30, display_order: 1 },
+  ],
+};
+
+describe("splitGroupsToLegacyColumns", () => {
+  it("mirrors a single-select group into variation_types", () => {
+    const legacy = splitGroupsToLegacyColumns([sizeGroup]);
+
+    expect(legacy.variation_types).toEqual([
+      {
+        id: "g-size",
+        name: "Size",
+        is_required: true,
+        display_order: 0,
+        options: [
+          {
+            id: "o-s",
+            name: "Small",
+            price_modifier: 0,
+            image_url: undefined,
+            is_default: undefined,
+            display_order: 0,
+          },
+          {
+            id: "o-l",
+            name: "Large",
+            price_modifier: 20,
+            image_url: undefined,
+            is_default: undefined,
+            display_order: 1,
+          },
+        ],
+      },
+    ]);
+    expect(legacy.addons).toEqual([]);
+  });
+
+  it("flattens a multi-select group's options into addons", () => {
+    const legacy = splitGroupsToLegacyColumns([addonGroup]);
+
+    expect(legacy.variation_types).toEqual([]);
+    expect(legacy.addons).toEqual([
+      { id: "o-cheese", name: "Extra Cheese", price: 20, is_default: undefined },
+      { id: "o-bacon", name: "Bacon", price: 30, is_default: undefined },
+    ]);
+  });
+
+  it("treats a finite cap above one as multi-select", () => {
+    const legacy = splitGroupsToLegacyColumns([{ ...addonGroup, max_select: 3 }]);
+
+    expect(legacy.variation_types).toEqual([]);
+    expect(legacy.addons).toHaveLength(2);
+  });
+
+  it("marks an optional single-select group as not required", () => {
+    const legacy = splitGroupsToLegacyColumns([{ ...sizeGroup, min_select: 0 }]);
+
+    expect(legacy.variation_types[0].is_required).toBe(false);
+  });
+
+  it("splits a mixed list into both legacy columns", () => {
+    const legacy = splitGroupsToLegacyColumns([sizeGroup, addonGroup]);
+
+    expect(legacy.variation_types.map((v) => v.name)).toEqual(["Size"]);
+    expect(legacy.addons.map((a) => a.name)).toEqual(["Extra Cheese", "Bacon"]);
+  });
+
+  it("always clears the oldest flat variations column", () => {
+    expect(splitGroupsToLegacyColumns([sizeGroup]).variations).toEqual([]);
+  });
+
+  it("returns empty columns for no groups, so removals clear the legacy data", () => {
+    expect(splitGroupsToLegacyColumns([])).toEqual({
+      variation_types: [],
+      variations: [],
+      addons: [],
+    });
+  });
+
+  it("does not mutate the input groups", () => {
+    const input: ModifierGroup[] = [{ ...addonGroup }];
+    splitGroupsToLegacyColumns(input);
+    expect(input[0].options).toHaveLength(2);
+    expect(input[0].max_select).toBeNull();
   });
 });

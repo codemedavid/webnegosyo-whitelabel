@@ -11,6 +11,9 @@ import {
   setGroupRequired,
   setGroupMultiple,
   groupSelectionMode,
+  createAddonGroup,
+  addAddonGroup,
+  DEFAULT_ADDON_GROUP_NAME,
 } from "./modifier-editor";
 import type { ModifierGroup } from "./modifier-groups";
 
@@ -58,6 +61,46 @@ describe("addGroup / removeGroup", () => {
     const next = removeGroup(groups, "g1");
     expect(next.map((g) => g.id)).toEqual(["g2"]);
     expect(groups).toHaveLength(2);
+  });
+});
+
+/**
+ * Merchants look for "add-ons", not "a multi-select option group". The add-on
+ * factory pre-applies the add-on selection rules so the affordance is one tap.
+ */
+describe("createAddonGroup / addAddonGroup", () => {
+  it("creates an optional, unlimited multi-select group", () => {
+    const group = createAddonGroup();
+
+    expect(group.min_select).toBe(0);
+    expect(group.max_select).toBeNull();
+    expect(groupSelectionMode(group)).toBe("multi");
+  });
+
+  it("pre-fills a recognisable group name and one blank option", () => {
+    const group = createAddonGroup();
+
+    expect(group.name).toBe(DEFAULT_ADDON_GROUP_NAME);
+    expect(group.options).toHaveLength(1);
+    expect(group.options[0].name).toBe("");
+  });
+
+  it("gives each add-on group a unique id", () => {
+    expect(createAddonGroup().id).not.toBe(createAddonGroup().id);
+  });
+
+  it("appends the add-on group without mutating the input", () => {
+    const groups: ModifierGroup[] = [baseGroup()];
+
+    const next = addAddonGroup(groups);
+
+    expect(next).toHaveLength(2);
+    expect(next[1].max_select).toBeNull();
+    expect(groups).toHaveLength(1);
+  });
+
+  it("still yields a single-select group from the plain group factory", () => {
+    expect(groupSelectionMode(createEmptyGroup())).toBe("single");
   });
 });
 
