@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,17 +25,30 @@ import {
   type ModifierGroup,
   type ModifierSource,
 } from "../../lib/modifier-groups";
-import { formatPeso } from "../../lib/format";
+import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
-import { CartPanel } from "../../components/pos/CartPanel";
+import { CartSheet } from "../../components/pos/CartSheet";
+import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
-import type { PosCartSelection } from "../../lib/pos-cart";
 
 /** A product whose modifier groups have already been normalized. */
 interface RegisterItem {
   product: Product;
   groups: ModifierGroup[];
+}
+
+/** Tiles per grid row. Rows are pre-chunked so every column is the same width. */
+const COLUMNS = 3;
+
+/** The app has no safe-area provider; every screen pads the notch by hand. */
+const TOP_INSET = 60;
+
+function toRows<T>(items: T[], size: number): T[][] {
+  return items.reduce<T[][]>((rows, item, index) => {
+    if (index % size === 0) return [...rows, [item]];
+    return [...rows.slice(0, -1), [...rows[rows.length - 1], item]];
+  }, []);
 }
 
 export default function PosScreen() {
@@ -43,7 +57,6 @@ export default function PosScreen() {
 
   const lines = usePosCartStore((s) => s.lines);
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
-  const orderTypeName = usePosCartStore((s) => s.orderTypeName);
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
   const add = usePosCartStore((s) => s.add);
   const setQty = usePosCartStore((s) => s.setQty);
@@ -58,6 +71,7 @@ export default function PosScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<RegisterItem | null>(null);
+  const [isCartExpanded, setIsCartExpanded] = useState(false);
 
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),
@@ -65,6 +79,8 @@ export default function PosScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lines, serviceCharge],
   );
+
+  const inSale = useMemo(() => quantityByItem(lines), [lines]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -111,10 +127,11 @@ export default function PosScreen() {
     };
   }, [tenantId, setOrderType]);
 
-  // Returning from a completed sale must never show the previous cart.
+  // Returning from a completed sale must never show the previous cart's state.
   useFocusEffect(
     useCallback(() => {
       setSheetFor(null);
+      setIsCartExpanded(false);
     }, []),
   );
 
@@ -127,14 +144,7 @@ export default function PosScreen() {
     });
   }, [items, activeCategory, search]);
 
-  const handleTap = (item: RegisterItem) => {
-    // Nothing to configure — straight into the cart, one tap.
-    if (item.groups.length === 0) {
-      addToCart(item, [], 1);
-      return;
-    }
-    setSheetFor(item);
-  };
+  const rows = useMemo(() => toRows(visibleItems, COLUMNS), [visibleItems]);
 
   const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
     add({
@@ -145,6 +155,15 @@ export default function PosScreen() {
       selections,
     });
     setSheetFor(null);
+  };
+
+  const handleTap = (item: RegisterItem) => {
+    // Nothing to configure — straight into the cart, one tap.
+    if (item.groups.length === 0) {
+      addToCart(item, [], 1);
+      return;
+    }
+    setSheetFor(item);
   };
 
   if (!convexUrl) {
@@ -173,15 +192,35 @@ export default function PosScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.topBar}>
-        <TextInput
-          style={styles.search}
-          placeholder="Search products"
-          placeholderTextColor={colors.textTertiary}
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-        />
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={styles.eyebrow}>Register</Text>
+          <Text style={styles.count}>
+            {visibleItems.length} {visibleItems.length === 1 ? "product" : "products"}
+          </Text>
+        </View>
+
+        <View style={styles.searchRow}>
+          <Text style={styles.searchGlyph}>⌕</Text>
+          <TextInput
+            style={styles.search}
+            placeholder="Search products"
+            placeholderTextColor={colors.textTertiary}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearch("")}
+              hitSlop={10}
+              accessibilityLabel="Clear search"
+            >
+              <Text style={styles.searchClear}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -193,84 +232,90 @@ export default function PosScreen() {
         <TouchableOpacity
           style={[styles.chip, activeCategory === null && styles.chipActive]}
           onPress={() => setActiveCategory(null)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: activeCategory === null }}
         >
           <Text style={[styles.chipText, activeCategory === null && styles.chipTextActive]}>
             All
           </Text>
         </TouchableOpacity>
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category.id}
-            style={[styles.chip, activeCategory === category.id && styles.chipActive]}
-            onPress={() => setActiveCategory(category.id)}
-          >
-            <Text
-              style={[styles.chipText, activeCategory === category.id && styles.chipTextActive]}
+        {categories.map((category) => {
+          const isActive = activeCategory === category.id;
+          return (
+            <TouchableOpacity
+              key={category.id}
+              style={[styles.chip, isActive && styles.chipActive]}
+              onPress={() => setActiveCategory(category.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
             >
-              {category.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                {category.name?.trim() || "Uncategorized"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={styles.grid}>
-        {visibleItems.map((item) => (
-          <TouchableOpacity
-            key={item.product.id}
-            style={styles.tile}
-            onPress={() => handleTap(item)}
-            accessibilityRole="button"
-          >
-            <Text style={styles.tileName} numberOfLines={2}>
-              {item.product.name}
-            </Text>
-            <Text style={styles.tilePrice}>
-              {formatPeso(item.product.discounted_price ?? item.product.price)}
-            </Text>
-          </TouchableOpacity>
+      <ScrollView
+        style={styles.gridScroll}
+        contentContainerStyle={styles.grid}
+        keyboardShouldPersistTaps="handled"
+      >
+        {rows.map((row) => (
+          <View key={row[0].product.id} style={styles.row}>
+            {row.map((item) => (
+              <ProductTile
+                key={item.product.id}
+                name={item.product.name?.trim() || "Unnamed item"}
+                price={item.product.discounted_price ?? item.product.price}
+                quantity={inSale[item.product.id] ?? 0}
+                hasOptions={item.groups.length > 0}
+                onPress={() => handleTap(item)}
+              />
+            ))}
+            {/* Keep the final row's columns aligned with the rows above it. */}
+            {Array.from({ length: COLUMNS - row.length }).map((_, index) => (
+              <View key={`filler-${index}`} style={styles.filler} />
+            ))}
+          </View>
         ))}
+
         {visibleItems.length === 0 && (
-          <Text style={styles.noResults}>No products match this search.</Text>
+          <View style={styles.noResults}>
+            <Text style={styles.noResultsTitle}>Nothing matches</Text>
+            <Text style={styles.noResultsBody}>
+              {search
+                ? `No product named “${search.trim()}” in this category.`
+                : "This category has no available products."}
+            </Text>
+          </View>
         )}
       </ScrollView>
 
-      <View style={styles.cartArea}>
-        <CartPanel
-          lines={lines}
-          totals={totals}
-          onChangeQty={setQty}
-          onClear={reset}
+      {isCartExpanded && (
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => setIsCartExpanded(false)}
+          accessibilityLabel="Collapse the sale"
         />
-      </View>
+      )}
 
-      <View style={styles.checkoutBar}>
-        <View style={styles.orderTypeRow}>
-          {orderTypes.map((type) => (
-            <TouchableOpacity
-              key={type.id}
-              style={[styles.typeChip, orderTypeId === type.id && styles.typeChipActive]}
-              onPress={() => setOrderType(type.id, type.name, type.serviceCharge)}
-            >
-              <Text
-                style={[styles.typeText, orderTypeId === type.id && styles.typeTextActive]}
-              >
-                {type.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.chargeButton, lines.length === 0 && styles.chargeDisabled]}
-          disabled={lines.length === 0}
-          onPress={() => router.push("/(main)/pos-tender")}
-        >
-          <Text style={styles.chargeText}>
-            Charge {formatPeso(totals.total)}
-            {orderTypeName ? `  ·  ${orderTypeName}` : ""}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <CartSheet
+        lines={lines}
+        totals={totals}
+        orderTypes={orderTypes}
+        orderTypeId={orderTypeId}
+        isExpanded={isCartExpanded}
+        onToggle={() => setIsCartExpanded((open) => !open)}
+        onSelectOrderType={(type) => setOrderType(type.id, type.name, type.serviceCharge)}
+        onChangeQty={setQty}
+        onClear={() => {
+          reset();
+          setIsCartExpanded(false);
+        }}
+        onCharge={() => router.push("/(main)/pos-tender")}
+      />
 
       {sheetFor && (
         <ModifierSheet
@@ -288,75 +333,79 @@ export default function PosScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  topBar: { paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, paddingBottom: spacing.sm },
-  search: {
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  header: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: TOP_INSET,
+    paddingBottom: spacing.sm,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
+  eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
+  count: { ...typography.small, color: colors.textTertiary },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.separator,
     paddingHorizontal: spacing.lg,
+  },
+  searchGlyph: { fontSize: 17, color: colors.textTertiary },
+  search: {
+    flex: 1,
     paddingVertical: spacing.md,
     ...typography.body,
     color: colors.textPrimary,
   },
+  searchClear: { fontSize: 13, color: colors.textSecondary },
   rail: { flexGrow: 0 },
   railContent: { paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, gap: spacing.sm },
   chip: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: 7,
     borderRadius: radius.full,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.separator,
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textSecondary },
-  chipTextActive: { color: colors.textOnDark, fontWeight: "700" },
+  chipText: { ...typography.caption, fontWeight: "600", color: colors.textSecondary },
+  chipTextActive: { color: colors.textOnDark },
+  gridScroll: { flex: 1 },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
     gap: spacing.sm,
-    padding: spacing.xl,
   },
-  tile: {
-    width: "31%",
-    minHeight: 88,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    padding: spacing.md,
-    justifyContent: "space-between",
+  row: { flexDirection: "row", gap: spacing.sm },
+  filler: { flex: 1 },
+  noResults: { alignItems: "center", paddingTop: spacing.xxl * 2, paddingHorizontal: spacing.xl },
+  noResultsTitle: { ...typography.heading, color: colors.textPrimary },
+  noResultsBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: spacing.xs,
   },
-  tileName: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
-  tilePrice: { ...typography.caption, color: colors.textSecondary },
-  noResults: { ...typography.caption, color: colors.textSecondary, padding: spacing.xl },
-  cartArea: { maxHeight: 220, borderTopWidth: 1, borderTopColor: colors.separator },
-  checkoutBar: {
-    padding: spacing.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.separator,
-    backgroundColor: colors.card,
-    gap: spacing.md,
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(29,24,21,0.35)",
   },
-  orderTypeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  typeChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  typeChipActive: { backgroundColor: colors.accentLight, borderColor: colors.accent },
-  typeText: { ...typography.small, color: colors.textSecondary },
-  typeTextActive: { color: colors.accent, fontWeight: "700" },
-  chargeButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.lg,
-    alignItems: "center",
-  },
-  chargeDisabled: { backgroundColor: colors.textTertiary },
-  chargeText: { ...typography.heading, color: colors.textOnDark },
 });

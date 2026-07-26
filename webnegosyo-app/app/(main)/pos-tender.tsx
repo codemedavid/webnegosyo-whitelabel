@@ -354,7 +354,7 @@ export default function PosTenderScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  body: { padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.md },
+  body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   total: { fontSize: 40, fontWeight: "800", color: colors.textPrimary },
   sectionTitle: { ...typography.eyebrow, color: colors.textSecondary, marginTop: spacing.lg },

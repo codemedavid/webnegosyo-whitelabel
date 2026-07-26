@@ -112,7 +112,7 @@ export default function PosSalesScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  body: { padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.md },
+  body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   drawer: {
     backgroundColor: colors.primary,
