@@ -16,6 +16,8 @@ export interface TenantListRow {
   name: string;
   is_active: boolean;
   convex_deployment_url: string | null;
+  /** Optional: absent on rows selected before the logo column was added. */
+  logo_url?: string | null;
   menu_engineering_enabled: boolean;
   bundles_enabled: boolean;
   app_enabled: boolean;

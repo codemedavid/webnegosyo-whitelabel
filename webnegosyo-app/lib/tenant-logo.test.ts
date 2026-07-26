@@ -77,10 +77,12 @@ describe("logoUpdatePayload", () => {
     });
   });
 
-  it("clears the column with null when the logo is removed", () => {
-    // Empty string would render as a broken image on the storefront; null is
-    // the column's real "no logo" value.
-    expect(logoUpdatePayload(null)).toEqual({ logo_url: null });
+  it("clears the column with an empty string when the logo is removed", () => {
+    // tenants.logo_url is NOT NULL DEFAULT ''::text (verified against the live
+    // schema), so writing null raises a not-null violation. The empty string is
+    // the column's own "no logo" sentinel, and logoThumbUrl maps it back to
+    // null so the monogram fallback still renders.
+    expect(logoUpdatePayload(null)).toEqual({ logo_url: "" });
   });
 
   it("refuses to store an unsafe url", () => {

@@ -32,6 +32,8 @@ export interface TenantEditorRow {
   name: string;
   slug: string;
   is_active: boolean;
+  /** Managed outside the text form — uploaded and saved on its own. */
+  logo_url?: string | null;
   messenger_page_id: string | null;
   messenger_username: string | null;
   messenger_redirect_mode: string | null;

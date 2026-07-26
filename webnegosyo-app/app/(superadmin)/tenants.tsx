@@ -26,12 +26,12 @@ import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/superadmin/ScreenHeader";
 import { SearchField } from "../../components/superadmin/SearchField";
 import { FilterChips } from "../../components/superadmin/FilterChips";
-import { Monogram } from "../../components/superadmin/Monogram";
+import { TenantLogo } from "../../components/superadmin/TenantLogo";
 import { Pill } from "../../components/superadmin/Pill";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const STATUS_FILTERS: readonly { key: TenantStatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -181,7 +181,11 @@ export default function TenantsScreen() {
                   }
                   activeOpacity={0.7}
                 >
-                  <Monogram name={tenant.name} seed={tenant.id} />
+                  <TenantLogo
+                    name={tenant.name}
+                    logoUrl={tenant.logo_url}
+                    seed={tenant.id}
+                  />
                   <View style={styles.cardHeading}>
                     <Text style={styles.cardTitle} numberOfLines={1}>
                       {tenant.name}

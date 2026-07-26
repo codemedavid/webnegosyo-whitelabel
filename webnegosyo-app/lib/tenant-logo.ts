@@ -51,11 +51,12 @@ export function logoThumbUrl(
 /**
  * The tenants-table patch that sets or clears a logo.
  *
- * Clearing writes null rather than an empty string: the storefront treats ""
- * as a real url and renders a broken image.
+ * Clearing writes the empty string, not null: `tenants.logo_url` is
+ * `NOT NULL DEFAULT ''::text`, so null raises a not-null violation. Readers
+ * treat "" as absent — {@link logoThumbUrl} maps it to null for the fallback.
  */
-export function logoUpdatePayload(url: string | null): { logo_url: string | null } {
-  if (url === null) return { logo_url: null };
+export function logoUpdatePayload(url: string | null): { logo_url: string } {
+  if (url === null) return { logo_url: "" };
 
   if (!isValidLogoUrl(url)) {
     throw new Error("Logo must be an http(s) url");

@@ -19,11 +19,11 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/superadmin/ScreenHeader";
-import { Monogram } from "../../components/superadmin/Monogram";
+import { TenantLogo } from "../../components/superadmin/TenantLogo";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const RECENT_LIMIT = 5;
 
@@ -181,7 +181,12 @@ export default function SuperadminDashboardScreen() {
                 }
                 activeOpacity={0.7}
               >
-                <Monogram name={tenant.name} seed={tenant.id} size={38} />
+                <TenantLogo
+                  name={tenant.name}
+                  logoUrl={tenant.logo_url}
+                  seed={tenant.id}
+                  size={38}
+                />
                 <View style={styles.rowText}>
                   <Text style={styles.rowName} numberOfLines={1}>
                     {tenant.name}

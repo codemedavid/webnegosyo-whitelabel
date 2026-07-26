@@ -25,6 +25,10 @@ import {
   type TenantFormValues,
 } from "../../../lib/tenant-form";
 import { tenantStatusTone } from "../../../lib/superadmin-ui";
+import { logoUpdatePayload } from "../../../lib/tenant-logo";
+import { pickLogoImage } from "../../../lib/image-picker";
+import { uploadTenantLogo } from "../../../lib/product-image-upload";
+import { TenantLogo } from "../../../components/superadmin/TenantLogo";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { ScreenHeader } from "../../../components/superadmin/ScreenHeader";
@@ -38,7 +42,7 @@ import {
 } from "../../../theme/colors";
 
 const EDITOR_COLUMNS =
-  "id, name, slug, is_active, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled";
+  "id, name, slug, is_active, logo_url, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled";
 
 interface StaffRow {
   user_id: string;
@@ -117,6 +121,11 @@ export default function TenantEditorScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [tab, setTab] = useState<string>("general");
+  // The logo is saved on its own rather than through the text form: an upload
+  // is already a committed side effect, so deferring it to "Save changes"
+  // would leave an orphaned ImageKit file if the superadmin backed out.
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isLogoBusy, setIsLogoBusy] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -134,6 +143,7 @@ export default function TenantEditorScreen() {
     setLoadError(null);
     setTenant(row);
     setValues(toFormValues(row));
+    setLogoUrl(row.logo_url ?? null);
 
     const { data: staffRows } = await supabase
       .from("app_users")
@@ -173,6 +183,68 @@ export default function TenantEditorScreen() {
     }
     Alert.alert("Saved", "Restaurant updated.");
     void load();
+  };
+
+  /** Persist the logo column immediately, then reflect it locally. */
+  const saveLogo = async (next: string | null): Promise<boolean> => {
+    const { error } = await supabase
+      .from("tenants")
+      .update(logoUpdatePayload(next))
+      .eq("id", id);
+
+    if (error) {
+      Alert.alert("Could not save logo", error.message);
+      return false;
+    }
+    setLogoUrl(next);
+    return true;
+  };
+
+  const handlePickLogo = async () => {
+    setIsLogoBusy(true);
+    try {
+      const outcome = await pickLogoImage();
+
+      if (outcome.status === "permission-denied") {
+        Alert.alert("Photo access needed", "Allow photo access to upload a logo.");
+        return;
+      }
+      if (outcome.status === "unavailable") {
+        Alert.alert(
+          "Not available",
+          "Image picking isn't supported in this build. Use the web console."
+        );
+        return;
+      }
+      if (outcome.status === "canceled") return;
+
+      const uploaded = await uploadTenantLogo(outcome.image);
+      await saveLogo(uploaded.url);
+    } catch (error: unknown) {
+      Alert.alert(
+        "Upload failed",
+        error instanceof Error ? error.message : "Could not upload the logo."
+      );
+    } finally {
+      setIsLogoBusy(false);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    Alert.alert("Remove logo", "Clear this restaurant's logo?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          setIsLogoBusy(true);
+          // The ImageKit file is intentionally left in place: deletion needs
+          // the private key, which must not ship in the app binary.
+          await saveLogo(null);
+          setIsLogoBusy(false);
+        },
+      },
+    ]);
   };
 
   const handleOpenAsMerchant = () => {
@@ -230,6 +302,43 @@ export default function TenantEditorScreen() {
 
       {tab === "general" ? (
         <View style={styles.card}>
+          <View style={styles.logoRow}>
+            <TenantLogo
+              name={values.name}
+              logoUrl={logoUrl}
+              seed={tenant.id}
+              size={72}
+            />
+            <View style={styles.logoActions}>
+              <Text style={styles.fieldLabel}>Logo</Text>
+              <Text style={styles.toggleDescription}>
+                {logoUrl ? "Shown across the storefront" : "Using initials for now"}
+              </Text>
+              <View style={styles.logoButtonRow}>
+                <TouchableOpacity
+                  style={[styles.logoButton, isLogoBusy && styles.toggleDisabled]}
+                  onPress={() => void handlePickLogo()}
+                  disabled={isLogoBusy}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.logoButtonText}>
+                    {isLogoBusy ? "Working…" : logoUrl ? "Replace" : "Upload"}
+                  </Text>
+                </TouchableOpacity>
+                {logoUrl ? (
+                  <TouchableOpacity
+                    style={[styles.logoRemove, isLogoBusy && styles.toggleDisabled]}
+                    onPress={handleRemoveLogo}
+                    disabled={isLogoBusy}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.logoRemoveText}>Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
           <Field
             label="Name"
             value={values.name}
@@ -514,6 +623,30 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     ...shadow.sm,
   },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.separator,
+  },
+  logoActions: { flex: 1, gap: 2 },
+  logoButtonRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  logoButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+  },
+  logoButtonText: { color: colors.textOnDark, fontSize: 14, fontWeight: "700" },
+  logoRemove: {
+    backgroundColor: colors.dangerLight,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  logoRemoveText: { color: colors.danger, fontSize: 14, fontWeight: "700" },
   field: { gap: spacing.xs },
   fieldLabel: {
     ...typography.caption,
