@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChefHat, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { RecipeEditor } from '@/components/admin/recipe-editor'
 import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
 import {
   EMPTY_INGREDIENT_DRAFT,
@@ -107,6 +108,11 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<IngredientDraft>(EMPTY_INGREDIENT_DRAFT)
   const [isSaving, setIsSaving] = useState(false)
+  // One prep's recipe open at a time — each editor is a separate data load.
+  const [openRecipeId, setOpenRecipeId] = useState<string | null>(null)
+
+  const toggleRecipe = (itemId: string) =>
+    setOpenRecipeId((current) => (current === itemId ? null : itemId))
 
   const unitLabel = (unitId: string) => {
     const unit = units.find((u) => u.id === unitId)
@@ -199,7 +205,8 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
         <div className="space-y-2">
           {ingredients.map((item) => (
             <Card key={item.id}>
-              <CardContent className="flex items-center justify-between gap-3 py-3">
+              <CardContent className="space-y-3 py-3">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{item.name}</span>
@@ -211,7 +218,18 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
                     {item.category ? ` · ${item.category}` : ''}
                   </span>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 items-center gap-1">
+                  {item.is_prep && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleRecipe(item.id)}
+                    >
+                      <ChefHat className="mr-1 h-3.5 w-3.5" />
+                      Recipe
+                    </Button>
+                  )}
                   <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(item)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -219,6 +237,20 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                </div>
+
+                {/* Kept collapsed by default: each editor loads the tenant's
+                    ingredients and its own recipe, so opening every prep at
+                    once would fan out a request per row. */}
+                {openRecipeId === item.id && (
+                  <RecipeEditor
+                    tenantId={tenantId}
+                    tenantSlug={tenantSlug}
+                    target={{ type: 'prep_item', prepItemId: item.id }}
+                    label={`What ${item.name} is made of`}
+                    onSaved={() => router.refresh()}
+                  />
+                )}
               </CardContent>
             </Card>
           ))}

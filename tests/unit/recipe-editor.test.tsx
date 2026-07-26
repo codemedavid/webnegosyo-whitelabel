@@ -180,11 +180,15 @@ describe('RecipeEditor', () => {
 
 const PREP_TARGET: RecipeTarget = { type: 'prep_item', prepItemId: 'p1' }
 
+// The prep being edited is itself an ingredient row — that is how a prep gets
+// used inside other recipes, and where its stock unit comes from.
+const DOUGH = { ...FLOUR, id: 'p1', name: 'Pizza Dough', is_prep: true }
+
 describe('RecipeEditor prep yield', () => {
   it('asks a prep recipe how much it makes, and saves the answer', async () => {
     // Arrange — without a yield the costing core cannot divide the batch cost
     // down to a per-unit cost, so it silently falls back to the manual price.
-    setup({ recipe: recipeWith() })
+    setup({ recipe: recipeWith(), ingredients: [FLOUR, DOUGH] })
     renderEditor(PREP_TARGET)
 
     // Act
@@ -214,6 +218,7 @@ describe('RecipeEditor prep yield', () => {
         recipe: { id: 'r1', notes: null, yield_quantity: 750, yield_unit_id: GRAM.id },
         components: recipeWith().components,
       } as never,
+      ingredients: [FLOUR, DOUGH],
     })
 
     renderEditor(PREP_TARGET)

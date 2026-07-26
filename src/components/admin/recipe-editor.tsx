@@ -65,6 +65,11 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
   // on every parent render (the descriptor is usually an inline object).
   const targetKey = JSON.stringify(target)
 
+  // Only a prep is *produced*; everything else is consumed per sale, where a
+  // yield is meaningless and would only invite a wrong number.
+  const isPrep = target.type === 'prep_item'
+  const yieldFieldId = `recipe-yield-${isPrep ? target.prepItemId : 'none'}`
+
   useEffect(() => {
     let active = true
     const currentTarget: RecipeTarget = JSON.parse(targetKey)
@@ -77,7 +82,17 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
       if (!active) return
       if (ing.success) setIngredients(ing.data)
       if (unit.success) setUnits(unit.data)
-      if (recipe.success) setForm(recipeFormFromData(recipe.data))
+      if (recipe.success) {
+        const loaded = recipeFormFromData(recipe.data)
+        // A prep is priced per its stock unit, so that is the unit a merchant
+        // almost always means by "yields". Pre-selecting it saves a step and
+        // avoids a yield saved in a unit nobody intended.
+        const defaultYieldUnit =
+          currentTarget.type === 'prep_item' && ing.success
+            ? ing.data.find((i) => i.id === currentTarget.prepItemId)?.stock_unit_id
+            : undefined
+        setForm({ ...loaded, yieldUnitId: loaded.yieldUnitId || defaultYieldUnit || '' })
+      }
       setIsLoading(false)
     })()
     return () => {
@@ -221,6 +236,42 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
           </div>
         ))}
       </div>
+
+      {isPrep && (
+        <div className="flex items-center gap-2 border-t pt-2">
+          <Label htmlFor={yieldFieldId} className="text-xs shrink-0">
+            Yields
+          </Label>
+          <Input
+            id={yieldFieldId}
+            type="number"
+            step="any"
+            min={0}
+            placeholder="Qty"
+            value={form.yieldQuantity ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, yieldQuantity: e.target.value }))}
+            className="w-24"
+          />
+          <Select
+            value={form.yieldUnitId || undefined}
+            onValueChange={(value) => setForm((f) => ({ ...f, yieldUnitId: value }))}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue placeholder="Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {units.map((unit) => (
+                <SelectItem key={unit.id} value={unit.id}>
+                  {unit.abbreviation}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            The batch cost is divided by this to price one unit.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <Button type="button" variant="outline" size="sm" onClick={addLine}>

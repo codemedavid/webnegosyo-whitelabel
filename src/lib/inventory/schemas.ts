@@ -45,6 +45,13 @@ export type RecipeComponentInput = z.infer<typeof recipeComponentInputSchema>
 export const recipeInputSchema = z.object({
   notes: z.string().trim().optional().nullable(),
   components: z.array(recipeComponentInputSchema),
+  /**
+   * How much a prep recipe makes. Only prep-item recipes carry a yield — it is
+   * what turns a batch cost into a per-unit cost — so both fields are optional
+   * and every non-prep target omits them.
+   */
+  yield_quantity: z.number().positive('Yield must be greater than zero').optional(),
+  yield_unit_id: z.string().uuid('A yield unit is required').optional(),
 })
 
 export type RecipeInput = z.infer<typeof recipeInputSchema>
