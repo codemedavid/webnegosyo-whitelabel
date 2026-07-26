@@ -33,6 +33,8 @@ export function hasPermission(
 // Absent tabs (dashboard, account, detail screens) are open to all staff.
 const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   orders: "orders",
+  pos: "pos",
+  "pos-sales": "pos",
   analytics: "analytics",
   growth: "analytics",
   trends: "analytics",
