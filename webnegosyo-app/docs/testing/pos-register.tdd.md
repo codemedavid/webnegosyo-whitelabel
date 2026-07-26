@@ -266,3 +266,37 @@ to this work.
 
 If these are squashed, this file is the surviving record of what was verified
 and how.
+
+## Follow-up: register screen redesign (2026-07-26)
+
+The first register layout shipped functional but visually poor — tall text-only
+tiles, a permanently-open 220px cart that still showed nothing, and a search
+field under the notch. The redesign is presentational except for one derived
+value, which went through its own RED/GREEN cycle.
+
+| Stage | Evidence |
+|---|---|
+| RED | `npx jest lib/pos-cart.test.ts` → `lib/pos-cart.test.ts:6:3 - error TS2305: Module '"./pos-cart"' has no exported member 'quantityByItem'.` — Test Suites: 1 failed |
+| GREEN | `npx jest lib/pos-cart.test.ts` → Test Suites: 1 passed, Tests: 38 passed |
+
+New guarantees:
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 26 | An empty cart yields no tile badges | `lib/pos-cart.test.ts:returns an empty map for an empty cart` | PASS |
+| 27 | The badge counts units, not lines | `lib/pos-cart.test.ts:counts units, not lines` | PASS |
+| 28 | Separate lines of one item sum into a single badge | `lib/pos-cart.test.ts:sums separate lines of the same item...` | PASS |
+| 29 | Different items keep separate counts | `lib/pos-cart.test.ts:keeps different items separate` | PASS |
+
+Full suite after the redesign: `npx jest` → 24 suites, 353 tests passed.
+`npx tsc --noEmit` → exit 0. `npx eslint` on every touched file → clean.
+
+Unchanged gap: the screens themselves are still outside the jest roots, so the
+collapse behaviour, the backdrop, and the notch padding are verified by
+typecheck and lint only — not by an executed test or a device run.
+
+| Commit | Stage |
+|---|---|
+| `809e70e` | RED — tile quantity badges |
+| `74e9f1a` | GREEN — tile quantity badges |
+| `3c828b4` | Redesign (presentational) |
