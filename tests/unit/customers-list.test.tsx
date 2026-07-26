@@ -177,8 +177,9 @@ describe('CustomersList', () => {
 
     render(<CustomersList customers={customers} tenantSlug="acme" />)
 
-    // Top items are hidden until the row is opened.
-    expect(screen.queryByText('Latte')).not.toBeInTheDocument()
+    // The favourite is surfaced on the collapsed row (see the insights spec
+    // below); the rest of the item breakdown stays hidden until it is opened.
+    expect(screen.queryByText('Croissant')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /ana cruz/i }))
 
@@ -196,10 +197,10 @@ describe('CustomersList', () => {
  */
 describe('CustomersList — customer insights', () => {
   it('shows how often a repeat customer orders', () => {
-    // 3 orders spanning 2026-01-01 -> 2026-07-01 (181 days) ≈ every 90 days.
+    // 3 orders spanning 2026-01-01 -> 2026-07-01 (181 days) = 2 gaps ≈ every 91 days.
     render(<CustomersList customers={[makeCustomer()]} tenantSlug="acme" />)
 
-    expect(screen.getByTestId('customer-frequency-cust-1')).toHaveTextContent(/every ~90 days/i)
+    expect(screen.getByTestId('customer-frequency-cust-1')).toHaveTextContent(/every ~91 days/i)
   })
 
   it('labels a one-order customer as first-time instead of inventing a cadence', () => {

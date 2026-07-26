@@ -362,6 +362,25 @@ export async function createOrderAction(
         paymentProof,
       })
 
+      // Same reason as the Convex branch: this order lives in the tenant's own
+      // project, so nothing else would ever roll it into the platform-side
+      // customers table. Best-effort and non-blocking — the order is saved.
+      const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+      await captureExternalOrderBestEffort(supabaseAdmin, tenantId, {
+        backend: 'tenant_supabase',
+        externalOrderId: result.order.id,
+        name: customerInfo?.name ?? null,
+        contact: customerInfo?.contact ?? null,
+        customerData: effectiveCustomerData ?? null,
+        total: Number(result.order.total) || 0,
+        createdAt: new Date().toISOString(),
+        channel: orderTypeName,
+        items: items.map((item) => ({
+          name: item.menu_item_name,
+          quantity: item.quantity,
+        })),
+      })
+
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }

@@ -704,6 +704,24 @@ export async function createOrderConvex(
 
   const orderId = await convex.mutation<string>('orders:createOrder', mutationArgs)
 
+  // Roll this order into the tenant's customer profile. Convex orders never
+  // reach `public.orders`, so without this the merchant's Regulars list would
+  // never see them — the phone number would sit in Convex and nowhere else.
+  // Best-effort and non-blocking: the order is already placed.
+  const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  await captureExternalOrderBestEffort(createAdminClient(), tenantId, {
+    backend: 'convex',
+    externalOrderId: orderId,
+    name: customerInfo?.name ?? null,
+    contact: (mutationArgs.customerContact as string) ?? null,
+    customerData: convexCustomerData,
+    total: mutationArgs.total as number,
+    createdAt: new Date().toISOString(),
+    channel: (mutationArgs.orderType as string) ?? null,
+    items: items.map((item) => ({ name: item.menu_item_name, quantity: item.quantity })),
+  })
+
   return { order: { id: orderId }, orderToken: undefined }
 }
 
