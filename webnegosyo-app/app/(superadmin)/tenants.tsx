@@ -8,7 +8,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { enterTenant } from "../../lib/impersonation";
@@ -197,13 +197,24 @@ export default function TenantsScreen() {
               </View>
             ) : null}
 
-            <TouchableOpacity
-              style={styles.openButton}
-              onPress={() => handleOpenAsMerchant(tenant)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.openButtonText}>Open as merchant</Text>
-            </TouchableOpacity>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={styles.manageButton}
+                onPress={() =>
+                  router.push(`/(superadmin)/tenant/${tenant.id}` as Href)
+                }
+                activeOpacity={0.8}
+              >
+                <Text style={styles.manageButtonText}>Manage</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.openButton}
+                onPress={() => handleOpenAsMerchant(tenant)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.openButtonText}>Open as merchant</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ))
       )}
@@ -268,7 +279,19 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   featureText: { ...typography.small, color: colors.textSecondary },
+  actionRow: { flexDirection: "row", gap: spacing.sm },
+  manageButton: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.separator,
+  },
+  manageButtonText: { color: colors.textPrimary, fontSize: 15, fontWeight: "700" },
   openButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: radius.full,
     paddingVertical: 12,

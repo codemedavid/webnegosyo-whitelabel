@@ -90,6 +90,11 @@ export default function SuperadminLayout() {
           ),
         }}
       />
+      {/* Detail screens — reachable by push, never tabs. */}
+      <Tabs.Screen
+        name="tenant/[id]"
+        options={{ href: null, title: "Restaurant" }}
+      />
     </Tabs>
   );
 }
