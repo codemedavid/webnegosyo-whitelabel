@@ -103,3 +103,64 @@ describe('estimateRecipeCost', () => {
     expect(estimateRecipeCost([EMPTY_RECIPE_LINE], [FLOUR], [GRAM, KILO])).toBe(0)
   })
 })
+
+// ── Phase 3: prep yields ─────────────────────────────────────────────────────
+
+describe('recipe form yields', () => {
+  it('carries a prep yield into the service input', () => {
+    // Arrange
+    const form: RecipeFormState = {
+      notes: '',
+      lines: [line({ inventory_item_id: UUID_FLOUR, quantity: '1000', unit_id: UUID_GRAM })],
+      yieldQuantity: '900',
+      yieldUnitId: UUID_GRAM,
+    }
+
+    // Act
+    const input = buildRecipeInput(form)
+
+    // Assert — 1000g of flour yielding 900g of dough is the whole point of a
+    // prep: the loss is what makes the derived unit cost differ from the sum.
+    expect(input.yield_quantity).toBe(900)
+    expect(input.yield_unit_id).toBe(UUID_GRAM)
+  })
+
+  it('omits the yield when the merchant left it blank', () => {
+    const form: RecipeFormState = {
+      notes: '',
+      lines: [line({ inventory_item_id: UUID_FLOUR, quantity: '10', unit_id: UUID_GRAM })],
+      yieldQuantity: '',
+      yieldUnitId: '',
+    }
+
+    const input = buildRecipeInput(form)
+
+    expect(input.yield_quantity).toBeUndefined()
+    expect(input.yield_unit_id).toBeUndefined()
+  })
+
+  it('round-trips a saved yield back into the form', () => {
+    const recipe = {
+      id: 'r1', tenant_id: 't', target_type: 'prep_item' as const, prep_item_id: 'dough',
+      yield_quantity: 900, yield_unit_id: UUID_GRAM, notes: null, created_at: '', updated_at: '',
+    } as Recipe
+
+    const form = recipeFormFromData({
+      recipe,
+      components: [
+        { id: 'c1', tenant_id: 't', recipe_id: 'r1', inventory_item_id: UUID_FLOUR,
+          quantity: 1000, unit_id: UUID_GRAM, sort_order: 0, created_at: '' } as RecipeComponent,
+      ],
+    })
+
+    expect(form.yieldQuantity).toBe('900')
+    expect(form.yieldUnitId).toBe(UUID_GRAM)
+  })
+
+  it('leaves the yield blank for a recipe that has none', () => {
+    const form = recipeFormFromData(null)
+
+    expect(form.yieldQuantity).toBe('')
+    expect(form.yieldUnitId).toBe('')
+  })
+})

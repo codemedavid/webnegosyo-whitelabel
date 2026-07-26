@@ -36,12 +36,12 @@ jest.mock('sonner', () => ({
 }))
 
 const FLOUR = {
-  id: 'flour',
+  id: '11111111-1111-4111-8111-111111111111',
   tenant_id: 't1',
   name: 'Flour',
   sku: null,
   category: null,
-  stock_unit_id: 'u_g',
+  stock_unit_id: '22222222-2222-4222-8222-222222222222',
   unit_cost: 0.05,
   is_prep: false,
   image_url: null,
@@ -53,7 +53,7 @@ const FLOUR = {
 }
 
 const GRAM = {
-  id: 'u_g',
+  id: '22222222-2222-4222-8222-222222222222',
   tenant_id: 't1',
   name: 'Gram',
   abbreviation: 'g',
@@ -68,10 +68,10 @@ const GRAM = {
 const ITEM_TARGET: RecipeTarget = { type: 'menu_item', menuItemId: 'm1' }
 const ADDON_TARGET: RecipeTarget = { type: 'addon', menuItemId: 'm1', addonId: 'a1' }
 
-function recipeWith(unitId = 'u_g') {
+function recipeWith(unitId = '22222222-2222-4222-8222-222222222222') {
   return {
     recipe: { id: 'r1', notes: null },
-    components: [{ inventory_item_id: 'flour', quantity: 120, unit_id: unitId }],
+    components: [{ inventory_item_id: '11111111-1111-4111-8111-111111111111', quantity: 120, unit_id: unitId }],
   }
 }
 
@@ -173,5 +173,51 @@ describe('RecipeEditor', () => {
     renderEditor(ITEM_TARGET, { label: 'Base recipe (ingredients per item)' })
 
     expect(await screen.findByText(/base recipe \(ingredients per item\)/i)).toBeInTheDocument()
+  })
+})
+
+// ── Phase 3: prep yields ─────────────────────────────────────────────────────
+
+const PREP_TARGET: RecipeTarget = { type: 'prep_item', prepItemId: 'p1' }
+
+describe('RecipeEditor prep yield', () => {
+  it('asks a prep recipe how much it makes, and saves the answer', async () => {
+    // Arrange — without a yield the costing core cannot divide the batch cost
+    // down to a per-unit cost, so it silently falls back to the manual price.
+    setup({ recipe: recipeWith() })
+    renderEditor(PREP_TARGET)
+
+    // Act
+    fireEvent.change(await screen.findByLabelText(/yields/i), { target: { value: '900' } })
+    fireEvent.click(screen.getByRole('button', { name: /save recipe/i }))
+
+    // Assert
+    await waitFor(() => expect(saveRecipeForTargetAction).toHaveBeenCalled())
+    const [, , , input] = saveRecipeForTargetAction.mock.calls[0]
+    expect(input.yield_quantity).toBe(900)
+    expect(input.yield_unit_id).toBe(GRAM.id)
+  })
+
+  it('shows no yield field for targets that are sold, not produced', async () => {
+    // A menu item, option or addon is consumed per sale; "yield" is meaningless
+    // there and would only invite a wrong number.
+    setup({ recipe: recipeWith() })
+    renderEditor(ITEM_TARGET)
+
+    await screen.findByRole('button', { name: /save recipe/i })
+    expect(screen.queryByLabelText(/yields/i)).not.toBeInTheDocument()
+  })
+
+  it('loads a previously saved yield so it can be corrected', async () => {
+    setup({
+      recipe: {
+        recipe: { id: 'r1', notes: null, yield_quantity: 750, yield_unit_id: GRAM.id },
+        components: recipeWith().components,
+      } as never,
+    })
+
+    renderEditor(PREP_TARGET)
+
+    expect(await screen.findByDisplayValue('750')).toBeInTheDocument()
   })
 })
