@@ -49,12 +49,25 @@ export function parseUploadResponse(json: {
   };
 }
 
+/** ImageKit folder for menu item photos. */
+export const PRODUCT_IMAGE_FOLDER = "menu-items";
+
 /**
- * Upload a product image to ImageKit via the web app's signed-auth endpoint
- * and return its delivery url + fileId + filePath.
+ * ImageKit folder for POS payment-confirmation screenshots.
+ *
+ * NOTE: the web app's purge-on-verify deletes payment proofs from CLOUDINARY,
+ * so proofs captured at the register are not covered by that sweep. Tracked as
+ * a follow-up; see docs/testing/pos-register.tdd.md.
  */
-export async function uploadProductImage(
-  image: PickedImage
+export const PAYMENT_PROOF_FOLDER = "payment-proofs";
+
+/**
+ * Upload an image to ImageKit via the web app's signed-auth endpoint and
+ * return its delivery url + fileId + filePath.
+ */
+export async function uploadImage(
+  image: PickedImage,
+  folder: string
 ): Promise<ImageKitUploadResult> {
   const auth = await fetchUploadAuth();
 
@@ -69,7 +82,7 @@ export async function uploadProductImage(
   formData.append("signature", auth.signature);
   formData.append("expire", String(auth.expire));
   formData.append("token", auth.token);
-  formData.append("folder", "menu-items");
+  formData.append("folder", folder);
   formData.append("useUniqueFileName", "true");
 
   const res = await fetch(IMAGEKIT_UPLOAD_ENDPOINT, {
@@ -87,4 +100,9 @@ export async function uploadProductImage(
     filePath?: string;
   };
   return parseUploadResponse(json);
+}
+
+/** Upload a menu item photo. Thin wrapper so existing call sites are unchanged. */
+export function uploadProductImage(image: PickedImage): Promise<ImageKitUploadResult> {
+  return uploadImage(image, PRODUCT_IMAGE_FOLDER);
 }

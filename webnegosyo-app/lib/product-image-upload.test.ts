@@ -4,7 +4,13 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
-import { parseUploadResponse, uploadProductImage } from "./product-image-upload";
+import {
+  parseUploadResponse,
+  uploadImage,
+  uploadProductImage,
+  PAYMENT_PROOF_FOLDER,
+  PRODUCT_IMAGE_FOLDER,
+} from "./product-image-upload";
 
 describe("parseUploadResponse", () => {
   it("returns the normalized result when all fields are present", () => {
@@ -108,5 +114,59 @@ describe("uploadProductImage", () => {
         mimeType: "image/jpeg",
       })
     ).rejects.toThrow("Upload failed");
+  });
+});
+
+describe("uploadImage folder routing", () => {
+  const originalFetch = global.fetch;
+  const image = {
+    uri: "file:///tmp/proof.jpg",
+    fileName: "proof.jpg",
+    mimeType: "image/jpeg",
+  };
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  /** Mock auth + upload, and hand back the FormData the upload was sent with. */
+  function mockUpload() {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ token: "tok", expire: 1, signature: "sig", publicKey: "pub" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          url: "https://ik.imagekit.io/demo/payment-proofs/proof.jpg",
+          fileId: "f1",
+          filePath: "/payment-proofs/proof.jpg",
+        }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  function folderSentTo(fetchMock: jest.Mock): unknown {
+    const body = fetchMock.mock.calls[1][1].body as FormData;
+    return body.get("folder");
+  }
+
+  it("uploads a payment proof into the payment-proofs folder", async () => {
+    const fetchMock = mockUpload();
+    const result = await uploadImage(image, PAYMENT_PROOF_FOLDER);
+
+    expect(folderSentTo(fetchMock)).toBe("payment-proofs");
+    expect(result.fileId).toBe("f1");
+  });
+
+  it("keeps routing product images to the menu-items folder", async () => {
+    const fetchMock = mockUpload();
+    await uploadProductImage(image);
+
+    expect(folderSentTo(fetchMock)).toBe("menu-items");
+    expect(PRODUCT_IMAGE_FOLDER).toBe("menu-items");
   });
 });
