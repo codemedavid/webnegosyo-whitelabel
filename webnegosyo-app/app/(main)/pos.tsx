@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -43,6 +45,9 @@ const COLUMNS = 3;
 
 /** The app has no safe-area provider; every screen pads the notch by hand. */
 const TOP_INSET = 60;
+
+/** Rows rendered before the first scroll — roughly two screens' worth. */
+const INITIAL_ROWS = 6;
 
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
@@ -257,18 +262,31 @@ export default function PosScreen() {
         })}
       </ScrollView>
 
-      <ScrollView
+      {/*
+        Virtualized by row: a long menu with a photo per item would otherwise
+        mount every tile and decode every image up front. Only the rows near the
+        viewport are rendered.
+      */}
+      <FlatList
+        data={rows}
+        keyExtractor={(row) => row[0].product.id}
         style={styles.gridScroll}
         contentContainerStyle={styles.grid}
         keyboardShouldPersistTaps="handled"
-      >
-        {rows.map((row) => (
-          <View key={row[0].product.id} style={styles.row}>
+        initialNumToRender={INITIAL_ROWS}
+        maxToRenderPerBatch={INITIAL_ROWS}
+        windowSize={7}
+        // Detaching offscreen rows reclaims image memory on Android; on iOS it
+        // is a known source of blank cells, so it stays off there.
+        removeClippedSubviews={Platform.OS === "android"}
+        renderItem={({ item: row }) => (
+          <View style={styles.row}>
             {row.map((item) => (
               <ProductTile
                 key={item.product.id}
                 name={item.product.name?.trim() || "Unnamed item"}
                 price={item.product.discounted_price ?? item.product.price}
+                imageUrl={item.product.image_url}
                 quantity={inSale[item.product.id] ?? 0}
                 hasOptions={item.groups.length > 0}
                 onPress={() => handleTap(item)}
@@ -279,9 +297,8 @@ export default function PosScreen() {
               <View key={`filler-${index}`} style={styles.filler} />
             ))}
           </View>
-        ))}
-
-        {visibleItems.length === 0 && (
+        )}
+        ListEmptyComponent={
           <View style={styles.noResults}>
             <Text style={styles.noResultsTitle}>Nothing matches</Text>
             <Text style={styles.noResultsBody}>
@@ -290,8 +307,8 @@ export default function PosScreen() {
                 : "This category has no available products."}
             </Text>
           </View>
-        )}
-      </ScrollView>
+        }
+      />
 
       {isCartExpanded && (
         <Pressable
