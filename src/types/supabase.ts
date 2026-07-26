@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      stock_movements: {
+        Row: {
+          balance_after: number
+          created_at: string | null
+          created_by: string | null
+          entered_quantity: number | null
+          entered_unit_id: string | null
+          id: string
+          inventory_item_id: string
+          note: string | null
+          order_id: string | null
+          quantity_delta: number
+          reason: string
+          tenant_id: string
+          unit_cost: number | null
+        }
+        Insert: {
+          balance_after?: number
+          created_at?: string | null
+          created_by?: string | null
+          entered_quantity?: number | null
+          entered_unit_id?: string | null
+          id?: string
+          inventory_item_id: string
+          note?: string | null
+          order_id?: string | null
+          quantity_delta: number
+          reason: string
+          tenant_id: string
+          unit_cost?: number | null
+        }
+        Update: {
+          balance_after?: number
+          created_at?: string | null
+          created_by?: string | null
+          entered_quantity?: number | null
+          entered_unit_id?: string | null
+          id?: string
+          inventory_item_id?: string
+          note?: string | null
+          order_id?: string | null
+          quantity_delta?: number
+          reason?: string
+          tenant_id?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_units: {
         Row: {
           abbreviation: string

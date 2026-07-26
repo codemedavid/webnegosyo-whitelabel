@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChefHat, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChefHat, PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,16 @@ import {
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
 import {
+  EMPTY_STOCK_DRAFT,
+  buildStockMovementInput,
+  type StockMovementDraft,
+} from '@/lib/inventory/stock-form'
+import {
+  MANUAL_MOVEMENT_REASONS,
+  MOVEMENT_REASON_LABELS,
+  type StockMovementReason,
+} from '@/lib/inventory/stock-ledger'
+import {
   EMPTY_INGREDIENT_DRAFT,
   EMPTY_UNIT_DRAFT,
   buildIngredientInput,
@@ -43,7 +53,21 @@ import {
   createInventoryUnitAction,
   updateInventoryUnitAction,
   deleteInventoryUnitAction,
+  recordStockMovementAction,
 } from '@/app/actions/inventory'
+
+/** Trims the trailing zeros a NUMERIC(16,4) round-trip leaves behind. */
+function formatQuantity(quantity: number): string {
+  return Number(quantity.toFixed(4)).toString()
+}
+
+/**
+ * A reorder level of 0 means the merchant never set one — warning on it would
+ * flag every ingredient the moment stock tracking is switched on.
+ */
+function isLowStock(item: InventoryItem): boolean {
+  return item.reorder_level > 0 && item.current_qty <= item.reorder_level
+}
 
 interface InventoryManagerProps {
   tenantId: string
@@ -110,6 +134,45 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
   const [isSaving, setIsSaving] = useState(false)
   // One prep's recipe open at a time — each editor is a separate data load.
   const [openRecipeId, setOpenRecipeId] = useState<string | null>(null)
+  const [stockItem, setStockItem] = useState<InventoryItem | null>(null)
+  const [stockDraft, setStockDraft] = useState<StockMovementDraft>(EMPTY_STOCK_DRAFT)
+  const [isRecording, setIsRecording] = useState(false)
+
+  const openStock = (item: InventoryItem) => {
+    setStockItem(item)
+    // Default to the unit the ingredient is stocked in — the common case, and
+    // the only one that needs no conversion.
+    setStockDraft({ ...EMPTY_STOCK_DRAFT, unit_id: item.stock_unit_id })
+  }
+
+  const handleRecordStock = async () => {
+    if (!stockItem) return
+    let input
+    try {
+      input = buildStockMovementInput(stockDraft, stockItem.id)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Please check the form')
+      return
+    }
+
+    setIsRecording(true)
+    try {
+      const result = await recordStockMovementAction(tenantId, tenantSlug, input)
+      if (!result.success) {
+        toast.error(result.error ?? 'Failed to record stock movement')
+        return
+      }
+      // The server's figure replaces ours: a stale local total is exactly the
+      // bug the ledger exists to prevent.
+      const saved = result.data.item
+      onChange(ingredients.map((i) => (i.id === saved.id ? saved : i)))
+      toast.success('Stock updated')
+      setStockItem(null)
+      router.refresh()
+    } finally {
+      setIsRecording(false)
+    }
+  }
 
   const toggleRecipe = (itemId: string) =>
     setOpenRecipeId((current) => (current === itemId ? null : itemId))
@@ -217,8 +280,27 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
                     ₱{item.unit_cost.toFixed(2)} / {unitLabel(item.stock_unit_id)}
                     {item.category ? ` · ${item.category}` : ''}
                   </span>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      {formatQuantity(item.current_qty)} {unitLabel(item.stock_unit_id)} on hand
+                    </span>
+                    {isLowStock(item) && (
+                      <Badge variant="destructive" className="text-[10px]">
+                        Low stock
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openStock(item)}
+                  >
+                    <PackagePlus className="mr-1 h-3.5 w-3.5" />
+                    Stock
+                  </Button>
                   {item.is_prep && (
                     <Button
                       type="button"
@@ -371,8 +453,121 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={stockItem !== null} onOpenChange={(open) => !open && setStockItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{stockItem ? `Stock — ${stockItem.name}` : 'Stock'}</DialogTitle>
+          </DialogHeader>
+
+          {stockItem && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {formatQuantity(stockItem.current_qty)} {unitLabel(stockItem.stock_unit_id)} on hand
+              </p>
+
+              <div className="space-y-1">
+                <Label className="text-xs">What happened</Label>
+                <div className="flex gap-1">
+                  {MANUAL_MOVEMENT_REASONS.map((reason) => (
+                    <Button
+                      key={reason}
+                      type="button"
+                      size="sm"
+                      variant={stockDraft.reason === reason ? 'default' : 'outline'}
+                      aria-pressed={stockDraft.reason === reason}
+                      onClick={() => setStockDraft((d) => ({ ...d, reason }))}
+                    >
+                      {MOVEMENT_REASON_LABELS[reason]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{reasonHint(stockDraft.reason)}</p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="stock-qty">Quantity</Label>
+                  <Input
+                    id="stock-qty"
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0"
+                    value={stockDraft.quantity}
+                    onChange={(e) => setStockDraft((d) => ({ ...d, quantity: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Unit</Label>
+                  <Select
+                    value={stockDraft.unit_id || undefined}
+                    onValueChange={(value) => setStockDraft((d) => ({ ...d, unit_id: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a unit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {units.map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {unit.abbreviation}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {stockDraft.reason === 'receive' && (
+                <div className="space-y-1">
+                  <Label htmlFor="stock-cost">Unit cost (₱, optional)</Label>
+                  <Input
+                    id="stock-cost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder={stockItem.unit_cost.toFixed(2)}
+                    value={stockDraft.unit_cost}
+                    onChange={(e) => setStockDraft((d) => ({ ...d, unit_cost: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Leave blank to keep the current cost. A price here is blended with the stock
+                    already on hand.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <Label htmlFor="stock-note">Note (optional)</Label>
+                <Input
+                  id="stock-note"
+                  placeholder="e.g., delivery #1042"
+                  value={stockDraft.note}
+                  onChange={(e) => setStockDraft((d) => ({ ...d, note: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStockItem(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRecordStock} disabled={isRecording}>
+              {isRecording ? 'Recording...' : 'Record'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+/** Explains what the quantity field means for the chosen reason. */
+function reasonHint(reason: StockMovementReason): string {
+  if (reason === 'stocktake') return 'Enter the amount you actually counted.'
+  if (reason === 'waste') return 'Enter how much was thrown away.'
+  return 'Enter how much arrived.'
 }
 
 // ── Units ────────────────────────────────────────────────────────────────────

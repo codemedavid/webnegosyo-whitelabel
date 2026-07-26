@@ -23,6 +23,11 @@ import {
   deleteRecipeForTarget,
   type RecipeInput,
 } from '@/lib/inventory/recipes-service'
+import {
+  recordStockMovement,
+  getStockMovements,
+  type StockMovementInput,
+} from '@/lib/inventory/stock-service'
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
 
@@ -203,5 +208,35 @@ export async function deleteRecipeForTargetAction(
     return { success: true as const }
   } catch (error) {
     return fail(error, 'Failed to delete recipe')
+  }
+}
+
+// ============================================
+// Stock movements (append-only ledger)
+// ============================================
+
+/**
+ * Record one stock movement. Returns the item as it stands afterwards so the
+ * caller shows the server's figure rather than guessing at the new total.
+ */
+export async function recordStockMovementAction(
+  tenantId: string,
+  tenantSlug: string,
+  input: StockMovementInput,
+) {
+  try {
+    const data = await recordStockMovement(tenantId, input)
+    revalidatePath(inventoryPath(tenantSlug))
+    return { success: true as const, data }
+  } catch (error) {
+    return fail(error, 'Failed to record stock movement')
+  }
+}
+
+export async function getStockMovementsAction(tenantId: string, inventoryItemId: string) {
+  try {
+    return { success: true as const, data: await getStockMovements(tenantId, inventoryItemId) }
+  } catch (error) {
+    return fail(error, 'Failed to fetch stock history')
   }
 }
