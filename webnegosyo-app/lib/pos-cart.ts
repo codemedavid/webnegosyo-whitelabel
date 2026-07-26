@@ -162,6 +162,22 @@ export function cartTotals(
   };
 }
 
+/**
+ * Units in the cart per menu item, for the quantity badge on a product tile.
+ *
+ * Sums across lines: the same drink ordered twice with different notes is two
+ * lines but one badge showing the combined count.
+ */
+export function quantityByItem(cart: PosCartLine[]): Record<string, number> {
+  return cart.reduce<Record<string, number>>(
+    (acc, line) => ({
+      ...acc,
+      [line.menuItemId]: (acc[line.menuItemId] ?? 0) + line.quantity,
+    }),
+    {},
+  );
+}
+
 export interface SelectionValidation {
   valid: boolean;
   /** Group id -> customer-readable message. Empty when valid. */
