@@ -1,4 +1,4 @@
-# TDD Evidence — Inventory cost mode + costing read path (Phase 1a–1b)
+# TDD Evidence — Inventory cost mode, costing read path, cost source UI (Phase 1a–1c)
 
 ## Source
 
@@ -10,9 +10,10 @@ inline plan agreed in session, which resolved two open questions:
 2. **Order depletion** — Convex first, then the per-tenant Supabase order
    backend (Phase 4; not part of this run).
 
-This report covers **Phase 1a** (the pure core) and **Phase 1b** (the costing
-read path). The admin UI wiring — the Simple/Composite toggle and the
-`menu_items.cost_mode` migration — is the remaining Phase 1 work.
+This report covers **Phase 1a** (the pure core), **Phase 1b** (the costing read
+path), and **Phase 1c** (the merchant-facing cost source control). Phase 1 is
+complete for modifier options. The base item's cost source is deliberately
+deferred — see Known gaps.
 
 ## User journeys
 
@@ -106,6 +107,35 @@ Added `src/lib/inventory/costing-service.ts` (`getCostingGraph`,
   imports `next/headers` via the Supabase server client and must never reach a
   client bundle.
 
+### Task 6 — Per-option cost source control (Phase 1c)
+
+Added `setOptionCostMode` to `src/lib/modifier-groups-form.ts`, a Manual/Recipe
+toggle per option in `modifier-groups-editor.tsx`, and
+`src/hooks/use-menu-item-costs.ts` — the first caller of `getMenuItemCostAction`.
+
+- **RED**: `npx jest --testPathPatterns="modifier-groups-form"`
+  → `Tests: 5 failed, 14 passed` (`setOptionCostMode is not a function`);
+  `npx jest --testPathPatterns="modifier-option-cost-source"`
+  → `Tests: 7 failed, 2 passed` (no cost source control rendered);
+  `npx jest --testPathPatterns="use-menu-item-costs"`
+  → `Test Suites: 1 failed` (`Cannot find module '@/hooks/use-menu-item-costs'`).
+- **GREEN**: `npx jest --testPathPatterns="inventory|recipe|modifier|menu-item"`
+  → `Test Suites: 27 passed, Tests: 267 passed`; `npm run build` → compiled.
+- **Design**: `optionRecipeCosts` reaches the editor as a **prop**, not a fetch —
+  the editor stays presentational and the server action stays in the container,
+  which is what makes the display testable without a Supabase client.
+- **Deliberate asymmetry**: `costing-service` throws on a fetch failure, but the
+  hook swallows it into "no recipe costs". The service must not report a false
+  ₱0; the editor must not break because a cost panel could not load. The hook is
+  where that decision is made, and it is tested from both sides.
+- **`manual_cost` survives a switch to composite.** The mode decides which cost
+  is *used*, so the typed number is inert rather than wrong, and switching back
+  restores it instead of discarding merchant input.
+- **Recipe editor now also opens for a composite option** whose stock is
+  untracked. Previously only `stock_mode === 'recipe'` revealed it, so costing by
+  recipe would have forced the merchant to also turn on recipe-backed stock —
+  two unrelated decisions welded together.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result | Evidence |
@@ -130,6 +160,18 @@ Added `src/lib/inventory/costing-service.ts` (`getCostingGraph`,
 | 18 | A broken recipe surfaces as an error rather than throwing | same | unit | PASS | same |
 | 19 | A fetch failure propagates instead of reporting a false ₱0 cost | same | unit | PASS | same |
 | 20 | The server-only costing service never reaches a client bundle | `npm run build` | build | PASS | compiled successfully |
+| 21 | A merchant can switch an option between Manual and Recipe costing | `modifier-option-cost-source.test.tsx` | unit | PASS | `npx jest modifier-option-cost-source` |
+| 22 | The editor shows which cost source is currently active | same | unit | PASS | same |
+| 23 | A composite option displays its recipe cost, not its stale manual cost | same | unit | PASS | same |
+| 24 | A simple option ignores an attached recipe cost | same | unit | PASS | same |
+| 25 | A legacy option with no mode keeps the recipe-overrides-manual rule | same | unit | PASS | same |
+| 26 | The recipe editor opens for a composite option with untracked stock | same | unit | PASS | same |
+| 27 | The manual cost input is hidden only when costing is recipe-based | same | unit | PASS | same |
+| 28 | Choosing a cost mode never mutates the option or drops its manual cost | `modifier-groups-form.test.ts` | unit | PASS | `npx jest modifier-groups-form` |
+| 29 | Choosing a cost mode leaves stock tracking untouched | same | unit | PASS | same |
+| 30 | Costs load for a saved item with inventory on | `use-menu-item-costs.test.tsx` | unit | PASS | `npx jest use-menu-item-costs` |
+| 31 | No request is made for an unsaved item or an inventory-off tenant | same | unit | PASS | same |
+| 32 | A failed or thrown cost load leaves the editor working with no costs | same | unit | PASS | same |
 
 ## Coverage and known gaps
 
@@ -162,15 +204,31 @@ Both above the 80% threshold. Uncovered: `describeTarget`'s id fallback chain
 boundary itself and is deliberately exercised by the build rather than by a unit
 test.
 
+Phase 1c modules:
+
+```
+npx jest --testPathPatterns="modifier-groups-form|use-menu-item-costs|modifier-option-cost-source" --coverage \
+  --collectCoverageFrom="src/lib/modifier-groups-form.ts" \
+  --collectCoverageFrom="src/hooks/use-menu-item-costs.ts"
+
+File                      | % Stmts | % Branch | % Funcs | % Lines | Uncovered
+All files                 |     100 |    91.66 |     100 |     100 |
+  use-menu-item-costs.ts  |     100 |     90.9 |     100 |     100 | 45
+  modifier-groups-form.ts |     100 |       92 |     100 |     100 | 135,142
+```
+
 **Known gaps / not done in this run:**
 
-- `cost_mode` is a **type-level** field only so far. No migration yet for a
-  `menu_items.cost_mode` column, and no backfill — deliberate, because the
-  `undefined` = legacy branch means existing data needs no migration to keep
-  working. The column arrives with the Phase 1 UI.
-- The admin UI toggle is the remaining Phase 1 work. **`getMenuItemCostAction`
-  has no caller yet** — the read path is built and tested but not yet displayed,
-  so a merchant still sees only the manual cost.
+- **No migration was needed, and none was written.** Modifier options live in the
+  `menu_items.modifier_groups` JSONB column, so `cost_mode` persists with no
+  schema change and no backfill — the `undefined` = legacy branch carries
+  existing tenants unchanged.
+- **`menu_items.cost_mode` was planned and is deliberately not built.** The base
+  item's cost (`costPrice`/`costNotes`) lives in **Convex**, not Supabase — there
+  are no cost columns on `menu_items`. Adding a Supabase `cost_mode` column would
+  put the mode in a different store from the cost it governs. The base-item cost
+  source belongs with the base cost and is deferred until that store is settled;
+  `getMenuItemCost` already returns `baseCost`, and the hook already exposes it.
 - No caller passes `selectedModifierOptionIds` to `resolveConfiguredRecipeIds`
   yet; the capability exists ahead of its Phase 4 consumer.
 - No integration/RLS/E2E coverage — unchanged from before this run (Phase 7).
@@ -207,5 +265,9 @@ Consequences for this evidence:
 | `16deb4d` | GREEN — modifier-option recipes resolved into optionRecipeIds |
 | `64ac34c` | RED — reproducer for the inventory costing read path |
 | `1af1b8f` | GREEN — costing read path + getMenuItemCostAction |
+| `87b32ea` | docs — Phase 1b evidence |
+| `1ea9b0d` | RED — reproducers for the per-option cost source control |
+| `8e19941` | RED — reproducer for the menu item cost hook |
+| `67e04e0` | GREEN — cost source toggle, cost hook, container wiring |
 
 Lint: `npx eslint` over the five changed files → clean.
