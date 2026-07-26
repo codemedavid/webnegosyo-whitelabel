@@ -106,6 +106,55 @@ describe("toFormValues", () => {
   });
 });
 
+describe("toFormValues — a freshly created tenant", () => {
+  // A new tenant row has NULL in almost every optional column; the editor must
+  // open on it without rendering "null" or crashing on a missing default.
+  const BARE_TENANT = {
+    ...TENANT_ROW,
+    messenger_page_id: null,
+    messenger_username: null,
+    messenger_redirect_mode: null,
+    restaurant_address: null,
+    restaurant_latitude: null,
+    restaurant_longitude: null,
+    lalamove_market: null,
+    lalamove_service_type: null,
+    lalamove_sender_phone: null,
+    delivery_min_fee: null,
+    delivery_radius_km: null,
+    convex_deployment_url: null,
+    convex_deploy_key: null,
+    admin_email: null,
+  };
+
+  it("renders every null column as an empty string", () => {
+    const values = toFormValues(BARE_TENANT);
+
+    expect(values.messenger_page_id).toBe("");
+    expect(values.restaurant_address).toBe("");
+    expect(values.restaurant_latitude).toBe("");
+    expect(values.lalamove_sender_phone).toBe("");
+    expect(values.convex_deployment_url).toBe("");
+    expect(values.admin_email).toBe("");
+  });
+
+  it("falls back to sensible defaults for the choice columns", () => {
+    const values = toFormValues(BARE_TENANT);
+
+    expect(values.messenger_redirect_mode).toBe("webhook");
+    expect(values.lalamove_market).toBe("PH");
+    expect(values.lalamove_service_type).toBe("MOTORCYCLE");
+  });
+
+  it("survives a round trip back to null", () => {
+    const payload = toUpdatePayload(toFormValues(BARE_TENANT));
+
+    expect(payload.messenger_page_id).toBeNull();
+    expect(payload.restaurant_latitude).toBeNull();
+    expect(payload.convex_deploy_key).toBeNull();
+  });
+});
+
 describe("toUpdatePayload", () => {
   it("round-trips an untouched tenant back to its own values", () => {
     const payload = toUpdatePayload(baseValues());
