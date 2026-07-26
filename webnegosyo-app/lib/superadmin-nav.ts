@@ -16,6 +16,7 @@ export interface SuperadminTab {
 export const SUPERADMIN_TABS: readonly SuperadminTab[] = [
   { name: "dashboard", label: "Overview", icon: "⊞" },
   { name: "tenants", label: "Restaurants", icon: "▤" },
+  { name: "leads", label: "Leads", icon: "◇" },
   { name: "settings", label: "Settings", icon: "⚙" },
 ] as const;
 
@@ -23,6 +24,7 @@ export const SUPERADMIN_TABS: readonly SuperadminTab[] = [
 export const SUPERADMIN_TAB_NAMES = [
   "dashboard",
   "tenants",
+  "leads",
   "settings",
 ] as const;
 

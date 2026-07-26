@@ -5,7 +5,7 @@ import { colors } from "../../theme/colors";
 import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { supabase } from "../../lib/supabase";
-import { SUPERADMIN_TABS } from "../../lib/superadmin-nav";
+import { getSuperadminTab } from "../../lib/superadmin-nav";
 
 /**
  * Error Boundary scoped to the platform (superadmin) tab tree, mirroring the
@@ -37,6 +37,17 @@ function TabIcon({ symbol, color }: { symbol: string; color: string }) {
   return <Text style={{ fontSize: 22, color }}>{symbol}</Text>;
 }
 
+/** Label and icon pulled from the registry, so the two cannot drift apart. */
+function tabOptions(name: string) {
+  const tab = getSuperadminTab(name);
+  return {
+    tabBarLabel: tab?.label ?? name,
+    tabBarIcon: ({ color }: { color: string }) => (
+      <TabIcon symbol={tab?.icon ?? "•"} color={color} />
+    ),
+  };
+}
+
 export default function SuperadminLayout() {
   // Hard role gate. Only a session whose app_users.role is 'superadmin' may
   // render this surface; merchants, restricted staff and the read-only demo
@@ -63,38 +74,18 @@ export default function SuperadminLayout() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          tabBarLabel: SUPERADMIN_TABS[0].label,
-          tabBarIcon: ({ color }) => (
-            <TabIcon symbol={SUPERADMIN_TABS[0].icon} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="tenants"
-        options={{
-          tabBarLabel: SUPERADMIN_TABS[1].label,
-          tabBarIcon: ({ color }) => (
-            <TabIcon symbol={SUPERADMIN_TABS[1].icon} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          tabBarLabel: SUPERADMIN_TABS[2].label,
-          tabBarIcon: ({ color }) => (
-            <TabIcon symbol={SUPERADMIN_TABS[2].icon} color={color} />
-          ),
-        }}
-      />
+      {/* Declared explicitly (not mapped) so each route name is greppable and
+          the nav guardrail test can verify the registry matches the layout. */}
+      <Tabs.Screen name="dashboard" options={tabOptions("dashboard")} />
+      <Tabs.Screen name="tenants" options={tabOptions("tenants")} />
+      <Tabs.Screen name="leads" options={tabOptions("leads")} />
+      <Tabs.Screen name="settings" options={tabOptions("settings")} />
       {/* Detail screens — reachable by push, never tabs. */}
       <Tabs.Screen
         name="tenant/[id]"
         options={{ href: null, title: "Restaurant" }}
       />
+      <Tabs.Screen name="lead/[id]" options={{ href: null, title: "Lead" }} />
     </Tabs>
   );
 }
