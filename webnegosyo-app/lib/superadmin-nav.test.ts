@@ -18,7 +18,12 @@ function readSuperadminFile(name: string): string {
 
 describe("SUPERADMIN_TABS registry", () => {
   it("defines the platform tabs", () => {
-    expect(SUPERADMIN_TAB_NAMES).toEqual(["dashboard", "tenants", "settings"]);
+    expect(SUPERADMIN_TAB_NAMES).toEqual([
+      "dashboard",
+      "tenants",
+      "leads",
+      "settings",
+    ]);
   });
 
   it("keeps the name list in step with the registry", () => {
