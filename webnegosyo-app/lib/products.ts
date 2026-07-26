@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import {
   normalizeModifierGroups,
+  splitGroupsToLegacyColumns,
   type ModifierGroup,
   type ModifierSource,
 } from "./modifier-groups";
@@ -173,6 +174,26 @@ function assertValid(input: ProductInput): void {
   }
 }
 
+/**
+ * Expand a product payload into the row actually written to `menu_items`.
+ *
+ * When the caller edited the options, `modifier_groups` is canonical and the
+ * legacy `variation_types` / `variations` / `addons` columns are derived from it
+ * — the customer storefront, white-labeled customer app and desktop POS still
+ * read those columns, so an add-on saved without them would be invisible to
+ * customers. An empty group list clears the legacy columns rather than leaving
+ * stale data behind.
+ *
+ * Callers that never touch the options (the availability toggle) omit
+ * `modifier_groups` entirely; their row is passed through untouched so a partial
+ * update can never wipe a product's options.
+ */
+function toMenuItemRow(input: ProductInput): Record<string, unknown> {
+  if (!input.modifier_groups) return { ...input };
+
+  return { ...input, ...splitGroupsToLegacyColumns(input.modifier_groups) };
+}
+
 export async function listProducts(tenantId: string): Promise<Product[]> {
   const { data, error } = await supabase
     .from("menu_items")
@@ -192,7 +213,7 @@ export async function createProduct(
 
   const { data, error } = await supabase
     .from("menu_items")
-    .insert({ tenant_id: tenantId, ...input })
+    .insert({ tenant_id: tenantId, ...toMenuItemRow(input) })
     .select()
     .single();
 
@@ -209,7 +230,7 @@ export async function updateProduct(
 
   const { data, error } = await supabase
     .from("menu_items")
-    .update(input)
+    .update(toMenuItemRow(input))
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select()

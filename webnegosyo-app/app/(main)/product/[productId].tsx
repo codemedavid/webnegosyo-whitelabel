@@ -363,7 +363,7 @@ export default function ProductEditorScreen() {
         </View>
       </Card>
 
-      <Card title="Variations & Options" style={styles.card}>
+      <Card title="Variations & Add-ons" style={styles.card}>
         <ModifierGroupsEditor
           groups={modifierGroups}
           errors={modifierErrors}
