@@ -4,6 +4,7 @@ import {
   serializeGroups,
   setGroupMultiple,
   setGroupRequired,
+  setOptionCostMode,
   splitGroupsToLegacyColumns,
 } from '@/lib/modifier-groups-form'
 import type { ModifierGroup, ModifierOption } from '@/types/database'
@@ -182,5 +183,53 @@ describe('splitGroupsToLegacyColumns', () => {
     const { variation_types, addons } = splitGroupsToLegacyColumns([g])
     expect(variation_types).toEqual([])
     expect(addons).toEqual([{ id: 'x', name: 'X', price: 5 }])
+  })
+})
+
+describe('setOptionCostMode', () => {
+  it('records the chosen mode on the option', () => {
+    // Arrange
+    const o = option({ id: 'large' })
+
+    // Act
+    const next = setOptionCostMode(o, 'composite')
+
+    // Assert
+    expect(next.cost_mode).toBe('composite')
+  })
+
+  it('never mutates the option it is given', () => {
+    const o = option({ id: 'large', manual_cost: 12 })
+
+    setOptionCostMode(o, 'composite')
+
+    expect(o.cost_mode).toBeUndefined()
+  })
+
+  it('keeps the manual cost when switching to composite, so switching back restores it', () => {
+    const o = option({ id: 'large', manual_cost: 12 })
+
+    const composite = setOptionCostMode(o, 'composite')
+    const backToSimple = setOptionCostMode(composite, 'simple')
+
+    expect(composite.manual_cost).toBe(12)
+    expect(backToSimple.manual_cost).toBe(12)
+  })
+
+  it('leaves stock tracking alone — cost source and stock tracking are separate choices', () => {
+    const o = option({ id: 'large', stock_mode: 'simple', stock_qty: 4 })
+
+    const next = setOptionCostMode(o, 'composite')
+
+    expect(next.stock_mode).toBe('simple')
+    expect(next.stock_qty).toBe(4)
+  })
+
+  it('preserves every other option field', () => {
+    const o = option({ id: 'large', name: 'Large', price_modifier: 20, is_default: true })
+
+    const next = setOptionCostMode(o, 'simple')
+
+    expect(next).toEqual({ ...o, cost_mode: 'simple' })
   })
 })
