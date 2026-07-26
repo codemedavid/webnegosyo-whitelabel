@@ -17,14 +17,28 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
 }))
 
-/** The order's recorded sale movements, and a capture of what gets inserted. */
-function stubLedger(saleRows: unknown[], captured: unknown[][]) {
+/**
+ * The order's recorded sale movements, and a capture of what gets inserted.
+ *
+ * Two reads happen: the sale rows, then an already-restored guard keyed on
+ * `reason = 'void'`. The stub answers by reason so both are modelled honestly
+ * rather than collapsed into one shape.
+ */
+function stubLedger(saleRows: unknown[], captured: unknown[][], voidRows: unknown[] = []) {
   return {
-    select: () => ({
-      eq: () => ({
-        eq: () => ({ eq: () => Promise.resolve({ data: saleRows, error: null }) }),
-      }),
-    }),
+    select: () => {
+      let reason: string | undefined
+      const chain = {
+        eq: (column: string, value: string) => {
+          if (column === 'reason') reason = value
+          return chain
+        },
+        limit: () => Promise.resolve({ data: reason === 'void' ? voidRows : saleRows, error: null }),
+        then: (resolve: (r: unknown) => unknown) =>
+          resolve({ data: reason === 'void' ? voidRows : saleRows, error: null }),
+      }
+      return chain
+    },
     insert: (rows: unknown[]) => {
       captured.push(rows)
       return Promise.resolve({ data: rows, error: null })

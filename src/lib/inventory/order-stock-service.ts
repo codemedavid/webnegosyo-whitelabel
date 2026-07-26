@@ -165,6 +165,81 @@ export async function applyOrderStockMovements(
 }
 
 /**
+ * Put a cancelled order's ingredients back by reversing exactly what its sale
+ * recorded.
+ *
+ * Deliberately does NOT recompute from the order's lines. Recomputing was a
+ * drift bug waiting to happen: once depletion accounts for an option's
+ * ingredients, a recomputed restore that missed them would leave stock
+ * permanently short. Deriving the reversal from the sale makes the two
+ * impossible to disagree.
+ */
+export async function reverseOrderStockMovements(
+  tenantId: string,
+  orderId: string,
+): Promise<OrderStockResult> {
+  const supabase = createAdminClient()
+
+  const { data: saleRows, error: saleError } = await supabase
+    .from('stock_movements')
+    .select('inventory_item_id, quantity_delta, entered_quantity, entered_unit_id')
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+    .eq('reason', 'sale')
+  if (saleError) throw saleError
+
+  const sales = (saleRows ?? []) as unknown as Array<{
+    inventory_item_id: string
+    quantity_delta: number
+    entered_quantity: number | null
+    entered_unit_id: string | null
+  }>
+  if (sales.length === 0) return EMPTY_RESULT
+
+  const { data: existing, error: existingError } = await supabase
+    .from('stock_movements')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+    .eq('reason', 'void')
+    .limit(1)
+  if (existingError) throw existingError
+  if (existing && existing.length > 0) {
+    console.warn('[inventory] Order already restored', { orderId })
+    return EMPTY_RESULT
+  }
+
+  const rows = sales.map((sale) => ({
+    tenant_id: tenantId,
+    inventory_item_id: sale.inventory_item_id,
+    reason: 'void' as const,
+    quantity_delta: -sale.quantity_delta,
+    // Carried across so the reversal reads "0.6 kg returned", matching the
+    // sale's audit trail rather than showing a bare converted number.
+    entered_quantity: sale.entered_quantity,
+    entered_unit_id: sale.entered_unit_id,
+    order_id: orderId,
+  }))
+
+  const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
+  if (insertError) throw insertError
+
+  return { movementCount: rows.length, skipped: [] }
+}
+
+/** Never throws: a stock write must not make an order un-cancellable. */
+export async function reverseOrderStockBestEffort(
+  tenantId: string,
+  orderId: string,
+): Promise<void> {
+  try {
+    await reverseOrderStockMovements(tenantId, orderId)
+  } catch (error) {
+    console.error('[inventory] Failed to restore stock for order', orderId, error)
+  }
+}
+
+/**
  * Fire-and-forget depletion for the order-creation path.
  *
  * Never throws and never blocks: the order is already saved and paid for by the

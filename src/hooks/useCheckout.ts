@@ -37,6 +37,7 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
+import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
@@ -1009,6 +1010,11 @@ export function useCheckout(tenantSlug: string) {
             variationText = Object.values(item.selected_variations).map(opt => opt.name).join(', ')
           }
 
+          // The display strings above flatten the selection; these keep the
+          // ids so inventory can spend what an option actually adds. Additive —
+          // nothing that reads the strings is affected.
+          const selection = extractSelectionIds(item)
+
           return {
             menu_item_id: item.menu_item.id,
             menu_item_name: item.menu_item.name,
@@ -1018,6 +1024,8 @@ export function useCheckout(tenantSlug: string) {
             price: itemPrice,
             subtotal: item.subtotal,
             special_instructions: item.special_instructions,
+            option_ids: selection.optionIds,
+            addon_ids: selection.addonIds,
             ...(item.upsellSource ? { isUpsellItem: true } : {}),
           }
         })
