@@ -29,6 +29,7 @@ import { useBrandingPreviewDraft, useBrandingPreviewTenant, useMobileOverrides }
 import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
+import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
 
 interface MenuClientProps {
@@ -328,6 +329,9 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         // --brand-radius / --brand-heading-font / --brand-body-font when set).
         ...generateBrandingCSS(branding),
         backgroundColor: branding.background,
+        // Establish a stacking context so the z-index:-1 background layers
+        // paint above this opaque page color instead of behind it.
+        ...buildBackgroundRootStyle(resolveBackgroundOverlay(tenant as Record<string, unknown> | null)),
         // Apply the chosen body font pairing storefront-wide; unset = inherit.
         ...(branding.bodyFont ? { fontFamily: branding.bodyFont } : {}),
       }}

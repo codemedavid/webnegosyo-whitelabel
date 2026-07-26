@@ -396,6 +396,24 @@ export interface InventoryItem {
   updated_at: string;
 }
 
+// Append-only stock ledger. `quantity_delta` is signed and already expressed in
+// the item's stock unit; `balance_after` is the running total the trigger wrote.
+export interface StockMovement {
+  id: string;
+  tenant_id: string;
+  inventory_item_id: string;
+  reason: 'receive' | 'stocktake' | 'waste' | 'sale' | 'void';
+  quantity_delta: number;
+  entered_quantity?: number | null;
+  entered_unit_id?: string | null;
+  balance_after: number;
+  unit_cost?: number | null;
+  note?: string | null;
+  order_id?: string | null;
+  created_by?: string | null;
+  created_at: string;
+}
+
 export type RecipeTargetType =
   | 'menu_item'
   | 'variation_option'

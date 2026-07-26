@@ -5,7 +5,13 @@
  * the full draft, so the gap only shows after publish).
  */
 import { describe, it, expect } from '@jest/globals'
-import { BACKGROUND_OVERLAY_COLUMNS } from '@/lib/background-overlay'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import {
+  BACKGROUND_OVERLAY_COLUMNS,
+  buildBackgroundRootStyle,
+  resolveBackgroundOverlay,
+} from '@/lib/background-overlay'
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 import { brandingSchema, ROLLOUT_DEPENDENT_FIELDS } from '@/lib/branding-service'
 import { BRANDING_SURFACES } from '@/lib/branding-registry'
@@ -65,5 +71,47 @@ describe('background overlay wiring', () => {
     )
 
     expect(field?.type).toBe('image')
+  })
+})
+
+/**
+ * Guardrail: the storefront root paints an opaque `background-color`, and the
+ * background layers are `z-index: -1` children of it. A negative-z child only
+ * paints above its parent's own background when that parent establishes a
+ * stacking context — otherwise it drops into the root stacking context and the
+ * opaque color hides it completely. That is exactly the production outage:
+ * both layers were present in the HTML and invisible on screen.
+ *
+ * Asserted at source level because the alternative is rendering the entire
+ * storefront (menu-client / product-detail-content) in jsdom.
+ */
+describe('background overlay stacking', () => {
+  const MOUNT_SITES = [
+    'src/app/[tenant]/menu/menu-client.tsx',
+    'src/components/customer/product-detail-content.tsx',
+  ]
+
+  it.each(MOUNT_SITES)('%s isolates the root that mounts the layers', (file) => {
+    const source = readFileSync(join(process.cwd(), file), 'utf8')
+
+    expect(source).toContain('buildBackgroundRootStyle')
+  })
+
+  it('isolates the root so a negative-z layer clears the opaque page color', () => {
+    const visible = resolveBackgroundOverlay({
+      background_image_url: 'https://cdn.example.com/bg.png',
+    })
+
+    expect(buildBackgroundRootStyle(visible)).toEqual({ isolation: 'isolate' })
+  })
+
+  it('leaves the root untouched for a tenant with no background configured', () => {
+    expect(buildBackgroundRootStyle(resolveBackgroundOverlay({}))).toEqual({})
+  })
+
+  it('isolates for a tint-only background too', () => {
+    const tintOnly = resolveBackgroundOverlay({ background_overlay_opacity: 40 })
+
+    expect(buildBackgroundRootStyle(tintOnly)).toEqual({ isolation: 'isolate' })
   })
 })

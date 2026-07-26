@@ -33,6 +33,12 @@ export const EMPTY_RECIPE_LINE: RecipeLineDraft = {
 export interface RecipeFormState {
   notes: string
   lines: RecipeLineDraft[]
+  /**
+   * How much a prep recipe makes. Only the prep-item target collects these;
+   * every other target leaves them blank and they are omitted from the input.
+   */
+  yieldQuantity?: string
+  yieldUnitId?: string
 }
 
 function isBlankLine(line: RecipeLineDraft): boolean {
@@ -48,10 +54,23 @@ function quantityOrZero(value: string): number {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
+/**
+ * A yield only counts when both halves are present — a quantity with no unit
+ * is uninterpretable, and a unit with no quantity says nothing. Either way the
+ * pair is dropped rather than half-saved.
+ */
+function yieldFields(form: RecipeFormState): Partial<RecipeInput> {
+  const quantity = form.yieldQuantity?.trim()
+  const unitId = form.yieldUnitId?.trim()
+  if (!quantity || !unitId) return {}
+  return { yield_quantity: quantityOrZero(quantity), yield_unit_id: unitId }
+}
+
 /** Coerce and validate the form into service input, dropping empty lines. */
 export function buildRecipeInput(form: RecipeFormState): RecipeInput {
   const notes = form.notes.trim()
   return recipeInputSchema.parse({
+    ...yieldFields(form),
     notes: notes === '' ? null : notes,
     components: form.lines
       .filter((line) => !isBlankLine(line))
@@ -65,8 +84,12 @@ export function buildRecipeInput(form: RecipeFormState): RecipeInput {
 
 /** Round-trip an existing recipe into editable lines; null → one blank line. */
 export function recipeFormFromData(data: RecipeWithComponents | null): RecipeFormState {
+  const yieldQuantity =
+    data?.recipe.yield_quantity != null ? String(data.recipe.yield_quantity) : ''
+  const yieldUnitId = data?.recipe.yield_unit_id ?? ''
+
   if (!data || data.components.length === 0) {
-    return { notes: data?.recipe.notes ?? '', lines: [EMPTY_RECIPE_LINE] }
+    return { notes: data?.recipe.notes ?? '', lines: [EMPTY_RECIPE_LINE], yieldQuantity, yieldUnitId }
   }
   return {
     notes: data.recipe.notes ?? '',
@@ -75,6 +98,8 @@ export function recipeFormFromData(data: RecipeWithComponents | null): RecipeFor
       quantity: String(component.quantity),
       unit_id: component.unit_id,
     })),
+    yieldQuantity,
+    yieldUnitId,
   }
 }
 

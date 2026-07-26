@@ -1,9 +1,9 @@
-// Workspace (view) registry for the merchant app. The app is split into three
-// focused views — Operations, Insights, Products — and the tab bar only shows
-// the tabs owned by the active view. Pure data + lookups; the active view
-// lives in stores/workspace-store.ts and the tab bar reads both.
+// Workspace (view) registry for the merchant app. The app is split into four
+// focused views — Operations, Register, Insights, Products — and the tab bar
+// only shows the tabs owned by the active view. Pure data + lookups; the active
+// view lives in stores/workspace-store.ts and the tab bar reads both.
 
-export type WorkspaceKey = "operations" | "insights" | "products";
+export type WorkspaceKey = "operations" | "register" | "insights" | "products";
 
 export interface Workspace {
   key: WorkspaceKey;
@@ -22,6 +22,13 @@ export const WORKSPACES: readonly Workspace[] = [
     description: "Live orders and the day-to-day queue",
     tabs: ["dashboard", "orders"],
     defaultTab: "dashboard",
+  },
+  {
+    key: "register",
+    label: "Register",
+    description: "Ring up counter sales and reconcile the drawer",
+    tabs: ["pos", "pos-sales"],
+    defaultTab: "pos",
   },
   {
     key: "insights",

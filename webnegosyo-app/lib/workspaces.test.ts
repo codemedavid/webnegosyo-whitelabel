@@ -7,12 +7,17 @@ import {
 } from "./workspaces";
 
 describe("WORKSPACES registry", () => {
-  it("defines the three merchant views", () => {
+  it("defines the four merchant views", () => {
     expect(WORKSPACES.map((w) => w.key)).toEqual([
       "operations",
+      "register",
       "insights",
       "products",
     ]);
+  });
+
+  it("keeps operations first so getWorkspace's fallback stays the order queue", () => {
+    expect(WORKSPACES[0].key).toBe("operations");
   });
 
   it("keeps every workspace's default tab inside its own tab list", () => {
@@ -58,6 +63,13 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("analytics", "operations")).toBe(false);
   });
 
+  it("shows counter-sale tabs only in the register view", () => {
+    expect(isTabInWorkspace("pos", "register")).toBe(true);
+    expect(isTabInWorkspace("pos-sales", "register")).toBe(true);
+    expect(isTabInWorkspace("pos", "operations")).toBe(false);
+    expect(isTabInWorkspace("orders", "register")).toBe(false);
+  });
+
   it("shows product tabs only in the products view", () => {
     expect(isTabInWorkspace("product-analytics", "products")).toBe(true);
     expect(isTabInWorkspace("product-management", "products")).toBe(true);
@@ -68,6 +80,7 @@ describe("isTabInWorkspace", () => {
 describe("workspaceForTab", () => {
   it("maps a tab back to its owning workspace", () => {
     expect(workspaceForTab("dashboard")).toBe("operations");
+    expect(workspaceForTab("pos")).toBe("register");
     expect(workspaceForTab("growth")).toBe("insights");
     expect(workspaceForTab("product-management")).toBe("products");
   });
@@ -82,6 +95,7 @@ describe("workspaceForTab", () => {
 describe("defaultTabHref", () => {
   it("builds a fully-substituted (main) route for each workspace", () => {
     expect(defaultTabHref("operations")).toBe("/(main)/dashboard");
+    expect(defaultTabHref("register")).toBe("/(main)/pos");
     expect(defaultTabHref("insights")).toBe("/(main)/analytics");
     expect(defaultTabHref("products")).toBe("/(main)/product-analytics");
   });

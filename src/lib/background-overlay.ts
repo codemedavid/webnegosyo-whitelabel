@@ -144,6 +144,24 @@ export function resolveBackgroundOverlay(
   }
 }
 
+/**
+ * Inline style for the element that mounts `BackgroundOverlayLayer`.
+ *
+ * The layers are `z-index: -1`, which paints them above their parent's own
+ * background *only if* that parent establishes a stacking context. The
+ * storefront root paints an opaque page color and otherwise creates no
+ * stacking context, so without this the layers fall through to the root
+ * stacking context and the page color hides them entirely — present in the
+ * DOM, invisible on screen.
+ *
+ * `isolation: isolate` creates the context with no layout or paint effect of
+ * its own. Returns an empty object for tenants with no background configured,
+ * so nothing changes for a storefront that never used the feature.
+ */
+export function buildBackgroundRootStyle(background: BackgroundOverlay): CSSProperties {
+  return background.isVisible ? { isolation: 'isolate' } : {}
+}
+
 /** Inline style for the image layer. Empty object when there is no image. */
 export function buildBackgroundImageStyle(background: BackgroundOverlay): CSSProperties {
   if (!background.hasImage || !background.imageUrl) return {}

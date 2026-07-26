@@ -25,6 +25,11 @@ const menuOnly: StaffPermissionHolder = {
   isOwner: false,
   permissions: ["menu"],
 };
+const cashier: StaffPermissionHolder = {
+  role: "admin",
+  isOwner: false,
+  permissions: ["pos"],
+};
 
 describe("hasPermission", () => {
   it("grants everything to owners, superadmins, and legacy null-permission admins", () => {
@@ -55,12 +60,20 @@ describe("isTabAllowed", () => {
     expect(isTabAllowed(menuOnly, "product-management")).toBe(true);
     expect(isTabAllowed(menuOnly, "orders")).toBe(false);
   });
+
+  it("gates the register tabs behind the pos permission", () => {
+    expect(isTabAllowed(cashier, "pos")).toBe(true);
+    expect(isTabAllowed(cashier, "pos-sales")).toBe(true);
+    expect(isTabAllowed(ordersOnly, "pos")).toBe(false);
+    expect(isTabAllowed(ordersOnly, "pos-sales")).toBe(false);
+  });
 });
 
 describe("allowedWorkspaces", () => {
-  it("returns all three views for the owner", () => {
+  it("returns all four views for the owner", () => {
     expect(allowedWorkspaces(owner).map((w) => w.key)).toEqual([
       "operations",
+      "register",
       "insights",
       "products",
     ]);
@@ -70,6 +83,15 @@ describe("allowedWorkspaces", () => {
     const views = allowedWorkspaces(ordersOnly);
     expect(views.map((w) => w.key)).toEqual(["operations"]);
     expect(views[0].tabs).toEqual(["dashboard", "orders"]);
+  });
+
+  it("gives a pos-only cashier the register view and nothing else", () => {
+    const views = allowedWorkspaces(cashier);
+    expect(views.map((w) => w.key)).toEqual(["operations", "register"]);
+    // Dashboard is open to all staff, so operations survives with just that tab.
+    expect(views[0].tabs).toEqual(["dashboard"]);
+    expect(views[1].tabs).toEqual(["pos", "pos-sales"]);
+    expect(views[1].defaultTab).toBe("pos");
   });
 
   it("repoints defaultTab when the original default is not permitted", () => {

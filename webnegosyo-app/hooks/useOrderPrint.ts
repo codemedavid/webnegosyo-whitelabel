@@ -13,6 +13,10 @@ interface PrintableOrder {
   total: number;
   deliveryFee?: number;
   paymentMethod?: string;
+  // POS counter sales — printed as the receipt's CASH/CHANGE block.
+  cashTendered?: number;
+  changeDue?: number;
+  paymentReference?: string;
   items?: {
     menuItemName: string;
     quantity: number;

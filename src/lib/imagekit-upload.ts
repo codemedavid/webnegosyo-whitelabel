@@ -32,10 +32,28 @@ export function isImageKitConfigured(): boolean {
   )
 }
 
+/**
+ * Pull a human-readable reason out of an upload/auth error body. ImageKit
+ * answers with `{ message }`, our own auth route with `{ error }`. Returns null
+ * when the body is empty, HTML, or otherwise unreadable.
+ */
+export function readUploadErrorMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown }
+    const reason = parsed.message ?? parsed.error
+    return typeof reason === 'string' && reason.trim() !== '' ? reason.trim() : null
+  } catch {
+    return null
+  }
+}
+
 async function fetchUploadAuth(): Promise<UploadAuth> {
   const res = await fetch('/api/imagekit/auth')
   if (!res.ok) {
-    throw new Error('Could not authorize upload. Please try again.')
+    const body = await res.text().catch(() => '')
+    const reason = readUploadErrorMessage(body)
+    console.error('[imagekit] upload auth failed', { status: res.status, body })
+    throw new Error(reason ?? `Could not authorize upload (${res.status}). Please try again.`)
   }
   return (await res.json()) as UploadAuth
 }
@@ -103,7 +121,15 @@ export async function uploadImageToImageKit(
           reject(new Error('Could not parse upload response.'))
         }
       } else {
-        reject(new Error('Upload failed. Please try again.'))
+        // Surface what the upload service actually said (e.g. "Upload Limit
+        // Exceeded", "File size too large"). A generic retry message here sends
+        // merchants into a loop against a failure retrying can never clear.
+        const reason = readUploadErrorMessage(xhr.responseText)
+        console.error('[imagekit] upload rejected', {
+          status: xhr.status,
+          body: xhr.responseText,
+        })
+        reject(new Error(reason ?? `Upload failed (${xhr.status}). Please try again.`))
       }
     })
 

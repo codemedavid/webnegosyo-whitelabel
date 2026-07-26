@@ -29,6 +29,7 @@ import { UpsellOrchestratorProvider } from '@/lib/upsell-orchestrator'
 import dynamic from 'next/dynamic'
 import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
 import { BackgroundOverlayLayer } from './background-overlay-layer'
+import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { motion } from 'framer-motion'
 const InlineUpgradeSection = dynamic(
   () => import('./inline-upgrade-section').then((m) => ({ default: m.InlineUpgradeSection })),
@@ -775,7 +776,20 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             </header>
 
             {/* Main Content - Scrollable */}
-            <main ref={mainContentRef} className="flex-1 overflow-y-auto pb-40" style={{ backgroundColor: 'var(--pd-page-background)' }}>
+            <main
+                ref={mainContentRef}
+                className="flex-1 overflow-y-auto pb-40"
+                style={{
+                    backgroundColor: 'var(--pd-page-background)',
+                    // Stacking context so the z-index:-1 background layers paint
+                    // above this opaque page color rather than behind it.
+                    ...(isSheet
+                        ? {}
+                        : buildBackgroundRootStyle(
+                            resolveBackgroundOverlay(tenant as unknown as Record<string, unknown>)
+                          )),
+                }}
+            >
                 {/* Tenant's custom page background. Skipped in sheet mode, where
                     the storefront underneath already paints it. */}
                 {!isSheet && (

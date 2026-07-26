@@ -60,6 +60,42 @@ export async function getOrderStatsAction(tenantId: string) {
   }
 }
 
+/**
+ * Spend the order's ingredients. Stock lives in the platform Supabase for every
+ * tenant regardless of where their orders live, so all three backends funnel
+ * through here rather than reimplementing depletion each.
+ *
+ * Best-effort by design: the order is already saved when this runs.
+ */
+async function depleteStockForOrder(
+  tenantConfig: Record<string, unknown>,
+  tenantId: string,
+  orderId: string,
+  items: Array<{
+    menu_item_id: string
+    quantity: number
+    option_ids?: string[]
+    addon_ids?: string[]
+  }>,
+) {
+  if (tenantConfig.inventory_enabled !== true) return
+  const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+  await applyOrderStockBestEffort(
+    tenantId,
+    orderId,
+    items.map((item) => ({
+      menuItemId: item.menu_item_id,
+      quantity: item.quantity,
+      // The same id set feeds both buckets: variation options and unified
+      // modifier options both arrive here and ids are unique per option, so
+      // whichever recipe target exists matches and the other finds nothing.
+      optionIds: item.option_ids ?? [],
+      modifierOptionIds: item.option_ids ?? [],
+      addonIds: item.addon_ids ?? [],
+    })),
+  )
+}
+
 export async function createOrderAction(
   tenantId: string,
   items: Array<{
@@ -71,6 +107,11 @@ export async function createOrderAction(
     price: number
     subtotal: number
     special_instructions?: string
+    // Selected option / addon ids, carried alongside the display strings so
+    // inventory can spend what an option adds. Optional: callers that predate
+    // this (mobile apps, older clients) simply deplete base recipes.
+    option_ids?: string[]
+    addon_ids?: string[]
     isUpsellItem?: boolean
     isBundleItem?: boolean
     bundleId?: string
@@ -112,7 +153,7 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -362,6 +403,26 @@ export async function createOrderAction(
         paymentProof,
       })
 
+      // Same reason as the Convex branch: this order lives in the tenant's own
+      // project, so nothing else would ever roll it into the platform-side
+      // customers table. Best-effort and non-blocking — the order is saved.
+      const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+      await captureExternalOrderBestEffort(supabaseAdmin, tenantId, {
+        backend: 'tenant_supabase',
+        externalOrderId: result.order.id,
+        name: customerInfo?.name ?? null,
+        contact: customerInfo?.contact ?? null,
+        customerData: effectiveCustomerData ?? null,
+        total: Number(result.order.total) || 0,
+        createdAt: new Date().toISOString(),
+        channel: orderTypeName,
+        items: items.map((item) => ({
+          name: item.menu_item_name,
+          quantity: item.quantity,
+        })),
+      })
+
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -387,6 +448,7 @@ export async function createOrderAction(
         serviceChargeAmount,
         validatedScheduledISO
       )
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -411,6 +473,7 @@ export async function createOrderAction(
       paymentProof
     )
     // Return both order and token for secure public API access
+    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
     await firePostHogNotification(result.order.id, items)
     let trackingToken: string | undefined
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }

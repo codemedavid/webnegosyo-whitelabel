@@ -2,13 +2,18 @@
 
 import { useMemo, useState } from 'react'
 import { formatDistance } from 'date-fns'
-import { Users, Search, ShoppingBag, ChevronDown } from 'lucide-react'
+import { Users, Search, ShoppingBag, ChevronDown, Repeat, Heart, TrendingUp } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/cart-utils'
+import {
+  computeCustomerInsights,
+  CUSTOMER_STATUS_LABEL,
+  type CustomerStatus,
+} from '@/lib/customer-insights'
 import type { Customer } from '@/types/database'
 
 interface CustomersListProps {
@@ -148,11 +153,20 @@ interface CustomerRowProps {
   onToggle: () => void
 }
 
+/** Badge tone per engagement status — green thrives, amber warns, grey has gone quiet. */
+const STATUS_CLASS: Record<CustomerStatus, string> = {
+  new: 'bg-blue-50 text-blue-700 border-blue-200',
+  active: 'bg-green-50 text-green-700 border-green-200',
+  at_risk: 'bg-amber-50 text-amber-800 border-amber-200',
+  lapsed: 'bg-muted text-muted-foreground',
+}
+
 function CustomerRow({ customer, isExpanded, onToggle }: CustomerRowProps) {
   const label = displayLabel(customer)
   const lastOrder = customer.last_order_at
     ? formatDistance(new Date(customer.last_order_at), new Date(), { addSuffix: true })
     : null
+  const insights = useMemo(() => computeCustomerInsights(customer), [customer])
 
   return (
     <Card>
@@ -174,13 +188,38 @@ function CustomerRow({ customer, isExpanded, onToggle }: CustomerRowProps) {
             {customer.order_count} {customer.order_count === 1 ? 'order' : 'orders'}
             {lastOrder && <> · last {lastOrder}</>}
           </p>
+
+          {/* The three merchant questions: how often, what, and how much. */}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span
+              data-testid={`customer-frequency-${customer.id}`}
+              className="inline-flex items-center gap-1"
+            >
+              <Repeat className="h-3 w-3" /> {insights.frequencyLabel}
+            </span>
+
+            {insights.favoriteItem && (
+              <span
+                data-testid={`customer-favorite-${customer.id}`}
+                className="inline-flex min-w-0 items-center gap-1"
+              >
+                <Heart className="h-3 w-3" />
+                <span className="truncate">{insights.favoriteItem.name}</span>
+                <span>×{insights.favoriteItem.quantity}</span>
+              </span>
+            )}
+
+            <Badge variant="outline" className={cn('text-[10px]', STATUS_CLASS[insights.status])}>
+              {CUSTOMER_STATUS_LABEL[insights.status]}
+            </Badge>
+          </div>
         </div>
 
         <div className="shrink-0 text-right">
-          <p className="font-semibold">{formatPrice(Number(customer.total_spent))}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatPrice(Number(customer.average_order_value))} avg
+          <p data-testid={`customer-ltv-${customer.id}`} className="font-semibold">
+            {formatPrice(insights.lifetimeValue)}
           </p>
+          <p className="text-xs text-muted-foreground">Lifetime value</p>
         </div>
 
         <ChevronDown
@@ -231,6 +270,39 @@ function CustomerRow({ customer, isExpanded, onToggle }: CustomerRowProps) {
             </div>
 
             <div>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">Value & frequency</h4>
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Lifetime value</dt>
+                  <dd className="font-medium">{formatPrice(insights.lifetimeValue)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Average order</dt>
+                  <dd className="font-medium">
+                    {formatPrice(Number(customer.average_order_value))}
+                  </dd>
+                </div>
+                {insights.ordersPerMonth > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Order frequency</dt>
+                    <dd className="font-medium">{insights.ordersPerMonth} / month</dd>
+                  </div>
+                )}
+                {insights.ordersPerMonth > 0 && (
+                  <div
+                    data-testid={`customer-projected-ltv-${customer.id}`}
+                    className="flex justify-between gap-4"
+                  >
+                    <dt className="flex items-center gap-1 text-muted-foreground">
+                      <TrendingUp className="h-3.5 w-3.5" /> Projected 12-mo value
+                    </dt>
+                    <dd className="font-medium">{formatPrice(insights.projectedLtv)}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            <div className="sm:col-span-2">
               <h4 className="mb-2 text-sm font-medium text-muted-foreground">Most ordered</h4>
               {customer.top_items.length === 0 ? (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">

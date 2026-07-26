@@ -146,6 +146,28 @@ export async function getOrderById(orderId: string, tenantId: string) {
   return data as unknown as OrderWithItems
 }
 
+/**
+ * Put a cancelled order's ingredients back on the shelf.
+ *
+ * Reverses the sale movements the order actually recorded rather than
+ * recomputing from its lines. Recomputing was a drift bug waiting to happen:
+ * now that depletion accounts for an option's ingredients, a recomputed restore
+ * that missed them would leave stock permanently short. Deriving the reversal
+ * from the sale makes the two impossible to disagree.
+ *
+ * Best-effort: the cancellation is already saved, and a stock write must never
+ * make an order un-cancellable. This path serves platform-backed orders; Convex
+ * and tenant-Supabase cancellations run through their own admin surfaces and do
+ * not reach here (see the evidence report).
+ */
+async function restoreStockForCancelledOrder(
+  orderId: string,
+  tenantId: string,
+): Promise<void> {
+  const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+  await reverseOrderStockBestEffort(tenantId, orderId)
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
@@ -175,6 +197,18 @@ export async function updateOrderStatus(
   const { data, error } = await query
 
   if (error) throw error
+
+  // A cancelled order's ingredients go back on the shelf. Written as reversing
+  // 'void' movements through the same ledger, so the history shows the sale and
+  // its reversal rather than silently editing the original away.
+  //
+  // Guarded by the previous status: only an order that was not already
+  // cancelled can restore, so re-cancelling cannot return the stock twice (the
+  // service's own order+direction guard is the second line of defence).
+  const previousStatus = (existingOrder as unknown as Order | null)?.status
+  if (status === 'cancelled' && previousStatus !== 'cancelled') {
+    await restoreStockForCancelledOrder(orderId, tenantId)
+  }
 
   // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
   // trigger Lalamove order creation (async, don't wait)
@@ -703,6 +737,24 @@ export async function createOrderConvex(
   Object.assign(mutationArgs, buildLalamoveDeliveryArgs(customerData))
 
   const orderId = await convex.mutation<string>('orders:createOrder', mutationArgs)
+
+  // Roll this order into the tenant's customer profile. Convex orders never
+  // reach `public.orders`, so without this the merchant's Regulars list would
+  // never see them — the phone number would sit in Convex and nowhere else.
+  // Best-effort and non-blocking: the order is already placed.
+  const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  await captureExternalOrderBestEffort(createAdminClient(), tenantId, {
+    backend: 'convex',
+    externalOrderId: orderId,
+    name: customerInfo?.name ?? null,
+    contact: (mutationArgs.customerContact as string) ?? null,
+    customerData: convexCustomerData,
+    total: mutationArgs.total as number,
+    createdAt: new Date().toISOString(),
+    channel: (mutationArgs.orderType as string) ?? null,
+    items: items.map((item) => ({ name: item.menu_item_name, quantity: item.quantity })),
+  })
 
   return { order: { id: orderId }, orderToken: undefined }
 }

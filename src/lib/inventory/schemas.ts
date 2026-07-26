@@ -45,6 +45,32 @@ export type RecipeComponentInput = z.infer<typeof recipeComponentInputSchema>
 export const recipeInputSchema = z.object({
   notes: z.string().trim().optional().nullable(),
   components: z.array(recipeComponentInputSchema),
+  /**
+   * How much a prep recipe makes. Only prep-item recipes carry a yield — it is
+   * what turns a batch cost into a per-unit cost — so both fields are optional
+   * and every non-prep target omits them.
+   */
+  yield_quantity: z.number().positive('Yield must be greater than zero').optional(),
+  yield_unit_id: z.string().uuid('A yield unit is required').optional(),
 })
 
 export type RecipeInput = z.infer<typeof recipeInputSchema>
+
+/**
+ * One stock movement as the client sends it: a magnitude, a unit and a reason.
+ * The signed delta is derived server-side from the item's current quantity —
+ * the client's copy can be stale, and two staff receiving stock at once would
+ * otherwise each write a total based on what they last saw.
+ */
+export const stockMovementInputSchema = z.object({
+  inventory_item_id: z.string().uuid('An ingredient is required'),
+  reason: z.enum(['receive', 'stocktake', 'waste', 'sale', 'void']),
+  quantity: z.number().min(0, 'Quantity cannot be negative'),
+  unit_id: z.string().uuid('A unit is required'),
+  /** Delivery price per unit. Omitted means "unchanged", never "free". */
+  unit_cost: z.number().min(0).optional(),
+  note: z.string().trim().optional(),
+  order_id: z.string().uuid().optional(),
+})
+
+export type StockMovementInput = z.infer<typeof stockMovementInputSchema>

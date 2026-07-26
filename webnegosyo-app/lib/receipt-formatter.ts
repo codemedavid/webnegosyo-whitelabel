@@ -22,6 +22,13 @@ interface ReceiptOrder {
   deliveryFee?: number;
   paymentMethod?: string;
   items?: ReceiptOrderItem[];
+  // --- POS counter sales (see lib/pos-order.ts) ---
+  /** Cash handed over by the customer. Printed only alongside changeDue. */
+  cashTendered?: number;
+  /** Change handed back. Printed only alongside cashTendered (0 is valid). */
+  changeDue?: number;
+  /** Transaction reference for a scanned e-wallet payment. */
+  paymentReference?: string;
 }
 
 interface ReceiptConfig {
@@ -37,6 +44,11 @@ function center(text: string, width: number): string {
 
 function line(char: string, width: number): string {
   return char.repeat(width);
+}
+
+/** Clip a line to the paper width — thermal paper wraps unreadably otherwise. */
+function truncate(text: string, width: number): string {
+  return text.length <= width ? text : text.slice(0, width);
 }
 
 function leftRight(left: string, right: string, width: number): string {
@@ -197,6 +209,18 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
   lines.push(leftRight("TOTAL:", `P${order.total.toFixed(2)}`, w));
   if (order.paymentMethod) {
     lines.push(`Payment: ${order.paymentMethod}`);
+  }
+
+  // POS cash block. Both halves are required — printing a tender without the
+  // change owed (or vice versa) would be worse than printing neither, so a
+  // half-populated order falls back to the pre-POS receipt exactly.
+  if (order.cashTendered !== undefined && order.changeDue !== undefined) {
+    lines.push(leftRight("CASH:", `P${order.cashTendered.toFixed(2)}`, w));
+    lines.push(leftRight("CHANGE:", `P${order.changeDue.toFixed(2)}`, w));
+  }
+
+  if (order.paymentReference) {
+    lines.push(truncate(`Ref: ${order.paymentReference}`, w));
   }
 
   // Footer

@@ -18,6 +18,7 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { Recipe, RecipeComponent } from '@/types/database'
 import { buildRecipeTargetColumns, type RecipeTarget } from '@/lib/inventory/recipe-target'
+import { buildRecipeRowFields } from '@/lib/inventory/recipe-yield'
 import {
   recipeComponentInputSchema,
   recipeInputSchema,
@@ -115,11 +116,13 @@ export async function saveRecipeForTarget(
 
   let recipe = existing as unknown as Recipe | null
 
+  const rowFields = buildRecipeRowFields(validated)
+
   if (!recipe) {
     if (validated.components.length === 0) return null
     const { data: created, error: insertError } = await supabase
       .from('recipes')
-      .insert({ tenant_id: tenantId, notes: validated.notes ?? null, ...cols } as never)
+      .insert({ tenant_id: tenantId, ...rowFields, ...cols } as never)
       .select()
       .single()
     if (insertError) throw insertError
@@ -127,7 +130,7 @@ export async function saveRecipeForTarget(
   } else {
     const { error: updateError } = await supabase
       .from('recipes')
-      .update({ notes: validated.notes ?? null, updated_at: new Date().toISOString() } as never)
+      .update({ ...rowFields, updated_at: new Date().toISOString() } as never)
       .eq('id', recipe.id)
       .eq('tenant_id', tenantId)
     if (updateError) throw updateError

@@ -1,16 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Tenant, Category, MenuItem, BundleWithSlots } from '@/types/database'
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
+import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 
 export async function getMenuData(tenantSlug: string) {
   const supabase = await createClient()
 
-  const { data: tenantData, error: tenantError } = await supabase
-    .from('tenants')
-    .select(TENANT_STOREFRONT_SELECT)
-    .eq('slug', tenantSlug)
-    .eq('is_active', true)
-    .maybeSingle()
+  const { tenant: tenantData, error: tenantError } = await fetchActiveTenantBySlug<Tenant>(
+    asTenantQueryClient(supabase),
+    tenantSlug,
+    TENANT_STOREFRONT_SELECT
+  )
 
   if (tenantError || !tenantData) {
     return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin: false, error: 'Restaurant not found' }
