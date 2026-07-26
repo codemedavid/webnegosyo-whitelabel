@@ -1,4 +1,4 @@
-# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–4)
+# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–5, partial)
 
 **Source plan**: no `*.plan.md` artifact; journeys were derived from the inline
 plan agreed in-session (superadmin dashboard on the merchant app, tenant
@@ -157,6 +157,29 @@ fixture spread the new-lead fixture and inherited its email, so a search for
 "ana" legitimately matched two leads. Distinct contact details keep the
 case-insensitivity assertion honest.
 
+### Task 7 — Superadmin API bridge (Phase 5, partial)
+
+- **Validation command**: `npx jest --config jest.config.cjs tests/unit/superadmin-bridge.test.ts`
+- **RED**: `Cannot find module '@/lib/superadmin/bridge'` (commit `5546fd9`)
+- **GREEN**: `Tests: 19 passed, 19 total` (commit `ea83d8b`)
+- **Refactor**: `lib/mcp-auth` already exported an equivalent
+  `extractBearerToken`; the duplicate was removed and the canonical one
+  re-exported, still 19/19 (commit `faa1a92`). An over-specified assertion went
+  with it — the duplicate trimmed leading whitespace, which HTTP headers never
+  carry.
+- **Route**: `src/app/api/superadmin/[action]/route.ts` (commit `da4e482`),
+  `tsc --noEmit` and `eslint` clean.
+- **Guaranteed**: the allowlist holds exactly the nine service-role operations;
+  dispatch uses `hasOwnProperty` so `constructor` / `__proto__` cannot resolve
+  as actions; unknown actions 404 before any auth work; missing or non-Bearer
+  tokens 401; a valid token whose `app_users.role` is not `superadmin` gets
+  403; malformed JSON and missing fields get 400 naming the field.
+
+The route verifies the token with an anon-key client and then re-reads the role
+from `app_users` with the service-role client, because a JWT can carry stale
+metadata. **No handler is wired yet** — an allowlisted, authorized, validated
+request answers 501 rather than reporting work it did not do.
+
 ## Test specification
 
 | # | What is guaranteed | Test file | Type | Result |
@@ -220,11 +243,21 @@ Against the project's 80% floor. The two residual uncovered branches in
 - **Team and Import tabs are not functional.** Team lists staff read-only;
   adding, removing and password resets need the service-role bridge, as does
   AI menu import. Both tabs say so on screen.
-- **Migration `20260727000000_leads_rls_app_users.sql` is NOT applied.** The
-  leads screens will return permission errors until it is. Applying it changes
-  production RLS, so it is left for explicit approval.
-- **Phases 5–6 are not started**: the `/api/superadmin/*` bridge for
-  service-role operations, and platform analytics.
+- **Migration `20260727000000_leads_rls_app_users.sql` is APPLIED** (approved
+  in-session). Verified afterwards: `leads`, `lead_notes` and
+  `lead_status_history` each carry exactly one `app_users`-based FOR ALL policy,
+  and the dead `raw_user_meta_data` policy is gone.
+- **Phase 5 is half done.** The bridge authenticates, authorizes and validates,
+  but dispatches to nothing: all nine actions return 501. Team, Import,
+  Convex/Supabase deploy and MCP keys therefore remain web-only.
+- **Phase 6 (platform analytics) is not started.**
+- **Two suites fail under the ROOT jest config**:
+  `webnegosyo-app/lib/{order-item-images,printer-native-load}.test.ts`
+  (`ReferenceError: Cannot access 'mockFrom' before initialization`). These are
+  mobile-app tests written for the app's own ts-jest config, which hoists
+  `jest.mock` differently; under `webnegosyo-app/jest.config.js` they pass. Both
+  files were last touched by commit `78f2391`, unrelated to this work. Root
+  suite: 3012 passed / 3 failed of 3015.
 - **Unrelated failures in the shared worktree.** `lib/products.test.ts` has 3
   failing tests from a concurrent session's in-flight `modifier-groups` work
   (`products.ts` is modified but uncommitted; their RED commit is `2d28661`).
@@ -254,3 +287,7 @@ proof. Checkpoint sequence on `feat/unified-modifier-groups`:
 | `a1d5d60` | GREEN — lead pipeline logic (25/25) |
 | `b7b4ac2` | RED — Leads tab expectation + RLS migration |
 | `e5bb392` | GREEN — leads surface (539/539 full suite) |
+| `5546fd9` | RED — API bridge reproducer |
+| `ea83d8b` | GREEN — bridge contract (19/19) |
+| `faa1a92` | Refactor — reuse the canonical bearer extractor (19/19) |
+| `da4e482` | GREEN — bridge route with bearer auth |
