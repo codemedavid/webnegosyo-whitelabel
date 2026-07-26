@@ -24,8 +24,11 @@ import {
   type TenantFormErrors,
   type TenantFormValues,
 } from "../../../lib/tenant-form";
+import { tenantStatusTone } from "../../../lib/superadmin-ui";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
+import { ScreenHeader } from "../../../components/superadmin/ScreenHeader";
+import { Pill } from "../../../components/superadmin/Pill";
 import {
   colors,
   typography,
@@ -189,11 +192,25 @@ export default function TenantEditorScreen() {
   if (!values || !tenant) return <LoadingState fullScreen message="Loading restaurant…" />;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>Restaurant</Text>
-      <Text style={styles.title}>{tenant.name}</Text>
-      <Text style={styles.subtitle}>/{tenant.slug}</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      <ScreenHeader
+        title={tenant.name}
+        subtitle={`/${tenant.slug}`}
+        onBack={() => router.back()}
+        backLabel="Restaurants"
+        right={
+          <Pill
+            label={values.is_active ? "Active" : "Inactive"}
+            tone={tenantStatusTone(values.is_active)}
+          />
+        }
+      />
 
+      <View style={styles.body}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.tabRow}>
           {TENANT_EDITOR_TABS.map((t) => (
@@ -467,18 +484,17 @@ export default function TenantEditorScreen() {
         onPress={handleOpenAsMerchant}
         activeOpacity={0.8}
       >
-        <Text style={styles.secondaryButtonText}>Open as merchant</Text>
+        <Text style={styles.secondaryButtonText}>Open as merchant ↗</Text>
       </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  eyebrow: { ...typography.eyebrow, color: colors.accent },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.small, color: colors.textTertiary },
+  content: { paddingBottom: spacing.xxl * 2 },
+  body: { padding: spacing.lg, gap: spacing.md },
   tabRow: { flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xs },
   tab: {
     paddingHorizontal: spacing.lg,

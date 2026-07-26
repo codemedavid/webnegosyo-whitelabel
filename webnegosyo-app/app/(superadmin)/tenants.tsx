@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -20,10 +19,16 @@ import {
   type TenantListRow,
   type TenantStatusFilter,
 } from "../../lib/tenant-list";
+import { pluralize, tenantStatusTone } from "../../lib/superadmin-ui";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
+import { ScreenHeader } from "../../components/superadmin/ScreenHeader";
+import { SearchField } from "../../components/superadmin/SearchField";
+import { FilterChips } from "../../components/superadmin/FilterChips";
+import { Monogram } from "../../components/superadmin/Monogram";
+import { Pill } from "../../components/superadmin/Pill";
+import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
   "id, slug, name, is_active, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
@@ -73,6 +78,16 @@ export default function TenantsScreen() {
     [tenants, query, status, feature]
   );
 
+  const statusOptions = useMemo(() => {
+    const rows = tenants ?? [];
+    const counts: Record<TenantStatusFilter, number> = {
+      all: rows.length,
+      active: rows.filter((t) => t.is_active).length,
+      inactive: rows.filter((t) => !t.is_active).length,
+    };
+    return STATUS_FILTERS.map((f) => ({ ...f, count: counts[f.key] }));
+  }, [tenants]);
+
   const handleOpenAsMerchant = (tenant: TenantListRow) => {
     const state = useAuthStore.getState();
     useAuthStore.getState().setAuth(
@@ -86,216 +101,194 @@ export default function TenantsScreen() {
     router.replace("/(main)/dashboard");
   };
 
-  if (tenants === null) return <LoadingState fullScreen message="Loading restaurants…" />;
+  const handleClearFilters = () => {
+    setQuery("");
+    setStatus("all");
+    setFeature(undefined);
+  };
+
+  if (tenants === null)
+    return <LoadingState fullScreen message="Loading restaurants…" />;
   if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+
+  const isFiltered = query !== "" || status !== "all" || feature !== undefined;
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
       }
     >
-      <Text style={styles.eyebrow}>Platform</Text>
-      <Text style={styles.title}>Restaurants</Text>
-
-      <TextInput
-        style={styles.search}
-        placeholder="Search by name or slug"
-        placeholderTextColor={colors.textTertiary}
-        value={query}
-        onChangeText={setQuery}
-        autoCapitalize="none"
-        autoCorrect={false}
+      <ScreenHeader
+        eyebrow="Platform"
+        title="Restaurants"
+        subtitle={
+          isFiltered
+            ? `${visible.length} of ${tenants.length} shown`
+            : pluralize(tenants.length, "restaurant")
+        }
       />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.chipRow}>
-          {STATUS_FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.chip, status === f.key && styles.chipActive]}
-              onPress={() => setStatus(f.key)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  status === f.key && styles.chipTextActive,
-                ]}
+      <View style={styles.body}>
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by name or slug"
+        />
+
+        <FilterChips
+          caption="Status"
+          options={statusOptions}
+          selected={status}
+          onSelect={setStatus}
+        />
+
+        <FilterChips
+          caption="Feature"
+          options={FEATURE_FILTERS}
+          selected={feature}
+          // Tapping the active feature clears it — these are toggles, not a
+          // radio group, so there must be a way back to "any feature".
+          onSelect={(key) => setFeature(feature === key ? undefined : key)}
+        />
+
+        {visible.length === 0 ? (
+          <View style={styles.emptyBlock}>
+            <EmptyState message="No restaurants match these filters" />
+            {isFiltered ? (
+              <TouchableOpacity
+                onPress={handleClearFilters}
+                activeOpacity={0.8}
+                style={styles.clearFilters}
               >
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.chipRow}>
-          {FEATURE_FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.chip, feature === f.key && styles.chipActive]}
-              onPress={() =>
-                setFeature(feature === f.key ? undefined : f.key)
-              }
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  feature === f.key && styles.chipTextActive,
-                ]}
-              >
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-
-      <Text style={styles.count}>
-        {visible.length} of {tenants.length}
-      </Text>
-
-      {visible.length === 0 ? (
-        <EmptyState message="No restaurants match these filters" />
-      ) : (
-        visible.map((tenant) => (
-          <View key={tenant.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeading}>
-                <Text style={styles.cardTitle}>{tenant.name}</Text>
-                <Text style={styles.cardSlug}>/{tenant.slug}</Text>
-              </View>
-              <View
-                style={[
-                  styles.statusPill,
-                  tenant.is_active ? styles.statusOn : styles.statusOff,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusText,
-                    tenant.is_active ? styles.statusTextOn : styles.statusTextOff,
-                  ]}
-                >
-                  {tenant.is_active ? "Active" : "Inactive"}
-                </Text>
-              </View>
-            </View>
-
-            {tenantFeatureLabels(tenant).length > 0 ? (
-              <View style={styles.featureRow}>
-                {tenantFeatureLabels(tenant).map((label) => (
-                  <View key={label} style={styles.featureChip}>
-                    <Text style={styles.featureText}>{label}</Text>
-                  </View>
-                ))}
-              </View>
+                <Text style={styles.clearFiltersText}>Clear filters</Text>
+              </TouchableOpacity>
             ) : null}
-
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={styles.manageButton}
-                onPress={() =>
-                  router.push(`/(superadmin)/tenant/${tenant.id}` as Href)
-                }
-                activeOpacity={0.8}
-              >
-                <Text style={styles.manageButtonText}>Manage</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.openButton}
-                onPress={() => handleOpenAsMerchant(tenant)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.openButtonText}>Open as merchant</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        ))
-      )}
+        ) : (
+          visible.map((tenant) => {
+            const tone = tenantStatusTone(tenant.is_active);
+            const features = tenantFeatureLabels(tenant);
+            return (
+              <View key={tenant.id} style={styles.card}>
+                <TouchableOpacity
+                  style={styles.cardHeader}
+                  onPress={() =>
+                    router.push(`/(superadmin)/tenant/${tenant.id}` as Href)
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Monogram name={tenant.name} seed={tenant.id} />
+                  <View style={styles.cardHeading}>
+                    <Text style={styles.cardTitle} numberOfLines={1}>
+                      {tenant.name}
+                    </Text>
+                    <Text style={styles.cardSlug}>/{tenant.slug}</Text>
+                  </View>
+                  <Pill label={tenant.is_active ? "Active" : "Inactive"} tone={tone} />
+                </TouchableOpacity>
+
+                {features.length > 0 ? (
+                  <View style={styles.featureRow}>
+                    {features.map((label) => (
+                      <View key={label} style={styles.featureChip}>
+                        <Text style={styles.featureText}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.noFeatures}>No optional features enabled</Text>
+                )}
+
+                <View style={styles.actionRow}>
+                  {/* Manage is the primary action: editing is the common task,
+                      while impersonation is deliberately the quieter one. */}
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={() =>
+                      router.push(`/(superadmin)/tenant/${tenant.id}` as Href)
+                    }
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.primaryButtonText}>Manage</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={() => handleOpenAsMerchant(tenant)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.secondaryButtonText}>Open store ↗</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  eyebrow: { ...typography.eyebrow, color: colors.accent },
-  title: { ...typography.title, color: colors.textPrimary },
-  search: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    ...typography.body,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  chipRow: { flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xs },
-  chip: {
-    paddingHorizontal: spacing.lg,
+  content: { paddingBottom: spacing.xxl * 2 },
+  body: { padding: spacing.lg, gap: spacing.md },
+
+  emptyBlock: { alignItems: "center", gap: spacing.sm },
+  clearFilters: {
+    paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.separator,
+    backgroundColor: colors.card,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  chipTextActive: { color: colors.textOnDark },
-  count: { ...typography.small, color: colors.textTertiary },
+  clearFiltersText: { ...typography.caption, color: colors.textPrimary, fontWeight: "700" },
+
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.md,
     ...shadow.sm,
   },
-  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  cardHeading: { flex: 1 },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  cardHeading: { flex: 1, gap: 1 },
   cardTitle: { ...typography.heading, color: colors.textPrimary },
-  cardSlug: { ...typography.small, color: colors.textTertiary, marginTop: 2 },
-  statusPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  statusOn: { backgroundColor: colors.successLight },
-  statusOff: { backgroundColor: colors.dangerLight },
-  statusText: { ...typography.small, fontWeight: "700" },
-  statusTextOn: { color: colors.success },
-  statusTextOff: { color: colors.danger },
+  cardSlug: { ...typography.small, color: colors.textTertiary },
+
   featureRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   featureChip: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 3,
-  },
-  featureText: { ...typography.small, color: colors.textSecondary },
-  actionRow: { flexDirection: "row", gap: spacing.sm },
-  manageButton: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    paddingVertical: 12,
-    alignItems: "center",
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: colors.separator,
   },
-  manageButtonText: { color: colors.textPrimary, fontSize: 15, fontWeight: "700" },
-  openButton: {
+  featureText: { ...typography.small, color: colors.textSecondary, fontWeight: "600" },
+  noFeatures: { ...typography.small, color: colors.textTertiary, fontStyle: "italic" },
+
+  actionRow: { flexDirection: "row", gap: spacing.sm },
+  primaryButton: {
     flex: 1,
     backgroundColor: colors.primary,
     borderRadius: radius.full,
     paddingVertical: 12,
     alignItems: "center",
   },
-  openButtonText: { color: colors.textOnDark, fontSize: 15, fontWeight: "700" },
+  primaryButtonText: { color: colors.textOnDark, fontSize: 15, fontWeight: "700" },
+  secondaryButton: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.separator,
+  },
+  secondaryButtonText: { color: colors.textPrimary, fontSize: 15, fontWeight: "700" },
 });

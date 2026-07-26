@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -18,14 +17,23 @@ import {
   type LeadRow,
   type LeadStatus,
 } from "../../lib/leads";
-import { StatCard } from "../../components/StatCard";
+import { leadStatusTone, pluralize } from "../../lib/superadmin-ui";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
+import { ScreenHeader } from "../../components/superadmin/ScreenHeader";
+import { SearchField } from "../../components/superadmin/SearchField";
+import { FilterChips } from "../../components/superadmin/FilterChips";
+import { Monogram } from "../../components/superadmin/Monogram";
+import { Pill } from "../../components/superadmin/Pill";
+import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const LEAD_COLUMNS =
   "id, name, email, phone, booking_date, booking_time, status, source, converted_tenant_id, created_at";
+
+function statusLabel(status: string): string {
+  return LEAD_STATUSES.find((s) => s.key === status)?.label ?? status;
+}
 
 export default function LeadsScreen() {
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
@@ -65,128 +73,148 @@ export default function LeadsScreen() {
   );
   const summary = useMemo(() => summarizeLeads(leads ?? []), [leads]);
 
+  const statusOptions = useMemo(
+    () => LEAD_STATUSES.map((s) => ({ ...s, count: summary[s.key] })),
+    [summary]
+  );
+
   if (leads === null) return <LoadingState fullScreen message="Loading leads…" />;
   if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+
+  const isFiltered = query !== "" || status !== undefined;
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
       }
     >
-      <Text style={styles.eyebrow}>Platform</Text>
-      <Text style={styles.title}>Leads</Text>
-
-      <View style={styles.statRow}>
-        <StatCard value={summary.open} label="Open" />
-        <StatCard value={summary.converted} label="Converted" />
-        <StatCard value={summary.total} label="Total" />
-      </View>
-
-      <TextInput
-        style={styles.search}
-        placeholder="Search name, email or phone"
-        placeholderTextColor={colors.textTertiary}
-        value={query}
-        onChangeText={setQuery}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.chipRow}>
-          {LEAD_STATUSES.map((s) => (
-            <TouchableOpacity
-              key={s.key}
-              style={[styles.chip, status === s.key && styles.chipActive]}
-              onPress={() => setStatus(status === s.key ? undefined : s.key)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[styles.chipText, status === s.key && styles.chipTextActive]}
-              >
-                {s.label} ({summary[s.key]})
-              </Text>
-            </TouchableOpacity>
-          ))}
+      <ScreenHeader
+        eyebrow="Platform"
+        title="Leads"
+        subtitle={
+          isFiltered
+            ? `${visible.length} of ${summary.total} shown`
+            : pluralize(summary.total, "lead")
+        }
+      >
+        <View style={styles.heroRow}>
+          <View style={styles.heroStat}>
+            <Text style={styles.heroValue}>{summary.open}</Text>
+            <Text style={styles.heroLabel}>Open</Text>
+          </View>
+          <View style={styles.heroDivider} />
+          <View style={styles.heroStat}>
+            <Text style={styles.heroValue}>{summary.converted}</Text>
+            <Text style={styles.heroLabel}>Converted</Text>
+          </View>
+          <View style={styles.heroDivider} />
+          <View style={styles.heroStat}>
+            <Text style={styles.heroValue}>{summary.lost}</Text>
+            <Text style={styles.heroLabel}>Lost</Text>
+          </View>
         </View>
-      </ScrollView>
+      </ScreenHeader>
 
-      {visible.length === 0 ? (
-        <EmptyState message="No leads match these filters" />
-      ) : (
-        visible.map((lead) => (
-          <TouchableOpacity
-            key={lead.id}
-            style={styles.card}
-            onPress={() => router.push(`/(superadmin)/lead/${lead.id}` as Href)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{lead.name}</Text>
-              <Text style={styles.statusText}>
-                {LEAD_STATUSES.find((s) => s.key === lead.status)?.label ??
-                  lead.status}
-              </Text>
-            </View>
-            <Text style={styles.cardMeta}>{lead.email}</Text>
-            <Text style={styles.cardMeta}>{lead.phone}</Text>
-            <Text style={styles.cardSlot}>
-              {formatBookingSlot(lead.booking_date, lead.booking_time)}
-            </Text>
-          </TouchableOpacity>
-        ))
-      )}
+      <View style={styles.body}>
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search name, email or phone"
+        />
+
+        <FilterChips
+          caption="Pipeline"
+          options={statusOptions}
+          selected={status}
+          onSelect={(key) => setStatus(status === key ? undefined : key)}
+        />
+
+        {visible.length === 0 ? (
+          <EmptyState message="No leads match these filters" />
+        ) : (
+          visible.map((lead) => (
+            <TouchableOpacity
+              key={lead.id}
+              style={styles.card}
+              onPress={() => router.push(`/(superadmin)/lead/${lead.id}` as Href)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.cardHeader}>
+                <Monogram name={lead.name} seed={lead.id} size={40} />
+                <View style={styles.cardHeading}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>
+                    {lead.name}
+                  </Text>
+                  <Text style={styles.cardMeta} numberOfLines={1}>
+                    {lead.email}
+                  </Text>
+                </View>
+                <Pill
+                  label={statusLabel(lead.status)}
+                  tone={leadStatusTone(lead.status)}
+                />
+              </View>
+
+              <View style={styles.cardFooter}>
+                <Text style={styles.cardSlot} numberOfLines={1}>
+                  ◷ {formatBookingSlot(lead.booking_date, lead.booking_time)}
+                </Text>
+                <Text style={styles.cardPhone}>{lead.phone}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  eyebrow: { ...typography.eyebrow, color: colors.accent },
-  title: { ...typography.title, color: colors.textPrimary },
-  statRow: { flexDirection: "row", gap: spacing.md },
-  search: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    ...typography.body,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.separator,
+  content: { paddingBottom: spacing.xxl * 2 },
+  body: { padding: spacing.lg, gap: spacing.md },
+
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: spacing.lg,
+    backgroundColor: colors.heroInkElevated,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
   },
-  chipRow: { flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xs },
-  chip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
+  heroStat: { flex: 1, alignItems: "center", gap: 1 },
+  heroValue: { fontSize: 22, fontWeight: "800", color: colors.heroInkText },
+  heroLabel: { ...typography.small, color: colors.heroInkMuted },
+  heroDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: "rgba(253,251,247,0.14)",
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  chipTextActive: { color: colors.textOnDark },
+
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.lg,
-    gap: 2,
+    gap: spacing.md,
     ...shadow.sm,
   },
-  cardHeader: {
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  cardHeading: { flex: 1, gap: 1 },
+  cardTitle: { ...typography.heading, color: colors.textPrimary },
+  cardMeta: { ...typography.caption, color: colors.textSecondary },
+  cardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
-    marginBottom: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.separator,
+    paddingTop: spacing.sm,
   },
-  cardTitle: { ...typography.heading, color: colors.textPrimary, flex: 1 },
-  statusText: { ...typography.small, color: colors.accent, fontWeight: "700" },
-  cardMeta: { ...typography.caption, color: colors.textSecondary },
-  cardSlot: { ...typography.small, color: colors.textTertiary, marginTop: spacing.xs },
+  cardSlot: { ...typography.small, color: colors.textSecondary, flex: 1 },
+  cardPhone: { ...typography.small, color: colors.textTertiary },
 });

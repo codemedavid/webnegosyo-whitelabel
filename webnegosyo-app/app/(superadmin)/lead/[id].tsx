@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { useAuthStore } from "../../../stores/auth-store";
 import {
@@ -19,14 +19,17 @@ import {
   type LeadRow,
   type LeadStatus,
 } from "../../../lib/leads";
+import { leadStatusTone, pluralize } from "../../../lib/superadmin-ui";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
+import { ScreenHeader } from "../../../components/superadmin/ScreenHeader";
+import { Pill } from "../../../components/superadmin/Pill";
 import {
   colors,
-  typography,
   radius,
-  spacing,
   shadow,
+  spacing,
+  typography,
 } from "../../../theme/colors";
 
 const LEAD_COLUMNS =
@@ -40,6 +43,26 @@ interface LeadNote {
 
 function statusLabel(status: string): string {
   return LEAD_STATUSES.find((s) => s.key === status)?.label ?? status;
+}
+
+/** Label/value pair inside the detail card. */
+function DetailRow({
+  label,
+  value,
+  isLast,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={[styles.detailRow, !isLast && styles.detailRowDivided]}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue} selectable>
+        {value}
+      </Text>
+    </View>
+  );
 }
 
 export default function LeadDetailScreen() {
@@ -132,40 +155,47 @@ export default function LeadDetailScreen() {
   if (!lead) return <LoadingState fullScreen message="Loading lead…" />;
 
   const nextStatuses = allowedNextStatuses(lead.status);
+  const canSubmitNote = !isBusy && draftNote.trim() !== "";
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>Lead</Text>
-      <Text style={styles.title}>{lead.name}</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      <ScreenHeader
+        title={lead.name}
+        subtitle={formatBookingSlot(lead.booking_date, lead.booking_time)}
+        onBack={() => router.back()}
+        backLabel="Leads"
+        right={
+          <Pill label={statusLabel(lead.status)} tone={leadStatusTone(lead.status)} />
+        }
+      />
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Status</Text>
-        <Text style={styles.value}>{statusLabel(lead.status)}</Text>
+      <View style={styles.body}>
+        <Text style={styles.sectionTitle}>Contact</Text>
+        <View style={styles.card}>
+          <DetailRow label="Email" value={lead.email} />
+          <DetailRow label="Phone" value={lead.phone} />
+          <DetailRow
+            label="Booking"
+            value={formatBookingSlot(lead.booking_date, lead.booking_time)}
+            isLast={!lead.source}
+          />
+          {lead.source ? (
+            <DetailRow label="Source" value={lead.source} isLast />
+          ) : null}
+        </View>
 
-        <Text style={styles.label}>Contact</Text>
-        <Text style={styles.value}>{lead.email}</Text>
-        <Text style={styles.value}>{lead.phone}</Text>
-
-        <Text style={styles.label}>Booking</Text>
-        <Text style={styles.value}>
-          {formatBookingSlot(lead.booking_date, lead.booking_time)}
-        </Text>
-
-        {lead.source ? (
-          <>
-            <Text style={styles.label}>Source</Text>
-            <Text style={styles.value}>{lead.source}</Text>
-          </>
-        ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Move to</Text>
+        <Text style={styles.sectionTitle}>Pipeline</Text>
         {isTerminalStatus(lead.status) ? (
-          <Text style={styles.muted}>
-            This lead is {statusLabel(lead.status).toLowerCase()} — the pipeline
-            is closed.
-          </Text>
+          <View style={styles.terminalCard}>
+            <Text style={styles.terminalText}>
+              This lead is {statusLabel(lead.status).toLowerCase()} — the pipeline
+              is closed.
+            </Text>
+          </View>
         ) : (
           <View style={styles.buttonRow}>
             {nextStatuses.map((next) => (
@@ -174,10 +204,11 @@ export default function LeadDetailScreen() {
                 style={[
                   styles.statusButton,
                   next === "lost" && styles.statusButtonDanger,
+                  isBusy && styles.disabled,
                 ]}
                 onPress={() => void handleChangeStatus(next)}
                 disabled={isBusy}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 <Text
                   style={[
@@ -185,46 +216,51 @@ export default function LeadDetailScreen() {
                     next === "lost" && styles.statusButtonTextDanger,
                   ]}
                 >
-                  {statusLabel(next)}
+                  {next === "lost" ? "Mark lost" : `→ ${statusLabel(next)}`}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Notes</Text>
-        <TextInput
-          style={styles.noteInput}
-          placeholder="Add a note"
-          placeholderTextColor={colors.textTertiary}
-          value={draftNote}
-          onChangeText={setDraftNote}
-          multiline
-        />
-        <TouchableOpacity
-          style={[styles.addNoteButton, isBusy && styles.disabled]}
-          onPress={() => void handleAddNote()}
-          disabled={isBusy || draftNote.trim() === ""}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.addNoteText}>Add note</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>
+          {notes.length > 0 ? pluralize(notes.length, "note") : "Notes"}
+        </Text>
+        <View style={styles.card}>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="Add a note…"
+            placeholderTextColor={colors.textTertiary}
+            value={draftNote}
+            onChangeText={setDraftNote}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.addNoteButton, !canSubmitNote && styles.disabled]}
+            onPress={() => void handleAddNote()}
+            disabled={!canSubmitNote}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.addNoteText}>Add note</Text>
+          </TouchableOpacity>
+        </View>
 
         {notes.length === 0 ? (
           <Text style={styles.muted}>No notes yet.</Text>
         ) : (
-          notes.map((note) => (
-            <View key={note.id} style={styles.noteRow}>
-              <Text style={styles.noteText}>{note.note}</Text>
-              {note.created_at ? (
-                <Text style={styles.noteDate}>
-                  {note.created_at.slice(0, 10)}
-                </Text>
-              ) : null}
-            </View>
-          ))
+          <View style={styles.card}>
+            {notes.map((note, index) => (
+              <View
+                key={note.id}
+                style={[styles.noteRow, index > 0 && styles.noteRowDivided]}
+              >
+                <Text style={styles.noteText}>{note.note}</Text>
+                {note.created_at ? (
+                  <Text style={styles.noteDate}>{note.created_at.slice(0, 10)}</Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
         )}
       </View>
     </ScrollView>
@@ -233,61 +269,75 @@ export default function LeadDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  eyebrow: { ...typography.eyebrow, color: colors.accent },
-  title: { ...typography.title, color: colors.textPrimary },
+  content: { paddingBottom: spacing.xxl * 2 },
+  body: { padding: spacing.lg, gap: spacing.sm },
+
+  sectionTitle: {
+    ...typography.eyebrow,
+    color: colors.textTertiary,
+    marginTop: spacing.md,
+  },
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.xs,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
     ...shadow.sm,
   },
-  label: {
-    ...typography.eyebrow,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
+  detailRow: { paddingVertical: spacing.md, gap: 2 },
+  detailRowDivided: { borderBottomWidth: 1, borderBottomColor: colors.separator },
+  detailLabel: { ...typography.small, color: colors.textTertiary, fontWeight: "700" },
+  detailValue: { ...typography.body, color: colors.textPrimary },
+
+  terminalCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.separator,
   },
-  value: { ...typography.body, color: colors.textPrimary },
-  sectionTitle: { ...typography.heading, color: colors.textPrimary },
-  muted: { ...typography.caption, color: colors.textTertiary },
-  buttonRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  terminalText: { ...typography.caption, color: colors.textSecondary },
+
+  buttonRow: { flexDirection: "row", gap: spacing.sm },
   statusButton: {
     flex: 1,
     backgroundColor: colors.primary,
     borderRadius: radius.full,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: "center",
   },
-  statusButtonDanger: { backgroundColor: colors.dangerLight },
+  statusButtonDanger: {
+    backgroundColor: colors.dangerLight,
+  },
   statusButtonText: { color: colors.textOnDark, fontSize: 15, fontWeight: "700" },
   statusButtonTextDanger: { color: colors.danger },
+  disabled: { opacity: 0.5 },
+
   noteInput: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    minHeight: 72,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 76,
     ...typography.body,
     color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.separator,
-    marginTop: spacing.sm,
+    marginTop: spacing.lg,
+    textAlignVertical: "top",
   },
   addNoteButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,
     paddingVertical: 12,
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
   },
-  disabled: { opacity: 0.6 },
   addNoteText: { color: colors.textOnDark, fontSize: 15, fontWeight: "700" },
-  noteRow: {
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.separator,
-  },
+
+  muted: { ...typography.caption, color: colors.textTertiary, paddingVertical: spacing.sm },
+  noteRow: { paddingVertical: spacing.md, gap: 2 },
+  noteRowDivided: { borderTopWidth: 1, borderTopColor: colors.separator },
   noteText: { ...typography.body, color: colors.textPrimary },
-  noteDate: { ...typography.small, color: colors.textTertiary, marginTop: 2 },
+  noteDate: { ...typography.small, color: colors.textTertiary },
 });
