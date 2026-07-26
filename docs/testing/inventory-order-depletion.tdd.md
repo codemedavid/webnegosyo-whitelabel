@@ -107,7 +107,7 @@ no query cost.
 | 8 | Empty and zero-quantity lines write nothing | same | unit | PASS | same |
 | 9 | A database failure never surfaces to the order | `inventory-order-stock-besteffort.test.ts` | unit (characterization) | PASS | mutation-checked |
 | 10 | A rejected query never rejects the order | same | unit (characterization) | PASS | mutation-checked |
-| 11 | An uncosted menu reads one table and stops | same | unit (characterization) | PASS | `from` called once with `recipes` |
+| 11 | An uncosted menu stops after the guard + recipes read | same | unit (characterization) | PASS | reads `['stock_movements','recipes']` |
 | 12 | Depletion is wired into all three order backends | `npm run build` + `orders.ts:406,432,457` | build | PASS | Compiled successfully |
 | 13 | No regression across inventory/order surface | `npx jest "inventory\|recipe\|modifier\|menu-item\|addon\|order"` | unit | PASS | 642 passed |
 
@@ -128,7 +128,8 @@ All files               |   71.37 |    78.12 |      75 |   71.37
 early exits; **the uncovered half is the main success path** (lines 107–148),
 which builds and inserts the movement rows. It has no test because the repo has
 no Supabase-mocking pattern for services deep enough to drive four chained
-queries. It has also never run against a real database.
+queries. It has, however, now been run against a real database — see the
+end-to-end proof below, which exercises exactly those uncovered lines.
 
 **Gaps, stated plainly:**
 
