@@ -8,13 +8,14 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
-import type { ModifierGroup, ModifierOption, ModifierStockMode } from '@/types/database'
+import type { CostMode, ModifierGroup, ModifierOption, ModifierStockMode } from '@/types/database'
 import {
   createModifierGroup,
   createModifierOption,
   isSingleSelectGroup,
   setGroupMultiple,
   setGroupRequired,
+  setOptionCostMode,
 } from '@/lib/modifier-groups-form'
 import { computeOptionMargin } from '@/lib/modifier-margin'
 import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
@@ -38,6 +39,12 @@ interface ModifierGroupsEditorProps {
   basePrice: number
   /** Enables the per-option recipe-attach control when inventory is on. */
   recipeContext?: ModifierRecipeContext
+  /**
+   * Recipe-derived cost per modifier option id, keyed as in
+   * `MenuItemCostBreakdown.modifierOptionCosts`. Supplied by the page container
+   * (which owns the server action) so this editor stays presentational.
+   */
+  optionRecipeCosts?: Record<string, number>
   /** Optional slot rendered beside "Add Group" (e.g. the library picker). */
   headerAction?: ReactNode
   /** When provided, each group card gets a "Save to library" control. */
@@ -51,7 +58,7 @@ interface ModifierGroupsEditorProps {
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
-export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, headerAction, onSaveGroupToLibrary }: ModifierGroupsEditorProps) {
+export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary }: ModifierGroupsEditorProps) {
   const addGroup = () => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
   }
@@ -102,6 +109,14 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
     })
   }
 
+  const replaceOption = (groupIndex: number, optionIndex: number, next: ModifierOption) => {
+    const group = groups[groupIndex]
+    replaceGroup(groupIndex, {
+      ...group,
+      options: group.options.map((o, i) => (i === optionIndex ? next : o)),
+    })
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -133,6 +148,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 group={group}
                 basePrice={basePrice}
                 recipeContext={recipeContext}
+                optionRecipeCosts={optionRecipeCosts}
                 onSaveToLibrary={onSaveGroupToLibrary ? () => onSaveGroupToLibrary(group) : undefined}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
@@ -144,6 +160,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 onUpdateOption={(optionIndex, field, value) =>
                   updateOption(groupIndex, optionIndex, field, value)
                 }
+                onReplaceOption={(optionIndex, next) => replaceOption(groupIndex, optionIndex, next)}
               />
             ))}
           </div>
@@ -157,6 +174,7 @@ interface ModifierGroupCardProps {
   group: ModifierGroup
   basePrice: number
   recipeContext?: ModifierRecipeContext
+  optionRecipeCosts?: Record<string, number>
   onSaveToLibrary?: () => void
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
@@ -170,12 +188,14 @@ interface ModifierGroupCardProps {
     field: K,
     value: ModifierOption[K],
   ) => void
+  onReplaceOption: (optionIndex: number, next: ModifierOption) => void
 }
 
 function ModifierGroupCard({
   group,
   basePrice,
   recipeContext,
+  optionRecipeCosts,
   onSaveToLibrary,
   onRemoveGroup,
   onUpdateName,
@@ -185,6 +205,7 @@ function ModifierGroupCard({
   onAddOption,
   onRemoveOption,
   onUpdateOption,
+  onReplaceOption,
 }: ModifierGroupCardProps) {
   const isSingle = isSingleSelectGroup(group)
   const isRequired = group.min_select >= 1
@@ -282,8 +303,10 @@ function ModifierGroupCard({
                 option={option}
                 basePrice={basePrice}
                 recipeContext={recipeContext}
+                recipeCost={optionRecipeCosts?.[option.id]}
                 onRemove={() => onRemoveOption(optionIndex)}
                 onUpdate={(field, value) => onUpdateOption(optionIndex, field, value)}
+                onReplace={(next) => onReplaceOption(optionIndex, next)}
               />
             ))}
           </div>
@@ -297,15 +320,19 @@ interface ModifierOptionRowProps {
   option: ModifierOption
   basePrice: number
   recipeContext?: ModifierRecipeContext
+  /** Recipe-derived cost for this option, when one has been costed. */
+  recipeCost?: number
   onRemove: () => void
   onUpdate: <K extends keyof ModifierOption>(field: K, value: ModifierOption[K]) => void
+  onReplace: (next: ModifierOption) => void
 }
 
-function ModifierOptionRow({ option, basePrice, recipeContext, onRemove, onUpdate }: ModifierOptionRowProps) {
+function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRemove, onUpdate, onReplace }: ModifierOptionRowProps) {
   const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
-  // Live margin preview from the manual cost the merchant enters. Recipe-backed
-  // cost is resolved server-side; the editor shows the manual estimate.
-  const margin = computeOptionMargin(basePrice, option)
+  const isComposite = option.cost_mode === 'composite'
+  // Live margin honoring the option's cost source. Options with no mode keep the
+  // legacy rule (an attached recipe cost overrides the typed one).
+  const margin = computeOptionMargin(basePrice, option, recipeCost)
   const marginTone =
     margin.marginPercent >= 60
       ? 'text-green-600'
@@ -338,21 +365,36 @@ function ModifierOptionRow({ option, basePrice, recipeContext, onRemove, onUpdat
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs">Manual cost (₱)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            min={0}
-            placeholder="0.00"
-            value={option.manual_cost ?? ''}
-            onChange={(e) => {
-              const raw = e.target.value.trim()
-              onUpdate('manual_cost', raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0))
-            }}
+          <Label className="text-xs">Cost source</Label>
+          <CostSourceToggle
+            mode={option.cost_mode}
+            onSelect={(mode) => onReplace(setOptionCostMode(option, mode))}
           />
-          <p className="text-[11px] text-muted-foreground">
-            Used for margin. An attached recipe overrides this.
-          </p>
+          {isComposite ? (
+            <p className="text-[11px] text-muted-foreground">
+              {recipeCost === undefined
+                ? 'Attach a recipe below to cost this option from ingredients.'
+                : `From recipe: ₱${recipeCost.toFixed(2)}`}
+            </p>
+          ) : (
+            <>
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                placeholder="0.00"
+                value={option.manual_cost ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value.trim()
+                  onUpdate('manual_cost', raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0))
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Manual cost (₱), used for margin.
+                {option.cost_mode === undefined && ' An attached recipe overrides this.'}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="space-y-1">
@@ -396,7 +438,7 @@ function ModifierOptionRow({ option, basePrice, recipeContext, onRemove, onUpdat
         </div>
       </div>
 
-      {stockMode === 'recipe' && recipeContext?.inventoryEnabled && recipeContext.menuItemId && (
+      {(stockMode === 'recipe' || isComposite) && recipeContext?.inventoryEnabled && recipeContext.menuItemId && (
         <ModifierOptionRecipeEditor
           tenantId={recipeContext.tenantId}
           tenantSlug={recipeContext.tenantSlug}
@@ -432,6 +474,43 @@ function ModifierOptionRow({ option, basePrice, recipeContext, onRemove, onUpdat
         />
         <span className="text-xs">Default option</span>
       </label>
+    </div>
+  )
+}
+
+interface CostSourceToggleProps {
+  mode: CostMode | undefined
+  onSelect: (mode: CostMode) => void
+}
+
+/**
+ * Two-way choice for where an option's cost comes from. A legacy option (no
+ * mode) shows neither side pressed — the merchant has not chosen yet, and the
+ * legacy precedence rule still applies until they do.
+ */
+function CostSourceToggle({ mode, onSelect }: CostSourceToggleProps) {
+  const options: ReadonlyArray<{ mode: CostMode; label: string }> = [
+    { mode: 'simple', label: 'Manual' },
+    { mode: 'composite', label: 'Recipe' },
+  ]
+
+  return (
+    <div className="inline-flex rounded-md border p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.mode}
+          type="button"
+          aria-pressed={mode === o.mode}
+          onClick={() => onSelect(o.mode)}
+          className={
+            mode === o.mode
+              ? 'rounded px-3 py-1 text-xs font-medium bg-primary text-primary-foreground'
+              : 'rounded px-3 py-1 text-xs text-muted-foreground hover:bg-muted'
+          }
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   )
 }

@@ -15,6 +15,7 @@
 
 import type {
   Addon,
+  CostMode,
   ModifierGroup,
   ModifierOption,
   Variation,
@@ -80,6 +81,22 @@ export function setGroupRequired(group: ModifierGroup, required: boolean): Modif
     ...group,
     min_select: required ? Math.max(group.min_select, 1) : 0,
   }
+}
+
+/**
+ * Choose where an option's cost comes from: a number the merchant types
+ * ('simple') or its attached inventory recipe ('composite').
+ *
+ * `manual_cost` is deliberately preserved when switching to composite. The mode
+ * decides which cost is *used* (see resolveCostByMode), so the typed number is
+ * inert rather than wrong, and switching back restores it instead of silently
+ * discarding what the merchant entered. Stock tracking is untouched — costing by
+ * recipe and depleting stock by recipe are separate decisions.
+ *
+ * Returns a new option (never mutates).
+ */
+export function setOptionCostMode(option: ModifierOption, mode: CostMode): ModifierOption {
+  return { ...option, cost_mode: mode }
 }
 
 /**

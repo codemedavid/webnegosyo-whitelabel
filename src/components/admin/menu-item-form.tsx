@@ -29,6 +29,7 @@ import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductCostField } from '@/components/admin/product-cost-field'
 import { ProductCostFieldConvex } from '@/components/admin/product-cost-field-convex'
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
+import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -70,6 +71,9 @@ type FormErrors = {
 
 export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, inventoryEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
+  // Recipe-derived costs for the per-option margin display. No-ops when the
+  // tenant has no inventory or the item has not been saved yet.
+  const { optionRecipeCosts } = useMenuItemCosts(tenantId, item?.id, inventoryEnabled ?? false)
   const [formData, setFormData] = useState({
     name: item?.name || '',
     description: item?.description || '',
@@ -588,6 +592,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             menuItemId: item?.id,
             inventoryEnabled: inventoryEnabled ?? false,
           }}
+          optionRecipeCosts={optionRecipeCosts}
           headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
           onSaveGroupToLibrary={saveGroupToLibrary}
         />
