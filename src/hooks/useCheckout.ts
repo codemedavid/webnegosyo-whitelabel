@@ -48,6 +48,7 @@ import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/
 import { savePendingOrder } from '@/lib/qr-pending-order'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
+import { validateCheckoutFields } from '@/lib/checkout-field-validation'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
@@ -756,12 +757,13 @@ export function useCheckout(tenantSlug: string) {
   }
 
   const handleProceedToPayment = () => {
-    // Validate required fields
-    const requiredFields = formFields.filter(field => field.is_required)
-    const missingFields = requiredFields.filter(field => !customerData[field.field_name]?.trim())
+    // Validate presence AND format. The phone check uses the same normalizer as
+    // customer identity, so a number that would be dropped during capture is
+    // caught here instead of quietly costing the merchant a customer.
+    const fieldErrors = validateCheckoutFields(formFields, customerData)
 
-    if (missingFields.length > 0) {
-      toast.error(`Please fill in required fields: ${missingFields.map(f => f.field_label).join(', ')}`)
+    if (fieldErrors.length > 0) {
+      toast.error(fieldErrors.map(error => error.message).join('\n'))
       return
     }
 
