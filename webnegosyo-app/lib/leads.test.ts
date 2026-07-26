@@ -29,7 +29,16 @@ const QUALIFIED_LEAD = {
   status: "qualified",
 };
 
-const LOST_LEAD = { ...NEW_LEAD, id: "l3", name: "Cara Lim", status: "lost" };
+const LOST_LEAD = {
+  ...NEW_LEAD,
+  id: "l3",
+  name: "Cara Lim",
+  // Distinct contact details — sharing NEW_LEAD's email would make search
+  // matches ambiguous and mask a real filtering bug.
+  email: "cara@lim.ph",
+  phone: "09221110000",
+  status: "lost",
+};
 
 const ALL = [NEW_LEAD, QUALIFIED_LEAD, LOST_LEAD];
 
