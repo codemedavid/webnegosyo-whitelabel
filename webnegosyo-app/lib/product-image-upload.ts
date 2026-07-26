@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { TENANT_LOGO_FOLDER } from "./tenant-logo";
 
 const IMAGEKIT_UPLOAD_ENDPOINT = "https://upload.imagekit.io/api/v1/files/upload";
 
@@ -105,4 +106,9 @@ export async function uploadImage(
 /** Upload a menu item photo. Thin wrapper so existing call sites are unchanged. */
 export function uploadProductImage(image: PickedImage): Promise<ImageKitUploadResult> {
   return uploadImage(image, PRODUCT_IMAGE_FOLDER);
+}
+
+/** Upload a restaurant logo into its own folder. */
+export function uploadTenantLogo(image: PickedImage): Promise<ImageKitUploadResult> {
+  return uploadImage(image, TENANT_LOGO_FOLDER);
 }
