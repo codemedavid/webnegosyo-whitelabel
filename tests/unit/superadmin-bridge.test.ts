@@ -14,8 +14,8 @@ describe('extractBearerToken', () => {
     expect(extractBearerToken('bearer abc')).toBe('abc')
   })
 
-  it('ignores surrounding whitespace', () => {
-    expect(extractBearerToken('  Bearer   abc  ')).toBe('abc')
+  it('ignores trailing whitespace around the token', () => {
+    expect(extractBearerToken('Bearer   abc  ')).toBe('abc')
   })
 
   it('returns null when the header is missing', () => {

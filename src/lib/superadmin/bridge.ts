@@ -10,9 +10,13 @@
 //   - Staff create / remove / password reset (Supabase admin API)
 //   - AI menu parsing (OpenRouter key)
 //
-// Pure request-shaping only: token extraction, the action allowlist, and
-// payload validation. Authentication, authorization and the actual work happen
-// in the route handler, which re-verifies the caller's role server-side.
+// Pure request-shaping only: the action allowlist and payload validation;
+// bearer extraction is reused from lib/mcp-auth rather than duplicated.
+// Authentication, authorization and the actual work happen in the route
+// handler, which re-verifies the caller's role server-side.
+
+// Same parsing the MCP endpoint already uses — one bearer extractor, not two.
+export { extractBearerToken } from '@/lib/mcp-auth'
 
 export interface BridgeAction {
   /** Payload keys that must be present and non-blank. */
@@ -58,18 +62,6 @@ export const SUPERADMIN_BRIDGE_ACTIONS: Record<string, BridgeAction> = {
     requiredFields: ['text'],
     description: 'Parse raw menu text into structured categories and items',
   },
-}
-
-/**
- * Pull the token out of an Authorization header. Returns null rather than
- * throwing so the caller can answer 401 uniformly.
- */
-export function extractBearerToken(header: string | null): string | null {
-  if (!header) return null
-
-  const trimmed = header.trim()
-  const match = /^bearer\s+(\S+)\s*$/i.exec(trimmed)
-  return match ? match[1] : null
 }
 
 /**
