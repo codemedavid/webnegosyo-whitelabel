@@ -17,6 +17,7 @@
     "db:check": "node scripts/check-database.mjs",
     "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
     "db:backfill-customers": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers.ts",
+    "db:backfill-customers-convex": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers-convex.ts",
     "convex:prebundle": "node scripts/prebundle-convex.mjs"
   },
   "dependencies": {
