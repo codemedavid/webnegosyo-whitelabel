@@ -116,6 +116,33 @@ Wasted) on every ingredient row.
 | 18 | Low stock warns; an unset reorder level does not | same | unit | PASS | same |
 | 19 | The whole inventory + product-editor surface still passes | `npx jest "inventory\|recipe\|modifier\|menu-item\|addon"` | unit | PASS | 35 suites / 340 tests |
 | 20 | No type or boundary regression | `npm run build` | build | PASS | Compiled successfully |
+| 21 | The trigger keeps `current_qty` as a correct running total | in-database probe (below) | integration | PASS | 500 → 300 → 250 |
+| 22 | `balance_after` records the total as of each movement | same | integration | PASS | `250, 300, 500` |
+| 23 | A movement naming the wrong tenant is refused, not silently dropped | same | integration | PASS | raised; qty untouched at 0 |
+| 24 | RLS is enabled with both tenant policies | `pg_policies` / `pg_class` | integration | PASS | `rls_enabled: true`, 2 policies |
+
+### Migration applied and probed
+
+`20260726120000_inventory_stock_ledger.sql` was **applied** on 2026-07-26 via
+`mcp__supabase__apply_migration` → `{"success": true}`.
+
+The trigger — the load-bearing part of the concurrency argument above — was then
+exercised directly against the database inside a transaction that was rolled
+back, using a scratch tenant isolated from real data:
+
+```
+-- receive 500, waste -200, stocktake -50
+final_qty: 250.0000
+balances:  250.0000, 300.0000, 500.0000   -- balance_after per movement
+
+-- tenant B moving tenant A's stock
+guard held: Stock movement references an inventory item outside its tenant
+untouched_qty: 0.0000
+```
+
+Post-probe verification: `ledger_rows: 0`, `leftover_probe_tenants: 0`,
+`policies: 2`, `rls_enabled: true` — nothing leaked into real data.
+
 
 ## Coverage and known gaps
 
@@ -138,14 +165,6 @@ neither touched by this phase. Overall function coverage (37.5%) is below the
 
 **The significant gaps, stated plainly:**
 
-- **The migration is written but NOT APPLIED.** `stock_movements`, its trigger
-  and its RLS policies do not exist in any database yet. Until it is applied,
-  recording stock fails at runtime. Nothing in this phase has been exercised
-  against a real database.
-- **The trigger is untested.** The running-total update, the tenant-mismatch
-  guard, and `balance_after` are plain SQL with no test harness in this repo.
-  They are the load-bearing part of the concurrency argument above and are
-  currently only reasoned about, not proven.
 - **`recordStockMovement` has no service-level test.** The repo has no
   Supabase-mocking pattern for services (every existing service test is
   schema-only), so the fetch → resolve → insert → re-read sequence is unverified
