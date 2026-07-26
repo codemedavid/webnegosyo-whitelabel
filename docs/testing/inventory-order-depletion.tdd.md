@@ -133,9 +133,6 @@ end-to-end proof below, which exercises exactly those uncovered lines.
 
 **Gaps, stated plainly:**
 
-- **Modifier and addon recipes are not depleted** — see the constraint above.
-  Tenants who cost their modifiers will under-deplete until order items carry
-  ids.
 - **The three call sites are unverified by test.** `createOrderAction` is a
   ~400-line server action with no test harness; the wiring is proven only by the
   type checker and the live run below.
@@ -143,6 +140,11 @@ end-to-end proof below, which exercises exactly those uncovered lines.
   in `orders-service.ts` is the platform path; Convex and tenant-Supabase
   cancellations run through their own admin surfaces and do not reach it. Those
   orders still keep their ingredients spent when cancelled.
+- **Only the web checkout sends option ids.** `useCheckout` was updated; the two
+  mobile apps build their own order payloads and still send display strings
+  only, so their orders deplete base recipes only. The fields are optional, so
+  those clients are unaffected otherwise — they just under-deplete, as the whole
+  system did before this pass.
 - Prep ingredients are depleted as themselves, not exploded into their
   components — ordering a pizza reduces "Pizza Dough", not the flour inside it.
   Defensible (the dough was made earlier) but worth stating.
@@ -239,3 +241,84 @@ That file is untouched by this work (`git diff HEAD --name-only` → 0 files und
 | `7e584f8` | GREEN — idempotent depletion + cancellation restore |
 
 Lint: `npx eslint` over every changed file → clean.
+
+
+---
+
+## Follow-up 2: option-aware depletion and exact reversal
+
+The constraint recorded above — "order items carry no ids" — was true of the
+*order payload*, not of the cart. `selected_variations` holds whole option
+objects. The ids were being dropped on the way out, not missing.
+
+### Task 6 — Extract the ids before they are flattened
+
+`src/lib/inventory/order-item-selection.ts` pulls option and addon ids from a
+cart line; `useCheckout` sends them alongside the existing display strings.
+
+- **RED**: `npx jest --testPathPatterns="inventory-order-selection"`
+  → `Cannot find module '@/lib/inventory/order-item-selection'` (compile-time).
+- **GREEN**: same command → `Tests: 6 passed`.
+- **Both buckets get the same id set.** Variation options and unified modifier
+  options both arrive through `selected_variations` and the cart cannot tell
+  which recipe target an option belongs to. Ids are unique per option, so
+  whichever target exists matches and the other finds nothing.
+- **Options without ids are skipped**, not emitted as `undefined` — a legacy
+  cart saved before ids existed must not produce an id list full of holes.
+- **Purely additive**: `option_ids` / `addon_ids` are optional on the action, so
+  every existing caller keeps working unchanged.
+
+### Task 7 — Restore by reversing, not recomputing
+
+Making depletion option-aware turned the old recompute-based restore into a
+**drift bug**: a sale that spent base + option would have been restored as base
+only, leaving stock permanently short by the option's ingredients. I found this
+while wiring Task 6 rather than after shipping it.
+
+`reverseOrderStockMovements` reads the order's recorded `sale` rows and writes
+their exact negation. Restore cannot disagree with the sale because it is
+derived from it.
+
+- **RED**: `npx jest --testPathPatterns="inventory-order-stock-reverse"`
+  → `Tests: 4 failed`.
+- **GREEN**: same command → `4 passed`.
+- One test stub needed correcting mid-GREEN: it modelled a single read, but the
+  function makes two (sale rows, then the already-restored guard). The *mock*
+  was fixed to model both reads honestly; no assertion was weakened.
+
+### Live proof — a modifier option with its own recipe
+
+The exact case that was being missed. Base recipe 80 g cheese; modifier option
+"Add Truffle" 5 g truffle; 2 pizzas ordered with the option selected.
+
+```
+sale → {"movementCount":2,"skipped":[]}
+  Probe Cheese   1000 → 840   (sale: -160 = 2 × 80)
+  Probe Truffle   100 →  90   (sale:  -10 = 2 × 5)   ← previously untouched
+
+void → {"movementCount":2,"skipped":[]}
+  Probe Cheese   ledger: sale:-160 | void:160  → 1000
+  Probe Truffle  ledger: sale:-10  | void:10   →  100
+
+void (replay) → {"movementCount":0}  "Order already restored"
+```
+
+Both ingredients returned to exactly their starting figures. Scratch data
+removed: `probe_tenants_left: 0`, `ledger_rows_left: 0`.
+
+| # | What is guaranteed | Test | Type | Result | Evidence |
+|---|--------------------|------|------|--------|----------|
+| 19 | Option ids are extracted from grouped and legacy carts | `inventory-order-selection.test.ts` | unit | PASS | 6 passed |
+| 20 | Options lacking an id are skipped, not emitted as undefined | same | unit | PASS | same |
+| 21 | Grouped selections win when both cart shapes are present | same | unit | PASS | same |
+| 22 | Restore writes the exact negation of each recorded sale | `inventory-order-stock-reverse.test.ts` | unit | PASS | 4 passed |
+| 23 | Restore returns option ingredients, not just base | same + live | unit + integration | PASS | truffle 90 → 100 |
+| 24 | A modifier option's recipe is depleted on a real order | live run | integration | PASS | truffle 100 → 90 |
+| 25 | Restoring twice does not double-return | live run | integration | PASS | `movementCount: 0` |
+
+### Checkpoints
+
+| Commit | Stage |
+|---|---|
+| `5650bde` | RED — reproducers for option-aware depletion and exact reversal |
+| `8d66a0a` | GREEN — option/addon depletion + reversal-based restore |
