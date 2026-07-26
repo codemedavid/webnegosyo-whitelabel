@@ -7,7 +7,7 @@
  * movement against it.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 
@@ -156,8 +156,11 @@ describe('InventoryManager stock history', () => {
     fireEvent.click(screen.getByRole('button', { name: /stock/i }))
 
     expect(await screen.findByText(/Delivery #42/)).toBeInTheDocument()
-    expect(screen.getByText('Sold')).toBeInTheDocument()
-    expect(screen.getByText('Received')).toBeInTheDocument()
+    // Scoped to the history list: "Received" is also a reason button on the
+    // form above it, so an unscoped query would match either one.
+    const history = within(screen.getByRole('list'))
+    expect(history.getByText('Sold')).toBeInTheDocument()
+    expect(history.getByText('Received')).toBeInTheDocument()
     await waitFor(() =>
       expect(getStockMovementsAction).toHaveBeenCalledWith('t1', FLOUR.id),
     )

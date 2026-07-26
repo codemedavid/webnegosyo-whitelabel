@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { StockHistoryList } from '@/components/admin/stock-history-list'
 import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
 import {
   EMPTY_STOCK_DRAFT,
@@ -545,6 +546,11 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
                   value={stockDraft.note}
                   onChange={(e) => setStockDraft((d) => ({ ...d, note: e.target.value }))}
                 />
+              </div>
+
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-medium">Recent movements</p>
+                <StockHistoryList tenantId={tenantId} item={stockItem} units={units} />
               </div>
             </div>
           )}
