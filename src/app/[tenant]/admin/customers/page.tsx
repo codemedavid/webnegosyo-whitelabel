@@ -23,20 +23,25 @@ async function CustomersContent({
   tenantSlug: string
   page: number
 }) {
-  const { customers, pagination } = await getCustomersPage(tenantId, { page }).catch(() => ({
-    customers: [],
-    pagination: {
-      currentPage: 1,
-      totalPages: 0,
-      offset: 0,
-      limit: 50,
-      hasPreviousPage: false,
-      hasNextPage: false,
-      rangeStart: 0,
-      rangeEnd: 0,
-      totalCount: 0,
-    },
-  }))
+  // A failed read must NOT render as "no customers yet" — that made a broken
+  // permission or query indistinguishable from a genuinely empty list.
+  let result: Awaited<ReturnType<typeof getCustomersPage>>
+  try {
+    result = await getCustomersPage(tenantId, { page })
+  } catch (error) {
+    console.error('[customers] failed to load customers page', error)
+    return (
+      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6 text-center">
+        <p className="font-medium">We couldn&apos;t load your customers.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This is a problem on our side, not missing data. Please refresh — if it keeps
+          happening, contact support.
+        </p>
+      </div>
+    )
+  }
+
+  const { customers, pagination } = result
 
   const basePath = `/${tenantSlug}/admin/customers`
 
