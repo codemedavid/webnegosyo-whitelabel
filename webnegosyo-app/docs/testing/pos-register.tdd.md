@@ -300,3 +300,36 @@ typecheck and lint only — not by an executed test or a device run.
 | `809e70e` | RED — tile quantity badges |
 | `74e9f1a` | GREEN — tile quantity badges |
 | `3c828b4` | Redesign (presentational) |
+
+## Follow-up: product images on the register grid (2026-07-26)
+
+| Stage | Evidence |
+|---|---|
+| RED | `npx jest lib/image-thumb.test.ts` → `lib/image-thumb.test.ts:1:26 - error TS2307: Cannot find module './image-thumb'` — Test Suites: 1 failed |
+| GREEN | `npx jest lib/image-thumb.test.ts --coverage` → Tests: 10 passed; `image-thumb.ts` 100% stmts / 100% branch / 100% funcs / 100% lines |
+
+New guarantees (all `lib/image-thumb.test.ts`, unit, PASS):
+
+| # | What is guaranteed |
+|---|---|
+| 30 | A missing/blank url returns null so the tile draws initials instead |
+| 31 | ImageKit urls get `tr=w-<n>,q-70,f-auto` |
+| 32 | An existing `tr` is replaced, never stacked |
+| 33 | Other query params (e.g. `updatedAt`) survive the rewrite |
+| 34 | Cloudinary urls get the transformation inserted after `/upload/` |
+| 35 | A Cloudinary url with no `/upload/` segment is left untouched |
+| 36 | Unrecognised hosts and `file://` uris are left untouched |
+| 37 | A zero, negative, or NaN size emits no transformation |
+| 38 | A fractional size is rounded to whole pixels |
+
+Full suite: `npx jest` → 25 suites, 363 tests passed. `npx tsc --noEmit` → exit 0.
+
+Performance measures are structural, not measured: CDN resize (320px/q70),
+row-level FlatList virtualization, and Android-only `removeClippedSubviews`.
+No frame-time profiling has been run on a device — that remains unverified.
+
+| Commit | Stage |
+|---|---|
+| `82a4fe1` | RED — CDN thumbnail urls |
+| `0c32ab8` | GREEN — CDN thumbnail urls |
+| `dedb293` | Images on the grid + virtualization |
