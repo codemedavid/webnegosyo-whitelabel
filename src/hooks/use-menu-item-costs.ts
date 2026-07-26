@@ -11,7 +11,7 @@
  * intentional, and this is the layer that decides the editor keeps working.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getMenuItemCostAction } from '@/app/actions/inventory'
 
 export interface MenuItemCosts {
@@ -20,16 +20,22 @@ export interface MenuItemCosts {
   /** Recipe-derived cost of the item's base configuration, if it has a recipe. */
   baseRecipeCost: number | null
   isLoading: boolean
+  /** Re-read the costs — call after a recipe is saved so the display catches up. */
+  refresh: () => void
 }
 
-const NO_COSTS: MenuItemCosts = { optionRecipeCosts: {}, baseRecipeCost: null, isLoading: false }
+type CostState = Omit<MenuItemCosts, 'refresh'>
+
+const NO_COSTS: CostState = { optionRecipeCosts: {}, baseRecipeCost: null, isLoading: false }
 
 export function useMenuItemCosts(
   tenantId: string,
   menuItemId: string | undefined,
   inventoryEnabled: boolean,
 ): MenuItemCosts {
-  const [costs, setCosts] = useState<MenuItemCosts>(NO_COSTS)
+  const [costs, setCosts] = useState<CostState>(NO_COSTS)
+  const [reloadToken, setReloadToken] = useState(0)
+  const refresh = useCallback(() => setReloadToken((n) => n + 1), [])
 
   useEffect(() => {
     if (!menuItemId || !inventoryEnabled) {
@@ -60,7 +66,7 @@ export function useMenuItemCosts(
     return () => {
       isCurrent = false
     }
-  }, [tenantId, menuItemId, inventoryEnabled])
+  }, [tenantId, menuItemId, inventoryEnabled, reloadToken])
 
-  return costs
+  return { ...costs, refresh }
 }

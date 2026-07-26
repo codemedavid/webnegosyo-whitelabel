@@ -30,6 +30,8 @@ export interface ModifierRecipeContext {
   tenantSlug: string
   menuItemId?: string
   inventoryEnabled: boolean
+  /** Fired after an option's recipe is saved, so recipe costs can be re-read. */
+  onRecipeSaved?: () => void
 }
 
 interface ModifierGroupsEditorProps {
@@ -444,6 +446,7 @@ function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRem
           tenantSlug={recipeContext.tenantSlug}
           menuItemId={recipeContext.menuItemId}
           modifierOptionId={option.id}
+          onSaved={recipeContext.onRecipeSaved}
         />
       )}
 
