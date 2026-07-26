@@ -368,7 +368,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: spacing.md,
   },
-  eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   count: { ...typography.small, color: colors.textTertiary },
   searchRow: {
     flexDirection: "row",
