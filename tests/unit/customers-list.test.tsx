@@ -187,3 +187,67 @@ describe('CustomersList', () => {
     expect(within(detail).getByText(/Croissant/)).toBeInTheDocument()
   })
 })
+
+/**
+ * Owner-facing insights: the three questions a merchant actually asks about a
+ * regular — how often do they come back, what do they always order, and what
+ * are they worth. These are derived (see src/lib/customer-insights.ts) rather
+ * than stored, so the row must surface them without extra queries.
+ */
+describe('CustomersList — customer insights', () => {
+  it('shows how often a repeat customer orders', () => {
+    // 3 orders spanning 2026-01-01 -> 2026-07-01 (181 days) ≈ every 90 days.
+    render(<CustomersList customers={[makeCustomer()]} tenantSlug="acme" />)
+
+    expect(screen.getByTestId('customer-frequency-cust-1')).toHaveTextContent(/every ~90 days/i)
+  })
+
+  it('labels a one-order customer as first-time instead of inventing a cadence', () => {
+    const customer = makeCustomer({
+      order_count: 1,
+      first_order_at: '2026-07-01T08:00:00.000Z',
+      last_order_at: '2026-07-01T08:00:00.000Z',
+    })
+
+    render(<CustomersList customers={[customer]} tenantSlug="acme" />)
+
+    expect(screen.getByTestId('customer-frequency-cust-1')).toHaveTextContent(/first-time/i)
+  })
+
+  it('surfaces the favourite item on the collapsed row', () => {
+    const customer = makeCustomer({
+      top_items: [
+        { name: 'Croissant', quantity: 2 },
+        { name: 'Cold Brew', quantity: 11 },
+      ],
+    })
+
+    render(<CustomersList customers={[customer]} tenantSlug="acme" />)
+
+    expect(screen.getByTestId('customer-favorite-cust-1')).toHaveTextContent('Cold Brew')
+  })
+
+  it('omits the favourite when no items were recorded', () => {
+    render(
+      <CustomersList customers={[makeCustomer({ top_items: [] })]} tenantSlug="acme" />
+    )
+
+    expect(screen.queryByTestId('customer-favorite-cust-1')).not.toBeInTheDocument()
+  })
+
+  it('labels total spend as the customer lifetime value', () => {
+    render(<CustomersList customers={[makeCustomer()]} tenantSlug="acme" />)
+
+    const ltv = screen.getByTestId('customer-ltv-cust-1')
+    expect(ltv).toHaveTextContent('1,500')
+    expect(screen.getByText(/lifetime value/i)).toBeInTheDocument()
+  })
+
+  it('shows a projected 12-month value when a cadence exists', () => {
+    render(<CustomersList customers={[makeCustomer()]} tenantSlug="acme" />)
+
+    fireEvent.click(screen.getByText('Ana Cruz'))
+
+    expect(screen.getByTestId('customer-projected-ltv-cust-1')).toBeInTheDocument()
+  })
+})
