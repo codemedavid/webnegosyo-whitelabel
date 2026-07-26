@@ -16,7 +16,9 @@ jest.mock('@/components/admin/recipe-editor', () => ({ RecipeEditor: () => null 
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 
 const recordStockMovementAction = jest.fn()
+const getStockMovementsAction = jest.fn()
 jest.mock('@/app/actions/inventory', () => ({
+  getStockMovementsAction: (...a: unknown[]) => getStockMovementsAction(...a),
   createIngredientAction: jest.fn(),
   updateIngredientAction: jest.fn(),
   deleteIngredientAction: jest.fn(),
@@ -39,8 +41,24 @@ const FLOUR: InventoryItem = {
   created_at: '', updated_at: '',
 }
 
+const MOVEMENTS = [
+  {
+    id: 'mv-2', tenant_id: 't1', inventory_item_id: FLOUR.id, reason: 'sale' as const,
+    quantity_delta: -160, entered_quantity: 160, entered_unit_id: GRAM.id,
+    balance_after: 800, note: null, order_id: 'ord-1', created_at: '2026-07-26T02:00:00.000Z',
+  },
+  {
+    id: 'mv-1', tenant_id: 't1', inventory_item_id: FLOUR.id, reason: 'receive' as const,
+    quantity_delta: 960, entered_quantity: 960, entered_unit_id: GRAM.id,
+    balance_after: 960, note: 'Delivery #42', order_id: null,
+    created_at: '2026-07-25T02:00:00.000Z',
+  },
+]
+
 beforeEach(() => {
   recordStockMovementAction.mockReset()
+  getStockMovementsAction.mockReset()
+  getStockMovementsAction.mockResolvedValue({ success: true, data: MOVEMENTS })
   recordStockMovementAction.mockResolvedValue({
     success: true,
     data: { item: { ...FLOUR, current_qty: 1300 } },
@@ -117,5 +135,78 @@ describe('InventoryManager stock', () => {
     renderManager({ ...FLOUR, current_qty: 5000 })
 
     expect(screen.queryByText(/low stock/i)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Phase 4D — the ledger has been recording since 4A and displaying nothing.
+ * Without this, "why is this number wrong?" is answerable only in SQL.
+ */
+describe('InventoryManager stock history', () => {
+  it('does not read the ledger until the merchant opens the ingredient', () => {
+    // One request per ingredient on a 200-ingredient page would be absurd.
+    renderManager()
+
+    expect(getStockMovementsAction).not.toHaveBeenCalled()
+  })
+
+  it('lists what moved when the stock dialog opens', async () => {
+    renderManager()
+
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+
+    expect(await screen.findByText(/Delivery #42/)).toBeInTheDocument()
+    expect(screen.getByText('Sold')).toBeInTheDocument()
+    expect(screen.getByText('Received')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(getStockMovementsAction).toHaveBeenCalledWith('t1', FLOUR.id),
+    )
+  })
+
+  it('shows each movement signed, with the balance it left behind', async () => {
+    renderManager()
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+
+    expect(await screen.findByText('-160 g')).toBeInTheDocument()
+    expect(screen.getByText('+960 g')).toBeInTheDocument()
+    expect(screen.getByText(/800 g left/i)).toBeInTheDocument()
+  })
+
+  it('says so plainly when an ingredient has no history yet', async () => {
+    getStockMovementsAction.mockResolvedValue({ success: true, data: [] })
+    renderManager()
+
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+
+    expect(await screen.findByText(/no movements recorded yet/i)).toBeInTheDocument()
+  })
+
+  it('keeps the recording form usable when the history fails to load', async () => {
+    // History is a read. Losing it must not cost the merchant the ability to
+    // write — that would turn a display problem into a data-entry outage.
+    getStockMovementsAction.mockResolvedValue({ success: false, error: 'boom' })
+    renderManager()
+
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+
+    expect(await screen.findByText(/couldn.t load the history/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^record$/i })).toBeEnabled()
+  })
+
+  it('re-reads the ledger every time the dialog opens', async () => {
+    // Recording closes the dialog, so the refresh that matters is the next
+    // open. Caching the first read would show a merchant their own movement
+    // missing from the history it just went into.
+    renderManager()
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    await screen.findByText('Sold')
+
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
+    fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
+    await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+
+    await waitFor(() => expect(getStockMovementsAction).toHaveBeenCalledTimes(2))
   })
 })
