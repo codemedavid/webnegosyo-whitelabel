@@ -10,6 +10,7 @@ import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 
@@ -49,7 +50,10 @@ export default function PosSalesScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
-      <Text style={styles.eyebrow}>Today at the register</Text>
+      <View style={styles.headerRow}>
+        <WorkspaceSwitcher />
+        <Text style={styles.eyebrow}>Today at the register</Text>
+      </View>
 
       <View style={styles.drawer}>
         <Text style={styles.drawerLabel}>Expected in drawer</Text>
@@ -113,6 +117,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   drawer: {
     backgroundColor: colors.primary,

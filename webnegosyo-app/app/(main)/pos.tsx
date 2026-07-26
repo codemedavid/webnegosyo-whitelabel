@@ -33,6 +33,7 @@ import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
+import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 /** A product whose modifier groups have already been normalized. */
 interface RegisterItem {
@@ -199,7 +200,7 @@ export default function PosScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={styles.eyebrow}>Register</Text>
+          <WorkspaceSwitcher />
           <Text style={styles.count}>
             {visibleItems.length} {visibleItems.length === 1 ? "product" : "products"}
           </Text>
