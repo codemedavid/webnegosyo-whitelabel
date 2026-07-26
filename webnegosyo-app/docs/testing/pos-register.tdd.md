@@ -254,10 +254,15 @@ Checkpoint commits on `feat/unified-modifier-groups`, oldest first:
 | `ddde754` | GREEN — cash + cart engines |
 | `a0cafbd` | RED — receipt cash block + order builder |
 | `c8f1f20` | GREEN — receipt cash block + order builder |
-| (RED in body) | RED+GREEN — payment-method classification |
+| `432be6b` | RED — payment-method classification |
 | `94c6c74` | GREEN — payment-method classification |
-| `6882e4f` | RED+GREEN — folder-aware upload |
-| `4690a13` | RED+GREEN — drawer summary + all screens |
+| `6882e4f` | RED+GREEN — folder-aware upload (RED quoted in commit body) |
+| `4690a13` | RED+GREEN — drawer summary + all screens (RED quoted in body) |
+| `889d388` | pos-catalog coverage + this report |
+
+Note: commits from a concurrent session on this branch (inventory stock
+depletion) are interleaved with the above. Only the commits listed here belong
+to this work.
 
 If these are squashed, this file is the surviving record of what was verified
 and how.
