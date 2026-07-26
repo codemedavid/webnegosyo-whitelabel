@@ -78,19 +78,24 @@ function makeFakeSupabase(rows: FakeCustomerRow[], spy: QuerySpy) {
 }
 
 let spy: QuerySpy
+// Mutable so a test can vary the stored rows without re-mocking the module —
+// re-mocking mid-file leaks the replacement into every test that follows.
+let currentRows: FakeCustomerRow[]
 
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: jest.fn(async () => undefined),
 }))
 
 jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn(async () => makeFakeSupabase(ROWS, spy)),
+  createClient: jest.fn(async () => makeFakeSupabase(currentRows, spy)),
 }))
 
+beforeEach(() => {
+  spy = { ranges: [], orders: [], executions: 0 }
+  currentRows = ROWS
+})
+
 describe('getCustomersPage — query construction', () => {
-  beforeEach(() => {
-    spy = { ranges: [], orders: [], executions: 0 }
-  })
 
   it('returns the first page of customers instead of throwing', async () => {
     const { getCustomersPage } = await import('@/lib/customers-service')
@@ -127,10 +132,7 @@ describe('getCustomersPage — query construction', () => {
   })
 
   it('does not run the data query when there are no matching customers', async () => {
-    jest.resetModules()
-    jest.doMock('@/lib/supabase/server', () => ({
-      createClient: jest.fn(async () => makeFakeSupabase([], spy)),
-    }))
+    currentRows = []
 
     const { getCustomersPage } = await import('@/lib/customers-service')
     const result = await getCustomersPage('tenant_1', { page: 1 })
@@ -141,10 +143,6 @@ describe('getCustomersPage — query construction', () => {
 })
 
 describe('getCustomersByTenant — query construction', () => {
-  beforeEach(() => {
-    spy = { ranges: [], orders: [], executions: 0 }
-  })
-
   it('returns customers instead of throwing on the offset window', async () => {
     const { getCustomersByTenant } = await import('@/lib/customers-service')
 

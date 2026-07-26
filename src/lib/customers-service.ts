@@ -24,6 +24,7 @@ import {
   type CustomerOrderInput,
   type CustomerOrderItemInput,
 } from '@/lib/customer-identity'
+import { normalizePhoneE164 } from '@/lib/phone'
 import type { Customer } from '@/types/database'
 import type { CustomersPagination } from '@/lib/customers-pagination'
 
@@ -290,12 +291,16 @@ const SORT_COLUMN: Record<CustomersSort, string> = {
 /**
  * Apply the shared name/phone search filter + sort to a customers query.
  * Extracted so the list and the paginated read build the query identically.
+ *
+ * MUST stay synchronous. A PostgREST builder is thenable, so if this returned a
+ * promise, `await`ing it would chain into the builder — running the query and
+ * handing back `{ data, error }` instead of the builder. That is exactly the
+ * bug that made the Customers page crash with "query.range is not a function".
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function applyCustomerFilters(query: any, params?: CustomersListParams) {
+function applyCustomerFilters(query: any, params?: CustomersListParams) {
   const search = params?.search?.trim()
   if (search) {
-    const { normalizePhoneE164 } = await import('@/lib/phone')
     const phone = normalizePhoneE164(search)
     query = phone
       ? query.or(`name.ilike.%${search}%,phone_e164.eq.${phone}`)
@@ -321,7 +326,7 @@ export async function getCustomersByTenant(
   const supabase = await createClient()
 
   let query = supabase.from('customers').select('*').eq('tenant_id', tenantId)
-  query = await applyCustomerFilters(query, params)
+  query = applyCustomerFilters(query, params)
 
   const limit = params?.limit ?? 50
   const offset = params?.offset ?? 0
@@ -365,7 +370,7 @@ export async function getCustomersPage(
     .from('customers')
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
-  countQuery = await applyCustomerFilters(countQuery, params)
+  countQuery = applyCustomerFilters(countQuery, params)
   const { count, error: countError } = await countQuery
   if (countError) throw countError
 
@@ -376,7 +381,7 @@ export async function getCustomersPage(
   }
 
   let query = supabase.from('customers').select('*').eq('tenant_id', tenantId)
-  query = await applyCustomerFilters(query, params)
+  query = applyCustomerFilters(query, params)
   query = query.range(pagination.offset, pagination.offset + pagination.limit - 1)
 
   const { data, error } = await query
