@@ -90,6 +90,23 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon symbol="☰" color={color} />,
         }}
       />
+      {/* Register view */}
+      <Tabs.Screen
+        name="pos"
+        options={{
+          href: show("pos"),
+          tabBarLabel: "Register",
+          tabBarIcon: ({ color }) => <TabIcon symbol="◈" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="pos-sales"
+        options={{
+          href: show("pos-sales"),
+          tabBarLabel: "Drawer",
+          tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
+        }}
+      />
       {/* Insights view */}
       <Tabs.Screen
         name="analytics"
@@ -145,6 +162,10 @@ export default function MainLayout() {
       <Tabs.Screen
         name="order/[orderId]"
         options={{ href: null, title: "Order Detail" }}
+      />
+      <Tabs.Screen
+        name="pos-tender"
+        options={{ href: null, title: "Take Payment" }}
       />
       <Tabs.Screen
         name="printer-settings"
