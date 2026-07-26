@@ -6,7 +6,7 @@
  * or a failed load all mean "no recipe costs to show", never a broken form.
  */
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
 
 const getMenuItemCostAction = jest.fn()
@@ -67,5 +67,22 @@ describe('useMenuItemCosts', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.optionRecipeCosts).toEqual({})
+  })
+})
+
+describe('useMenuItemCosts refresh', () => {
+  it('re-reads the costs on demand, so saving a recipe updates the display', async () => {
+    // Arrange — first load has no recipe cost, then a recipe is attached.
+    getMenuItemCostAction
+      .mockResolvedValueOnce({ success: true, data: { ...BREAKDOWN, modifierOptionCosts: {} } })
+      .mockResolvedValueOnce({ success: true, data: BREAKDOWN })
+    const { result } = renderHook(() => useMenuItemCosts('t1', 'm1', true))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Act
+    act(() => result.current.refresh())
+
+    // Assert
+    await waitFor(() => expect(result.current.optionRecipeCosts).toEqual({ 'opt-large': 25 }))
   })
 })
