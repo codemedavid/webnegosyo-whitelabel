@@ -146,6 +146,41 @@ export async function getOrderById(orderId: string, tenantId: string) {
   return data as unknown as OrderWithItems
 }
 
+/**
+ * Put a cancelled order's ingredients back on the shelf.
+ *
+ * Best-effort and non-blocking: the cancellation itself has already been saved,
+ * and a stock write must never make an order un-cancellable. Reads the order's
+ * lines from the platform DB — this path serves platform-backed orders; Convex
+ * and tenant-Supabase cancellations are handled by their own admin surfaces and
+ * do not reach here (see the evidence report).
+ */
+async function restoreStockForCancelledOrder(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  orderId: string,
+  tenantId: string,
+): Promise<void> {
+  try {
+    const { data: lines } = await supabase
+      .from('order_items')
+      .select('menu_item_id, quantity')
+      .eq('order_id', orderId)
+      .eq('tenant_id', tenantId)
+
+    const items = ((lines ?? []) as Array<{ menu_item_id: string | null; quantity: number }>)
+      .filter((line) => Boolean(line.menu_item_id))
+      .map((line) => ({ menuItemId: line.menu_item_id as string, quantity: line.quantity }))
+
+    if (items.length === 0) return
+
+    const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+    await applyOrderStockBestEffort(tenantId, orderId, items, 'void')
+  } catch (error) {
+    console.error('[inventory] Failed to restore stock for cancelled order', orderId, error)
+  }
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
@@ -175,6 +210,18 @@ export async function updateOrderStatus(
   const { data, error } = await query
 
   if (error) throw error
+
+  // A cancelled order's ingredients go back on the shelf. Written as reversing
+  // 'void' movements through the same ledger, so the history shows the sale and
+  // its reversal rather than silently editing the original away.
+  //
+  // Guarded by the previous status: only an order that was not already
+  // cancelled can restore, so re-cancelling cannot return the stock twice (the
+  // service's own order+direction guard is the second line of defence).
+  const previousStatus = (existingOrder as unknown as Order | null)?.status
+  if (status === 'cancelled' && previousStatus !== 'cancelled') {
+    await restoreStockForCancelledOrder(supabase, orderId, tenantId)
+  }
 
   // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
   // trigger Lalamove order creation (async, don't wait)

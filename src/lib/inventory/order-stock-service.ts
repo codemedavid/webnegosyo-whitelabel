@@ -56,6 +56,23 @@ export async function applyOrderStockMovements(
   if (items.length === 0) return EMPTY_RESULT
   const supabase = createAdminClient()
 
+  // Idempotency. The order-creation path is retryable, and depleting twice
+  // would take stock down twice for one sale with two ledger rows each claiming
+  // to be the truth. Keyed on direction as well as order, so an order that was
+  // sold and then voided stays independently correct in both directions.
+  const { data: existing, error: existingError } = await supabase
+    .from('stock_movements')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+    .eq('reason', direction)
+    .limit(1)
+  if (existingError) throw existingError
+  if (existing && existing.length > 0) {
+    console.warn('[inventory] Stock movements already recorded for order', { orderId, direction })
+    return EMPTY_RESULT
+  }
+
   const menuItemIds = [...new Set(items.map((i) => i.menuItemId))]
   const { data: recipeRows, error: recipeError } = await supabase
     .from('recipes')
