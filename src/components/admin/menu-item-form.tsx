@@ -714,6 +714,13 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         onRemoveAddon={removeAddon}
         onUpdateAddon={updateAddon}
         headerAction={<AddonLibraryPicker tenantId={tenantId} onAttach={attachFromLibrary} />}
+        recipeContext={{
+          tenantId,
+          tenantSlug,
+          menuItemId: item?.id,
+          inventoryEnabled: inventoryEnabled ?? false,
+          onRecipeSaved: refreshCosts,
+        }}
       />
       </>
       )}
