@@ -3,6 +3,7 @@ import {
   cartTotals,
   clearCart,
   lineKey,
+  quantityByItem,
   removeLine,
   unitPrice,
   updateQty,
@@ -296,5 +297,43 @@ describe("validateSelection", () => {
 
   it("accepts an item with no modifier groups at all", () => {
     expect(validateSelection([], [])).toEqual({ valid: true, errors: {} });
+  });
+});
+
+describe("quantityByItem", () => {
+  const latte = {
+    menuItemId: "m-latte",
+    name: "Latte",
+    basePrice: 100,
+    quantity: 1,
+    selections: [] as PosCartSelection[],
+  };
+
+  it("returns an empty map for an empty cart", () => {
+    expect(quantityByItem([])).toEqual({});
+  });
+
+  it("counts units, not lines", () => {
+    const cart = addLine([], { ...latte, quantity: 3 });
+    expect(quantityByItem(cart)).toEqual({ "m-latte": 3 });
+  });
+
+  it("sums separate lines of the same item so the tile badge shows the true count", () => {
+    const cart = addLine(addLine([], { ...latte, quantity: 2 }), {
+      ...latte,
+      quantity: 1,
+      note: "no sugar",
+    });
+    expect(quantityByItem(cart)).toEqual({ "m-latte": 3 });
+  });
+
+  it("keeps different items separate", () => {
+    const cart = addLine(addLine([], latte), {
+      ...latte,
+      menuItemId: "m-mocha",
+      name: "Mocha",
+      quantity: 4,
+    });
+    expect(quantityByItem(cart)).toEqual({ "m-latte": 1, "m-mocha": 4 });
   });
 });
