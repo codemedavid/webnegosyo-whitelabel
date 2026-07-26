@@ -1,6 +1,12 @@
 import { useEffect } from "react";
 import { InteractionManager, Platform } from "react-native";
-import { Stack, router, useRootNavigationState, type ErrorBoundaryProps } from "expo-router";
+import {
+  Stack,
+  router,
+  useRootNavigationState,
+  useSegments,
+  type ErrorBoundaryProps,
+} from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
 import { usePrinterStore } from "../stores/printer-store";
@@ -119,20 +125,27 @@ function useAuthInit() {
 function useAuthRedirect() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
-  const convexUrl = useAuthStore((s) => s.convexUrl);
 
   const rootNavigationState = useRootNavigationState();
   const navigatorReady = rootNavigationState?.key != null;
+
+  // Which group we are already in, so a redirect only fires when it changes
+  // something. Re-dispatching router.replace("/(main)/...") while already on
+  // (main) remounts the tab navigator with a fresh, state-less route while its
+  // nested params are already marked consumed — react-navigation then calls
+  // TabRouter.getRehydratedState(undefined) and throws
+  // "Cannot read property 'stale' of undefined".
+  const group = useSegments()[0];
 
   useEffect(() => {
     if (isLoading || !navigatorReady) return;
 
     if (isAuthenticated) {
-      router.replace("/(main)/dashboard");
-    } else {
-      router.replace("/(auth)/login");
+      if (group !== "(main)") router.replace("/(main)/dashboard");
+      return;
     }
-  }, [isLoading, isAuthenticated, convexUrl, navigatorReady]);
+    if (group !== "(auth)") router.replace("/(auth)/login");
+  }, [isLoading, isAuthenticated, navigatorReady, group]);
 }
 
 function usePushNotifications() {
