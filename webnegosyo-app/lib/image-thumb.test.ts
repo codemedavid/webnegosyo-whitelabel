@@ -32,6 +32,11 @@ describe("thumbUrl", () => {
     );
   });
 
+  it("leaves a Cloudinary url without an upload segment untouched", () => {
+    const fetched = "https://res.cloudinary.com/demo/image/fetch/latte.jpg";
+    expect(thumbUrl(fetched, 200)).toBe(fetched);
+  });
+
   it("leaves a URL on an unrecognised host untouched", () => {
     const external = "https://example.com/photos/latte.jpg";
     expect(thumbUrl(external, 200)).toBe(external);
