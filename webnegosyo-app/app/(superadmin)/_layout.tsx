@@ -53,10 +53,18 @@ export default function SuperadminLayout() {
   // render this surface; merchants, restricted staff and the read-only demo
   // session are sent back to the merchant tree.
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
   useEffect(() => {
+    // The store starts as { isLoading: true, isSuperadmin: false }, so gating
+    // on the role alone fires this redirect during cold start — before auth has
+    // resolved. The root redirect then sends the session straight back here,
+    // remounting the Tabs navigator below while its nested params are already
+    // marked consumed; react-navigation then rehydrates from undefined state
+    // and throws "Cannot read property 'stale' of undefined".
+    if (isLoading) return;
     if (!isSuperadmin) router.replace("/(main)/dashboard");
-  }, [isSuperadmin]);
+  }, [isSuperadmin, isLoading]);
 
   return (
     <Tabs

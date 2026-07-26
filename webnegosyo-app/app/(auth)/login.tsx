@@ -86,9 +86,14 @@ export default function LoginScreen() {
         throw new Error(session.reason ?? "You do not have admin access");
       }
 
+      // Navigation is deliberately NOT dispatched here. Setting the store is
+      // enough: useAuthRedirect in the root layout owns post-auth routing and
+      // sends the session to its landing surface. Replacing from here as well
+      // races that hook — it re-fires against stale segments and replaces a
+      // second time, remounting the target tab navigator while its nested
+      // params are already consumed, which crashes react-navigation with
+      // "Cannot read property 'stale' of undefined".
       setAuth(session.auth);
-
-      router.replace(session.landingHref as Href);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Login failed";
