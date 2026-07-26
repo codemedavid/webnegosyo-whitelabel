@@ -85,10 +85,10 @@ describe('validateBridgePayload', () => {
   })
 
   it('names the missing field', () => {
-    const result = validateBridgePayload('convex-deploy', {})
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toMatch(/tenantId/)
+    expect(validateBridgePayload('convex-deploy', {})).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/tenantId/),
+    })
   })
 
   it('rejects a blank string as missing', () => {
@@ -103,10 +103,10 @@ describe('validateBridgePayload', () => {
   })
 
   it('rejects an unknown action outright', () => {
-    const result = validateBridgePayload('drop-tables', {})
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toMatch(/unknown action/i)
+    expect(validateBridgePayload('drop-tables', {})).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/unknown action/i),
+    })
   })
 
   it('accepts an action that requires no fields', () => {
