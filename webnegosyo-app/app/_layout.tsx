@@ -9,6 +9,13 @@ import {
 } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
+import {
+  MERCHANT_LANDING_HREF,
+  SUPERADMIN_LANDING_HREF,
+  needsTenantLookup,
+  resolveSession,
+  type TenantRow,
+} from "../lib/session-resolve";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
@@ -92,29 +99,26 @@ function useAuthInit() {
           return;
         }
 
-        const { data: tenant } = await supabase
-          .from("tenants")
-          .select("id, slug, name, convex_deployment_url")
-          .eq("id", appUser.tenant_id)
-          .single();
+        // A superadmin owns no tenant (tenant_id is NULL), so skip the lookup —
+        // querying by a null id would miss and read as a failed sign-in.
+        let tenant: TenantRow | null = null;
+        if (needsTenantLookup(appUser)) {
+          const { data: tenantRow } = await supabase
+            .from("tenants")
+            .select("id, slug, name, convex_deployment_url")
+            .eq("id", appUser.tenant_id)
+            .single();
+          tenant = (tenantRow as TenantRow | null) ?? null;
+        }
 
-        if (!tenant) {
+        const session = resolveSession(data.session.user.id, appUser, tenant);
+
+        if (session.mode === "denied" || !session.auth) {
           setAuth({ isLoading: false });
           return;
         }
 
-        setAuth({
-          userId: data.session.user.id,
-          tenantId: tenant.id,
-          tenantSlug: tenant.slug,
-          tenantName: tenant.name,
-          convexUrl: tenant.convex_deployment_url ?? null,
-          isLoading: false,
-          isAuthenticated: true,
-          isOwner: appUser.is_owner ?? false,
-          permissions: appUser.permissions ?? null,
-          role: appUser.role ?? null,
-        });
+        setAuth(session.auth);
       } catch {
         setAuth({ isLoading: false });
       }
@@ -125,6 +129,8 @@ function useAuthInit() {
 function useAuthRedirect() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
 
   const rootNavigationState = useRootNavigationState();
   const navigatorReady = rootNavigationState?.key != null;
@@ -141,11 +147,27 @@ function useAuthRedirect() {
     if (isLoading || !navigatorReady) return;
 
     if (isAuthenticated) {
-      if (group !== "(main)") router.replace("/(main)/dashboard");
+      // A superadmin belongs on the platform surface — unless they have opened
+      // a tenant, in which case the merchant tree is exactly where they want
+      // to be and this must not yank them back out.
+      const wantsPlatform = isSuperadmin && impersonatedTenantId === null;
+      const wantedGroup = wantsPlatform ? "(superadmin)" : "(main)";
+      if (group !== wantedGroup) {
+        router.replace(
+          wantsPlatform ? SUPERADMIN_LANDING_HREF : MERCHANT_LANDING_HREF
+        );
+      }
       return;
     }
     if (group !== "(auth)") router.replace("/(auth)/login");
-  }, [isLoading, isAuthenticated, navigatorReady, group]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    navigatorReady,
+    group,
+    isSuperadmin,
+    impersonatedTenantId,
+  ]);
 }
 
 function usePushNotifications() {
@@ -219,6 +241,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(main)" />
+        <Stack.Screen name="(superadmin)" />
       </Stack>
     </ConvexAuthProvider>
   );

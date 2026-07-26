@@ -14,6 +14,11 @@ import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
+import {
+  needsTenantLookup,
+  resolveSession,
+  type TenantRow,
+} from "../../lib/session-resolve";
 import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
 
 export default function LoginScreen() {
@@ -56,43 +61,34 @@ export default function LoginScreen() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("No user returned");
 
-      const { data: appUser, error: appUserError } = await supabase
+      const { data: appUser } = await supabase
         .from("app_users")
         .select("tenant_id, role, is_owner, permissions")
         .eq("user_id", authData.user.id)
         .in("role", ["admin", "superadmin"])
         .single();
 
-      if (appUserError || !appUser) {
-        await supabase.auth.signOut();
-        throw new Error("You do not have admin access");
+      // A superadmin owns no tenant, so skip a lookup that would always miss.
+      let tenant: TenantRow | null = null;
+      if (appUser && needsTenantLookup(appUser)) {
+        const { data: tenantRow } = await supabase
+          .from("tenants")
+          .select("id, slug, name, convex_deployment_url")
+          .eq("id", appUser.tenant_id)
+          .single();
+        tenant = (tenantRow as TenantRow | null) ?? null;
       }
 
-      const { data: tenant, error: tenantError } = await supabase
-        .from("tenants")
-        .select("id, slug, name, convex_deployment_url")
-        .eq("id", appUser.tenant_id)
-        .single();
+      const session = resolveSession(authData.user.id, appUser ?? null, tenant);
 
-      if (tenantError || !tenant) {
+      if (session.mode === "denied" || !session.auth || !session.landingHref) {
         await supabase.auth.signOut();
-        throw new Error("Tenant not found");
+        throw new Error(session.reason ?? "You do not have admin access");
       }
 
-      setAuth({
-        userId: authData.user.id,
-        tenantId: tenant.id,
-        tenantSlug: tenant.slug,
-        tenantName: tenant.name,
-        convexUrl: tenant.convex_deployment_url ?? null,
-        isLoading: false,
-        isAuthenticated: true,
-        isOwner: appUser.is_owner ?? false,
-        permissions: appUser.permissions ?? null,
-        role: appUser.role ?? null,
-      });
+      setAuth(session.auth);
 
-      router.replace("/(main)/dashboard");
+      router.replace(session.landingHref as Href);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Login failed";

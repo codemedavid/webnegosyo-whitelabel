@@ -8,6 +8,7 @@ import { isTabInWorkspace } from "../../lib/workspaces";
 import { isTabAllowed } from "../../lib/staff-permissions";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
+import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -58,6 +59,8 @@ export default function MainLayout() {
     <>
       {/* App-wide new-order ringtone — active on every tab, not just Dashboard. */}
       <GlobalOrderAlerts />
+      {/* Renders only while a superadmin is viewing another store. */}
+      <ImpersonationBanner />
       <Tabs
       screenOptions={{
         headerShown: false,

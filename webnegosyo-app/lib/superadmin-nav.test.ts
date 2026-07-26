@@ -97,14 +97,15 @@ describe("superadmin surface is role-gated", () => {
   });
 
   it("keeps the platform surface out of the merchant tab bar", () => {
+    // Route names may repeat across groups (both trees own a "dashboard"), so
+    // the invariant is that no merchant tab links into the (superadmin) group.
     const mainLayout = readFileSync(
       join(__dirname, "..", "app", "(main)", "_layout.tsx"),
       "utf8"
     );
+    const tabsBlock = mainLayout.slice(mainLayout.indexOf("<Tabs"));
 
-    for (const tab of SUPERADMIN_TABS) {
-      expect(mainLayout).not.toContain(`name="${tab.name}"`);
-    }
+    expect(tabsBlock).not.toContain("(superadmin)");
   });
 
   it("never routes the demo session into the platform surface", () => {

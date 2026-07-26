@@ -15,6 +15,14 @@ interface AuthState {
    * without an account and without altering real merchant data.
    */
   isDemo: boolean;
+  /**
+   * Platform superadmin. Their app_users row carries no tenant_id, so they sign
+   * in without a tenant attached and land on the (superadmin) surface. Stays
+   * true while impersonating a tenant — see lib/impersonation.ts.
+   */
+  isSuperadmin: boolean;
+  /** Tenant a superadmin is currently viewing; null on the platform surface. */
+  impersonatedTenantId: string | null;
   /** Tenant owner — full access. Staff accounts are false. */
   isOwner: boolean;
   /** Per-feature permission keys; null = full access (owner/legacy admins). */
@@ -33,6 +41,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
+  isSuperadmin: false,
+  impersonatedTenantId: null,
   isOwner: false,
   permissions: null,
   role: null,
@@ -47,6 +57,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,
+      isSuperadmin: false,
+      impersonatedTenantId: null,
       isOwner: false,
       permissions: null,
       role: null,
