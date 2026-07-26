@@ -1,4 +1,4 @@
-# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–2)
+# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–3)
 
 **Source plan**: no `*.plan.md` artifact; journeys were derived from the inline
 plan agreed in-session (superadmin dashboard on the merchant app, tenant
@@ -87,6 +87,35 @@ contained no superadmin tab *name*, which fails because both trees legitimately
 own a route called `dashboard`. The assertion now expresses the actual
 invariant — no merchant tab links into the `(superadmin)` group.
 
+### Task 5 — Tenant editor form logic and screen (Phase 3)
+
+Six tabs mirroring the web editor minus branding, which the user removed from
+scope. Verified beforehand that this is safe: every color / template / brand /
+font column on `tenants` is nullable or carries a DB default, so creating and
+editing from the app without them violates no constraint.
+
+- **Validation command**: `npx jest lib/tenant-form.test.ts`
+- **RED**: `TS2307: Cannot find module './tenant-form'` (commit `f18ae1d`)
+- **GREEN**: `Tests: 45 passed, 45 total` (commit `a4d677c`)
+- **Coverage follow-up**: added the all-null "freshly created tenant" case,
+  taking branch coverage on `lib/tenant-form.ts` from 80.35% to 96.42%
+  (`Tests: 48 passed`, commit `6ea665c`). No production code changed, so this
+  step had no RED gate — it closes a coverage gap in existing fallbacks.
+- **Guaranteed**: no branding column is ever read or written; the primary key
+  is never in the payload; empty numeric fields persist as `null` rather than
+  `NaN`; reserved subdomains (`www`, `superadmin`, `app`, `admin`) are rejected
+  because `src/middleware.ts` routes them to the platform; Lalamove and
+  distance-delivery fields are only required once their feature is on; a zero
+  delivery radius is rejected because it would place every address out of
+  range; and the checkout upsell cannot outlive menu engineering in either
+  direction.
+
+The screen (`app/(superadmin)/tenant/[id].tsx`) writes General, Features,
+Integrations and Delivery directly to Supabase under the superadmin's RLS
+grant. Team lists staff read-only and Import is a placeholder; both state on
+screen that they need the Phase 5 service-role bridge rather than presenting
+controls that cannot work.
+
 ## Test specification
 
 | # | What is guaranteed | Test file | Type | Result |
@@ -105,24 +134,34 @@ invariant — no merchant tab links into the `(superadmin)` group.
 | 12 | The landing href always names a real registered tab | `lib/superadmin-nav.test.ts:agrees with the post-sign-in landing route` | unit | PASS |
 | 13 | Every registered tab ships a screen and is declared in the layout | `lib/superadmin-nav.test.ts:superadmin screens` | unit | PASS |
 | 14 | The platform surface is role-gated, absent from the merchant tab bar, and unreachable from the demo path | `lib/superadmin-nav.test.ts:superadmin surface is role-gated` | unit | PASS |
+| 15 | The editor never reads or writes a branding column | `lib/tenant-form.test.ts:never writes a branding column` | unit | PASS |
+| 16 | The editor opens cleanly on a freshly created, all-null tenant | `lib/tenant-form.test.ts:toFormValues — a freshly created tenant` | unit | PASS |
+| 17 | Empty numeric fields persist as null, never NaN | `lib/tenant-form.test.ts:writes an empty numeric field back as null, not NaN` | unit | PASS |
+| 18 | Reserved subdomains are rejected as slugs | `lib/tenant-form.test.ts:rejects the reserved subdomain %s` | unit | PASS |
+| 19 | Delivery credentials and fees are required only once their feature is on | `lib/tenant-form.test.ts:validateTenantForm — delivery` | unit | PASS |
+| 20 | The checkout upsell cannot outlive menu engineering in either direction | `lib/tenant-form.test.ts:applyFeatureToggle` | unit | PASS |
 
 ## Coverage
 
 ```
 npx jest lib/session-resolve.test.ts lib/impersonation.test.ts \
-  lib/tenant-list.test.ts lib/superadmin-nav.test.ts --coverage …
+  lib/tenant-list.test.ts lib/superadmin-nav.test.ts \
+  lib/tenant-form.test.ts --coverage …
 
 File                | % Stmts | % Branch | % Funcs | % Lines
-All files           |     100 |      100 |     100 |     100
+All files           |   99.25 |    96.42 |     100 |     100
  impersonation.ts   |     100 |      100 |     100 |     100
  session-resolve.ts |     100 |      100 |     100 |     100
  superadmin-nav.ts  |     100 |      100 |     100 |     100
+ tenant-form.ts     |   98.57 |    96.42 |     100 |     100
  tenant-list.ts     |     100 |      100 |     100 |     100
 
-Tests: 79 passed, 79 total
+Tests: 127 passed, 127 total
 ```
 
-100% on all four new modules, against the project's 80% floor.
+Against the project's 80% floor. The two residual uncovered branches in
+`tenant-form.ts` are the non-finite fallbacks in `inputToNumber` and
+`checkCoordinate`, which validation already rejects upstream.
 
 `npx tsc --noEmit` reports no errors in any file touched by this work.
 
@@ -133,9 +172,13 @@ Tests: 79 passed, 79 total
   source-level guardrails, matching the existing `workspace-switcher-mount`
   pattern. The sign-in and impersonation flows still need one manual pass on a
   device.
-- **Phases 3–6 are not started**: the tenant editor (6 tabs; branding excluded
-  per the user), the leads RLS migration, the `/api/superadmin/*` bridge for
-  service-role operations, and platform analytics.
+- **Team and Import tabs are not functional.** Team lists staff read-only;
+  adding, removing and password resets need the service-role bridge, as does
+  AI menu import. Both tabs say so on screen.
+- **Phases 4–6 are not started**: the leads RLS migration (those policies read
+  `raw_user_meta_data`, which is NULL for this superadmin, so leads screens
+  would read empty), the `/api/superadmin/*` bridge for service-role
+  operations, and platform analytics.
 - **Unrelated failures in the shared worktree.** `lib/products.test.ts` has 3
   failing tests from a concurrent session's in-flight `modifier-groups` work
   (`products.ts` is modified but uncommitted; their RED commit is `2d28661`).
@@ -157,3 +200,7 @@ proof. Checkpoint sequence on `feat/unified-modifier-groups`:
 | `a3b7797` | RED — tenant list reproducer |
 | `a1ff343` | GREEN — tenant list (20/20) |
 | `c60cc0a` | GREEN — superadmin surface, screens and wiring (19/19) |
+| `f18ae1d` | RED — tenant editor form reproducer |
+| `a4d677c` | GREEN — tenant editor form logic (45/45) |
+| `b253b71` | GREEN — tenant editor screen (124/124 across five suites) |
+| `6ea665c` | Coverage — all-null tenant case (branches 80.35% -> 96.42%) |
