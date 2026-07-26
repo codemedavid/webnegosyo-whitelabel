@@ -132,22 +132,90 @@ queries. It has also never run against a real database.
 
 **Gaps, stated plainly:**
 
-- **Depletion has not been observed working end to end.** No test and no manual
-  run has placed an order and watched stock go down. The pieces are proven
-  individually; the whole is not.
 - **Modifier and addon recipes are not depleted** — see the constraint above.
   Tenants who cost their modifiers will under-deplete until order items carry
   ids.
-- **Nothing returns stock when an order is cancelled.** `applyOrderStockMovements`
-  takes a `'void'` direction and writes reversing movements, but no caller
-  invokes it — `updateOrderStatus` was not touched. A cancelled order currently
-  keeps its ingredients spent.
-- **No idempotency.** Nothing stops the same order depleting twice if the
-  creation path were ever retried. `order_id` is recorded on every movement, so
-  the fix is a uniqueness check, but it is not there.
 - **The three call sites are unverified by test.** `createOrderAction` is a
   ~400-line server action with no test harness; the wiring is proven only by the
-  type checker.
+  type checker and the live run below.
+- **Cancellation restore only covers platform-backed orders.** `updateOrderStatus`
+  in `orders-service.ts` is the platform path; Convex and tenant-Supabase
+  cancellations run through their own admin surfaces and do not reach it. Those
+  orders still keep their ingredients spent when cancelled.
+- Prep ingredients are depleted as themselves, not exploded into their
+  components — ordering a pizza reduces "Pizza Dough", not the flour inside it.
+  Defensible (the dough was made earlier) but worth stating.
+
+---
+
+## Follow-up: end-to-end proof, idempotency, and cancellation restore
+
+Three gaps above are now closed. Recorded here rather than in a new report
+because they finish this phase's work.
+
+### Live end-to-end run
+
+The real `applyOrderStockMovements` was executed against the live database via
+`ts-node`, using a scratch tenant built for the purpose. The fixture deliberately
+stocked flour in **grams** while the recipe measured it in **kilograms**, so the
+run proves unit conversion on the depletion path rather than just arithmetic.
+
+```
+3 × E2E Pizza, recipe = 0.2 kg flour per pizza, flour stocked in grams
+→ {"mode":"sale","movementCount":1,"skipped":[]}
+
+current_qty: 10000 → 9400
+quantity_delta: -600.0000        (0.6 kg converted to the gram stock unit)
+entered_quantity: 0.6000, entered_unit: kg   (what the recipe said, kept for audit)
+balance_after: 9400.0000, order_id recorded
+```
+
+This is the success path (four chained queries plus the insert) that had never
+executed. It works, and it converts correctly.
+
+### Idempotency — Task 4
+
+- **RED**: `npx jest --testPathPatterns="inventory-order-stock-guards"`
+  → `Tests: 2 failed, 1 passed`. (The passing one holds vacuously before the
+  guard exists — it asserts the guard is *not* hit.)
+- **GREEN**: same command → `3 passed`.
+- The guard is keyed on **order + direction**, not order alone, so an order that
+  was sold and then voided stays independently correct in both directions. A
+  test pins that a `void` check queries `reason = 'void'`.
+- One earlier characterization test had asserted the first table read was
+  `recipes`; the guard now reads first. That assertion was updated to the new
+  intended order (`['stock_movements', 'recipes']`) rather than worked around.
+
+### Cancellation restore — Task 5
+
+`updateOrderStatus` now writes reversing `void` movements when an order moves to
+`cancelled`, through the same ledger — so the history shows the sale *and* its
+reversal rather than silently editing the original away.
+
+Double-guarded: the caller checks the order was not already cancelled, and the
+service's own order+direction guard is the second line of defence.
+
+### Live proof of both
+
+```
+sale  (again, same order) → movementCount: 0   "already recorded ... direction: sale"
+void  (restore)           → movementCount: 1
+void  (again)             → movementCount: 0   "already recorded ... direction: void"
+
+ledger:   sale:-600.0000→9400.0000 | void:600.0000→10000.0000
+final_qty: 10000.0000    (back to the starting figure)
+rows:      2             (from 4 calls — two were blocked)
+```
+
+Scratch data removed afterwards: `probe_tenants_left: 0`, `ledger_rows_left: 0`.
+
+| # | What is guaranteed | Test | Type | Result | Evidence |
+|---|--------------------|------|------|--------|----------|
+| 14 | Depletion works end to end, converting units correctly | live run | integration | PASS | 10000 → 9400, −600 g from 0.6 kg |
+| 15 | The same order cannot deplete twice | `inventory-order-stock-guards.test.ts` + live | unit + integration | PASS | `movementCount: 0` on replay |
+| 16 | The guard keys on direction, not just order | same | unit | PASS | queries `reason = 'void'` |
+| 17 | Cancelling an order returns its ingredients | live run | integration | PASS | `void:+600 → 10000` |
+| 18 | Restoring twice does not double-return stock | live run | integration | PASS | second void → `movementCount: 0` |
 - Prep ingredients are depleted as themselves, not exploded into their
   components — ordering a pizza reduces "Pizza Dough", not the flour inside it.
   Defensible (the dough was made earlier) but worth stating.
@@ -166,5 +234,7 @@ That file is untouched by this work (`git diff HEAD --name-only` → 0 files und
 |---|---|
 | `36fa7ff` | RED — reproducer for order-driven stock depletion |
 | `8ce2ca7` | GREEN — depletion resolver, ledger writes, and backend wiring |
+| `06fea3f` | RED — reproducer for idempotency and the direction-keyed guard |
+| `7e584f8` | GREEN — idempotent depletion + cancellation restore |
 
 Lint: `npx eslint` over every changed file → clean.
