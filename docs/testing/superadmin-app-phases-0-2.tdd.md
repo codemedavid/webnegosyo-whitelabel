@@ -1,4 +1,4 @@
-# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–3)
+# TDD Evidence — Superadmin mode in `webnegosyo-app` (Phases 0–4)
 
 **Source plan**: no `*.plan.md` artifact; journeys were derived from the inline
 plan agreed in-session (superadmin dashboard on the merchant app, tenant
@@ -116,6 +116,47 @@ grant. Team lists staff read-only and Import is a placeholder; both state on
 screen that they need the Phase 5 service-role bridge rather than presenting
 controls that cannot work.
 
+### Task 6 — Sales lead pipeline and RLS alignment (Phase 4)
+
+Checked the live policies before writing anything, and the real state differed
+from what the plan assumed:
+
+```
+select tablename, policyname, qual from pg_policies where tablename in (…);
+select relname, relrowsecurity, policy_count from pg_class …;
+
+leads                     RLS on, 1 policy on auth.users.raw_user_meta_data
+lead_notes                RLS on, 0 policies  -> denies everyone
+lead_status_history       RLS on, 0 policies  -> denies everyone
+checkout_leads            RLS on, already app_users-based
+platform_payment_methods  RLS on, already app_users-based
+checkout_lead_status_history  does not exist in the database
+```
+
+So the migration is narrower than planned (checkout leads needed nothing) and
+also wider (two tables were unreachable by anyone but service role, not just by
+the superadmin). `raw_user_meta_data->>'role'` is NULL for every user in this
+project, so the `leads` policy grants access to nobody; the web console works
+only because its server actions use the service-role client.
+
+- **Validation command**: `npx jest lib/leads.test.ts`
+- **RED**: `TS2307: Cannot find module './leads'` (commit `62fe8bc`)
+- **GREEN**: `Tests: 25 passed, 25 total` (commit `a1d5d60`)
+- **Nav RED**: `lib/superadmin-nav.test.ts` "defines the platform tabs" failed
+  with the three-tab registry against a four-tab expectation — a runtime RED,
+  1 failed / 18 passed (commit `b7b4ac2`)
+- **Nav GREEN**: back to 19/19; full app suite 539/539 (commit `e5bb392`)
+- **Guaranteed**: status keys match the `leads.status` CHECK constraint, so a
+  schema change breaks the build rather than the screen; a converted or lost
+  lead offers no further transition, which stops the funnel counts being
+  corrupted by a reopen; no transition ever offers the status the lead already
+  holds; search spans name, email and phone.
+
+A fixture was corrected here rather than the implementation: the lost-lead
+fixture spread the new-lead fixture and inherited its email, so a search for
+"ana" legitimately matched two leads. Distinct contact details keep the
+case-insensitivity assertion honest.
+
 ## Test specification
 
 | # | What is guaranteed | Test file | Type | Result |
@@ -140,6 +181,10 @@ controls that cannot work.
 | 18 | Reserved subdomains are rejected as slugs | `lib/tenant-form.test.ts:rejects the reserved subdomain %s` | unit | PASS |
 | 19 | Delivery credentials and fees are required only once their feature is on | `lib/tenant-form.test.ts:validateTenantForm — delivery` | unit | PASS |
 | 20 | The checkout upsell cannot outlive menu engineering in either direction | `lib/tenant-form.test.ts:applyFeatureToggle` | unit | PASS |
+| 21 | Lead status keys match the database CHECK constraint | `lib/leads.test.ts:matches the database status check constraint` | unit | PASS |
+| 22 | A converted or lost lead offers no further transition | `lib/leads.test.ts:allowedNextStatuses` | unit | PASS |
+| 23 | Lead search spans name, email and phone | `lib/leads.test.ts:filterLeads` | unit | PASS |
+| 24 | Pipeline counters are correct, including an empty pipeline | `lib/leads.test.ts:summarizeLeads` | unit | PASS |
 
 ## Coverage
 
@@ -149,14 +194,14 @@ npx jest lib/session-resolve.test.ts lib/impersonation.test.ts \
   lib/tenant-form.test.ts --coverage …
 
 File                | % Stmts | % Branch | % Funcs | % Lines
-All files           |   99.25 |    96.42 |     100 |     100
  impersonation.ts   |     100 |      100 |     100 |     100
+ leads.ts           |     100 |    91.66 |     100 |     100
  session-resolve.ts |     100 |      100 |     100 |     100
  superadmin-nav.ts  |     100 |      100 |     100 |     100
  tenant-form.ts     |   98.57 |    96.42 |     100 |     100
  tenant-list.ts     |     100 |      100 |     100 |     100
 
-Tests: 127 passed, 127 total
+Tests: 154 passed, 154 total
 ```
 
 Against the project's 80% floor. The two residual uncovered branches in
@@ -175,10 +220,11 @@ Against the project's 80% floor. The two residual uncovered branches in
 - **Team and Import tabs are not functional.** Team lists staff read-only;
   adding, removing and password resets need the service-role bridge, as does
   AI menu import. Both tabs say so on screen.
-- **Phases 4–6 are not started**: the leads RLS migration (those policies read
-  `raw_user_meta_data`, which is NULL for this superadmin, so leads screens
-  would read empty), the `/api/superadmin/*` bridge for service-role
-  operations, and platform analytics.
+- **Migration `20260727000000_leads_rls_app_users.sql` is NOT applied.** The
+  leads screens will return permission errors until it is. Applying it changes
+  production RLS, so it is left for explicit approval.
+- **Phases 5–6 are not started**: the `/api/superadmin/*` bridge for
+  service-role operations, and platform analytics.
 - **Unrelated failures in the shared worktree.** `lib/products.test.ts` has 3
   failing tests from a concurrent session's in-flight `modifier-groups` work
   (`products.ts` is modified but uncommitted; their RED commit is `2d28661`).
@@ -204,3 +250,7 @@ proof. Checkpoint sequence on `feat/unified-modifier-groups`:
 | `a4d677c` | GREEN — tenant editor form logic (45/45) |
 | `b253b71` | GREEN — tenant editor screen (124/124 across five suites) |
 | `6ea665c` | Coverage — all-null tenant case (branches 80.35% -> 96.42%) |
+| `62fe8bc` | RED — lead pipeline reproducer |
+| `a1d5d60` | GREEN — lead pipeline logic (25/25) |
+| `b7b4ac2` | RED — Leads tab expectation + RLS migration |
+| `e5bb392` | GREEN — leads surface (539/539 full suite) |
