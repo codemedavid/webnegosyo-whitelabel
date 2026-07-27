@@ -172,6 +172,23 @@ export function describeOutletRepositoryContract(
         await expect(repo.create(TENANT, input({ longitude: 200 }))).rejects.toThrow(/longitude/i)
       })
 
+      it('rejects a negative delivery radius', async () => {
+        await expect(repo.create(TENANT, input({ delivery_radius_km: -1 }))).rejects.toThrow(
+          /radius/i
+        )
+      })
+
+      it('accepts a zero delivery radius, which means unrestricted', async () => {
+        const created = await repo.create(TENANT, input({ delivery_radius_km: 0 }))
+        expect(created.delivery_radius_km).toBe(0)
+      })
+
+      it('rejects an outlet left with only a longitude', async () => {
+        await expect(repo.create(TENANT, input({ latitude: null }))).rejects.toThrow(
+          /both latitude and longitude/i
+        )
+      })
+
       it('accepts an outlet with no coordinates at all', async () => {
         const created = await repo.create(TENANT, input({ latitude: null, longitude: null }))
         expect(created.latitude).toBeNull()
@@ -225,6 +242,20 @@ export function describeOutletRepositoryContract(
       it('refuses to update another tenant’s outlet', async () => {
         await expect(repo.update(OTHER_TENANT, existing.id, { name: 'Hijack' })).rejects.toThrow(
           /not found/i
+        )
+      })
+
+      it('rejects a patch that turns off the last remaining fulfillment mode', async () => {
+        // Only catchable after merging: the patch alone looks harmless.
+        await repo.update(TENANT, existing.id, { supports_pickup: false })
+        await expect(
+          repo.update(TENANT, existing.id, { supports_delivery: false })
+        ).rejects.toThrow(/pickup or delivery/i)
+      })
+
+      it('rejects a patch that clears half a coordinate pair', async () => {
+        await expect(repo.update(TENANT, existing.id, { latitude: null })).rejects.toThrow(
+          /both latitude and longitude/i
         )
       })
 

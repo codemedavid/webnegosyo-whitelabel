@@ -136,6 +136,19 @@ describe('rankOutlets — pickup with a known location', () => {
     expect(result.outlets[1].distanceKm).toBeNull()
   })
 
+  it('keeps located outlets ahead of unlocatable ones regardless of input order', () => {
+    // Guards both directions of the located-vs-unlocatable comparison.
+    const noCoords = makeOutlet({ id: 'no-coords', sort_order: 0 })
+    expect(ids(rankOutlets([noCoords, BGC], { mode: 'pickup', origin: MAKATI }))).toEqual([
+      'bgc',
+      'no-coords',
+    ])
+    expect(ids(rankOutlets([BGC, noCoords], { mode: 'pickup', origin: MAKATI }))).toEqual([
+      'bgc',
+      'no-coords',
+    ])
+  })
+
   it('never preselects an outlet with unknown coordinates when a located one exists', () => {
     const noCoords = makeOutlet({ id: 'no-coords', sort_order: 0 })
     const result = rankOutlets([noCoords, BGC], { mode: 'pickup', origin: MAKATI })
