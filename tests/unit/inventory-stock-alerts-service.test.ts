@@ -323,6 +323,67 @@ describe('processStockLevelChanges — auto-86 recovery', () => {
     expect(tables.menu_items.calls.update).toBeDefined()
   })
 
+  /**
+   * Phase 7 — auto-86 and its recovery have to agree on where the line is.
+   *
+   * Auto-86 fires on `out` and nothing else. Recovery was gated on reaching
+   * `ok`, so a partial delivery that left an ingredient below its reorder level
+   * put flour back in the kitchen while the dish it makes stayed hidden. The
+   * merchant could cook it, customers could not order it, and the alert banner
+   * said only "low" — nothing anywhere said the dish was off.
+   */
+  describe('a partial restock, below the reorder level', () => {
+    const PARTIAL_RESTOCK = new Map([['flour', 10]])
+
+    it('brings the dish back, because an ingredient that is merely low can still be cooked', async () => {
+      const tables = wireRecovery(FLAGS_ALL_ON)
+
+      const result = await processStockLevelChanges('t1', EMPTY_FLOUR, PARTIAL_RESTOCK)
+
+      expect(result.menuItemsReEnabled).toEqual(['menu-1'])
+      expect(tables.menu_items.calls.update?.[0][0]).toMatchObject({
+        is_available: true,
+        auto_disabled_at: null,
+      })
+    })
+
+    it('leaves the low-stock alert open, because the merchant still needs to reorder', async () => {
+      // The mirror of the bug: fixing recovery must not start closing alerts
+      // early. Availability asks "can this be made?"; the alert asks "should
+      // more be ordered?" — a partial delivery answers only the first.
+      const tables = wire({
+        tenants: table(FLAGS_ALL_ON),
+        stock_alerts: table([{ id: 'a1', inventory_item_id: 'flour' }]),
+        recipe_components: table([
+          { id: 'c1', recipe_id: 'r-base', inventory_item_id: 'flour', tenant_id: 't1' },
+        ]),
+        recipes: table([
+          { id: 'r-base', target_type: 'menu_item', menu_item_id: 'menu-1', tenant_id: 't1' },
+        ]),
+        inventory_items: table([{ id: 'flour', current_qty: 0, reorder_level: 20 }]),
+        menu_items: table([{ id: 'menu-1' }]),
+      })
+
+      const result = await processStockLevelChanges('t1', EMPTY_FLOUR, PARTIAL_RESTOCK)
+
+      expect(result.alertsResolved).toBe(0)
+      expect(tables.stock_alerts.calls.update).toBeUndefined()
+    })
+
+    it('still resolves the alert once the delivery clears the reorder level', async () => {
+      const tables = wire({
+        tenants: table(FLAGS_ALL_ON),
+        stock_alerts: table([{ id: 'a1', inventory_item_id: 'flour' }]),
+        inventory_items: table([{ id: 'flour', current_qty: 0, reorder_level: 20 }]),
+      })
+
+      const result = await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+      expect(result.alertsResolved).toBe(1)
+      expect(tables.stock_alerts.calls.update).toBeDefined()
+    })
+  })
+
   it('keeps a dish off the menu while a second base ingredient is still out', async () => {
     // Reads the untouched ingredient from the database, but trusts the applied
     // delta for the one that just moved — re-reading that row would race the
