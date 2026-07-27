@@ -465,7 +465,14 @@ describe("deleteProduct", () => {
 });
 
 describe("toggleProductAvailability", () => {
-  it("updates only is_available for the given product", async () => {
+  /**
+   * This used to assert `{ is_available: false }` and nothing else. That was
+   * the spec until `menu_items.auto_disabled_at` arrived: the marker records
+   * that auto-86 hid an item, and stock recovery re-enables only items still
+   * carrying it. A merchant hiding a dish by hand has to release the marker,
+   * or the next delivery puts it back on sale against their decision.
+   */
+  function stubUpdate() {
     const chain: any = {};
     ["update", "eq", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
@@ -474,10 +481,29 @@ describe("toggleProductAvailability", () => {
       Promise.resolve({ data: { id: "1", is_available: false }, error: null })
     );
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  it("releases the auto-86 marker when hiding a product", async () => {
+    const chain = stubUpdate();
 
     await toggleProductAvailability("1", "tenant-1", false);
 
-    expect(chain.update).toHaveBeenCalledWith({ is_available: false });
+    expect(chain.update).toHaveBeenCalledWith({
+      is_available: false,
+      auto_disabled_at: null,
+    });
+  });
+
+  it("releases the auto-86 marker when putting a product back on sale", async () => {
+    const chain = stubUpdate();
+
+    await toggleProductAvailability("1", "tenant-1", true);
+
+    expect(chain.update).toHaveBeenCalledWith({
+      is_available: true,
+      auto_disabled_at: null,
+    });
   });
 });
 
