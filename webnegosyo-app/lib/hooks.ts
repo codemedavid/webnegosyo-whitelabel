@@ -1,7 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { FunctionReference } from "convex/server";
 import { useAuthStore } from "../stores/auth-store";
+import { supabase } from "./supabase";
+import { resolveRefRoute } from "./backends/route";
+import {
+  runPlatformQuery,
+  runPlatformMutation,
+  type PlatformClient,
+} from "./backends/supabase-adapter";
 
 interface SafeQueryResult<T> {
   data: T | undefined;
@@ -34,14 +41,108 @@ function isStaleBundleError(msg: string): boolean {
 
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
 
+/**
+ * Convex pushes updates; Postgres does not. Until the realtime subscription
+ * lands, platform-backed screens re-read on this interval so a new order still
+ * appears without the merchant pulling to refresh.
+ */
+const PLATFORM_POLL_MS = 15000;
+
+const platformClient = supabase as unknown as PlatformClient;
+
+/** The tenant in scope — the impersonated store when a superadmin is inside one. */
+function useScopedTenantId(): string | null {
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
+  return impersonatedTenantId ?? tenantId;
+}
+
+/**
+ * Fetch a function ref from the platform Supabase adapter.
+ *
+ * Always called (never behind a condition) so the hook order stays identical on
+ * every render regardless of which backend a tenant uses; it simply does
+ * nothing when `tenantId` is null.
+ */
+function usePlatformQuery<T>(
+  refName: string,
+  args: Record<string, unknown> | "skip" | undefined,
+  tenantId: string | null
+): SafeQueryResult<T> {
+  const [data, setData] = useState<T | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Screens pass fresh object literals every render, so the object identity
+  // changes constantly. Key the effect on the serialized args instead, or the
+  // fetch loops forever.
+  const argsKey = JSON.stringify(args ?? {});
+  const isSkipped = args === "skip" || !tenantId;
+
+  useEffect(() => {
+    if (isSkipped) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+
+    const load = async () => {
+      try {
+        const result = await runPlatformQuery(
+          platformClient,
+          tenantId,
+          refName,
+          JSON.parse(argsKey)
+        );
+        if (!isCurrent) return;
+        setData(result as T);
+        setError(null);
+      } catch (e: unknown) {
+        if (!isCurrent) return;
+        const message = e instanceof Error ? e.message : String(e);
+        console.error("[usePlatformQuery] " + refName + ":", message);
+        setError(message);
+      } finally {
+        if (isCurrent) setIsLoading(false);
+      }
+    };
+
+    load();
+    const timer = setInterval(load, PLATFORM_POLL_MS);
+
+    return () => {
+      isCurrent = false;
+      clearInterval(timer);
+    };
+  }, [refName, argsKey, tenantId, isSkipped]);
+
+  return { data, isLoading: isSkipped ? false : isLoading, error, isMissingFunction: false };
+}
+
 export function useSafeQuery<T>(
   ref: FunctionReference<"query">,
   args?: Record<string, unknown> | "skip"
 ): SafeQueryResult<T> {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const tenantId = useScopedTenantId();
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
-  const queryArgs = !convexUrl ? "skip" : (args ?? {});
+
+  // Screens address their backend by string ref, so the ref doubles as its name.
+  const refName = String(ref);
+  const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
+
+  const platformResult = usePlatformQuery<T>(
+    refName,
+    args,
+    route === "platform" ? tenantId : null
+  );
+
+  // Convex stays untouched for every tenant that routes to it; a platform
+  // tenant skips it so no request is made against a deployment it does not have.
+  const queryArgs = route !== "convex" || !convexUrl ? "skip" : (args ?? {});
 
   let result: T | undefined;
   let hookError: string | null = null;
@@ -78,6 +179,26 @@ export function useSafeQuery<T>(
   }, [result, hookError, convexUrl]);
 
   // Determine final state
+  if (route === "platform") return platformResult;
+
+  if (route === "idle") {
+    // No tenant in scope yet — keep the screen in its loading state rather than
+    // claiming an empty result.
+    return { data: undefined, isLoading: true, error: null, isMissingFunction: false };
+  }
+
+  if (route === "unsupported") {
+    // This backend genuinely cannot answer. Reporting it as a missing function
+    // makes the screen show its "needs a backend update" placeholder, which is
+    // honest; empty data would read as "you have none of these".
+    return {
+      data: undefined,
+      isLoading: false,
+      error: MISSING_FN_MARKER,
+      isMissingFunction: true,
+    };
+  }
+
   if (!convexUrl) {
     return { data: undefined, isLoading: false, error: "Convex not configured", isMissingFunction: false };
   }
@@ -108,20 +229,47 @@ export function useSafeQuery<T>(
   };
 }
 
-export function useSafeMutation(ref: FunctionReference<"mutation">) {
-  const convexUrl = useAuthStore((s) => s.convexUrl);
+/**
+ * Callers pass backend-specific argument objects (POS carts, status patches),
+ * so the parameter stays open here and is validated by whichever backend runs.
+ */
+type SafeMutation = (args?: unknown) => Promise<unknown>;
 
+export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutation {
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const tenantId = useScopedTenantId();
+
+  const refName = String(ref);
+  const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
+
+  // Called unconditionally to keep the hook order stable across backends.
+  const platformMutate = useCallback<SafeMutation>(
+    async (args) => {
+      if (!tenantId) throw new Error("No store selected");
+      return runPlatformMutation(platformClient, tenantId, refName, args ?? {});
+    },
+    [refName, tenantId]
+  );
+
+  let convexMutate: SafeMutation | null = null;
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useMutation(ref);
+    convexMutate = useMutation(ref) as unknown as SafeMutation;
   } catch {
-    if (!convexUrl) {
-      return async () => {
-        throw new Error("Convex not connected");
-      };
-    }
-    throw new Error("Convex mutation error");
+    convexMutate = null;
   }
+
+  if (route === "platform") return platformMutate;
+
+  if (convexMutate) return convexMutate;
+
+  if (!convexUrl) {
+    return async () => {
+      throw new Error("Convex not connected");
+    };
+  }
+  throw new Error("Convex mutation error");
 }
 
 export function useSafeAction(ref: FunctionReference<"action">) {
