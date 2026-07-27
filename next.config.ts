@@ -2,6 +2,20 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // Astryx ships untranspiled ESM. Listing it here is also what makes it
+  // importable from Jest: `next/jest` builds its transformIgnorePatterns from
+  // this list, and without it every Astryx import throws
+  // "Unexpected token 'export'" under the test runner.
+  // The intl-messageformat chain is Astryx's own runtime dependency and is
+  // ESM too, so it has to come along or the transform stops one level in.
+  transpilePackages: [
+    '@astryxdesign/core',
+    '@astryxdesign/theme-neutral',
+    'intl-messageformat',
+    '@formatjs/fast-memoize',
+    '@formatjs/icu-messageformat-parser',
+    '@formatjs/icu-skeleton-parser',
+  ],
   images: {
     // Cache optimized images longer to reduce repeated requests
     

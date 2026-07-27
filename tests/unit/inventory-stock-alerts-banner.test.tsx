@@ -8,7 +8,7 @@
  */
 
 import { render, screen } from '@testing-library/react'
-import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
+import { StockAlertsBanner } from '@/components/admin/inventory/stock-alerts-banner'
 import type { StockAlertView } from '@/lib/inventory/stock-alerts-view'
 
 function alert(overrides: Partial<StockAlertView> = {}): StockAlertView {
