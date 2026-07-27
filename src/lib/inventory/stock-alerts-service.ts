@@ -84,6 +84,33 @@ function resolveRecoveredIds(
   return recovered
 }
 
+/**
+ * Ingredients this batch pushed back above empty.
+ *
+ * Deliberately a different question from `resolveRecoveredIds`, because the two
+ * answers serve opposite decisions. Availability asks "can this be made?" and
+ * auto-86 only ever fires on `out`, so anything above empty can be cooked and
+ * the dish belongs back on the menu. The alert asks "should more be ordered?",
+ * which a delivery landing below the reorder level has not answered.
+ *
+ * Gating both on `ok` was the bug: a partial delivery returned the flour and
+ * left the dish hidden, with the banner saying only "low".
+ */
+function resolveRestockedIds(
+  items: readonly StockLevelInput[],
+  deltas: ReadonlyMap<string, number>,
+): string[] {
+  const restocked: string[] = []
+  for (const item of items) {
+    const delta = deltas.get(item.id)
+    if (delta === undefined) continue
+    if (evaluateStockLevel(item) !== 'out') continue
+    const after = { current_qty: item.current_qty + delta, reorder_level: item.reorder_level }
+    if (evaluateStockLevel(after) !== 'out') restocked.push(item.id)
+  }
+  return restocked
+}
+
 /** On-hand quantities after this batch, for the ingredients it moved. */
 function postMovementQty(
   items: readonly StockLevelInput[],
@@ -236,12 +263,12 @@ async function applyAuto86(
 async function applyAuto86Recovery(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
-  recoveredIds: readonly string[],
+  restockedIds: readonly string[],
   postMovementQty: ReadonlyMap<string, number>,
 ): Promise<string[]> {
-  if (recoveredIds.length === 0) return []
+  if (restockedIds.length === 0) return []
 
-  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, recoveredIds)
+  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, restockedIds)
   if (components.length === 0) return []
 
   const outOfStockIds = await resolveOutOfStockIds(
@@ -251,7 +278,7 @@ async function applyAuto86Recovery(
     postMovementQty,
   )
 
-  const menuItemIds = resolveMenuItemsToReEnable(recoveredIds, recipes, components, outOfStockIds)
+  const menuItemIds = resolveMenuItemsToReEnable(restockedIds, recipes, components, outOfStockIds)
   if (menuItemIds.length === 0) return []
 
   const { data } = await supabase
@@ -310,7 +337,10 @@ export async function processStockLevelChanges(
   try {
     const crossings = detectStockCrossings(items, deltas)
     const recoveredIds = resolveRecoveredIds(items, deltas)
-    if (crossings.length === 0 && recoveredIds.length === 0) return NOTHING_HAPPENED
+    const restockedIds = resolveRestockedIds(items, deltas)
+    if (crossings.length === 0 && recoveredIds.length === 0 && restockedIds.length === 0) {
+      return NOTHING_HAPPENED
+    }
 
     const supabase = createAdminClient()
     const flags = await readTenantFlags(supabase, tenantId)
@@ -325,7 +355,7 @@ export async function processStockLevelChanges(
       ? await applyAuto86(supabase, tenantId, crossings)
       : []
     const menuItemsReEnabled = flags.auto86Enabled
-      ? await applyAuto86Recovery(supabase, tenantId, recoveredIds, postMovementQty(items, deltas))
+      ? await applyAuto86Recovery(supabase, tenantId, restockedIds, postMovementQty(items, deltas))
       : []
 
     return { alertsRaised, alertsResolved, menuItemsDisabled, menuItemsReEnabled }
