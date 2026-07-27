@@ -26,7 +26,12 @@ import {
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { RecipeWorkbench } from '@/components/admin/recipe-workbench'
+import { InventoryOverview } from '@/components/admin/inventory-overview'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
+import type { InventoryHealth } from '@/lib/inventory/inventory-health'
+import type { AutoHiddenDish } from '@/lib/inventory/auto-86-blame'
+import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
+import { cn } from '@/lib/utils'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
 import { InventoryTable } from '@/components/admin/inventory-table'
 import { buildInventoryRows } from '@/lib/inventory/inventory-table'
@@ -90,6 +95,16 @@ interface InventoryManagerProps {
   recipeComponents?: RecipeComponent[]
   /** The coverage read failed, so an empty list must not read as an empty menu. */
   coverageLoadFailed?: boolean
+  /**
+   * Everything the Overview tab needs, computed on the server from reads the
+   * page already makes. Optional so the surface degrades to the previous three
+   * tabs rather than crashing if a caller has not been updated.
+   */
+  health?: InventoryHealth
+  autoHidden?: AutoHiddenDish[]
+  activity?: ActivityFeedEntry[]
+  /** The ledger read failed — distinct from a quiet day with nothing in it. */
+  activityLoadFailed?: boolean
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
@@ -103,17 +118,35 @@ export function InventoryManager({
   coverageRows = [],
   recipeComponents = [],
   coverageLoadFailed = false,
+  health,
+  autoHidden = [],
+  activity = [],
+  activityLoadFailed = false,
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
 
   return (
-    <Tabs defaultValue="ingredients">
-      <TabsList className="grid w-full max-w-md grid-cols-3">
+    // Overview leads, and is the default: "what is happening?" is the question a
+    // merchant arrives with, and it was the one tab the page did not have.
+    <Tabs defaultValue={health ? 'overview' : 'ingredients'}>
+      <TabsList className={cn('grid w-full max-w-md', health ? 'grid-cols-4' : 'grid-cols-3')}>
+        {health && <TabsTrigger value="overview">Overview</TabsTrigger>}
         <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
         <TabsTrigger value="recipes">Recipes</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
       </TabsList>
+
+      {health && (
+        <TabsContent value="overview" className="pt-4">
+          <InventoryOverview
+            health={health}
+            autoHidden={autoHidden}
+            activity={activity}
+            activityLoadFailed={activityLoadFailed}
+          />
+        </TabsContent>
+      )}
 
       <TabsContent value="ingredients" className="pt-4">
         <IngredientsTab

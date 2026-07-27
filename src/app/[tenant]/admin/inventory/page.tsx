@@ -8,6 +8,9 @@ import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
 import { getRecipeCoverage } from '@/lib/inventory/recipe-coverage-read'
+import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
+import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
+import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminInventoryPage({
@@ -44,7 +47,23 @@ export default async function AdminInventoryPage({
   // Recipe coverage answers "which dishes are actually set up?" — the question
   // that had no surface at all, and the reason a tenant could switch inventory
   // on and have it quietly do nothing.
-  const { coverageRows, recipeComponents, loadFailed } = await getRecipeCoverage(tenant.id)
+  const { coverageRows, recipeComponents, menuItems, recipes, loadFailed } =
+    await getRecipeCoverage(tenant.id)
+
+  // The Overview answers "what is this thing doing, and where can it not?" —
+  // questions that had no surface at all, and the reason a tenant could switch
+  // inventory on, have it deduct nothing, and see a working system's quiet day.
+  const activity = await getInventoryActivity(tenant.id, ingredients)
+  const autoHidden = explainAutoHiddenDishes(menuItems, recipes, recipeComponents, ingredients)
+  const health = summarizeInventoryHealth({
+    ingredients,
+    coverage: coverageRows,
+    autoHiddenCount: autoHidden.length,
+    flags: {
+      lowStockAlertsEnabled: Boolean(tenant.low_stock_alerts_enabled),
+      auto86Enabled: Boolean(tenant.auto_86_enabled),
+    },
+  })
 
   return (
     <div className="space-y-6">
@@ -71,6 +90,10 @@ export default async function AdminInventoryPage({
         coverageRows={coverageRows}
         recipeComponents={recipeComponents}
         coverageLoadFailed={loadFailed}
+        health={health}
+        autoHidden={autoHidden}
+        activity={activity.entries}
+        activityLoadFailed={activity.loadFailed}
       />
     </div>
   )

@@ -17,6 +17,12 @@ export interface RecipeCoverageResult {
   /** Every component, so "which ingredients are unused?" can be answered too. */
   recipeComponents: RecipeComponent[]
   /**
+   * The raw rows behind the coverage, returned so the Overview can answer "why
+   * is this dish hidden?" without a second pass over the same three tables.
+   */
+  menuItems: MenuItem[]
+  recipes: Recipe[]
+  /**
    * The read failed. Reported rather than swallowed: an empty list means "this
    * tenant has no dishes", and letting a failure borrow that meaning is how a
    * bug gets rendered to a merchant as a confident, wrong fact about their menu.
@@ -27,6 +33,8 @@ export interface RecipeCoverageResult {
 const NOTHING: RecipeCoverageResult = {
   coverageRows: [],
   recipeComponents: [],
+  menuItems: [],
+  recipes: [],
   loadFailed: true,
 }
 
@@ -41,7 +49,10 @@ export async function getRecipeCoverage(tenantId: string): Promise<RecipeCoverag
     const supabase = await createClient()
 
     const [menuItemsResult, recipesResult, componentsResult] = await Promise.all([
-      supabase.from('menu_items').select('id, name').eq('tenant_id', tenantId),
+      supabase
+        .from('menu_items')
+        .select('id, name, is_available, auto_disabled_at')
+        .eq('tenant_id', tenantId),
       supabase.from('recipes').select('id, target_type, menu_item_id').eq('tenant_id', tenantId),
       supabase.from('recipe_components').select('recipe_id, inventory_item_id').eq('tenant_id', tenantId),
     ])
@@ -56,14 +67,14 @@ export async function getRecipeCoverage(tenantId: string): Promise<RecipeCoverag
     }
 
     const components = (componentsResult.data ?? []) as unknown as RecipeComponent[]
+    const menuItems = (menuItemsResult.data ?? []) as unknown as MenuItem[]
+    const recipes = (recipesResult.data ?? []) as unknown as Recipe[]
 
     return {
-      coverageRows: buildRecipeCoverage(
-        (menuItemsResult.data ?? []) as unknown as MenuItem[],
-        (recipesResult.data ?? []) as unknown as Recipe[],
-        components,
-      ),
+      coverageRows: buildRecipeCoverage(menuItems, recipes, components),
       recipeComponents: components,
+      menuItems,
+      recipes,
       loadFailed: false,
     }
   } catch (error) {
