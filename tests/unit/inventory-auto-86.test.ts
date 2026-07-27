@@ -8,7 +8,7 @@
  * would cost the merchant sales they could have made.
  */
 
-import { resolveMenuItemsToDisable } from '@/lib/inventory/auto-86'
+import { resolveMenuItemsToDisable, resolveMenuItemsToReEnable } from '@/lib/inventory/auto-86'
 import type { Recipe, RecipeComponent } from '@/types/database'
 
 function recipe(overrides: Partial<Recipe> & Pick<Recipe, 'id'>): Recipe {
@@ -140,5 +140,89 @@ describe('resolveMenuItemsToDisable', () => {
     ]
 
     expect(resolveMenuItemsToDisable(['flour'], recipes, [component('r-prep', 'flour')])).toEqual([])
+  })
+})
+
+/**
+ * Phase 5C — the way back onto the menu.
+ *
+ * Disabling asks "is ANY base ingredient out?"; re-enabling has to ask the
+ * opposite question of the whole recipe — "is EVERY base ingredient in stock?"
+ * — because a dish that needs flour and sugar is still unsellable when the
+ * flour delivery arrives and the sugar has not.
+ */
+describe('resolveMenuItemsToReEnable', () => {
+  it('brings back a menu item whose only base ingredient is stocked again', () => {
+    const recipes = [recipe({ id: 'r-base', menu_item_id: 'menu-1' })]
+    const components = [component('r-base', 'flour')]
+
+    expect(resolveMenuItemsToReEnable(['flour'], recipes, components, [])).toEqual(['menu-1'])
+  })
+
+  it('leaves a menu item off while another base ingredient is still out', () => {
+    // The delivery that arrived was not the one that was blocking the dish.
+    const recipes = [recipe({ id: 'r-base', menu_item_id: 'menu-1' })]
+    const components = [component('r-base', 'flour'), component('r-base', 'sugar')]
+
+    expect(resolveMenuItemsToReEnable(['flour'], recipes, components, ['sugar'])).toEqual([])
+  })
+
+  it('brings back a menu item once every base ingredient is stocked', () => {
+    const recipes = [recipe({ id: 'r-base', menu_item_id: 'menu-1' })]
+    const components = [component('r-base', 'flour'), component('r-base', 'sugar')]
+
+    expect(resolveMenuItemsToReEnable(['flour', 'sugar'], recipes, components, [])).toEqual([
+      'menu-1',
+    ])
+  })
+
+  it('ignores a recovery that only a variation option needed', () => {
+    // Only a base recipe can 86 an item, so only a base recipe can un-86 one.
+    const recipes = [
+      recipe({ id: 'r-base', menu_item_id: 'menu-1' }),
+      recipe({
+        id: 'r-large',
+        target_type: 'variation_option',
+        menu_item_id: 'menu-1',
+        variation_option_id: 'opt-large',
+      }),
+    ]
+    const components = [component('r-base', 'cocoa'), component('r-large', 'flour')]
+
+    expect(resolveMenuItemsToReEnable(['flour'], recipes, components, [])).toEqual([])
+  })
+
+  it('brings back every menu item sharing the restocked ingredient', () => {
+    const recipes = [
+      recipe({ id: 'r-1', menu_item_id: 'menu-1' }),
+      recipe({ id: 'r-2', menu_item_id: 'menu-2' }),
+    ]
+    const components = [component('r-1', 'flour'), component('r-2', 'flour')]
+
+    expect(resolveMenuItemsToReEnable(['flour'], recipes, components, []).sort()).toEqual([
+      'menu-1',
+      'menu-2',
+    ])
+  })
+
+  it('returns nothing when no ingredient recovered', () => {
+    const recipes = [recipe({ id: 'r-base', menu_item_id: 'menu-1' })]
+
+    expect(resolveMenuItemsToReEnable([], recipes, [component('r-base', 'flour')], [])).toEqual([])
+  })
+
+  it('ignores a prep recipe, which names no menu item to bring back', () => {
+    const recipes = [
+      recipe({
+        id: 'r-prep',
+        target_type: 'prep_item',
+        menu_item_id: null,
+        prep_item_id: 'prep-sauce',
+      }),
+    ]
+
+    expect(resolveMenuItemsToReEnable(['flour'], recipes, [component('r-prep', 'flour')], [])).toEqual(
+      [],
+    )
   })
 })

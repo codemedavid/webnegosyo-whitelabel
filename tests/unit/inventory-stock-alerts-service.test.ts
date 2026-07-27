@@ -27,7 +27,7 @@ function table(data: unknown[] | Record<string, unknown> = []) {
     then: (resolve: (v: unknown) => void) => resolve({ data, error: null }),
     calls,
   }
-  for (const method of ['select', 'eq', 'is', 'in', 'insert', 'update', 'single', 'limit']) {
+  for (const method of ['select', 'eq', 'is', 'not', 'in', 'insert', 'update', 'single', 'limit']) {
     chain[method] = (...args: unknown[]) => {
       calls[method] = [...(calls[method] ?? []), args]
       return chain
@@ -56,6 +56,7 @@ interface Tables {
   recipe_components?: ReturnType<typeof table>
   recipes?: ReturnType<typeof table>
   menu_items?: ReturnType<typeof table>
+  inventory_items?: ReturnType<typeof table>
 }
 
 function wire(tables: Tables): Required<Tables> {
@@ -65,6 +66,7 @@ function wire(tables: Tables): Required<Tables> {
     recipe_components: tables.recipe_components ?? table([]),
     recipes: tables.recipes ?? table([]),
     menu_items: tables.menu_items ?? table([]),
+    inventory_items: tables.inventory_items ?? table([]),
   }
   from.mockImplementation((name: keyof Tables) => resolved[name])
   return resolved
@@ -232,17 +234,117 @@ describe('processStockLevelChanges — auto-86', () => {
     expect(tables.menu_items.calls.update).toBeUndefined()
   })
 
-  it('never re-enables a menu item when stock comes back', async () => {
-    // Un-86 stays manual. A restock that flips items back on would flap the
-    // menu, and only the merchant knows whether the dish is ready to sell.
+  it('stamps the item as auto-disabled so it can be told apart later', async () => {
+    // Without the stamp there is no way to distinguish an item this system hid
+    // from one the merchant deliberately turned off, and recovery would undo
+    // the merchant's decision.
     const tables = wireRecipes(FLAGS_ALL_ON)
 
-    await processStockLevelChanges(
-      't1',
-      [ingredient({ current_qty: 0, reorder_level: 20 })],
-      new Map([['flour', 500]]),
-    )
+    await processStockLevelChanges('t1', FLOUR_ITEM, OUT_OF_FLOUR)
 
+    expect(tables.menu_items.calls.update?.[0][0]).toMatchObject({
+      is_available: false,
+      auto_disabled_at: expect.any(String),
+    })
+  })
+
+  it('does not claim an item the merchant had already turned off', async () => {
+    // Stamping an already-hidden item would make the next delivery put it back
+    // on the menu against the merchant's wishes.
+    const tables = wireRecipes(FLAGS_ALL_ON)
+
+    await processStockLevelChanges('t1', FLOUR_ITEM, OUT_OF_FLOUR)
+
+    expect(tables.menu_items.calls.eq).toContainEqual(['is_available', true])
+  })
+})
+
+/**
+ * Phase 5C — the way back onto the menu.
+ *
+ * The gap this closes: a merchant who restocked found the dish still hidden,
+ * with the alert already auto-resolved, so nothing on any screen explained why.
+ */
+describe('processStockLevelChanges — auto-86 recovery', () => {
+  const FLOUR_RESTOCKED = new Map([['flour', 500]])
+  const EMPTY_FLOUR = [ingredient({ current_qty: 0, reorder_level: 20 })]
+
+  function wireRecovery(flags: Record<string, boolean>, changed: unknown[] = [{ id: 'menu-1' }]) {
+    return wire({
+      tenants: table(flags),
+      recipe_components: table([
+        { id: 'c1', recipe_id: 'r-base', inventory_item_id: 'flour', tenant_id: 't1' },
+      ]),
+      recipes: table([
+        { id: 'r-base', target_type: 'menu_item', menu_item_id: 'menu-1', tenant_id: 't1' },
+      ]),
+      inventory_items: table([{ id: 'flour', current_qty: 0, reorder_level: 20 }]),
+      menu_items: table(changed),
+    })
+  }
+
+  it('brings a menu item back when its ingredient is restocked', async () => {
+    const tables = wireRecovery(FLAGS_ALL_ON)
+
+    const result = await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+    expect(result.menuItemsReEnabled).toEqual(['menu-1'])
+    expect(tables.menu_items.calls.update?.[0][0]).toMatchObject({
+      is_available: true,
+      auto_disabled_at: null,
+    })
+  })
+
+  it('only brings back items this system disabled itself', async () => {
+    // Filtered in the UPDATE rather than read-then-write, so a merchant
+    // toggling availability at the same moment cannot slip between the two.
+    const tables = wireRecovery(FLAGS_ALL_ON)
+
+    await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+    expect(tables.menu_items.calls.not).toContainEqual(['auto_disabled_at', 'is', null])
+  })
+
+  it('leaves the menu alone on recovery when auto-86 is switched off', async () => {
+    const tables = wireRecovery({ low_stock_alerts_enabled: true, auto_86_enabled: false })
+
+    const result = await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+    expect(result.menuItemsReEnabled).toEqual([])
+    expect(tables.menu_items.calls.update).toBeUndefined()
+  })
+
+  it('reports nothing when the update matched no auto-disabled row', async () => {
+    const tables = wireRecovery(FLAGS_ALL_ON, [])
+
+    const result = await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+    expect(result.menuItemsReEnabled).toEqual([])
+    expect(tables.menu_items.calls.update).toBeDefined()
+  })
+
+  it('keeps a dish off the menu while a second base ingredient is still out', async () => {
+    // Reads the untouched ingredient from the database, but trusts the applied
+    // delta for the one that just moved — re-reading that row would race the
+    // running-total trigger.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      recipe_components: table([
+        { id: 'c1', recipe_id: 'r-base', inventory_item_id: 'flour', tenant_id: 't1' },
+        { id: 'c2', recipe_id: 'r-base', inventory_item_id: 'sugar', tenant_id: 't1' },
+      ]),
+      recipes: table([
+        { id: 'r-base', target_type: 'menu_item', menu_item_id: 'menu-1', tenant_id: 't1' },
+      ]),
+      inventory_items: table([
+        { id: 'flour', current_qty: 0, reorder_level: 20 },
+        { id: 'sugar', current_qty: 0, reorder_level: 5 },
+      ]),
+    })
+
+    const result = await processStockLevelChanges('t1', EMPTY_FLOUR, FLOUR_RESTOCKED)
+
+    expect(result.menuItemsReEnabled).toEqual([])
     expect(tables.menu_items.calls.update).toBeUndefined()
   })
 })
@@ -257,7 +359,12 @@ describe('processStockLevelChanges — resilience', () => {
       new Map([['flour', -10]]),
     )
 
-    expect(result).toEqual({ alertsRaised: 0, alertsResolved: 0, menuItemsDisabled: [] })
+    expect(result).toEqual({
+      alertsRaised: 0,
+      alertsResolved: 0,
+      menuItemsDisabled: [],
+      menuItemsReEnabled: [],
+    })
     expect(tables.stock_alerts.calls.insert).toBeUndefined()
     expect(from).not.toHaveBeenCalledWith('tenants')
   })
@@ -276,7 +383,12 @@ describe('processStockLevelChanges — resilience', () => {
         [ingredient({ current_qty: 25, reorder_level: 20 })],
         new Map([['flour', -10]]),
       ),
-    ).resolves.toEqual({ alertsRaised: 0, alertsResolved: 0, menuItemsDisabled: [] })
+    ).resolves.toEqual({
+      alertsRaised: 0,
+      alertsResolved: 0,
+      menuItemsDisabled: [],
+      menuItemsReEnabled: [],
+    })
   })
 
   it('treats a tenant row it cannot read as having both features off', async () => {
