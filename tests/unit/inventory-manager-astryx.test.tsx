@@ -162,7 +162,13 @@ describe('InventoryManager — the unit guard', () => {
     // Ingredients are priced per unit; without one the form cannot be filled in.
     renderManager([], [])
 
-    expect(screen.getByRole('button', { name: /new ingredient/i })).toBeDisabled()
+    // Astryx uses aria-disabled rather than the native attribute whenever a
+    // tooltip explains the block, so the button stays focusable and the reason
+    // is reachable by keyboard. Activation is still refused.
+    expect(screen.getByRole('button', { name: /new ingredient/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 
   it('says why the button is unavailable instead of leaving it dead', () => {
@@ -174,7 +180,10 @@ describe('InventoryManager — the unit guard', () => {
   it('allows adding an ingredient once a unit exists', () => {
     renderManager([], [KG])
 
-    expect(screen.getByRole('button', { name: /new ingredient/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /new ingredient/i })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 })
 
@@ -188,15 +197,19 @@ describe('InventoryManager — units tab', () => {
   it('lists the units once the merchant switches to them', () => {
     renderManager()
 
-    fireEvent.click(screen.getByRole('tab', { name: /units/i }))
+    fireEvent.click(screen.getByRole('button', { name: /units/i }))
 
-    expect(screen.getByText(/Kilogram/)).toBeInTheDocument()
+    // Astryx's truncating table renders the label a second time inside its
+    // overflow tooltip, so scope to the table itself.
+    // Astryx renders the label a second time inside its truncation tooltip, so
+    // assert the unit is listed rather than that it appears exactly once.
+    expect(within(screen.getByRole('table')).getAllByText(/Kilogram/).length).toBeGreaterThan(0)
   })
 
   it('shows how a unit converts to its base', () => {
     renderManager()
 
-    fireEvent.click(screen.getByRole('tab', { name: /units/i }))
+    fireEvent.click(screen.getByRole('button', { name: /units/i }))
 
     expect(screen.getByText(/1 kg = 1000 base/i)).toBeInTheDocument()
   })
@@ -204,7 +217,7 @@ describe('InventoryManager — units tab', () => {
   it('explains itself when there are no units yet', () => {
     renderManager([], [])
 
-    fireEvent.click(screen.getByRole('tab', { name: /units/i }))
+    fireEvent.click(screen.getByRole('button', { name: /units/i }))
 
     expect(screen.getByText(/no units yet/i)).toBeInTheDocument()
   })
@@ -216,8 +229,9 @@ describe('InventoryManager — dialogs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /new ingredient/i }))
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('New Ingredient')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    // The button that opened it carries the same words.
+    expect(within(dialog).getByText('New Ingredient')).toBeInTheDocument()
   })
 
   it('opens the form titled for editing when an existing ingredient is picked', () => {

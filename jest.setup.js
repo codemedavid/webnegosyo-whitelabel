@@ -108,3 +108,35 @@ console.warn = (...args) => {
 
 // Export for use in tests
 global.mockFrom = mockFrom
+
+// jsdom implements <dialog> but not its modal methods, so any Astryx Dialog
+// throws "dialog.showModal is not a function" the moment it opens. Polyfill the
+// pair and keep the `open` attribute in sync, which is what the component and
+// the accessibility tree both read.
+if (typeof HTMLDialogElement !== 'undefined') {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.open = true
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function close() {
+      this.open = false
+    }
+  }
+}
+
+// jsdom has no matchMedia, which Astryx queries for prefers-reduced-motion
+// before animating. Report "no preference" and no listeners.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+}
