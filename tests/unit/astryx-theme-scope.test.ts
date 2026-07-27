@@ -48,3 +48,22 @@ describe('AstryxRegion', () => {
     expect(region).not.toMatch(/^import ['"]@astryxdesign\/core\/reset\.css/m)
   })
 })
+
+describe('inventory dialogs stay dismissable', () => {
+  // `purpose="form"` disables backdrop click after any interaction, and a
+  // native modal makes the rest of the page inert. Together that leaves a
+  // merchant clicking a dead page with no obvious way out. `info` keeps both
+  // Escape and the backdrop working; the close button and Cancel already exist
+  // for the deliberate path.
+  const files = [
+    'src/components/admin/inventory/ingredient-dialog.tsx',
+    'src/components/admin/inventory/stock-dialog.tsx',
+    'src/components/admin/inventory/units-tab.tsx',
+    'src/components/admin/inventory/ingredients-tab.tsx',
+  ]
+
+  it.each(files)('%s does not trap the merchant in a form dialog', (file) => {
+    expect(read(file)).not.toMatch(/purpose="form"/)
+  })
+})
+
