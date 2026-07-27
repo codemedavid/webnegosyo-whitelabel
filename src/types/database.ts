@@ -485,6 +485,10 @@ export interface ModifierOption {
   // legacy <-> modifier-groups round-trip so enabling the unified editor does
   // not silently drop the "Upgrade for +X" nudge on an existing item.
   is_upgrade_target?: boolean;
+  // Live reference to a menu item offered as this option (e.g. "Add a Coke").
+  // When set, the name, price and image are read from that item at render time
+  // rather than from the fields above. See src/lib/modifier-linked-options.ts.
+  menu_item_id?: string | null;
   display_order: number;
   // Cost / margin. `cost_mode` decides which cost is authoritative:
   //   'simple'    → manual_cost

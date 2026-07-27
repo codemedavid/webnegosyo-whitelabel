@@ -1,6 +1,7 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
+import { getLinkableMenuItems } from '@/lib/admin-service'
 
 export default async function NewMenuItemPage({
   params,
@@ -15,7 +16,10 @@ export default async function NewMenuItemPage({
     return <div>Tenant not found</div>
   }
 
-  const categories = await getCachedCategoriesByTenant(tenant.id)
+  const [categories, linkableItems] = await Promise.all([
+    getCachedCategoriesByTenant(tenant.id),
+    getLinkableMenuItems(tenant.id).catch(() => []),
+  ])
 
   if (categories.length === 0) {
     return (
@@ -64,6 +68,7 @@ export default async function NewMenuItemPage({
         tenantSlug={tenantSlug}
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
         modifierGroupsEnabled={tenant.modifier_groups_enabled ?? false}
+        linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
         convexUrl={tenant.convex_deployment_url ?? undefined}
       />

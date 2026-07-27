@@ -15,7 +15,7 @@ import type { MenuItem, Category, VariationType, VariationOption, BcgClassificat
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
-import { ModifierGroupsEditor } from '@/components/admin/modifier-groups-editor'
+import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
@@ -39,6 +39,8 @@ interface MenuItemFormProps {
   tenantSlug: string
   menuEngineeringEnabled?: boolean
   modifierGroupsEnabled?: boolean
+  /** Menu items an add-on option may link to (live reference). */
+  linkableItems?: LinkableMenuItem[]
   inventoryEnabled?: boolean
   convexUrl?: string
 }
@@ -70,7 +72,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, inventoryEnabled, convexUrl }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
   // Recipe-derived costs for the per-option margin display. No-ops when the
   // tenant has no inventory or the item has not been saved yet.
@@ -611,6 +613,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           optionRecipeCosts={optionRecipeCosts}
           headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
           onSaveGroupToLibrary={saveGroupToLibrary}
+          linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
         />
       ) : (
       <>

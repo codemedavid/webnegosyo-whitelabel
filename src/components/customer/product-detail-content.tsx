@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
 import { useModifierGroups } from '@/hooks/useModifierGroups'
+import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
@@ -69,6 +70,8 @@ interface ProductDetailContentProps {
     upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
     modifierGroupsEnabled?: boolean
+    /** Menu items referenced by linked add-on options, keyed by id. */
+    linkedModifierItems?: ReadonlyMap<string, LinkedItemSnapshot>
     isBrandAdmin?: boolean
     /**
      * 'page' (default) renders as the full-page route. 'sheet' adapts navigation
@@ -296,6 +299,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     upsellBundles = [],
     bundlesEnabled = false,
     modifierGroupsEnabled = false,
+    linkedModifierItems,
     isBrandAdmin = false,
     mode = 'page',
     onClose,
@@ -384,7 +388,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     // Unified modifier groups (Phase 2). Active only for items authored with the
     // new editor AND when the tenant flag is on; legacy items keep the path above.
-    const mg = useModifierGroups({ item })
+    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems })
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice

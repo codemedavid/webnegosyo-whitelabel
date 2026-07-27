@@ -750,3 +750,28 @@ export const getTenantBySlug = cache(async (slug: string) => {
   return data
 })
 
+
+/**
+ * Menu items offerable as linked add-on options, newest name order.
+ *
+ * Only the three fields the editor's picker needs — the storefront resolves the
+ * live name/price/image itself at render time, so this is purely for choosing.
+ */
+export async function getLinkableMenuItems(
+  tenantId: string
+): Promise<{ id: string; name: string; price: number }[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('id, name, price')
+    .eq('tenant_id', tenantId)
+    .order('name')
+
+  if (error) {
+    console.error('Error fetching linkable menu items:', error.message)
+    return []
+  }
+
+  return (data ?? []) as { id: string; name: string; price: number }[]
+}
