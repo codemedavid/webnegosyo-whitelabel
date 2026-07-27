@@ -210,16 +210,49 @@ These are unchanged by this phase and remain open:
   restore now covers platform-backed orders (`updateOrderStatus`) and everything
   the merchant app cancels (Convex, including POS). An order cancelled from a
   tenant's own Supabase admin tooling does not return stock.
-- **Restore is not reachable from the web admin for Convex orders.** Verified,
+## Follow-on 2: web admin restore (gap closed)
+
+The gap recorded below as "top remaining" is now closed. `convex-order-sheet.tsx`
+cancelled Convex orders directly, so the same cancellation returned stock from
+the merchant app but not from the web console.
+
+`restoreOrderStock` in `stock-service.ts` gates the reversal on
+`verifyTenantPermission(tenantId, 'orders')` — the same capability that guards
+changing an order's status — and checks it **before** reversing, since the
+reversal writes to a tenant's ledger. `restoreOrderStockAction` wraps it, and
+`tenantId` is threaded from `orders/page.tsx` → wrapper → content → tab → sheet.
+
+- RED: `npx jest tests/unit/inventory-restore-order-stock.test.ts` → 4 failed (`restoreOrderStock` not exported)
+- GREEN: same command → 4 passed
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 31 | An authorized caller's cancellation reverses the sale movements | `inventory-restore-order-stock.test.ts:reverses the order-s sale movements for an authorized caller` | unit | PASS |
+| 32 | Restore is gated on the same capability as changing order status | `inventory-restore-order-stock.test.ts:checks permission against the orders capability` | unit | PASS |
+| 33 | A caller without permission cannot touch the ledger | `inventory-restore-order-stock.test.ts:does not touch the ledger when the caller lacks permission` | unit | PASS |
+| 34 | Permission is verified before the reversal, never after | `inventory-restore-order-stock.test.ts:verifies permission before reversing, never after` | unit | PASS |
+
+Suites after this change: web app `npx jest` → **217 suites, 2508 tests passed**;
+eslint on changed files → exit 0; `npx tsc --noEmit` reports no errors in any
+`src/` file touched here.
+
+### Note on `tsc` and test files
+
+`npx tsc --noEmit` reports 21 pre-existing errors, all in test files, from the
+untyped `jest.Mock` pattern this repo already uses — `revalidate-menu.test.ts`,
+the file the route tests were mirrored from, has the identical errors and was
+never touched by this work. The new API test follows that established pattern
+rather than diverging in a single file. No production file errors.
+
+## Known gaps (carried forward)
+
+- **Restore was not reachable from the web admin for Convex orders.** Verified,
   not assumed: `src/components/admin/convex-order-sheet.tsx:105` cancels via the
   Convex mutation directly (`useUpdateConvexOrderStatus`), so it bypasses
   `updateOrderStatus` exactly as the merchant app did. Closing it needs a
   `tenantId` that neither `convex-orders-tab.tsx` nor
   `convex-orders-wrapper.tsx` currently receives, so it means threading tenant
   context down two component chains plus a server action guarded by
-  `verifyTenantPermission`. Deliberately left for its own change. **This is the
-  top remaining gap** — the merchant app now restores stock where the web admin
-  does not, so the same cancellation behaves differently depending on where it
-  is performed.
+  `verifyTenantPermission`. **CLOSED — see Follow-on 2 above.**
 - Phases 5B (low-stock alerts / auto-86), 6 (merchant app inventory surface),
   and 7 (RLS audit, E2E) are not started.
