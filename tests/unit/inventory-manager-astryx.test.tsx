@@ -13,7 +13,7 @@
  * empty states.
  */
 
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { InventoryManager } from '@/components/admin/inventory/inventory-manager'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 
@@ -248,5 +248,88 @@ describe('InventoryManager — dialogs', () => {
     fireEvent.click(screen.getByRole('button', { name: /record stock for flour/i }))
 
     expect(within(screen.getByRole('dialog')).getByText(/Flour/)).toBeInTheDocument()
+  })
+})
+
+describe('InventoryManager — units CRUD', () => {
+  // The units tab had no interaction coverage before the rebuild; its save and
+  // delete paths are the ones that can silently drop a merchant's edit.
+  const actions = jest.requireMock('@/app/actions/inventory')
+
+  beforeEach(() => jest.clearAllMocks())
+
+  function openUnits() {
+    renderManager([], [KG])
+    fireEvent.click(screen.getByRole('button', { name: /units/i }))
+  }
+
+  it('sends a new unit to the server', async () => {
+    actions.createInventoryUnitAction.mockResolvedValue({ success: true, data: { ...KG, id: 'u2' } })
+    openUnits()
+
+    fireEvent.click(screen.getByRole('button', { name: /new unit/i }))
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Gram' } })
+    fireEvent.change(screen.getByLabelText(/abbreviation/i), { target: { value: 'g' } })
+    fireEvent.click(screen.getByRole('button', { name: /add unit/i }))
+
+    await waitFor(() => expect(actions.createInventoryUnitAction).toHaveBeenCalled())
+    const [, , input] = actions.createInventoryUnitAction.mock.calls[0]
+    expect(input).toMatchObject({ name: 'Gram', abbreviation: 'g' })
+  })
+
+  it('does not call the server when the form is invalid', async () => {
+    // An empty name must be caught before a round trip, not after.
+    openUnits()
+
+    fireEvent.click(screen.getByRole('button', { name: /new unit/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add unit/i }))
+
+    await waitFor(() => expect(actions.createInventoryUnitAction).not.toHaveBeenCalled())
+  })
+
+  it('asks before deleting a unit and deletes when confirmed', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true)
+    actions.deleteInventoryUnitAction.mockResolvedValue({ success: true })
+    openUnits()
+
+    fireEvent.click(screen.getByRole('button', { name: /delete kilogram/i }))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    await waitFor(() => expect(actions.deleteInventoryUnitAction).toHaveBeenCalled())
+    confirmSpy.mockRestore()
+  })
+
+  it('leaves the unit alone when the merchant cancels the confirmation', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    openUnits()
+
+    fireEvent.click(screen.getByRole('button', { name: /delete kilogram/i }))
+
+    expect(actions.deleteInventoryUnitAction).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('opens the unit form titled for editing an existing unit', () => {
+    openUnits()
+
+    fireEvent.click(screen.getByRole('button', { name: /edit kilogram/i }))
+
+    expect(within(screen.getByRole('dialog')).getByText('Edit Unit')).toBeInTheDocument()
+  })
+})
+
+describe('InventoryManager — ingredient deletion', () => {
+  const actions = jest.requireMock('@/app/actions/inventory')
+
+  beforeEach(() => jest.clearAllMocks())
+
+  it('asks before deleting an ingredient, warning that recipes lose the line', () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    renderManager([ingredient({ name: 'Flour' })])
+
+    fireEvent.click(screen.getByRole('button', { name: /delete flour/i }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Recipes using it'))
+    confirmSpy.mockRestore()
   })
 })
