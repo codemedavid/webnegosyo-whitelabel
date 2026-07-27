@@ -117,6 +117,33 @@ describe("resolveSession — merchant", () => {
     expect(result.auth?.convexUrl).toBeNull();
   });
 
+  it("resolves the order backend a Convex-backed tenant reads from", () => {
+    // Screens dispatch on this to pick the Convex client or the Supabase
+    // adapter; without it a platform tenant renders "Convex not configured".
+    const result = resolveSession("user-admin", ADMIN_ROW, TENANT_ROW);
+
+    expect(result.auth?.orderBackend).toBe("convex");
+  });
+
+  it("resolves a tenant with no Convex deployment to the platform backend", () => {
+    const result = resolveSession("user-admin", ADMIN_ROW, {
+      ...TENANT_ROW,
+      convex_deployment_url: null,
+    });
+
+    expect(result.auth?.orderBackend).toBe("platform");
+    expect(result.auth?.convexUrl).toBeNull();
+  });
+
+  it("honours an explicit order_backend column over the Convex url", () => {
+    const result = resolveSession("user-admin", ADMIN_ROW, {
+      ...TENANT_ROW,
+      order_backend: "platform",
+    });
+
+    expect(result.auth?.orderBackend).toBe("platform");
+  });
+
   it("carries staff permissions through untouched", () => {
     const result = resolveSession(
       "user-staff",
@@ -136,6 +163,16 @@ describe("resolveSession — merchant", () => {
     );
 
     expect(result.auth?.isOwner).toBe(false);
+  });
+});
+
+describe("resolveSession — superadmin order backend", () => {
+  it("leaves a superadmin without an order backend until they impersonate", () => {
+    // A superadmin holds no tenant, so there is no order data to route to.
+    // Impersonation fills this in; see lib/impersonation.ts.
+    const result = resolveSession("user-super", SUPERADMIN_ROW, null);
+
+    expect(result.auth?.orderBackend).toBeNull();
   });
 });
 
