@@ -18,6 +18,8 @@ export interface Product {
   is_available: boolean;
   is_featured: boolean;
   order: number;
+  /** Set when auto-86 hid this item; NULL means the merchant chose to. */
+  auto_disabled_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
