@@ -2,19 +2,32 @@
  * Phase 5B — the alert path has to be reached from every writer of the ledger,
  * not just one.
  *
- * Stock is moved by two code paths: a merchant recording a delivery or a
- * stocktake by hand, and an order depleting ingredients. An alert wired into
- * only one of them would go quiet exactly when a shop is busiest, which is the
- * one time it matters.
+ * Stock is moved by THREE code paths: a merchant recording a delivery or a
+ * stocktake by hand, an order depleting ingredients, and a cancelled order
+ * putting them back. An alert wired into only one of them would go quiet
+ * exactly when a shop is busiest, which is the one time it matters.
+ *
+ * Phase 7 added the third. Cancellation restores stock but was silent to the
+ * alert path, so an order that emptied an ingredient — closing the shop's
+ * bestseller by auto-86 — left the dish hidden and the alert open even after
+ * the cancellation put every gram back.
  */
 
-import { applyOrderStockMovements } from '@/lib/inventory/order-stock-service'
+import {
+  applyOrderStockMovements,
+  reverseOrderStockMovements,
+} from '@/lib/inventory/order-stock-service'
 import { recordStockMovement } from '@/lib/inventory/stock-service'
 import { processStockLevelChanges } from '@/lib/inventory/stock-alerts-service'
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
   processStockLevelChanges: jest.fn(() =>
-    Promise.resolve({ alertsRaised: 0, alertsResolved: 0, menuItemsDisabled: [] }),
+    Promise.resolve({
+      alertsRaised: 0,
+      alertsResolved: 0,
+      menuItemsDisabled: [],
+      menuItemsReEnabled: [],
+    }),
   ),
 }))
 
@@ -148,6 +161,88 @@ describe('order depletion reaches the alert path', () => {
       [{ menuItemId: 'm1', quantity: 1 }],
       'sale',
     )
+
+    expect(result.movementCount).toBe(1)
+  })
+})
+
+describe('cancellation restore reaches the alert path', () => {
+  /**
+   * Restore reads `stock_movements` twice before writing — once for the sale it
+   * is reversing, once to check it has not already run — so this hands out a
+   * different answer per call rather than the same rows to both.
+   */
+  function wireRestore(saleRows: unknown[], alreadyRestored: unknown[] = []) {
+    const movementAnswers = [saleRows, alreadyRestored]
+    let movementCall = 0
+    from.mockImplementation((name: string) => {
+      switch (name) {
+        case 'stock_movements':
+          return table(movementAnswers[movementCall++] ?? [])
+        case 'inventory_items':
+          // Emptied by the sale this cancellation is reversing.
+          return table([{ ...FLOUR, current_qty: 0 }])
+        case 'inventory_units':
+          return table([GRAMS])
+        default:
+          return table([])
+      }
+    })
+  }
+
+  const SALE = {
+    inventory_item_id: 'flour',
+    quantity_delta: -10,
+    entered_quantity: 10,
+    entered_unit_id: 'unit-g',
+  }
+
+  it('reports the pre-restore ingredients and the deltas the cancellation gave back', async () => {
+    wireRestore([SALE])
+
+    await reverseOrderStockMovements('t1', 'order-1')
+
+    expect(mockedProcess).toHaveBeenCalledTimes(1)
+    const [tenantId, items, deltas] = mockedProcess.mock.calls[0]
+    expect(tenantId).toBe('t1')
+    // Same contract as depletion: the rows as they stood BEFORE the reversal,
+    // because the running-total trigger has not settled yet.
+    expect(items).toEqual([expect.objectContaining({ id: 'flour', current_qty: 0 })])
+    // Positive — this is the movement that can resolve an alert and bring an
+    // auto-86'd dish back, the mirror of the sale that raised it.
+    expect(deltas.get('flour')).toBe(10)
+  })
+
+  it('sums the deltas when the sale recorded one ingredient on several lines', async () => {
+    wireRestore([SALE, { ...SALE, quantity_delta: -4 }])
+
+    await reverseOrderStockMovements('t1', 'order-1')
+
+    expect(mockedProcess.mock.calls[0][2].get('flour')).toBe(14)
+  })
+
+  it('does not run the alert path when there was no sale to reverse', async () => {
+    wireRestore([])
+
+    await reverseOrderStockMovements('t1', 'order-1')
+
+    expect(mockedProcess).not.toHaveBeenCalled()
+  })
+
+  it('does not run the alert path when the order was already restored', async () => {
+    // Otherwise a retried cancellation would re-report a delta it never applied.
+    wireRestore([SALE], [{ id: 'mv-void' }])
+
+    await reverseOrderStockMovements('t1', 'order-1')
+
+    expect(mockedProcess).not.toHaveBeenCalled()
+  })
+
+  it('still records the restoring movements when the alert path throws', async () => {
+    wireRestore([SALE])
+    mockedProcess.mockRejectedValueOnce(new Error('alerts are down'))
+
+    const result = await reverseOrderStockMovements('t1', 'order-1')
 
     expect(result.movementCount).toBe(1)
   })
