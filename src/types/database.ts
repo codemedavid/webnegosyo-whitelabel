@@ -189,6 +189,9 @@ export interface Tenant {
   checkout_upsell_max_items?: number;
   // Bundles
   bundles_enabled?: boolean;
+  // Inventory alerts (migration 20260728120000)
+  low_stock_alerts_enabled?: boolean;
+  auto_86_enabled?: boolean;
   // Pairing rules
   pairing_rules_enabled?: boolean;
   // QR-handoff ordering

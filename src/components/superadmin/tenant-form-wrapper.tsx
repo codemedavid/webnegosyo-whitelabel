@@ -87,6 +87,9 @@ interface TenantFormData {
   flash_screen_feature_enabled: boolean
   // Bundles
   bundles_enabled: boolean
+  // Inventory alerts
+  low_stock_alerts_enabled: boolean
+  auto_86_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
   // QR-handoff ordering
@@ -769,6 +772,72 @@ function FlashScreenFeatureSection({
   )
 }
 
+// Inventory Alerts Feature Toggle Section
+function InventoryAlertsFeatureSection({
+  formData,
+  setFormData,
+  isPending,
+}: {
+  formData: TenantFormData
+  setFormData: React.Dispatch<React.SetStateAction<TenantFormData>>
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Inventory Alerts</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Warn the merchant when an ingredient crosses its reorder level, and optionally take
+          dishes off the menu when one runs out
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="low_stock_alerts_enabled">Enable Low-Stock Alerts</Label>
+            <p className="text-sm text-muted-foreground">
+              Raises an alert the moment an ingredient falls to or below its reorder level. Alerts
+              are raised once per crossing, not once per sale, and close when stock recovers.
+            </p>
+          </div>
+          <Switch
+            id="low_stock_alerts_enabled"
+            checked={formData.low_stock_alerts_enabled}
+            onCheckedChange={(checked) =>
+              setFormData({ ...formData, low_stock_alerts_enabled: checked })
+            }
+            disabled={isPending}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="auto_86_enabled">Enable Auto-86</Label>
+            <p className="text-sm text-muted-foreground">
+              Marks a menu item unavailable when an ingredient its base recipe needs hits zero.
+              Items whose optional extras run out are left on the menu. Re-enabling stays manual.
+            </p>
+          </div>
+          <Switch
+            id="auto_86_enabled"
+            checked={formData.auto_86_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, auto_86_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {formData.auto_86_enabled && (
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Careful:</strong> this hides dishes from customers
+              without asking. Only switch it on for a tenant whose base recipes are complete and
+              whose stock counts are kept up to date.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Bundles Feature Toggle Section
 function BundlesFeatureSection({
   formData,
@@ -1431,6 +1500,9 @@ export function TenantFormWrapper({
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    // Inventory alerts
+    low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
+    auto_86_enabled: tenant?.auto_86_enabled ?? false,
     // Pairing rules
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // QR-handoff ordering
@@ -1504,6 +1576,9 @@ export function TenantFormWrapper({
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Bundles
       bundles_enabled: formData.bundles_enabled,
+      // Inventory alerts
+      low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
+      auto_86_enabled: formData.auto_86_enabled,
       // Pairing rules
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // QR-handoff ordering
@@ -1682,6 +1757,11 @@ export function TenantFormWrapper({
             isPending={isPending}
           />
           <BundlesFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <InventoryAlertsFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
