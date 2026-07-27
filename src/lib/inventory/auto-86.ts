@@ -18,6 +18,17 @@
 
 import type { Recipe, RecipeComponent } from '@/types/database'
 
+/** Base recipes (recipe id → menu item id) — the only ones that can 86 an item. */
+function indexBaseRecipes(recipes: readonly Recipe[]): Map<string, string> {
+  const base = new Map<string, string>()
+  for (const recipe of recipes) {
+    if (recipe.target_type !== 'menu_item') continue
+    if (!recipe.menu_item_id) continue
+    base.set(recipe.id, recipe.menu_item_id)
+  }
+  return base
+}
+
 /**
  * Menu item ids whose base recipe depends on at least one exhausted ingredient.
  *
@@ -35,20 +46,59 @@ export function resolveMenuItemsToDisable(
 
   const outOfStock = new Set(outOfStockIngredientIds)
 
-  const blockedRecipeIds = new Set<string>()
-  for (const component of components) {
-    if (outOfStock.has(component.inventory_item_id)) {
-      blockedRecipeIds.add(component.recipe_id)
-    }
-  }
-  if (blockedRecipeIds.size === 0) return []
+  const baseRecipes = indexBaseRecipes(recipes)
 
   const menuItemIds = new Set<string>()
-  for (const recipe of recipes) {
-    if (recipe.target_type !== 'menu_item') continue
-    if (!recipe.menu_item_id) continue
-    if (!blockedRecipeIds.has(recipe.id)) continue
-    menuItemIds.add(recipe.menu_item_id)
+  for (const component of components) {
+    if (!outOfStock.has(component.inventory_item_id)) continue
+    const menuItemId = baseRecipes.get(component.recipe_id)
+    if (menuItemId) menuItemIds.add(menuItemId)
+  }
+
+  return [...menuItemIds]
+}
+
+/**
+ * Menu items that can go back on the menu now that an ingredient is stocked
+ * again.
+ *
+ * The question is the mirror image of disabling, not its negation: disabling
+ * asks whether ANY base ingredient ran out, so re-enabling has to ask whether
+ * EVERY base ingredient is in stock. A dish needing flour and sugar is still
+ * unsellable when the flour arrives and the sugar has not.
+ *
+ * `components` must therefore be the COMPLETE component list of each candidate
+ * base recipe, not only the rows naming a recovered ingredient — a partial list
+ * would read as a fully-stocked recipe and put the dish back too early.
+ *
+ * Deciding which of these the system is actually entitled to re-enable is the
+ * caller's job: only an item this system took off the menu may be put back.
+ */
+export function resolveMenuItemsToReEnable(
+  recoveredIngredientIds: readonly string[],
+  recipes: readonly Recipe[],
+  components: readonly RecipeComponent[],
+  outOfStockIngredientIds: readonly string[],
+): string[] {
+  if (recoveredIngredientIds.length === 0) return []
+
+  const recovered = new Set(recoveredIngredientIds)
+  const outOfStock = new Set(outOfStockIngredientIds)
+  const baseRecipes = indexBaseRecipes(recipes)
+
+  const touchedRecipeIds = new Set<string>()
+  const blockedRecipeIds = new Set<string>()
+  for (const component of components) {
+    if (!baseRecipes.has(component.recipe_id)) continue
+    if (recovered.has(component.inventory_item_id)) touchedRecipeIds.add(component.recipe_id)
+    if (outOfStock.has(component.inventory_item_id)) blockedRecipeIds.add(component.recipe_id)
+  }
+
+  const menuItemIds = new Set<string>()
+  for (const recipeId of touchedRecipeIds) {
+    if (blockedRecipeIds.has(recipeId)) continue
+    const menuItemId = baseRecipes.get(recipeId)
+    if (menuItemId) menuItemIds.add(menuItemId)
   }
 
   return [...menuItemIds]

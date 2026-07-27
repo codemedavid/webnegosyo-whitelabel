@@ -533,6 +533,8 @@ export interface MenuItem {
   variations: Variation[];
   addons: Addon[];
   is_available: boolean;
+  /** Set when auto-86 hid this item; NULL means availability is the merchant's own choice. */
+  auto_disabled_at?: string | null;
   is_featured?: boolean;
   bcg_classification?: BcgClassification;
   badge_text?: string;

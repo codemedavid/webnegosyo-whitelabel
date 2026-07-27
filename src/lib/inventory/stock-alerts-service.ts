@@ -23,18 +23,20 @@ import {
   type StockCrossing,
   type StockLevelInput,
 } from '@/lib/inventory/low-stock'
-import { resolveMenuItemsToDisable } from '@/lib/inventory/auto-86'
+import { resolveMenuItemsToDisable, resolveMenuItemsToReEnable } from '@/lib/inventory/auto-86'
 
 export interface StockLevelChangeResult {
   alertsRaised: number
   alertsResolved: number
   menuItemsDisabled: string[]
+  menuItemsReEnabled: string[]
 }
 
 const NOTHING_HAPPENED: StockLevelChangeResult = {
   alertsRaised: 0,
   alertsResolved: 0,
   menuItemsDisabled: [],
+  menuItemsReEnabled: [],
 }
 
 interface TenantAlertFlags {
@@ -80,6 +82,20 @@ function resolveRecoveredIds(
     if (evaluateStockLevel(after) === 'ok') recovered.push(item.id)
   }
   return recovered
+}
+
+/** On-hand quantities after this batch, for the ingredients it moved. */
+function postMovementQty(
+  items: readonly StockLevelInput[],
+  deltas: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const quantities = new Map<string, number>()
+  for (const item of items) {
+    const delta = deltas.get(item.id)
+    if (delta === undefined) continue
+    quantities.set(item.id, item.current_qty + delta)
+  }
+  return quantities
 }
 
 async function raiseAlerts(
@@ -149,11 +165,40 @@ async function resolveAlerts(
   return open.length
 }
 
+/** Base recipes touched by these ingredients, with their full component lists. */
+async function loadBaseRecipes(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  ingredientIds: readonly string[],
+): Promise<{ recipes: Recipe[]; components: RecipeComponent[] }> {
+  // Narrowed to the recipes that actually mention one of these ingredients, so
+  // this never loads a tenant's whole recipe book to decide about one item.
+  const { data: touchedRows } = await supabase
+    .from('recipe_components')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('inventory_item_id', ingredientIds)
+
+  const touched = (touchedRows ?? []) as unknown as RecipeComponent[]
+  if (touched.length === 0) return { recipes: [], components: [] }
+
+  const { data: recipeRows } = await supabase
+    .from('recipes')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('id', [...new Set(touched.map((c) => c.recipe_id))])
+
+  return { recipes: (recipeRows ?? []) as unknown as Recipe[], components: touched }
+}
+
 /**
  * Take off the menu every item whose base recipe needs an ingredient that just
- * ran out. Deliberately one-way: un-86 stays a manual decision, because a
- * restock that flipped items back on would flap the menu, and only the merchant
- * knows whether the dish is actually ready to sell again.
+ * ran out, stamping each one as auto-disabled.
+ *
+ * The stamp is what makes recovery safe: without it there is no way to tell an
+ * item this system hid from one the merchant deliberately turned off, and the
+ * next delivery would put the merchant's hidden item back on the menu. For the
+ * same reason the update only claims items that are currently available.
  */
 async function applyAuto86(
   supabase: ReturnType<typeof createAdminClient>,
@@ -163,37 +208,90 @@ async function applyAuto86(
   const outIds = crossings.filter((c) => c.to === 'out').map((c) => c.itemId)
   if (outIds.length === 0) return []
 
-  // Narrowed to the recipes that actually mention an exhausted ingredient, so
-  // this never loads a tenant's whole recipe book to disable one item.
-  const { data: componentRows } = await supabase
-    .from('recipe_components')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .in('inventory_item_id', outIds)
-
-  const components = (componentRows ?? []) as unknown as RecipeComponent[]
+  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, outIds)
   if (components.length === 0) return []
 
-  const { data: recipeRows } = await supabase
-    .from('recipes')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .in('id', [...new Set(components.map((c) => c.recipe_id))])
-
-  const menuItemIds = resolveMenuItemsToDisable(
-    outIds,
-    (recipeRows ?? []) as unknown as Recipe[],
-    components,
-  )
+  const menuItemIds = resolveMenuItemsToDisable(outIds, recipes, components)
   if (menuItemIds.length === 0) return []
 
   await supabase
     .from('menu_items')
-    .update({ is_available: false } as never)
+    .update({ is_available: false, auto_disabled_at: new Date().toISOString() } as never)
     .eq('tenant_id', tenantId)
+    .eq('is_available', true)
     .in('id', menuItemIds)
 
   return menuItemIds
+}
+
+/**
+ * Put back on the menu the items this system took off, once every ingredient
+ * their base recipe needs is stocked again.
+ *
+ * Ownership is enforced in the UPDATE itself rather than by reading first and
+ * writing after: a merchant toggling availability between the two statements
+ * would otherwise have their choice overwritten. What the statement actually
+ * matched is what gets reported.
+ */
+async function applyAuto86Recovery(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  recoveredIds: readonly string[],
+  postMovementQty: ReadonlyMap<string, number>,
+): Promise<string[]> {
+  if (recoveredIds.length === 0) return []
+
+  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, recoveredIds)
+  if (components.length === 0) return []
+
+  const outOfStockIds = await resolveOutOfStockIds(
+    supabase,
+    tenantId,
+    components,
+    postMovementQty,
+  )
+
+  const menuItemIds = resolveMenuItemsToReEnable(recoveredIds, recipes, components, outOfStockIds)
+  if (menuItemIds.length === 0) return []
+
+  const { data } = await supabase
+    .from('menu_items')
+    .update({ is_available: true, auto_disabled_at: null } as never)
+    .eq('tenant_id', tenantId)
+    .in('id', menuItemIds)
+    .not('auto_disabled_at', 'is', null)
+    .select('id')
+
+  return ((data ?? []) as unknown as Array<{ id: string }>).map((row) => row.id)
+}
+
+/**
+ * Which of these recipes' ingredients are empty right now.
+ *
+ * Quantities for the ingredients that just moved come from the applied deltas,
+ * not from the database: re-reading a row the ledger trigger is still updating
+ * races it and reads a stale total. Everything else is read normally.
+ */
+async function resolveOutOfStockIds(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  components: readonly RecipeComponent[],
+  postMovementQty: ReadonlyMap<string, number>,
+): Promise<string[]> {
+  const ingredientIds = [...new Set(components.map((c) => c.inventory_item_id))]
+
+  const { data } = await supabase
+    .from('inventory_items')
+    .select('id, current_qty, reorder_level')
+    .eq('tenant_id', tenantId)
+    .in('id', ingredientIds)
+
+  const rows = (data ?? []) as unknown as Array<{ id: string; current_qty: number }>
+
+  return rows
+    .map((row) => ({ id: row.id, current_qty: postMovementQty.get(row.id) ?? row.current_qty }))
+    .filter((row) => evaluateStockLevel({ current_qty: row.current_qty, reorder_level: 0 }) === 'out')
+    .map((row) => row.id)
 }
 
 /**
@@ -226,8 +324,11 @@ export async function processStockLevelChanges(
     const menuItemsDisabled = flags.auto86Enabled
       ? await applyAuto86(supabase, tenantId, crossings)
       : []
+    const menuItemsReEnabled = flags.auto86Enabled
+      ? await applyAuto86Recovery(supabase, tenantId, recoveredIds, postMovementQty(items, deltas))
+      : []
 
-    return { alertsRaised, alertsResolved, menuItemsDisabled }
+    return { alertsRaised, alertsResolved, menuItemsDisabled, menuItemsReEnabled }
   } catch (error) {
     console.error('[inventory] Failed to process stock level changes', tenantId, error)
     return NOTHING_HAPPENED
