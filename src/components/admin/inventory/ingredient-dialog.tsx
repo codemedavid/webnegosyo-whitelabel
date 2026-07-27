@@ -42,7 +42,7 @@ export function IngredientDialog({
   onSave,
 }: IngredientDialogProps) {
   return (
-    <Dialog isOpen={isOpen} onOpenChange={onOpenChange} width={520} purpose="form">
+    <Dialog isOpen={isOpen} onOpenChange={onOpenChange} width={520} purpose="info">
       <DialogHeader
         title={isEditing ? 'Edit Ingredient' : 'New Ingredient'}
         subtitle="What it costs and how it is measured"

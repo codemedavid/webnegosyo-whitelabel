@@ -181,7 +181,7 @@ export function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProp
         />
       )}
 
-      <Dialog isOpen={isOpen} onOpenChange={setIsOpen} width={520} purpose="form">
+      <Dialog isOpen={isOpen} onOpenChange={setIsOpen} width={520} purpose="info">
         <DialogHeader
           title={editingId ? 'Edit Unit' : 'New Unit'}
           subtitle="How this unit converts to its base"

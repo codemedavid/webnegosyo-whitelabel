@@ -63,7 +63,7 @@ export function StockDialog({
       isOpen={item !== null}
       onOpenChange={(open) => !open && onClose()}
       width={560}
-      purpose="form"
+      purpose="info"
     >
       <DialogHeader
         title={item ? `Stock — ${item.name}` : 'Stock'}

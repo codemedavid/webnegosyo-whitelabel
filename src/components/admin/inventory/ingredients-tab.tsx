@@ -323,7 +323,7 @@ export function IngredientsTab({
         isOpen={recipeItem !== null}
         onOpenChange={(open) => !open && setRecipeItem(null)}
         width={720}
-        purpose="form"
+        purpose="info"
       >
         <DialogHeader
           title={recipeItem ? `What ${recipeItem.name} is made of` : 'Recipe'}
