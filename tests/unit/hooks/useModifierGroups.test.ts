@@ -112,3 +112,103 @@ describe('useModifierGroups', () => {
     expect(result.current.totalPrice).toBe(240) // (100 + 20) × 2
   })
 })
+
+/**
+ * The "pick any 2 of 4" journey the web could not express before: a bounded
+ * multi-select group (min 2, max 3). Exercised through the hook because that is
+ * what the storefront actually drives — the adapter's rules are unit-tested in
+ * `modifier-groups-cart.test.ts`, but nothing covered them via the React seam
+ * that add-to-cart calls.
+ */
+const pickTwoToThree: ModifierGroup[] = [
+  {
+    id: 'g-toppings',
+    name: 'Toppings',
+    display_order: 0,
+    min_select: 2,
+    max_select: 3,
+    options: [
+      { id: 'o-ham', name: 'Ham', price_modifier: 10, display_order: 0 },
+      { id: 'o-corn', name: 'Corn', price_modifier: 5, display_order: 1 },
+      { id: 'o-olive', name: 'Olive', price_modifier: 8, display_order: 2 },
+      { id: 'o-basil', name: 'Basil', price_modifier: 6, display_order: 3 },
+    ],
+  },
+]
+
+describe('useModifierGroups — bounded multi-select (choose 2 to 3)', () => {
+  function renderBounded() {
+    const item = makeItem({ modifier_groups: pickTwoToThree })
+    return renderHook(() => useModifierGroups({ item }))
+  }
+
+  const group = pickTwoToThree[0]
+
+  it('starts empty when no option is flagged as a default', () => {
+    const { result } = renderBounded()
+    expect(result.current.selection['g-toppings']).toEqual([])
+  })
+
+  it('blocks add-to-cart until the minimum is met', () => {
+    const { result } = renderBounded()
+
+    expect(result.current.validate().valid).toBe(false)
+
+    act(() => result.current.toggle(group, 'o-ham'))
+    expect(result.current.validate().valid).toBe(false)
+
+    act(() => result.current.toggle(group, 'o-corn'))
+    expect(result.current.validate().valid).toBe(true)
+  })
+
+  it('names the group in the error so the shopper knows what to fix', () => {
+    const { result } = renderBounded()
+    expect(result.current.validate().error).toContain('Toppings')
+  })
+
+  it('accumulates picks rather than replacing them, and prices them together', () => {
+    const { result } = renderBounded()
+
+    act(() => result.current.toggle(group, 'o-ham'))
+    act(() => result.current.toggle(group, 'o-corn'))
+
+    expect(result.current.selection['g-toppings']).toEqual(['o-ham', 'o-corn'])
+    expect(result.current.totalPrice).toBe(115) // 100 base + 10 + 5
+  })
+
+  it('refuses a fourth pick once the cap of 3 is reached', () => {
+    const { result } = renderBounded()
+
+    for (const id of ['o-ham', 'o-corn', 'o-olive', 'o-basil']) {
+      act(() => result.current.toggle(group, id))
+    }
+
+    expect(result.current.selection['g-toppings']).toEqual(['o-ham', 'o-corn', 'o-olive'])
+    expect(result.current.validate().valid).toBe(true)
+  })
+
+  it('lets the shopper swap a pick out at the cap', () => {
+    const { result } = renderBounded()
+
+    for (const id of ['o-ham', 'o-corn', 'o-olive']) {
+      act(() => result.current.toggle(group, id))
+    }
+    act(() => result.current.toggle(group, 'o-ham')) // remove
+    act(() => result.current.toggle(group, 'o-basil')) // now fits
+
+    expect(result.current.selection['g-toppings']).toEqual(['o-corn', 'o-olive', 'o-basil'])
+  })
+
+  it('carries every pick into the cart as a priced add-on', () => {
+    const { result } = renderBounded()
+
+    act(() => result.current.toggle(group, 'o-ham'))
+    act(() => result.current.toggle(group, 'o-corn'))
+
+    const { selectedAddons, selectedVariations } = result.current.cartFormat
+    expect(selectedAddons.map((a) => a.name)).toEqual(['Ham', 'Corn'])
+    expect(selectedAddons.map((a) => a.price)).toEqual([10, 5])
+    // Multi-select groups never collapse into the single-variation slot.
+    expect(selectedVariations).toEqual({})
+  })
+})
