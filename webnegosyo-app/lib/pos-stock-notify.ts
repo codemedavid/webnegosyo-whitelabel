@@ -26,7 +26,31 @@ export async function notifyPosStockDepletion(
   items: readonly PosStockItem[],
 ): Promise<void> {
   if (items.length === 0) return;
+  await postStockAction({ tenantId, orderId, items });
+}
 
+/**
+ * Fire-and-forget: put a cancelled order's ingredients back on the shelf.
+ *
+ * Covers every order this app can cancel — a voided counter sale and an online
+ * order cancelled from the order detail screen alike. Both live in Convex and
+ * so never reach `updateOrderStatus`, where the web app restores stock.
+ *
+ * Sends no lines: the platform reverses the sale movements the order actually
+ * recorded. Recomputing from lines would drift once options are counted.
+ *
+ * Never throws, for the same reason as depletion — a stock write must not be
+ * able to make an order un-cancellable.
+ */
+export async function notifyOrderStockRestore(
+  tenantId: string,
+  orderId: string,
+): Promise<void> {
+  await postStockAction({ tenantId, orderId, action: "restore" });
+}
+
+/** The one authenticated call both directions share. Never throws. */
+async function postStockAction(body: Record<string, unknown>): Promise<void> {
   try {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
@@ -38,10 +62,10 @@ export async function notifyPosStockDepletion(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ tenantId, orderId, items }),
+      body: JSON.stringify(body),
     });
   } catch {
-    // Best-effort — the sale already succeeded. The ledger is reconcilable by
-    // stocktake; a failed tender is not recoverable.
+    // Best-effort — the order already succeeded. The ledger is reconcilable by
+    // stocktake; a failed sale or a stuck cancellation is not.
   }
 }
