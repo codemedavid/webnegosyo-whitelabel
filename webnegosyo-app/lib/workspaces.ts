@@ -40,8 +40,10 @@ export const WORKSPACES: readonly Workspace[] = [
   {
     key: "products",
     label: "Products",
-    description: "Menu performance and product management",
-    tabs: ["product-analytics", "product-management"],
+    description: "Menu performance, product management, and stock",
+    // Inventory belongs beside the products it is spent on: the merchant who
+    // 86s an item and the merchant who reorders its flour are the same person.
+    tabs: ["product-analytics", "product-management", "inventory"],
     defaultTab: "product-analytics",
   },
 ] as const;

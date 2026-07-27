@@ -40,6 +40,8 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   trends: "analytics",
   "product-analytics": "analytics",
   "product-management": "menu",
+  // Reordering an ingredient is a menu decision, so it rides the same key.
+  inventory: "menu",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {
