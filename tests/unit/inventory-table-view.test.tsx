@@ -84,6 +84,13 @@ describe('columns', () => {
     expect(screen.getByTestId('inventory-photo-placeholder')).toBeInTheDocument()
   })
 
+  it('shows the ingredient photo when it has one', () => {
+    renderTable({ rows: [row({ name: 'Broccoli', imageUrl: 'https://img.test/broccoli.png' })] })
+
+    expect(screen.queryByTestId('inventory-photo-placeholder')).not.toBeInTheDocument()
+    expect(screen.getByTestId('inventory-photo')).toBeInTheDocument()
+  })
+
   it('tells the merchant an item was never received instead of showing a wrong date', () => {
     renderTable({ rows: [row({ lastPurchaseAt: null })] })
 
@@ -127,6 +134,22 @@ describe('sorting', () => {
     fireEvent.click(header)
 
     expect(bodyRowNames()).toEqual(['Chicken', 'Broccoli', 'Aubergine'])
+  })
+
+  it('sorts by item code', () => {
+    renderTable()
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by item code/i }))
+
+    expect(bodyRowNames()).toEqual(['Chicken', 'Broccoli', 'Aubergine'])
+  })
+
+  it('sorts by item group', () => {
+    renderTable()
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by item group/i }))
+
+    expect(bodyRowNames()[0]).toBe('Chicken')
   })
 
   it('sorts on-hand as a quantity, not as the text beside it', () => {

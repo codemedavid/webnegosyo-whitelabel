@@ -223,7 +223,10 @@ export function InventoryTable({
                 <td className="px-4 py-3">
                   {row.imageUrl ? (
                     <Image
+                      data-testid="inventory-photo"
                       src={row.imageUrl}
+                      // Decorative: the item's name sits in the next cell, so a
+                      // spoken alt here would only repeat it.
                       alt=""
                       width={36}
                       height={36}
