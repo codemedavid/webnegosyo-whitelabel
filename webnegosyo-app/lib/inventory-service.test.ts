@@ -62,6 +62,8 @@ describe("loadInventoryStock", () => {
         name: "Flour",
         quantity: 5,
         reorderLevel: 20,
+        // Carried through now that a movement needs a unit to be recorded in.
+        stockUnitId: "u1",
         unitAbbreviation: "kg",
         level: "low",
       },

@@ -51,6 +51,12 @@ async function notifyStockLevelChanges(
   }
 }
 
+/**
+ * Any Supabase client already scoped to the caller — the cookie-bound server
+ * client on the web, a Bearer-token client for the merchant app.
+ */
+type StockMovementClient = Awaited<ReturnType<typeof createClient>>
+
 export interface StockMovementResult {
   movement: StockMovement
   /** The item as it stands after the movement, for the caller to display. */
@@ -87,8 +93,31 @@ export async function recordStockMovement(
   input: StockMovementInput,
 ): Promise<StockMovementResult> {
   await verifyTenantPermission(tenantId, 'menu')
-  const validated = stockMovementInputSchema.parse(input)
   const supabase = await createClient()
+  return recordStockMovementWith(supabase, tenantId, input)
+}
+
+/**
+ * The movement itself, against a caller-supplied client.
+ *
+ * Split out for the merchant app, which arrives with a Bearer token and no
+ * cookies, so it can neither use the cookie-bound server client nor
+ * `verifyTenantPermission` — it authorizes itself at the route and hands the
+ * resulting client in here.
+ *
+ * Sharing this body is the point. RLS would let the app insert into
+ * `stock_movements` directly, but the signed delta, the moving-average cost and
+ * the alert/auto-86 pass all live here; a direct insert would skip two of them
+ * and resolve the third from a figure the phone happened to be holding.
+ *
+ * Authorization is the caller's responsibility and must already have happened.
+ */
+export async function recordStockMovementWith(
+  supabase: StockMovementClient,
+  tenantId: string,
+  input: StockMovementInput,
+): Promise<StockMovementResult> {
+  const validated = stockMovementInputSchema.parse(input)
 
   const { data: itemRow, error: itemError } = await supabase
     .from('inventory_items')

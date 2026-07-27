@@ -51,6 +51,12 @@ export interface StockItemView {
   /** On-hand quantity in the ingredient's stock unit. */
   quantity: number;
   reorderLevel: number;
+  /**
+   * The unit this ingredient is stocked in. Null when it has none, which is the
+   * one case a movement cannot be recorded for — the server would have no unit
+   * to resolve the quantity against.
+   */
+  stockUnitId: string | null;
   /** Empty for an ingredient with no meaningful unit to show. */
   unitAbbreviation: string;
   level: StockLevel;
@@ -112,6 +118,7 @@ export function buildStockViews(
       name: item.name,
       quantity: item.current_qty,
       reorderLevel: item.reorder_level,
+      stockUnitId: item.stock_unit_id,
       unitAbbreviation:
         (item.stock_unit_id ? abbreviationById.get(item.stock_unit_id) : undefined) ?? "",
       level: evaluateStockLevel(item),

@@ -45,6 +45,7 @@ function view(overrides: Partial<StockItemView> = {}): StockItemView {
     name: "Flour",
     quantity: 40,
     reorderLevel: 20,
+    stockUnitId: "u1",
     unitAbbreviation: "kg",
     level: "ok",
     ...overrides,
