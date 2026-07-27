@@ -107,6 +107,24 @@ Applied to production. The platform `orders` table was built for web checkout on
 
 Post-apply probe: `item_count` backfilled — 0 nulls remain across 1,708 orders; 18 legacy orders genuinely have no line items and resolve to `0`.
 
+### Task 10 — Mobile realtime (`webnegosyo-app/lib/backends/supabase-realtime.ts`)
+
+Replaces the flat 15s poll on platform-backed screens with a per-tenant `postgres_changes` channel on `public.orders`, filtered server-side by `tenant_id=eq.<id>`. The pure decisions (channel identity, tenant guard, status mapping, poll interval) are extracted here; only the subscribe/unsubscribe plumbing lives in `lib/hooks.ts`.
+
+RED: `npx jest lib/backends/supabase-realtime.test.ts` → `TS2307: Cannot find module './supabase-realtime'`.
+GREEN: same command → 18 passed.
+
+A second RED/GREEN cycle inside the same task added `instanceKey`: `<GlobalOrderAlerts>` and the dashboard both watch the queue simultaneously, and supabase-js keys channels by topic, so a tenant-only channel name made the second subscriber collide with the first. RED was `TS2554: Expected 1 arguments, but got 2`.
+
+Design decisions worth recording:
+
+- **Polling is kept, not removed.** Realtime has never been observed delivering a live order on this stack. The interval drops to 60s while the channel reports `SUBSCRIBED` and returns to 15s otherwise, so a socket that never connects (or silently dies) degrades to the previous behaviour instead of a screen that never updates.
+- **Any unrecognized channel status counts as disconnected.** Guessing "connected" would slow the poll to the safety-net interval and make orders arrive up to a minute late.
+- **The payload tenant is re-checked on arrival**, behind the server-side filter. A refetch is tenant-scoped anyway, but the new-order ringtone firing for another merchant's order would be a visible cross-tenant leak.
+- The subscription effect deliberately does **not** depend on the serialized args, so changing a filter re-reads without tearing down the channel.
+
+Server-side precondition re-probed against production: `orders` and `order_items` are both in the `supabase_realtime` publication with `relreplident = 'f'` (full).
+
 ## Test Specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -121,12 +139,18 @@ Post-apply probe: `item_count` backfilled — 0 nulls remain across 1,708 orders
 | 8 | Exiting impersonation clears the backend | `lib/impersonation.test.ts:clears the order backend on exit` | unit | PASS |
 | 9 | Realtime publication carries orders + order_items | `pg_publication_tables` probe | schema | PASS |
 | 10 | No new RLS policy self-compares tenant_id | `pg_policies` probe | security | PASS |
+| 11 | The realtime channel is filtered to one tenant server-side | `lib/backends/supabase-realtime.test.ts:scopes the subscription to a single tenant's orders` | unit | PASS |
+| 12 | Two subscribers on one tenant get distinct channels | `...:gives two subscribers on the same tenant distinct channel names` | unit | PASS |
+| 13 | A foreign-tenant payload is ignored even if it arrives | `...:rejects a change belonging to another tenant` | unit | PASS |
+| 14 | A payload with no attributable tenant is ignored | `...:rejects a payload with no tenant on either row` | unit | PASS |
+| 15 | A dropped/unknown socket falls back to the fast poll | `...:treats an unrecognized status as disconnected` | unit | PASS |
+| 16 | Status changes propagate, not just new orders (`event: "*"`) | `...:listens for updates as well as inserts` | unit | PASS |
 
 ## Regression Evidence
 
 ```
 webnegosyo-app: npx tsc --noEmit   # clean
-webnegosyo-app: npx jest           # 44 suites, 710 tests passed
+webnegosyo-app: npx jest           # 47 suites, 769 tests passed
 web root:       npx jest           # 224 suites, 2582 tests passed
 webnegosyo-app: npx eslint lib/hooks.ts lib/backends/   # 0 errors
 ```
@@ -151,7 +175,7 @@ The 120 platform tenants with no Convex deployment go from **every order screen 
 Orders now work end to end in code, but the slice is **not** finished:
 
 - **Not yet run on a device.** Every guarantee above is a unit test or a SQL probe. No platform tenant has been signed into on an actual build, so the React plumbing in `lib/hooks.ts` is unverified in practice. This is the single biggest gap.
-- **P8 — realtime.** Platform screens currently poll every 15s. Convex pushes instantly; the platform path does not yet. Realtime is *published* (migration `20260727120000`), but end-to-end delivery on a live order has still not been observed.
+- **Realtime delivery is still unobserved end to end.** The channel is wired and its preconditions are probed, but no live order has been seen arriving over the socket. Verifying this needs an authenticated merchant session against a real device — it cannot be simulated from Node with the anon key, because Realtime applies the connected user's RLS. Until then the 15s/60s poll is what actually guarantees orders appear.
 - **P5 — push.** A platform tenant gets **no** order notification on iOS or Android. Convex's `sendOrderNotification` has no platform equivalent yet; needs the `notify-order` Edge Function + trigger and `registerPushToken` pointed at `push_tokens`.
 - **Only `orders:*` refs are served.** Analytics, product costs, trends, Lalamove and daily stats still report `unsupported` on the platform backend — screens show the "needs a backend update" placeholder. That is deliberate (P1–P4, P6) and honest, but it is not parity yet.
 - `src/types/database.ts` has no types for the five tables added in `20260727120000`, and those tables are still empty — nothing writes to them.
@@ -172,6 +196,9 @@ a13e95c feat: platform order-parity schema and fix dead realtime publication    
 2a669cb feat: add Convex-parity columns to platform orders and order_items               (applied + probed)
 8cf9881 test: add reproducer for the platform order adapter and its tenant guard         (RED)
 8fde442 feat: serve the app's order function refs from the platform Supabase             (GREEN)
+c523da3 test: add reproducer for platform order realtime subscription decisions          (RED)
+c36b7cf feat: decide the platform order realtime channel, tenant guard, poll fallback     (GREEN)
+6b7c76d feat: push platform order changes to the app over Supabase Realtime               (wiring)
 (route) test: add reproducer for per-ref backend routing                                 (RED)
 (route) feat: route each function ref to Convex, the platform adapter, or neither        (GREEN)
 af95366 feat: dispatch app queries and mutations to the platform Supabase backend        (wiring)
