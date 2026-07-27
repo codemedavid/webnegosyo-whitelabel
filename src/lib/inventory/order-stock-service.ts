@@ -30,6 +30,24 @@ function toUnit(row: InventoryUnitRow): InventoryUnit {
   }
 }
 
+/**
+ * Runs the alert path without letting it affect the movement that triggered it.
+ * `processStockLevelChanges` already swallows its own errors; this guards the
+ * call itself, so a broken alert module can never unwind a recorded sale.
+ */
+async function notifyStockLevelChanges(
+  tenantId: string,
+  items: readonly InventoryItem[],
+  deltas: ReadonlyMap<string, number>,
+): Promise<void> {
+  try {
+    const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
+    await processStockLevelChanges(tenantId, items, deltas)
+  } catch (error) {
+    console.error('[inventory] Stock level alerting failed', tenantId, error)
+  }
+}
+
 export interface OrderStockResult {
   /** Movements actually written. Zero is normal — most menus are partly costed. */
   movementCount: number
@@ -160,6 +178,16 @@ export async function applyOrderStockMovements(
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
   if (insertError) throw insertError
+
+  // Alerts read the PRE-movement rows plus the deltas just applied. Re-reading
+  // the items instead would race the running-total trigger and could compare a
+  // quantity against itself, detecting no crossing at all.
+  const deltas = new Map<string, number>()
+  for (const row of rows) {
+    const itemId = row.inventory_item_id as string
+    deltas.set(itemId, (deltas.get(itemId) ?? 0) + (row.quantity_delta as number))
+  }
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas)
 
   return { movementCount: rows.length, skipped }
 }

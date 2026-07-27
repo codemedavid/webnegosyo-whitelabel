@@ -154,29 +154,34 @@ describe('order depletion reaches the alert path', () => {
 })
 
 describe('manual movements reach the alert path', () => {
+  // The manual path validates its input as UUIDs, unlike depletion, which is
+  // fed ids the server already resolved.
+  const FLOUR_ID = '11111111-1111-4111-8111-111111111111'
+  const GRAM_ID = '22222222-2222-4222-8222-222222222222'
+
   it('reports the ingredient and delta a merchant-recorded waste applied', async () => {
     from.mockImplementation((name: string) => {
       switch (name) {
         case 'inventory_items':
-          return table(FLOUR)
+          return table({ ...FLOUR, id: FLOUR_ID, stock_unit_id: GRAM_ID })
         case 'inventory_units':
-          return table([GRAMS])
+          return table([{ ...GRAMS, id: GRAM_ID }])
         default:
           return table({ id: 'mv-1' })
       }
     })
 
     await recordStockMovement('t1', {
-      inventory_item_id: 'flour',
+      inventory_item_id: FLOUR_ID,
       reason: 'waste',
       quantity: 10,
-      unit_id: 'unit-g',
+      unit_id: GRAM_ID,
     })
 
     expect(mockedProcess).toHaveBeenCalledTimes(1)
     const [tenantId, items, deltas] = mockedProcess.mock.calls[0]
     expect(tenantId).toBe('t1')
-    expect(items).toEqual([expect.objectContaining({ id: 'flour', current_qty: 25 })])
-    expect(deltas.get('flour')).toBe(-10)
+    expect(items).toEqual([expect.objectContaining({ id: FLOUR_ID, current_qty: 25 })])
+    expect(deltas.get(FLOUR_ID)).toBe(-10)
   })
 })

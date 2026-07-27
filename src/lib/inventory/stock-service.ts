@@ -37,6 +37,20 @@ function toUnit(row: InventoryUnitRow): InventoryUnit {
   }
 }
 
+/** Alerting must never unwind a movement the merchant already recorded. */
+async function notifyStockLevelChanges(
+  tenantId: string,
+  items: readonly InventoryItem[],
+  deltas: ReadonlyMap<string, number>,
+): Promise<void> {
+  try {
+    const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
+    await processStockLevelChanges(tenantId, items, deltas)
+  } catch (error) {
+    console.error('[inventory] Stock level alerting failed', tenantId, error)
+  }
+}
+
 export interface StockMovementResult {
   movement: StockMovement
   /** The item as it stands after the movement, for the caller to display. */
@@ -142,6 +156,11 @@ export async function recordStockMovement(
       .eq('tenant_id', tenantId)
     if (costError) throw costError
   }
+
+  // A merchant wasting the last of an ingredient crosses the same line an order
+  // does, so the alert path hangs off both writers. It reads the item as it
+  // stood before the movement, paired with the delta just applied.
+  await notifyStockLevelChanges(tenantId, [item], new Map([[item.id, quantityDelta]]))
 
   const { data: updatedRow, error: refreshError } = await supabase
     .from('inventory_items')

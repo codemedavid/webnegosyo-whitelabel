@@ -14,6 +14,40 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Added by migration 20260728120000_inventory_low_stock_alerts.sql.
+      stock_alerts: {
+        Row: {
+          created_at: string | null
+          id: string
+          inventory_item_id: string
+          level: string
+          quantity: number
+          reorder_level: number
+          resolved_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id: string
+          level: string
+          quantity: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id?: string
+          level?: string
+          quantity?: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       stock_movements: {
         Row: {
           balance_after: number
