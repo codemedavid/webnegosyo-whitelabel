@@ -465,15 +465,29 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             />
           )}
 
-          {inventoryEnabled && item?.id && (
-            <RecipeEditor
-              tenantId={tenantId}
-              tenantSlug={tenantSlug}
-              target={{ type: 'menu_item', menuItemId: item.id }}
-              label="Base recipe (ingredients used per item)"
-              onSaved={refreshCosts}
-            />
-          )}
+          {inventoryEnabled &&
+            (item?.id ? (
+              <RecipeEditor
+                tenantId={tenantId}
+                tenantSlug={tenantSlug}
+                target={{ type: 'menu_item', menuItemId: item.id }}
+                label="Base recipe (ingredients used per item)"
+                onSaved={refreshCosts}
+              />
+            ) : (
+              // A recipe needs an item id to attach to, so a brand-new dish
+              // cannot have one yet. Rendering nothing made that look like the
+              // feature was missing rather than merely not-yet — say so instead.
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">
+                  Base recipe (ingredients used per item)
+                </p>
+                <p className="mt-1">
+                  Save this item first, then reopen it to link the ingredients it uses. Until a
+                  dish has a recipe, selling it will not deduct any stock.
+                </p>
+              </div>
+            ))}
 
           <div className="space-y-2">
             <Label htmlFor="category">Category *</Label>

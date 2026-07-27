@@ -25,10 +25,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { RecipeCoverageTab } from '@/components/admin/recipe-coverage-tab'
+import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
 import { InventoryTable } from '@/components/admin/inventory-table'
 import { buildInventoryRows } from '@/lib/inventory/inventory-table'
-import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
+import type {
+  InventoryItem,
+  InventoryUnitRow,
+  InventoryUnitDimension,
+  RecipeComponent,
+} from '@/types/database'
 import {
   EMPTY_STOCK_DRAFT,
   buildStockMovementInput,
@@ -74,6 +81,13 @@ interface InventoryManagerProps {
    * to survive the server-to-client boundary for no gain.
    */
   lastPurchaseByItemId?: Record<string, string>
+  /**
+   * Recipe coverage is computed on the server, where the menu items and recipes
+   * are already being read. Passing the finished rows keeps this component from
+   * fetching a second time just to answer "which dishes are set up?".
+   */
+  coverageRows?: RecipeCoverageRow[]
+  recipeComponents?: RecipeComponent[]
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
@@ -84,14 +98,17 @@ export function InventoryManager({
   initialIngredients,
   initialUnits,
   lastPurchaseByItemId = {},
+  coverageRows = [],
+  recipeComponents = [],
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
 
   return (
     <Tabs defaultValue="ingredients">
-      <TabsList className="grid w-full max-w-md grid-cols-2">
+      <TabsList className="grid w-full max-w-md grid-cols-3">
         <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
+        <TabsTrigger value="recipes">Recipes</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
       </TabsList>
 
@@ -103,6 +120,15 @@ export function InventoryManager({
           units={units}
           lastPurchaseByItemId={lastPurchaseByItemId}
           onChange={setIngredients}
+        />
+      </TabsContent>
+
+      <TabsContent value="recipes" className="pt-4">
+        <RecipeCoverageTab
+          tenantSlug={tenantSlug}
+          rows={coverageRows}
+          ingredients={ingredients}
+          components={recipeComponents}
         />
       </TabsContent>
 

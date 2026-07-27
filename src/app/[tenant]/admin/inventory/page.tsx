@@ -7,6 +7,7 @@ import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
+import { getRecipeCoverage } from '@/lib/inventory/recipe-coverage-read'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminInventoryPage({
@@ -40,6 +41,11 @@ export default async function AdminInventoryPage({
     getCachedLastPurchaseDates(tenant.id),
   ])
 
+  // Recipe coverage answers "which dishes are actually set up?" — the question
+  // that had no surface at all, and the reason a tenant could switch inventory
+  // on and have it quietly do nothing.
+  const { coverageRows, recipeComponents } = await getRecipeCoverage(tenant.id)
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -62,6 +68,8 @@ export default async function AdminInventoryPage({
         initialIngredients={ingredients}
         initialUnits={units}
         lastPurchaseByItemId={lastPurchaseByItemId}
+        coverageRows={coverageRows}
+        recipeComponents={recipeComponents}
       />
     </div>
   )
