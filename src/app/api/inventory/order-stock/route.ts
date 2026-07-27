@@ -17,9 +17,20 @@ import { createClient } from '@supabase/supabase-js'
  * therefore reports success once the caller is authorized, whatever the ledger
  * write then does.
  *
+ * The `restore` action is the mirror image: cancelling an order held in Convex
+ * (a voided counter sale, or an online order cancelled from the merchant app)
+ * never reaches `updateOrderStatus` either, so without it a cancelled order's
+ * ingredients stayed spent. Restore needs no items — the reversal is derived
+ * from the sale movements the order actually recorded.
+ *
  * Authenticated via the caller's own Supabase access token — same trust level
  * as /api/revalidate-menu and `verifyTenantAdmin` in src/lib/admin-service.ts.
  */
+
+/** What the caller wants done to this order's stock. */
+type StockAction = 'deplete' | 'restore'
+
+const STOCK_ACTIONS: readonly StockAction[] = ['deplete', 'restore']
 
 /** One configured line of the sale, as the register sends it. */
 interface OrderStockItemInput {
@@ -46,7 +57,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  if (!Array.isArray(rawItems)) {
+  // Absent means deplete: the POS register shipped before this discriminator
+  // existed and sends no action.
+  const action: unknown = body?.action ?? 'deplete'
+  if (!STOCK_ACTIONS.includes(action as StockAction)) {
+    return NextResponse.json(
+      { error: `action must be one of ${STOCK_ACTIONS.join(', ')}` },
+      { status: 400 },
+    )
+  }
+
+  // Only depletion needs the sale's lines. A restore reverses what the order
+  // already recorded, so a cancelling client needs nothing but the order id.
+  if (action === 'deplete' && !Array.isArray(rawItems)) {
     return NextResponse.json({ error: 'items must be an array' }, { status: 400 })
   }
 
@@ -90,6 +113,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (tenant?.inventory_enabled !== true) {
     return NextResponse.json({ success: true, skipped: 'inventory_disabled' })
+  }
+
+  if (action === 'restore') {
+    const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+    await reverseOrderStockBestEffort(tenantId, orderId)
+    return NextResponse.json({ success: true })
   }
 
   const items = (rawItems as OrderStockItemInput[])
