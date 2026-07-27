@@ -144,17 +144,82 @@ and `expo-constants` mocks cannot resolve there. Added
 `testPathIgnorePatterns` for `webnegosyo-app/`. No coverage is lost — those are
 exactly the 37 suites the merchant app's own runner executes and passes.
 
+## Follow-on: cancellation restore for Convex-held orders
+
+Depletion without restore is worse than neither: stock walks down and never
+comes back. `updateOrderStatus` restores stock for platform-backed orders only,
+and the merchant app cancels orders that live in Convex — both voided counter
+sales and online orders cancelled from the order detail screen.
+
+Rather than add a second route, the existing one took an `action` discriminator
+(`deplete` | `restore`). Restore requires no items: the platform reverses the
+sale movements the order actually recorded, because recomputing from lines
+drifts once options are counted. A missing `action` still means deplete, so the
+already-shipped register keeps working unchanged.
+
+- RED: `npx jest tests/unit/api/inventory-order-stock.test.ts` → 4 failed, 10 passed
+- GREEN: same command → 14 passed
+- RED: `npx jest lib/pos-stock-notify.test.ts` → `TS2305: Module './pos-stock-notify' has no exported member 'notifyOrderStockRestore'`
+- GREEN: same command → 9 passed
+
+Live database round trip, in a transaction, then rolled back:
+
+```
+after_sale | restore_delta | after_restore
+9400.0000  | 600.0000      | 10000.0000
+```
+
+10000 → sale −600 → 9400 → void +600 → 10000, with a Convex-style order id
+throughout. Leak check after `ROLLBACK`: `probe_units 0, probe_items 0,
+probe_movements 0`.
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 20 | A cancelled order's ingredients go back on the shelf | `inventory-order-stock.test.ts:puts a cancelled order-s ingredients back on the shelf` | integration | PASS |
+| 21 | Restore needs no items, deriving the reversal from recorded movements | `inventory-order-stock.test.ts:needs no items, since the reversal derives from recorded sale movements` | integration | PASS |
+| 22 | Another tenant's admin cannot restore into this tenant's ledger | `inventory-order-stock.test.ts:rejects a restore from an admin of a different tenant` | integration | PASS |
+| 23 | A tenant with inventory disabled records no restore | `inventory-order-stock.test.ts:does nothing when the tenant has inventory disabled` | integration | PASS |
+| 24 | An unrecognized action is rejected rather than guessed at | `inventory-order-stock.test.ts:rejects an unrecognized action rather than guessing` | integration | PASS |
+| 25 | The already-shipped register, which sends no action, still depletes | `inventory-order-stock.test.ts:still defaults to depleting when no action is given` | integration | PASS |
+| 26 | Cancelling asks the platform to reverse the sale | `pos-stock-notify.test.ts:asks the platform to reverse the order-s sale movements` | unit | PASS |
+| 27 | The restore call carries no line items | `pos-stock-notify.test.ts:sends no items, since the platform derives the reversal itself` | unit | PASS |
+| 28 | A signed-out app fires no unauthenticated restore | `pos-stock-notify.test.ts:does not call the platform when there is no session` | unit | PASS |
+| 29 | An unreachable platform cannot make an order un-cancellable | `pos-stock-notify.test.ts:never throws when the platform is unreachable` | unit | PASS |
+| 30 | A sale and its void round-trip to the original balance | live DB probe (above) | database | PASS |
+
+Final suite results after this follow-on:
+
+```
+webnegosyo-app:  npx jest → 37 suites, 598 tests passed
+webnegosyo-app:  npx tsc --noEmit → exit 0
+web app:         npx jest → 216 suites, 2504 tests passed
+eslint (changed files only) → exit 0
+```
+
 ## Known gaps (carried forward)
 
 These are unchanged by this phase and remain open:
 
 - **Both mobile apps still send display strings, not option ids.** Their orders
   deplete base recipes only. The web checkout and now the POS send ids.
-- **Cancellation restore does not cover POS or Convex admin surfaces.** A voided
-  counter sale does not yet return its ingredients; `reverseOrderStockMovements`
-  is only reachable from the platform order path. This is the natural next task.
-- **No live end-to-end POS probe.** The route and notifier are proven by unit
-  and integration tests plus a database probe, but a real register sale against
-  a Convex tenant with `inventory_enabled` has not been run.
+- **No live end-to-end POS probe.** The route, notifier, and ledger arithmetic
+  are proven by unit and integration tests plus database probes, but a real
+  register sale against a Convex tenant with `inventory_enabled` has not been
+  run. That is the one link in the chain still unproven against a live tenant.
+- **The tenant-Supabase admin surface still has no restore.** Cancellation
+  restore now covers platform-backed orders (`updateOrderStatus`) and everything
+  the merchant app cancels (Convex, including POS). An order cancelled from a
+  tenant's own Supabase admin tooling does not return stock.
+- **Restore is not reachable from the web admin for Convex orders.** Verified,
+  not assumed: `src/components/admin/convex-order-sheet.tsx:105` cancels via the
+  Convex mutation directly (`useUpdateConvexOrderStatus`), so it bypasses
+  `updateOrderStatus` exactly as the merchant app did. Closing it needs a
+  `tenantId` that neither `convex-orders-tab.tsx` nor
+  `convex-orders-wrapper.tsx` currently receives, so it means threading tenant
+  context down two component chains plus a server action guarded by
+  `verifyTenantPermission`. Deliberately left for its own change. **This is the
+  top remaining gap** — the merchant app now restores stock where the web admin
+  does not, so the same cancellation behaves differently depending on where it
+  is performed.
 - Phases 5B (low-stock alerts / auto-86), 6 (merchant app inventory surface),
   and 7 (RLS audit, E2E) are not started.
