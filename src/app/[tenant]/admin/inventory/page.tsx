@@ -3,9 +3,8 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
-import { InventoryManager } from '@/components/admin/inventory/inventory-manager'
-import { StockAlertsBanner } from '@/components/admin/inventory/stock-alerts-banner'
-import { AstryxRegion } from '@/components/admin/inventory/astryx-region'
+import { InventoryManager } from '@/components/admin/inventory-manager'
+import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import type { Tenant } from '@/types/database'
 
@@ -53,16 +52,14 @@ export default async function AdminInventoryPage({
         </p>
       </div>
 
-      <AstryxRegion>
-        <StockAlertsBanner alerts={alerts} />
+      <StockAlertsBanner alerts={alerts} />
 
-        <InventoryManager
-          tenantId={tenant.id}
-          tenantSlug={tenantSlug}
-          initialIngredients={ingredients}
-          initialUnits={units}
-        />
-      </AstryxRegion>
+      <InventoryManager
+        tenantId={tenant.id}
+        tenantSlug={tenantSlug}
+        initialIngredients={ingredients}
+        initialUnits={units}
+      />
     </div>
   )
 }

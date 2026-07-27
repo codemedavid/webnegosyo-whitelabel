@@ -8,7 +8,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
-import { InventoryManager } from '@/components/admin/inventory/inventory-manager'
+import { InventoryManager } from '@/components/admin/inventory-manager'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
