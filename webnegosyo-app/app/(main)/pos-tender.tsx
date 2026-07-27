@@ -25,6 +25,8 @@ import {
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import { buildPosStockItems } from "../../lib/pos-stock";
+import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
@@ -158,6 +160,17 @@ export default function PosTenderScreen() {
         console.warn("[pos] Could not mark the sale paid:", err);
       }
 
+      // Spend the sale's ingredients. The order lives in Convex, so it never
+      // passes through the web app's createOrderAction where depletion is
+      // wired — this is the register's way into that same path. Never throws.
+      if (tenantId) {
+        await notifyPosStockDepletion(
+          tenantId,
+          String(orderId),
+          buildPosStockItems(lines),
+        );
+      }
+
       if (hasPrinter) {
         await printOrder({
           _id: String(orderId),
@@ -196,6 +209,7 @@ export default function PosTenderScreen() {
     method,
     isCompleting,
     convexUrl,
+    tenantId,
     tendered,
     change.changeDue,
     proof,
