@@ -66,6 +66,47 @@ All 10 policies returned `OK row-scoped`.
 
 **Deliberate omission**: no anonymous insert policy on `analytics_events`. Storefront events come from customers with no `app_users` row, but they are written by `trackAnalyticsEventAction` through the service-role client, which bypasses RLS. A permissive `with check (true)` would add nothing for that path while letting anyone forge events for any tenant.
 
+### Task 5 — Order mappers (`webnegosyo-app/lib/backends/supabase-orders.ts`)
+
+Pure row→DTO shaping. The screens are the contract: `components/OrderCard.tsx:OrderCardOrder` and the local interfaces in `dashboard.tsx` / `orders.tsx` expect `_id`, `_creationTime` (epoch ms) and camelCase fields. No screen was changed.
+
+- **RED**: `npx jest lib/backends/supabase-orders.test.ts` → `TS2307: Cannot find module './supabase-orders'`.
+- **GREEN**: same command → `PASS`, 22 tests.
+- **Guarantees**: Manila day boundary (not UTC) bounds "today"; `numeric` columns arriving as strings are coerced so totals add instead of concatenate; `item_count` falls back to summing line items; legacy `text[]` addons normalize to the object shape; the live queue drops delivered/cancelled and sorts newest-first; revenue/count/average exclude cancelled orders while the status breakdown still counts them; an empty day yields `0`, not `NaN`; an unrecognized status cannot create a `NaN` bucket; POS and QR-handoff orders open as `confirmed` (skip-pending), web orders as `pending`.
+
+### Task 6 — Order adapter (`webnegosyo-app/lib/backends/supabase-adapter.ts`)
+
+Serves the eight `orders:*` refs the screens send. Exercised against a recording fake client so the query *shape* is assertable.
+
+- **RED**: `npx jest lib/backends/supabase-adapter.test.ts` → `TS2307: Cannot find module './supabase-adapter'`.
+- **GREEN**: same command → `PASS`, 17 tests.
+- **Guarantees**: every read and write filters `tenant_id` explicitly; a missing tenant throws instead of querying; a DB error propagates instead of masquerading as an empty queue; `getOrderById` returns `null` for another tenant's order; a retried submit with the same `clientOrderId` returns the existing order rather than inserting again; a failed item insert surfaces instead of leaving an order with no lines; an unknown ref throws instead of silently no-op'ing.
+
+**Security note**: the explicit `tenant_id` filter is not redundant with RLS. `orders_select_by_tenant` grants a **superadmin every tenant's rows**, so an unscoped query inside an impersonated store would render another merchant's orders and customer phone numbers. The `tenant guard` test pins this.
+
+### Task 7 — Per-ref routing (`webnegosyo-app/lib/backends/route.ts`)
+
+- **RED**: `npx jest lib/backends/route.test.ts` → `TS2307: Cannot find module './route'`.
+- **GREEN**: same command → `PASS`, 7 tests.
+- **Guarantees**: anything not explicitly `platform` routes to Convex (so all 45 Convex tenants keep the original code path); an unresolved backend falls back to Convex; a ref the adapter cannot serve reports `unsupported` so the screen shows its "needs a backend update" placeholder instead of an empty chart that reads as real zero data; no tenant in scope yields `idle` rather than a cross-tenant query; `order_backend = 'supabase'` (the separate per-tenant-project track) is **not** served here.
+
+### Task 8 — Hook dispatch (`webnegosyo-app/lib/hooks.ts`)
+
+`useSafeQuery` / `useSafeMutation` now dispatch per ref. Both platform hooks are called unconditionally so hook order is identical across backends, and `ConvexProvider` stays unconditionally mounted — making it conditional hard-crashes iOS (`lib/convex-provider.tsx:17`).
+
+Until realtime lands, platform screens re-read on a 15s poll so a new order still appears without a manual refresh.
+
+- **Verification**: `npx tsc --noEmit` clean; `npx jest` → 44 suites / 710 tests; web suite → 224 suites / 2582 tests.
+- **Not unit-tested**: the hook file itself. Jest here is node-env with no React renderer, and screens are exercised manually via Expo. The logic that decides *which* backend answers is extracted into `route.ts` and fully covered; what remains untested is the React plumbing.
+
+### Task 9 — Convex-parity columns (`supabase/migrations/20260727130000_...sql`)
+
+Applied to production. The platform `orders` table was built for web checkout only and lacked `source`, `client_order_id`, `item_count`, `has_upsell_items`, `has_bundle_items`; `order_items` lacked `variation_selections`, `is_upsell_item`, `is_bundle_item`, `bundle_id`, `bundle_name`, `slot_name`. Without them a platform tenant could not ring up a counter sale, dedupe a retried submit, or render an item count.
+
+`client_order_id` is unique **per tenant** (partial index): the id is client-generated, so a global unique index would let one tenant's order reject another's.
+
+Post-apply probe: `item_count` backfilled — 0 nulls remain across 1,708 orders; 18 legacy orders genuinely have no line items and resolve to `0`.
+
 ## Test Specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -84,22 +125,37 @@ All 10 policies returned `OK row-scoped`.
 ## Regression Evidence
 
 ```
-npx jest                # 38 suites, 613 tests passed
-npx tsc --noEmit        # clean
+webnegosyo-app: npx tsc --noEmit   # clean
+webnegosyo-app: npx jest           # 44 suites, 710 tests passed
+web root:       npx jest           # 224 suites, 2582 tests passed
+webnegosyo-app: npx eslint lib/hooks.ts lib/backends/   # 0 errors
 ```
 
-Convex-backed tenants are unaffected: `resolveOrderBackend` returns `convex` for any tenant with a deployment URL, which is every previously-working tenant, and no Convex call path was modified.
+(The one remaining eslint warning is a pre-existing unused disable directive inside `useSafeAction`, which this work did not touch.)
+
+Convex-backed tenants are unaffected: `resolveRefRoute` returns `convex` for anything not explicitly on the platform backend, and that branch runs the original code path unchanged.
+
+### Live tenant impact
+
+| `order_backend` | Tenants | Has Convex URL |
+|---|---|---|
+| `platform` | 121 | 1 |
+| `convex` | 45 | 45 |
+
+The 120 platform tenants with no Convex deployment go from **every order screen erroring "Convex not configured"** to working.
+
+**One tenant to watch — `kastelli-di-angelis`**: flagged `platform` *and* holding a Convex deployment URL, with 0 platform orders. The app will now read the platform database for it. That is correct and matches the web (`src/lib/order-backend.ts` applies the same explicit-column-wins rule, so its new checkout orders already land on the platform), but its **pre-switch order history lives in Convex and will not appear in the app**. No special case was added, because forcing this tenant back to Convex would diverge the app from where its new orders actually land.
 
 ## Known Gaps / Remaining Work
 
-Slice 1 is **not** complete. Still outstanding before a platform tenant can actually run the app:
+Orders now work end to end in code, but the slice is **not** finished:
 
-- **P7** — the mobile Supabase adapter for the ~30 `"module:fn"` refs, and hook dispatch in `lib/hooks.ts`. Until this lands, a platform tenant's screens still show "Convex not configured"; only the *routing decision* is in place.
-- **P8** — mobile realtime subscription.
-- **P5** — push: `notify-order` Edge Function + trigger, and pointing `registerPushToken` at the new `push_tokens` table.
-- `src/types/database.ts` has no types for the five new tables yet; they will be added with the code that reads them.
-- The five new tables are empty. Nothing writes to them until P1/P3/P4/P5 land.
-- Realtime is now *published*, but end-to-end delivery has not been observed on a live order — that is a manual check still to run.
+- **Not yet run on a device.** Every guarantee above is a unit test or a SQL probe. No platform tenant has been signed into on an actual build, so the React plumbing in `lib/hooks.ts` is unverified in practice. This is the single biggest gap.
+- **P8 — realtime.** Platform screens currently poll every 15s. Convex pushes instantly; the platform path does not yet. Realtime is *published* (migration `20260727120000`), but end-to-end delivery on a live order has still not been observed.
+- **P5 — push.** A platform tenant gets **no** order notification on iOS or Android. Convex's `sendOrderNotification` has no platform equivalent yet; needs the `notify-order` Edge Function + trigger and `registerPushToken` pointed at `push_tokens`.
+- **Only `orders:*` refs are served.** Analytics, product costs, trends, Lalamove and daily stats still report `unsupported` on the platform backend — screens show the "needs a backend update" placeholder. That is deliberate (P1–P4, P6) and honest, but it is not parity yet.
+- `src/types/database.ts` has no types for the five tables added in `20260727120000`, and those tables are still empty — nothing writes to them.
+- **POS writes are untested against the platform.** `pos-tender.tsx` and `scan.tsx` send `createOrder`; the args are shape-compatible and typecheck, but no POS sale has been rung up on a platform tenant.
 
 ## Merge Evidence (for squash)
 
@@ -111,4 +167,12 @@ RED → GREEN → verified, in five checkpoint commits on `feat/platform-supabas
 7de4126 test: add reproducer for order backend carried through impersonation             (RED)
 77fc89c feat: carry the tenant order backend through superadmin impersonation            (GREEN)
 a13e95c feat: platform order-parity schema and fix dead realtime publication             (applied + probed)
+698422a test: add reproducer for platform Supabase order mappers                         (RED)
+4a014fe feat: map platform Supabase order rows onto the app's Convex DTO shape           (GREEN)
+2a669cb feat: add Convex-parity columns to platform orders and order_items               (applied + probed)
+8cf9881 test: add reproducer for the platform order adapter and its tenant guard         (RED)
+8fde442 feat: serve the app's order function refs from the platform Supabase             (GREEN)
+(route) test: add reproducer for per-ref backend routing                                 (RED)
+(route) feat: route each function ref to Convex, the platform adapter, or neither        (GREEN)
+af95366 feat: dispatch app queries and mutations to the platform Supabase backend        (wiring)
 ```
