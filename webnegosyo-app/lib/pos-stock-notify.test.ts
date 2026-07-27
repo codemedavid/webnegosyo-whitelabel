@@ -9,7 +9,10 @@ jest.mock("./supabase", () => ({
   supabase: { auth: { getSession: getSessionMock } },
 }));
 
-import { notifyPosStockDepletion } from "./pos-stock-notify";
+import {
+  notifyPosStockDepletion,
+  notifyOrderStockRestore,
+} from "./pos-stock-notify";
 import type { PosStockItem } from "./pos-stock";
 
 const items: PosStockItem[] = [
@@ -82,6 +85,64 @@ describe("notifyPosStockDepletion", () => {
     // Act / Assert
     await expect(
       notifyPosStockDepletion("t1", "order-1", items),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("notifyOrderStockRestore", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-1" } },
+    });
+  });
+
+  it("asks the platform to reverse the order-s sale movements", async () => {
+    // Act
+    await notifyOrderStockRestore("t1", "jh7dm2p8qr3n5x9");
+
+    // Assert
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://webnegosyo.com/api/inventory/order-stock");
+    expect(init.headers.Authorization).toBe("Bearer token-1");
+    expect(JSON.parse(init.body)).toEqual({
+      tenantId: "t1",
+      orderId: "jh7dm2p8qr3n5x9",
+      action: "restore",
+    });
+  });
+
+  it("sends no items, since the platform derives the reversal itself", async () => {
+    // Act
+    await notifyOrderStockRestore("t1", "order-1");
+
+    // Assert
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("items");
+  });
+
+  it("does not call the platform when there is no session", async () => {
+    // Arrange
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+
+    // Act
+    await notifyOrderStockRestore("t1", "order-1");
+
+    // Assert
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never throws when the platform is unreachable", async () => {
+    // Arrange — the cancellation is already saved; a stock write must never
+    // make an order un-cancellable.
+    fetchMock.mockRejectedValue(new Error("network down"));
+
+    // Act / Assert
+    await expect(
+      notifyOrderStockRestore("t1", "order-1"),
     ).resolves.toBeUndefined();
   });
 });
