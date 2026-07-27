@@ -4,6 +4,8 @@ import { getCachedTenantBySlug } from '@/lib/cache'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
+import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
+import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminInventoryPage({
@@ -27,9 +29,13 @@ export default async function AdminInventoryPage({
 
   // Seed the default unit catalog on first visit so ingredients always have a
   // unit to reference. Idempotent — existing units are returned untouched.
-  const [units, ingredients] = await Promise.all([
+  // Open alerts need no feature-flag check of their own: when a tenant has
+  // low-stock alerts switched off, nothing writes them, so the list is empty
+  // and the banner renders nothing.
+  const [units, ingredients, alerts] = await Promise.all([
     seedDefaultUnits(tenant.id),
     getIngredients(tenant.id),
+    getOpenStockAlerts(tenant.id),
   ])
 
   return (
@@ -45,6 +51,8 @@ export default async function AdminInventoryPage({
           true cost and margin of menu items, variations, and modifier options.
         </p>
       </div>
+
+      <StockAlertsBanner alerts={alerts} />
 
       <InventoryManager
         tenantId={tenant.id}
