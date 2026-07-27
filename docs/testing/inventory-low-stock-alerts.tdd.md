@@ -148,20 +148,51 @@ Whole-suite regression: `npx jest` → **221 suites, 2554 tests, all passing**.
 are all in test files, from the untyped `jest.Mock` pattern). `npx eslint` on
 every changed file → clean.
 
+## Migration applied & probed (2026-07-27)
+
+Applied to the live database via the Supabase MCP as `inventory_low_stock_alerts`.
+A pre-existing drift migration, `messenger_redirect_enabled`, was found unapplied
+at the same time and applied first (it is unrelated to this work — it had simply
+never reached the remote).
+
+Post-apply verification:
+
+| Check | Result |
+|---|---|
+| `tenants.low_stock_alerts_enabled` / `auto_86_enabled` exist | yes |
+| Tenants opted in to either feature | **0 of 166** — defaults held, no live menu changed |
+| `tenants.messenger_redirect_enabled` true | 166 of 166 — historical behaviour preserved |
+| `stock_alerts` table, indexes, RLS | present; 4 indexes, RLS enabled, 2 policies |
+
+The DB-level rules were then probed in a transaction that was deliberately rolled
+back (`RAISE EXCEPTION` at the end), so nothing persisted — confirmed afterwards
+by `stock_alerts` being empty and no probe fixtures remaining:
+
+| # | Guarantee | Result |
+|---|---|---|
+| 19 | A second **open** alert for one ingredient is rejected by the partial unique index | `duplicate_open_blocked = t` |
+| 20 | After `resolved_at` is set, the same ingredient may alert again | `reopen_after_resolve_allowed = t` |
+| 21 | The `level` CHECK rejects anything but `low`/`out` | `bad_level_rejected = t` |
+
+This closes the "unproven against a live database" gap for the schema itself.
+Guarantee 19 matters most: it is the race the application-level dedup check
+cannot win on its own, since two concurrent depletions can both read "no open
+alert" before either inserts.
+
 ## Known gaps
 
-1. **The migration is written but NOT APPLIED.** Until it is, the flag select
-   errors, `readTenantFlags` returns both-off, and the feature is inert — the
-   same failure mode as the storefront select drift, but fail-safe by design.
-2. **Nothing surfaces the alerts yet.** `stock_alerts` rows are written but no
+1. **Nothing surfaces the alerts yet.** `stock_alerts` rows are written but no
    web admin or merchant app view reads them, and no push notification is sent.
    Delivery was deliberately left out of this cycle: pushing through Convex
    would mean a per-tenant schema redeploy, which the POS depletion work already
    established as a cost to avoid. The rows are the durable record; a reader and
    a push path are the next increment.
-3. **The superadmin toggles have no unit test.** They are form plumbing added in
+2. **The superadmin toggles have no unit test.** They are form plumbing added in
    the exact shape of every other flag in `tenant-form-wrapper.tsx`, none of
    which is unit-tested. Verified by typecheck, lint, and the full suite only.
-4. **No integration or E2E coverage** — that is Phase 7, and the DB-level
-   behaviour (the partial unique index in particular) is unproven against a live
-   database.
+3. **No end-to-end proof.** The schema is proven (above) and every rule is unit
+   tested, but no real order has yet depleted a real ingredient across its
+   reorder level on the live database and produced a `stock_alerts` row. There
+   is currently no inventory data in production to do that with — zero
+   `inventory_items` rows exist — so the first real exercise of this path will
+   be whenever a tenant starts using inventory. That is Phase 7 territory.
