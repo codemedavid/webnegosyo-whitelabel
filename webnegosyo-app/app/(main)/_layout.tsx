@@ -153,6 +153,15 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon symbol="✎" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="inventory"
+        options={{
+          href: show("inventory"),
+          title: "Inventory",
+          tabBarLabel: "Stock",
+          tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
+        }}
+      />
       {/* Detail/utility screens — never tabs */}
       <Tabs.Screen
         name="product/[productId]"
