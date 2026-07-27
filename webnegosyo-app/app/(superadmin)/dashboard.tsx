@@ -23,7 +23,7 @@ import { TenantLogo } from "../../components/superadmin/TenantLogo";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, logo_url, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, order_backend, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const RECENT_LIMIT = 5;
 

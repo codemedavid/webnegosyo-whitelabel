@@ -11,6 +11,7 @@
 // `useAuthStore.setAuth`; nothing here touches the store directly, which keeps
 // the round-trip invariant testable.
 
+import { resolveOrderBackend, type OrderBackend } from "./order-backend";
 import type { TenantRow } from "./session-resolve";
 
 /** The slice of auth state impersonation reads and rewrites. */
@@ -20,6 +21,8 @@ export interface ImpersonationState {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /** Which database serves the viewed tenant's orders; null off a tenant. */
+  orderBackend: OrderBackend | null;
   isSuperadmin: boolean;
   isOwner: boolean;
   permissions: string[] | null;
@@ -36,6 +39,7 @@ export type ImpersonationPatch = Pick<
   | "tenantSlug"
   | "tenantName"
   | "convexUrl"
+  | "orderBackend"
   | "isSuperadmin"
   | "isOwner"
   | "permissions"
@@ -71,6 +75,7 @@ export function enterTenant(
     tenantSlug: tenant.slug,
     tenantName: tenant.name,
     convexUrl: tenant.convex_deployment_url ?? null,
+    orderBackend: resolveOrderBackend(tenant),
     impersonatedTenantId: tenant.id,
   };
 }
@@ -90,6 +95,7 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     tenantSlug: null,
     tenantName: null,
     convexUrl: null,
+    orderBackend: null,
     impersonatedTenantId: null,
   };
 }

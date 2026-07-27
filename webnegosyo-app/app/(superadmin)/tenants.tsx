@@ -31,7 +31,7 @@ import { Pill } from "../../components/superadmin/Pill";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, logo_url, convex_deployment_url, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, order_backend, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const STATUS_FILTERS: readonly { key: TenantStatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -96,6 +96,7 @@ export default function TenantsScreen() {
         slug: tenant.slug,
         name: tenant.name,
         convex_deployment_url: tenant.convex_deployment_url,
+        order_backend: tenant.order_backend,
       })
     );
     router.replace("/(main)/dashboard");

@@ -2,6 +2,8 @@
 // counterpart of the web's tenant-manager toolbar. Pure functions so the screen
 // stays presentational and the behaviour is unit-tested.
 
+import type { OrderBackend } from "./order-backend";
+
 /** Per-tenant feature flags the list can filter on. */
 export type TenantFeatureKey =
   | "menu_engineering_enabled"
@@ -16,6 +18,8 @@ export interface TenantListRow {
   name: string;
   is_active: boolean;
   convex_deployment_url: string | null;
+  /** Which database serves this tenant's orders; drives impersonation routing. */
+  order_backend?: OrderBackend | null;
   /** Optional: absent on rows selected before the logo column was added. */
   logo_url?: string | null;
   menu_engineering_enabled: boolean;

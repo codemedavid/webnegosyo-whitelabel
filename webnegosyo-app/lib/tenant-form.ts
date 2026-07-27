@@ -6,6 +6,8 @@
 // Pure functions: row -> form values -> validated update payload. The screen
 // holds the values in state and stays presentational.
 
+import type { OrderBackend } from "./order-backend";
+
 /** Editor tabs, mirroring the web editor minus branding. */
 export interface TenantEditorTab {
   key: string;
@@ -63,6 +65,13 @@ export interface TenantEditorRow {
   delivery_radius_km: number | null;
   convex_deployment_url: string | null;
   convex_deploy_key: string | null;
+  /**
+   * Which database serves this tenant's orders; drives impersonation routing.
+   * `resolveOrderBackend` defensively ignores any value it does not recognize,
+   * so an unexpected string from a newer platform build degrades rather than
+   * stranding the app — the same contract the web resolver declares.
+   */
+  order_backend?: OrderBackend | null;
   admin_email: string | null;
   email_notifications_enabled: boolean;
 }

@@ -42,7 +42,7 @@ import {
 } from "../../../theme/colors";
 
 const EDITOR_COLUMNS =
-  "id, name, slug, is_active, logo_url, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled";
+  "id, name, slug, is_active, logo_url, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, convex_deploy_key, order_backend, admin_email, email_notifications_enabled";
 
 interface StaffRow {
   user_id: string;
@@ -255,6 +255,7 @@ export default function TenantEditorScreen() {
         slug: tenant.slug,
         name: tenant.name,
         convex_deployment_url: tenant.convex_deployment_url,
+        order_backend: tenant.order_backend,
       })
     );
     router.replace("/(main)/dashboard");
