@@ -29,6 +29,17 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+# AppleDouble sidecars. The iOS builder runs macOS, where tar reads a `._x`
+# file as extended-attribute metadata for `x` and aborts the whole extract with
+# "Failed to restore metadata: File exists" — one stray sidecar fails the build
+# in PREPARE_PROJECT. Linux builders ignore them, so Android passes and only iOS
+# breaks. EAS archives untracked-but-unignored files, so ignoring is the fix.
+._*
+
+# editor swap files — same tar hazard once macOS pairs them with a `._` sidecar
+*.swp
+*.swo
+*~
 
 # local env files
 .env
