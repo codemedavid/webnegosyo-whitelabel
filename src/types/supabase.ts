@@ -15,6 +15,66 @@ export type Database = {
   public: {
     Tables: {
       // Added by migration 20260728120000_inventory_low_stock_alerts.sql.
+      outlets: {
+        Row: {
+          address: string | null
+          created_at: string
+          delivery_radius_km: number | null
+          id: string
+          is_active: boolean
+          latitude: number | null
+          longitude: number | null
+          name: string
+          operating_hours: Json | null
+          phone: string | null
+          slug: string
+          sort_order: number
+          supports_delivery: boolean
+          supports_pickup: boolean
+          tenant_id: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_pickup?: boolean
+          tenant_id: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug?: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_pickup?: boolean
+          tenant_id?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stock_alerts: {
         Row: {
           created_at: string | null
@@ -1265,6 +1325,7 @@ export type Database = {
           order_token_expires_at: string | null
           order_token_hash: string | null
           order_type: string | null
+          outlet_id: string | null
           order_type_id: string | null
           payment_method_details: string | null
           payment_method_id: string | null
@@ -1295,6 +1356,7 @@ export type Database = {
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
+          outlet_id?: string | null
           order_type_id?: string | null
           payment_method_details?: string | null
           payment_method_id?: string | null
@@ -1325,6 +1387,7 @@ export type Database = {
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
+          outlet_id?: string | null
           order_type_id?: string | null
           payment_method_details?: string | null
           payment_method_id?: string | null
@@ -1945,6 +2008,7 @@ export type Database = {
           name: string
           page_layout: string | null
           pairing_rules_enabled: boolean
+          multi_branch_enabled: boolean
           qr_handoff_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -2121,6 +2185,7 @@ export type Database = {
           name: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          multi_branch_enabled?: boolean
           qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -2297,6 +2362,7 @@ export type Database = {
           name?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          multi_branch_enabled?: boolean
           qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null

@@ -50,12 +50,12 @@ export function describeOutletRepositoryContract(
       })
 
       it('returns outlets ordered by sort_order, then name', async () => {
-        await repo.create(TENANT, input({ slug: 'c', name: 'Cubao', sort_order: 2 }))
-        await repo.create(TENANT, input({ slug: 'a', name: 'Alabang', sort_order: 1 }))
-        await repo.create(TENANT, input({ slug: 'b', name: 'BGC', sort_order: 1 }))
+        await repo.create(TENANT, input({ slug: 'cubao', name: 'Cubao', sort_order: 2 }))
+        await repo.create(TENANT, input({ slug: 'alabang', name: 'Alabang', sort_order: 1 }))
+        await repo.create(TENANT, input({ slug: 'bgc', name: 'BGC', sort_order: 1 }))
 
         const slugs = (await repo.listByTenant(TENANT)).map((outlet) => outlet.slug)
-        expect(slugs).toEqual(['a', 'b', 'c'])
+        expect(slugs).toEqual(['alabang', 'bgc', 'cubao'])
       })
 
       it('includes inactive outlets so admin can see and reactivate them', async () => {
@@ -237,14 +237,14 @@ export function describeOutletRepositoryContract(
 
     describe('reorder', () => {
       it('assigns sort_order to match the given id sequence', async () => {
-        const a = await repo.create(TENANT, input({ slug: 'a', sort_order: 0 }))
-        const b = await repo.create(TENANT, input({ slug: 'b', sort_order: 1 }))
-        const c = await repo.create(TENANT, input({ slug: 'c', sort_order: 2 }))
+        const a = await repo.create(TENANT, input({ slug: 'aa', sort_order: 0 }))
+        const b = await repo.create(TENANT, input({ slug: 'bb', sort_order: 1 }))
+        const c = await repo.create(TENANT, input({ slug: 'cc', sort_order: 2 }))
 
         await repo.reorder(TENANT, [c.id, a.id, b.id])
 
         const slugs = (await repo.listByTenant(TENANT)).map((outlet) => outlet.slug)
-        expect(slugs).toEqual(['c', 'a', 'b'])
+        expect(slugs).toEqual(['cc', 'aa', 'bb'])
       })
 
       it('ignores ids belonging to another tenant instead of moving them', async () => {

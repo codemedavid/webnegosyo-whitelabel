@@ -196,6 +196,9 @@ export interface Tenant {
   pairing_rules_enabled?: boolean;
   // QR-handoff ordering
   qr_handoff_enabled?: boolean;
+  // Multi-branch (multi-outlet) storefront. Missing/null = off; see
+  // src/lib/outlets/multi-branch-flag.ts (single source of truth).
+  multi_branch_enabled?: boolean;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen
@@ -804,6 +807,54 @@ export interface Order {
   payment_proof_uploaded_at?: string | null;
   /** Link to the derived customer profile this order rolled up into (nullable). */
   customer_id?: string | null;
+  /**
+   * Which branch fulfills this order. Null for every order placed by a
+   * single-location tenant — i.e. all existing orders — so every query that
+   * predates multi-branch keeps working untouched.
+   */
+  outlet_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Per-weekday opening hours, keyed "0" = Sunday .. "6" = Saturday.
+ * Same shape as `Tenant.operating_hours` so `src/lib/store-open-status.ts`
+ * evaluates a branch and a single-location tenant with the same code.
+ */
+export type OutletOperatingHours = Record<
+  string,
+  { closed: boolean; open: string; close: string }
+>;
+
+/**
+ * A physical branch of a multi-branch tenant.
+ *
+ * Only meaningful when `Tenant.multi_branch_enabled` is true. In Phase 1 all
+ * branches of a tenant share one menu, one price list, and one stock pool;
+ * `outlets` deliberately carries no menu columns so per-branch menus can be
+ * added later as a separate table rather than a migration of this one.
+ */
+export interface Outlet {
+  id: string;
+  tenant_id: string;
+  name: string;
+  /** URL-safe, unique per tenant. Powers `?outlet=` and `/b/{slug}`. */
+  slug: string;
+  address: string | null;
+  /** Required for nearest-branch detection; both set or both null. */
+  latitude: number | null;
+  longitude: number | null;
+  phone: string | null;
+  operating_hours: OutletOperatingHours | null;
+  timezone: string | null;
+  supports_pickup: boolean;
+  supports_delivery: boolean;
+  /** Null/zero = unrestricted. Used for branch matching, not fee pricing. */
+  delivery_radius_km: number | null;
+  /** Soft on/off: deactivated branches keep their orders and their link. */
+  is_active: boolean;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
