@@ -23,6 +23,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 jest.mock('@/lib/inventory/order-stock-service', () => ({
   applyOrderStockBestEffort: jest.fn(),
+  reverseOrderStockBestEffort: jest.fn(),
 }))
 
 const VALID_BODY = {
@@ -45,6 +46,7 @@ describe('POST /api/inventory/order-stock', () => {
   let appUserSingleMock: jest.Mock
   let tenantSingleMock: jest.Mock
   let applyMock: jest.Mock
+  let reverseMock: jest.Mock
 
   beforeEach(async () => {
     jest.resetModules()
@@ -83,6 +85,7 @@ describe('POST /api/inventory/order-stock', () => {
 
     const service = await import('@/lib/inventory/order-stock-service')
     applyMock = service.applyOrderStockBestEffort as unknown as jest.Mock
+    reverseMock = service.reverseOrderStockBestEffort as unknown as jest.Mock
   })
 
   test('rejects a request missing tenantId or orderId', async () => {
@@ -155,6 +158,71 @@ describe('POST /api/inventory/order-stock', () => {
       makeRequest({ ...VALID_BODY, items: 'not-an-array' }, 'Bearer token-1'),
     )
     expect(res.status).toBe(400)
+  })
+
+  describe('restore action', () => {
+    const RESTORE_BODY = { tenantId: 't1', orderId: 'jh7dm2p8qr3n5x9', action: 'restore' }
+
+    test('puts a cancelled order-s ingredients back on the shelf', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(RESTORE_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(reverseMock).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9')
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('needs no items, since the reversal derives from recorded sale movements', async () => {
+      // A cancelling client has the order id and nothing else. Recomputing from
+      // lines would drift once options are counted, so items are not required.
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(RESTORE_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+    })
+
+    test('rejects a restore from an admin of a different tenant', async () => {
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 'other-tenant' },
+        error: null,
+      })
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(RESTORE_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(403)
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
+
+    test('does nothing when the tenant has inventory disabled', async () => {
+      tenantSingleMock.mockResolvedValue({ data: { inventory_enabled: false }, error: null })
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(RESTORE_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
+
+    test('rejects an unrecognized action rather than guessing', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(
+        makeRequest({ ...RESTORE_BODY, action: 'destroy' }, 'Bearer token-1'),
+      )
+
+      expect(res.status).toBe(400)
+      expect(reverseMock).not.toHaveBeenCalled()
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('still defaults to depleting when no action is given', async () => {
+      // The POS register was shipped before this discriminator existed and
+      // sends no action; it must keep depleting.
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(applyMock).toHaveBeenCalled()
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
   })
 
   test('ignores an item with no option ids rather than failing the sale', async () => {
