@@ -130,10 +130,12 @@ Above the 80% threshold on statements, functions and lines; the uncovered
 `inventory-service.ts` branches are the `?? []` null-coalescing defaults on
 Supabase responses.
 
-Whole app suite: `npx jest` → **664 tests passing across 41 suites**. One suite
-fails — `lib/backends/supabase-orders.test.ts` — which is a committed RED
-reproducer belonging to the separate platform-Supabase order-parity work, not
-to this change. `npx tsc --noEmit` reports errors only in that same file.
+Whole app suite at the time of the GREEN commit: `npx jest` → 664 passing across
+41 suites, with one suite failing — `lib/backends/supabase-orders.test.ts`, a
+committed RED reproducer belonging to the separate platform-Supabase
+order-parity work, not to this change. `npx tsc --noEmit` reported errors only
+in that same file. Re-run after that work landed its implementation:
+**686 tests across 42 suites, all passing.**
 
 ## Known gaps
 
