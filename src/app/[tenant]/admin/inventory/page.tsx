@@ -44,7 +44,7 @@ export default async function AdminInventoryPage({
   // Recipe coverage answers "which dishes are actually set up?" — the question
   // that had no surface at all, and the reason a tenant could switch inventory
   // on and have it quietly do nothing.
-  const { coverageRows, recipeComponents } = await getRecipeCoverage(tenant.id)
+  const { coverageRows, recipeComponents, loadFailed } = await getRecipeCoverage(tenant.id)
 
   return (
     <div className="space-y-6">
@@ -70,6 +70,7 @@ export default async function AdminInventoryPage({
         lastPurchaseByItemId={lastPurchaseByItemId}
         coverageRows={coverageRows}
         recipeComponents={recipeComponents}
+        coverageLoadFailed={loadFailed}
       />
     </div>
   )

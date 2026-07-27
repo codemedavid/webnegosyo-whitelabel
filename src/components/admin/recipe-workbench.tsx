@@ -22,6 +22,13 @@ interface RecipeWorkbenchProps {
   rows: RecipeCoverageRow[]
   ingredients: InventoryItem[]
   components: RecipeComponent[]
+  /**
+   * The coverage read failed. Without this an error is indistinguishable from
+   * an empty menu, because the read catches its own failures and returns an
+   * empty list — so the screen would confidently report "no dishes" when the
+   * dishes exist and something else broke.
+   */
+  loadFailed?: boolean
 }
 
 /**
@@ -42,6 +49,7 @@ export function RecipeWorkbench({
   rows,
   ingredients,
   components,
+  loadFailed = false,
 }: RecipeWorkbenchProps) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<CoverageFilter>('all')
@@ -154,7 +162,16 @@ export function RecipeWorkbench({
           <div className="max-h-[28rem] overflow-y-auto p-2">
             {visible.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">
-                No dishes match that search.
+                {/*
+                  Three different situations that used to render the same
+                  sentence. Blaming a search nobody typed is how a broken read
+                  gets mistaken for an empty menu.
+                */}
+                {loadFailed
+                  ? 'We could not load your dishes. Reload the page, and if it keeps happening the menu read is failing.'
+                  : rows.length === 0
+                    ? 'No dishes on your menu yet. Add one under Menu Management, then come back to give it a recipe.'
+                    : 'No dishes match that search.'}
               </p>
             ) : (
               <ul className="space-y-1">

@@ -16,9 +16,19 @@ export interface RecipeCoverageResult {
   coverageRows: RecipeCoverageRow[]
   /** Every component, so "which ingredients are unused?" can be answered too. */
   recipeComponents: RecipeComponent[]
+  /**
+   * The read failed. Reported rather than swallowed: an empty list means "this
+   * tenant has no dishes", and letting a failure borrow that meaning is how a
+   * bug gets rendered to a merchant as a confident, wrong fact about their menu.
+   */
+  loadFailed: boolean
 }
 
-const NOTHING: RecipeCoverageResult = { coverageRows: [], recipeComponents: [] }
+const NOTHING: RecipeCoverageResult = {
+  coverageRows: [],
+  recipeComponents: [],
+  loadFailed: true,
+}
 
 /**
  * Coverage for every dish on one tenant's menu.
@@ -36,6 +46,15 @@ export async function getRecipeCoverage(tenantId: string): Promise<RecipeCoverag
       supabase.from('recipe_components').select('recipe_id, inventory_item_id').eq('tenant_id', tenantId),
     ])
 
+    // A PostgREST error arrives as `error`, not as a thrown exception, so the
+    // try/catch below would never see it — `data` would simply be null and the
+    // page would report an empty menu.
+    const failure = menuItemsResult.error ?? recipesResult.error ?? componentsResult.error
+    if (failure) {
+      console.error('[inventory] Recipe coverage read failed', tenantId, failure)
+      return NOTHING
+    }
+
     const components = (componentsResult.data ?? []) as unknown as RecipeComponent[]
 
     return {
@@ -45,6 +64,7 @@ export async function getRecipeCoverage(tenantId: string): Promise<RecipeCoverag
         components,
       ),
       recipeComponents: components,
+      loadFailed: false,
     }
   } catch (error) {
     console.error('[inventory] Failed to read recipe coverage', tenantId, error)

@@ -88,6 +88,8 @@ interface InventoryManagerProps {
    */
   coverageRows?: RecipeCoverageRow[]
   recipeComponents?: RecipeComponent[]
+  /** The coverage read failed, so an empty list must not read as an empty menu. */
+  coverageLoadFailed?: boolean
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
@@ -100,6 +102,7 @@ export function InventoryManager({
   lastPurchaseByItemId = {},
   coverageRows = [],
   recipeComponents = [],
+  coverageLoadFailed = false,
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
@@ -130,6 +133,7 @@ export function InventoryManager({
           rows={coverageRows}
           ingredients={ingredients}
           components={recipeComponents}
+          loadFailed={coverageLoadFailed}
         />
       </TabsContent>
 
