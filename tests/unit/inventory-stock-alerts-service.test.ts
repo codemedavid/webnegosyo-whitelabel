@@ -367,7 +367,11 @@ describe('processStockLevelChanges — auto-86 recovery', () => {
       const result = await processStockLevelChanges('t1', EMPTY_FLOUR, PARTIAL_RESTOCK)
 
       expect(result.alertsResolved).toBe(0)
-      expect(tables.stock_alerts.calls.update).toBeUndefined()
+      // The row is rewritten to say 'low' rather than closed — corrected, not
+      // resolved. Nothing sets `resolved_at`.
+      for (const [payload] of tables.stock_alerts.calls.update ?? []) {
+        expect(payload).not.toHaveProperty('resolved_at')
+      }
     })
 
     it("corrects the open alert from 'out' to 'low' instead of leaving it stale", async () => {

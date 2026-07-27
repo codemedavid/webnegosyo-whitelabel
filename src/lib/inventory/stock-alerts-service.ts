@@ -192,6 +192,44 @@ async function resolveAlerts(
   return open.length
 }
 
+/**
+ * Correct an open alert that a partial delivery has made untrue.
+ *
+ * An alert row is a snapshot of the moment it was raised, and nothing revised
+ * it. A delivery that lifts an ingredient off empty without clearing its
+ * reorder level does not resolve the alert — the merchant does still need to
+ * reorder — but it does make the alert's own words wrong, leaving the banner
+ * saying "Flour is out of stock" over a shelf with flour on it.
+ *
+ * Narrow on purpose: only the `out` → `low` improvement is rewritten. A
+ * downward move is a crossing, which raises its own alert, and reaching `ok`
+ * resolves rather than rewrites.
+ */
+async function refreshOpenAlerts(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  items: readonly StockLevelInput[],
+  deltas: ReadonlyMap<string, number>,
+): Promise<void> {
+  for (const item of items) {
+    const delta = deltas.get(item.id)
+    if (delta === undefined) continue
+    if (evaluateStockLevel(item) !== 'out') continue
+
+    const quantity = item.current_qty + delta
+    if (evaluateStockLevel({ current_qty: quantity, reorder_level: item.reorder_level }) !== 'low') {
+      continue
+    }
+
+    await supabase
+      .from('stock_alerts')
+      .update({ level: 'low', quantity } as never)
+      .eq('tenant_id', tenantId)
+      .eq('inventory_item_id', item.id)
+      .is('resolved_at', null)
+  }
+}
+
 /** Base recipes touched by these ingredients, with their full component lists. */
 async function loadBaseRecipes(
   supabase: ReturnType<typeof createAdminClient>,
@@ -351,6 +389,7 @@ export async function processStockLevelChanges(
     const alertsResolved = flags.lowStockAlertsEnabled
       ? await resolveAlerts(supabase, tenantId, recoveredIds)
       : 0
+    if (flags.lowStockAlertsEnabled) await refreshOpenAlerts(supabase, tenantId, items, deltas)
     const menuItemsDisabled = flags.auto86Enabled
       ? await applyAuto86(supabase, tenantId, crossings)
       : []

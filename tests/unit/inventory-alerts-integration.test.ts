@@ -196,8 +196,10 @@ describe('cancelling that order', () => {
 
     // The alert stays OPEN: 10 g back on a 20 g reorder level is still low, and
     // the merchant still needs to reorder. Availability and the alert answer
-    // different questions, and this cancellation only answered the first.
-    expect(tables.stock_alerts.writes.update).toEqual([])
+    // different questions, and this cancellation only answered the first. But
+    // it is corrected to say 'low', so the banner stops claiming "out of stock"
+    // over a shelf with flour on it.
+    expect(tables.stock_alerts.writes.update).toEqual([{ level: 'low', quantity: 10 }])
 
     // The dish is sellable again, and the marker is cleared so a merchant who
     // hides it later keeps it hidden.
