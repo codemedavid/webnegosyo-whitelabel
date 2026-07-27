@@ -146,11 +146,16 @@ describe('ModifierGroupsSelector multi-select rules', () => {
     expect(screen.getByText('2 of 3 selected')).toBeInTheDocument()
   })
 
-  it('exposes multi-select options as checkboxes, not radio-style chips', () => {
+  // The mode is exposed via `data-select-mode` + `aria-pressed` rather than
+  // `role="checkbox"`/`aria-checked`: `aria-checked` is not valid on a button,
+  // and swapping the role would change how every existing chip is queried.
+  it('marks multi-select options as independent toggles', () => {
     renderMulti({ 'g-toppings': ['o-ham'] })
     const ham = screen.getByRole('button', { name: /Ham/ })
-    expect(ham).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('button', { name: /Corn/ })).toHaveAttribute('aria-checked', 'false')
+
+    expect(ham).toHaveAttribute('data-select-mode', 'multi')
+    expect(ham).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Corn/ })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('disables unselected options once the cap is reached', () => {
@@ -178,6 +183,6 @@ describe('ModifierGroupsSelector multi-select rules', () => {
     const large = screen.getByRole('button', { name: /Large/ })
 
     expect(large).not.toBeDisabled()
-    expect(large).not.toHaveAttribute('aria-checked')
+    expect(large).toHaveAttribute('data-select-mode', 'single')
   })
 })
