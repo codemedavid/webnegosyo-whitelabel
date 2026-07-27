@@ -17,6 +17,20 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
 }))
 
+// Restore also reports the movement to the alert path. That wiring is proven in
+// `inventory-stock-alerts-wiring.test.ts`; here it is stubbed so these tests
+// stay about the reversal arithmetic.
+jest.mock('@/lib/inventory/stock-alerts-service', () => ({
+  processStockLevelChanges: jest.fn(() =>
+    Promise.resolve({
+      alertsRaised: 0,
+      alertsResolved: 0,
+      menuItemsDisabled: [],
+      menuItemsReEnabled: [],
+    }),
+  ),
+}))
+
 /**
  * The order's recorded sale movements, and a capture of what gets inserted.
  *
@@ -33,6 +47,9 @@ function stubLedger(saleRows: unknown[], captured: unknown[][], voidRows: unknow
           if (column === 'reason') reason = value
           return chain
         },
+        // Restore reads the pre-reversal ingredient rows to hand to the alert
+        // path; that read is narrowed with `.in`, and never asks for a reason.
+        in: () => chain,
         limit: () => Promise.resolve({ data: reason === 'void' ? voidRows : saleRows, error: null }),
         then: (resolve: (r: unknown) => unknown) =>
           resolve({ data: reason === 'void' ? voidRows : saleRows, error: null }),

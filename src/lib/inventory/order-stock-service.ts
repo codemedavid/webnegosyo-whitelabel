@@ -237,6 +237,17 @@ export async function reverseOrderStockMovements(
     return EMPTY_RESULT
   }
 
+  // Read before writing, for the same reason depletion does: the alert path
+  // compares these rows against the deltas about to be applied, and re-reading
+  // afterwards would race the running-total trigger. A failure here must not
+  // stop the reversal — putting the stock back matters more than alerting on it.
+  const { data: itemRows } = await supabase
+    .from('inventory_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('id', [...new Set(sales.map((s) => s.inventory_item_id))])
+  const inventoryItems = (itemRows ?? []) as unknown as InventoryItem[]
+
   const rows = sales.map((sale) => ({
     tenant_id: tenantId,
     inventory_item_id: sale.inventory_item_id,
@@ -251,6 +262,15 @@ export async function reverseOrderStockMovements(
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
   if (insertError) throw insertError
+
+  // A cancellation is a restock. Without this the ingredient came back but the
+  // alert stayed open and the dish auto-86'd by the original sale stayed off
+  // the menu, with the one screen that would explain why now showing nothing.
+  const deltas = new Map<string, number>()
+  for (const row of rows) {
+    deltas.set(row.inventory_item_id, (deltas.get(row.inventory_item_id) ?? 0) + row.quantity_delta)
+  }
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas)
 
   return { movementCount: rows.length, skipped: [] }
 }
