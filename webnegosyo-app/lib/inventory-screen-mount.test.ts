@@ -77,7 +77,16 @@ describe("inventory stock card", () => {
   const card = read("components", "InventoryStockCard.tsx");
 
   it("reads each row out as a sentence for assistive technology", () => {
-    expect(card).toMatch(/accessibilityLabel=\{describeStockView\(/);
+    // The label is built from the shared sentence either way; the card only
+    // adds the tap affordance to it once it is pressable.
+    expect(card).toMatch(/accessibilityLabel=\{[\s\S]*describeStockView\(/);
+  });
+
+  it("offers recording stock as the card's own action", () => {
+    // A separate button would leave the merchant aiming at a small target
+    // while holding the ingredient — the card is the only thing on it.
+    expect(card).toMatch(/onPress/);
+    expect(card).toMatch(/accessibilityRole=\{onPress \? "button"/);
   });
 
   it("draws the fill bar from the shared ratio", () => {

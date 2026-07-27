@@ -115,6 +115,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { movement, item } = await recordStockMovementWith(
+      // A Bearer-token client built from the untyped `createClient`, where the
+      // service expects the `Database`-typed server one. The queries it runs
+      // are identical; only the generic differs.
       supabase as never,
       tenantId,
       {

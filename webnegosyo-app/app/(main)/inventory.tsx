@@ -22,6 +22,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
+import { StockMovementSheet } from "../../components/StockMovementSheet";
 
 type LevelFilter = StockLevel | "all";
 
@@ -56,6 +57,7 @@ export default function InventoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [recording, setRecording] = useState<StockItemView | null>(null);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -112,7 +114,7 @@ export default function InventoryScreen() {
     return (
       <View style={styles.list}>
         {visible.map((item) => (
-          <InventoryStockCard key={item.id} item={item} />
+          <InventoryStockCard key={item.id} item={item} onPress={setRecording} />
         ))}
       </View>
     );
@@ -124,7 +126,7 @@ export default function InventoryScreen() {
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Inventory</Text>
-            <Text style={styles.subtitle}>What is on the shelf right now</Text>
+            <Text style={styles.subtitle}>Tap an ingredient to record stock</Text>
           </View>
           <WorkspaceSwitcher />
         </View>
@@ -191,6 +193,18 @@ export default function InventoryScreen() {
 
         {body()}
       </ScrollView>
+
+      {/*
+        Reload from the server rather than patching the row in place: the write
+        can cross a reorder line, which re-levels the ingredient and can 86 a
+        dish, and none of that is knowable from the quantity alone.
+      */}
+      <StockMovementSheet
+        tenantId={tenantId ?? ""}
+        item={recording}
+        onClose={() => setRecording(null)}
+        onRecorded={load}
+      />
     </View>
   );
 }

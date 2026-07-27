@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import {
   describeStockView,
@@ -25,6 +25,8 @@ const LEVEL_STYLE: Record<StockLevel, { label: string; fill: string; text: strin
 
 interface InventoryStockCardProps {
   item: StockItemView;
+  /** Absent leaves the card inert, as it was before stock could be recorded. */
+  onPress?: (item: StockItemView) => void;
 }
 
 /**
@@ -36,16 +38,25 @@ interface InventoryStockCardProps {
  * fill, its wording — comes from lib/inventory-stock.ts, so this file cannot
  * hold a second opinion about what "low" means.
  */
-export function InventoryStockCard({ item }: InventoryStockCardProps) {
+export function InventoryStockCard({ item, onPress }: InventoryStockCardProps) {
   const level = LEVEL_STYLE[item.level];
   const ratio = stockFillRatio(item);
   const hasThreshold = item.reorderLevel > 0;
 
+  // The whole card is the target rather than a separate button: on a phone the
+  // merchant is holding the ingredient, and the thing they want to do to it is
+  // the only thing this card is for.
+  const Container = onPress ? TouchableOpacity : View;
+
   return (
-    <View
+    <Container
       style={styles.card}
       accessible
-      accessibilityLabel={describeStockView(item)}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={
+        onPress ? `${describeStockView(item)}. Tap to record stock.` : describeStockView(item)
+      }
+      onPress={onPress ? () => onPress(item) : undefined}
     >
       <View style={styles.headRow}>
         <Text style={styles.name} numberOfLines={1}>
@@ -77,7 +88,7 @@ export function InventoryStockCard({ item }: InventoryStockCardProps) {
             is no way to see where "enough" is. */}
         {hasThreshold && <View style={[styles.reorderMark, { left: REORDER_MARK }]} />}
       </View>
-    </View>
+    </Container>
   );
 }
 
