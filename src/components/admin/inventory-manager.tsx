@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChefHat, PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +26,8 @@ import {
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
-import { evaluateStockLevel, type StockLevel } from '@/lib/inventory/low-stock'
+import { InventoryTable } from '@/components/admin/inventory-table'
+import { buildInventoryRows } from '@/lib/inventory/inventory-table'
 import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
 import {
   EMPTY_STOCK_DRAFT,
@@ -63,16 +64,16 @@ function formatQuantity(quantity: number): string {
   return Number(quantity.toFixed(4)).toString()
 }
 
-const STOCK_LEVEL_BADGE: Partial<Record<StockLevel, string>> = {
-  low: 'Low stock',
-  out: 'Out of stock',
-}
-
 interface InventoryManagerProps {
   tenantId: string
   tenantSlug: string
   initialIngredients: InventoryItem[]
   initialUnits: InventoryUnitRow[]
+  /**
+   * Most recent `receive` per ingredient, as a plain record — a Map would have
+   * to survive the server-to-client boundary for no gain.
+   */
+  lastPurchaseByItemId?: Record<string, string>
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
@@ -82,6 +83,7 @@ export function InventoryManager({
   tenantSlug,
   initialIngredients,
   initialUnits,
+  lastPurchaseByItemId = {},
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
@@ -99,6 +101,7 @@ export function InventoryManager({
           tenantSlug={tenantSlug}
           ingredients={ingredients}
           units={units}
+          lastPurchaseByItemId={lastPurchaseByItemId}
           onChange={setIngredients}
         />
       </TabsContent>
@@ -122,10 +125,18 @@ interface IngredientsTabProps {
   tenantSlug: string
   ingredients: InventoryItem[]
   units: InventoryUnitRow[]
+  lastPurchaseByItemId: Record<string, string>
   onChange: (next: InventoryItem[]) => void
 }
 
-function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: IngredientsTabProps) {
+function IngredientsTab({
+  tenantId,
+  tenantSlug,
+  ingredients,
+  units,
+  lastPurchaseByItemId,
+  onChange,
+}: IngredientsTabProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -240,103 +251,60 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
   }
 
   const noUnits = units.length === 0
+  const recipeItem = ingredients.find((item) => item.id === openRecipeId) ?? null
+
+  const rows = useMemo(
+    () =>
+      buildInventoryRows(ingredients, {
+        unitAbbreviation: (unitId) => units.find((u) => u.id === unitId)?.abbreviation ?? '',
+        lastPurchaseAt: new Map(Object.entries(lastPurchaseByItemId)),
+      }),
+    [ingredients, units, lastPurchaseByItemId],
+  )
+
+  // The table hands back an id; every door it opens needs the row itself.
+  const withItem = (action: (item: InventoryItem) => void) => (id: string) => {
+    const item = ingredients.find((i) => i.id === id)
+    if (item) action(item)
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate} disabled={noUnits}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Ingredient
-        </Button>
-      </div>
-
       {noUnits && (
         <p className="text-sm text-amber-600">
           Add at least one unit of measure first — ingredients are priced per unit.
         </p>
       )}
 
-      {ingredients.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No ingredients yet. Add raw materials (flour, cheese) or prep items to build recipes and
-            track cost.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {ingredients.map((item) => (
-            <Card key={item.id}>
-              <CardContent className="space-y-3 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{item.name}</span>
-                    {item.is_prep && <Badge variant="secondary">Prep</Badge>}
-                    {!item.is_active && <Badge variant="outline">Inactive</Badge>}
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    ₱{item.unit_cost.toFixed(2)} / {unitLabel(item.stock_unit_id)}
-                    {item.category ? ` · ${item.category}` : ''}
-                  </span>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">
-                      {formatQuantity(item.current_qty)} {unitLabel(item.stock_unit_id)} on hand
-                    </span>
-                    {STOCK_LEVEL_BADGE[evaluateStockLevel(item)] && (
-                      <Badge variant="destructive" className="text-[10px]">
-                        {STOCK_LEVEL_BADGE[evaluateStockLevel(item)]}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openStock(item)}
-                  >
-                    <PackagePlus className="mr-1 h-3.5 w-3.5" />
-                    Stock
-                  </Button>
-                  {item.is_prep && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleRecipe(item.id)}
-                    >
-                      <ChefHat className="mr-1 h-3.5 w-3.5" />
-                      Recipe
-                    </Button>
-                  )}
-                  <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(item)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => handleDelete(item)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                </div>
+      <InventoryTable
+        rows={rows}
+        isCreateDisabled={noUnits}
+        onCreate={openCreate}
+        onEdit={withItem(openEdit)}
+        onStock={withItem(openStock)}
+        onRecipe={(id) => toggleRecipe(id)}
+        onDelete={withItem(handleDelete)}
+      />
 
-                {/* Kept collapsed by default: each editor loads the tenant's
-                    ingredients and its own recipe, so opening every prep at
-                    once would fan out a request per row. */}
-                {openRecipeId === item.id && (
-                  <RecipeEditor
-                    tenantId={tenantId}
-                    tenantSlug={tenantSlug}
-                    target={{ type: 'prep_item', prepItemId: item.id }}
-                    label={`What ${item.name} is made of`}
-                    onSaved={() => router.refresh()}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Loaded only once asked for: each editor reads the tenant's ingredients
+          and its own recipe, so opening every prep at once would fan out a
+          request per row. */}
+      <Dialog open={recipeItem !== null} onOpenChange={(open) => !open && setOpenRecipeId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{recipeItem ? `Recipe — ${recipeItem.name}` : 'Recipe'}</DialogTitle>
+          </DialogHeader>
+          {recipeItem && (
+            <RecipeEditor
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              target={{ type: 'prep_item', prepItemId: recipeItem.id }}
+              label={`What ${recipeItem.name} is made of`}
+              onSaved={() => router.refresh()}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent>

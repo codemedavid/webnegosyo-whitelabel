@@ -181,16 +181,23 @@ export function InventoryTable({
                   onChange={() => setSelected((current) => toggleAllSelected(current, visibleIds))}
                 />
               </th>
-              <th scope="col" className="px-4 py-3">
-                <SortButton column={SORTABLE_COLUMNS[0]} activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
-              </th>
+              <SortableHeader
+                column={SORTABLE_COLUMNS[0]}
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+              />
               <th scope="col" className="px-4 py-3">
                 Photo
               </th>
               {SORTABLE_COLUMNS.slice(1).map((column) => (
-                <th key={column.key} scope="col" className="px-4 py-3">
-                  <SortButton column={column} activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
+                <SortableHeader
+                  key={column.key}
+                  column={column}
+                  activeKey={sortKey}
+                  direction={sortDirection}
+                  onSort={handleSort}
+                />
               ))}
               <th scope="col" className="px-4 py-3 text-right">
                 Actions
@@ -355,20 +362,26 @@ interface SortButtonProps {
   onSort: (key: InventorySortKey) => void
 }
 
-function SortButton({ column, activeKey, direction, onSort }: SortButtonProps) {
+/** `aria-sort` belongs to the header cell, not to the control inside it. */
+function SortableHeader({ column, activeKey, direction, onSort }: SortButtonProps) {
   const isActive = activeKey === column.key
 
   return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
-      aria-label={`Sort by ${column.label}`}
+    <th
+      scope="col"
+      className="px-4 py-3"
       aria-sort={isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-      onClick={() => onSort(column.key)}
     >
-      {column.label}
-      <ArrowUpDown className={`h-3 w-3 ${isActive ? 'text-foreground' : 'opacity-50'}`} />
-    </button>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
+        aria-label={`Sort by ${column.label}`}
+        onClick={() => onSort(column.key)}
+      >
+        {column.label}
+        <ArrowUpDown className={`h-3 w-3 ${isActive ? 'text-foreground' : 'opacity-50'}`} />
+      </button>
+    </th>
   )
 }
 

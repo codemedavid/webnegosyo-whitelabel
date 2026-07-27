@@ -6,6 +6,7 @@ import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
+import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminInventoryPage({
@@ -32,10 +33,11 @@ export default async function AdminInventoryPage({
   // Open alerts need no feature-flag check of their own: when a tenant has
   // low-stock alerts switched off, nothing writes them, so the list is empty
   // and the banner renders nothing.
-  const [units, ingredients, alerts] = await Promise.all([
+  const [units, ingredients, alerts, lastPurchaseByItemId] = await Promise.all([
     seedDefaultUnits(tenant.id),
     getIngredients(tenant.id),
     getOpenStockAlerts(tenant.id),
+    getCachedLastPurchaseDates(tenant.id),
   ])
 
   return (
@@ -59,6 +61,7 @@ export default async function AdminInventoryPage({
         tenantSlug={tenantSlug}
         initialIngredients={ingredients}
         initialUnits={units}
+        lastPurchaseByItemId={lastPurchaseByItemId}
       />
     </div>
   )
