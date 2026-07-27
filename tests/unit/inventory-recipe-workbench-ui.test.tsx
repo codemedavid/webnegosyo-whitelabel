@@ -49,12 +49,21 @@ function renderWorkbench({
   )
 }
 
+/**
+ * The selected dish's name appears in both panes by design — once in the list,
+ * once as the editor heading. Picker assertions are scoped so they test the
+ * list rather than accidentally matching the heading.
+ */
+function picker() {
+  return within(screen.getByTestId('workbench-picker'))
+}
+
 describe('picking a dish', () => {
   it('lists every dish so you can see what you are choosing from', () => {
     renderWorkbench()
 
-    expect(screen.getByText('Bicol Express')).toBeInTheDocument()
-    expect(screen.getByText('Adobo')).toBeInTheDocument()
+    expect(picker().getByText('Bicol Express')).toBeInTheDocument()
+    expect(picker().getByText('Adobo')).toBeInTheDocument()
   })
 
   it('finds a dish by a word anywhere in its name', () => {
@@ -64,8 +73,8 @@ describe('picking a dish', () => {
       target: { value: 'adobo' },
     })
 
-    expect(screen.getByText('Chicken Adobo Rice')).toBeInTheDocument()
-    expect(screen.queryByText('Bicol Express')).not.toBeInTheDocument()
+    expect(picker().getByText('Chicken Adobo Rice')).toBeInTheDocument()
+    expect(picker().queryByText('Bicol Express')).not.toBeInTheDocument()
   })
 
   it('narrows to only the dishes still needing a recipe', () => {
@@ -73,8 +82,8 @@ describe('picking a dish', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /needs recipe/i }))
 
-    expect(screen.queryByText('Adobo')).not.toBeInTheDocument()
-    expect(screen.getByText('Bicol Express')).toBeInTheDocument()
+    expect(picker().queryByText('Adobo')).not.toBeInTheDocument()
+    expect(picker().getByText('Bicol Express')).toBeInTheDocument()
   })
 
   it('shows how many dishes sit behind each filter', () => {

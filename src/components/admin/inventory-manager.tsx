@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
-import { RecipeCoverageTab } from '@/components/admin/recipe-coverage-tab'
+import { RecipeWorkbench } from '@/components/admin/recipe-workbench'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
 import { InventoryTable } from '@/components/admin/inventory-table'
@@ -124,7 +124,8 @@ export function InventoryManager({
       </TabsContent>
 
       <TabsContent value="recipes" className="pt-4">
-        <RecipeCoverageTab
+        <RecipeWorkbench
+          tenantId={tenantId}
           tenantSlug={tenantSlug}
           rows={coverageRows}
           ingredients={ingredients}
