@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
+import { evaluateStockLevel, type StockLevel } from '@/lib/inventory/low-stock'
 import type { InventoryItem, InventoryUnitRow, InventoryUnitDimension } from '@/types/database'
 import {
   EMPTY_STOCK_DRAFT,
@@ -62,12 +63,9 @@ function formatQuantity(quantity: number): string {
   return Number(quantity.toFixed(4)).toString()
 }
 
-/**
- * A reorder level of 0 means the merchant never set one — warning on it would
- * flag every ingredient the moment stock tracking is switched on.
- */
-function isLowStock(item: InventoryItem): boolean {
-  return item.reorder_level > 0 && item.current_qty <= item.reorder_level
+const STOCK_LEVEL_BADGE: Partial<Record<StockLevel, string>> = {
+  low: 'Low stock',
+  out: 'Out of stock',
 }
 
 interface InventoryManagerProps {
@@ -285,9 +283,9 @@ function IngredientsTab({ tenantId, tenantSlug, ingredients, units, onChange }: 
                     <span className="text-muted-foreground">
                       {formatQuantity(item.current_qty)} {unitLabel(item.stock_unit_id)} on hand
                     </span>
-                    {isLowStock(item) && (
+                    {STOCK_LEVEL_BADGE[evaluateStockLevel(item)] && (
                       <Badge variant="destructive" className="text-[10px]">
-                        Low stock
+                        {STOCK_LEVEL_BADGE[evaluateStockLevel(item)]}
                       </Badge>
                     )}
                   </div>
