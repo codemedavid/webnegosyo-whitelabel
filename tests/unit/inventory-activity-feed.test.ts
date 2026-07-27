@@ -74,14 +74,21 @@ describe('one entry per thing that happened', () => {
     ])
 
     expect(feed).toHaveLength(2)
-    expect(feed.map((entry) => entry.title)).toEqual(['Order cancelled', 'Sold'])
+    // Wording comes from the shared MOVEMENT_REASON_LABELS map the per-ingredient
+    // history already uses — a second vocabulary would let the two disagree.
+    // Order is not asserted: the two rows share a timestamp, so any tiebreak
+    // between them would be testing the sort's incidental stability.
+    expect(feed.map((entry) => entry.title).sort()).toEqual([
+      'Order voided Mozzarella',
+      'Sold Mozzarella',
+    ])
   })
 
   it('survives an ingredient it cannot name', () => {
     const feed = build([movement({ id: '1', inventory_item_id: 'ghost', reason: 'waste' })])
 
     expect(feed).toHaveLength(1)
-    expect(feed[0].title).toBe('Waste')
+    expect(feed[0].title).toBe('Wasted')
   })
 })
 
