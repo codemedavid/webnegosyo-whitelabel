@@ -98,3 +98,86 @@ describe('ModifierGroupsSelector', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+/**
+ * Multi-select groups with min/max picks. Previously the selector rendered
+ * single- and multi-select identically and showed no count rule, so a shopper
+ * discovered "choose 2 to 3" only by pressing Add to Cart and reading a toast,
+ * and could keep tapping past the cap while `toggleOption` silently ignored it.
+ */
+const pickTwoToThree: ModifierGroup = {
+  id: 'g-toppings',
+  name: 'Toppings',
+  display_order: 0,
+  min_select: 2,
+  max_select: 3,
+  options: [
+    { id: 'o-ham', name: 'Ham', price_modifier: 10, display_order: 0 },
+    { id: 'o-corn', name: 'Corn', price_modifier: 5, display_order: 1 },
+    { id: 'o-olive', name: 'Olive', price_modifier: 8, display_order: 2 },
+    { id: 'o-basil', name: 'Basil', price_modifier: 6, display_order: 3 },
+  ],
+}
+
+function renderMulti(selection: ModifierSelection, onToggle = jest.fn()) {
+  render(
+    <ModifierGroupsSelector
+      groups={[pickTwoToThree]}
+      selection={selection}
+      onToggle={onToggle}
+    />,
+  )
+  return onToggle
+}
+
+describe('ModifierGroupsSelector multi-select rules', () => {
+  it('shows the min/max rule so the shopper knows the count before submitting', () => {
+    renderMulti({})
+    expect(screen.getByText('Required — choose 2 to 3')).toBeInTheDocument()
+  })
+
+  it('shows how many are still needed to meet the minimum', () => {
+    renderMulti({ 'g-toppings': ['o-ham'] })
+    expect(screen.getByText(/1 more/i)).toBeInTheDocument()
+  })
+
+  it('reports the selected count once the minimum is met', () => {
+    renderMulti({ 'g-toppings': ['o-ham', 'o-corn'] })
+    expect(screen.getByText('2 of 3 selected')).toBeInTheDocument()
+  })
+
+  it('exposes multi-select options as checkboxes, not radio-style chips', () => {
+    renderMulti({ 'g-toppings': ['o-ham'] })
+    const ham = screen.getByRole('button', { name: /Ham/ })
+    expect(ham).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('button', { name: /Corn/ })).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('disables unselected options once the cap is reached', () => {
+    renderMulti({ 'g-toppings': ['o-ham', 'o-corn', 'o-olive'] })
+    expect(screen.getByRole('button', { name: /Basil/ })).toBeDisabled()
+  })
+
+  it('keeps already-selected options clickable at the cap so they can be removed', () => {
+    const onToggle = renderMulti({ 'g-toppings': ['o-ham', 'o-corn', 'o-olive'] })
+    const ham = screen.getByRole('button', { name: /Ham/ })
+
+    expect(ham).not.toBeDisabled()
+    fireEvent.click(ham)
+    expect(onToggle).toHaveBeenCalledWith(pickTwoToThree, 'o-ham')
+  })
+
+  it('leaves single-select options swappable and free of checkbox semantics', () => {
+    render(
+      <ModifierGroupsSelector
+        groups={[sizeGroup]}
+        selection={{ 'g-size': ['o-small'] }}
+        onToggle={jest.fn()}
+      />,
+    )
+    const large = screen.getByRole('button', { name: /Large/ })
+
+    expect(large).not.toBeDisabled()
+    expect(large).not.toHaveAttribute('aria-checked')
+  })
+})
