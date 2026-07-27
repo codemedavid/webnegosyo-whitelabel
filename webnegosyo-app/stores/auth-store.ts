@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { OrderBackend } from "../lib/order-backend";
 
 interface AuthState {
   userId: string | null;
@@ -6,6 +7,11 @@ interface AuthState {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /**
+   * Which database serves this tenant's orders. `lib/hooks.ts` dispatches on it
+   * to pick the Convex client or the platform-Supabase adapter.
+   */
+  orderBackend: OrderBackend | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -38,6 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  orderBackend: null,
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
@@ -54,6 +61,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       tenantSlug: null,
       tenantName: null,
       convexUrl: null,
+      orderBackend: null,
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,

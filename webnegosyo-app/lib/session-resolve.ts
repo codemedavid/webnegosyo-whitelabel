@@ -8,6 +8,8 @@
 // failure (the previous behaviour) locked the superadmin out of the app
 // entirely. Here it resolves to its own session mode instead.
 
+import { resolveOrderBackend, type OrderBackend } from "./order-backend";
+
 /** Where each session mode lands after sign-in. */
 export const MERCHANT_LANDING_HREF = "/(main)/dashboard";
 export const SUPERADMIN_LANDING_HREF = "/(superadmin)/tenants";
@@ -29,6 +31,7 @@ export interface TenantRow {
   slug: string;
   name: string;
   convex_deployment_url: string | null;
+  order_backend?: OrderBackend | null;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -40,6 +43,12 @@ export interface SessionAuthPatch {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /**
+   * Which database serves this tenant's orders. Screens dispatch on it to pick
+   * the Convex client or the platform-Supabase adapter. Null for a superadmin,
+   * who holds no tenant until they impersonate one.
+   */
+  orderBackend: OrderBackend | null;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -90,6 +99,7 @@ export function resolveSession(
         tenantSlug: null,
         tenantName: null,
         convexUrl: null,
+        orderBackend: null,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -115,6 +125,7 @@ export function resolveSession(
       tenantSlug: tenant.slug,
       tenantName: tenant.name,
       convexUrl: tenant.convex_deployment_url ?? null,
+      orderBackend: resolveOrderBackend(tenant),
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,
