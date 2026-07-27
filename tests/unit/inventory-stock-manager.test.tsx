@@ -76,17 +76,23 @@ function renderManager(item: InventoryItem = FLOUR) {
   )
 }
 
+/** Stock now lives behind the row's actions menu, not a button per card. */
+function openStock(name = 'Flour') {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`more actions for ${name}`, 'i') }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /record stock/i }))
+}
+
 describe('InventoryManager stock', () => {
   it('shows how much of an ingredient is on hand', () => {
     renderManager()
 
-    expect(screen.getByText(/800 g on hand/i)).toBeInTheDocument()
+    expect(screen.getByText('800 g')).toBeInTheDocument()
   })
 
   it('records a delivery against the ingredient', async () => {
     // Arrange
     renderManager()
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     // Act
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
@@ -105,18 +111,18 @@ describe('InventoryManager stock', () => {
 
   it('shows the new on-hand figure the server reports back', async () => {
     renderManager()
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
 
     // The server's figure wins — a stale local total is exactly the bug the
     // ledger exists to prevent.
-    expect(await screen.findByText(/1300 g on hand/i)).toBeInTheDocument()
+    expect(await screen.findByText('1300 g')).toBeInTheDocument()
   })
 
   it('refuses to record a movement with no quantity', async () => {
     renderManager()
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
 
@@ -128,13 +134,13 @@ describe('InventoryManager stock', () => {
     // merchant needs to see without opening anything.
     renderManager()
 
-    expect(screen.getByText(/low stock/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/low stock/i)).toBeInTheDocument()
   })
 
   it('does not warn when stock is comfortably above the reorder level', () => {
     renderManager({ ...FLOUR, current_qty: 5000 })
 
-    expect(screen.queryByText(/low stock/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/low stock/i)).not.toBeInTheDocument()
   })
 })
 
@@ -153,7 +159,7 @@ describe('InventoryManager stock history', () => {
   it('lists what moved when the stock dialog opens', async () => {
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     expect(await screen.findByText(/Delivery #42/)).toBeInTheDocument()
     // Scoped to the history list: "Received" is also a reason button on the
@@ -168,7 +174,7 @@ describe('InventoryManager stock history', () => {
 
   it('shows each movement signed, with the balance it left behind', async () => {
     renderManager()
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     expect(await screen.findByText('-160 g')).toBeInTheDocument()
     expect(screen.getByText('+960 g')).toBeInTheDocument()
@@ -179,7 +185,7 @@ describe('InventoryManager stock history', () => {
     getStockMovementsAction.mockResolvedValue({ success: true, data: [] })
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     expect(await screen.findByText(/no movements recorded yet/i)).toBeInTheDocument()
   })
@@ -190,7 +196,7 @@ describe('InventoryManager stock history', () => {
     getStockMovementsAction.mockResolvedValue({ success: false, error: 'boom' })
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     expect(await screen.findByText(/couldn.t load the history/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^record$/i })).toBeEnabled()
@@ -201,14 +207,14 @@ describe('InventoryManager stock history', () => {
     // open. Caching the first read would show a merchant their own movement
     // missing from the history it just went into.
     renderManager()
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
     await screen.findByText('Sold')
 
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
     await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
 
-    fireEvent.click(screen.getByRole('button', { name: /stock/i }))
+    openStock()
 
     await waitFor(() => expect(getStockMovementsAction).toHaveBeenCalledTimes(2))
   })
