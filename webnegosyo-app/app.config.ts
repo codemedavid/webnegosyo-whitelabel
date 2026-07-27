@@ -6,7 +6,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: "webnegosyo-app",
   owner: "itscodemedavid",
   scheme: "webnegosyo-admin",
-  version: "1.0.0",
+  // Apple closes a version "train" once it has been approved: 1.0.0 was
+  // approved, so App Store Connect rejects every further build under it
+  // ("Invalid Pre-Release Train … closed for new build submissions"), no matter
+  // how high the build number goes. Shipping anything to iOS requires this to
+  // move. Note `runtimeVersion.policy` is "appVersion", so bumping it also
+  // starts a new OTA update lane — 1.0.0 installs will not receive 1.0.1
+  // updates, which is the intended behaviour for a new binary release.
+  version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   splash: {
