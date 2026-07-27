@@ -771,11 +771,52 @@ function FlashScreenFeatureSection({
   )
 }
 
+// Unified Modifier Groups Feature Toggle Section
+function ModifierGroupsFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Modifier Groups</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Unified option groups that replace separate variations and add-ons. Each group sets its own
+          minimum and maximum number of picks, so customers can choose several options at once.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
             <Label htmlFor="modifier_groups_enabled">Enable Modifier Groups</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the tenant admin can author multi-select option groups (e.g. &ldquo;pick
+              any 2 of 4 toppings&rdquo;) and the storefront enforces the min/max rules at checkout
+            </p>
+          </div>
+          <Switch
             id="modifier_groups_enabled"
             checked={formData.modifier_groups_enabled}
             onCheckedChange={(checked) => setFormData({ ...formData, modifier_groups_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
         {!formData.modifier_groups_enabled && (
+          <p className="text-sm text-muted-foreground">
+            Items already authored with modifier groups keep their data; the storefront simply falls
+            back to the legacy variation and add-on sections while this is off.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Bundles Feature Toggle Section
 function BundlesFeatureSection({
   formData,
