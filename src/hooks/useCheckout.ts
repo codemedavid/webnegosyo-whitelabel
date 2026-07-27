@@ -17,7 +17,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
@@ -611,7 +611,7 @@ export function useCheckout(tenantSlug: string) {
         // subtotal = price × quantity, so an add-on missing here is deleted
         // from the customer's total.
         const itemPrice = calculateCartItemUnitPrice(
-          item.menu_item.price,
+          getEffectiveItemPrice(item.menu_item),
           item.selected_variations ?? item.selected_variation,
           item.selected_addons
         )
@@ -998,7 +998,7 @@ export function useCheckout(tenantSlug: string) {
           // Includes add-ons — see the QR path above; the server clamps
           // subtotal to price × quantity.
           const itemPrice = calculateCartItemUnitPrice(
-            item.menu_item.price,
+            getEffectiveItemPrice(item.menu_item),
             item.selected_variations ?? item.selected_variation,
             item.selected_addons
           )

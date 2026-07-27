@@ -4,6 +4,26 @@ import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleI
 export const MAX_CART_ITEM_QUANTITY = 99
 
 /**
+ * The price a customer actually pays for one unit of a menu item, before
+ * variation modifiers and add-ons.
+ *
+ * `discounted_price` is the merchant's sale price. It only applies when it is a
+ * positive number strictly below the list price — the same rule the storefront
+ * cards and the product detail page use to decide whether to render a struck-out
+ * price. Every money path (cart subtotal, order line price) MUST go through
+ * here, otherwise the customer sees the sale price but is charged list price.
+ */
+export function getEffectiveItemPrice(
+  menuItem: Pick<MenuItem, 'price'> & { discounted_price?: number | null }
+): number {
+  const discounted = menuItem.discounted_price
+  if (typeof discounted === 'number' && discounted > 0 && discounted < menuItem.price) {
+    return discounted
+  }
+  return menuItem.price
+}
+
+/**
  * Calculate the subtotal for a cart item including variations and add-ons
  * Supports both new grouped variations and legacy single variation
  */
@@ -101,8 +121,7 @@ export function generateCartItemId(
  *
  * Centralizes cart-item construction (id + subtotal + variation-format
  * detection) so both "add to cart" and "edit cart item" share one code path and
- * never drift. Uses the menu item's list price for the subtotal to match the
- * historical add-to-cart behavior (discounts are reconciled on refresh).
+ * never drift. Prices the line at the item's effective (sale-aware) price.
  */
 export function makeCartItem(
   menuItem: MenuItem,
@@ -125,7 +144,12 @@ export function makeCartItem(
       )
     : generateCartItemId(menuItem.id, (variationOrVariations as Variation | undefined)?.id, addons.map((a) => a.id))
 
-  const subtotal = calculateCartItemSubtotal(menuItem.price, variationOrVariations, addons, quantity)
+  const subtotal = calculateCartItemSubtotal(
+    getEffectiveItemPrice(menuItem),
+    variationOrVariations,
+    addons,
+    quantity
+  )
 
   return {
     id: cartItemId,
@@ -170,7 +194,7 @@ export function replaceCartItem(
     const mergedQuantity = Math.min(target.quantity + newItem.quantity, maxQuantity)
     const mergedVariations = target.selected_variations || target.selected_variation
     const mergedSubtotal = calculateCartItemSubtotal(
-      target.menu_item.price,
+      getEffectiveItemPrice(target.menu_item),
       mergedVariations,
       target.selected_addons,
       mergedQuantity

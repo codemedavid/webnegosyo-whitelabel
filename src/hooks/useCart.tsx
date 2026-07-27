@@ -8,6 +8,7 @@ import {
   getFullCartItemCount,
   makeCartItem,
   replaceCartItem,
+  getEffectiveItemPrice,
   MAX_CART_ITEM_QUANTITY,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
@@ -349,7 +350,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
 
           const newSubtotal = calculateCartItemSubtotal(
-            fresh.price,
+            getEffectiveItemPrice(updatedMenuItem),
             item.selected_variations || item.selected_variation,
             item.selected_addons,
             item.quantity
@@ -602,7 +603,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const existingItem = updatedItems[existingItemIndex]
           const newQuantity = Math.min(existingItem.quantity + quantity, MAX_QUANTITY)
           const newSubtotal = calculateCartItemSubtotal(
-            menuItem.price,
+            getEffectiveItemPrice(menuItem),
             variationOrVariations,
             addons,
             newQuantity
@@ -664,7 +665,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           // Use appropriate variation format for calculation
           const variations = item.selected_variations || item.selected_variation
           const newSubtotal = calculateCartItemSubtotal(
-            item.menu_item.price,
+            getEffectiveItemPrice(item.menu_item),
             variations,
             item.selected_addons,
             clampedQuantity
