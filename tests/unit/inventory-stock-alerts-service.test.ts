@@ -370,6 +370,25 @@ describe('processStockLevelChanges — auto-86 recovery', () => {
       expect(tables.stock_alerts.calls.update).toBeUndefined()
     })
 
+    it("corrects the open alert from 'out' to 'low' instead of leaving it stale", async () => {
+      // The alert row is a snapshot of the moment it was raised, and nothing
+      // ever revised it. So the banner went on saying "Flour is out of stock"
+      // over a shelf with 10 g on it — the merchant is told to drop everything
+      // for a delivery that already arrived.
+      const tables = wire({
+        tenants: table(FLAGS_ALL_ON),
+        stock_alerts: table([{ id: 'a1', inventory_item_id: 'flour' }]),
+        inventory_items: table([{ id: 'flour', current_qty: 0, reorder_level: 20 }]),
+      })
+
+      await processStockLevelChanges('t1', EMPTY_FLOUR, PARTIAL_RESTOCK)
+
+      expect(tables.stock_alerts.calls.update?.[0][0]).toMatchObject({
+        level: 'low',
+        quantity: 10,
+      })
+    })
+
     it('still resolves the alert once the delivery clears the reorder level', async () => {
       const tables = wire({
         tenants: table(FLAGS_ALL_ON),
