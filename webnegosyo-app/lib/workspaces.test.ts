@@ -75,6 +75,13 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("product-management", "products")).toBe(true);
     expect(isTabInWorkspace("product-analytics", "operations")).toBe(false);
   });
+
+  it("keeps inventory beside the products it is spent on", () => {
+    // Stock is a property of the menu, not of the order queue: a merchant who
+    // 86s an item and a merchant who reorders its flour are the same person.
+    expect(isTabInWorkspace("inventory", "products")).toBe(true);
+    expect(isTabInWorkspace("inventory", "operations")).toBe(false);
+  });
 });
 
 describe("workspaceForTab", () => {
@@ -83,6 +90,7 @@ describe("workspaceForTab", () => {
     expect(workspaceForTab("pos")).toBe("register");
     expect(workspaceForTab("growth")).toBe("insights");
     expect(workspaceForTab("product-management")).toBe("products");
+    expect(workspaceForTab("inventory")).toBe("products");
   });
 
   it("returns undefined for detail/utility screens outside any workspace", () => {

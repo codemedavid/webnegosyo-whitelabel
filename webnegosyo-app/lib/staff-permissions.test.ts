@@ -58,6 +58,9 @@ describe("isTabAllowed", () => {
     expect(isTabAllowed(ordersOnly, "trends")).toBe(false);
     expect(isTabAllowed(ordersOnly, "product-management")).toBe(false);
     expect(isTabAllowed(menuOnly, "product-management")).toBe(true);
+    // Reordering an ingredient is a menu decision, so it rides the same key.
+    expect(isTabAllowed(menuOnly, "inventory")).toBe(true);
+    expect(isTabAllowed(ordersOnly, "inventory")).toBe(false);
     expect(isTabAllowed(menuOnly, "orders")).toBe(false);
   });
 
@@ -98,7 +101,7 @@ describe("allowedWorkspaces", () => {
     const views = allowedWorkspaces(menuOnly);
     const products = views.find((w) => w.key === "products");
     expect(products).toBeDefined();
-    expect(products!.tabs).toEqual(["product-management"]);
+    expect(products!.tabs).toEqual(["product-management", "inventory"]);
     expect(products!.defaultTab).toBe("product-management");
   });
 });
