@@ -260,7 +260,10 @@ export async function toggleProductAvailability(
 ): Promise<Product> {
   const { data, error } = await supabase
     .from("menu_items")
-    .update({ is_available: isAvailable })
+    // Clearing `auto_disabled_at` hands ownership back to the merchant: stock
+    // recovery re-enables only items still carrying the marker, so a dish the
+    // merchant has just decided about must no longer carry it.
+    .update({ is_available: isAvailable, auto_disabled_at: null })
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select()
