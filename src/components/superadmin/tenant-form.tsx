@@ -71,6 +71,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
     // Inventory flags are not editable on this form; pass the tenant's own
     // values through so saving here cannot silently switch them off.
     inventory_enabled: tenant?.inventory_enabled ?? false,
@@ -139,6 +140,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      modifier_groups_enabled: formData.modifier_groups_enabled,
       inventory_enabled: formData.inventory_enabled,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,

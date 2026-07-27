@@ -93,6 +93,8 @@ interface TenantFormData {
   auto_86_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
+  // Unified modifier groups (multi-select with min/max picks)
+  modifier_groups_enabled: boolean
   // QR-handoff ordering
   qr_handoff_enabled: boolean
   // Restaurant address for Lalamove pickup
@@ -860,6 +862,52 @@ function InventoryFeatureSection({
   )
 }
 
+// Unified Modifier Groups Feature Toggle Section
+function ModifierGroupsFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Modifier Groups</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Unified option groups that replace separate variations and add-ons. Each group sets its own
+          minimum and maximum number of picks, so customers can choose several options at once.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="modifier_groups_enabled">Enable Modifier Groups</Label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the tenant admin can author multi-select option groups (e.g. &ldquo;pick
+              any 2 of 4 toppings&rdquo;) and the storefront enforces the min/max rules at checkout
+            </p>
+          </div>
+          <Switch
+            id="modifier_groups_enabled"
+            checked={formData.modifier_groups_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, modifier_groups_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.modifier_groups_enabled && (
+          <p className="text-sm text-muted-foreground">
+            Items already authored with modifier groups keep their data; the storefront simply falls
+            back to the legacy variation and add-on sections while this is off.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Bundles Feature Toggle Section
 function BundlesFeatureSection({
   formData,
@@ -1522,6 +1570,7 @@ export function TenantFormWrapper({
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
     // Inventory
     inventory_enabled: tenant?.inventory_enabled ?? false,
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
@@ -1599,6 +1648,7 @@ export function TenantFormWrapper({
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Bundles
       bundles_enabled: formData.bundles_enabled,
+      modifier_groups_enabled: formData.modifier_groups_enabled,
       // Inventory
       inventory_enabled: formData.inventory_enabled,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
@@ -1776,6 +1826,11 @@ export function TenantFormWrapper({
 
         <TabsContent value="features" className="mt-6 space-y-6">
           <MenuEngineeringSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <ModifierGroupsFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}

@@ -130,6 +130,44 @@ export interface SelectionValidationResult {
 }
 
 /**
+ * Customer-facing wording for a group's min/max rule, e.g. "Required — choose 2
+ * to 3". Rendered above the options so the count rule is visible *before* the
+ * shopper submits, rather than surfacing as a validation toast on add-to-cart.
+ *
+ * `max_select === null` means unlimited.
+ */
+export function describeSelectionRule(group: ModifierGroup): string {
+  const { min_select: min, max_select: max } = group
+  const prefix = min > 0 ? 'Required' : 'Optional'
+
+  if (min === 0) {
+    return max === null ? `${prefix} — choose any` : `${prefix} — choose up to ${max}`
+  }
+  if (max === null) {
+    return min === 1 ? `${prefix} — choose 1` : `${prefix} — choose at least ${min}`
+  }
+  if (min === max) {
+    return `${prefix} — choose ${min}`
+  }
+  return `${prefix} — choose ${min} to ${max}`
+}
+
+/**
+ * Whether a multi-select group has hit its cap, so the UI can disable the
+ * options that are not yet chosen.
+ *
+ * Single-select groups (`max_select === 1`) are deliberately never "at max":
+ * toggling one replaces the current pick rather than accumulating, so freezing
+ * the group at one selection would trap the customer on their first choice.
+ */
+export function isSelectionAtMax(group: ModifierGroup, selectedCount: number): boolean {
+  if (group.max_select === null || group.max_select <= 1) {
+    return false
+  }
+  return selectedCount >= group.max_select
+}
+
+/**
  * Validate a customer's selection for one group against its min/max rules.
  * `max_select === null` means unlimited.
  */

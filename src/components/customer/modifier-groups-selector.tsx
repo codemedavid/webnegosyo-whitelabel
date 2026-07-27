@@ -1,7 +1,7 @@
 'use client'
 
 import type { ModifierGroup, ModifierOption } from '@/types/database'
-import { isOptionAvailable } from '@/lib/modifier-groups'
+import { describeSelectionRule, isOptionAvailable, isSelectionAtMax } from '@/lib/modifier-groups'
 import type { ModifierSelection } from '@/lib/modifier-groups-cart'
 import { formatPrice } from '@/lib/cart-utils'
 import { cn } from '@/lib/utils'
@@ -16,9 +16,12 @@ interface ModifierGroupsSelectorProps {
 /**
  * Storefront selector for the unified modifier-groups model. Presentational:
  * it renders each group's options and forwards a toggle; all selection rules
- * and pricing live in the tested adapter/hook. Single- and multi-select groups
- * render identically (chips) — the difference is enforced upstream by
- * `toggleOption`, which replaces vs. accumulates.
+ * and pricing live in the tested adapter/hook.
+ *
+ * Multi-select groups (`max_select !== 1`) get checkbox semantics, the group's
+ * min/max rule spelled out, live progress toward it, and their unchosen options
+ * disabled at the cap. Single-select groups stay radio-style chips: toggling
+ * one replaces the current pick, so they are never "full".
  */
 export function ModifierGroupsSelector({
   groups,
@@ -34,11 +37,13 @@ export function ModifierGroupsSelector({
     <div className="space-y-6">
       {groups.map((group) => {
         const selectedIds = selection[group.id] ?? []
-        const isRequired = group.min_select > 0
+        const isMultiSelect = group.max_select !== 1
+        const atMax = isSelectionAtMax(group, selectedIds.length)
+        const progress = describeSelectionProgress(group, selectedIds.length)
 
         return (
           <div key={group.id} className="mb-2" data-branding-scope="product/variations">
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <h3
                 className="text-base font-semibold"
                 style={{
@@ -52,20 +57,32 @@ export function ModifierGroupsSelector({
                 className="rounded px-2 py-0.5 text-xs font-medium"
                 style={{ color: 'var(--pd-variation-required)' }}
               >
-                {isRequired ? 'Required' : 'Optional'}
+                {describeSelectionRule(group)}
               </span>
+              {progress && (
+                <span className="text-xs opacity-70" style={{ color: 'var(--pd-variation-text)' }}>
+                  {progress}
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {group.options.map((option) => (
-                <ModifierOptionChip
-                  key={option.id}
-                  option={option}
-                  isSelected={selectedIds.includes(option.id)}
-                  onToggle={() => onToggle(group, option.id)}
-                  hideCurrencySymbol={hideCurrencySymbol}
-                />
-              ))}
+              {group.options.map((option) => {
+                const isSelected = selectedIds.includes(option.id)
+                return (
+                  <ModifierOptionChip
+                    key={option.id}
+                    option={option}
+                    isSelected={isSelected}
+                    isMultiSelect={isMultiSelect}
+                    // Selected options stay clickable at the cap so the customer
+                    // can swap one out instead of being stuck.
+                    isCapped={atMax && !isSelected}
+                    onToggle={() => onToggle(group, option.id)}
+                    hideCurrencySymbol={hideCurrencySymbol}
+                  />
+                )
+              })}
             </div>
           </div>
         )
@@ -74,9 +91,31 @@ export function ModifierGroupsSelector({
   )
 }
 
+/**
+ * Live progress toward a multi-select group's rule, e.g. "1 more to go" or
+ * "2 of 3 selected". Returns null for single-select groups and for optional
+ * uncapped groups, where a running count would be noise.
+ */
+function describeSelectionProgress(group: ModifierGroup, selectedCount: number): string | null {
+  if (group.max_select === 1) {
+    return null
+  }
+
+  const remaining = group.min_select - selectedCount
+  if (remaining > 0) {
+    return `${remaining} more to go`
+  }
+  if (group.max_select === null) {
+    return selectedCount > 0 ? `${selectedCount} selected` : null
+  }
+  return `${selectedCount} of ${group.max_select} selected`
+}
+
 interface ModifierOptionChipProps {
   option: ModifierOption
   isSelected: boolean
+  isMultiSelect: boolean
+  isCapped: boolean
   onToggle: () => void
   hideCurrencySymbol?: boolean
 }
@@ -84,10 +123,13 @@ interface ModifierOptionChipProps {
 function ModifierOptionChip({
   option,
   isSelected,
+  isMultiSelect,
+  isCapped,
   onToggle,
   hideCurrencySymbol,
 }: ModifierOptionChipProps) {
   const available = isOptionAvailable(option)
+  const disabled = !available || isCapped
   const priceLabel =
     option.price_modifier > 0
       ? `+${formatPrice(option.price_modifier, { hideCurrencySymbol })}`
@@ -97,12 +139,17 @@ function ModifierOptionChip({
     <button
       type="button"
       aria-pressed={isSelected}
-      disabled={!available}
+      // Multi-select chips read as a set of independent toggles; single-select
+      // chips as an exclusive choice. `aria-pressed` is correct for both (the
+      // role stays `button`), so the mode is exposed for styling and tests
+      // rather than by swapping in an invalid role/attribute pairing.
+      data-select-mode={isMultiSelect ? 'multi' : 'single'}
+      disabled={disabled}
       onClick={onToggle}
       className={cn(
         'flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
         isSelected ? 'border-2' : 'border',
-        !available && 'cursor-not-allowed opacity-50',
+        disabled && 'cursor-not-allowed opacity-50',
       )}
       style={{
         borderColor: isSelected ? 'var(--pd-variation-selected-border)' : 'var(--pd-border)',
@@ -112,6 +159,18 @@ function ModifierOptionChip({
         color: isSelected ? 'var(--pd-variation-selected-text)' : 'var(--pd-variation-text)',
       }}
     >
+      {isMultiSelect && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none',
+            isSelected && 'font-bold',
+          )}
+          style={{ borderColor: 'currentColor' }}
+        >
+          {isSelected ? '✓' : ''}
+        </span>
+      )}
       <span>{option.name}</span>
       {priceLabel && <span className="opacity-80">{priceLabel}</span>}
       {!available && <span className="text-xs opacity-70">(sold out)</span>}

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Tenant, Category, MenuItem, BundleWithSlots } from '@/types/database'
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
+import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
 
 export async function getMenuData(tenantSlug: string) {
   const supabase = await createClient()
@@ -38,7 +39,7 @@ export async function getMenuData(tenantSlug: string) {
 
   const [catsResult, itemsResult, bundleResult] = await Promise.all([
     supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
-    supabase.from('menu_items').select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, order, variations, variation_types, addons, bcg_classification, badge_text').eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
+    supabase.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
     bundlesQuery,
   ])
 

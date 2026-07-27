@@ -16,7 +16,7 @@ export const PRODUCT_DETAIL_TENANT_SELECT = `
   modal_background_color, modal_title_color, modal_price_color, modal_description_color,
   button_primary_color, button_primary_text_color, button_secondary_color, button_secondary_text_color,
   link_color, shadow_color, success_color, warning_color, error_color,
-  is_active, menu_engineering_enabled, hide_currency_symbol,
+  is_active, menu_engineering_enabled, hide_currency_symbol, modifier_groups_enabled,
   checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
   bundles_enabled, pairing_rules_enabled,
   convex_deployment_url, convex_schema_version,

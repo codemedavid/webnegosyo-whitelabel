@@ -90,6 +90,8 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
+  // Unified modifier groups: multi-select options with min/max picks
+  modifier_groups_enabled: z.boolean().default(false),
   // Inventory. All three default false: `inventory_enabled` is the master flag
   // the admin route and sidebar hang off, and auto-86 takes items off a live
   // menu — neither may switch itself on for a tenant that never asked.
@@ -264,6 +266,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
     // Inventory
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
@@ -385,6 +388,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
     // Inventory
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,

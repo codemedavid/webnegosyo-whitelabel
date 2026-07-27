@@ -13,10 +13,13 @@ import {
   createModifierGroup,
   createModifierOption,
   isSingleSelectGroup,
+  setGroupMaxSelect,
+  setGroupMinSelect,
   setGroupMultiple,
   setGroupRequired,
   setOptionCostMode,
 } from '@/lib/modifier-groups-form'
+import { describeSelectionRule } from '@/lib/modifier-groups'
 import { computeOptionMargin } from '@/lib/modifier-margin'
 import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
 
@@ -156,7 +159,8 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
                 onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
                 onToggleMultiple={(multiple) => replaceGroup(groupIndex, setGroupMultiple(group, multiple))}
-                onUpdateMaxSelect={(max) => updateGroupField(groupIndex, 'max_select', max)}
+                onUpdateMinSelect={(min) => replaceGroup(groupIndex, setGroupMinSelect(group, min))}
+                onUpdateMaxSelect={(max) => replaceGroup(groupIndex, setGroupMaxSelect(group, max))}
                 onAddOption={() => addOption(groupIndex)}
                 onRemoveOption={(optionIndex) => removeOption(groupIndex, optionIndex)}
                 onUpdateOption={(optionIndex, field, value) =>
@@ -182,6 +186,7 @@ interface ModifierGroupCardProps {
   onUpdateName: (name: string) => void
   onToggleRequired: (required: boolean) => void
   onToggleMultiple: (multiple: boolean) => void
+  onUpdateMinSelect: (min: number) => void
   onUpdateMaxSelect: (max: number | null) => void
   onAddOption: () => void
   onRemoveOption: (optionIndex: number) => void
@@ -203,6 +208,7 @@ function ModifierGroupCard({
   onUpdateName,
   onToggleRequired,
   onToggleMultiple,
+  onUpdateMinSelect,
   onUpdateMaxSelect,
   onAddOption,
   onRemoveOption,
@@ -242,22 +248,43 @@ function ModifierGroupCard({
               <span className="text-sm">Allow multiple</span>
             </label>
             {!isSingle && (
-              <label className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Max</span>
-                <Input
-                  type="number"
-                  min={1}
-                  placeholder="∞"
-                  value={group.max_select ?? ''}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim()
-                    onUpdateMaxSelect(raw === '' ? null : Math.max(1, parseInt(raw, 10) || 1))
-                  }}
-                  className="w-20"
-                />
-              </label>
+              <>
+                <label className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Min</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={group.min_select}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      onUpdateMinSelect(raw === '' ? 0 : Math.max(0, parseInt(raw, 10) || 0))
+                    }}
+                    className="w-20"
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Max</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="∞"
+                    value={group.max_select ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      onUpdateMaxSelect(raw === '' ? null : Math.max(1, parseInt(raw, 10) || 1))
+                    }}
+                    className="w-20"
+                  />
+                </label>
+              </>
             )}
           </div>
+          {/* Exactly what the customer will be told, so the merchant can see the
+              effect of Min/Max without leaving the editor. */}
+          <p className="text-xs text-muted-foreground">
+            Customer sees: {describeSelectionRule(group)}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onSaveToLibrary && (
