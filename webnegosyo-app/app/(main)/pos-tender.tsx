@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { listPaymentMethods } from "../../lib/pos-catalog";
@@ -42,6 +43,8 @@ export default function PosTenderScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
 
   const lines = usePosCartStore((s) => s.lines);
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
@@ -124,7 +127,7 @@ export default function PosTenderScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-    if (!convexUrl) {
+    if (!hasOrderBackend) {
       Alert.alert("Not connected", "This store's order backend is not configured.");
       return;
     }
@@ -208,7 +211,7 @@ export default function PosTenderScreen() {
   }, [
     method,
     isCompleting,
-    convexUrl,
+    hasOrderBackend,
     tenantId,
     tendered,
     change.changeDue,

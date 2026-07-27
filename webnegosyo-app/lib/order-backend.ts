@@ -44,6 +44,27 @@ export function resolveOrderBackend(tenant: OrderBackendTenantFields): OrderBack
   return isNonEmpty(tenant.convex_deployment_url) ? "convex" : "platform";
 }
 
+/** The order-routing fields as the merchant app's auth session holds them. */
+export interface OrderSessionFields {
+  convexUrl: string | null;
+  orderBackend: OrderBackend | null;
+}
+
+/**
+ * True when the app can actually read and write this session's orders.
+ *
+ * Screens gated on `convexUrl` alone predate the platform backend and lock out
+ * every tenant moved onto the shared database — which the app reaches through
+ * the adapter in `lib/backends/`, no deployment url required. `supabase` (a
+ * separate per-tenant project) is deliberately false: the app ships no adapter
+ * for it, so there is nothing to read.
+ */
+export function hasLiveOrderBackend(session: OrderSessionFields): boolean {
+  if (session.orderBackend === "platform") return true;
+  if (session.orderBackend === "supabase") return false;
+  return isNonEmpty(session.convexUrl);
+}
+
 /**
  * True when this tenant's orders are served by the shared platform Supabase —
  * the one database the app is already authenticated against. `supabase` is
