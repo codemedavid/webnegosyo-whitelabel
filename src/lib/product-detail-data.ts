@@ -7,9 +7,10 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
+import { MENU_ITEM_DETAIL_SELECT } from '@/lib/queries/menu-item-select'
 import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 import { getComplementaryItems } from '@/lib/complementary-pairs-service'
-import type { MenuItem, Category, Variation, VariationType, Addon, UpgradeUpsell } from '@/types/database'
+import type { MenuItem, Category, Variation, VariationType, Addon, ModifierGroup, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 
 /**
@@ -65,6 +66,8 @@ export interface SelectedTenant {
     checkout_upsell_max_items?: number | null
     bundles_enabled?: boolean
     pairing_rules_enabled?: boolean
+    /** Unified modifier groups (multi-select with min/max picks) on the storefront. */
+    modifier_groups_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
     convex_deployment_url?: string | null
     // Operating hours + storefront enforcement (see src/lib/store-open-status.ts)
@@ -123,24 +126,12 @@ export const getCachedMenuItemById = cache(async (itemId: string, tenantId: stri
     try {
         const supabase = await createClient()
 
-        // Fetch menu item with JSONB columns (variations, variation_types, addons)
-        // These are stored as JSONB in the menu_items table, not as separate tables
+        // Fetch menu item with JSONB columns (modifier_groups, variations,
+        // variation_types, addons). These are stored as JSONB in the menu_items
+        // table, not as separate tables.
         const { data: itemData, error: itemError } = await supabase
             .from('menu_items')
-            .select(`
-                id,
-                tenant_id,
-                category_id,
-                name,
-                description,
-                price,
-                discounted_price,
-                image_url,
-                is_available,
-                variations,
-                variation_types,
-                addons
-            `)
+            .select(MENU_ITEM_DETAIL_SELECT)
             .eq('id', itemId)
             .eq('tenant_id', tenantId)
             .maybeSingle()
@@ -162,11 +153,16 @@ export const getCachedMenuItemById = cache(async (itemId: string, tenantId: stri
         const variation_types = (itemData as any).variation_types || []
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const addons = (itemData as any).addons || []
+        // Unified modifier groups. Left undefined (not []) when absent so the
+        // storefront hook's `active` check keeps legacy items on the legacy path.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const modifier_groups = (itemData as any).modifier_groups as ModifierGroup[] | undefined
 
         // Combine all data with proper type casting
         const fullItem: MenuItem = {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ...(itemData as any),
+            modifier_groups: modifier_groups?.length ? modifier_groups : undefined,
             variations: variations as Variation[],
             variation_types: variation_types as VariationType[],
             addons: addons as Addon[]

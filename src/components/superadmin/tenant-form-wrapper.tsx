@@ -89,6 +89,8 @@ interface TenantFormData {
   bundles_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
+  // Unified modifier groups (multi-select with min/max picks)
+  modifier_groups_enabled: boolean
   // QR-handoff ordering
   qr_handoff_enabled: boolean
   // Restaurant address for Lalamove pickup
@@ -769,6 +771,11 @@ function FlashScreenFeatureSection({
   )
 }
 
+            <Label htmlFor="modifier_groups_enabled">Enable Modifier Groups</Label>
+            id="modifier_groups_enabled"
+            checked={formData.modifier_groups_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, modifier_groups_enabled: checked })}
+        {!formData.modifier_groups_enabled && (
 // Bundles Feature Toggle Section
 function BundlesFeatureSection({
   formData,
@@ -1431,6 +1438,7 @@ export function TenantFormWrapper({
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
     // Pairing rules
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // QR-handoff ordering
@@ -1504,6 +1512,7 @@ export function TenantFormWrapper({
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Bundles
       bundles_enabled: formData.bundles_enabled,
+      modifier_groups_enabled: formData.modifier_groups_enabled,
       // Pairing rules
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // QR-handoff ordering
@@ -1677,6 +1686,11 @@ export function TenantFormWrapper({
 
         <TabsContent value="features" className="mt-6 space-y-6">
           <MenuEngineeringSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <ModifierGroupsFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}

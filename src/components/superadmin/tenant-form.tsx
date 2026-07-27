@@ -71,6 +71,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
     checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // Email notifications
     admin_email: tenant?.admin_email || '',
@@ -134,6 +135,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      modifier_groups_enabled: formData.modifier_groups_enabled,
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // Email notifications
       admin_email: formData.admin_email || null,

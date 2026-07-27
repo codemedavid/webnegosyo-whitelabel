@@ -90,6 +90,7 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
+  modifier_groups_enabled: z.boolean().default(false),
   // QR-handoff ordering
   qr_handoff_enabled: z.boolean().optional(),
   // Flash screen
@@ -258,6 +259,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -375,6 +377,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

@@ -73,6 +73,41 @@ export function setGroupMultiple(group: ModifierGroup, multiple: boolean): Modif
 }
 
 /**
+ * Set an explicit minimum number of picks, so merchants can author "choose at
+ * least 2" — previously unreachable, because the editor only offered a Required
+ * checkbox that pinned `min_select` to 0 or 1.
+ *
+ * The cap is raised to match when the new minimum exceeds it: a group whose
+ * minimum is above its maximum can never be satisfied, so add-to-cart would
+ * reject every possible selection. Returns a new group (never mutates).
+ */
+export function setGroupMinSelect(group: ModifierGroup, min: number): ModifierGroup {
+  const nextMin = Math.max(0, Math.floor(min) || 0)
+  return {
+    ...group,
+    min_select: nextMin,
+    max_select: group.max_select === null ? null : Math.max(group.max_select, nextMin),
+  }
+}
+
+/**
+ * Set the maximum number of picks (`null` = unlimited). Mirrors
+ * `setGroupMinSelect`: the minimum is lowered to match when the new cap falls
+ * below it, keeping the rule satisfiable. Returns a new group (never mutates).
+ */
+export function setGroupMaxSelect(group: ModifierGroup, max: number | null): ModifierGroup {
+  if (max === null) {
+    return { ...group, max_select: null }
+  }
+  const nextMax = Math.max(1, Math.floor(max) || 1)
+  return {
+    ...group,
+    max_select: nextMax,
+    min_select: Math.min(group.min_select, nextMax),
+  }
+}
+
+/**
  * Mark a group required (min_select >= 1) or optional (min_select = 0),
  * preserving `max_select`. Returns a new group (never mutates).
  */
