@@ -12,6 +12,7 @@ const SUPERADMIN_STATE = {
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  orderBackend: null,
   isSuperadmin: true,
   isOwner: false,
   permissions: null,
@@ -25,6 +26,7 @@ const MERCHANT_STATE = {
   tenantSlug: "coffee",
   tenantName: "Webnegosyo Coffee",
   convexUrl: "https://coffee.convex.cloud",
+  orderBackend: "convex" as const,
   isSuperadmin: false,
   isOwner: true,
   permissions: null,
@@ -97,6 +99,32 @@ describe("enterTenant", () => {
     });
 
     expect(patch.convexUrl).toBeNull();
+  });
+
+  it("adopts the impersonated tenant's order backend", () => {
+    // Without this the superadmin keeps their own null backend and every
+    // merchant screen reads from the wrong database (or none at all).
+    const patch = enterTenant(SUPERADMIN_STATE, TARGET_TENANT);
+
+    expect(patch.orderBackend).toBe("convex");
+  });
+
+  it("adopts the platform backend when the tenant has no Convex deployment", () => {
+    const patch = enterTenant(SUPERADMIN_STATE, {
+      ...TARGET_TENANT,
+      convex_deployment_url: null,
+    });
+
+    expect(patch.orderBackend).toBe("platform");
+  });
+
+  it("clears the order backend on exit so no stale routing survives", () => {
+    const entered = {
+      ...SUPERADMIN_STATE,
+      ...enterTenant(SUPERADMIN_STATE, TARGET_TENANT),
+    };
+
+    expect(exitTenant(entered).orderBackend).toBeNull();
   });
 
   it("preserves the superadmin's own identity", () => {
