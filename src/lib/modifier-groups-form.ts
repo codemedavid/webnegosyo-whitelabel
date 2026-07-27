@@ -174,6 +174,7 @@ export function splitGroupsToLegacyColumns(groups: readonly ModifierGroup[]): Le
           price_modifier: o.price_modifier,
           image_url: o.image_url,
           is_default: o.is_default,
+          is_upgrade_target: o.is_upgrade_target,
           display_order: o.display_order ?? optionIndex,
         })),
       })

@@ -478,6 +478,10 @@ export interface ModifierOption {
   price_modifier: number; // +0, +2, +5 (added to base price)
   image_url?: string;
   is_default?: boolean;
+  // Mirrors VariationOption.is_upgrade_target. Carried through the
+  // legacy <-> modifier-groups round-trip so enabling the unified editor does
+  // not silently drop the "Upgrade for +X" nudge on an existing item.
+  is_upgrade_target?: boolean;
   display_order: number;
   // Cost / margin. `cost_mode` decides which cost is authoritative:
   //   'simple'    → manual_cost
