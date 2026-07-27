@@ -59,10 +59,17 @@ const REALTIME_BACKED_REFS: readonly string[] = [
  *
  * The tenant is in the channel name as well as the filter so switching stores
  * cannot reuse a channel still bound to the previous tenant's rows.
+ *
+ * `instanceKey` separates concurrent subscribers on the SAME tenant —
+ * <GlobalOrderAlerts> and the dashboard both watch the queue, and supabase-js
+ * keys channels by topic, so without it the second one collides with the first.
  */
-export function buildOrderSubscription(tenantId: string): OrderSubscription {
+export function buildOrderSubscription(
+  tenantId: string,
+  instanceKey = "default"
+): OrderSubscription {
   return {
-    channelName: `platform-orders:${tenantId}`,
+    channelName: `platform-orders:${tenantId}:${instanceKey}`,
     binding: {
       event: "*",
       schema: "public",

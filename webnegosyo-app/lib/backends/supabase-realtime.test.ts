@@ -38,6 +38,18 @@ describe("buildOrderSubscription", () => {
     expect(subscription.binding.event).toBe("*");
   });
 
+  it("gives two subscribers on the same tenant distinct channel names", () => {
+    // Arrange: <GlobalOrderAlerts> and the dashboard both watch the queue at
+    // once. supabase-js keys channels by topic, so a shared name would make the
+    // second subscriber collide with the first instead of getting its own.
+    const alerts = buildOrderSubscription("tenant-1", "alerts");
+    const dashboard = buildOrderSubscription("tenant-1", "dashboard");
+
+    // Assert
+    expect(alerts.channelName).not.toBe(dashboard.channelName);
+    expect(alerts.binding.filter).toBe(dashboard.binding.filter);
+  });
+
   it("gives each tenant its own channel name", () => {
     // Arrange: switching stores must not reuse a channel still bound to the
     // previous tenant's filter.
