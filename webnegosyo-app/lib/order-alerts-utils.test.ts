@@ -1,4 +1,4 @@
-import { selectNewOrders, formatOrderAlertBody, type AlertableOrder } from "./order-alerts-utils";
+import { selectNewOrders, formatOrderAlertBody, shouldAlertOnNewOrders, type AlertableOrder } from "./order-alerts-utils";
 
 describe("selectNewOrders", () => {
   const a: AlertableOrder = { _id: "a" };
@@ -56,5 +56,42 @@ describe("formatOrderAlertBody", () => {
   it("falls back to sensible defaults when fields are missing", () => {
     const body = formatOrderAlertBody({ _id: "x" });
     expect(body).toBe("Customer — ₱0.00 (0 items)");
+  });
+});
+
+describe("shouldAlertOnNewOrders", () => {
+  it("rings for a Convex-backed live merchant session", () => {
+    expect(
+      shouldAlertOnNewOrders({
+        convexUrl: "https://x.convex.cloud",
+        orderBackend: "convex",
+        isDemo: false,
+      })
+    ).toBe(true);
+  });
+
+  it("rings for a platform-backed merchant that has no Convex url", () => {
+    // Regression: the alert host used to gate on convexUrl alone, so every
+    // tenant moved to the shared platform database went permanently silent.
+    expect(
+      shouldAlertOnNewOrders({ convexUrl: null, orderBackend: "platform", isDemo: false })
+    ).toBe(true);
+  });
+
+  it("stays silent in the read-only demo", () => {
+    // App Store reviewers must never get surprise "New Order!" pop-ups.
+    expect(
+      shouldAlertOnNewOrders({
+        convexUrl: "https://x.convex.cloud",
+        orderBackend: "convex",
+        isDemo: true,
+      })
+    ).toBe(false);
+  });
+
+  it("stays silent when no order backend is reachable", () => {
+    expect(
+      shouldAlertOnNewOrders({ convexUrl: null, orderBackend: null, isDemo: false })
+    ).toBe(false);
   });
 });

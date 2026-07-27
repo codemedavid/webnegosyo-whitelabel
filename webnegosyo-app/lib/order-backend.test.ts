@@ -1,4 +1,4 @@
-import { resolveOrderBackend, isPlatformBackend } from "./order-backend";
+import { resolveOrderBackend, isPlatformBackend, hasLiveOrderBackend } from "./order-backend";
 
 describe("resolveOrderBackend", () => {
   it("uses the explicit order_backend column when it is set", () => {
@@ -62,5 +62,32 @@ describe("isPlatformBackend", () => {
         convex_deployment_url: null,
       })
     ).toBe(false);
+  });
+});
+
+describe("hasLiveOrderBackend", () => {
+  it("is true for a tenant with a Convex deployment", () => {
+    expect(
+      hasLiveOrderBackend({ convexUrl: "https://x.convex.cloud", orderBackend: "convex" })
+    ).toBe(true);
+  });
+
+  it("is true for a platform-backed tenant even with no Convex url", () => {
+    // The whole point of the platform backend: orders live in the shared
+    // database this app is already authenticated against.
+    expect(hasLiveOrderBackend({ convexUrl: null, orderBackend: "platform" })).toBe(true);
+  });
+
+  it("is false for a tenant on its own dedicated Supabase project", () => {
+    // The app ships no adapter for that project, so there is nothing to read.
+    expect(hasLiveOrderBackend({ convexUrl: null, orderBackend: "supabase" })).toBe(false);
+  });
+
+  it("is false before the session has resolved a backend", () => {
+    expect(hasLiveOrderBackend({ convexUrl: null, orderBackend: null })).toBe(false);
+  });
+
+  it("treats a blank Convex url as no backend", () => {
+    expect(hasLiveOrderBackend({ convexUrl: "   ", orderBackend: null })).toBe(false);
   });
 });
