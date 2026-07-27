@@ -28,6 +28,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { formatPrice } from '@/lib/cart-utils'
+import {
+  describeMenuAvailability,
+  MENU_AVAILABILITY_LABEL,
+} from '@/lib/inventory/menu-availability'
 import { deleteMenuItemAction, toggleAvailabilityAction } from '@/app/actions/menu-items'
 import { toast } from 'sonner'
 import type { MenuItem, Category } from '@/types/database'
@@ -154,6 +158,16 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
                 <div className="absolute right-2 top-2 flex gap-1">
                   {item.is_featured && <Badge variant="secondary">Featured</Badge>}
                   {item.discounted_price && <Badge variant="destructive">Sale</Badge>}
+                  {/*
+                    Only shown when the system pulled the dish, never when the
+                    merchant hid it — the whole point is telling those apart at
+                    a glance while scanning the grid for a missing bestseller.
+                  */}
+                  {describeMenuAvailability(item) === 'auto-hidden' && (
+                    <Badge variant="destructive">
+                      {MENU_AVAILABILITY_LABEL['auto-hidden']}
+                    </Badge>
+                  )}
                 </div>
               </div>
               <CardContent className="p-4">
