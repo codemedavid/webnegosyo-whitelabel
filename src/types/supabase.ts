@@ -1904,6 +1904,8 @@ export type Database = {
           id: string
           ios_app_store_id: string | null
           inventory_enabled: boolean
+          low_stock_alerts_enabled: boolean
+          auto_86_enabled: boolean
           modifier_groups_enabled: boolean
           is_active: boolean
           is_announcement_visible: boolean | null
@@ -2078,6 +2080,8 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          low_stock_alerts_enabled?: boolean
+          auto_86_enabled?: boolean
           modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
@@ -2252,6 +2256,8 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          low_stock_alerts_enabled?: boolean
+          auto_86_enabled?: boolean
           modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null

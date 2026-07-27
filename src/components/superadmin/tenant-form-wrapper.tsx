@@ -87,6 +87,7 @@ interface TenantFormData {
   flash_screen_feature_enabled: boolean
   // Bundles
   bundles_enabled: boolean
+  inventory_enabled: boolean
   // Inventory alerts
   low_stock_alerts_enabled: boolean
   auto_86_enabled: boolean
@@ -772,8 +773,8 @@ function FlashScreenFeatureSection({
   )
 }
 
-// Inventory Alerts Feature Toggle Section
-function InventoryAlertsFeatureSection({
+// Inventory Feature Toggle Section
+function InventoryFeatureSection({
   formData,
   setFormData,
   isPending,
@@ -785,13 +786,34 @@ function InventoryAlertsFeatureSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Inventory Alerts</CardTitle>
+        <CardTitle>Inventory</CardTitle>
         <p className="text-sm text-muted-foreground mt-1">
-          Warn the merchant when an ingredient crosses its reorder level, and optionally take
-          dishes off the menu when one runs out
+          Ingredient stock tracking, recipes and costing — plus optional low-stock warnings and
+          automatic 86ing
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="inventory_enabled">Enable Inventory</Label>
+            <p className="text-sm text-muted-foreground">
+              Master switch. Shows the Inventory section in the tenant admin and the Stock tab in
+              the merchant app, and lets orders deplete ingredient stock. Everything below depends
+              on it.
+            </p>
+          </div>
+          <Switch
+            id="inventory_enabled"
+            checked={formData.inventory_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, inventory_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.inventory_enabled && (
+          <p className="text-sm text-muted-foreground">
+            Inventory is off — the two settings below have no effect until it is switched on.
+          </p>
+        )}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label htmlFor="low_stock_alerts_enabled">Enable Low-Stock Alerts</Label>
@@ -1500,7 +1522,8 @@ export function TenantFormWrapper({
     flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
-    // Inventory alerts
+    // Inventory
+    inventory_enabled: tenant?.inventory_enabled ?? false,
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
     // Pairing rules
@@ -1576,7 +1599,8 @@ export function TenantFormWrapper({
       flash_screen_feature_enabled: formData.flash_screen_feature_enabled,
       // Bundles
       bundles_enabled: formData.bundles_enabled,
-      // Inventory alerts
+      // Inventory
+      inventory_enabled: formData.inventory_enabled,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
       // Pairing rules
@@ -1761,7 +1785,7 @@ export function TenantFormWrapper({
             setFormData={setFormData}
             isPending={isPending}
           />
-          <InventoryAlertsFeatureSection
+          <InventoryFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}

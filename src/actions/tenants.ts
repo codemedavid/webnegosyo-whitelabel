@@ -131,6 +131,10 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       checkout_upsell_enabled: parsed.checkout_upsell_enabled,
       bundles_enabled: parsed.bundles_enabled,
       pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
       qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
       // Flash screen
       flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -281,6 +285,10 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

@@ -90,6 +90,12 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
+  // Inventory. All three default false: `inventory_enabled` is the master flag
+  // the admin route and sidebar hang off, and auto-86 takes items off a live
+  // menu — neither may switch itself on for a tenant that never asked.
+  inventory_enabled: z.boolean().default(false),
+  low_stock_alerts_enabled: z.boolean().default(false),
+  auto_86_enabled: z.boolean().default(false),
   // QR-handoff ordering
   qr_handoff_enabled: z.boolean().optional(),
   // Flash screen
@@ -258,6 +264,10 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -375,6 +385,10 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

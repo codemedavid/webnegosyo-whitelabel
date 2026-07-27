@@ -71,6 +71,11 @@ export function TenantForm({ tenant }: TenantFormProps) {
     checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
+    // Inventory flags are not editable on this form; pass the tenant's own
+    // values through so saving here cannot silently switch them off.
+    inventory_enabled: tenant?.inventory_enabled ?? false,
+    low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
+    auto_86_enabled: tenant?.auto_86_enabled ?? false,
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // Email notifications
     admin_email: tenant?.admin_email || '',
@@ -134,6 +139,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
       checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
+      inventory_enabled: formData.inventory_enabled,
+      low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
+      auto_86_enabled: formData.auto_86_enabled,
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // Email notifications
       admin_email: formData.admin_email || null,
