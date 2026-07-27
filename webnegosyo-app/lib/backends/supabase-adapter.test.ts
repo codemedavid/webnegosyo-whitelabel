@@ -1,0 +1,417 @@
+import {
+  isPlatformRefSupported,
+  runPlatformQuery,
+  runPlatformMutation,
+  type PlatformClient,
+} from "./supabase-adapter";
+
+/**
+ * The adapter answers the same string function refs the screens already send to
+ * Convex ("orders:getOrders"), but against the shared platform Supabase.
+ *
+ * A recording fake stands in for supabase-js so the query SHAPE is assertable —
+ * in particular that every read and write is scoped to the caller's tenant.
+ * That filter is not cosmetic: a superadmin's RLS policy grants them every
+ * tenant's rows, so an unscoped query would render another merchant's orders
+ * (and customer phone numbers) inside the impersonated store.
+ */
+
+interface RecordedOp {
+  readonly method: string;
+  readonly args: readonly unknown[];
+}
+
+interface RecordedCall {
+  readonly table: string;
+  readonly ops: RecordedOp[];
+}
+
+interface TableResponse {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+function fakeClient(responses: Record<string, TableResponse[]>) {
+  const calls: RecordedCall[] = [];
+
+  function makeChain(table: string) {
+    const call: RecordedCall = { table, ops: [] };
+    calls.push(call);
+
+    const chain: Record<string, unknown> = {};
+    const record = (method: string) => (...args: unknown[]) => {
+      call.ops.push({ method, args });
+      return chain;
+    };
+
+    for (const method of [
+      "select",
+      "eq",
+      "in",
+      "gte",
+      "lte",
+      "order",
+      "limit",
+      "insert",
+      "update",
+      "maybeSingle",
+      "single",
+    ]) {
+      chain[method] = record(method);
+    }
+
+    chain.then = (
+      resolve: (value: TableResponse) => unknown,
+      reject?: (reason: unknown) => unknown
+    ) => {
+      const queue = responses[table] ?? [];
+      const next = queue.shift() ?? { data: null, error: null };
+      return Promise.resolve(next).then(resolve, reject);
+    };
+
+    return chain;
+  }
+
+  const client = {
+    from: (table: string) => makeChain(table),
+  } as unknown as PlatformClient;
+
+  return { client, calls };
+}
+
+/** Every op of a given kind across all recorded calls, flattened for assertions. */
+function opsOf(calls: RecordedCall[], method: string): unknown[][] {
+  return calls.flatMap((call) =>
+    call.ops.filter((op) => op.method === method).map((op) => [...op.args])
+  );
+}
+
+function orderRowFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "order-1",
+    tenant_id: "tenant-1",
+    customer_name: "Ana",
+    customer_contact: "0917",
+    customer_data: null,
+    total: 250,
+    item_count: 2,
+    status: "pending",
+    source: "web",
+    order_type: null,
+    order_type_id: null,
+    payment_status: "pending",
+    payment_method_name: null,
+    payment_method_details: null,
+    delivery_fee: null,
+    scheduled_for: null,
+    client_order_id: null,
+    created_at: "2026-07-27T02:00:00.000Z",
+    updated_at: null,
+    ...overrides,
+  };
+}
+
+const TENANT = "tenant-1";
+
+describe("isPlatformRefSupported", () => {
+  it("claims the order refs the screens send", () => {
+    expect(isPlatformRefSupported("orders:getOrders")).toBe(true);
+    expect(isPlatformRefSupported("orders:getDashboardStats")).toBe(true);
+    expect(isPlatformRefSupported("orders:updateOrderStatus")).toBe(true);
+  });
+
+  it("does not claim refs it cannot serve yet", () => {
+    // Analytics still lives only on Convex. Claiming it would make the screen
+    // render an empty chart instead of its "needs a backend update" placeholder.
+    expect(isPlatformRefSupported("analytics:getUpsellAnalytics")).toBe(false);
+  });
+});
+
+describe("runPlatformQuery — orders:getOrders", () => {
+  it("returns orders scoped to the caller's tenant, newest first", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      orders: [{ data: [orderRowFixture()], error: null }],
+    });
+
+    // Act
+    const result = (await runPlatformQuery(client, TENANT, "orders:getOrders", {})) as Array<{
+      _id: string;
+    }>;
+
+    // Assert
+    expect(result[0]._id).toBe("order-1");
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+    expect(opsOf(calls, "order")[0]).toEqual(["created_at", { ascending: false }]);
+  });
+
+  it("filters by status when the screen asks for one", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { status: "preparing" });
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["status", "preparing"]);
+  });
+
+  it("surfaces a database error instead of pretending there are no orders", async () => {
+    // Arrange: an empty queue and a failed query look identical to the screen
+    // unless the error propagates.
+    const { client } = fakeClient({
+      orders: [{ data: null, error: { message: "permission denied" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrders", {})
+    ).rejects.toThrow("permission denied");
+  });
+});
+
+describe("runPlatformQuery — orders:getOrderById", () => {
+  it("returns the order with its line items nested", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      orders: [
+        {
+          data: {
+            ...orderRowFixture(),
+            order_items: [
+              {
+                id: "item-1",
+                order_id: "order-1",
+                menu_item_id: "menu-1",
+                menu_item_name: "Latte",
+                quantity: 2,
+                price: 120,
+                subtotal: 240,
+                variation: null,
+                variation_selections: null,
+                addons: null,
+                special_instructions: null,
+                is_upsell_item: false,
+                is_bundle_item: false,
+                bundle_id: null,
+                bundle_name: null,
+                slot_name: null,
+              },
+            ],
+          },
+          error: null,
+        },
+      ],
+    });
+
+    // Act
+    const order = (await runPlatformQuery(client, TENANT, "orders:getOrderById", {
+      orderId: "order-1",
+    })) as { items: Array<{ menuItemName: string }> } | null;
+
+    // Assert
+    expect(order?.items[0].menuItemName).toBe("Latte");
+  });
+
+  it("returns null for an order that is not this tenant's", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    const order = await runPlatformQuery(client, TENANT, "orders:getOrderById", {
+      orderId: "someone-elses",
+    });
+
+    // Assert
+    expect(order).toBeNull();
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+});
+
+describe("runPlatformQuery — orders:getRealtimeQueue", () => {
+  it("returns the four open buckets the dashboard renders", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      orders: [
+        {
+          data: [
+            orderRowFixture({ id: "a", status: "pending" }),
+            orderRowFixture({ id: "b", status: "ready" }),
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    // Act
+    const queue = (await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getRealtimeQueue",
+      {}
+    )) as Record<string, Array<{ _id: string }>>;
+
+    // Assert
+    expect(queue.pending.map((o) => o._id)).toEqual(["a"]);
+    expect(queue.ready.map((o) => o._id)).toEqual(["b"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+});
+
+describe("runPlatformQuery — dashboard stats", () => {
+  it("counts only today's orders, bounded at the merchant's local midnight", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      orders: [{ data: [orderRowFixture({ status: "delivered", total: 100 })], error: null }],
+    });
+
+    // Act
+    const stats = (await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getDashboardStats",
+      {}
+    )) as { totalRevenue: number };
+
+    // Assert
+    expect(stats.totalRevenue).toBe(100);
+    const gte = opsOf(calls, "gte")[0];
+    expect(gte[0]).toBe("created_at");
+    // Manila midnight is 16:00 UTC the previous day.
+    expect(String(gte[1])).toMatch(/T16:00:00/);
+  });
+
+  it("bounds an explicit period by both ends", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+    const startDate = Date.parse("2026-07-01T00:00:00.000Z");
+    const endDate = Date.parse("2026-07-31T23:59:59.000Z");
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getDashboardStatsByPeriod", {
+      startDate,
+      endDate,
+    });
+
+    // Assert
+    expect(opsOf(calls, "gte")[0]).toEqual(["created_at", new Date(startDate).toISOString()]);
+    expect(opsOf(calls, "lte")[0]).toEqual(["created_at", new Date(endDate).toISOString()]);
+  });
+});
+
+describe("runPlatformMutation — orders:createOrder", () => {
+  const args = {
+    customerName: "Ana",
+    customerContact: "0917",
+    total: 240,
+    itemCount: 2,
+    source: "pos" as const,
+    items: [
+      { menuItemId: "menu-1", menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("inserts the order and its items, returning the new order id", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      orders: [{ data: { id: "new-order" }, error: null }],
+      order_items: [{ data: null, error: null }],
+    });
+
+    // Act
+    const orderId = await runPlatformMutation(client, TENANT, "orders:createOrder", args);
+
+    // Assert
+    expect(orderId).toBe("new-order");
+    expect(calls.map((c) => c.table)).toEqual(["orders", "order_items"]);
+    const [itemsInsert] = opsOf(calls, "insert").slice(-1);
+    expect(itemsInsert[0]).toEqual([expect.objectContaining({ order_id: "new-order" })]);
+  });
+
+  it("returns the existing order when the same submit is retried", async () => {
+    // Arrange: a flaky network retry must not double-charge the customer.
+    const { client, calls } = fakeClient({
+      orders: [{ data: { id: "already-there" }, error: null }],
+    });
+
+    // Act
+    const orderId = await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args,
+      clientOrderId: "abc-123",
+    });
+
+    // Assert
+    expect(orderId).toBe("already-there");
+    expect(calls.map((c) => c.table)).toEqual(["orders"]);
+    expect(opsOf(calls, "insert")).toEqual([]);
+  });
+
+  it("does not leave orphan items when the item insert fails", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      orders: [{ data: { id: "new-order" }, error: null }],
+      order_items: [{ data: null, error: { message: "constraint violation" } }],
+    });
+
+    // Act + Assert: the caller must hear about it rather than see a silent
+    // order with no line items.
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:createOrder", args)
+    ).rejects.toThrow("constraint violation");
+  });
+});
+
+describe("runPlatformMutation — status updates", () => {
+  it("advances an order's status within the caller's tenant", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+      orderId: "order-1",
+      status: "preparing",
+    });
+
+    // Assert
+    expect(opsOf(calls, "update")[0]).toEqual([{ status: "preparing" }]);
+    expect(opsOf(calls, "eq")).toContainEqual(["id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("records a payment status change", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
+      orderId: "order-1",
+      paymentStatus: "paid",
+    });
+
+    // Assert
+    expect(opsOf(calls, "update")[0]).toEqual([{ payment_status: "paid" }]);
+  });
+
+  it("rejects an unknown mutation ref rather than silently doing nothing", async () => {
+    // Arrange
+    const { client } = fakeClient({});
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:teleport", {})
+    ).rejects.toThrow(/not supported/i);
+  });
+});
+
+describe("tenant guard", () => {
+  it("refuses to run without a tenant rather than querying every tenant's orders", async () => {
+    // Arrange: a superadmin who has not entered a store has no tenant, and
+    // their RLS policy grants them every row.
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act + Assert
+    await expect(runPlatformQuery(client, "", "orders:getOrders", {})).rejects.toThrow(
+      /tenant/i
+    );
+  });
+});
