@@ -46,6 +46,7 @@ function ingredient(overrides: Partial<InventoryItem> = {}): InventoryItem {
     current_qty: 25,
     reorder_level: 20,
     is_active: true,
+    ...overrides,
   } as InventoryItem
 }
 
