@@ -23,10 +23,14 @@ interface AstryxRegionProps {
  *
  * `Theme` applies its tokens to descendants only, so the tenant admin keeps its
  * existing shell, sidebar and shadcn pages while inventory renders in Astryx.
+ *
+ * Pinned to `light`, not `system`: the admin is a light-only surface, and on a
+ * dark-mode Mac `system` resolves Astryx's text tokens to their dark values —
+ * near-white type on a white page.
  */
 export function AstryxRegion({ children }: AstryxRegionProps) {
   return (
-    <Theme theme={neutralTheme} mode="system">
+    <Theme theme={neutralTheme} mode="light">
       {children}
     </Theme>
   )

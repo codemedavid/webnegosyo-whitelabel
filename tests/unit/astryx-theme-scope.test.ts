@@ -26,7 +26,8 @@ describe('document colour scheme', () => {
   const globals = read('src/app/globals.css')
 
   it('pins the document to light so a dark OS cannot repaint unstyled text', () => {
-    const rootBlock = globals.slice(globals.indexOf(':root {'), globals.indexOf('.dark'))
+    // Bound on the `.dark {` rule, not the `@custom-variant dark` on line 4.
+    const rootBlock = globals.slice(globals.indexOf(':root {'), globals.indexOf('.dark {'))
 
     expect(rootBlock).toMatch(/color-scheme:\s*light\s*;/)
   })

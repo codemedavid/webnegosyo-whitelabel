@@ -44,6 +44,12 @@
 }
 
 :root {
+  /* The admin and storefront are light-only surfaces (dark is opt-in per panel
+     via the .dark class below). Astryx's theme.css declares
+     `:root { color-scheme: light dark }`, which on a dark-mode OS flips the
+     browser's default text colour for the whole document and turns any
+     unstyled text near-white on white. Pin it. */
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
