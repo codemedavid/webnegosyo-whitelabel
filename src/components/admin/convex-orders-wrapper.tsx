@@ -17,9 +17,11 @@ import {
 
 interface ConvexOrdersWrapperProps {
   convexUrl: string;
+  /** Passed down so cancelling an order can restore its stock. */
+  tenantId?: string;
 }
 
-function ConvexOrdersContent() {
+function ConvexOrdersContent({ tenantId }: { tenantId?: string }) {
   const [sheetOrderId, setSheetOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -51,7 +53,7 @@ function ConvexOrdersContent() {
         </TabsList>
 
         <TabsContent value="orders" className="mt-4">
-          <ConvexOrdersTab />
+          <ConvexOrdersTab tenantId={tenantId} />
         </TabsContent>
 
         <TabsContent value="dashboard" className="mt-4">
@@ -72,12 +74,13 @@ function ConvexOrdersContent() {
         orderId={sheetOrderId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        tenantId={tenantId}
       />
     </>
   );
 }
 
-export function ConvexOrdersWrapper({ convexUrl }: ConvexOrdersWrapperProps) {
+export function ConvexOrdersWrapper({ convexUrl, tenantId }: ConvexOrdersWrapperProps) {
   return (
     <SafeConvexProvider
       url={convexUrl}
@@ -87,7 +90,7 @@ export function ConvexOrdersWrapper({ convexUrl }: ConvexOrdersWrapperProps) {
         </div>
       }
     >
-      <ConvexOrdersContent />
+      <ConvexOrdersContent tenantId={tenantId} />
     </SafeConvexProvider>
   );
 }

@@ -26,6 +26,7 @@ import {
 import {
   recordStockMovement,
   getStockMovements,
+  restoreOrderStock,
   type StockMovementInput,
 } from '@/lib/inventory/stock-service'
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
@@ -230,6 +231,23 @@ export async function recordStockMovementAction(
     return { success: true as const, data }
   } catch (error) {
     return fail(error, 'Failed to record stock movement')
+  }
+}
+
+/**
+ * Put a cancelled order's ingredients back on the shelf.
+ *
+ * For orders the web admin cancels outside `updateOrderStatus` — a Convex-held
+ * order cancelled from the order sheet. Best-effort underneath, so this reports
+ * success even when there is nothing to reverse: the cancellation itself has
+ * already happened and must not be reported as failed.
+ */
+export async function restoreOrderStockAction(tenantId: string, orderId: string) {
+  try {
+    await restoreOrderStock(tenantId, orderId)
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, 'Failed to restore stock for the cancelled order')
   }
 }
 

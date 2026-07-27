@@ -40,11 +40,18 @@ import {
   useUpdateConvexOrderStatus,
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
+import { restoreOrderStockAction } from "@/app/actions/inventory";
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Needed to restore stock on cancellation. Optional so the sheet still
+   * renders for callers that have no tenant context; those simply skip the
+   * restore rather than fail to open.
+   */
+  tenantId?: string;
 }
 
 const STATUS_FLOW: Record<string, string> = {
@@ -85,7 +92,7 @@ function formatDate(timestamp: number): string {
   });
 }
 
-export function ConvexOrderSheet({ orderId, open, onOpenChange }: ConvexOrderSheetProps) {
+export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: ConvexOrderSheetProps) {
   const order = useConvexOrderById(orderId ?? "");
   const updateStatus = useUpdateConvexOrderStatus();
   const updatePaymentStatus = useUpdateConvexPaymentStatus();
@@ -103,6 +110,14 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange }: ConvexOrderShe
   async function handleCancelOrder() {
     if (!orderId) return;
     await updateStatus({ orderId, status: "cancelled" });
+
+    // Put the ingredients back. This order lives in Convex, so cancelling it
+    // never reaches updateOrderStatus where stock is restored for
+    // platform-backed orders. Best-effort underneath: the cancellation has
+    // already happened and must not be undone by a stock write.
+    if (tenantId) {
+      await restoreOrderStockAction(tenantId, orderId);
+    }
   }
 
   async function handlePaymentStatusChange(newStatus: string) {

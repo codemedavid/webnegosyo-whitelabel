@@ -150,7 +150,7 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
         <p className="text-muted-foreground">Manage customer orders</p>
       </div>
 
-      {showConvex && <ConvexOrdersWrapper convexUrl={tenant.convex_deployment_url!} />}
+      {showConvex && <ConvexOrdersWrapper convexUrl={tenant.convex_deployment_url!} tenantId={tenant.id} />}
 
       {isTenantSupabaseConfigured && (
         <Suspense fallback={<OrdersSkeleton />}>

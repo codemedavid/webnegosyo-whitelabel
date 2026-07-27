@@ -153,3 +153,28 @@ export async function recordStockMovement(
 
   return { movement, item: updatedRow as unknown as InventoryItem }
 }
+
+/**
+ * Put a cancelled order's ingredients back on the shelf, for callers that
+ * cancel an order outside `updateOrderStatus`.
+ *
+ * The web admin cancels a Convex-held order straight through the Convex
+ * mutation (see `convex-order-sheet.tsx`), so it never reaches the platform
+ * order path where stock is restored. Without this, the same cancellation
+ * returned stock from the merchant app but not from the web console.
+ *
+ * Authorization is checked here and deliberately BEFORE the reversal: the
+ * reversal writes to a tenant's ledger, so a check that ran afterwards would
+ * already have leaked. The reversal itself is best-effort — a stock write must
+ * never make an order un-cancellable.
+ */
+export async function restoreOrderStock(
+  tenantId: string,
+  orderId: string,
+): Promise<void> {
+  await verifyTenantPermission(tenantId, 'orders')
+  const { reverseOrderStockBestEffort } = await import(
+    '@/lib/inventory/order-stock-service'
+  )
+  await reverseOrderStockBestEffort(tenantId, orderId)
+}

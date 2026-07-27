@@ -41,7 +41,12 @@ function formatTimeAgo(timestamp: number): string {
   return `${diffDays}d ago`;
 }
 
-export function ConvexOrdersTab() {
+interface ConvexOrdersTabProps {
+  /** Passed down so cancelling an order can restore its stock. */
+  tenantId?: string;
+}
+
+export function ConvexOrdersTab({ tenantId }: ConvexOrdersTabProps) {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -195,6 +200,7 @@ export function ConvexOrdersTab() {
         orderId={selectedOrderId}
         open={sheetOpen}
         onOpenChange={handleSheetOpenChange}
+        tenantId={tenantId}
       />
     </div>
   );
