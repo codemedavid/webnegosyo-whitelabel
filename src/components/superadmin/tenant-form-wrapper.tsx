@@ -20,6 +20,8 @@ import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
+import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
+import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
 import { toast } from 'sonner'
 
 interface PrefillData {
@@ -113,6 +115,7 @@ interface TenantFormData {
   // Convex / Mobile App
   convex_deployment_url: string
   convex_deploy_key: string
+  order_backend: SelectableOrderBackend
   // Email notifications
   admin_email: string
   email_notifications_enabled: boolean
@@ -1416,6 +1419,15 @@ function ConvexMobileAppSection({
           </div>
         )}
 
+        <Separator />
+
+        <OrderBackendPicker
+          value={formData.order_backend}
+          onChange={(order_backend) => setFormData({ ...formData, order_backend })}
+          hasConvexUrl={Boolean(formData.convex_deployment_url)}
+          isPending={isPending}
+        />
+
         {!formData.convex_deployment_url && (
           <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
             <p className="text-sm text-white/70">
@@ -1504,6 +1516,7 @@ export function TenantFormWrapper({
     // Convex / Mobile App
     convex_deployment_url: tenant?.convex_deployment_url || '',
     convex_deploy_key: tenant?.convex_deploy_key || '',
+    order_backend: orderBackendPreferenceOf(tenant ?? {}),
     // Email notifications
     admin_email: tenant?.admin_email || prefill?.email || '',
     email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
@@ -1578,6 +1591,7 @@ export function TenantFormWrapper({
       // Convex / Mobile App
       convex_deployment_url: formData.convex_deployment_url || undefined,
       convex_deploy_key: formData.convex_deploy_key || undefined,
+      order_backend: formData.order_backend,
       // Email notifications
       admin_email: formData.admin_email || null,
       email_notifications_enabled: formData.email_notifications_enabled,

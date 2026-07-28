@@ -4,6 +4,11 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import type { Tenant as TenantRow, Database } from '@/types/database'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { normalizeDomain, clearDomainCache } from '@/lib/tenant'
+import {
+  ORDER_BACKEND_PREFERENCES,
+  orderBackendForSave,
+  type OrderBackendPreference,
+} from '@/lib/order-backend'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -122,6 +127,9 @@ export const tenantSchema = z.object({
   // Convex integration
   convex_deployment_url: z.string().url().optional().or(z.literal('')).optional(),
   convex_deploy_key: z.string().optional().or(z.literal('')).optional(),
+  // Where this tenant's orders live. Defaults to auto: Convex when one is
+  // configured, otherwise the shared platform database.
+  order_backend: z.enum(ORDER_BACKEND_PREFERENCES).optional(),
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
@@ -290,6 +298,10 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
+    order_backend: orderBackendForSave(parsed.order_backend, {
+      convex_deployment_url: parsed.convex_deployment_url ?? null,
+      convex_deploy_key: parsed.convex_deploy_key ?? null,
+    }),
   }
   const { data, error } = await supabase
     .from('tenants')
@@ -305,14 +317,19 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
 export async function updateTenantSupabase(id: string, input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
   const supabase = ctx?.client ?? (await createClient())
 
-  // Get old tenant to clear old domain from cache
+  // Get old tenant to clear old domain from cache. `order_backend` rides along
+  // so a tenant provisioned onto its own Supabase project is never demoted by an
+  // edit that does not mention order routing at all.
   const { data: oldTenantData } = await supabase
     .from('tenants')
-    .select('domain')
+    .select('domain, order_backend')
     .eq('id', id)
     .maybeSingle()
 
-  const oldTenant = oldTenantData as { domain: string | null } | null
+  const oldTenant = oldTenantData as {
+    domain: string | null
+    order_backend?: OrderBackendPreference | null
+  } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
   if (await isSlugTaken(parsed.slug, id, ctx)) {
@@ -408,6 +425,11 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
+    order_backend: orderBackendForSave(parsed.order_backend, {
+      order_backend: oldTenant?.order_backend,
+      convex_deployment_url: parsed.convex_deployment_url ?? null,
+      convex_deploy_key: parsed.convex_deploy_key ?? null,
+    }),
   }
   const { data, error } = await supabase
     .from('tenants')

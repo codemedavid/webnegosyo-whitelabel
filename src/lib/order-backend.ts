@@ -15,7 +15,28 @@ import { z } from "zod";
  */
 export type OrderBackend = "convex" | "supabase" | "platform";
 
+/**
+ * What the `order_backend` column stores. `auto` is the default and means
+ * "derive from the configured credentials": Convex when a deployment URL is
+ * present, otherwise the shared platform database.
+ *
+ * `auto` exists so an unwritten column can never contradict the write path. The
+ * column used to default to `platform`, which reads as a deliberate choice — a
+ * tenant given a Convex deployment then had its orders written to Convex while
+ * the admin queue read the empty platform database.
+ */
+export type OrderBackendPreference = OrderBackend | "auto";
+
 const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "supabase", "platform"];
+
+/**
+ * The options a superadmin can pick in the tenant form. `supabase` is absent on
+ * purpose: it is provisioned by the separate Supabase deploy flow, not chosen
+ * from a dropdown.
+ */
+export const ORDER_BACKEND_PREFERENCES = ["auto", "platform", "convex"] as const;
+
+export type SelectableOrderBackend = (typeof ORDER_BACKEND_PREFERENCES)[number];
 
 /**
  * The subset of tenant columns needed to route order I/O. Accepting a
@@ -23,7 +44,7 @@ const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "supabase", "platform
  * trivially testable.
  */
 export interface OrderBackendTenantFields {
-  order_backend?: OrderBackend | null;
+  order_backend?: OrderBackendPreference | null;
   convex_deployment_url?: string | null;
   convex_deploy_key?: string | null;
   supabase_order_url?: string | null;
@@ -39,42 +60,56 @@ function isNonEmpty(value: string | null | undefined): value is string {
 /**
  * Resolve the effective order backend for a tenant.
  *
- * `convex` and `supabase` are explicit, deliberate selections and always win.
- * `platform` is NOT treated as a deliberate selection: it is the column default,
- * and the tenant create/update path never sets this column, so every tenant
- * given a Convex deployment after the backfill migration ran still reads
- * `platform`. Those tenants' orders go to Convex regardless — the checkout write
- * path routes on the presence of Convex credentials — so honoring a bare
- * `platform` here would point reads at an empty database while writes land in
- * Convex. Falling back to the historical rule keeps reads and writes in
- * agreement by construction.
+ * A recognized pin (`convex`, `supabase`, `platform`) is a deliberate superadmin
+ * choice and always wins. Anything else — `auto`, null, or an unrecognized value
+ * from a row written before this column existed — derives from the credentials:
+ * a Convex deployment URL means Convex, otherwise the shared platform database.
  *
- * To genuinely move a tenant off Convex, clear `convex_deployment_url`.
+ * Deriving on the default is what keeps reads and writes in agreement: checkout
+ * routes through this same function, so an unwritten column cannot send orders
+ * to one database while the merchant's queue watches another.
  */
 export function resolveOrderBackend(tenant: OrderBackendTenantFields): OrderBackend {
-  if (
-    tenant.order_backend &&
-    tenant.order_backend !== "platform" &&
-    ORDER_BACKENDS.includes(tenant.order_backend)
-  ) {
-    return tenant.order_backend;
+  const pinned = tenant.order_backend;
+  if (pinned && pinned !== "auto" && ORDER_BACKENDS.includes(pinned as OrderBackend)) {
+    return pinned as OrderBackend;
   }
   return isNonEmpty(tenant.convex_deployment_url) ? "convex" : "platform";
 }
 
 /**
- * The value to persist in the `order_backend` column when a tenant is created or
- * updated, so the column stays truthful instead of drifting to a stale
- * `platform` while Convex credentials sit right next to it.
+ * The preference to show as selected in the tenant form.
+ *
+ * A tenant on its own Supabase project reports `auto` because that option is
+ * not on the dropdown; `orderBackendForSave` refuses to overwrite it, so the form can
+ * never demote such a tenant by re-saving an unrelated field.
  */
-export function orderBackendForSave(tenant: OrderBackendTenantFields): OrderBackend {
-  // Unlike a read, a save recomputes `convex` from the credentials actually
-  // being written: clearing the deployment URL is how a tenant is moved off
-  // Convex, so a leftover `convex` column must not survive that edit.
-  if (tenant.order_backend === "convex" && !isNonEmpty(tenant.convex_deployment_url)) {
-    return "platform";
-  }
-  return resolveOrderBackend(tenant);
+export function orderBackendPreferenceOf(
+  tenant: OrderBackendTenantFields
+): SelectableOrderBackend {
+  const stored = tenant.order_backend;
+  if (stored === "platform" || stored === "convex") return stored;
+  return "auto";
+}
+
+/**
+ * The value to persist in the `order_backend` column when a tenant is created or
+ * updated, so the column always reflects a real decision instead of drifting.
+ */
+export function orderBackendForSave(
+  preference: SelectableOrderBackend | null | undefined,
+  tenant: OrderBackendTenantFields
+): OrderBackendPreference {
+  // Tenants on their own Supabase project are routed by the deploy flow, not by
+  // this form. Re-saving any other field must leave that selection alone.
+  if (tenant.order_backend === "supabase") return "supabase";
+
+  // Pinning to Convex without a deployment to pin to would strand the tenant's
+  // orders, so fall back to auto and let the credentials decide.
+  if (preference === "convex" && !isNonEmpty(tenant.convex_deployment_url)) return "auto";
+
+  if (preference === "convex" || preference === "platform") return preference;
+  return "auto";
 }
 
 /**
