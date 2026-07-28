@@ -104,8 +104,27 @@ Every module touched by this phase is at 100%. The 92% aggregate is `supabase-ou
 
 Full suite: `npx jest` → `Test Suites: 265 passed, 1 skipped`, `Tests: 3246 passed, 8 skipped`. `npx tsc --noEmit` reports no errors under `src/`. `npx eslint` clean on every touched file.
 
+### Task 5 — component tests for the two screens
+
+Added after the screens were written, so these are **characterization tests, not RED-first**: 19 of 20 passed on first run. The one genuine failure was an assertion that did not match the component's own copy, fixed in the test. They are recorded honestly as coverage of existing behaviour rather than as driven design.
+
+- **Result**: `npx jest --testPathPatterns="outlet-chooser-screens"` → `Tests: 20 passed, 20 total`.
+
+What they lock down: pressing a tile reports the mode; pressing a card reports the branch; a branch with no photo still renders and stays choosable; search narrows on address; `Get Direction` carries `rel="noopener"`; a delivery branch out of range is disabled and says why, while the same branch in dine-in mode is not.
+
+### Task 6 — branch photo upload
+
+The URL field was replaced with the existing `SimpleImageUpload` (ImageKit, `outlets` folder), matching how bundles and branding already take images. `npx tsc --noEmit` clean, `npx eslint` clean, `npx jest --testPathPatterns="outlet"` → `Tests: 395 passed, 395 total`.
+
+### Task 7 — live database verification
+
+- Migration applied via `apply_migration`; `information_schema` confirms `supports_dine_in boolean NOT NULL DEFAULT false` and `image_url text NULL`.
+- The widened constraint was proven against the live schema by inserting a dine-in-only branch (`supports_pickup=false, supports_delivery=false, supports_dine_in=true`) inside a transaction and rolling it back. The insert succeeded — the old constraint would have rejected it. `SELECT count(*)` afterwards confirms 0 probe rows remain.
+- Both tenants that have outlets (`cafejuancho`, `gungjeon-unlimited`) already carry an enabled `dine_in` order type at `order_index` 0, so `resolveOrderTypeIdForMode` will resolve for them.
+
 ## Known gaps
 
-- **No component tests** for the two new screens. Their decisions live in the pure modules above, which are at 100%; what is untested is layout and wiring. A Playwright pass over the mode → picker → menu flow is the honest next step and has not been run.
-- **The branch photo is a URL field, not an upload.** The admin form accepts a pasted ImageKit URL; it does not yet use the ImageKit upload widget the menu-item form has. Functional, but a merchant has to get the URL from elsewhere.
-- **Not verified end-to-end against a live tenant.** The migration is applied and the columns confirmed present, but no tenant has been configured with a dine-in branch and taken through checkout.
+- **No browser E2E run.** Component tests cover each screen in isolation; nothing has driven the real flow mode → picker → menu → checkout in a browser. The Playwright pass has not been run, so the `OutletGate` wiring — the order-type fetch and the `setOrderType` call — is verified by reading and by types, not by execution.
+- **No live tenant has dine-in switched on.** `gungjeon-unlimited` is the only tenant with `multi_branch_enabled = true`, and both its branches have `supports_dine_in = false`, so no Dine In tile shows on its storefront yet. That is a merchant toggle on a live storefront and was deliberately left for them to flip rather than changed from here.
+- **No branch has a photo yet.** Every card will render the placeholder until a merchant uploads one. Correct behaviour, but it means the redesign's most visible element is unexercised in production.
+- **`supabase-outlet-repository.ts` is at 0% direct coverage.** Unchanged by this phase and exercised through the shared contract suite against the in-memory implementation; the real Supabase calls are not unit-tested.
