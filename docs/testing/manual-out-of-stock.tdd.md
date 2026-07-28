@@ -4,8 +4,9 @@
 "add a manual out of stock on the menu management and show on the menu its
 unavailable the item".
 
-**Branch:** `feat/platform-supabase-order-parity`
-**Checkpoints:** `45fc683` (RED) → `e17baa6` (GREEN)
+**Checkpoints:** RED → GREEN → app parity, cherry-picked onto `main`.
+Developed on `feat/platform-supabase-order-parity`; the auto-86 wording changes
+that branch also needed are not applicable here (see §4).
 
 ## The state model, and the decision behind it
 
@@ -98,17 +99,22 @@ The switch read "Hidden", which is no longer what it does. It now reads
 "Out of stock"; the edit form's checkbox reads "In stock" with a tooltip
 spelling out that the dish stays on the menu.
 
-That collided with the auto-86 badge, which already read "Out of stock" — both
-states would have shown identical text, erasing exactly the distinction
-`auto_disabled_at` was added to record. The badge takes an "(auto)" suffix so a
-merchant can still tell "I switched this off" from "the system pulled my
-bestseller without asking". The merchant app's mirrored copy was updated in
-step, and its existing drift test (which reads the web file rather than
-restating its strings) keeps the two honest.
-
-- Validation: `npx jest --testPathPatterns="menu-items-list-out-of-stock|menu-availability-badge|menu-items-list-auto-hidden"`, plus `npx jest lib/menu-availability.test.ts` in `webnegosyo-app/`
+- Validation: `npx jest --testPathPatterns="menu-items-list-out-of-stock"`
 - RED: 2 failed.
-- GREEN: 21 passed (web) + 8 passed (merchant app).
+- GREEN: 3 passed.
+
+> **A collision waiting on `main`.** This work was developed on a branch that
+> also carries the unshipped inventory auto-86 feature, where
+> `is_available = false` can be set by the *system* rather than the merchant.
+> There, the admin grid already showed an "Out of stock" badge, and renaming the
+> merchant's switch to the same words erased exactly the distinction
+> `auto_disabled_at` exists to record — so on that branch the badge takes an
+> "(auto)" suffix, with the merchant app's mirrored copy updated in step.
+>
+> None of that exists on `main` yet, so none of it is included here. **Whoever
+> lands auto-86 must re-apply the suffix**, or merchants will see two identical
+> "Out of stock" labels meaning "I switched this off" and "the system pulled my
+> bestseller without asking".
 
 ## Test specification
 
@@ -123,8 +129,6 @@ restating its strings) keeps the two honest.
 | 7 | Bundle slots and related items still exclude out-of-stock dishes | `tests/unit/menu-unavailable-on-menu.test.ts` | guardrail | PASS |
 | 8 | The product page refuses to add an out-of-stock dish, and disables both order buttons | `tests/unit/menu-unavailable-on-menu.test.ts` | guardrail | PASS |
 | 9 | The merchant switch says "Out of stock" and no longer says "Hidden" | `tests/unit/menu-items-list-out-of-stock.test.tsx` | component | PASS |
-| 10 | Merchant-flipped and auto-86 states stay distinguishable in wording | `tests/unit/menu-availability-badge.test.ts`, `tests/unit/menu-items-list-auto-hidden.test.tsx` | unit + component | PASS |
-| 11 | The merchant app's mirrored copy cannot drift from the web wording | `webnegosyo-app/lib/menu-availability.test.ts` | unit | PASS |
 
 ## Coverage
 
@@ -135,13 +139,14 @@ File                        | % Stmts | % Branch | % Funcs | % Lines
 ----------------------------|---------|----------|---------|--------
  menu-item-card.tsx         |     100 |      100 |     100 |     100
  lib/menu-item-availability |     100 |      100 |     100 |     100
- lib/inventory/menu-avail…  |     100 |      100 |     100 |     100
 ```
 
-Full suite: `npx jest` → **274 suites passed, 3342 tests passed**, 0 failing.
-Lint and typecheck are clean on every touched file. (The repo has pre-existing
-`tsc`/lint errors in unrelated files — `tests/integration/inventory-live-e2e.ts`,
-`webnegosyo-desktop`, and others — which this change neither adds to nor fixes.)
+Full suite on this branch: `npx jest` → **248 suites / 2931 tests passed**.
+Three `webnegosyo-app` suites fail (`order-item-images`,
+`printer-native-load`, `product-image-upload`) — these fail identically on
+pristine `main` with no changes applied, so the failing set is unchanged by
+this work. Lint is clean on every touched file, and `tsc` reports nothing on
+them (the repo carries pre-existing `tsc` errors in unrelated files).
 
 ## Known gaps
 
