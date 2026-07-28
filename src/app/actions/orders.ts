@@ -16,6 +16,8 @@ import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backen
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -136,7 +138,13 @@ export async function createOrderAction(
     url?: string | null
     publicId?: string | null
     reference?: string | null
-  }
+  },
+  /**
+   * The branch the customer chose, as claimed by their browser. Re-validated
+   * here against the tenant's own outlets — never trusted as sent. Ignored
+   * entirely unless the tenant enabled multi-branch.
+   */
+  outletId?: string
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -153,7 +161,7 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -216,6 +224,29 @@ export async function createOrderAction(
         }
       }
     }
+
+    // ── Which branch is fulfilling this order (authoritative) ──
+    // The browser tells us what the customer picked; we only believe it if the
+    // tenant opted in AND the id names one of their own branches. Both
+    // conditions are checked before the query runs, so a tenant without the
+    // feature issues exactly the queries they issue today.
+    let resolvedOutlet: { id: string; name: string } | null = null
+    if (isMultiBranchEnabled(tenantConfig) && typeof outletId === 'string' && outletId.trim() !== '') {
+      const { data: outletRows } = await supabaseAdmin
+        .from('outlets')
+        .select('id, name, is_active')
+        .eq('tenant_id', tenantId)
+      resolvedOutlet = resolveOrderOutlet({
+        isEnabled: true,
+        requestedOutletId: outletId,
+        outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+      })
+    }
+
+    // Convex and tenant-owned Supabase projects have no outlet column, so the
+    // branch rides in customer_data for every backend. Returns the very same
+    // object when no branch resolved — see withOrderOutlet.
+    effectiveCustomerData = withOrderOutlet(effectiveCustomerData, resolvedOutlet)
 
     // ── Server-side distance-based delivery fee (authoritative) ──
     // For tenants on the non-Lalamove distance path, recompute the fee from the
@@ -470,7 +501,10 @@ export async function createOrderAction(
       paymentMethodQrCodeUrl,
       serviceChargeAmount,
       validatedScheduledISO,
-      paymentProof
+      paymentProof,
+      // Only the platform database has an outlet_id column; the other two
+      // backends carry the branch in customer_data (stamped above).
+      resolvedOutlet?.id ?? null
     )
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)

@@ -37,6 +37,8 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
@@ -1072,6 +1074,15 @@ export function useCheckout(tenantSlug: string) {
           contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
         }
 
+        // Which branch is taking this order. Read at submit time from the same
+        // storage the branch picker writes to, so no new prop has to be drilled
+        // through the checkout tree — and nothing is read at all for the tenants
+        // who never turned branches on. The server re-validates it regardless.
+        const selectedOutletId =
+          isMultiBranchEnabled(tenant) && typeof window !== 'undefined'
+            ? readOutletSelection(window.localStorage, tenant.slug, Date.now())?.outletId
+            : undefined
+
         // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
         // is captured from the un-normalized customerData.delivery_address), so a
         // whitespace-only normalization difference never drops a valid fee.
@@ -1099,7 +1110,8 @@ export function useCheckout(tenantSlug: string) {
                 publicId: paymentProofPublicId || null,
                 reference: paymentProofReference || null,
               }
-            : undefined
+            : undefined,
+          selectedOutletId
         ).then(result => {
           if (result.success) {
             // Track upsell conversions
@@ -1115,6 +1127,10 @@ export function useCheckout(tenantSlug: string) {
               trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
                 orderId: result.data?.id, upsellItemCount: upsellItems.length,
                 upsellRevenue, sources: sourceBreakdown,
+                // Additive metadata only — the event name and every existing
+                // key are untouched, and the key is absent (not null) for the
+                // tenants who have no branches.
+                ...(selectedOutletId ? { outletId: selectedOutletId } : {}),
               })
             }
 

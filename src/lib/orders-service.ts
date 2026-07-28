@@ -338,7 +338,13 @@ export async function createOrder(
     url?: string | null
     publicId?: string | null
     reference?: string | null
-  }
+  },
+  /**
+   * The branch fulfilling this order, already validated against the tenant's
+   * own outlets by the caller. Null/undefined for every single-location tenant,
+   * which is every tenant that has not opted into multi-branch.
+   */
+  outletId?: string | null
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -527,6 +533,9 @@ export async function createOrder(
       payment_proof_public_id: paymentProof?.publicId || null,
       payment_proof_reference: (paymentProof?.reference || '').trim().slice(0, MAX_FIELD_LENGTH) || null,
       payment_proof_uploaded_at: (paymentProof?.url || paymentProof?.reference) ? new Date().toISOString() : null,
+      // Spread rather than `outlet_id: outletId ?? null` so a single-location
+      // tenant's INSERT is character-for-character the statement it is today.
+      ...(outletId ? { outlet_id: outletId } : {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
