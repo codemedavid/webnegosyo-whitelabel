@@ -28,10 +28,10 @@ export function resolveOrderTypeIdForMode(
   const wanted = MODE_TO_ORDER_TYPE[mode]
 
   const candidates = orderTypes
-    .filter((orderType) => orderType.is_active && orderType.type === wanted)
+    .filter((orderType) => orderType.is_enabled && orderType.type === wanted)
     // A merchant with two dine-in types has ordered them for a reason; honour it
     // rather than depending on whatever order the query happened to return.
-    .sort((a, b) => a.sort_order - b.sort_order)
+    .sort((a, b) => a.order_index - b.order_index)
 
   return candidates[0]?.id ?? null
 }

@@ -13,7 +13,8 @@ import type { OutletOrderMode } from '@/lib/outlets/nearest-outlet'
 export interface ModeCapableOutlet {
   supports_pickup: boolean
   supports_delivery: boolean
-  supports_dine_in: boolean
+  /** Optional so pre-dine-in shapes compile; absent = false, never a tile. */
+  supports_dine_in?: boolean
   is_active: boolean
 }
 

@@ -144,7 +144,28 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="outlet-image">Branch photo URL</Label>
+            <Input
+              id="outlet-image"
+              value={draft.image_url}
+              onChange={(event) => set('image_url', event.target.value)}
+              placeholder="https://… (shown on the branch chooser)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional. Branches without a photo show a placeholder tile.
+            </p>
+          </div>
+
           <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="outlet-dine-in">Supports dine-in</Label>
+              <Switch
+                id="outlet-dine-in"
+                checked={draft.supports_dine_in}
+                onCheckedChange={(checked) => set('supports_dine_in', checked)}
+              />
+            </div>
             <div className="flex items-center justify-between">
               <Label htmlFor="outlet-pickup">Supports pickup</Label>
               <Switch

@@ -1,11 +1,25 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useOutletSelection } from '@/hooks/use-outlet-selection'
+import { useCart } from '@/hooks/useCart'
+import { createClient } from '@/lib/supabase/client'
+import { resolveOrderTypeIdForMode } from '@/lib/outlets/mode-order-type'
+import type { OrderType } from '@/types/database'
 import { OutletSplash } from '@/components/customer/outlet-splash'
+import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import type { SelectableOutlet } from '@/lib/outlets/outlet-selection'
+import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { Outlet, Tenant } from '@/types/database'
+
+/**
+ * `rankOutlets` is generic over the outlet shape, but the hook types its
+ * `choices` as the leaner `SelectableOutlet`. The rows are the same objects —
+ * full `Outlet` records straight from the query — so the cast re-widens them to
+ * what the picker renders rather than converting anything.
+ */
+type OutletSplashRankFor = (mode: OutletOrderMode) => { outlets: RankedOutlet<PickerOutlet>[] }
 
 interface OutletGateProps {
   tenant: Tenant | null
@@ -38,6 +52,44 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
     tenantSlug,
     outlets: outlets as unknown as SelectableOutlet[],
   })
+  const { setOrderType } = useCart()
+  const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
+
+  // Loaded only once the picker is actually showing, which is the multi-branch
+  // path alone — a single-location storefront pays nothing for this.
+  useEffect(() => {
+    if (!selection.shouldPrompt || !tenant?.id) return
+    let isCurrent = true
+
+    createClient()
+      .from('order_types')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .then(({ data, error }) => {
+        // A failure here costs a convenience, not the order: checkout still
+        // asks for an order type exactly as it does today.
+        if (error || !isCurrent) return
+        setOrderTypes((data ?? []) as unknown as OrderType[])
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [selection.shouldPrompt, tenant?.id])
+
+  /**
+   * Record the branch, then carry the mode forward as the order type so
+   * checkout does not ask the same question twice. No match simply leaves the
+   * order type unset, which is today's behaviour.
+   */
+  const handleSelect = useCallback(
+    (outletId: string, mode: OutletOrderMode) => {
+      selection.select(outletId, mode)
+      const orderTypeId = resolveOrderTypeIdForMode(orderTypes, mode)
+      if (orderTypeId) setOrderType(orderTypeId)
+    },
+    [selection, orderTypes, setOrderType]
+  )
 
   if (!selection.shouldPrompt) return null
 
@@ -46,13 +98,12 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
       tenantName={tenant?.name ?? ''}
       promoImageUrl={tenant?.flash_screen_image_url ?? null}
       promoHeadline={tenant?.flash_screen_title ?? null}
-      supportsPickup={selection.choices.some((outlet) => outlet.supports_pickup)}
-      supportsDelivery={selection.choices.some((outlet) => outlet.supports_delivery)}
+      outlets={selection.choices as unknown as PickerOutlet[]}
       reason={selection.reason}
       isLocating={selection.isLocating}
       onLocate={selection.locate}
-      rankFor={selection.rankFor}
-      onSelect={selection.select}
+      rankFor={selection.rankFor as unknown as OutletSplashRankFor}
+      onSelect={handleSelect}
     />
   )
 }

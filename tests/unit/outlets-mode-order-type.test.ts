@@ -18,8 +18,8 @@ function makeOrderType(overrides: Partial<OrderType> & { id: string }): OrderTyp
     tenant_id: 't1',
     name: overrides.id,
     type: 'pickup',
-    is_active: true,
-    sort_order: 0,
+    is_enabled: true,
+    order_index: 0,
     ...overrides,
   } as OrderType
 }
@@ -49,7 +49,7 @@ describe('resolveOrderTypeIdForMode', () => {
   })
 
   it('ignores order types the merchant has switched off', () => {
-    const disabled = makeOrderType({ id: 'ot-off', type: 'dine_in', is_active: false })
+    const disabled = makeOrderType({ id: 'ot-off', type: 'dine_in', is_enabled: false })
 
     expect(resolveOrderTypeIdForMode([disabled], 'dine_in')).toBeNull()
   })
@@ -65,8 +65,8 @@ describe('resolveOrderTypeIdForMode', () => {
   })
 
   it('prefers the merchant’s own ordering when two types share a mode', () => {
-    const second = makeOrderType({ id: 'ot-2', type: 'dine_in', sort_order: 2 })
-    const first = makeOrderType({ id: 'ot-1', type: 'dine_in', sort_order: 1 })
+    const second = makeOrderType({ id: 'ot-2', type: 'dine_in', order_index: 2 })
+    const first = makeOrderType({ id: 'ot-1', type: 'dine_in', order_index: 1 })
 
     expect(resolveOrderTypeIdForMode([second, first], 'dine_in')).toBe('ot-1')
   })
