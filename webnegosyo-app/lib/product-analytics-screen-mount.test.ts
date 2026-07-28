@@ -90,16 +90,31 @@ describe("daily product analytics filters", () => {
 });
 
 describe("daily product analytics presentation", () => {
+  // The day-by-day rows are rendered by an extracted presentational component;
+  // the screen owns the wiring, the component owns the markup.
+  const breakdown = read("components", "DailyProductBreakdown.tsx");
+
   it("shows units, order count, and peso sales for each product row", () => {
-    expect(screen).toMatch(/formatPeso/);
-    expect(screen).toMatch(/formatCount/);
+    expect(breakdown).toMatch(/formatPeso/);
+    expect(breakdown).toMatch(/formatCount/);
+    expect(breakdown).toMatch(/units/);
+    expect(breakdown).toMatch(/orders/);
   });
 
   it("labels each day through the shared relative formatter", () => {
     expect(screen).toMatch(/formatDayLabel/);
+    expect(breakdown).toMatch(/formatDayLabel/);
   });
 
   it("tells the merchant when top-N is hiding products rather than silently truncating", () => {
-    expect(screen).toMatch(/truncatedCount/);
+    expect(breakdown).toMatch(/truncatedCount > 0/);
+    expect(breakdown).toMatch(/more product/);
+  });
+
+  it("makes no ranking or filtering decision of its own", () => {
+    // A second opinion on "which product is top" is exactly what the tested
+    // pure core exists to prevent.
+    expect(breakdown).not.toMatch(/\.sort\(/);
+    expect(breakdown).not.toMatch(/\.filter\(/);
   });
 });
