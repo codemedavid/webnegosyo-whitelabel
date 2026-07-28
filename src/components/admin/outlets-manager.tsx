@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, MapPin, Pencil, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, MapPin, Pencil, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import {
 } from '@/app/actions/outlets'
 import { OutletForm } from '@/components/admin/outlet-form'
 import { moveOutletOrder } from '@/lib/outlets/outlet-form'
+import { buildOutletDeepLinkPath, buildOutletShareUrl } from '@/lib/outlets/deep-link'
 import type { Outlet } from '@/types/database'
 
 interface OutletsManagerProps {
@@ -84,6 +85,30 @@ export function OutletsManager({ tenantId, tenantSlug, initialOutlets }: Outlets
     router.refresh()
   }
 
+  /**
+   * Hands the merchant the link they will print. Built from the same helper the
+   * route uses, and copied as an absolute URL because a QR code cannot be
+   * relative.
+   */
+  const handleCopyLink = async (outlet: Outlet) => {
+    const url =
+      typeof window === 'undefined'
+        ? buildOutletDeepLinkPath(outlet.slug)
+        : buildOutletShareUrl({
+            origin: window.location.origin,
+            pathname: window.location.pathname,
+            tenantSlug,
+            slug: outlet.slug,
+          })
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Branch link copied')
+    } catch {
+      // Clipboard access is refused in some browsers and over plain HTTP.
+      toast.info(url, { description: 'Copy this branch link manually.' })
+    }
+  }
+
   const handleMove = async (outletId: string, direction: 'up' | 'down') => {
     const orderedIds = moveOutletOrder(
       outlets.map((outlet) => outlet.id),
@@ -149,7 +174,16 @@ export function OutletsManager({ tenantId, tenantSlug, initialOutlets }: Outlets
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{outlet.name}</span>
-                    <Badge variant="outline">/{outlet.slug}</Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 px-2 font-mono text-xs"
+                      onClick={() => handleCopyLink(outlet)}
+                      title="Copy this branch's link"
+                    >
+                      {buildOutletDeepLinkPath(outlet.slug)}
+                      <Copy className="h-3 w-3" />
+                    </Button>
                     {!outlet.is_active && <Badge variant="secondary">Hidden</Badge>}
                     {outlet.supports_pickup && <Badge variant="secondary">Pickup</Badge>}
                     {outlet.supports_delivery && <Badge variant="secondary">Delivery</Badge>}

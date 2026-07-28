@@ -1,5 +1,9 @@
 import { describe, it, expect } from '@jest/globals'
-import { resolveOutletDeepLink } from '@/lib/outlets/deep-link'
+import {
+  buildOutletDeepLinkPath,
+  buildOutletShareUrl,
+  resolveOutletDeepLink,
+} from '@/lib/outlets/deep-link'
 
 /**
  * `/b/{slug}` is the printed-on-signage form of `?outlet={slug}`. It resolves to
@@ -21,6 +25,88 @@ const resolve = (rawSlug: string, extra: { isEnabled?: boolean; search?: string 
     rawSlug,
     search: extra.search,
   })
+
+describe('buildOutletDeepLinkPath', () => {
+  // The merchant copies this out of the admin and prints it. If it disagrees
+  // with what the router serves, the signage is wrong and nobody finds out
+  // until a customer is standing in front of it.
+  it('is the path the deep-link route actually serves', () => {
+    expect(buildOutletDeepLinkPath('bgc')).toBe('/b/bgc')
+  })
+
+  it('round-trips through the resolver to the branch it names', () => {
+    const path = buildOutletDeepLinkPath('bgc-high-street')
+    const slugFromPath = path.replace('/b/', '')
+    expect(resolve(slugFromPath)).toEqual({
+      kind: 'redirect',
+      location: '/lucky-joy/menu?outlet=bgc-high-street',
+    })
+  })
+})
+
+describe('buildOutletShareUrl', () => {
+  /**
+   * A tenant reaches its own storefront by subdomain, by custom domain, or by
+   * `/{tenant}/...` path — and the admin can be sitting on any of the three.
+   * The link the merchant copies has to match the one they are browsing from,
+   * because they are about to print it onto something physical.
+   */
+  it('drops the tenant segment on a custom domain', () => {
+    expect(
+      buildOutletShareUrl({
+        origin: 'https://luckyjoy.com',
+        pathname: '/admin/outlets',
+        tenantSlug: TENANT,
+        slug: 'bgc',
+      })
+    ).toBe('https://luckyjoy.com/b/bgc')
+  })
+
+  it('drops the tenant segment on a subdomain', () => {
+    expect(
+      buildOutletShareUrl({
+        origin: 'https://lucky-joy.webnegosyo.com',
+        pathname: '/admin/outlets',
+        tenantSlug: TENANT,
+        slug: 'bgc',
+      })
+    ).toBe('https://lucky-joy.webnegosyo.com/b/bgc')
+  })
+
+  it('keeps the tenant segment when the admin is on a path-based URL', () => {
+    expect(
+      buildOutletShareUrl({
+        origin: 'https://www.webnegosyo.com',
+        pathname: '/lucky-joy/admin/outlets',
+        tenantSlug: TENANT,
+        slug: 'bgc',
+      })
+    ).toBe('https://www.webnegosyo.com/lucky-joy/b/bgc')
+  })
+
+  it('keeps the tenant segment in local path-based development', () => {
+    expect(
+      buildOutletShareUrl({
+        origin: 'http://localhost:3000',
+        pathname: '/lucky-joy/admin/outlets',
+        tenantSlug: TENANT,
+        slug: 'bgc',
+      })
+    ).toBe('http://localhost:3000/lucky-joy/b/bgc')
+  })
+
+  it('does not mistake a tenant-named prefix for the tenant segment', () => {
+    // `/lucky-joy-cafe/admin` is a different tenant, not this one.
+    expect(
+      buildOutletShareUrl({
+        origin: 'https://www.webnegosyo.com',
+        pathname: '/lucky-joy-cafe/admin/outlets',
+        tenantSlug: TENANT,
+        slug: 'bgc',
+      })
+    ).toBe('https://www.webnegosyo.com/b/bgc')
+  })
+})
 
 describe('resolveOutletDeepLink', () => {
   describe('when the tenant has not enabled branches', () => {
