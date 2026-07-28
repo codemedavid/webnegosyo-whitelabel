@@ -15,7 +15,7 @@ import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
 import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import { toast } from 'sonner'
-import type { Category, MenuItem, Tenant } from '@/types/database'
+import type { Category, MenuItem, Tenant, Outlet } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
@@ -31,12 +31,14 @@ import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
+import { OutletGate } from '@/components/customer/outlet-gate'
 
 interface MenuClientProps {
   tenant: Tenant | null
   categories: Category[]
   allMenuItems: MenuItem[]
   bundles: BundleWithSlots[]
+  outlets: Outlet[]
   tenantSlug: string
   isBrandAdmin: boolean
   error: string | null
@@ -53,7 +55,7 @@ const ProductDetailSheet = dynamic(
 )
 
 
-export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, outlets, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   // Branding Studio live preview: when this page runs inside the editor's
   // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
   // every branding consumer below re-renders in real time.
@@ -320,6 +322,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   }
 
   return (
+    <>
+    <OutletGate tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} />
     <div
       ref={rootRef}
       data-branding-scope="global/palette"
@@ -568,5 +572,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         primaryTextColor={branding.buttonPrimaryText}
       />
     </div>
+    </>
   )
 }

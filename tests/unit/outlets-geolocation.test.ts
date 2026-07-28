@@ -78,15 +78,16 @@ describe('requestOutletGeoOrigin', () => {
   it('ignores a late answer that arrives after the timeout', async () => {
     jest.useFakeTimers()
     try {
-      let late: SuccessFn | null = null
+      // Held in an object so TS does not narrow the closure assignment away.
+      const captured: { answer: SuccessFn | null } = { answer: null }
       const geo = geoThat((success) => {
-        late = success
+        captured.answer = success
       })
       const pending = requestOutletGeoOrigin(geo)
       jest.advanceTimersByTime(GEO_TIMEOUT_MS + 1)
       const result = await pending
       // The browser finally answers; the already-settled promise must not change.
-      late?.({ coords: { latitude: 1, longitude: 2 } })
+      captured.answer?.({ coords: { latitude: 1, longitude: 2 } })
       expect(result.reason).toBe('timeout')
       await expect(pending).resolves.toEqual({ origin: null, reason: 'timeout' })
     } finally {

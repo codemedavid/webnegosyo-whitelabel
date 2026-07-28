@@ -450,6 +450,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
         { data: mockCategories, error: null },
         { data: mockMenuItems, error: null },
+        { data: null, error: null },
         { data: null, error: null }
       ])
 
@@ -482,6 +483,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
         { data: mockCategories, error: null },
         { data: mockMenuItems, error: null },
+        { data: null, error: null },
         { data: null, error: null }
       ])
 

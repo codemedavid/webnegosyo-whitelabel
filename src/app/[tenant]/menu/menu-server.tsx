@@ -3,6 +3,9 @@ import type { Tenant, Category, MenuItem, BundleWithSlots } from '@/types/databa
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
+import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import type { Outlet } from '@/types/database'
 
 export async function getMenuData(tenantSlug: string) {
   const supabase = await createClient()
@@ -14,7 +17,7 @@ export async function getMenuData(tenantSlug: string) {
   )
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin: false, error: 'Restaurant not found' }
+    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], isBrandAdmin: false, error: 'Restaurant not found' }
   }
 
   const tenant = tenantData as unknown as Tenant
@@ -37,11 +40,33 @@ export async function getMenuData(tenantSlug: string) {
         .order('display_order', { ascending: true })
     : Promise.resolve({ data: null, error: null })
 
-  const [catsResult, itemsResult, bundleResult] = await Promise.all([
+  // Branches are only read for a tenant that opted in; every other tenant runs
+  // exactly the queries it ran before this feature existed.
+  const outletsQuery = isMultiBranchEnabled(tenant)
+    ? supabase
+        .from('outlets')
+        .select(OUTLET_SELECT)
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+    : Promise.resolve({ data: null, error: null })
+
+  const [catsResult, itemsResult, bundleResult, outletsResult] = await Promise.all([
     supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
     supabase.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
     bundlesQuery,
+    outletsQuery,
   ])
+
+  // A branch query failure must not blank the menu — the storefront falls back
+  // to single-location behaviour, which is what every tenant had yesterday.
+  // Optional-chained deliberately: a missing result must degrade to "no
+  // branches", never throw. Throwing here would blank the menu for everyone,
+  // which is the regression 38b4ede fixed for the dish query.
+  if (outletsResult?.error) {
+    console.warn('[menu-server] Outlet query failed:', outletsResult.error.message)
+  }
+  const outlets = (outletsResult?.data as unknown as Outlet[] | null) ?? []
 
   // Check if the current user is an admin for this tenant (server-side)
   let isBrandAdmin = false
@@ -68,7 +93,7 @@ export async function getMenuData(tenantSlug: string) {
       catsResult.error?.message && `categories: ${catsResult.error.message}`,
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin, error: `Failed to load menu data (${details})` }
+    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
   // Bundle query errors are non-fatal — menu items should still show
@@ -106,6 +131,7 @@ export async function getMenuData(tenantSlug: string) {
     categories: (catsResult.data as unknown as Category[]) || [],
     menuItems: (itemsResult.data as unknown as MenuItem[]) || [],
     bundles,
+    outlets,
     isBrandAdmin,
     error: null
   }
