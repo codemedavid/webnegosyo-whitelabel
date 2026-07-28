@@ -460,7 +460,12 @@ export async function createOrderAction(
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
     }
 
-    if (tenantConfig?.convex_deployment_url && tenantConfig?.convex_deploy_key) {
+    // Route on the same resolver the admin queue reads with, so a write can
+    // never land in a backend the merchant's order page isn't looking at.
+    // `assertOrderBackendReady` turns a half-configured Convex tenant into a
+    // loud failure rather than a silent write into the shared platform DB.
+    if (resolveOrderBackend(tenantConfig) === 'convex') {
+      assertOrderBackendReady(tenantConfig)
       // Route to Convex (prices already validated above)
       const result = await createOrderConvex(
         tenantConfig.convex_deployment_url,
