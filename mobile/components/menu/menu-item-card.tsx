@@ -18,6 +18,10 @@ interface MenuItemCardProps {
 export function MenuItemCard({ item, onPress, numColumns, hideCurrencySymbol }: MenuItemCardProps) {
   const { theme } = useTheme()
   const isGrid = numColumns === 2
+  // Out-of-stock dishes are listed rather than filtered out, so the card is
+  // what has to refuse the tap — otherwise it opens a detail screen that can
+  // still add to cart. Mirrors the guard on the web `MenuItemCard`.
+  const isOrderable = item.is_available !== false
   const hasDiscount = item.discounted_price != null && item.discounted_price < item.price
   const hasVariations = (item.variations && item.variations.length > 0) ||
     (item.variation_types && item.variation_types.length > 0)
@@ -34,6 +38,7 @@ export function MenuItemCard({ item, onPress, numColumns, hideCurrencySymbol }: 
         isGrid ? styles.gridCard : styles.listCard,
       ]}
       onPress={onPress}
+      disabled={!isOrderable}
       activeOpacity={0.7}
     >
       {/* Image with overlays */}
