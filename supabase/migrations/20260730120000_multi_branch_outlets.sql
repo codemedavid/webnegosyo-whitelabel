@@ -77,7 +77,7 @@ DROP TRIGGER IF EXISTS set_outlets_updated_at ON outlets;
 CREATE TRIGGER set_outlets_updated_at
   BEFORE UPDATE ON outlets
   FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  EXECUTE FUNCTION public.set_updated_at();
 
 -- ============================================
 -- 2. orders.outlet_id — which branch fulfills an order

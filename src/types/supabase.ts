@@ -73,7 +73,15 @@ export type Database = {
           timezone?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_alerts: {
         Row: {
@@ -1413,6 +1421,13 @@ export type Database = {
             columns: ["order_type_id"]
             isOneToOne: false
             referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
             referencedColumns: ["id"]
           },
           {
