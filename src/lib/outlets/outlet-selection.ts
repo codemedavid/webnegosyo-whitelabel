@@ -26,6 +26,8 @@ export interface SelectableOutlet {
   delivery_radius_km: number | null
   supports_pickup: boolean
   supports_delivery: boolean
+  /** Optional so pre-dine-in callers and fixtures keep compiling; absent = false. */
+  supports_dine_in?: boolean
   is_active: boolean
   sort_order: number
 }
@@ -45,7 +47,7 @@ export interface StorageLike {
 const storageKey = (tenantSlug: string): string => `${OUTLET_SELECTION_KEY_PREFIX}${tenantSlug}`
 
 const isMode = (value: unknown): value is OutletOrderMode =>
-  value === 'pickup' || value === 'delivery'
+  value === 'pickup' || value === 'delivery' || value === 'dine_in'
 
 /**
  * Read the stored selection, dropping it if it is expired, corrupt, or of a
@@ -147,8 +149,11 @@ const EMPTY: Omit<OutletSelectionResult, 'shouldClearStorage'> = {
   requiresCartConfirmation: false,
 }
 
-const supportsMode = (outlet: SelectableOutlet, mode: OutletOrderMode): boolean =>
-  mode === 'pickup' ? outlet.supports_pickup : outlet.supports_delivery
+const supportsMode = (outlet: SelectableOutlet, mode: OutletOrderMode): boolean => {
+  if (mode === 'dine_in') return outlet.supports_dine_in === true
+  if (mode === 'pickup') return outlet.supports_pickup
+  return outlet.supports_delivery
+}
 
 export function resolveOutletSelection(input: OutletSelectionInput): OutletSelectionResult {
   const { isEnabled, outlets, stored, urlSlug, hasCartItems = false } = input

@@ -15,8 +15,14 @@
 
 import { haversineDistanceKm } from '@/lib/delivery-fee'
 
-/** How the customer wants to receive the order — decided before outlet choice. */
-export type OutletOrderMode = 'pickup' | 'delivery'
+/**
+ * How the customer wants to receive the order — decided before outlet choice.
+ *
+ * `dine_in` is a third mode rather than a flavour of pickup: a branch with
+ * table service and no takeaway counter supports one and not the other, and a
+ * delivery radius must never disqualify a customer already standing in the shop.
+ */
+export type OutletOrderMode = 'dine_in' | 'pickup' | 'delivery'
 
 /** The subset of an outlet row this module ranks on. */
 export interface OutletLocation {
@@ -28,6 +34,7 @@ export interface OutletLocation {
   delivery_radius_km?: number | null
   supports_pickup: boolean
   supports_delivery: boolean
+  supports_dine_in?: boolean
   is_active: boolean
   sort_order: number
 }
@@ -88,7 +95,9 @@ function outletCoordinates(outlet: OutletLocation): GeoOrigin | null {
 }
 
 function supportsMode(outlet: OutletLocation, mode: OutletOrderMode): boolean {
-  return mode === 'pickup' ? outlet.supports_pickup : outlet.supports_delivery
+  if (mode === 'dine_in') return outlet.supports_dine_in === true
+  if (mode === 'pickup') return outlet.supports_pickup
+  return outlet.supports_delivery
 }
 
 /**
@@ -107,16 +116,16 @@ function coversDistance(radiusKm: number | null | undefined, distanceKm: number)
 /**
  * Coverage as the UI should read it.
  *
- * Pickup never consults a delivery radius — a branch you walk into is not "out
- * of range" — so it always reports covered. Delivery reports covered only when
- * a real distance was measured and the radius reaches it.
+ * Pickup and dine-in never consult a delivery radius — a branch you walk into
+ * is not "out of range" — so they always report covered. Delivery reports
+ * covered only when a real distance was measured and the radius reaches it.
  */
 function resolveCoverage(
   mode: OutletOrderMode,
   radiusKm: number | null | undefined,
   distanceKm: number | null
 ): boolean {
-  if (mode === 'pickup') return true
+  if (mode !== 'delivery') return true
   if (distanceKm === null) return false
   return coversDistance(radiusKm, distanceKm)
 }
