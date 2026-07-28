@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { MapPin } from 'lucide-react'
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import {
   EMPTY_OUTLET_DRAFT,
   applyOutletAddressSelection,
@@ -144,18 +145,13 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="outlet-image">Branch photo URL</Label>
-            <Input
-              id="outlet-image"
-              value={draft.image_url}
-              onChange={(event) => set('image_url', event.target.value)}
-              placeholder="https://… (shown on the branch chooser)"
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional. Branches without a photo show a placeholder tile.
-            </p>
-          </div>
+          <SimpleImageUpload
+            currentImageUrl={draft.image_url}
+            onImageUploaded={(url) => set('image_url', url)}
+            folder="outlets"
+            label="Branch photo"
+            description="Optional. Branches without a photo show a placeholder tile on the branch chooser."
+          />
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
