@@ -48,19 +48,21 @@ describe('a dish auto-86 took off the menu', () => {
   it('says it is out of stock, not merely hidden', () => {
     renderList([item({ is_available: false, auto_disabled_at: '2026-07-27T10:00:00Z' })])
 
-    expect(screen.getByText('Out of stock')).toBeInTheDocument()
+    // The merchant's own switch now reads "Out of stock" too, so the badge has
+    // to be matched on the suffix that distinguishes them.
+    expect(screen.getByText('Out of stock (auto)')).toBeInTheDocument()
   })
 
   it('leaves a dish the merchant hid unlabelled, so the two are distinguishable', () => {
     renderList([item({ is_available: false, auto_disabled_at: null })])
 
-    expect(screen.queryByText('Out of stock')).not.toBeInTheDocument()
+    expect(screen.queryByText('Out of stock (auto)')).not.toBeInTheDocument()
   })
 
   it('says nothing about stock for a dish that is on sale', () => {
     renderList([item({ is_available: true, auto_disabled_at: null })])
 
-    expect(screen.queryByText('Out of stock')).not.toBeInTheDocument()
+    expect(screen.queryByText('Out of stock (auto)')).not.toBeInTheDocument()
   })
 
   it('labels only the dishes the system pulled when both kinds are listed', () => {
@@ -69,6 +71,6 @@ describe('a dish auto-86 took off the menu', () => {
       item({ id: 'b', name: 'Tiramisu', is_available: false, auto_disabled_at: null }),
     ])
 
-    expect(screen.getAllByText('Out of stock')).toHaveLength(1)
+    expect(screen.getAllByText('Out of stock (auto)')).toHaveLength(1)
   })
 })

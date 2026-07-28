@@ -53,11 +53,19 @@ describe('MENU_AVAILABILITY_LABEL', () => {
   it('names the auto-hidden state after the reason, not the mechanism', () => {
     // "Auto-disabled" describes what the software did. A merchant needs to know
     // what to DO, and the thing to do is check the stock.
-    expect(MENU_AVAILABILITY_LABEL['auto-hidden']).toBe('Out of stock')
+    expect(MENU_AVAILABILITY_LABEL['auto-hidden']).toBe('Out of stock (auto)')
+  })
+
+  it('says out of stock for the merchant-flipped state too, because that is what customers see', () => {
+    // Neither state hides the dish any more — both leave it listed and
+    // unorderable — so "Hidden" would describe something that stopped happening.
+    expect(MENU_AVAILABILITY_LABEL.hidden).toBe('Out of stock')
   })
 
   it('keeps the merchant-hidden wording distinct from the automatic one', () => {
-    expect(MENU_AVAILABILITY_LABEL.hidden).toBe('Hidden')
+    // The distinction is the entire reason `auto_disabled_at` is recorded: one
+    // of these is a switch the merchant flipped, the other is a bestseller the
+    // system pulled without asking.
     expect(MENU_AVAILABILITY_LABEL.hidden).not.toBe(MENU_AVAILABILITY_LABEL['auto-hidden'])
   })
 

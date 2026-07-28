@@ -18,11 +18,17 @@ export type MenuAvailabilityState = "available" | "auto-hidden" | "hidden";
  * Named for the cause a merchant can act on, not the mechanism.
  * "Auto-disabled" describes what the software did; "Out of stock" tells them
  * to go and look at the shelf.
+ *
+ * Both off-menu states now say "out of stock" because that is what a customer
+ * sees either way — the dish stays listed and unorderable rather than
+ * disappearing. The suffix is what keeps them tellable apart, which is the
+ * whole reason `auto_disabled_at` is recorded: one of these is a switch the
+ * merchant flipped, the other is a bestseller the system pulled without asking.
  */
 export const MENU_AVAILABILITY_LABEL: Record<MenuAvailabilityState, string> = {
   available: "Available",
-  "auto-hidden": "Out of stock",
-  hidden: "Hidden",
+  "auto-hidden": "Out of stock (auto)",
+  hidden: "Out of stock",
 };
 
 /** The subset of a product this decision depends on. */

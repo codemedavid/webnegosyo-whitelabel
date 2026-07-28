@@ -534,14 +534,17 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           </div>
 
           <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
+            <label
+              className="flex items-center gap-2"
+              title="Unchecked, this dish stays on your menu marked unavailable — it is not removed"
+            >
               <input
                 type="checkbox"
                 checked={formData.is_available}
                 onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
                 className="h-4 w-4"
               />
-              <span className="text-sm font-medium">Available</span>
+              <span className="text-sm font-medium">In stock</span>
             </label>
             <label className="flex items-center gap-2">
               <input

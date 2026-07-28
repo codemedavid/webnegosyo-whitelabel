@@ -53,7 +53,11 @@ export async function getMenuData(tenantSlug: string) {
 
   const [catsResult, itemsResult, bundleResult, outletsResult] = await Promise.all([
     supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
-    supabase.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).eq('is_available', true).order('order'),
+    // Deliberately unfiltered on `is_available`: an out-of-stock dish stays on
+    // the menu, marked unavailable by the card template, rather than vanishing.
+    // The bundle-slot query below still filters, because a slot *offers* a dish
+    // rather than listing it. See src/lib/menu-item-availability.ts.
+    supabase.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).order('order'),
     bundlesQuery,
     outletsQuery,
   ])
