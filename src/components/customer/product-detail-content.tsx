@@ -20,6 +20,7 @@ import { useBrandingPreviewDraft, useBrandingPreviewTenant, useIsMobileViewport 
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
+import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -312,6 +313,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // Operating-hours enforcement: resolves after mount (this page is cached), so
     // the closed notice and the disabled actions appear a frame after hydration.
     const openStatus = useStoreOpenStatus(tenant)
+    const isOrderable = isMenuItemOrderable(item)
     const previewDraft = useBrandingPreviewDraft()
     const branding = useMemo(
         () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
@@ -638,6 +640,15 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [bundlesEnabled, upsellBundles, item.category_id])
 
     const handleAddToCart = useCallback((skipNavigation = false) => {
+        /*
+         * A card that will not open is not a guard. This URL is shareable,
+         * indexed, and reachable from a stale cart link, so the page has to
+         * refuse on its own rather than trust the menu grid to have filtered.
+         */
+        if (!isOrderable) {
+            toast.error(`${item.name} is out of stock right now.`)
+            return
+        }
         if (openStatus.isOrderingBlocked) {
             toast.error(
                 openStatus.nextOpenLabel
@@ -697,7 +708,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -1327,6 +1338,17 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
 
                 <StoreClosedBanner status={openStatus} />
+                {/*
+                  Disabled buttons alone read as a broken page. Say why, in the
+                  same place the closed-store banner says why.
+                */}
+                {!isOrderable && (
+                    <div className="px-5 pt-3">
+                        <p className="rounded-lg bg-muted px-3 py-2 text-center text-sm font-medium text-muted-foreground">
+                            This item is currently unavailable.
+                        </p>
+                    </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="relative px-5 pb-5 pt-2 flex gap-3">
@@ -1341,7 +1363,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         variant="outline"
                         data-branding-scope="product/buy-now"
                         onClick={handleBuyNow}
-                        disabled={openStatus.isOrderingBlocked}
+                        disabled={openStatus.isOrderingBlocked || !isOrderable}
                         className="flex-1 h-12 font-semibold text-base border-2 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                         style={dynamicStyles?.buttonBuyNow}
                     >
@@ -1351,7 +1373,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         type="button"
                         data-branding-scope="product/add-to-cart"
                         onClick={() => handleAddToCart(false)}
-                        disabled={openStatus.isOrderingBlocked}
+                        disabled={openStatus.isOrderingBlocked || !isOrderable}
                         className="flex-1 h-12 font-semibold text-base transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                         style={dynamicStyles?.buttonAddToCart}
                     >

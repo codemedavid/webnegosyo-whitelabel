@@ -191,7 +191,12 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
                     ) : (
                       <>
                         <EyeOff className="mr-1 h-3 w-3" />
-                        Hidden
+                        {/*
+                          Not "Hidden" any more: the dish stays on the customer's
+                          menu marked unavailable. A merchant reading "Hidden"
+                          would think a discontinued dish was off their storefront.
+                        */}
+                        Out of stock
                       </>
                     )}
                   </Button>
