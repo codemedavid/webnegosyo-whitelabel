@@ -98,6 +98,11 @@ export const tenantSchema = z.object({
   inventory_enabled: z.boolean().default(false),
   low_stock_alerts_enabled: z.boolean().default(false),
   auto_86_enabled: z.boolean().default(false),
+  // Multi-branch outlets. Defaults false like every other flag: turning it on
+  // makes the storefront ask the customer to choose a branch, which no tenant
+  // may get without asking. Omitting this key made `parse` strip it, so the
+  // superadmin toggle saved nothing at all.
+  multi_branch_enabled: z.boolean().default(false),
   // QR-handoff ordering
   qr_handoff_enabled: z.boolean().optional(),
   // Flash screen
@@ -271,6 +276,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -393,6 +399,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

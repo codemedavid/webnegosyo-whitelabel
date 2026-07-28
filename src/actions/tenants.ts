@@ -135,6 +135,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
       qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
       // Flash screen
       flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -289,6 +290,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,
