@@ -70,6 +70,11 @@ ran kept the `platform` column default. Four tenants were affected — `coffee-m
 | 9 | Clearing the Convex URL moves a tenant back to `platform` (how you migrate off Convex) | `…:falls back to platform when the convex url is cleared out` | unit | PASS |
 | 10 | Pre-existing resolver/credential/schema behavior unchanged | `tests/unit/order-backend.test.ts` (19 cases) | unit | PASS |
 
+> **Superseded rows.** 1, 6, 8 and 9 describe the interim contract at commit `5f6ae9d`,
+> where `platform` was treated as a fallback. The follow-up below replaced that with an
+> explicit `auto` default, so those cases now live in `order-backend-preference.test.ts`
+> under rows 11–16. Rows 2–5, 7 and 10 still hold verbatim.
+
 ## Coverage
 
 ```
@@ -92,8 +97,37 @@ files are unrelated and untouched).
   platform DB. Zero tenants are in that state today (verified by query), and a silent
   split across two backends is the failure this replaces.
 
+## Follow-up — selectable order backend
+
+The superadmin tenant form now has an **Order backend** picker (Automatic /
+Convex / Platform database), defaulting to Automatic: use Convex when a
+deployment is configured, otherwise the shared platform DB.
+
+`auto` is the stored default rather than `platform`, because `platform`-as-default
+is precisely what caused this bug — it reads as a deliberate choice. Migration
+`20260728160000` widens the check constraint to allow `auto` and flips the column
+default (APPLIED). All four tenant write paths — superadmin create/update and the
+MCP provisioning ops in `src/lib/tenants-service.ts` — now stamp the column.
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 11 | `auto` uses Convex when configured, platform otherwise | `order-backend-preference.test.ts` | unit | PASS |
+| 12 | An unset or unrecognized column behaves as `auto` | `order-backend-preference.test.ts`, `order-backend-convex-drift.test.ts` | unit | PASS |
+| 13 | A deliberate `platform` pin is honored even with Convex configured | `order-backend-preference.test.ts` | unit | PASS |
+| 14 | A `convex` pin without a deployment URL degrades to `auto` instead of stranding orders | `order-backend-preference.test.ts` | unit | PASS |
+| 15 | A tenant on its own Supabase project is never overwritten by the form | `order-backend-preference.test.ts` | unit | PASS |
+| 16 | Every preference survives a save → resolve round-trip to the same backend | `order-backend-preference.test.ts` | unit | PASS |
+| 17 | The picker offers three options, defaults to Automatic, reports the choice, disables Convex without a URL, and locks while saving | `order-backend-picker.test.tsx` | component | PASS |
+
+RED for this follow-up: 12 failing (`ORDER_BACKEND_PREFERENCES` /
+`orderBackendPreferenceOf` missing, `orderBackendForSave` arity, explicit
+`platform` not honored) at `00a07fb`, plus a module-not-found RED for the picker
+component. GREEN at `27ac0a2`: 269 suites / 3296 tests.
+
 ## Merge evidence
 
 RED → `ec46d02 test: add reproducer for stale platform order_backend on convex tenants`
 GREEN → `5f6ae9d fix: read orders from Convex when the order_backend column is stale`
-Refactor + backfill → see the commit following this report.
+Refactor + backfill → `e921f57 refactor: route checkout convex writes through resolveOrderBackend`
+RED → `00a07fb test: add reproducer for a selectable platform/convex order backend`
+GREEN → `27ac0a2 feat: choose a tenant's order backend, defaulting to Convex when configured`
