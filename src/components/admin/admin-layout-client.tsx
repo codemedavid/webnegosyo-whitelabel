@@ -76,6 +76,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     bundlesEnabled: tenant.bundles_enabled,
     convexConfigured: !!tenant.convex_deployment_url,
     inventoryEnabled: tenant.inventory_enabled,
+    multiBranchEnabled: tenant.multi_branch_enabled,
   }
 
   if (isFullBleedRoute) {

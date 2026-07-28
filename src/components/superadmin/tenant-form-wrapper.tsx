@@ -88,6 +88,8 @@ interface TenantFormData {
   // Bundles
   bundles_enabled: boolean
   inventory_enabled: boolean
+  // Multi-branch
+  multi_branch_enabled: boolean
   // Inventory alerts
   low_stock_alerts_enabled: boolean
   auto_86_enabled: boolean
@@ -862,6 +864,47 @@ function InventoryFeatureSection({
   )
 }
 
+// Multi-Branch (Multi-Outlet) Feature Toggle Section
+function MultiBranchFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Branches</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          For merchants with more than one physical outlet. Customers pick a branch before they
+          browse, and each order records which branch fulfills it.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="multi_branch_enabled">Enable Branches</Label>
+            <p className="text-sm text-muted-foreground">
+              Shows the Branches section in the tenant admin. The storefront only changes once the
+              merchant has two or more active branches — with zero or one, customers see exactly
+              what they see today.
+            </p>
+          </div>
+          <Switch
+            id="multi_branch_enabled"
+            checked={formData.multi_branch_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, multi_branch_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // Unified Modifier Groups Feature Toggle Section
 function ModifierGroupsFeatureSection({
   formData,
@@ -1573,6 +1616,8 @@ export function TenantFormWrapper({
     modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
     // Inventory
     inventory_enabled: tenant?.inventory_enabled ?? false,
+    // Multi-branch — missing/null on every existing row reads as off.
+    multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
     // Pairing rules
@@ -1651,6 +1696,7 @@ export function TenantFormWrapper({
       modifier_groups_enabled: formData.modifier_groups_enabled,
       // Inventory
       inventory_enabled: formData.inventory_enabled,
+      multi_branch_enabled: formData.multi_branch_enabled,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
       // Pairing rules
@@ -1841,6 +1887,11 @@ export function TenantFormWrapper({
             isPending={isPending}
           />
           <InventoryFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <MultiBranchFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}

@@ -115,6 +115,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
   'order-types': 'store_setup',
+  outlets: 'store_setup',
   'payment-methods': 'store_setup',
   branding: 'store_setup',
   'hero-designer': 'store_setup',
