@@ -17,7 +17,7 @@ export async function getMenuData(tenantSlug: string) {
   )
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], isBrandAdmin: false, error: 'Restaurant not found' }
+    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, isBrandAdmin: false, error: 'Restaurant not found' }
   }
 
   const tenant = tenantData as unknown as Tenant
@@ -58,13 +58,17 @@ export async function getMenuData(tenantSlug: string) {
     outletsQuery,
   ])
 
-  // A branch query failure must not blank the menu — the storefront falls back
-  // to single-location behaviour, which is what every tenant had yesterday.
-  // Optional-chained deliberately: a missing result must degrade to "no
-  // branches", never throw. Throwing here would blank the menu for everyone,
-  // which is the regression 38b4ede fixed for the dish query.
-  if (outletsResult?.error) {
-    console.warn('[menu-server] Outlet query failed:', outletsResult.error.message)
+  // A branch query failure must not blank the menu — throwing here is the
+  // regression 38b4ede fixed for the dish query. But it must not silently fall
+  // back to single-location behaviour either: that renders the one-outlet flow
+  // for a multi-branch merchant and sends the order to the wrong kitchen, which
+  // is what Phase 1's Decision E exists to prevent.
+  //
+  // So the failure is carried rather than swallowed. The menu still renders;
+  // `resolveOutletAvailability` turns this flag into a block on *ordering*.
+  const outletsFailed = Boolean(outletsResult?.error)
+  if (outletsFailed) {
+    console.warn('[menu-server] Outlet query failed:', outletsResult?.error?.message)
   }
   const outlets = (outletsResult?.data as unknown as Outlet[] | null) ?? []
 
@@ -93,7 +97,7 @@ export async function getMenuData(tenantSlug: string) {
       catsResult.error?.message && `categories: ${catsResult.error.message}`,
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], isBrandAdmin, error: `Failed to load menu data (${details})` }
+    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
   // Bundle query errors are non-fatal — menu items should still show
@@ -132,6 +136,7 @@ export async function getMenuData(tenantSlug: string) {
     menuItems: (itemsResult.data as unknown as MenuItem[]) || [],
     bundles,
     outlets,
+    outletsFailed,
     isBrandAdmin,
     error: null
   }

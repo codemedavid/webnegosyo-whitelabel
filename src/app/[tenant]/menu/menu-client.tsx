@@ -9,6 +9,8 @@ import { AnnouncementBar } from '@/components/customer/announcement-bar'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
+import { resolveOutletAvailability } from '@/lib/outlets/outlet-availability'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
@@ -39,6 +41,8 @@ interface MenuClientProps {
   allMenuItems: MenuItem[]
   bundles: BundleWithSlots[]
   outlets: Outlet[]
+  /** True when the branch query failed — ordering is blocked, the menu is not. */
+  outletsFailed?: boolean
   tenantSlug: string
   isBrandAdmin: boolean
   error: string | null
@@ -55,7 +59,7 @@ const ProductDetailSheet = dynamic(
 )
 
 
-export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, outlets, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, outlets, outletsFailed, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   // Branding Studio live preview: when this page runs inside the editor's
   // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
   // every branding consumer below re-renders in real time.
@@ -165,8 +169,21 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   // the server's answer would be stale) and re-checks every minute.
   const openStatus = useStoreOpenStatus(tenant)
 
+  // A multi-branch storefront that could not load its branches must not quietly
+  // serve the single-location flow — that is how an order reaches the wrong
+  // kitchen (Phase 1, Decision E). The menu still renders; ordering is what stops.
+  const outletAvailability = resolveOutletAvailability({
+    isEnabled: isMultiBranchEnabled(tenant),
+    didLoadFail: Boolean(outletsFailed),
+    outletCount: outlets.length,
+  })
+
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
+    if (!outletAvailability.canOrder) {
+      toast.error(outletAvailability.message ?? '')
+      return
+    }
     if (openStatus.isOrderingBlocked) {
       toast.error(
         openStatus.nextOpenLabel
@@ -201,7 +218,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       // Customers get the instant bottom sheet instead of a route navigation.
       setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
+  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, outletAvailability.canOrder, outletAvailability.message])
 
   // Device resolution: the Branding Studio's per-device choice wins over any
   // legacy mobile_* column, which in turn wins over the desktop column.
