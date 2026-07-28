@@ -123,6 +123,12 @@ describe('permissionForAdminPath', () => {
     expect(permissionForAdminPath('/my-resto/admin/hero-designer')).toBe('store_setup')
   })
 
+  it('maps branches to store setup', () => {
+    // Branches are store configuration, so they ride the same permission as
+    // order types and payment methods rather than introducing a new key.
+    expect(permissionForAdminPath('/my-resto/admin/outlets')).toBe('store_setup')
+  })
+
   it('maps customers routes', () => {
     expect(permissionForAdminPath('/my-resto/admin/customers')).toBe('customers')
   })
