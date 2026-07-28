@@ -6,24 +6,31 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { MapPin } from 'lucide-react'
+import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
 import {
   EMPTY_OUTLET_DRAFT,
+  applyOutletAddressSelection,
   buildOutletWriteInput,
+  clearOutletCoordinates,
   outletToDraft,
   previewOutletSlug,
   type OutletDraft,
+  type PickedCoordinates,
 } from '@/lib/outlets/outlet-form'
 import type { OutletWriteInput } from '@/lib/outlets/outlet-repository'
 import type { Outlet } from '@/types/database'
 
 interface OutletFormProps {
   outlet: Outlet | null
+  /** Mirrors the delivery settings form: falls back to manual entry when off. */
+  mapboxEnabled?: boolean
   isSaving: boolean
   onCancel: () => void
   onSubmit: (input: OutletWriteInput) => void
 }
 
-export function OutletForm({ outlet, isSaving, onCancel, onSubmit }: OutletFormProps) {
+export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, onSubmit }: OutletFormProps) {
   const [draft, setDraft] = useState<OutletDraft>(
     outlet ? outletToDraft(outlet) : EMPTY_OUTLET_DRAFT
   )
@@ -33,6 +40,11 @@ export function OutletForm({ outlet, isSaving, onCancel, onSubmit }: OutletFormP
     setDraft((current) => ({ ...current, [key]: value }))
 
   const slugPreview = previewOutletSlug(draft)
+  const hasPin = draft.latitude !== '' && draft.longitude !== ''
+
+  // Coordinates arrive only on a picked result; typing keeps any existing pin.
+  const handleAddressChange = (address: string, coordinates?: PickedCoordinates) =>
+    setDraft((current) => applyOutletAddressSelection(current, address, coordinates))
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -80,37 +92,35 @@ export function OutletForm({ outlet, isSaving, onCancel, onSubmit }: OutletFormP
 
           <div className="space-y-2">
             <Label htmlFor="outlet-address">Address</Label>
-            <Input
-              id="outlet-address"
+            {/*
+              Search-and-pin rather than two number boxes. The database rejects
+              half a coordinate pair outright, so hand-typed lat/lng made a
+              branch unsaveable with an error naming a constraint. Picking a
+              result sets the address and both coordinates together.
+            */}
+            <MapboxAddressAutocomplete
               value={draft.address}
-              onChange={(event) => set('address', event.target.value)}
-              placeholder="9th Ave cor 30th St, Taguig"
+              onChange={handleAddressChange}
+              placeholder="Search or pin this branch's location"
+              mapboxEnabled={mapboxEnabled}
             />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="outlet-latitude">Latitude</Label>
-              <Input
-                id="outlet-latitude"
-                value={draft.latitude}
-                onChange={(event) => set('latitude', event.target.value)}
-                placeholder="14.5507"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="outlet-longitude">Longitude</Label>
-              <Input
-                id="outlet-longitude"
-                value={draft.longitude}
-                onChange={(event) => set('longitude', event.target.value)}
-                placeholder="121.0470"
-              />
-            </div>
+            {hasPin ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span>Pinned at {draft.latitude}, {draft.longitude}</span>
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={() => setDraft(clearOutletCoordinates)}
+                >
+                  Clear pin
+                </button>
+              </div>
+            ) : null}
           </div>
           <p className="-mt-3 text-xs text-muted-foreground">
-            Optional, but without both values this branch cannot be matched to a customer&apos;s
-            location — it will only ever appear in the manual list.
+            Optional, but an unpinned branch cannot be matched to a customer&apos;s location — it
+            will only ever appear in the manual list.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2">

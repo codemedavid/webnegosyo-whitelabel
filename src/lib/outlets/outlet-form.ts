@@ -162,3 +162,73 @@ export function moveOutletOrder(
   ids[to] = id
   return ids
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Pinning a branch on the map
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Coordinates as `MapboxAddressAutocomplete` reports them. */
+export interface PickedCoordinates {
+  lat: number
+  lng: number
+}
+
+/**
+ * A coordinate the database will actually accept.
+ *
+ * `outlets_latitude_range_ck` / `outlets_longitude_range_ck` bound the values,
+ * and NaN or Infinity would serialize into something the column rejects. A
+ * coordinate that fails here is dropped rather than carried, because half a
+ * pair violates `outlets_coordinates_paired_ck` and makes the whole branch
+ * unsaveable.
+ */
+function isUsableCoordinate(value: unknown, limit: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit
+}
+
+/**
+ * Apply an address chosen in the map picker to a branch draft.
+ *
+ * `MapboxAddressAutocomplete` fires on every keystroke without coordinates and
+ * only on a picked result with them. So:
+ *
+ * - picked result → address and both coordinates are replaced together
+ * - typing → the address updates and an existing pin is left alone, otherwise
+ *   correcting a typo would silently unpin the branch
+ *
+ * Coordinates are written as a pair or not at all. Returns a new draft; the
+ * input is never mutated.
+ */
+export function applyOutletAddressSelection(
+  draft: OutletDraft,
+  address: string,
+  coordinates?: PickedCoordinates
+): OutletDraft {
+  const hasUsablePair =
+    coordinates !== undefined &&
+    isUsableCoordinate(coordinates.lat, 90) &&
+    isUsableCoordinate(coordinates.lng, 180)
+
+  if (!hasUsablePair) {
+    // No coordinates offered, or ones the database would refuse: keep whatever
+    // pin the branch already had.
+    return { ...draft, address }
+  }
+
+  return {
+    ...draft,
+    address,
+    latitude: String(coordinates.lat),
+    longitude: String(coordinates.lng),
+  }
+}
+
+/**
+ * Drop the pin, keeping the typed address.
+ *
+ * Both halves go at once — clearing one would leave the pair the database
+ * rejects.
+ */
+export function clearOutletCoordinates(draft: OutletDraft): OutletDraft {
+  return { ...draft, latitude: '', longitude: '' }
+}

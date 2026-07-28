@@ -42,7 +42,12 @@ export default async function AdminOutletsPage({
         </p>
       </div>
 
-      <OutletsManager tenantId={tenant.id} tenantSlug={tenantSlug} initialOutlets={outlets} />
+      <OutletsManager
+        tenantId={tenant.id}
+        tenantSlug={tenantSlug}
+        mapboxEnabled={tenant.mapbox_enabled ?? false}
+        initialOutlets={outlets}
+      />
     </div>
   )
 }

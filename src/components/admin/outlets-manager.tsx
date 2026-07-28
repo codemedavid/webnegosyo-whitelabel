@@ -21,10 +21,12 @@ import type { Outlet } from '@/types/database'
 interface OutletsManagerProps {
   tenantId: string
   tenantSlug: string
+  /** Tenant flag: when off the address field falls back to plain text entry. */
+  mapboxEnabled?: boolean
   initialOutlets: Outlet[]
 }
 
-export function OutletsManager({ tenantId, tenantSlug, initialOutlets }: OutletsManagerProps) {
+export function OutletsManager({ tenantId, tenantSlug, mapboxEnabled = false, initialOutlets }: OutletsManagerProps) {
   const router = useRouter()
   const [outlets, setOutlets] = useState<Outlet[]>(initialOutlets)
   const [editing, setEditing] = useState<Outlet | null>(null)
@@ -136,6 +138,7 @@ export function OutletsManager({ tenantId, tenantSlug, initialOutlets }: Outlets
   if (isCreating || editing) {
     return (
       <OutletForm
+        mapboxEnabled={mapboxEnabled}
         outlet={editing}
         isSaving={isBusy}
         onCancel={closeForm}
