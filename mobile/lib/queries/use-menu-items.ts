@@ -10,7 +10,10 @@ export function useMenuItems(tenantId: string | undefined) {
         .from('menu_items')
         .select('*')
         .eq('tenant_id', tenantId!)
-        .eq('is_available', true)
+        // Deliberately unfiltered on `is_available`: an out-of-stock dish stays
+        // on the menu marked unavailable rather than vanishing, matching the
+        // web storefront. The card already renders that state and disables the
+        // tap. See src/lib/menu-item-availability.ts on the web side.
         .order('order')
 
       if (error) throw error
