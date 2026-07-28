@@ -12,6 +12,10 @@ import { useAuthStore } from "../stores/auth-store";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
+import {
+  shouldRegisterPushToken,
+  pushTokenCleanup,
+} from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
 
 /**
@@ -151,6 +155,8 @@ function useAuthRedirect() {
 function usePushNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
 
   // Create the ringtone channel as early as possible — before login — so the
   // first order's local alert can ring even if push registration hasn't run.
@@ -159,10 +165,32 @@ function usePushNotifications() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || !convexUrl) return;
-
     const userId = useAuthStore.getState().userId;
-    if (!userId) return;
+    const session = {
+      isAuthenticated,
+      userId,
+      convexUrl,
+      isSuperadmin,
+      impersonatedTenantId,
+    };
+
+    // A superadmin viewing someone else's store is a spectator: never subscribe
+    // them to that store's order alerts, and drop any token an earlier build
+    // left behind in that deployment.
+    const stale = pushTokenCleanup(session);
+    if (stale) {
+      fetch(`${stale.convexUrl}/api/mutation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "notifications:removePushToken",
+          args: { userId: stale.userId },
+          format: "json",
+        }),
+      }).catch(() => {});
+    }
+
+    if (!shouldRegisterPushToken(session) || !userId || !convexUrl) return;
 
     // registerForPushNotifications() presents a native OS permission prompt
     // (UIAlertController on iOS). Firing it in the same tick as the
@@ -199,7 +227,7 @@ function usePushNotifications() {
     });
 
     return () => task.cancel();
-  }, [isAuthenticated, convexUrl]);
+  }, [isAuthenticated, convexUrl, isSuperadmin, impersonatedTenantId]);
 }
 
 export default function RootLayout() {
