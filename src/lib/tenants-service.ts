@@ -322,12 +322,13 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // edit that does not mention order routing at all.
   const { data: oldTenantData } = await supabase
     .from('tenants')
-    .select('domain, order_backend')
+    .select('domain, order_backend, slug')
     .eq('id', id)
     .maybeSingle()
 
   const oldTenant = oldTenantData as {
     domain: string | null
+    slug?: string | null
     order_backend?: OrderBackendPreference | null
   } | null
 
@@ -444,6 +445,12 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   if (parsed.domain) {
     clearDomainCache(parsed.domain)
   }
+
+  // Same reason as the superadmin form: the tenant row is Redis-cached for 30
+  // minutes, so an MCP-driven change would otherwise sit invisible until the
+  // TTL expired.
+  const { invalidateTenantCache } = await import('@/lib/cache')
+  await invalidateTenantCache(parsed.slug, id, oldTenant?.slug ?? null)
 
   return data as unknown as TenantRow
 }

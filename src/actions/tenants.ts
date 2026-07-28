@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
+import { invalidateTenantCache } from '@/lib/cache'
 import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
@@ -247,9 +248,11 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // saving an unrelated field would demote a `supabase` tenant to `platform`.
   const { data: currentBackendRow } = await supabase
     .from('tenants')
-    .select('order_backend')
+    .select('order_backend, slug')
     .eq('id', id)
     .maybeSingle()
+
+  const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
 
   const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn = {
     name: parsed.name,
@@ -356,6 +359,11 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   }
 
   // Revalidate cached data
+  // The tenant row is Redis-cached for 30 minutes and is what routes orders and
+  // gates features, so without this a saved change appears to do nothing until
+  // the TTL expires.
+  await invalidateTenantCache(parsed.slug, id, previousSlug)
+
   revalidatePath('/superadmin')
   revalidatePath('/superadmin/tenants')
   revalidatePath(`/superadmin/tenants/${id}`)
