@@ -6,6 +6,7 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
+import { tenantCacheKeys } from '@/lib/tenant-cache-keys'
 import type { Tenant, Category } from '@/types/database'
 
 /**
@@ -205,12 +206,15 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
 /**
  * Invalidate all cache for a specific tenant
  */
-export async function invalidateTenantCache(tenantSlug: string, tenantId: string): Promise<void> {
-  await Promise.all([
-    invalidateCache(generateCacheKey('tenant', tenantSlug)),
-    invalidateCache(generateCacheKey('tenant:by-id', tenantId)),
-    invalidateCache(generateCacheKey('categories', tenantId)),
-    invalidateCache(generateCacheKey('menu-items', tenantId)),
-  ])
+export async function invalidateTenantCache(
+  tenantSlug: string,
+  tenantId: string,
+  previousSlug?: string | null
+): Promise<void> {
+  await Promise.all(
+    tenantCacheKeys({ slug: tenantSlug, id: tenantId, previousSlug }).map((key) =>
+      invalidateCache(key)
+    )
+  )
 }
 
