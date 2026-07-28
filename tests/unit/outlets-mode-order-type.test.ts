@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { resolveOrderTypeIdForMode } from '@/lib/outlets/mode-order-type'
+import { resolveOrderTypeIdForMode, resolveModeForOrderType } from '@/lib/outlets/mode-order-type'
 import type { OrderType } from '@/types/database'
 
 /**
@@ -69,5 +69,43 @@ describe('resolveOrderTypeIdForMode', () => {
     const first = makeOrderType({ id: 'ot-1', type: 'dine_in', order_index: 1 })
 
     expect(resolveOrderTypeIdForMode([second, first], 'dine_in')).toBe('ot-1')
+  })
+})
+
+/**
+ * The inverse direction, for merchants who ask for the branch AT checkout: the
+ * customer picks the order type first, and that decides which branches can
+ * actually take the order. Without it a delivery order could be handed to a
+ * dine-in-only branch.
+ */
+describe('resolveModeForOrderType', () => {
+  const ALL = [DINE_IN, PICKUP, DELIVERY]
+
+  it('maps each order type back to its fulfillment mode', () => {
+    expect(resolveModeForOrderType(ALL, 'ot-dine')).toBe('dine_in')
+    expect(resolveModeForOrderType(ALL, 'ot-pick')).toBe('pickup')
+    expect(resolveModeForOrderType(ALL, 'ot-del')).toBe('delivery')
+  })
+
+  it('reads the type, not the merchant’s renamed label', () => {
+    const renamed = makeOrderType({ id: 'ot-x', type: 'delivery', name: 'Padala' })
+
+    expect(resolveModeForOrderType([renamed], 'ot-x')).toBe('delivery')
+  })
+
+  it('returns null when nothing is selected yet', () => {
+    expect(resolveModeForOrderType(ALL, null)).toBeNull()
+    expect(resolveModeForOrderType(ALL, '')).toBeNull()
+  })
+
+  it('returns null for an id that is not in the list', () => {
+    expect(resolveModeForOrderType(ALL, 'ot-missing')).toBeNull()
+  })
+
+  it('returns null for an order type whose kind is not a branch mode', () => {
+    // Tenants carry custom order types; those simply constrain nothing.
+    const custom = makeOrderType({ id: 'ot-cust', type: 'catering' as OrderType['type'] })
+
+    expect(resolveModeForOrderType([custom], 'ot-cust')).toBeNull()
   })
 })
