@@ -102,6 +102,8 @@ export interface PlatformOrderRow {
 
 export interface OrderItemDto {
   _id: string;
+  /** Parent order. Convex items carry this too; day-attribution needs it. */
+  orderId: string;
   menuItemId: string | null;
   menuItemName: string;
   quantity: number;
@@ -210,6 +212,7 @@ function normalizeAddons(addons: PlatformOrderItemRow["addons"]): OrderAddon[] {
 export function toOrderItemDto(row: PlatformOrderItemRow): OrderItemDto {
   return {
     _id: row.id,
+    orderId: row.order_id,
     menuItemId: row.menu_item_id,
     menuItemName: row.menu_item_name ?? "",
     quantity: toNumber(row.quantity),

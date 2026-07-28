@@ -19,6 +19,7 @@ import {
   localDayStartMs,
   summarizeDashboardStats,
   toOrderDto,
+  toOrderItemDto,
   toOrderWithItems,
   type CreateOrderArgs,
   type PlatformOrderItemRow,
@@ -55,6 +56,13 @@ export interface PlatformQueryBuilder {
 const ORDER_COLUMNS = "*";
 const ORDER_WITH_ITEMS_COLUMNS = "*, order_items(*)";
 
+/**
+ * `order_items` has no `tenant_id` of its own, so it is scoped through an inner
+ * join on its parent order. Without the join a superadmin's RLS grant would
+ * expose every merchant's line items.
+ */
+const ORDER_ITEM_COLUMNS = "*, orders!inner(tenant_id)";
+
 /** Matches the Convex `getOrders` default page size. */
 const DEFAULT_ORDER_LIMIT = 50;
 
@@ -74,6 +82,7 @@ const OPEN_STATUSES = ["pending", "confirmed", "preparing", "ready"];
 const SUPPORTED_QUERY_REFS = [
   "orders:getOrders",
   "orders:getOrderById",
+  "orders:getAllOrderItems",
   "orders:getRealtimeQueue",
   "orders:getDashboardStats",
   "orders:getDashboardStatsByPeriod",
@@ -166,6 +175,23 @@ async function getOrderById(
 
   if (!row) return null;
   return toOrderWithItems(row, row.order_items ?? []);
+}
+
+/**
+ * Every line item for the tenant, mirroring Convex `orders:getAllOrderItems`.
+ * Product analytics joins these back to their order's date, so fetching them in
+ * one bounded read avoids an N+1 (one getOrderById per order).
+ */
+async function getAllOrderItems(client: PlatformClient, tenantId: string) {
+  const rows = await unwrap<PlatformOrderItemRow[] | null>(
+    client
+      .from("order_items")
+      .select(ORDER_ITEM_COLUMNS)
+      .eq("orders.tenant_id", tenantId)
+      .limit(STATS_LIMIT)
+  );
+
+  return (rows ?? []).map((row) => toOrderItemDto(row));
 }
 
 async function getRealtimeQueue(client: PlatformClient, tenantId: string) {
@@ -272,6 +298,8 @@ export async function runPlatformQuery(
   switch (ref) {
     case "orders:getOrders":
       return getOrders(client, tenant, params);
+    case "orders:getAllOrderItems":
+      return getAllOrderItems(client, tenant);
     case "orders:getOrderById":
       return getOrderById(client, tenant, params);
     case "orders:getRealtimeQueue":
