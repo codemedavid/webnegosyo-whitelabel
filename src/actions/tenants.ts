@@ -10,14 +10,14 @@ import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
-import { orderBackendForSave, type OrderBackend } from '@/lib/order-backend'
+import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
 
 // The `order_backend` column post-dates the generated Supabase types, so widen
 // the payloads locally (same approach as the delivery-fee columns below).
-type OrderBackendColumn = { order_backend?: OrderBackend }
+type OrderBackendColumn = { order_backend?: OrderBackendPreference }
 
 // Distance-based delivery columns. Generated Supabase types lag the migration, so we widen
 // the insert/update payloads locally (same approach as src/lib/tenants-service.ts).
@@ -173,7 +173,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       convex_deploy_key: parsed.convex_deploy_key || undefined,
       // Keep the routing column in step with the credentials being saved, so a
       // Convex tenant never lands on the column default and reads the wrong DB.
-      order_backend: orderBackendForSave({
+      order_backend: orderBackendForSave(parsed.order_backend, {
         convex_deployment_url: parsed.convex_deployment_url || null,
         convex_deploy_key: parsed.convex_deploy_key || null,
       }),
@@ -341,8 +341,8 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     // Convex / Mobile App
     convex_deployment_url: parsed.convex_deployment_url || undefined,
     convex_deploy_key: parsed.convex_deploy_key || undefined,
-    order_backend: orderBackendForSave({
-      order_backend: (currentBackendRow as { order_backend?: OrderBackend } | null)
+    order_backend: orderBackendForSave(parsed.order_backend, {
+      order_backend: (currentBackendRow as { order_backend?: OrderBackendPreference } | null)
         ?.order_backend,
       convex_deployment_url: parsed.convex_deployment_url || null,
       convex_deploy_key: parsed.convex_deploy_key || null,

@@ -247,7 +247,9 @@ export interface Tenant {
   convex_schema_version?: number;
   // Order backend selection — see src/lib/order-backend.ts (single source of truth).
   // 'convex' = own Convex deployment | 'supabase' = own separate Supabase project | 'platform' = shared platform Supabase (legacy default).
-  order_backend?: "convex" | "supabase" | "platform";
+  // 'auto' is the default: derive from the credentials (Convex when a
+  // deployment URL is set, otherwise the shared platform database).
+  order_backend?: "auto" | "convex" | "supabase" | "platform";
   // Per-tenant Supabase order-project credentials (only when order_backend = 'supabase').
   supabase_order_url?: string | null;
   supabase_order_anon_key?: string | null;
