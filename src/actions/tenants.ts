@@ -10,9 +10,14 @@ import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
+import { orderBackendForSave, type OrderBackend } from '@/lib/order-backend'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
+
+// The `order_backend` column post-dates the generated Supabase types, so widen
+// the payloads locally (same approach as the delivery-fee columns below).
+type OrderBackendColumn = { order_backend?: OrderBackend }
 
 // Distance-based delivery columns. Generated Supabase types lag the migration, so we widen
 // the insert/update payloads locally (same approach as src/lib/tenants-service.ts).
@@ -81,7 +86,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: 'Slug is already taken' }
     }
 
-    const insertPayload: TenantsInsert & DeliveryFeeColumns = {
+    const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn = {
       name: parsed.name,
       slug: parsed.slug,
       domain: parsed.domain || undefined,
@@ -161,6 +166,12 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       // Convex / Mobile App
       convex_deployment_url: parsed.convex_deployment_url || undefined,
       convex_deploy_key: parsed.convex_deploy_key || undefined,
+      // Keep the routing column in step with the credentials being saved, so a
+      // Convex tenant never lands on the column default and reads the wrong DB.
+      order_backend: orderBackendForSave({
+        convex_deployment_url: parsed.convex_deployment_url || null,
+        convex_deploy_key: parsed.convex_deploy_key || null,
+      }),
       // Email notifications
       admin_email: parsed.admin_email || null,
       email_notifications_enabled: parsed.email_notifications_enabled,
@@ -231,7 +242,16 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     return { error: 'Slug is already taken' }
   }
 
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns = {
+  // The tenant form does not carry the per-tenant Supabase order credentials, so
+  // read the current routing state before recomputing the column — otherwise
+  // saving an unrelated field would demote a `supabase` tenant to `platform`.
+  const { data: currentBackendRow } = await supabase
+    .from('tenants')
+    .select('order_backend')
+    .eq('id', id)
+    .maybeSingle()
+
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain || undefined,
@@ -311,6 +331,12 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     // Convex / Mobile App
     convex_deployment_url: parsed.convex_deployment_url || undefined,
     convex_deploy_key: parsed.convex_deploy_key || undefined,
+    order_backend: orderBackendForSave({
+      order_backend: (currentBackendRow as { order_backend?: OrderBackend } | null)
+        ?.order_backend,
+      convex_deployment_url: parsed.convex_deployment_url || null,
+      convex_deploy_key: parsed.convex_deploy_key || null,
+    }),
     // Email notifications
     admin_email: parsed.admin_email || null,
     email_notifications_enabled: parsed.email_notifications_enabled,

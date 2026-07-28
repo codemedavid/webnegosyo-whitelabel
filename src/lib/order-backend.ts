@@ -39,15 +39,42 @@ function isNonEmpty(value: string | null | undefined): value is string {
 /**
  * Resolve the effective order backend for a tenant.
  *
- * Prefers the explicit `order_backend` column. When it is absent or unrecognized
- * (e.g. a pre-migration row still in flight), falls back to the historical rule:
- * a Convex URL means Convex, otherwise the shared platform database.
+ * `convex` and `supabase` are explicit, deliberate selections and always win.
+ * `platform` is NOT treated as a deliberate selection: it is the column default,
+ * and the tenant create/update path never sets this column, so every tenant
+ * given a Convex deployment after the backfill migration ran still reads
+ * `platform`. Those tenants' orders go to Convex regardless — the checkout write
+ * path routes on the presence of Convex credentials — so honoring a bare
+ * `platform` here would point reads at an empty database while writes land in
+ * Convex. Falling back to the historical rule keeps reads and writes in
+ * agreement by construction.
+ *
+ * To genuinely move a tenant off Convex, clear `convex_deployment_url`.
  */
 export function resolveOrderBackend(tenant: OrderBackendTenantFields): OrderBackend {
-  if (tenant.order_backend && ORDER_BACKENDS.includes(tenant.order_backend)) {
+  if (
+    tenant.order_backend &&
+    tenant.order_backend !== "platform" &&
+    ORDER_BACKENDS.includes(tenant.order_backend)
+  ) {
     return tenant.order_backend;
   }
   return isNonEmpty(tenant.convex_deployment_url) ? "convex" : "platform";
+}
+
+/**
+ * The value to persist in the `order_backend` column when a tenant is created or
+ * updated, so the column stays truthful instead of drifting to a stale
+ * `platform` while Convex credentials sit right next to it.
+ */
+export function orderBackendForSave(tenant: OrderBackendTenantFields): OrderBackend {
+  // Unlike a read, a save recomputes `convex` from the credentials actually
+  // being written: clearing the deployment URL is how a tenant is moved off
+  // Convex, so a leftover `convex` column must not survive that edit.
+  if (tenant.order_backend === "convex" && !isNonEmpty(tenant.convex_deployment_url)) {
+    return "platform";
+  }
+  return resolveOrderBackend(tenant);
 }
 
 /**
