@@ -30,6 +30,7 @@ const storedOutlet = (overrides: Partial<Outlet> = {}): Outlet => ({
   name: 'BGC High Street',
   slug: 'bgc',
   address: '9th Ave, Taguig',
+  image_url: 'https://ik.example/bgc.jpg',
   latitude: 14.5507,
   longitude: 121.047,
   phone: '+639171234567',
@@ -37,6 +38,7 @@ const storedOutlet = (overrides: Partial<Outlet> = {}): Outlet => ({
   timezone: 'Asia/Manila',
   supports_pickup: true,
   supports_delivery: true,
+  supports_dine_in: true,
   delivery_radius_km: 5,
   is_active: true,
   sort_order: 2,
@@ -163,10 +165,12 @@ describe('buildOutletWriteInput', () => {
     expect(() => buildOutletWriteInput(draft({ delivery_radius_km: '-2' }))).toThrow(/radius/i)
   })
 
-  it('rejects a branch that supports neither pickup nor delivery', () => {
+  it('rejects a branch that supports no fulfillment mode at all', () => {
     expect(() =>
-      buildOutletWriteInput(draft({ supports_pickup: false, supports_delivery: false }))
-    ).toThrow(/pickup or delivery/i)
+      buildOutletWriteInput(
+        draft({ supports_pickup: false, supports_delivery: false, supports_dine_in: false })
+      )
+    ).toThrow(/dine-in, pickup, or delivery/i)
   })
 
   it('carries operating hours through untouched', () => {
@@ -199,6 +203,7 @@ describe('outletToDraft', () => {
       name: outlet.name,
       slug: outlet.slug,
       address: outlet.address,
+      image_url: outlet.image_url,
       latitude: outlet.latitude,
       longitude: outlet.longitude,
       phone: outlet.phone,
@@ -206,6 +211,7 @@ describe('outletToDraft', () => {
       timezone: outlet.timezone,
       supports_pickup: outlet.supports_pickup,
       supports_delivery: outlet.supports_delivery,
+      supports_dine_in: outlet.supports_dine_in,
       delivery_radius_km: outlet.delivery_radius_km,
       is_active: outlet.is_active,
       sort_order: outlet.sort_order,

@@ -842,6 +842,8 @@ export interface Outlet {
   /** URL-safe, unique per tenant. Powers `?outlet=` and `/b/{slug}`. */
   slug: string;
   address: string | null;
+  /** Storefront photo for the branch chooser card. Null renders a placeholder. */
+  image_url: string | null;
   /** Required for nearest-branch detection; both set or both null. */
   latitude: number | null;
   longitude: number | null;
@@ -850,6 +852,8 @@ export interface Outlet {
   timezone: string | null;
   supports_pickup: boolean;
   supports_delivery: boolean;
+  /** Branch seats customers. Independent of pickup/delivery. */
+  supports_dine_in: boolean;
   /** Null/zero = unrestricted. Used for branch matching, not fee pricing. */
   delivery_radius_km: number | null;
   /** Soft on/off: deactivated branches keep their orders and their link. */

@@ -29,8 +29,8 @@ export type { Outlet } from '@/types/database'
  * before. The projection test asserts this list matches the type.
  */
 export const OUTLET_SELECT = `
-  id, tenant_id, name, slug, address, latitude, longitude, phone,
-  operating_hours, timezone, supports_pickup, supports_delivery,
+  id, tenant_id, name, slug, address, image_url, latitude, longitude, phone,
+  operating_hours, timezone, supports_pickup, supports_delivery, supports_dine_in,
   delivery_radius_km, is_active, sort_order, created_at, updated_at
 `
 
@@ -39,6 +39,8 @@ export interface OutletWriteInput {
   name: string
   slug: string
   address: string | null
+  /** Optional storefront photo for the branch chooser card. */
+  image_url: string | null
   latitude: number | null
   longitude: number | null
   phone: string | null
@@ -46,6 +48,7 @@ export interface OutletWriteInput {
   timezone: string | null
   supports_pickup: boolean
   supports_delivery: boolean
+  supports_dine_in: boolean
   delivery_radius_km: number | null
   is_active: boolean
   sort_order: number
@@ -108,12 +111,16 @@ export function normalizeOutletWrite(patch: OutletPatch): OutletPatch {
     normalized.slug = result.slug
   }
 
-  if (patch.supports_pickup !== undefined || patch.supports_delivery !== undefined) {
-    // Only enforceable when both sides are known; `update` merges first and
-    // re-checks, so a patch that turns the last one off is still caught.
-    if (patch.supports_pickup === false && patch.supports_delivery === false) {
-      throw new OutletValidationError('A branch must support pickup or delivery.')
-    }
+  // Only enforceable when every side is known; `update` merges first and
+  // re-checks, so a patch that turns the last mode off is still caught. A patch
+  // that leaves dine-in unmentioned cannot be judged here — the stored value may
+  // well be true — so it falls through to the post-merge check.
+  if (
+    patch.supports_pickup === false &&
+    patch.supports_delivery === false &&
+    patch.supports_dine_in === false
+  ) {
+    throw new OutletValidationError('A branch must support dine-in, pickup, or delivery.')
   }
 
   if (patch.latitude !== undefined && patch.latitude !== null) {
@@ -153,6 +160,8 @@ export function assertOutletInvariants(outlet: {
   longitude: number | null
   supports_pickup: boolean
   supports_delivery: boolean
+  /** Optional so pre-dine-in callers compile; absent is read as false, never as permission. */
+  supports_dine_in?: boolean
 }): void {
   const hasLat = outlet.latitude !== null
   const hasLng = outlet.longitude !== null
@@ -161,8 +170,10 @@ export function assertOutletInvariants(outlet: {
       'Set both latitude and longitude, or leave both blank.'
     )
   }
-  if (!outlet.supports_pickup && !outlet.supports_delivery) {
-    throw new OutletValidationError('A branch must support pickup or delivery.')
+  // Mirrors the widened `outlets_fulfillment_ck`: a branch must be reachable by
+  // at least one mode, or it can never be chosen for anything.
+  if (!outlet.supports_pickup && !outlet.supports_delivery && outlet.supports_dine_in !== true) {
+    throw new OutletValidationError('A branch must support dine-in, pickup, or delivery.')
   }
 }
 

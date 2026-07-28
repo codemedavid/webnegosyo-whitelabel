@@ -28,8 +28,11 @@ export interface OutletDraft {
   longitude: string
   phone: string
   timezone: string
+  /** Storefront photo shown on the branch chooser card. Blank = placeholder. */
+  image_url: string
   supports_pickup: boolean
   supports_delivery: boolean
+  supports_dine_in: boolean
   delivery_radius_km: string
   is_active: boolean
   // No editor yet — carried through verbatim so saving a branch never erases
@@ -45,8 +48,12 @@ export const EMPTY_OUTLET_DRAFT: OutletDraft = {
   longitude: '',
   phone: '',
   timezone: '',
+  image_url: '',
   supports_pickup: true,
   supports_delivery: true,
+  // Off by default, matching the column default: a merchant who has not asked
+  // for a Dine In tile should not get one on their storefront.
+  supports_dine_in: false,
   delivery_radius_km: '',
   is_active: true,
   operating_hours: null,
@@ -105,6 +112,7 @@ export function buildOutletWriteInput(
     name: draft.name,
     slug: previewOutletSlug(draft),
     address: nullableText(draft.address),
+    image_url: nullableText(draft.image_url),
     latitude: nullableNumber(draft.latitude, 'Latitude'),
     longitude: nullableNumber(draft.longitude, 'Longitude'),
     phone: nullableText(draft.phone),
@@ -112,6 +120,7 @@ export function buildOutletWriteInput(
     timezone: nullableText(draft.timezone),
     supports_pickup: draft.supports_pickup,
     supports_delivery: draft.supports_delivery,
+    supports_dine_in: draft.supports_dine_in,
     delivery_radius_km: nullableNumber(draft.delivery_radius_km, 'Delivery radius'),
     is_active: draft.is_active,
     sort_order: options.sortOrder ?? 0,
@@ -132,8 +141,10 @@ export function outletToDraft(outlet: Outlet): OutletDraft {
     longitude: numberInput(outlet.longitude),
     phone: textInput(outlet.phone),
     timezone: textInput(outlet.timezone),
+    image_url: textInput(outlet.image_url),
     supports_pickup: outlet.supports_pickup,
     supports_delivery: outlet.supports_delivery,
+    supports_dine_in: outlet.supports_dine_in === true,
     delivery_radius_km: numberInput(outlet.delivery_radius_km),
     is_active: outlet.is_active,
     operating_hours: outlet.operating_hours,

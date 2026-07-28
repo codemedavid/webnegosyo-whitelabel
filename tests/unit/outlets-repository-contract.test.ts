@@ -161,10 +161,23 @@ export function describeOutletRepositoryContract(
         await expect(repo.create(TENANT, input({ name: '   ' }))).rejects.toThrow(/name/i)
       })
 
-      it('rejects an outlet that supports neither pickup nor delivery', async () => {
+      it('rejects an outlet that supports no fulfillment mode at all', async () => {
         await expect(
-          repo.create(TENANT, input({ supports_pickup: false, supports_delivery: false }))
-        ).rejects.toThrow(/pickup or delivery/i)
+          repo.create(
+            TENANT,
+            input({ supports_pickup: false, supports_delivery: false, supports_dine_in: false })
+          )
+        ).rejects.toThrow(/dine-in, pickup, or delivery/i)
+      })
+
+      it('accepts a branch that only seats customers', async () => {
+        // Table service with no takeaway counter is a real shape, and the
+        // widened constraint is what lets a merchant configure it.
+        const created = await repo.create(
+          TENANT,
+          input({ supports_pickup: false, supports_delivery: false, supports_dine_in: true })
+        )
+        expect(created.supports_dine_in).toBe(true)
       })
 
       it('rejects out-of-range coordinates', async () => {
@@ -250,7 +263,7 @@ export function describeOutletRepositoryContract(
         await repo.update(TENANT, existing.id, { supports_pickup: false })
         await expect(
           repo.update(TENANT, existing.id, { supports_delivery: false })
-        ).rejects.toThrow(/pickup or delivery/i)
+        ).rejects.toThrow(/dine-in, pickup, or delivery/i)
       })
 
       it('rejects a patch that clears half a coordinate pair', async () => {
@@ -302,6 +315,7 @@ describe('OUTLET_SELECT projection', () => {
     'name',
     'slug',
     'address',
+    'image_url',
     'latitude',
     'longitude',
     'phone',
@@ -309,6 +323,7 @@ describe('OUTLET_SELECT projection', () => {
     'timezone',
     'supports_pickup',
     'supports_delivery',
+    'supports_dine_in',
     'delivery_radius_km',
     'is_active',
     'sort_order',
