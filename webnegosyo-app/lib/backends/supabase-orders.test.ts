@@ -188,6 +188,18 @@ describe("toOrderItemDto", () => {
     // Assert
     expect(dto.addons).toEqual([]);
   });
+
+  it("carries the parent order id, as Convex order items do", () => {
+    // Arrange: product analytics joins items back to their order's date, so an
+    // item without `orderId` cannot be attributed to a day.
+    const row = itemRow({ order_id: "order-42" });
+
+    // Act
+    const dto = toOrderItemDto(row);
+
+    // Assert
+    expect(dto.orderId).toBe("order-42");
+  });
 });
 
 describe("toOrderWithItems", () => {

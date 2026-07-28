@@ -403,6 +403,95 @@ describe("runPlatformMutation — status updates", () => {
   });
 });
 
+describe("runPlatformQuery — orders:getAllOrderItems", () => {
+  function itemRowFixture(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "item-1",
+      order_id: "order-1",
+      menu_item_id: "menu-1",
+      menu_item_name: "Latte",
+      quantity: 2,
+      price: 120,
+      subtotal: 240,
+      variation: null,
+      variation_selections: null,
+      addons: null,
+      special_instructions: null,
+      is_upsell_item: null,
+      is_bundle_item: null,
+      bundle_id: null,
+      bundle_name: null,
+      slot_name: null,
+      ...overrides,
+    };
+  }
+
+  it("is claimed as a supported ref so product analytics does not fall through to Convex", () => {
+    expect(isPlatformRefSupported("orders:getAllOrderItems")).toBe(true);
+  });
+
+  it("scopes items to the caller's tenant through the parent order", async () => {
+    // Arrange: order_items carries no tenant_id of its own, so an unscoped read
+    // would hand a superadmin every merchant's line items.
+    const { client, calls } = fakeClient({
+      order_items: [{ data: [itemRowFixture()], error: null }],
+    });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    // Assert
+    expect(calls[0].table).toBe("order_items");
+    expect(opsOf(calls, "select")[0][0]).toContain("orders!inner");
+    expect(opsOf(calls, "eq")).toContainEqual(["orders.tenant_id", TENANT]);
+  });
+
+  it("returns item DTOs carrying the parent order id", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      order_items: [{ data: [itemRowFixture({ order_id: "order-9" })], error: null }],
+    });
+
+    // Act
+    const items = (await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getAllOrderItems",
+      {}
+    )) as Array<{ orderId: string; menuItemName: string; quantity: number }>;
+
+    // Assert
+    expect(items).toEqual([
+      expect.objectContaining({ orderId: "order-9", menuItemName: "Latte", quantity: 2 }),
+    ]);
+  });
+
+  it("bounds the read rather than scanning every line item ever written", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      order_items: [{ data: [], error: null }],
+    });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    // Assert
+    expect(opsOf(calls, "limit")).toHaveLength(1);
+    expect(opsOf(calls, "limit")[0][0]).toBeLessThanOrEqual(10000);
+  });
+
+  it("returns an empty list when the tenant has no items yet", async () => {
+    // Arrange
+    const { client } = fakeClient({ order_items: [{ data: null, error: null }] });
+
+    // Act
+    const items = await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    // Assert
+    expect(items).toEqual([]);
+  });
+});
+
 describe("tenant guard", () => {
   it("refuses to run without a tenant rather than querying every tenant's orders", async () => {
     // Arrange: a superadmin who has not entered a store has no tenant, and
