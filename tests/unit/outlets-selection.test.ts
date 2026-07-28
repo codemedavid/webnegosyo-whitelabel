@@ -121,6 +121,16 @@ describe('outlet selection storage', () => {
     expect(readOutletSelection(storage, 'lucky-joy', NOW)).toBeNull()
   })
 
+  it('rejects a stored value that is valid JSON but not an object', () => {
+    storage.setItem(`${OUTLET_SELECTION_KEY_PREFIX}lucky-joy`, JSON.stringify('bgc'))
+    expect(readOutletSelection(storage, 'lucky-joy', NOW)).toBeNull()
+  })
+
+  it('rejects a stored null', () => {
+    storage.setItem(`${OUTLET_SELECTION_KEY_PREFIX}lucky-joy`, JSON.stringify(null))
+    expect(readOutletSelection(storage, 'lucky-joy', NOW)).toBeNull()
+  })
+
   it('clears on request', () => {
     writeOutletSelection(storage, 'lucky-joy', { outletId: 'outlet-bgc', mode: 'pickup' }, NOW)
     clearOutletSelection(storage, 'lucky-joy')
@@ -369,6 +379,34 @@ describe('resolveOutletSelection — what the picker is given', () => {
       urlSlug: null,
     })
     expect(result.choices.map((o) => o.slug)).toEqual(['aaa', 'bbb', 'ccc'])
+  })
+
+  it('breaks a sort_order tie by name so the list never shuffles between visits', () => {
+    const result = resolveOutletSelection({
+      isEnabled: true,
+      outlets: [
+        outlet({ id: 'z', slug: 'zzz', name: 'Zamboanga', sort_order: 1 }),
+        outlet({ id: 'a', slug: 'aaa', name: 'Alabang', sort_order: 1 }),
+      ],
+      stored: null,
+      urlSlug: null,
+    })
+    expect(result.choices.map((o) => o.name)).toEqual(['Alabang', 'Zamboanga'])
+  })
+
+  it('honours a stored pickup choice at a branch that stopped delivering', () => {
+    // The mirror of the mode-unsupported case: pickup must still be reachable.
+    const result = resolveOutletSelection({
+      isEnabled: true,
+      outlets: [
+        outlet({ supports_delivery: false }),
+        outlet({ id: 'outlet-alabang', slug: 'alabang', sort_order: 1 }),
+      ],
+      stored: { outletId: 'outlet-bgc', mode: 'pickup' },
+      urlSlug: null,
+    })
+    expect(result.shouldPrompt).toBe(false)
+    expect(result.outlet?.id).toBe('outlet-bgc')
   })
 
   it('does not mutate the outlets array it was handed', () => {
