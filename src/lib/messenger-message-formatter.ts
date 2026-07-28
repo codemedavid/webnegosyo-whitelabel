@@ -6,6 +6,7 @@
 import type { Order, Tenant } from '@/types/database'
 import { formatPrice } from './cart-utils'
 import { getOrderScheduledLabel } from './advance-order-utils'
+import { getOrderOutletLabel } from './outlets/order-outlet-display'
 
 /**
  * Format order details into a message for Messenger
@@ -25,6 +26,16 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
     }
     const emoji = orderTypeEmoji[order.order_type as keyof typeof orderTypeEmoji] || '📋'
     lines.push(`📋 Order Type: ${emoji} ${order.order_type}`)
+    lines.push('')
+  }
+
+  // Add the branch that took the order. Messenger is where most merchants
+  // actually read their tickets, so a branch missing here means the kitchen
+  // never learns which outlet the order was for. Absent for every
+  // single-location tenant, whose message is unchanged.
+  const outletLabel = getOrderOutletLabel(order)
+  if (outletLabel) {
+    lines.push(`🏪 Branch: ${outletLabel}`)
     lines.push('')
   }
 

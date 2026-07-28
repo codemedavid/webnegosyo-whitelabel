@@ -14,6 +14,7 @@ import {
   Smartphone,
   Loader2,
   CalendarClock,
+  Store,
 } from "lucide-react";
 import {
   Sheet,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { OrderStatusStepper } from "@/components/admin/order-status-stepper";
 import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
+import { getOrderOutletLabel } from "@/lib/outlets/order-outlet-display";
 import {
   useConvexOrderById,
   useUpdateConvexOrderStatus,
@@ -203,6 +205,19 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
               ) : null;
             })()}
 
+            {/* Branch that took the order (multi-branch tenants only) */}
+            {(() => {
+              const outletLabel = getOrderOutletLabel({
+                customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+              });
+              return outletLabel ? (
+                <div className="flex items-center gap-2 rounded-md border border-violet-300 bg-violet-100 px-3 py-2 text-violet-900">
+                  <Store className="size-5 shrink-0" />
+                  <span className="text-sm font-semibold">Branch · {outletLabel}</span>
+                </div>
+              ) : null;
+            })()}
+
             {/* Items Section */}
             <Card>
               <CardHeader className="pb-3">
@@ -294,7 +309,8 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                   <div className="mt-2 space-y-1 rounded-md bg-muted/50 p-2">
                     {Object.entries(order.customerData as Record<string, unknown>)
                       .filter(([key, value]) =>
-                        !["scheduled_for", "scheduled_for_label", "delivery_lat", "delivery_lng", "messenger_psid"].includes(key) &&
+                        // The branch has its own banner above; these are the raw carrier keys behind it.
+                        !["scheduled_for", "scheduled_for_label", "delivery_lat", "delivery_lng", "messenger_psid", "outlet_id", "outlet_name"].includes(key) &&
                         value !== "" && value != null
                       )
                       .map(

@@ -10,7 +10,8 @@ import {
   UtensilsCrossed,
   Package,
   Truck,
-  CalendarClock
+  CalendarClock,
+  Store
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,12 @@ import {
 } from '@/components/ui/select'
 import { formatPrice } from '@/lib/cart-utils'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import {
+  getOrderOutletLabel,
+  listOrderOutlets,
+  matchesOutletFilter,
+  OUTLET_FILTER_ALL,
+} from '@/lib/outlets/order-outlet-display'
 import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
 import type { OrderWithItems } from '@/lib/orders-service'
 
@@ -77,14 +84,20 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [orderTypeFilter, setOrderTypeFilter] = useState<string>('all')
+  const [outletFilter, setOutletFilter] = useState<string>(OUTLET_FILTER_ALL)
 
   // Extract unique order types from orders
   const orderTypes = Array.from(new Set(orders.map(o => o.order_type).filter(Boolean))) as string[]
 
+  // Branches are derived from the orders on screen, exactly like order types
+  // above. A single-location tenant yields an empty list, so no branch filter
+  // renders and this list looks precisely as it does today.
+  const outlets = listOrderOutlets(orders)
+
   const filteredOrders = orders.filter((order) => {
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
     const matchesType = orderTypeFilter === 'all' || order.order_type === orderTypeFilter
-    return matchesStatus && matchesType
+    return matchesStatus && matchesType && matchesOutletFilter(order, outletFilter)
   })
 
   if (orders.length === 0) {
@@ -129,6 +142,19 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
             </SelectContent>
           </Select>
         )}
+        {outlets.length > 0 && (
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filter by branch" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={OUTLET_FILTER_ALL}>All Branches</SelectItem>
+              {outlets.map(outlet => (
+                <SelectItem key={outlet.id} value={outlet.id}>{outlet.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -136,6 +162,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
           const StatusIcon = statusIcons[order.status]
           const itemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0)
           const scheduledLabel = getOrderScheduledLabel(order)
+          const outletLabel = getOrderOutletLabel(order)
 
           return (
             <Card key={order.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedOrder(order)}>
@@ -159,6 +186,15 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
                   >
                     <CalendarClock className="h-3.5 w-3.5" />
                     Scheduled · {scheduledLabel}
+                  </Badge>
+                )}
+                {outletLabel && (
+                  <Badge
+                    variant="outline"
+                    className="mt-2 w-fit gap-1.5 bg-violet-100 text-violet-800 border-violet-300 font-medium"
+                  >
+                    <Store className="h-3.5 w-3.5" />
+                    {outletLabel}
                   </Badge>
                 )}
               </CardHeader>

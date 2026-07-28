@@ -14,7 +14,8 @@ import {
   XCircle,
   FileText,
   ShoppingBag,
-  CalendarClock
+  CalendarClock,
+  Store
 } from 'lucide-react'
 import {
   Dialog,
@@ -30,6 +31,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
 import { OrderStatusManagement } from '@/components/admin/order-status-management'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
@@ -98,6 +100,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   const currentStatus = statusConfig[order.status]
   const StatusIcon = currentStatus.icon
   const scheduledLabel = getOrderScheduledLabel(order)
+  const outletLabel = getOrderOutletLabel(order)
 
   const itemsCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -151,6 +154,14 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
               <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                 <CalendarClock className="h-5 w-5 shrink-0" />
                 <span className="text-sm font-semibold">Pre-order · Scheduled for {scheduledLabel}</span>
+              </div>
+            )}
+
+            {/* Branch that took the order (multi-branch tenants only) */}
+            {outletLabel && (
+              <div className="flex items-center gap-2 rounded-md border border-violet-300 bg-violet-100 px-3 py-2 text-violet-900 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                <Store className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-semibold">Branch · {outletLabel}</span>
               </div>
             )}
 
@@ -283,7 +294,9 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                         <div className="space-y-3">
                           {Object.entries(order.customer_data)
                             .filter(([key, value]) =>
-                              !['scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid'].includes(key) &&
+                              // The branch has its own banner above; these are
+                              // the raw carrier keys behind it.
+                              !['scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid', 'outlet_id', 'outlet_name'].includes(key) &&
                               value !== '' && value != null
                             )
                             .map(([key, value]) => {

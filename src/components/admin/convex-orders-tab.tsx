@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock } from "lucide-react";
+import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useConvexOrders } from "@/hooks/use-convex-orders";
 import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
 import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
+import { getOrderOutletLabel } from "@/lib/outlets/order-outlet-display";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS = [
@@ -121,6 +122,9 @@ export function ConvexOrdersTab({ tenantId }: ConvexOrdersTabProps) {
               scheduled_for: (order.scheduledFor ?? null) as string | null,
               customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
             });
+            const outletLabel = getOrderOutletLabel({
+              customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+            });
 
             return (
               <button
@@ -167,6 +171,15 @@ export function ConvexOrdersTab({ tenantId }: ConvexOrdersTabProps) {
                     >
                       <CalendarClock className="size-3" />
                       Scheduled · {scheduledLabel}
+                    </Badge>
+                  )}
+                  {outletLabel && (
+                    <Badge
+                      variant="outline"
+                      className="mt-1 w-fit gap-1 bg-violet-100 text-violet-800 border-violet-300 text-[10px] font-medium"
+                    >
+                      <Store className="size-3" />
+                      {outletLabel}
                     </Badge>
                   )}
                 </div>
