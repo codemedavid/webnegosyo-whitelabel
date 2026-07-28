@@ -26,6 +26,7 @@ import {
   isValidScheduledTime,
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
+import { notifyCustomerOrderStock } from '@/lib/order-stock-notify'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { pickAndUploadPaymentProof, deletePaymentProof, isImageKitConfigured } from '@/lib/imagekit-upload'
 import { PaymentProofField } from '@/components/checkout/payment-proof-field'
@@ -411,6 +412,11 @@ export default function CheckoutScreen() {
           }))
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (supabase().from('order_items') as any).insert(itemsToInsert)
+
+          // Spend the ingredients. Deliberately after the lines are written —
+          // the platform reads them back rather than trusting anything sent
+          // from here, so calling earlier would find an empty order.
+          await notifyCustomerOrderStock(tenant.id, orderId)
         }
       }
 

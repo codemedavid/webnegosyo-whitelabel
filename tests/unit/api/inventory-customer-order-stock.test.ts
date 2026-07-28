@@ -55,12 +55,12 @@ function stubTables(options: {
       }
     }
     if (table === 'orders') {
+      // `order: null` means "no such order" and must not fall through to the
+      // default the way `??` would.
+      const order = 'order' in options ? options.order : { tenant_id: TENANT }
       return {
         select: () => ({
-          eq: () => ({
-            single: () =>
-              Promise.resolve({ data: options.order ?? { tenant_id: TENANT }, error: null }),
-          }),
+          eq: () => ({ single: () => Promise.resolve({ data: order, error: null }) }),
         }),
       }
     }
