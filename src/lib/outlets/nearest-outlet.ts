@@ -131,7 +131,7 @@ function resolveCoverage(
 }
 
 /** Stable fallback order for outlets we cannot rank by distance. */
-function byManualOrder(a: OutletLocation, b: OutletLocation): number {
+export function byManualOrder(a: OutletLocation, b: OutletLocation): number {
   if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
   return a.id.localeCompare(b.id)
 }

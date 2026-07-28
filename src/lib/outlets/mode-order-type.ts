@@ -21,6 +21,34 @@ const MODE_TO_ORDER_TYPE: Record<OutletOrderMode, OrderType['type']> = {
   delivery: 'delivery',
 }
 
+/**
+ * The inverse, for merchants who ask for the branch at checkout: the customer
+ * picks the order type first, and it decides which branches may take the order.
+ *
+ * Null means "nothing to narrow by" — no selection yet, an id that is not in
+ * the list, or a custom order type that is not a branch fulfillment mode. The
+ * caller then offers every active branch rather than none.
+ */
+export function resolveModeForOrderType(
+  orderTypes: readonly OrderType[],
+  orderTypeId: string | null | undefined
+): OutletOrderMode | null {
+  if (!orderTypeId) return null
+
+  const selected = orderTypes.find((orderType) => orderType.id === orderTypeId)
+  if (!selected) return null
+
+  const mode = ORDER_TYPE_TO_MODE[selected.type as OutletOrderMode]
+  return mode ?? null
+}
+
+/** The same identity mapping read the other way; unknown types fall out as undefined. */
+const ORDER_TYPE_TO_MODE: Partial<Record<OutletOrderMode, OutletOrderMode>> = {
+  dine_in: 'dine_in',
+  pickup: 'pickup',
+  delivery: 'delivery',
+}
+
 export function resolveOrderTypeIdForMode(
   orderTypes: readonly OrderType[],
   mode: OutletOrderMode
