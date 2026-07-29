@@ -29,6 +29,7 @@ import { buildPosOrder } from "../../lib/pos-order";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
 import { formatPeso } from "../../lib/format";
+import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
@@ -206,7 +207,10 @@ export default function PosTenderScreen() {
       }
 
       reset();
-      router.replace("/(main)/pos-sales");
+      // navigate, not replace: replacing into a sibling tab renames the tab
+      // navigator's state key and remounts it mid-transition, which crashes with
+      // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+      goTo(router, "/(main)/pos-sales");
     } catch (err) {
       Alert.alert(
         "Could not complete the sale",

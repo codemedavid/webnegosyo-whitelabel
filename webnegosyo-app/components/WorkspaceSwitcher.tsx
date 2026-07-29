@@ -17,6 +17,7 @@ import { getWorkspace } from "../lib/workspaces";
 import { allowedWorkspaces } from "../lib/staff-permissions";
 import { useWorkspaceStore } from "../stores/workspace-store";
 import { useAuthStore } from "../stores/auth-store";
+import { goTo, type TabAwareRouter } from "../lib/tab-navigation";
 
 export function WorkspaceSwitcher() {
   const workspace = useWorkspaceStore((s) => s.workspace);
@@ -35,7 +36,19 @@ export function WorkspaceSwitcher() {
     setWorkspace(key);
     const target = visibleWorkspaces.find((w) => w.key === key);
     const landingTab = target?.defaultTab ?? getWorkspace(key).defaultTab;
-    router.replace(`/(main)/${landingTab}` as never);
+    // navigate, not replace: replacing into a sibling tab renames the tab
+    // navigator's state key and remounts it mid-switch, which crashes with
+    // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+    //
+    // The cast is expo-router's typed-routes limitation, not a soundness hole:
+    // its generated Href union lists every tab literally, so a computed
+    // `/(main)/${tab}` template never matches. (The previous router.replace()
+    // here needed `as never` for exactly the same reason.) Every landingTab
+    // comes from the workspace registry, so the route always exists.
+    goTo(
+      router as TabAwareRouter<`/(main)/${string}`>,
+      `/(main)/${landingTab}`,
+    );
   };
 
   return (

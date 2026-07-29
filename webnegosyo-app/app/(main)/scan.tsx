@@ -24,6 +24,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
+import { goTo } from "../../lib/tab-navigation";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
@@ -220,7 +221,10 @@ export default function ScanScreen() {
       // createOrder is idempotent on clientOrderId, so a duplicate scan just
       // returns the existing order. Either way the order is now in the queue,
       // so we land the vendor straight on the orders list.
-      router.replace("/(main)/orders");
+      // navigate, not replace: replacing into a sibling tab renames the tab
+      // navigator's state key and remounts it mid-transition, which crashes with
+      // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+      goTo(router, "/(main)/orders");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to accept the order.";
       Alert.alert("Could not accept order", msg, [{ text: "OK" }]);

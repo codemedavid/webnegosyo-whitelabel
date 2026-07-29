@@ -36,6 +36,7 @@ import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
 import { productHref } from "../../../lib/navigation";
+import { goTo } from "../../../lib/tab-navigation";
 import { pickProductImage } from "../../../lib/image-picker";
 import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
@@ -193,7 +194,10 @@ export default function ProductEditorScreen() {
     try {
       if (isNew) {
         const created = await createProduct(tenantId, candidate);
-        router.replace(productHref(created.id));
+        // navigate, not replace: replacing into a route inside the tab
+        // navigator renames its state key and remounts it, which crashes with
+        // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+        goTo(router, productHref(created.id));
       } else {
         await updateProduct(productId, tenantId, candidate);
       }

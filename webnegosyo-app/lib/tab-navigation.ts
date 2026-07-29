@@ -33,10 +33,17 @@ const TAB_GROUP_PREFIX = "/(main)/";
 
 export type NavigationVerb = "navigate" | "replace";
 
-/** The subset of expo-router's `router` this module drives. */
-export interface TabAwareRouter {
-  navigate: (href: string) => void;
-  replace: (href: string) => void;
+/**
+ * The subset of expo-router's `router` this module drives.
+ *
+ * Generic over the href type so it accepts the real `router`, whose methods are
+ * typed against expo-router's generated `Href` union rather than plain `string`.
+ * Callers infer `H` from the href they pass, which keeps typed-routes checking
+ * at the call site instead of widening it away here.
+ */
+export interface TabAwareRouter<H extends string = string> {
+  navigate: (href: H) => void;
+  replace: (href: H) => void;
 }
 
 /** True when `href` addresses a route inside the merchant tab navigator. */
@@ -59,7 +66,7 @@ export function navigationVerbFor(href: string): NavigationVerb {
  * it keeps "replace" semantics when leaving the tab tree and downgrades to
  * "navigate" when staying inside it.
  */
-export function goTo(router: TabAwareRouter, href: string): void {
+export function goTo<H extends string>(router: TabAwareRouter<H>, href: H): void {
   if (navigationVerbFor(href) === "navigate") {
     router.navigate(href);
     return;

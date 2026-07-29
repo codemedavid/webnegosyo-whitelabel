@@ -17,6 +17,7 @@ import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { goTo } from "../../lib/tab-navigation";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -190,7 +191,7 @@ export default function DashboardScreen() {
         </View>
         <ErrorState
           message={error ?? "Convex is not configured for this tenant. Please contact support."}
-          onRetry={() => router.replace("/(main)/dashboard")}
+          onRetry={() => goTo(router, "/(main)/dashboard")}
         />
       </View>
     );
