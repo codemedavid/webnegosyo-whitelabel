@@ -183,12 +183,18 @@ this change.
   `` `/(main)/${tab}` `` template cannot match it. The previous `router.replace`
   needed `as never` at the same spot for the same reason.
 
-## Unrelated failures observed
+## Full suite
 
-`npx jest` (full suite) reports **2 failures in `lib/staff-permissions.test.ts`**
-that are **not** from this work. A concurrent session edited `lib/workspaces.ts`
-and `lib/staff-permissions.ts` to add a `branches` tab to the Insights view;
-`allowedWorkspaces` assertions still expect the old tab lists. Those files were
-not staged in either checkpoint commit here.
+While this work was in progress a concurrent session was mid-edit on
+`lib/workspaces.ts` / `lib/staff-permissions.ts` (adding a `branches` tab to the
+Insights view), which transiently failed 2 tests in
+`lib/staff-permissions.test.ts`. Those files were never staged in either
+checkpoint commit here. Once that session landed its own commit, the full suite
+is clean:
 
-Excluding that pre-existing breakage: **66 suites passed, 1068 tests passed.**
+```
+npx jest
+
+Test Suites: 67 passed, 67 total
+Tests:       1070 passed, 1070 total
+```
