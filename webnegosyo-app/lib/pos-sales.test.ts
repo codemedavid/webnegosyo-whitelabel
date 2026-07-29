@@ -63,6 +63,7 @@ describe("summarizeCounterSales", () => {
       cashTotal: 0,
       nonCashTotal: 0,
       changeGiven: 0,
+      refundsPaid: 0,
     });
   });
 
