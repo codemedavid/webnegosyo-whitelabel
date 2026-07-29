@@ -268,7 +268,7 @@ describe("posCartToOrderItems", () => {
       CATALOG,
     );
 
-    const [item] = posCartToOrderItems(lines);
+    const [item] = posCartToOrderItems(lines, CATALOG);
 
     expect(item.price).toBe(120);
     expect(item.subtotal).toBe(240);
@@ -290,7 +290,7 @@ describe("posCartToOrderItems", () => {
     ];
 
     const { lines } = hydratePosCart(original, CATALOG);
-    const [item] = posCartToOrderItems(lines);
+    const [item] = posCartToOrderItems(lines, CATALOG);
 
     expect(item).toEqual({
       menuItemId: "item-latte",
@@ -309,7 +309,7 @@ describe("posCartToOrderItems", () => {
   it("omits optional fields rather than writing undefined into the row", () => {
     const { lines } = hydratePosCart([orderItem()], CATALOG);
 
-    expect(posCartToOrderItems(lines)[0]).toEqual({
+    expect(posCartToOrderItems(lines, CATALOG)[0]).toEqual({
       menuItemId: "item-latte",
       menuItemName: "Latte",
       quantity: 1,
