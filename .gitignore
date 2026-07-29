@@ -62,3 +62,8 @@ public/downloads/*.dmg
 
 # Apple auth keys (never commit)
 *.p8
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/

@@ -18,7 +18,8 @@
     "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
     "db:backfill-customers": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers.ts",
     "db:backfill-customers-convex": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers-convex.ts",
-    "convex:prebundle": "node scripts/prebundle-convex.mjs"
+    "convex:prebundle": "node scripts/prebundle-convex.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -81,6 +82,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@jest/globals": "^30.2.0",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -92,6 +94,7 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.180.0",
     "@types/uuid": "^10.0.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.9",
     "jest": "^30.2.0",
