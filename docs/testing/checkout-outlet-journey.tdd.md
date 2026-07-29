@@ -146,6 +146,94 @@ Above the 80% threshold on every axis.
   This means guarantees #1 and #2 are proven at the hook layer but the *end* of
   that path is not yet provable in a browser.
 
+---
+
+# Cycle 2 — First paint of the branch question
+
+**Checkpoints**: `0c601b0` (RED) → `c43cda3` (GREEN)
+**Reported by the user**: "checkout still has to load more before it shows the outlets".
+
+## Journey
+
+As a customer at a multi-branch storefront, I want to be asked which branch as
+soon as the app can ask it, so that I am not watching a spinner while it loads
+things the question does not need.
+
+## Defect
+
+Checkout loads serially:
+
+```
+tenant  →  order types  →  form fields + payment methods  →  isLoading = false
+```
+
+`CheckoutLoading` clears only at the end of that chain, and the branch screen sat
+behind it. The branch question needs the tenant and the order types — **not** the
+form fields or payment methods — so the customer waited out a round trip of data
+the question never reads.
+
+Fix: the branch screen renders *ahead* of the loading screen in
+`src/app/[tenant]/checkout/page.tsx`, and the form finishes arriving behind it.
+
+### The overcorrection this had to avoid
+
+The order type is what narrows branches to the ones that can serve the order.
+Rendering the picker the instant branches arrive would offer branches before that
+narrowing is possible — and `resolveCheckoutOutletSelection` would then drop the
+customer's pick a moment later, which is the exact "silently yanked" behaviour
+cycle 1 fixed.
+
+An empty `orderTypes` array cannot be told apart from one that has not loaded, so
+`useCheckout` now reports `areOrderTypesReady` explicitly and the picker waits for
+both halves:
+
+```ts
+const isLoading = isAfterTiming && (!hasLoadedOutlets || !areOrderTypesReady)
+```
+
+## RED
+
+```
+$ npx jest --testPathPatterns=checkout-outlet-first-paint
+Tests:       2 failed, 3 passed, 5 total
+```
+
+One of the two initially passed for the wrong reason — it asserted during the
+pending-fetch window, so it would have passed without the fix. It was tightened to
+wait for the branches to actually land (`choices` length 2) before asserting, at
+which point it failed properly.
+
+## GREEN
+
+```
+$ npx jest --testPathPatterns=checkout-outlet      -> 45 passed
+$ npm run test                                     -> 287 suites, 3502 passed
+$ npx tsc --noEmit                                 -> 0 errors under src/
+$ npx playwright test                              -> 3 passed, 1 skipped
+```
+
+Touched-module coverage: **99.81% stmts / 92% branch / 100% funcs**.
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|--------------------|------|------|--------|
+| 16 | The branch question shows while form fields and payment methods still load | `checkout-outlet-first-paint.test.tsx:asks for the branch while form fields and payment methods still load` | unit | PASS |
+| 17 | An ordinary checkout still shows the ordinary loading screen | `…:still shows the ordinary loading screen when no branch is being asked for` | unit | PASS |
+| 18 | A completed order is never covered by the branch screen | `…:never covers a completed order with the branch screen` | unit | PASS |
+| 19 | Branches are not offered before the order type that narrows them | `…:keeps loading until the order types have landed, even once branches have` | unit | PASS |
+| 20 | Ready once both branches and order types are in | `…:is ready once both the branches and the order types are in` | unit | PASS |
+
+## Remaining gap
+
+The outlets fetch still cannot start until the tenant row lands, because the
+`after` timing flag lives on that row and a speculative fetch would make every
+single-location tenant pay for a query it does not need. The floor is therefore
+`tenant → outlets`; this cycle removed the *form fields + payment methods* round
+trip from the wait, not the tenant one. Closing that last gap would need the menu
+page to hand the branch list forward, which is a larger change than the reported
+problem warrants.
+
 ## Merge evidence
 
 If squashed, preserve:
