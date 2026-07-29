@@ -419,10 +419,10 @@ on either of the other two backends still read every branch's orders.
 ### 12a — tenant-owned Supabase
 
 - RED: `npx jest tests/unit/tenant-supabase-orders-branch` → `Tests: 2 failed, 4 passed`.
-  Commit `cd6e6c1 test: add reproducer for branch scoping on the tenant Supabase backend`.
+  Commit `72a7832 test: add reproducer for branch scoping on the tenant Supabase backend`.
 - GREEN: `Tests: 49 passed` across the three tenant-Supabase suites (the two
   pre-existing ones included, so the change is additive).
-  Commit `6a4a44b feat: scope tenant-Supabase order reads to the caller's branch`.
+  Commit `2d209f2 feat: scope tenant-Supabase order reads to the caller's branch`.
 
 The filter goes into the SQL, not onto the result. These queries carry
 `count: "exact"`; filtering afterwards would return a 20-row page with 3 rows
@@ -469,7 +469,7 @@ would have shown a branch account an empty queue on a store taking orders
 normally: an outage, not a visible scoping bug.
 
 - RED: `npx jest tests/unit/order-outlet-convex-key` → `Tests: 3 failed, 4 passed`.
-  Commit `0a3d2cd test: add reproducer for reading a Convex order's branch`.
+  Commit `b4dc6fa test: add reproducer for reading a Convex order's branch`.
 - GREEN: `Tests: 7 passed`. Commit `8d9b43c feat: scope the Convex order queue
   to the account's branch`.
 
