@@ -85,6 +85,34 @@ the migration lands would 400 the entire admin — the failure mode
   projection and the account degrades to store-wide; unrelated errors are not
   retried; a missing row is not reported as an error.
 
+### 5. Scoping the order reads (`src/lib/outlets/branch-scope-query.ts`)
+
+Applies an account's branch to the queries themselves, and wires it into
+`getOrdersByTenant` / `getOrderById` — the two functions every web-admin order
+read funnels through.
+
+- RED: `npx jest tests/unit/branch-scope-query.test.ts` →
+  `Test Suites: 1 failed`, `Tests: 0 total` (module absent).
+- GREEN: same command → `Tests: 11 passed, 11 total`.
+- Regression check: `npx jest` → `Tests: 3469 passed, 8 skipped`,
+  `283 suites passed`. `npx tsc --noEmit` → no errors under `src/`.
+- Guarantees: the branch filter is applied in SQL, so another branch's rows
+  never leave the database and the paginated `count` describes the store the
+  account can actually see (a client-side filter would return a 20-row page
+  with 3 visible); a single order is checked after fetch and refused as
+  `Order not found`, so the refusal cannot confirm which ids exist elsewhere;
+  an all-branch account adds no filter and gets the identical query it does
+  today.
+
+### Migration applied
+
+`20260802120000_branch_scoped_staff.sql` was applied via Supabase MCP on
+2026-07-29. Post-apply verification query: `has_outlet_column: 1`,
+`total_accounts: 157`, `branch_scoped_accounts: 0`, `has_scope_check: 1`,
+`has_tenant_trigger: 1`, `has_staff_limit_trigger: 1`, `outlets_rows: 4` — every
+existing account still resolves to the whole store, and both new triggers are
+inert until a branch is assigned.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -120,14 +148,20 @@ Whole-project validation: `npx tsc --noEmit` reports no errors under `src/`
 
 ## Known gaps
 
-1. **The migration is not applied.** `20260802120000_branch_scoped_staff.sql`
-   is committed only. Until it runs, `fetchAppUserScope` degrades every account
-   to store-wide (safe), but staff creation will fail on the `outlet_id` insert.
-   Apply before shipping the UI.
-2. **Phase 4 (read scoping) not started** — the orders lists, dashboards, and
-   POS still show every branch to a branch account. `filterOrdersToScope` exists
-   but nothing calls it yet, and no branch-aware RLS policy has been added to
-   `orders`.
+1. ~~The migration is not applied.~~ Applied 2026-07-29; see above.
+2. **Phase 4 is partial.** The platform-Supabase web-admin path
+   (`getOrdersByTenant`, `getOrderById`) is scoped. Still unscoped:
+   - the Convex order path (`ConvexOrdersWrapper` and the dashboards that read
+     from it) — needs `scopeOrderRows` applied to the fetched result, since the
+     branch lives in unindexed `customer_data` there;
+   - tenant-owned Supabase projects (`getTenantSupabaseOrdersPage`);
+   - the POS, which neither reads through `getOrdersByTenant` nor stamps a
+     branch onto the orders it creates;
+   - **no branch-aware RLS policy on `orders`.** The scope is enforced in the
+     service layer, which every admin read goes through, but not by the
+     database. Adding it means rewriting the existing tenant-isolation SELECT
+     policy (PERMISSIVE policies OR together, so a new policy cannot restrict),
+     which deserves its own reviewed change.
 3. **Phase 5 (merchant app session) not started** — `session-resolve.ts` does
    not yet select or carry `outlet_id`.
 4. **Phase 6 (cross-branch analytics) not started** — no
