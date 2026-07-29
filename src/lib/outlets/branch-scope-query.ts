@@ -27,9 +27,14 @@ export interface EqQuery<T> {
  * database. Backends that carry the branch in `customer_data` cannot filter in
  * the query and use `scopeOrderRows` on the result instead.
  */
-export function scopeOrdersQuery<T extends EqQuery<T>>(query: T, scope: BranchScope): T {
+export function scopeOrdersQuery<T>(query: T, scope: BranchScope): T {
   if (scope.kind === 'all') return query
-  return query.eq('outlet_id', scope.outletId)
+  // `T` is deliberately unconstrained. The self-referential `T extends EqQuery<T>`
+  // form reads better, but PostgREST's builder types are deep enough that
+  // resolving it tripped `TS2589: Type instantiation is excessively deep` at the
+  // tenant-Supabase call site. The cast is checked by the tests below, which
+  // pass fakes shaped exactly like the builder.
+  return (query as EqQuery<T>).eq('outlet_id', scope.outletId)
 }
 
 /**
