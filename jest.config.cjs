@@ -23,7 +23,13 @@ const config = {
   // jsdom/next config, where several cannot resolve their native and
   // expo-constants mocks. They are not skipped — `npm test` inside
   // webnegosyo-app runs all of them.
-  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/webnegosyo-app/'],
+  // `e2e/` is Playwright's, not Jest's — its specs import @playwright/test and
+  // drive a real browser, so Jest picking them up only ever produces failures.
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/webnegosyo-app/',
+    '<rootDir>/e2e/',
+  ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
