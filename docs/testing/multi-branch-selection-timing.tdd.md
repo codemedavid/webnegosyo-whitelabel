@@ -152,10 +152,11 @@ Lint: `npm run lint` → no new errors from these files (one pre-existing
 - **`src/lib/outlets/outlets-client.ts` is at 0%.** It is a thin Supabase read that the hook
   tests mock. Its failure path (log + return `[]`, which degrades to "no question to ask") is
   reasoned, not executed by a test.
-- **The migration is written but NOT applied.** `20260801120000_outlet_selection_timing.sql`
-  must be run before any tenant can be switched to `'after'`. Until then every tenant reads as
-  `'before'` — the shipped behaviour — because the storefront tenant read retries with `*` on
-  undefined-column errors and the lib layer defaults anything unexpected to `'before'`.
+- ~~The migration is written but NOT applied.~~ **APPLIED 2026-07-29** via Supabase MCP as
+  `outlet_selection_timing`. Verified afterwards: 171 tenants, all 171 at `'before'`, none at
+  `'after'`, default `'before'::text`, and `tenants_outlet_selection_timing_ck` present and
+  confirmed to reject an out-of-range value (probed inside a rolled-back `DO` block, no row
+  changed). One tenant has `multi_branch_enabled` on, and it kept the shipped splash flow.
 - **No E2E.** The full "browse → checkout → pick branch → order lands on that branch" path is
   covered by unit tests at each seam, not end to end in a browser.
 - **The `'after'` picker is not styled per checkout design.** It renders in the shell above the
