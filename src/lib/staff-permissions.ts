@@ -11,6 +11,7 @@ export const STAFF_PERMISSION_KEYS = [
   'customers',
   'settings',
   'pos',
+  'branch_staff',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -46,6 +47,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   pos: {
     label: 'POS',
     description: 'Take orders at the counter with the desktop POS',
+  },
+  branch_staff: {
+    label: 'Branch Staff',
+    description: 'Add and manage staff accounts for their own branch only',
   },
 }
 

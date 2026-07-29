@@ -27,6 +27,8 @@ describe('staff permission registry', () => {
       'customers',
       'settings',
       'pos',
+      // Multi-branch: lets a branch admin manage staff at its own branch only.
+      'branch_staff',
     ])
   })
 
