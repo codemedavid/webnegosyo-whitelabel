@@ -120,6 +120,13 @@ describe("isPlatformRefSupported", () => {
     expect(isPlatformRefSupported("orders:updateOrderStatus")).toBe(true);
   });
 
+  it("claims the order-edit refs", () => {
+    // Without these in the allowlist the edit screen silently no-ops on the
+    // platform backend — the mutation is dispatched and nothing is written.
+    expect(isPlatformRefSupported("orders:reviseOrder")).toBe(true);
+    expect(isPlatformRefSupported("orders:recordPayment")).toBe(true);
+  });
+
   it("does not claim refs it cannot serve yet", () => {
     // Analytics still lives only on Convex. Claiming it would make the screen
     // render an empty chart instead of its "needs a backend update" placeholder.
