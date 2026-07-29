@@ -199,6 +199,10 @@ export interface Tenant {
   // Multi-branch (multi-outlet) storefront. Missing/null = off; see
   // src/lib/outlets/multi-branch-flag.ts (single source of truth).
   multi_branch_enabled?: boolean;
+  // When the customer picks a branch: 'before' the menu (splash chooser) or
+  // 'after' (at checkout). Missing/null/unknown = 'before'; see
+  // src/lib/outlets/selection-timing.ts (single source of truth).
+  outlet_selection_timing?: string | null;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen

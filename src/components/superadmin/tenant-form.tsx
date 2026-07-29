@@ -76,6 +76,10 @@ export function TenantForm({ tenant }: TenantFormProps) {
     // values through so saving here cannot silently switch them off.
     inventory_enabled: tenant?.inventory_enabled ?? false,
     multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
+    // Not editable on this form either; pass the tenant's own choice through so
+    // saving here cannot silently move the branch question back to the splash.
+    outlet_selection_timing:
+      tenant?.outlet_selection_timing === 'after' ? ('after' as const) : ('before' as const),
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
@@ -144,6 +148,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       modifier_groups_enabled: formData.modifier_groups_enabled,
       inventory_enabled: formData.inventory_enabled,
       multi_branch_enabled: formData.multi_branch_enabled,
+      outlet_selection_timing: formData.outlet_selection_timing,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
       pairing_rules_enabled: formData.pairing_rules_enabled,

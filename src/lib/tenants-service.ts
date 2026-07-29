@@ -23,6 +23,11 @@ type DeliveryFeeColumns = {
   delivery_radius_km?: number | null
 }
 
+// Same lag for the multi-branch selection-timing migration.
+type OutletTimingColumns = {
+  outlet_selection_timing?: string
+}
+
 // Domain validation: must be a valid domain format (not necessarily a URL)
 const domainSchema = z
   .union([
@@ -108,6 +113,10 @@ export const tenantSchema = z.object({
   // may get without asking. Omitting this key made `parse` strip it, so the
   // superadmin toggle saved nothing at all.
   multi_branch_enabled: z.boolean().default(false),
+  // WHEN the branch is chosen. Defaults to the shipped behaviour, and an
+  // unrecognised value is rejected rather than coerced: landing a tenant
+  // between the two flows means no gate and no checkout picker.
+  outlet_selection_timing: z.enum(['before', 'after']).default('before'),
   // QR-handoff ordering
   qr_handoff_enabled: z.boolean().optional(),
   // Flash screen
@@ -228,7 +237,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
   if (parsed.domain && (await isDomainTaken(parsed.domain, undefined, ctx))) {
     throw new Error('Domain is already taken')
   }
-  const insertPayload: TenantsInsert & DeliveryFeeColumns = {
+  const insertPayload: TenantsInsert & DeliveryFeeColumns & OutletTimingColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -285,6 +294,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
     multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -361,7 +371,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   if (oldTenant?.domain) {
     clearDomainCache(oldTenant.domain)
   }
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OutletTimingColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -418,6 +428,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
     multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

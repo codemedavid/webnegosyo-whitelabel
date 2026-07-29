@@ -8,7 +8,7 @@ import { resolveOrderTypeIdForMode } from '@/lib/outlets/mode-order-type'
 import type { OrderType } from '@/types/database'
 import { OutletSplash } from '@/components/customer/outlet-splash'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
-import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { shouldGateMenuForOutlet } from '@/lib/outlets/selection-timing'
 import type { SelectableOutlet } from '@/lib/outlets/outlet-selection'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { Outlet, Tenant } from '@/types/database'
@@ -31,12 +31,13 @@ interface OutletGateProps {
  * Decides whether the customer sees the branch chooser before the menu.
  *
  * Renders nothing at all unless the tenant opted in AND has two or more active
- * branches AND the customer has not already chosen one — so a single-location
- * tenant, or one with the flag off, gets exactly today's storefront. The menu
- * itself is untouched; this sits over it and then gets out of the way.
+ * branches AND asked for the branch BEFORE the menu AND the customer has not
+ * already chosen one — so a single-location tenant, one with the flag off, or
+ * one that moved the question to checkout gets exactly today's storefront. The
+ * menu itself is untouched; this sits over it and then gets out of the way.
  */
 export function OutletGate({ tenant, tenantSlug, outlets }: OutletGateProps) {
-  if (!isMultiBranchEnabled(tenant) || outlets.length < 2) return null
+  if (!shouldGateMenuForOutlet(tenant, outlets)) return null
 
   return (
     <Suspense fallback={null}>

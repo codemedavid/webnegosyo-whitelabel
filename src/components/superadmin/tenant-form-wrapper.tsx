@@ -10,6 +10,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImageUpload } from '@/components/shared/image-upload'
@@ -92,6 +99,8 @@ interface TenantFormData {
   inventory_enabled: boolean
   // Multi-branch
   multi_branch_enabled: boolean
+  // When the branch is asked for: before the menu (splash) or at checkout.
+  outlet_selection_timing: 'before' | 'after'
   // Inventory alerts
   low_stock_alerts_enabled: boolean
   auto_86_enabled: boolean
@@ -882,8 +891,9 @@ function MultiBranchFeatureSection({
       <CardHeader>
         <CardTitle>Branches</CardTitle>
         <p className="text-sm text-muted-foreground mt-1">
-          For merchants with more than one physical outlet. Customers pick a branch before they
-          browse, and each order records which branch fulfills it.
+          For merchants with more than one physical outlet. Customers pick a branch — before they
+          browse or at checkout, the merchant&apos;s choice — and each order records which branch
+          fulfills it.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -903,6 +913,32 @@ function MultiBranchFeatureSection({
             disabled={isPending}
           />
         </div>
+
+        {formData.multi_branch_enabled && (
+          <div className="space-y-2 rounded-lg border p-4">
+            <Label htmlFor="outlet_selection_timing">When customers pick a branch</Label>
+            <p className="text-sm text-muted-foreground">
+              &quot;Before the menu&quot; scopes the whole visit to one branch. &quot;At
+              checkout&quot; suits merchants whose menu is identical everywhere and who want
+              nothing between the customer and the food.
+            </p>
+            <Select
+              value={formData.outlet_selection_timing}
+              onValueChange={(value) =>
+                setFormData({ ...formData, outlet_selection_timing: value as 'before' | 'after' })
+              }
+              disabled={isPending}
+            >
+              <SelectTrigger id="outlet_selection_timing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="before">Before the menu (branch chooser)</SelectItem>
+                <SelectItem value="after">At checkout (beside the order type)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -1630,6 +1666,8 @@ export function TenantFormWrapper({
     inventory_enabled: tenant?.inventory_enabled ?? false,
     // Multi-branch — missing/null on every existing row reads as off.
     multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
+    // Missing/null/unknown reads as 'before' — the behaviour that shipped first.
+    outlet_selection_timing: tenant?.outlet_selection_timing === 'after' ? 'after' : 'before',
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
     // Pairing rules
@@ -1710,6 +1748,7 @@ export function TenantFormWrapper({
       // Inventory
       inventory_enabled: formData.inventory_enabled,
       multi_branch_enabled: formData.multi_branch_enabled,
+      outlet_selection_timing: formData.outlet_selection_timing,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
       // Pairing rules
