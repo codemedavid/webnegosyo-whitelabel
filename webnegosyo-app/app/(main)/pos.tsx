@@ -14,12 +14,15 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { filterQueueToScope } from "../../lib/branch-dashboard";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import {
   selectIncomingOrders,
   countUnseenIncoming,
   type RealtimeQueue,
+  type IncomingOrder,
 } from "../../lib/pos-incoming";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import {
@@ -103,7 +106,15 @@ export default function PosScreen() {
   // The same live queue the dashboard and the ringtone watch, so the backend
   // de-dupes the subscription. Orders from the web land here without a refresh.
   const { data: queue } = useSafeQuery<RealtimeQueue>(getRealtimeQueueRef);
-  const incomingOrders = useMemo(() => selectIncomingOrders(queue), [queue]);
+  const scope = useBranchScope();
+  // The register only accepts its own branch's incoming orders.
+  const incomingOrders = useMemo(
+    () =>
+      selectIncomingOrders(
+        filterQueueToScope(scope, queue as Record<string, IncomingOrder[]> | undefined),
+      ),
+    [scope, queue],
+  );
 
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),

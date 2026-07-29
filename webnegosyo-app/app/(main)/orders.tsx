@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshCon
 import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
+import { filterOrdersToScope } from "../../lib/branch-scope";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
@@ -66,6 +68,7 @@ export default function OrdersScreen() {
   // Fetch the full recent queue once, then filter/search/sort on the client so
   // every status pill can show a live count without extra round-trips.
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
+  const scope = useBranchScope();
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { autoPrint, hasPrinter } = useOrderPrint();
 
@@ -74,7 +77,13 @@ export default function OrdersScreen() {
     setTimeout(() => setRefreshing(false), 600);
   }, []);
 
-  const allOrders = useMemo(() => orders ?? [], [orders]);
+  // A branch account sees only its own branch's orders. Filtering here — before
+  // the counts, search and sort are computed — keeps the status pill counts
+  // describing the same list the merchant is looking at.
+  const allOrders = useMemo(
+    () => filterOrdersToScope(scope, orders) as ConvexOrder[],
+    [scope, orders],
+  );
 
   const counts = useMemo(() => {
     const map: Record<string, number> = { all: allOrders.length };

@@ -66,7 +66,7 @@ const CANCELLED = "cancelled";
  * An all-branch account gets the caller's own object back — the common case,
  * and it keeps the reference stable for `useMemo` consumers.
  */
-export function filterQueueToScope<T extends ScopedOrderLike>(
+export function filterQueueToScope<T extends object>(
   scope: BranchScope,
   queue: Record<string, T[]> | undefined,
 ): Record<string, T[]> {
@@ -100,12 +100,12 @@ function isWithin(period: StatPeriod, order: StatOrderLike): boolean {
  * Both filters are applied here rather than by the caller so the tiles cannot
  * drift from the list beside them.
  */
-export function deriveStatsForScope<T extends StatOrderLike>(
+export function deriveStatsForScope<T extends object>(
   scope: BranchScope,
   orders: readonly T[] | undefined,
   period: StatPeriod,
 ): DashboardStatsLike {
-  const inScope = filterOrdersToScope(scope, orders);
+  const inScope = filterOrdersToScope(scope, orders) as readonly StatOrderLike[];
   const inPeriod = inScope.filter((order) => isWithin(period, order));
 
   const statusCounts = zeroedStatusCounts();

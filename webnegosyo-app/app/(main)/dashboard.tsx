@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { filterQueueToScope, deriveStatsForScope, type StatOrderLike } from "../../lib/branch-dashboard";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
 import { router } from "expo-router";
@@ -18,6 +20,17 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
+
+/**
+ * How many recent orders a branch account pulls to re-derive its own stat
+ * tiles. Matches the window the product-analytics screen already accepts: past
+ * this many orders in the period the branch totals under-report, which is why
+ * the indexed `outletId` server-side filter is the real fix.
+ */
+const BRANCH_STATS_ORDER_WINDOW = 2000;
+
+type BranchStatOrder = StatOrderLike;
 // TODO: Replace double type assertion with proper Convex-generated function reference type
 // when the codegen pipeline is set up. This pattern is used throughout the app as a workaround
 // for the template architecture where generated types aren't available in the mobile app.
@@ -127,10 +140,35 @@ export default function DashboardScreen() {
     getDashboardStatsByPeriodRef,
     period !== "today" ? dateRange : "skip"
   );
-  const { data: queue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const { data: rawQueue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
 
-  const displayStats = period === "today" ? stats : periodStats;
-  const isStatsLoading = period === "today" ? isLoading : periodLoading;
+  const scope = useBranchScope();
+  const isBranchScoped = scope.kind === "branch";
+
+  // The stat tiles are aggregated inside Convex over the whole tenant, so a
+  // branch account cannot use them — it would read store-wide revenue above its
+  // own order list. Pull the raw orders instead and re-derive the tiles here so
+  // the two always describe the same set. Store-wide accounts skip this query
+  // entirely and keep using the cheaper server-side aggregate.
+  const { data: scopedOrders, isLoading: scopedOrdersLoading } = useSafeQuery<BranchStatOrder[]>(
+    getOrdersRef,
+    isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
+  );
+
+  const queue = useMemo(() => filterQueueToScope(scope, rawQueue), [scope, rawQueue]);
+
+  const todayRange = useMemo(() => getDateRange("today"), []);
+  const branchStats = useMemo(() => {
+    if (!isBranchScoped) return null;
+    return deriveStatsForScope(scope, scopedOrders, period === "today" ? todayRange : dateRange);
+  }, [isBranchScoped, scope, scopedOrders, period, todayRange, dateRange]);
+
+  const displayStats = branchStats ?? (period === "today" ? stats : periodStats);
+  const isStatsLoading = isBranchScoped
+    ? scopedOrdersLoading
+    : period === "today"
+      ? isLoading
+      : periodLoading;
   const periodLabel = DASHBOARD_PERIODS.find((p) => p.value === period)?.label ?? "Today";
 
   useEffect(() => {

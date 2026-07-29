@@ -30,7 +30,15 @@ export interface BranchScopedSession {
 
 export type BranchScope = { kind: "all" } | { kind: "branch"; outletId: string };
 
-/** An order as either backend hands it over. */
+/**
+ * An order as either backend hands it over.
+ *
+ * Every field is optional, which makes this a TypeScript "weak type": a
+ * concrete order type would be rejected as having no properties in common.
+ * The filters therefore take `T extends object` and read the branch
+ * structurally, so screens can pass their own `ConvexOrder`/`QueueOrder`
+ * without restating this shape.
+ */
 export interface ScopedOrderLike {
   /** Present on the platform-Supabase adapter's rows. */
   outlet_id?: string | null;
@@ -83,12 +91,12 @@ export function getOrderOutletId(order: ScopedOrderLike | null | undefined): str
  * Whether this order is one the scope may see. An unattributed order is hidden
  * from a branch account: it was not taken by that branch.
  */
-export function isOrderInScope(
+export function isOrderInScope<T extends object>(
   scope: BranchScope,
-  order: ScopedOrderLike | null | undefined,
+  order: T | null | undefined,
 ): boolean {
   if (scope.kind === "all") return true;
-  return getOrderOutletId(order) === scope.outletId;
+  return getOrderOutletId(order as ScopedOrderLike) === scope.outletId;
 }
 
 /**
@@ -99,7 +107,7 @@ export function isOrderInScope(
  * call site. An all-branch scope gets the caller's own array back rather than
  * a copy, since that is the overwhelmingly common case.
  */
-export function filterOrdersToScope<T extends ScopedOrderLike>(
+export function filterOrdersToScope<T extends object>(
   scope: BranchScope,
   orders: readonly T[] | undefined,
 ): readonly T[] {
