@@ -104,6 +104,23 @@ read funnels through.
   an all-branch account adds no filter and gets the identical query it does
   today.
 
+### 6. Branch picker in the settings card (`staff-management-card.tsx`)
+
+Makes the feature reachable: a radio group in the add-staff dialog, a branch
+badge per member, and the card itself now shown to a branch admin.
+
+- RED: `npx jest tests/unit/staff-branch-picker.test.tsx` →
+  `Tests: 6 failed, 3 passed, 9 total`. The 3 passes are the "no branches, no
+  control" assertions, which hold trivially before the feature exists.
+- GREEN: same command → `Tests: 9 passed, 9 total`; `npx jest tests/unit/staff`
+  → `Tests: 93 passed`, 5 suites.
+- Guarantees: with `outlets` empty (every single-location tenant) no branch
+  control and no branch badge render at all; a new account defaults to "All
+  branches"; a deleted branch renders as "Unknown branch" rather than leaking a
+  raw uuid into the staff list.
+- Native radios were chosen over the Select primitive so the control stays
+  keyboard- and test-operable without pointer emulation.
+
 ### Migration applied
 
 `20260802120000_branch_scoped_staff.sql` was applied via Supabase MCP on
@@ -183,3 +200,14 @@ Checkpoint commits on `feat/platform-supabase-order-parity`, in order:
 `b77fc80` (RED: branch scope) → `62d731b` (GREEN) → `97c8c14` (migration) →
 `76d1715` (RED: branch staff service) → `608b0b1` (GREEN) →
 `4ed11a8` (GREEN: branch admin authority + resilient admin read).
+
+## Follow-ups opened by the UI work
+
+- **No UI to move an existing account between branches.** `updateStaffBranch`
+  and `updateStaffBranchAction` exist and are tested, but nothing calls the
+  action yet — the edit dialog still only edits permissions.
+- **Unrelated pre-existing failure:** `npx jest` reports one failing suite,
+  `e2e/multi-branch-selection-timing.spec.ts`. That path is **untracked** in
+  git (a working-tree artifact from another session) and fails because Jest's
+  `*.spec.ts` pattern sweeps up a Playwright spec. It is unrelated to this work
+  and was left untouched.
