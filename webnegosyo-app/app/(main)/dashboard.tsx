@@ -119,6 +119,7 @@ function HeaderActions({ isConnected }: { isConnected: boolean }) {
 
 export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
+  const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const isDemo = useAuthStore((s) => s.isDemo);
   const { isConnected, loadSaved } = usePrinterStore();
@@ -219,6 +220,11 @@ export default function DashboardScreen() {
         <View style={styles.headerText}>
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.tenantName} numberOfLines={1}>{tenantName ?? "Dashboard"}</Text>
+          {outletName ? (
+            // Names the branch whose queue this is. A staffer moving between
+            // outlets must never mistake one branch's numbers for another's.
+            <Text style={styles.branchName} numberOfLines={1}>{outletName}</Text>
+          ) : null}
         </View>
         <HeaderActions isConnected={isConnected} />
       </View>
@@ -308,6 +314,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, marginRight: spacing.sm },
   greeting: { ...typography.eyebrow, color: colors.textSecondary },
   tenantName: { ...typography.title, color: colors.textPrimary, marginTop: spacing.xs },
+  branchName: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
   accountText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
   demoBanner: {

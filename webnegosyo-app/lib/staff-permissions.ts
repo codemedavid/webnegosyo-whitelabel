@@ -4,20 +4,34 @@
 
 import { WORKSPACES, type Workspace } from "./workspaces";
 
-export type StaffPermissionKey =
-  | "orders"
-  | "menu"
-  | "analytics"
-  | "store_setup"
-  | "customers"
-  | "settings"
-  | "pos"
+/**
+ * The permission keys, as a runtime list so `staff-permissions-parity.test.ts`
+ * on the web side can compare the two copies key by key. A union type alone
+ * cannot be checked at runtime, and this registry drifting silently is exactly
+ * the failure that test exists to catch.
+ *
+ * Order matches `src/lib/staff-permissions.ts` so the two files read the same.
+ */
+export const STAFF_PERMISSION_KEYS = [
+  "orders",
+  "menu",
+  "analytics",
+  "store_setup",
+  "customers",
+  "settings",
+  "pos",
+  // Managing staff for one's own branch only — held by a branch admin, who
+  // must not be able to reach into another branch's roster.
+  "branch_staff",
   // Rewriting a placed customer's bill, and moving money back out of the
   // drawer. Granted separately from "orders" (which only advances status) and
   // from each other, because a refund is the one action here that editing
   // again cannot undo.
-  | "order_edit"
-  | "order_refund";
+  "order_edit",
+  "order_refund",
+] as const;
+
+export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
 
 export interface StaffPermissionHolder {
   role: string | null;
