@@ -77,12 +77,15 @@ export function resolveBranchScope(user: BranchScopedUser): BranchScope {
  * be a scope. Those orders remain visible to the owner, who is the account
  * that can act on them.
  */
-export function isOrderInScope(
+export function isOrderInScope<T extends object>(
   scope: BranchScope,
-  order: OutletOrderLike | null | undefined
+  order: T | null | undefined
 ): boolean {
   if (scope.kind === 'all') return true
-  return getOrderOutletId(order) === scope.outletId
+  // `T` is `object` rather than `OutletOrderLike`: every field on that interface
+  // is optional, making it a weak type that rejects concrete order rows with
+  // "has no properties in common". The branch is read structurally instead.
+  return getOrderOutletId(order as OutletOrderLike) === scope.outletId
 }
 
 /**
