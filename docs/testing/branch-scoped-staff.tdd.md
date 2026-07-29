@@ -211,3 +211,58 @@ Checkpoint commits on `feat/platform-supabase-order-parity`, in order:
   git (a working-tree artifact from another session) and fails because Jest's
   `*.spec.ts` pattern sweeps up a Playwright spec. It is unrelated to this work
   and was left untouched.
+
+---
+
+## Slice A — order attribution (2026-07-29, second session block)
+
+**Source plan:** `docs/plans/branch-scoped-operations.plan.md`, Slice A.
+
+### Verification step (the plan required this before any code)
+
+Traced the order-creating paths rather than assuming:
+
+| Path | Stamped a branch before this work? |
+|---|---|
+| Storefront checkout | Yes — `resolveOrderOutlet` → `orders.outlet_id` + `customer_data` |
+| POS / counter sale (`buildPosOrder`) | **No** — assembled `customerData` with no branch |
+| App session | Did not carry a branch at all |
+
+### 7. Counter sales carry a branch
+
+- RED: `cd webnegosyo-app && npx jest lib/pos-order-outlet` →
+  `TS2353: 'outlet' does not exist in type 'Partial<PosOrderContext>'`,
+  `Tests: 0 total`. Compile-time RED against the missing seam.
+  (First run also failed on a wrong test fixture of mine — `PosCartLine`
+  needs `key`/`unitPrice`; corrected to build through `addLine`, which is
+  the fixture the existing `pos-order.test.ts` uses.)
+- GREEN: `npx jest lib/pos-order` → `Tests: 25 passed`, 2 suites.
+- Guarantees: a sale rung at a branch records that branch; a single-location
+  register adds no keys at all (byte-for-byte today's order); caller-supplied
+  `customerData` cannot forge the branch, because the stamp is written last;
+  the payment blob and any other assembled `customerData` survive intact.
+
+### 8. The app session carries the branch
+
+- RED: `npx jest lib/session-resolve-outlet` →
+  `TS2724: has no exported member named 'needsOutletLookup'` plus
+  `outlet_id does not exist in type 'AppUserRow'`.
+- GREEN: `npx jest lib/session-resolve` → `Tests: 28 passed`, 2 suites.
+- Whole app: `npx jest` → `Tests: 892 passed`, 56 suites; `npx tsc --noEmit`
+  clean. Web unaffected: `npx jest tests/unit` → `3371 passed`, `tsc` clean
+  under `src/`.
+- Guarantees: only a branch-confined account triggers the branch lookup (an
+  owner or superadmin never does, so no guaranteed-miss query); a branch row
+  that cannot be read degrades to the store-wide view instead of locking the
+  account out; a superadmin is never scoped, impersonating or not.
+- Both entry points — cold start (`app/_layout.tsx`) and interactive login
+  (`app/(auth)/login.tsx`) — were updated together, since that module exists
+  precisely to stop those two from drifting.
+
+### Still open in Slice A
+
+- **Existing orders keep `outlet_id = NULL`** by decision — no branch is
+  guessed for historic rows. They surface as "Unassigned" to the owner once
+  Slice D builds that view; today they are simply invisible to branch accounts.
+- `app/(main)/scan.tsx` also calls `createOrder`; it was **not** audited or
+  stamped in this pass.
