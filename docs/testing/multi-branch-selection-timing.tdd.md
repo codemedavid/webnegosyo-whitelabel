@@ -157,8 +157,46 @@ Lint: `npm run lint` → no new errors from these files (one pre-existing
   `'after'`, default `'before'::text`, and `tenants_outlet_selection_timing_ck` present and
   confirmed to reject an out-of-range value (probed inside a rolled-back `DO` block, no row
   changed). One tenant has `multi_branch_enabled` on, and it kept the shipped splash flow.
-- **No E2E.** The full "browse → checkout → pick branch → order lands on that branch" path is
-  covered by unit tests at each seam, not end to end in a browser.
+- ~~No E2E.~~ **Added** — `e2e/multi-branch-selection-timing.spec.ts`, run with `npm run test:e2e`
+  (Playwright, Chromium, local-only). It seeds two throwaway storefronts, drives the real
+  browser, and deletes them in teardown. 3 pass; the 4th is `test.fixme` — see below.
+
+### The order-write blocker found by the E2E
+
+The last E2E assertion — "the chosen branch lands on the order row" — cannot run, and the cause
+is **not** in this feature.
+
+`createOrder` (`src/lib/orders-service.ts:534`) writes the order with the anonymous storefront
+client using `.insert().select().single()`. The `RETURNING` clause is checked against the
+**SELECT** policies on `orders`, and the only one (`orders_select_by_tenant`) requires an
+`app_users` admin row. An anonymous customer has none, so PostgREST rejects the whole statement:
+
+```
+[createOrderAction] Order creation failed: {
+  code: '42501',
+  message: 'new row violates row-level security policy for table "orders"'
+}
+```
+
+Isolated three ways, all outside this feature's code:
+
+| Probe | Result |
+|---|---|
+| anon `.insert(...).select()` on `orders` | `42501` |
+| anon `.insert(...)` **without** `.select()` | OK |
+| `set local role anon; insert into orders …` in SQL | OK |
+
+So the INSERT itself is permitted exactly as `20260726140000_fix_tenant_isolation_rls.sql`
+intended ("`orders_insert` is deliberately untouched — it is what lets the anonymous storefront
+checkout create an order"); what that migration did not account for is that the application reads
+the row back in the same statement.
+
+**Unresolved, and worth a look before trusting this:** production *does* have platform-backend
+orders as recent as 2026-07-28 (`alon` 5, `dcoffee` 1, `tay-kulas-bahai-buko` 1 in the last 7
+days), which a blanket "anonymous checkout is broken" reading cannot explain. The failure above
+is reproducible locally against the production database with the `.env.local` anon key; whether
+deployed traffic takes a different route was not established. Do not treat this as a confirmed
+outage or as fixed — it is a discrepancy that needs a decision.
 - **The `'after'` picker is not styled per checkout design.** It renders in the shell above the
   form with neutral styling under the `checkout/colors` branding scope; a design-specific
   treatment is a follow-up, not a correctness gap.
