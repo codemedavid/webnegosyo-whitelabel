@@ -308,9 +308,123 @@ deliberately left untouched:
 
 Neither belongs to this feature; do not attribute their state to it.
 
+## Task 11 — Slice C5: the app actually uses the filter (2026-07-29)
+
+Until this block, `filterOrdersToScope` existed and was 19/19 green but **no
+screen called it**: a branch account still read every branch's orders. This
+closes that.
+
+### 11a — dashboard queue and stat tiles
+
+The flat filter does not fit either dashboard shape. The live queue arrives
+grouped by status (`Record<status, Order[]>`), and the stat tiles are
+aggregated inside Convex over the whole tenant — a branch account would have
+read store-wide revenue above its own order list.
+
+- RED: `cd webnegosyo-app && npx jest lib/branch-dashboard`
+  → `Cannot find module './branch-dashboard'`, `Tests: 0 total`.
+  Commit `0b0fa40 test: add reproducer for branch-scoped dashboard queue and stats`.
+- GREEN: `Tests: 13 passed, 13 total`.
+  Commit `d71ea01 feat: derive branch-scoped dashboard queue and stats`.
+
+Two decisions worth recording:
+
+- **Emptying a status bucket keeps its key.** The status pipeline renders one
+  column per status; dropping the key would read as a broken screen rather than
+  as "no orders here".
+- **Branch stats are re-derived on the client, not relabelled.** The
+  alternative was labelling the tile "All branches", which is only honest if it
+  is actually labelled — and an unlabelled mismatch is how merchants stop
+  trusting the numbers. `deriveStatsForScope` mirrors the Convex handler's
+  arithmetic exactly (cancelled excluded from revenue/count/average, still
+  counted in the status breakdown) so a branch account and the owner cannot
+  disagree about the same day's takings.
+
+### 11b — the screens
+
+Commit `ad8cc68 feat: scope the merchant app's order surfaces to the signed-in branch`.
+
+| Surface | File | Seam |
+|---|---|---|
+| Orders list | `app/(main)/orders.tsx` | `allOrders`, before counts/search/sort so the pill counts describe the visible list |
+| Dashboard queue | `app/(main)/dashboard.tsx` | `filterQueueToScope` |
+| Dashboard tiles | `app/(main)/dashboard.tsx` | `deriveStatsForScope` over a `getOrders` window; store-wide accounts pass `"skip"` and keep the cheaper server aggregate |
+| POS incoming | `app/(main)/pos.tsx` | `filterQueueToScope` before `selectIncomingOrders` |
+| Ringtone | `components/GlobalOrderAlerts.tsx` | another branch's order must not ring this device |
+
+`useBranchScope` (`lib/use-branch-scope.ts`) is the single place the four auth
+fields become a scope — a screen that forgot one of them would leak.
+
+The filters take `T extends object` rather than `T extends ScopedOrderLike`:
+every field on that interface is optional, making it a TypeScript *weak type*
+that rejects concrete order types outright (`TS2345: has no properties in
+common`). The branch is read structurally instead.
+
+### 11c — branch name in the header
+
+`app/(main)/dashboard.tsx` renders `outletName` under the store name, so a
+staffer moving between outlets cannot mistake one branch's numbers for
+another's. Commit `3be26ae`.
+
+### 11d — permission registry drift (a real bug, caught)
+
+The plan called for a test asserting the web and app permission registries
+agree. It found actual drift: `branch_staff` had been added to
+`src/lib/staff-permissions.ts` in Task 3 and **never** to
+`webnegosyo-app/lib/staff-permissions.ts`.
+
+- RED: `npx jest tests/unit/staff-permissions-parity` → `Tests: 2 failed`.
+  Commit `418aad6 test: add reproducer for staff permission registry drift`.
+- GREEN: `Tests: 2 passed`. The app copy gained a runtime
+  `STAFF_PERMISSION_KEYS` array (a union type cannot be compared at runtime)
+  including `branch_staff`. Commit `3be26ae`.
+
+### 11e — stale closure in the register
+
+`npm run lint` surfaced `pos-tender.tsx:217 react-hooks/exhaustive-deps:
+missing dependencies 'outletId' and 'outletName'` — introduced by Slice A. A
+session whose branch resolved after the callback was first built would have
+rung sales up against a stale or absent branch. Fixed in commit `8aed0c0`.
+
+### Validation for this block
+
+| Command | Result |
+|---|---|
+| `cd webnegosyo-app && npx jest` | `Tests: 1008 passed, 64 suites` |
+| `cd webnegosyo-app && npx tsc --noEmit` | clean except the foreign `lib/order-balance.test.ts` |
+| `npx jest tests/unit` | `Tests: 3392 passed, 272 suites` |
+| `npm run lint` | no findings in any file changed by this block |
+
+`npm run lint` reports 88 errors / 713 warnings repo-wide, overwhelmingly in
+`webnegosyo-desktop` bundled output. None are in files this block touched;
+they pre-date it and were left alone.
+
+### Migrations
+
+All 63 local migrations are applied. `mcp__supabase__list_migrations` confirms
+`branch_scoped_staff` (`20260729091407`) and the other session's
+`order_edit_and_payments` (`20260729103802`) are both live. Nothing was
+applied in this block — there was nothing pending.
+
+Live state at the time of writing: `app_users.outlet_id` and `orders.outlet_id`
+both exist, 4 outlets, 1 tenant with `multi_branch_enabled`, and **0
+branch-scoped accounts** — so this block is zero-regression for every existing
+store.
+
 ## Remaining after this block
 
-Slice B (Convex/tenant-Supabase/POS-queue/realtime read paths), the rest of
-Slice C (screens actually calling `filterOrdersToScope`, branch name in the
-app header), Slice D (cross-branch analytics), plus the deferred branch RLS and
-Convex push targeting. See `docs/plans/branch-scoped-operations.plan.md`.
+Slice B — the two web backends that are still unscoped: Convex
+(`convex-orders-wrapper.tsx`), tenant-owned Supabase
+(`getTenantSupabaseOrdersPage` in `tenant-order-queue.ts`), and realtime chimes
+(`use-realtime-orders.ts`).
+
+Slice D — cross-branch analytics, the original ask.
+
+Still deferred: branch-aware RLS on `orders`, Convex push targeting (until it
+lands **every branch device rings for every order**), and the UI to move an
+account between branches. See `docs/plans/branch-scoped-operations.plan.md`.
+
+Known gap in this block: the app's analytics, trends and product-analytics
+screens were **not** scoped. They aggregate over their own queries rather than
+an order list, so each needs the same treatment the dashboard tiles just got —
+this is Slice D work, not a one-line filter.

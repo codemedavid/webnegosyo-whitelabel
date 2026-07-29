@@ -5,7 +5,7 @@
 **Evidence so far:** `docs/testing/branch-scoped-staff.tdd.md`
 **Complexity:** Large (4 independent shippable slices)
 
-## Where we are
+## Where we are (revised 2026-07-29, after Slice A + C1)
 
 Done and committed (migration applied 2026-07-29, 157 accounts all store-wide):
 
@@ -17,10 +17,17 @@ Done and committed (migration applied 2026-07-29, 157 accounts all store-wide):
 | Branch-aware staff CRUD, `verifyStaffManager` | `src/lib/staff-service.ts`, `src/lib/admin-service.ts` |
 | Migration-safe admin row read | `src/lib/queries/fetch-app-user-scope.ts` |
 | Branch picker + badge | `src/components/admin/staff-management-card.tsx` |
-| Web admin order reads scoped (platform Supabase) | `src/lib/orders-service.ts` |
+| Web admin order reads scoped (platform Supabase only) | `src/lib/orders-service.ts` |
+| **Slice A** — POS + QR-handoff orders stamped with the creating branch | `webnegosyo-app/lib/pos-order.ts`, `app/(main)/scan.tsx`, `lib/order-outlet.ts` |
+| **Slice C1–C3** — app session carries `outletId`/`outletName`; app copy of the rules | `webnegosyo-app/lib/session-resolve.ts`, `stores/auth-store.ts`, `lib/branch-scope.ts` |
+
+**The load-bearing gap:** `filterOrdersToScope` exists in the app and is
+19/19 green, but **no screen calls it**. A branch account today still sees every
+branch's orders. The module is inert until Slice C5 lands.
 
 **Nothing is live for a merchant yet**: no tenant has `multi_branch_enabled` on,
-and no account has a non-null `outlet_id`.
+and no account has a non-null `outlet_id` — so shipping the slices below is
+still zero-regression for existing stores.
 
 ## Patterns to mirror
 
@@ -36,55 +43,57 @@ and no account has a non-null `outlet_id`.
 
 ---
 
-## Slice A — Attribution: every order gets a branch (do this first)
+## ~~Slice A — Attribution~~ ✅ DONE
 
-Everything downstream is worthless if orders are not stamped. A branch account
-sees nothing but its own branch, so an unstamped order is invisible to the
-people who took it.
+Storefront checkout stamps via `resolveOrderOutlet`; the POS stamps the
+signed-in account's branch through `withOrderOutlet`; `scan.tsx` stamps the
+scanning staffer's branch onto QR handoffs. Historic orders were **deliberately
+left NULL** — they surface as an explicit "Unassigned" bucket in Slice D rather
+than being guessed at.
 
-1. **Verify first** (do not assume): trace which paths create orders — the
-   storefront checkout (already stamps via `resolveOrderOutlet`), the POS
-   (`webnegosyo-app/lib/pos-order.ts`), and any admin-created order. Write down
-   which ones set `outlet_id` / the `customer_data` carrier and which do not.
-2. Stamp POS orders with the creating account's branch (`resolveBranchScope` →
-   `withOrderOutlet`), since a counter sale belongs to the counter's branch.
-3. Backfill decision for existing orders: leave them NULL ("Unassigned") and
-   surface that bucket to the owner. Do **not** guess a branch for historic rows.
+## ~~Slice C5 — Make the app actually use the filter~~ ✅ DONE (2026-07-29)
 
-**Validate:** `npx jest tests/unit/…`; a POS order created by a branch account
-appears in that branch's list and nowhere else.
+The one change that turns branch scoping from code into behaviour. Per-screen,
+because `useSafeQuery` in `lib/hooks.ts` is generic across refs — filtering
+there would corrupt non-list results such as `getDashboardStats`.
 
-## Slice B — Scope the remaining read paths
+| Screen | File | What to filter |
+|---|---|---|
+| Orders list | `app/(main)/orders.tsx` | the order array before render |
+| Dashboard | `app/(main)/dashboard.tsx` | live queue; **stats are pre-aggregated server-side and cannot be filtered client-side** — see the caveat below |
+| POS incoming | `app/(main)/pos.tsx`, `components/pos/IncomingOrdersSheet.tsx` | queue rows |
+| Order alerts | `components/GlobalOrderAlerts.tsx` | do not ring for another branch |
+| Analytics / trends / product analytics | `app/(main)/analytics.tsx`, `trends.tsx`, `product-analytics.tsx` | derived from order lists — filter at the source list |
 
-1. **Convex path** — `ConvexOrdersWrapper` and the dashboards reading from it.
-   The branch is in unindexed `customer_data`, so apply `scopeOrderRows` to the
-   fetched result. Accept the existing ~2000-order window ceiling; note it.
-2. **Tenant-owned Supabase** — `getTenantSupabaseOrdersPage`, same technique.
-3. **POS order queue** — `pos-incoming.ts` and the sales screens.
-4. **Realtime** — `use-realtime-orders.ts` and the app's alert path must not
-   ring a branch account for another branch's order.
+**Caveat to decide, not to paper over:** `getDashboardStats` returns totals
+computed in Convex over the whole tenant. A branch account would see its own
+order list beside a store-wide revenue number. Either (a) derive the branch's
+stats client-side from the filtered list, or (b) label the tile "All branches".
+(a) is honest and costs one helper; (b) is a lie unless labelled. **Recommend
+(a)**, with a written note where the 2000-order window makes it approximate.
 
-**Validate:** each surface, unit-tested through the pure helpers; one manual
-pass on a tenant with two branches.
+6. Header shows the branch name, so a staffer cannot mistake whose queue it is.
+7. Test asserting the web and app permission-registry copies agree (the
+   3-copy drift risk in the table below).
 
-## Slice C — Merchant app carries the branch
+**Validate:** `cd webnegosyo-app && npx jest`.
 
-1. `webnegosyo-app/lib/branch-scope.ts` — verbatim copy of the web module, with
-   the "keep in sync" header. Add a test asserting the two copies agree.
-2. `session-resolve.ts`: select `outlet_id`, resolve the branch name, extend
-   `SessionAuthPatch`; extend `auth-store.ts`. Demo mode and superadmin
-   impersonation stay `kind: 'all'`.
-3. Both entry points — cold start (`app/_layout.tsx`) and login
-   (`app/(auth)/login.tsx`) — must set it, or the two drift.
-4. Header shows the branch name, so a staffer cannot mistake whose queue it is.
-5. Screens filter through `filterOrdersToScope`: dashboard, orders, POS,
-   analytics, trends.
+## Slice B — Scope the remaining web read paths
 
-**Risk:** the app selects `outlet_id` from `app_users`; the column now exists,
-so this is safe — but mirror the resilient-read pattern if the app can run
-against an older database.
+Only the platform-Supabase path is scoped today. The other two backends leak.
 
-**Validate:** `cd webnegosyo-app && npm test`.
+1. **Convex path** — `src/components/admin/convex-orders-wrapper.tsx` and the
+   dashboards reading from it. The branch sits in unindexed `customerData`, so
+   apply `scopeOrderRows` to the fetched result. Accept the ~2000-order window
+   ceiling; note it in the UI copy, do not hide it.
+2. **Tenant-owned Supabase** — `getTenantSupabaseOrdersPage` in
+   `src/lib/tenant-order-queue.ts`, consumed by
+   `src/app/[tenant]/admin/orders/page.tsx`. Same technique.
+3. **Realtime** — `src/hooks/use-realtime-orders.ts` must not fire a chime or a
+   browser notification for another branch's order.
+
+**Validate:** each surface unit-tested through the pure helpers; one manual pass
+on a tenant with two branches.
 
 ## Slice D — Owner cross-branch analytics (the original ask)
 
@@ -121,11 +130,16 @@ the store total including the Unassigned bucket.
 | Feature ships dark — no tenant has `multi_branch_enabled` | Certain | Low | Enable on a staging tenant before Slice B |
 | Convex client-side filtering hits the 2000-order window | Medium | Medium | Accept; fix with the indexed `outletId` in the deferred Convex ship |
 
-## Suggested order
+## Suggested order (revised)
 
-**A → B → C → D.** A is a correctness prerequisite; B makes the web trustworthy;
-C is what the merchant actually holds; D is the owner-facing payoff. Each slice
-is independently shippable and independently reviewable.
+**B → D.** A and C5 are done. C5 moved to the front because it is the only
+remaining change a merchant can *see*: until it lands, a branch account still
+reads every branch's orders in the app, which is the exact thing this feature
+was asked for. B closes the same hole on the two web backends that are still
+unscoped. D is the owner-facing payoff and the original request.
+
+Each is independently shippable. C5 and B touch disjoint packages, so they can
+also be done in either order if one gets blocked.
 
 ## Acceptance
 
