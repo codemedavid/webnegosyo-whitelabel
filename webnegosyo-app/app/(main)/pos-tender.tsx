@@ -230,6 +230,11 @@ export default function PosTenderScreen() {
     serviceCharge,
     customerName,
     userId,
+    // The branch stamped onto the sale. Listed so a session whose branch
+    // resolves after this callback is first built does not keep ringing sales
+    // up against a stale (or absent) branch.
+    outletId,
+    outletName,
     createOrder,
     updatePaymentStatus,
     hasPrinter,
