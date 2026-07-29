@@ -34,7 +34,7 @@ export const WORKSPACES: readonly Workspace[] = [
     key: "insights",
     label: "Insights",
     description: "Sales analytics, growth, and trends",
-    tabs: ["analytics", "growth", "trends"],
+    tabs: ["analytics", "growth", "trends", "branches"],
     defaultTab: "analytics",
   },
   {
