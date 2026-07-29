@@ -73,12 +73,16 @@ describe("isTabAllowed", () => {
 });
 
 describe("allowedWorkspaces", () => {
-  it("returns all four views for the owner", () => {
+  it("returns every view for the owner", () => {
+    // Business is listed here because permissions do not exclude it. Whether it
+    // is actually offered also depends on the store having branches, which is
+    // isPortfolioAvailable's job, not this registry's.
     expect(allowedWorkspaces(owner).map((w) => w.key)).toEqual([
       "operations",
       "register",
       "insights",
       "products",
+      "business",
     ]);
   });
 

@@ -77,10 +77,13 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("analytics", "operations")).toBe(false);
   });
 
-  it("puts branch comparison in the insights view", () => {
-    // It answers "how are my branches doing against each other", which is an
-    // insight, not a day-to-day operation.
-    expect(isTabInWorkspace("branches", "insights")).toBe(true);
+  it("puts branch comparison in the business view", () => {
+    // It used to sit in Insights, on the reading that comparing branches is an
+    // insight. It moved when Business arrived: an owner who wants branch
+    // figures wants the branch screens beside them — the portfolio they drill
+    // from and the roster running each one — not the charts.
+    expect(isTabInWorkspace("branches", "business")).toBe(true);
+    expect(isTabInWorkspace("branches", "insights")).toBe(false);
     expect(isTabInWorkspace("branches", "operations")).toBe(false);
   });
 

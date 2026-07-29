@@ -1,9 +1,20 @@
-// Workspace (view) registry for the merchant app. The app is split into four
-// focused views — Operations, Register, Insights, Products — and the tab bar
-// only shows the tabs owned by the active view. Pure data + lookups; the active
-// view lives in stores/workspace-store.ts and the tab bar reads both.
+// Workspace (view) registry for the merchant app. The app is split into five
+// focused views — Operations, Register, Insights, Products, Business — and the
+// tab bar only shows the tabs owned by the active view. Pure data + lookups;
+// the active view lives in stores/workspace-store.ts and the tab bar reads both.
+//
+// Business is the odd one out: the other four are views of a shift, and every
+// account has them. Business is the view of the company — which branches exist,
+// how they compare, who runs them — so it is shown only to an account that
+// actually runs several branches. That rule needs the branch count, which the
+// registry has no way to know, so it lives in portfolio-landing.ts.
 
-export type WorkspaceKey = "operations" | "register" | "insights" | "products";
+export type WorkspaceKey =
+  | "operations"
+  | "register"
+  | "insights"
+  | "products"
+  | "business";
 
 export interface Workspace {
   key: WorkspaceKey;
@@ -34,7 +45,7 @@ export const WORKSPACES: readonly Workspace[] = [
     key: "insights",
     label: "Insights",
     description: "Sales analytics, growth, and trends",
-    tabs: ["analytics", "growth", "trends", "branches"],
+    tabs: ["analytics", "growth", "trends"],
     defaultTab: "analytics",
   },
   {
@@ -45,6 +56,13 @@ export const WORKSPACES: readonly Workspace[] = [
     // 86s an item and the merchant who reorders its flour are the same person.
     tabs: ["product-analytics", "product-management", "inventory"],
     defaultTab: "product-analytics",
+  },
+  {
+    key: "business",
+    label: "Business",
+    description: "Your branches, how they compare, and who runs them",
+    tabs: ["portfolio", "branches", "team"],
+    defaultTab: "portfolio",
   },
 ] as const;
 

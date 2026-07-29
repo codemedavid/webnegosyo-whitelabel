@@ -63,6 +63,12 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // analytics key. An unmapped tab defaults to allowed, which would have shown
   // every branch's revenue to a cashier with only the POS grant.
   branches: "analytics",
+  // The portfolio is branch revenue side by side, so it rides the same key for
+  // the same reason.
+  portfolio: "analytics",
+  // The roster is staff management: an owner holds it outright, a branch admin
+  // through the grant that lets them run their own branch's people.
+  team: "branch_staff",
   "product-management": "menu",
   // Reordering an ingredient is a menu decision, so it rides the same key.
   inventory: "menu",
