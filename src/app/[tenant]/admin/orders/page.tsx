@@ -146,6 +146,9 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
   const showTenantSupabase = backend === 'supabase'
   const isTenantSupabaseConfigured =
     showTenantSupabase && hasTenantSupabaseOrderCredentials(tenant)
+  // Resolved server-side; the Convex tab is a client component and must not be
+  // trusted to decide which branch it may read.
+  const convexScope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
   return (
     <div className="space-y-6">
@@ -161,7 +164,13 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
         <p className="text-muted-foreground">Manage customer orders</p>
       </div>
 
-      {showConvex && <ConvexOrdersWrapper convexUrl={tenant.convex_deployment_url!} tenantId={tenant.id} />}
+      {showConvex && (
+        <ConvexOrdersWrapper
+          convexUrl={tenant.convex_deployment_url!}
+          tenantId={tenant.id}
+          scope={convexScope}
+        />
+      )}
 
       {isTenantSupabaseConfigured && (
         <Suspense fallback={<OrdersSkeleton />}>

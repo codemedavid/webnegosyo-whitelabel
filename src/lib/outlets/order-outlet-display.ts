@@ -26,7 +26,15 @@ export const OUTLET_FILTER_ALL = 'all'
 export interface OutletOrderLike {
   /** Platform Supabase only; absent on Convex and tenant-owned projects. */
   outlet_id?: string | null
+  /** Tenant-owned Supabase projects, which mirror the platform column names. */
   customer_data?: Record<string, unknown> | null
+  /**
+   * Convex, whose documents are camelCase throughout — see
+   * `convex/orders.ts`, `customerData: v.optional(v.any())`. Reading only the
+   * snake_case key made every Convex order look unattributed, which showed up
+   * as an empty queue rather than as a scoping bug.
+   */
+  customerData?: Record<string, unknown> | null
 }
 
 /** A branch as it can be offered in the order-list filter. */
@@ -57,7 +65,18 @@ export function getOrderOutletId(order: OutletOrderLike | null | undefined): str
   const fromColumn = typeof order.outlet_id === 'string' ? order.outlet_id.trim() : ''
   if (fromColumn !== '') return fromColumn
 
-  return readString(order.customer_data, ORDER_OUTLET_ID_KEY)
+  return readOrderBlob(order, ORDER_OUTLET_ID_KEY)
+}
+
+/**
+ * Read a key out of whichever carrier this backend used.
+ *
+ * `customer_data` is checked first because the platform and tenant-owned
+ * projects are the paths that also validate the id server-side; `customerData`
+ * is the Convex spelling of the same thing.
+ */
+function readOrderBlob(order: OutletOrderLike, key: string): string | null {
+  return readString(order.customer_data, key) ?? readString(order.customerData, key)
 }
 
 /**
@@ -69,7 +88,7 @@ export function getOrderOutletId(order: OutletOrderLike | null | undefined): str
  */
 export function getOrderOutletLabel(order: OutletOrderLike | null | undefined): string | null {
   if (!order) return null
-  return readString(order.customer_data, ORDER_OUTLET_NAME_KEY)
+  return readOrderBlob(order, ORDER_OUTLET_NAME_KEY)
 }
 
 /**
