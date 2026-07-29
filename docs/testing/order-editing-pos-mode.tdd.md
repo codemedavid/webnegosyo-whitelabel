@@ -2,7 +2,7 @@
 
 **Source plan**: produced inline in-session (`/ecc:plan`), not written to a `.plan.md` file.
 **Scope confirmed with the user**: merchant mobile app only · platform Supabase + Convex backends · ledger-based settlement.
-**Status**: Phases 1–3 complete (data model applied and probed, pure logic, backend write path on both backends). Phase 4 (UI) not started.
+**Status**: Phases 1–3 complete. Phase 4 partially complete — the session logic and drawer reconciliation are done and tested; the screens themselves are not built.
 
 ## User journeys
 
@@ -93,6 +93,23 @@ Verified by asserting row counts, since `raise notice` output is not returned th
 - Convex gets atomicity the platform backend cannot: the whole handler is one transaction. With no triggers available, `recordPayment` maintains the `amountPaid` cache inside that same transaction.
 - **No unit tests** — Convex functions are not covered by either Jest project. This is the weakest link in the phase; see gaps.
 
+### Task 10 — Edit session state (`lib/order-edit-session.ts`)
+
+The brain the edit and settle screens render. It lives in `lib/` because Jest is scoped there in this app — putting this in a component would make "did we ask the cashier for the right amount" untestable.
+
+- **RED**: `npx jest lib/order-edit-session.test.ts lib/pos-sales.test.ts` → `TS2307: Cannot find module './order-edit-session'`. 0 tests run.
+- **GREEN**: `npx jest` → `65 suites, 1028 tests passed`.
+- **Guaranteed**: a session opens with the order's items already in the cart, clean and unsaveable until something changes; a fully-paid untouched order opens `settled`, an unpaid one opens owing its full total; the expected revision number is carried for the concurrency check; deleted menu items surface as warnings; raising the total yields `collect` and lowering it yields `refund`, with the correct balance; undoing an edit returns the session to clean; an emptied cart cannot be saved and says why; sessions are never mutated; the original total is retained for the "was / now" header. Dirty-checking reuses the revision diff, so an enabled Save button can never disagree with an empty change list.
+
+### Task 11 — Drawer reconciliation after an edit (`lib/pos-sales.ts`)
+
+A real bug rather than bookkeeping polish. `sale.total` stops describing the till the moment an order can be edited: a ₱450 GCash bill topped up with ₱120 in cash still records `paymentMethod: 'GCash'`, so the whole ₱570 landed in non-cash and the ₱120 physically in the drawer went unaccounted for.
+
+- **RED**: `npx jest lib/pos-sales.test.ts` → `TS2554: Expected 1 arguments, but got 2` and `TS2339: Property 'refundsPaid' does not exist on type 'CounterSalesSummary'`. 0 tests run.
+- **GREEN**: `npx jest` → `65 suites, 1028 tests passed`.
+- **Guaranteed**: when a sale has settlement rows the drawer splits by how each peso was **actually** taken, not by the order's single payment method; a cash refund reduces the drawer and is also reported separately, because a cashier counting the till needs to see money that left it; another order's ledger rows are ignored; sales with no rows (every counter sale rung up before the ledger existed) keep the original behaviour so historic shifts still reconcile.
+- One existing test pinned the exact zero-summary object and was updated for the new `refundsPaid` field; the guarantee it asserts is unchanged.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -121,6 +138,13 @@ Verified by asserting row counts, since `raise notice` output is not returned th
 | 22 | Payment amounts are unsigned, positive, finite, and centavo-rounded | `lib/backends/order-revise.test.ts:buildPaymentRow` | unit | PASS |
 | 23 | The platform adapter claims the order-edit refs | `lib/backends/supabase-adapter.test.ts:claims the order-edit refs` | unit | PASS |
 | 24 | The ledger trigger, constraints and optimistic lock behave on the live DB | live probe, see Task 7 | integration | PASS |
+| 25 | An edit session opens clean and cannot be saved until something changes | `lib/order-edit-session.test.ts:opens clean` | unit | PASS |
+| 26 | Raising the total asks for collection; lowering it asks for a refund | `lib/order-edit-session.test.ts:asks the cashier to collect / to refund` | unit | PASS |
+| 27 | Undoing an edit returns the session to clean | `lib/order-edit-session.test.ts:goes back to clean` | unit | PASS |
+| 28 | An emptied cart cannot be saved, and says why | `lib/order-edit-session.test.ts:refuses to save an emptied cart` | unit | PASS |
+| 29 | The drawer splits by how each peso was actually taken | `lib/pos-sales.test.ts:splits the drawer by how each settlement was actually taken` | unit | PASS |
+| 30 | A cash refund leaves the drawer and is reported | `lib/pos-sales.test.ts:subtracts a cash refund from the drawer` | unit | PASS |
+| 31 | Pre-ledger counter sales still reconcile | `lib/pos-sales.test.ts:falls back to the order's own method` | unit | PASS |
 
 ## Coverage
 
@@ -145,7 +169,7 @@ Full suites: merchant app **63 suites / 995 tests**; web **271 suites / 3390 tes
 
 These are real and deliberate, not oversights:
 
-1. **No UI** (Phase 4). None of this is wired to a screen, so no merchant can edit an order yet. The write path exists and is tested; nothing calls it.
+1. **The screens are not built.** `order/[orderId]/edit.tsx`, `settle.tsx`, and the payments/revision cards on order detail do not exist. Every piece they need is built and tested — session state, guards, diff, balance, write path — but no merchant can edit an order yet because nothing renders it. `pos-sales.tsx` also still calls `summarizeCounterSales` with one argument, so the drawer fix is inert until the screen passes the ledger.
 2. **The RLS policies were not probed under a real user session.** The live probe ran through MCP with elevated rights, which does not exercise the policies. The policy text is now copied from the working `orders` policies, but "an ordinary tenant admin can insert a payment, and cannot see another tenant's" is asserted by construction, not by test.
 3. **Convex `reviseOrder` / `recordPayment` have no automated tests at all.** Neither Jest project covers `convex-template/`. They typecheck and they bundle; that is all that is proven. They have not been deployed to a scratch tenant or executed once.
 4. **The platform revise path is not atomic.** PostgREST cannot span a transaction across the revision insert, item delete/insert, and order patch. The order of writes is chosen so the worst partial failure leaves an audit row for an edit that did not fully apply, rather than a rewritten bill with no record — but moving it into a Postgres RPC is a real follow-up, not a nicety.
@@ -169,3 +193,5 @@ Checkpoint commits on `feat/platform-supabase-order-parity`:
 | `8244ba6` | RED — revise/payment reproducers (TS2307 + runtime ref failure) |
 | `059faf4` | GREEN — 63 suites / 995 tests |
 | `975c314` | Convex backend + schema v14 + rebundle; web 271 suites / 3390 tests |
+| `e858f83` | RED — edit session + drawer reproducers (TS2307 / TS2554 / TS2339) |
+| `489ac35` | GREEN — 65 suites / 1028 tests |
