@@ -411,12 +411,88 @@ both exist, 4 outlets, 1 tenant with `multi_branch_enabled`, and **0
 branch-scoped accounts** — so this block is zero-regression for every existing
 store.
 
-## Remaining after this block
+## Task 12 — Slice B: the two remaining web order backends (2026-07-29)
 
-Slice B — the two web backends that are still unscoped: Convex
-(`convex-orders-wrapper.tsx`), tenant-owned Supabase
-(`getTenantSupabaseOrdersPage` in `tenant-order-queue.ts`), and realtime chimes
-(`use-realtime-orders.ts`).
+Before this, only the platform-Supabase read path was scoped. A branch account
+on either of the other two backends still read every branch's orders.
+
+### 12a — tenant-owned Supabase
+
+- RED: `npx jest tests/unit/tenant-supabase-orders-branch` → `Tests: 2 failed, 4 passed`.
+  Commit `cd6e6c1 test: add reproducer for branch scoping on the tenant Supabase backend`.
+- GREEN: `Tests: 49 passed` across the three tenant-Supabase suites (the two
+  pre-existing ones included, so the change is additive).
+  Commit `6a4a44b feat: scope tenant-Supabase order reads to the caller's branch`.
+
+The filter goes into the SQL, not onto the result. These queries carry
+`count: "exact"`; filtering afterwards would return a 20-row page with 3 rows
+left, above a total describing a store the account cannot see. The scope is
+resolved from the row `verifyTenantPermission` already returns, so the caller
+that authorizes the read is the same one that scopes it — a screen cannot pass
+its own.
+
+**`scopeOrdersQuery` lost its `T extends EqQuery<T>` constraint.** The
+self-referential form is more expressive, but PostgREST's builder types are deep
+enough that resolving it raised `TS2589: Type instantiation is excessively
+deep` at the new call site. It is now `<T>` with a checked cast; the existing
+11 tests still pin the behaviour.
+
+### 12b — the live order stream
+
+- RED: `npx jest tests/unit/use-realtime-orders-branch` → `Tests: 3 failed, 3 passed`.
+  Commit `cf7ae41 test: add reproducer for branch scoping on the live order stream`.
+- GREEN: `Tests: 15 passed` across both realtime suites.
+  Commit `6f78632 feat: keep the live order stream on the account's own branch`.
+
+Not just a display concern: the wrapper plays a chime and raises a browser
+notification with `requireInteraction: true` for every order it is handed. An
+unscoped branch account is interrupted repeatedly, by orders from a branch it
+cannot open, with a notification that does not dismiss itself.
+
+The Postgres `filter` string carries one equality and it is already spent on
+`tenant_id`, so the check happens in the handler.
+
+**A bug this block introduced and then fixed:** defaulting `scope` to a
+`{ kind: 'all' }` literal gave the effect a new identity on every render, so
+each connection-status change tore the channel down and rebuilt it. The
+pre-existing test `turns the live indicator on only once the channel is
+subscribed` caught it. Fixed with a module-scoped default plus a `scopeRef`, so
+a caller rebuilding its scope object cannot resubscribe the channel while a
+genuine branch change still applies on the next event.
+
+### 12c — Convex, and a silent-outage bug
+
+The web helpers read `customer_data`. **Convex stores `customerData`** — its
+schema declares `customerData: v.optional(v.any())` and its documents are
+camelCase throughout. Every Convex order therefore looked unattributed, which
+would have shown a branch account an empty queue on a store taking orders
+normally: an outage, not a visible scoping bug.
+
+- RED: `npx jest tests/unit/order-outlet-convex-key` → `Tests: 3 failed, 4 passed`.
+  Commit `0a3d2cd test: add reproducer for reading a Convex order's branch`.
+- GREEN: `Tests: 7 passed`. Commit `8d9b43c feat: scope the Convex order queue
+  to the account's branch`.
+
+Convex has no index on the branch, so rows are narrowed after the query via
+`scopeOrderRows`. That inherits the query's existing row ceiling — a branch on
+a very busy store can fall off the end of the window. Documented at the prop;
+the real fix is the indexed `outletId` in the deferred Convex ship.
+
+### Validation for this block
+
+| Command | Result |
+|---|---|
+| `npx jest tests/unit` | `Tests: 3411 passed, 275 suites` |
+| `npx tsc --noEmit` | no errors under `src/` |
+| `npm run lint` | no findings in any file changed by this block |
+
+### Migrations
+
+Nothing to apply. `mcp__supabase__list_migrations` shows all 63 local
+migrations live. Slice B is code-only — it adds no column and reads
+`orders.outlet_id`, which the applied `branch_scoped_staff` migration created.
+
+## Remaining after this block
 
 Slice D — cross-branch analytics, the original ask.
 

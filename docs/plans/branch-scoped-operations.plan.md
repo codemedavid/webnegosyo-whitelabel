@@ -78,7 +78,7 @@ stats client-side from the filtered list, or (b) label the tile "All branches".
 
 **Validate:** `cd webnegosyo-app && npx jest`.
 
-## Slice B — Scope the remaining web read paths
+## ~~Slice B — Scope the remaining web read paths~~ ✅ DONE (2026-07-29)
 
 Only the platform-Supabase path is scoped today. The other two backends leak.
 
@@ -132,7 +132,7 @@ the store total including the Unassigned bucket.
 
 ## Suggested order (revised)
 
-**B → D.** A and C5 are done. C5 moved to the front because it is the only
+**D only.** A, B and C5 are done. C5 moved to the front because it is the only
 remaining change a merchant can *see*: until it lands, a branch account still
 reads every branch's orders in the app, which is the exact thing this feature
 was asked for. B closes the same hole on the two web backends that are still
