@@ -41,9 +41,49 @@ export default defineSchema({
     lalamoveTrackingUrl: v.optional(v.string()),
     hasUpsellItems: v.optional(v.boolean()),
     hasBundleItems: v.optional(v.boolean()),
+    // Net collected, maintained by the recordPayment mutation from
+    // orderPayments. Optional so orders written before order editing existed
+    // keep validating.
+    amountPaid: v.optional(v.number()),
+    // Bumped on every edit; doubles as the optimistic-concurrency token.
+    revisionNumber: v.optional(v.number()),
+    editedAt: v.optional(v.string()),
+    editedBy: v.optional(v.string()),
   })
     .index("by_status", ["status"])
     .index("by_client_order_id", ["clientOrderId"]),
+
+  // Append-only settlement ledger. Mirrors `public.order_payments` on the
+  // platform backend: the original tender, an additional charge after an edit
+  // raised the total, a refund after one lowered it. Amount is always
+  // positive — `kind` carries the direction.
+  orderPayments: defineTable({
+    orderId: v.id("orders"),
+    kind: v.union(v.literal("charge"), v.literal("refund")),
+    amount: v.number(),
+    paymentMethodId: v.optional(v.string()),
+    paymentMethodName: v.optional(v.string()),
+    reference: v.optional(v.string()),
+    proofUrl: v.optional(v.string()),
+    proofPublicId: v.optional(v.string()),
+    recordedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+    note: v.optional(v.string()),
+  }).index("by_order", ["orderId"]),
+
+  // Immutable before/after snapshot per edit — what makes an edited bill
+  // defensible weeks later.
+  orderRevisions: defineTable({
+    orderId: v.id("orders"),
+    revisionNumber: v.number(),
+    itemsBefore: v.any(),
+    itemsAfter: v.any(),
+    totalBefore: v.number(),
+    totalAfter: v.number(),
+    reason: v.optional(v.string()),
+    revisedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+  }).index("by_order", ["orderId"]),
 
   orderItems: defineTable({
     orderId: v.id("orders"),

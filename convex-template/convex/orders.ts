@@ -144,6 +144,170 @@ export const updatePaymentStatus = mutation({
   },
 });
 
+/**
+ * Rewrite a placed order's items and record what changed.
+ *
+ * Convex gives this the atomicity the platform backend cannot get through
+ * PostgREST: the whole handler is one transaction, so a failure part-way
+ * leaves the order exactly as it was.
+ *
+ * The total is recomputed from the items rather than taken from the caller,
+ * matching `lib/backends/order-revise.ts` on the platform side — an edit
+ * rewrites a bill that may already be paid, so client arithmetic is not
+ * trusted.
+ */
+export const reviseOrder = mutation({
+  args: {
+    orderId: v.id("orders"),
+    expectedRevisionNumber: v.number(),
+    items: v.array(v.any()),
+    deliveryFee: v.optional(v.number()),
+    serviceChargeAmount: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    revisedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+    editedAt: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("That order no longer exists.");
+
+    if ((order.revisionNumber ?? 0) !== args.expectedRevisionNumber) {
+      throw new Error(
+        "This order changed while you were editing it — reopen it and try again."
+      );
+    }
+
+    if (args.items.length === 0) {
+      throw new Error("An order cannot be emptied by editing. Cancel it instead.");
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    const priced = args.items.map((item: any) => {
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > 99) {
+        throw new Error(`Invalid quantity for "${item.menuItemName}".`);
+      }
+      if (!Number.isFinite(item.price) || item.price < 0 || item.price > 1000000) {
+        throw new Error(`Invalid price for "${item.menuItemName}".`);
+      }
+      return { ...item, subtotal: round2(item.price * item.quantity) };
+    });
+
+    const existing = await ctx.db
+      .query("orderItems")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+
+    const total = round2(
+      priced.reduce((sum, item) => sum + item.subtotal, 0) +
+        (args.deliveryFee ?? 0) +
+        (args.serviceChargeAmount ?? 0)
+    );
+    const revisionNumber = (order.revisionNumber ?? 0) + 1;
+
+    await ctx.db.insert("orderRevisions", {
+      orderId: args.orderId,
+      revisionNumber,
+      itemsBefore: existing,
+      itemsAfter: priced,
+      totalBefore: order.total,
+      totalAfter: total,
+      reason: args.reason,
+      revisedBy: args.revisedBy,
+      outletId: args.outletId,
+    });
+
+    for (const item of existing) {
+      await ctx.db.delete(item._id);
+    }
+    for (const item of priced) {
+      await ctx.db.insert("orderItems", { ...item, orderId: args.orderId });
+    }
+
+    await ctx.db.patch(args.orderId, {
+      total,
+      itemCount: priced.reduce((sum, item) => sum + item.quantity, 0),
+      revisionNumber,
+      editedAt: args.editedAt,
+      editedBy: args.revisedBy,
+    });
+
+    return args.orderId;
+  },
+});
+
+/**
+ * Append one settlement row and refresh the order's cached amountPaid.
+ *
+ * The platform backend gets this from a database trigger; Convex has no
+ * triggers, so the mutation maintains the cache itself — inside the same
+ * transaction, so the ledger and the cache cannot disagree.
+ */
+export const recordPayment = mutation({
+  args: {
+    orderId: v.id("orders"),
+    kind: v.union(v.literal("charge"), v.literal("refund")),
+    amount: v.number(),
+    paymentMethodId: v.optional(v.string()),
+    paymentMethodName: v.optional(v.string()),
+    reference: v.optional(v.string()),
+    proofUrl: v.optional(v.string()),
+    proofPublicId: v.optional(v.string()),
+    recordedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.amount) || args.amount <= 0) {
+      throw new Error("A payment amount must be a positive number.");
+    }
+
+    await ctx.db.insert("orderPayments", {
+      ...args,
+      amount: Math.round(args.amount * 100) / 100,
+    });
+
+    const ledger = await ctx.db
+      .query("orderPayments")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+
+    const amountPaid = ledger.reduce(
+      (sum, row) => (row.kind === "refund" ? sum - row.amount : sum + row.amount),
+      0
+    );
+
+    await ctx.db.patch(args.orderId, {
+      amountPaid: Math.round(amountPaid * 100) / 100,
+    });
+
+    return args.orderId;
+  },
+});
+
+/** Every settlement against an order, oldest first. */
+export const getOrderPayments = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("orderPayments")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect(),
+});
+
+/** Edit history for an order, newest first. */
+export const getOrderRevisions = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("orderRevisions")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+    return rows.sort((a, b) => b.revisionNumber - a.revisionNumber);
+  },
+});
+
 export const updateLalamoveDetails = mutation({
   args: {
     orderId: v.id("orders"),

@@ -37,7 +37,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // then email, from customerContact OR customerData. Recovers legacy orders whose
 // identity lived only in customerData and merges cross-channel phone formats
 // (09... vs +639...), fixing the "1 customer" undercount without a data backfill.
-const CURRENT_SCHEMA_VERSION = 13;
+// v14: order editing. Adds the orderPayments ledger and orderRevisions audit
+// tables, plus amountPaid/revisionNumber/editedAt/editedBy on orders, and the
+// reviseOrder / recordPayment mutations behind them. Convex has no triggers,
+// so recordPayment maintains the amountPaid cache inside its own transaction —
+// the platform backend gets the same guarantee from a database trigger.
+const CURRENT_SCHEMA_VERSION = 14;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
