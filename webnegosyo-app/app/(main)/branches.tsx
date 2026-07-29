@@ -4,7 +4,7 @@ import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { formatPeso, formatCount } from "../../lib/format";
 import { compareBranches, type AnalyticsOrderLike } from "../../lib/branch-analytics";
-import { useBranchScope } from "../../lib/use-branch-scope";
+import { useAccountBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
@@ -28,14 +28,16 @@ const ORDER_WINDOW = 2000;
  * Branch-versus-branch takings.
  *
  * The comparison exists for the owner: a branch-locked account is filtered to
- * its own branch by `useBranchScope`, so it sees one row — its own — rather
- * than everyone else's numbers.
+ * its own branch by `useAccountBranchScope`, so it sees one row — its own —
+ * rather than everyone else's numbers. The *account* scope, not the narrowed
+ * one: an owner who has drilled into a branch still needs every branch here,
+ * since comparing is the entire purpose of the screen.
  *
  * Cancelled orders are excluded from revenue and count in `compareBranches`,
  * so these figures describe the same set of orders as the dashboard tiles.
  */
 export default function BranchesScreen() {
-  const scope = useBranchScope();
+  const scope = useAccountBranchScope();
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: orders, error } = useSafeQuery<AnalyticsOrderLike[]>(getOrdersRef, {

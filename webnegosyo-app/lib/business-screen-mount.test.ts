@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-import { getWorkspace } from "./workspaces";
+import { getWorkspace, WORKSPACES } from "./workspaces";
 
 const SCREENS_DIR = join(__dirname, "..", "app", "(main)");
 
@@ -23,9 +23,33 @@ describe("Business view screens", () => {
     expect(existsSync(screenPath(tab))).toBe(true);
   });
 
+  it.each(businessTabs)("reads the un-narrowed account scope in %s", (tab) => {
+    // Business is the view of the company, so its screens must keep showing
+    // every branch while one of them is being viewed. The four working views
+    // are the ones that narrow.
+    expect(readFileSync(screenPath(tab), "utf8")).not.toMatch(
+      /import \{[^}]*\buseBranchScope\b[^}]*\}/,
+    );
+  });
+
   it.each(businessTabs)("imports the WorkspaceSwitcher in %s", (tab) => {
     expect(readFileSync(screenPath(tab), "utf8")).toMatch(
       /import \{ WorkspaceSwitcher \} from "\.\.\/\.\.\/components\/WorkspaceSwitcher";/,
+    );
+  });
+});
+
+describe("tab registration", () => {
+  const layout = () => readFileSync(join(SCREENS_DIR, "_layout.tsx"), "utf8");
+  const everyTab = WORKSPACES.flatMap((workspace) => [...workspace.tabs]);
+
+  it.each(everyTab)("gates %s behind the active view", (tab) => {
+    // A route file with no <Tabs.Screen> entry is still registered by
+    // expo-router, with default options — so it appears in every view and
+    // ignores staff permissions. That is how the Branches tab shipped visible
+    // to a cashier in the Register view.
+    expect(layout()).toMatch(
+      new RegExp(`name="${tab}"[\\s\\S]{0,120}href: show\\("${tab}"\\)`),
     );
   });
 });
@@ -44,6 +68,8 @@ describe("portfolio screen", () => {
     // Using useBranchScope here would collapse the portfolio to the single
     // branch just drilled into, leaving no way back to the list.
     expect(source()).toMatch(/useAccountBranchScope/);
-    expect(source()).not.toMatch(/\buseBranchScope\b/);
+    // Matched against the import list rather than the whole file: prose about
+    // why the narrowed hook is wrong here is exactly what a screen should say.
+    expect(source()).not.toMatch(/import \{[^}]*\buseBranchScope\b[^}]*\}/);
   });
 });

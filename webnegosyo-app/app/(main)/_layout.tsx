@@ -162,6 +162,25 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
         }}
       />
+      {/* Business view */}
+      <Tabs.Screen
+        name="portfolio"
+        options={{
+          href: show("portfolio"),
+          title: "Your business",
+          tabBarLabel: "Branches",
+          tabBarIcon: ({ color }) => <TabIcon symbol="⌂" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="branches"
+        options={{
+          href: show("branches"),
+          title: "Branch performance",
+          tabBarLabel: "Compare",
+          tabBarIcon: ({ color }) => <TabIcon symbol="⇅" color={color} />,
+        }}
+      />
       {/* Detail/utility screens — never tabs */}
       <Tabs.Screen
         name="product/[productId]"
