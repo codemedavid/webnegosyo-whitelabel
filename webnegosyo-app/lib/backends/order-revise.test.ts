@@ -104,7 +104,11 @@ describe("buildRevisionRows", () => {
   it("bumps the revision number and stamps who edited it", () => {
     const { orderPatch } = buildRevisionRows(
       TENANT,
-      reviseArgs({ revisedBy: "user-9", editedAt: "2026-07-29T10:00:00.000Z" }),
+      reviseArgs({
+        expectedRevisionNumber: 3,
+        revisedBy: "user-9",
+        editedAt: "2026-07-29T10:00:00.000Z",
+      }),
       previous({ revisionNumber: 3 }),
     );
 

@@ -25,6 +25,12 @@ import {
   type PlatformOrderItemRow,
   type PlatformOrderRow,
 } from "./supabase-orders";
+import {
+  buildPaymentRow,
+  buildRevisionRows,
+  type RecordPaymentArgs,
+  type ReviseOrderArgs,
+} from "./order-revise";
 
 /**
  * The slice of supabase-js this adapter uses. Narrow on purpose: it keeps the
@@ -45,6 +51,9 @@ export interface PlatformQueryBuilder {
   limit(count: number): PlatformQueryBuilder;
   insert(values: unknown): PlatformQueryBuilder;
   update(values: unknown): PlatformQueryBuilder;
+  // Only ever used to replace an edited order's items, and always narrowed by
+  // order_id. Widening this interface widens what the adapter can destroy.
+  delete(): PlatformQueryBuilder;
   maybeSingle(): PlatformQueryBuilder;
   single(): PlatformQueryBuilder;
   then<TResult>(
@@ -92,6 +101,8 @@ const SUPPORTED_MUTATION_REFS = [
   "orders:createOrder",
   "orders:updateOrderStatus",
   "orders:updatePaymentStatus",
+  "orders:reviseOrder",
+  "orders:recordPayment",
 ] as const;
 
 const SUPPORTED_REFS: readonly string[] = [
@@ -284,6 +295,97 @@ async function patchOrder(
   return orderId;
 }
 
+/**
+ * Rewrite a placed order's items and record what changed.
+ *
+ * Reads the order's current state first, so the totals and the audit snapshot
+ * are built from what is actually stored rather than from what the client
+ * believed when it opened the edit screen.
+ *
+ * NOT atomic: PostgREST cannot span a transaction across these writes. The
+ * order is ordered so the worst partial failure is recoverable — the revision
+ * row (which carries the unique constraint that rejects a concurrent edit)
+ * lands FIRST, so a crash after it leaves an audit trail of an edit that did
+ * not fully apply, rather than a silently rewritten bill with no record.
+ * Moving this into a Postgres RPC is the known follow-up.
+ */
+async function reviseOrder(
+  client: PlatformClient,
+  tenantId: string,
+  args: Record<string, unknown>
+): Promise<string> {
+  const reviseArgs = args as unknown as ReviseOrderArgs;
+
+  const current = await unwrap<{
+    total: number | null;
+    revision_number: number | null;
+  } | null>(
+    client
+      .from("orders")
+      .select("total, revision_number")
+      .eq("id", reviseArgs.orderId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle()
+  );
+  if (!current) throw new Error("That order no longer exists.");
+
+  const currentItems = await unwrap<PlatformOrderItemRow[]>(
+    client.from("order_items").select("*").eq("order_id", reviseArgs.orderId)
+  );
+
+  const { orderPatch, itemRows, revision } = buildRevisionRows(tenantId, reviseArgs, {
+    revisionNumber: current.revision_number ?? 0,
+    total: current.total ?? 0,
+    items: (currentItems ?? []).map((row) => ({
+      menuItemId: row.menu_item_id ?? "",
+      menuItemName: row.menu_item_name ?? "",
+      quantity: row.quantity ?? 0,
+      price: row.price ?? 0,
+      subtotal: row.subtotal ?? 0,
+      ...(row.special_instructions
+        ? { specialInstructions: row.special_instructions }
+        : {}),
+      ...(row.variation_selections
+        ? { variationSelections: row.variation_selections }
+        : {}),
+    })),
+  });
+
+  // First: claims this revision number. A second staff member saving the same
+  // edit fails here on the unique constraint, before any item is touched.
+  await unwrap(client.from("order_revisions").insert(revision));
+
+  await unwrap(
+    client.from("order_items").delete().eq("order_id", reviseArgs.orderId)
+  );
+  await unwrap(
+    client
+      .from("order_items")
+      .insert(itemRows.map((row) => ({ ...row, order_id: reviseArgs.orderId })))
+  );
+
+  await unwrap(
+    client
+      .from("orders")
+      .update(orderPatch)
+      .eq("id", reviseArgs.orderId)
+      .eq("tenant_id", tenantId)
+  );
+
+  return reviseArgs.orderId;
+}
+
+/** Append one settlement row. `orders.amount_paid` follows by trigger. */
+async function recordPayment(
+  client: PlatformClient,
+  tenantId: string,
+  args: Record<string, unknown>
+): Promise<string> {
+  const row = buildPaymentRow(tenantId, args as unknown as RecordPaymentArgs);
+  await unwrap(client.from("order_payments").insert(row));
+  return row.order_id;
+}
+
 // --- dispatch -------------------------------------------------------------
 
 export async function runPlatformQuery(
@@ -336,6 +438,10 @@ export async function runPlatformMutation(
       return patchOrder(client, tenant, params.orderId, {
         payment_status: params.paymentStatus,
       });
+    case "orders:reviseOrder":
+      return reviseOrder(client, tenant, params);
+    case "orders:recordPayment":
+      return recordPayment(client, tenant, params);
     default:
       throw new Error(`Mutation "${ref}" is not supported by the platform backend.`);
   }
