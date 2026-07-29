@@ -21,6 +21,7 @@ import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
+import { withOrderOutlet } from "../../lib/order-outlet";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
@@ -67,6 +68,8 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const tenantId = useAuthStore((s) => s.tenantId);
+  const outletId = useAuthStore((s) => s.outletId);
+  const outletName = useAuthStore((s) => s.outletName);
   const createOrder = useSafeMutation(createOrderRef);
 
   const [state, setState] = useState<ScreenState>({ mode: "scanning" });
@@ -181,7 +184,12 @@ export default function ScanScreen() {
       await createOrder({
         customerName: payload.customerName,
         customerContact: payload.customerContact,
-        customerData: payload.customerData,
+        // The staff member scanning the code is the branch taking the order,
+        // so their branch is stamped over whatever the handoff payload carried.
+        customerData: withOrderOutlet(
+          payload.customerData,
+          outletId && outletName ? { id: outletId, name: outletName } : null,
+        ),
         total,
         orderType: payload.orderType,
         orderTypeId: payload.orderTypeId,
