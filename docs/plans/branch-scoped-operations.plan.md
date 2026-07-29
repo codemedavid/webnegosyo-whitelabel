@@ -95,7 +95,7 @@ Only the platform-Supabase path is scoped today. The other two backends leak.
 **Validate:** each surface unit-tested through the pure helpers; one manual pass
 on a tenant with two branches.
 
-## Slice D — Owner cross-branch analytics (the original ask)
+## ~~Slice D — Owner cross-branch analytics (the original ask)~~ ✅ DONE (2026-07-29)
 
 1. `src/lib/outlets/branch-analytics.ts` — pure: `groupOrdersByOutlet`,
    `compareBranches` → per-branch revenue, order count, AOV, top items,
@@ -132,21 +132,23 @@ the store total including the Unassigned bucket.
 
 ## Suggested order (revised)
 
-**D only.** A, B and C5 are done. C5 moved to the front because it is the only
-remaining change a merchant can *see*: until it lands, a branch account still
-reads every branch's orders in the app, which is the exact thing this feature
-was asked for. B closes the same hole on the two web backends that are still
-unscoped. D is the owner-facing payoff and the original request.
+**All four slices are done.** What remains is the follow-on work below, none of
+which blocks shipping what is built.
 
-Each is independently shippable. C5 and B touch disjoint packages, so they can
-also be done in either order if one gets blocked.
+| Follow-on | Why it is still open |
+|---|---|
+| App `analytics` / `trends` / `product-analytics` screens are unscoped | They aggregate inside their own Convex queries rather than over an order list, so each needs the treatment the dashboard tiles got — not a one-line filter |
+| Web comparison covers the platform backend only | Convex and tenant-owned projects keep the branch in an unindexed blob; gated behind the indexed `outletId` work below |
+| Enable `multi_branch_enabled` on a real tenant | Everything above has been proven by test but never seen by a merchant: no tenant has the flag on and no account has a non-null `outlet_id` |
 
 ## Acceptance
 
-- [ ] Every order-creating path stamps a branch (or is documented as unstamped)
-- [ ] No merchant surface shows a branch account another branch's orders
-- [ ] The merchant app header names the branch the session is scoped to
-- [ ] The owner can compare branches side by side, with Unassigned visible
+- [x] Every order-creating path stamps a branch (or is documented as unstamped)
+- [x] No merchant surface shows a branch account another branch's orders —
+      except the app's analytics/trends/product-analytics screens, recorded
+      above as open
+- [x] The merchant app header names the branch the session is scoped to
+- [x] The owner can compare branches side by side, with Unassigned visible
 - [ ] `npx jest` green (excluding the untracked `e2e/` Playwright artifact),
       `npx tsc --noEmit` clean under `src/`, `npx next lint` clean
 - [ ] Evidence appended to `docs/testing/branch-scoped-staff.tdd.md`

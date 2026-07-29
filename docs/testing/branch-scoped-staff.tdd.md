@@ -504,3 +504,126 @@ Known gap in this block: the app's analytics, trends and product-analytics
 screens were **not** scoped. They aggregate over their own queries rather than
 an order list, so each needs the same treatment the dashboard tiles just got —
 this is Slice D work, not a one-line filter.
+
+---
+
+## Task 13 — Slice D: cross-branch comparison (the original ask)
+
+**Plan:** `docs/plans/branch-scoped-operations.plan.md`, Slice D.
+
+**Journey:** *As the owner of a multi-branch store, I want to see my branches
+side by side, so that I can tell which one is carrying the business.*
+
+### 13a — the pure comparison (web)
+
+RED `c991ae8` → GREEN `db80f45`.
+
+| Command | Result |
+|---|---|
+| `npx jest tests/unit/branch-analytics.test.ts` (RED) | `Cannot find module '../../src/lib/outlets/branch-analytics'` |
+| `npx jest tests/unit/branch-analytics.test.ts` (GREEN) | `Tests: 16 passed` |
+
+`src/lib/outlets/branch-analytics.ts` — `groupOrdersByOutlet`,
+`compareBranches`. Revenue, order count, average and share of store revenue per
+branch, ranked highest-first.
+
+Two properties are pinned by test rather than left to inspection:
+
+- **Nothing is dropped.** Orders with no branch — everything taken before the
+  feature existed — land in an explicit `Unassigned` row. `sums to the store
+  total across every row including Unassigned` is the check that catches a
+  dropped bucket or a double-count.
+- **Unassigned never wins the ranking.** It is pinned last however much revenue
+  it holds; it is a data-quality bucket, and letting it top the table would read
+  as the store's best-performing location.
+
+Cancelled orders are excluded from revenue and count, matching
+`deriveStatsForScope` and the Convex stats handler, so the comparison describes
+the same order set as the figures beside it.
+
+### 13b — the web table
+
+RED `953fcce` → GREEN `1fef746`, wired in `4924f58`.
+
+| Command | Result |
+|---|---|
+| `npx jest tests/unit/branch-comparison-table.test.tsx` (RED) | `Cannot find module '@/components/admin/branch-comparison-table'` |
+| `npx jest tests/unit/branch-comparison-table.test.tsx` (GREEN) | `Tests: 7 passed` |
+
+Renders on `/[tenant]/admin/outlets`, the multi-branch-gated Branches page.
+The component takes the **order list**, not pre-computed figures, so the table
+cannot disagree with a total shown beside it about which orders were counted.
+
+Two states are asserted because both are reachable on day one: the empty state
+explains itself rather than rendering a bare table, and the Unassigned note only
+appears when there is something in the bucket.
+
+Orders come from `getOrdersByTenant`, which already applies the caller's branch
+scope — so a branch admin who opens this page sees one row, its own, rather than
+the comparison. That is the plan's intent, not a degraded view.
+
+**Backend limit, stated on screen rather than hidden:** only the platform
+database is read. The other two backends keep the branch in an unindexed blob,
+so the page says the comparison is unavailable instead of rendering an empty
+table that reads as "no branch has sold anything".
+
+### 13c — the app screen
+
+RED `6716a82` → GREEN `a6014d5`; tab RED `4b5d507` → GREEN `9419861`.
+
+| Command | Result |
+|---|---|
+| `npx jest lib/branch-analytics.test.ts` (RED) | module not found |
+| `npx jest lib/branch-analytics.test.ts` (GREEN) | `Tests: 13 passed` |
+| `npx jest lib/workspaces.test.ts` (RED) | `✕ puts branch comparison in the insights view` |
+| `npx jest` (app, GREEN) | `Tests: 1070 passed, 67 suites` |
+
+`webnegosyo-app/lib/branch-analytics.ts` is a hand-kept copy of the web module —
+the two packages build separately and share no import, the same arrangement
+`staff-permissions.ts` and `branch-scope.ts` already use. Both test files assert
+the same rules, so a drift surfaces as a failure rather than as two dashboards
+that disagree about a branch's takings.
+
+`app/(main)/branches.tsx` registered in the Insights workspace.
+
+### Bug found: an unmapped tab is an *allowed* tab
+
+Adding `branches` to the workspace registry broke two existing tests in
+`staff-permissions.test.ts` — `gives a pos-only cashier the register view and
+nothing else` and `drops views with no permitted tabs`.
+
+`isTabAllowed` returns true for any tab absent from `TAB_PERMISSIONS`. The new
+tab was therefore visible to a cashier holding only the `pos` grant, showing
+store-wide revenue broken down by branch to an account meant to see a till.
+Mapped to the `analytics` key.
+
+Worth recording because the failure mode is silent and general: **every future
+tab is world-readable until someone adds a line to that map**, and nothing in
+the registry prompts for it. The existing tests caught this one only because
+they assert an exact tab list for a restricted account.
+
+### Validation for this block
+
+| Command | Result |
+|---|---|
+| `npx jest tests/unit` (web) | `Tests: 3434 passed, 277 suites` |
+| `npx jest` (app) | `Tests: 1070 passed, 67 suites` |
+| `npx tsc --noEmit` | no errors under `src/`; none in the app files changed |
+| `npm run lint` | no findings in any file changed by this block |
+
+### Migrations
+
+None. Slice D is read-only over data the applied `branch_scoped_staff`
+migration already provides.
+
+## Remaining after Slice D
+
+- **App analytics/trends/product-analytics still unscoped.** They aggregate
+  over their own Convex queries rather than an order list, so each needs the
+  treatment the dashboard tiles got. Not closed by this block.
+- **Convex + tenant-owned Supabase have no web comparison.** Gated behind the
+  indexed `outletId` work.
+- Deferred as before: branch-aware RLS on `orders`; Convex push targeting —
+  until it lands **every branch device rings for every order**, which belongs in
+  release notes; and the UI to move an account between branches
+  (`updateStaffBranchAction` is built and tested but uncalled).
