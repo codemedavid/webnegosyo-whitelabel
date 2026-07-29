@@ -41,17 +41,86 @@ import {
   updateStaffPermissionsAction,
 } from '@/app/actions/staff'
 
+/** A branch as this card needs to show and offer it. */
+interface StaffOutlet {
+  id: string
+  name: string
+}
+
 interface StaffManagementCardProps {
   tenantId: string
   tenantSlug: string
   staff: StaffRecord[]
+  /**
+   * The store's branches. Empty (the default) for every single-location
+   * tenant, which is the signal to render exactly the card that exists today —
+   * no branch control and no branch column.
+   */
+  outlets?: StaffOutlet[]
 }
+
+const ALL_BRANCHES_LABEL = 'All branches'
 
 const EMPTY_FORM = {
   displayName: '',
   email: '',
   password: '',
   permissions: [] as string[],
+  /** '' means the whole store; `resolveStaffOutletId` reads it as null. */
+  outletId: '',
+}
+
+/**
+ * The branch a member covers, named rather than identified.
+ *
+ * A branch that no longer exists still has to render as words: deleting a
+ * branch sets the column to NULL, but between that write and the next fetch a
+ * stale row would otherwise print a raw uuid into the merchant's staff list.
+ */
+function branchLabel(outletId: string | null | undefined, outlets: StaffOutlet[]): string {
+  if (!outletId) return ALL_BRANCHES_LABEL
+  return outlets.find((outlet) => outlet.id === outletId)?.name ?? 'Unknown branch'
+}
+
+/**
+ * Native radios rather than the Select primitive: the choice is short, always
+ * fully visible, and stays operable by keyboard and by test without pointer
+ * emulation.
+ */
+function BranchRadioGroup({
+  outlets,
+  value,
+  onChange,
+  idPrefix,
+}: {
+  outlets: StaffOutlet[]
+  value: string
+  onChange: (outletId: string) => void
+  idPrefix: string
+}) {
+  const options = [{ id: '', name: ALL_BRANCHES_LABEL }, ...outlets]
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {options.map((option) => (
+        <label
+          key={option.id || 'all'}
+          htmlFor={`${idPrefix}-branch-${option.id || 'all'}`}
+          className="flex items-center gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50"
+        >
+          <input
+            type="radio"
+            id={`${idPrefix}-branch-${option.id || 'all'}`}
+            name={`${idPrefix}-branch`}
+            className="h-4 w-4"
+            checked={value === option.id}
+            onChange={() => onChange(option.id)}
+          />
+          <span className="text-sm font-medium leading-none">{option.name}</span>
+        </label>
+      ))}
+    </div>
+  )
 }
 
 function PermissionCheckboxes({
@@ -90,7 +159,13 @@ function PermissionCheckboxes({
   )
 }
 
-export function StaffManagementCard({ tenantId, tenantSlug, staff }: StaffManagementCardProps) {
+export function StaffManagementCard({
+  tenantId,
+  tenantSlug,
+  staff,
+  outlets = [],
+}: StaffManagementCardProps) {
+  const hasBranches = outlets.length > 0
   const router = useRouter()
   const members = staff.filter((s) => !s.is_owner)
   const [isSaving, setIsSaving] = useState(false)
@@ -210,6 +285,11 @@ export function StaffManagementCard({ tenantId, tenantSlug, staff }: StaffManage
                 {member.permissions == null && (
                   <Badge variant="outline" className="text-xs">Full access</Badge>
                 )}
+                {hasBranches && (
+                  <Badge variant="secondary" className="text-xs">
+                    {branchLabel(member.outlet_id, outlets)}
+                  </Badge>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -292,6 +372,20 @@ export function StaffManagementCard({ tenantId, tenantSlug, staff }: StaffManage
                 placeholder="At least 8 characters"
               />
             </div>
+            {hasBranches && (
+              <div className="space-y-2">
+                <Label>Works at</Label>
+                <BranchRadioGroup
+                  idPrefix="add-staff"
+                  outlets={outlets}
+                  value={addForm.outletId}
+                  onChange={(outletId) => setAddForm({ ...addForm, outletId })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  A branch account sees only that branch&apos;s orders and sales.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Can access</Label>
               <PermissionCheckboxes

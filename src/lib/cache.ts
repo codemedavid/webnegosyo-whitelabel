@@ -7,6 +7,10 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import { tenantCacheKeys } from '@/lib/tenant-cache-keys'
+import {
+  asAppUserQueryClient,
+  fetchAppUserScope,
+} from '@/lib/queries/fetch-app-user-scope'
 import type { Tenant, Category } from '@/types/database'
 
 /**
@@ -124,14 +128,13 @@ export const getCachedCurrentUserRole = cache(async () => {
     return null
   }
 
-  const { data: userRole } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, is_owner, permissions')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
+  // Read through the resilient helper: this projection sits in front of every
+  // admin page, so naming the branch column before its migration is applied
+  // would blank the whole admin rather than one feature.
+  const { appUser: userRole } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
   return userRole
 })
+
 
 /**
  * Preload tenant data for faster subsequent access

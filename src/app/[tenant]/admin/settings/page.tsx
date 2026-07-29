@@ -15,6 +15,7 @@ import { StaffManagementCard } from '@/components/admin/staff-management-card'
 import { AccountSettingsCard } from '@/components/admin/account-settings-card'
 import { LalamoveKeysCard } from '@/components/admin/lalamove-keys-card'
 import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
+import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { listStaffAction } from '@/app/actions/staff'
 import type { StaffRecord } from '@/lib/staff-service'
 
@@ -35,6 +36,9 @@ export default async function SettingsPage({
   const caller = userRole ?? { role: 'admin', tenant_id: null }
   const isOwner = canManageStaff(caller)
   const hasSettingsAccess = hasPermission(caller, 'settings')
+  // A branch admin manages its own branch's people, so it needs the card too.
+  const canManageAnyStaff =
+    isOwner || canManageBranchStaff(caller, caller.outlet_id ?? null)
 
   const supabase = await createClient()
   const {
@@ -42,9 +46,19 @@ export default async function SettingsPage({
   } = await supabase.auth.getUser()
 
   let staff: StaffRecord[] = []
-  if (isOwner) {
+  let outlets: { id: string; name: string }[] = []
+  if (canManageAnyStaff) {
     const staffResult = await listStaffAction(tenant.id)
     staff = staffResult.success ? staffResult.data : []
+
+    // Empty for every single-location store, which is what makes the card
+    // render exactly as it does today.
+    const { data: outletRows } = await supabase
+      .from('outlets')
+      .select('id, name')
+      .eq('tenant_id', tenant.id)
+      .order('sort_order', { ascending: true })
+    outlets = (outletRows as { id: string; name: string }[] | null) ?? []
   }
 
   return (
@@ -91,9 +105,14 @@ export default async function SettingsPage({
         </CardContent>
       </Card>
 
-      {/* Staff & Permissions — owner only */}
-      {isOwner && (
-        <StaffManagementCard tenantId={tenant.id} tenantSlug={tenantSlug} staff={staff} />
+      {/* Staff & Permissions — the owner, or a branch admin for its own branch */}
+      {canManageAnyStaff && (
+        <StaffManagementCard
+          tenantId={tenant.id}
+          tenantSlug={tenantSlug}
+          staff={staff}
+          outlets={outlets}
+        />
       )}
 
       {/* Account — every admin manages their own credentials */}
