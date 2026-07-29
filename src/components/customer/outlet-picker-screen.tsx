@@ -24,9 +24,16 @@ interface OutletPickerScreenProps {
   mode: OutletOrderMode | null
   ranked: RankedOutlet<PickerOutlet>[]
   isLocating: boolean
-  onLocate: () => void
+  /**
+   * Null where there is nothing to locate against — the checkout path never
+   * asks for the customer's position. Rendering the button anyway would put an
+   * enabled control on screen that does nothing when tapped.
+   */
+  onLocate: (() => void) | null
   /** Null when the mode was forced (one mode on offer) and there is no step back. */
   onBack: (() => void) | null
+  /** Why the customer is being asked again, when they have been before. */
+  notice?: string | null
   onSelect: (outletId: string) => void
   /** Injected so the open/closed label is decided once, not per render tick. */
   now: Date
@@ -49,6 +56,7 @@ export function OutletPickerScreen({
   isLocating,
   onLocate,
   onBack,
+  notice,
   onSelect,
   now,
 }: OutletPickerScreenProps) {
@@ -79,16 +87,29 @@ export function OutletPickerScreen({
           <span className="h-10 w-10" aria-hidden />
         )}
         <h1 className="flex-1 text-center text-lg font-semibold">Select Your Outlet</h1>
-        <button
-          type="button"
-          onClick={onLocate}
-          disabled={isLocating}
-          aria-label="Use my location"
-          className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted disabled:opacity-50"
-        >
-          <Crosshair className={`h-6 w-6 ${isLocating ? 'animate-pulse' : ''}`} />
-        </button>
+        {onLocate ? (
+          <button
+            type="button"
+            onClick={onLocate}
+            disabled={isLocating}
+            aria-label="Use my location"
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted disabled:opacity-50"
+          >
+            <Crosshair className={`h-6 w-6 ${isLocating ? 'animate-pulse' : ''}`} />
+          </button>
+        ) : (
+          <span className="h-10 w-10" aria-hidden />
+        )}
       </header>
+
+      {notice && (
+        <p
+          role="status"
+          className="mx-4 mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          {notice}
+        </p>
+      )}
 
       <div className="px-4 py-4">
         <label className="relative block">
@@ -131,6 +152,21 @@ export function OutletPickerScreen({
                 type="button"
                 onClick={() => onSelect(outlet.id)}
                 disabled={outOfRange}
+                /**
+                 * The open/closed line and the distance sit outside this button
+                 * so they can hold a link, which means the button's own
+                 * accessible name would otherwise be the branch name alone —
+                 * a screen reader user would hear no hint that it is shut or
+                 * out of range. Spelled out here rather than restructured
+                 * because the visual grouping is already correct.
+                 */
+                aria-label={[
+                  outlet.name,
+                  card.isOpen ? 'Open' : 'Closed',
+                  outOfRange ? 'outside delivery area' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' — ')}
                 className="block w-full overflow-hidden rounded-2xl text-left transition-opacity disabled:opacity-50"
               >
                 {outlet.image_url ? (

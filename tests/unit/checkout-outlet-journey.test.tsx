@@ -145,6 +145,37 @@ describe('an order can never be placed against no branch', () => {
 
 describe('changing the order type explains itself', () => {
   it('reports why a branch was dropped when the order type outgrew it', async () => {
+    // Two delivery-capable branches, so dropping the kiosk leaves a real
+    // choice rather than a single branch the resolver would auto-pick.
+    fetchActiveOutlets.mockResolvedValue([CAINTA, MAKATI, DINE_ONLY])
+
+    const { result, rerender } = renderHook(
+      ({ orderTypeId }: { orderTypeId: string }) =>
+        useCheckoutOutlet({
+          tenant: AFTER,
+          tenantSlug: 'acme',
+          orderTypes: ORDER_TYPES,
+          orderTypeId,
+        }),
+      { initialProps: { orderTypeId: 'ot-dine' } }
+    )
+
+    await waitFor(() => expect(result.current.choices).toHaveLength(3))
+
+    // Chose the dine-in-only kiosk, then switched the order to delivery.
+    result.current.select('o-dine')
+    await waitFor(() => expect(result.current.selectedOutletId).toBe('o-dine'))
+
+    rerender({ orderTypeId: 'ot-delivery' })
+
+    await waitFor(() => expect(result.current.selectedOutletId).toBeNull())
+    expect(result.current.droppedReason).toBe('order-type-changed')
+  })
+
+  it('moves the order to the only branch left, and still says the choice changed', async () => {
+    // One delivery-capable branch remains, so there is no question left to ask
+    // — but the customer's own pick was overridden and the summary row has to
+    // be able to say so rather than quietly renaming the branch.
     fetchActiveOutlets.mockResolvedValue([CAINTA, DINE_ONLY])
 
     const { result, rerender } = renderHook(
@@ -159,14 +190,13 @@ describe('changing the order type explains itself', () => {
     )
 
     await waitFor(() => expect(result.current.choices).toHaveLength(2))
-
-    // Chose the dine-in-only kiosk, then switched the order to delivery.
     result.current.select('o-dine')
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-dine'))
 
     rerender({ orderTypeId: 'ot-delivery' })
 
-    await waitFor(() => expect(result.current.selectedOutletId).toBeNull())
+    await waitFor(() => expect(result.current.selectedOutletId).toBe('o-cainta'))
+    expect(result.current.isMissingRequiredSelection).toBe(false)
     expect(result.current.droppedReason).toBe('order-type-changed')
   })
 

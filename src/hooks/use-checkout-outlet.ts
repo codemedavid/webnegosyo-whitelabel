@@ -20,6 +20,9 @@ interface UseCheckoutOutletInput {
   orderTypeId: string | null
 }
 
+/** Why a branch the customer had already chosen is no longer chosen. */
+export type CheckoutOutletDroppedReason = 'order-type-changed'
+
 export interface UseCheckoutOutletResult {
   /** Whether checkout should render the branch picker at all. */
   isPickerVisible: boolean
@@ -32,6 +35,10 @@ export interface UseCheckoutOutletResult {
   clearSelection: () => void
   /** The order type's mode, for labelling the screen. Null for custom types. */
   mode: OutletOrderMode | null
+  /** True until the branch list has been read. Nothing may be concluded yet. */
+  isLoading: boolean
+  /** Set when the customer's own choice was taken away, so it can be explained. */
+  droppedReason: CheckoutOutletDroppedReason | null
   /** True when the customer must answer before the order can be placed. */
   isMissingRequiredSelection: boolean
 }
@@ -57,6 +64,7 @@ export function useCheckoutOutlet({
   const isAfterTiming = isMultiBranchEnabled(tenant) && resolveOutletSelectionTiming(tenant) === 'after'
 
   const [outlets, setOutlets] = useState<Outlet[]>([])
+  const [hasLoadedOutlets, setHasLoadedOutlets] = useState(false)
   const [chosenOutletId, setChosenOutletId] = useState<string | null>(null)
   const [storedOutletId, setStoredOutletId] = useState<string | null>(null)
 
@@ -72,7 +80,11 @@ export function useCheckoutOutlet({
     let isCurrent = true
 
     fetchActiveOutlets(tenant.id).then((rows) => {
-      if (isCurrent) setOutlets(rows)
+      if (!isCurrent) return
+      setOutlets(rows)
+      // Set last and unconditionally: a failed read resolves to [], and the
+      // customer must still be let through rather than held on a blank screen.
+      setHasLoadedOutlets(true)
     })
 
     return () => {
@@ -97,6 +109,30 @@ export function useCheckoutOutlet({
 
   const isPickerVisible = shouldPickOutletAtCheckout(tenant, outlets) && resolution.choices.length > 1
 
+  const isLoading = isAfterTiming && !hasLoadedOutlets
+
+  /**
+   * Whether this order MUST name a branch before it can be placed.
+   *
+   * Deliberately not `isPickerVisible`. That answers "is there a list worth
+   * showing", which is a different question and was the source of two ways to
+   * place an order belonging to no branch at all: while the list was still
+   * loading, and when the chosen order type left no branch able to serve it —
+   * in both cases the picker stayed hidden and the CTA stayed live.
+   *
+   * The obligation follows the tenant, not the list. It lifts in exactly one
+   * case: a tenant that opted in but has no active branches yet, where holding
+   * the customer would strand them on a screen with nothing to choose. That is
+   * a setup gap, and it degrades to today's branchless checkout.
+   */
+  const isMissingRequiredSelection =
+    isAfterTiming && (isLoading || (outlets.length > 0 && resolvedOutletId === null))
+
+  // The customer tapped a branch and no longer has it — only ever because the
+  // order type changed under them, since nothing else clears a live choice.
+  const droppedReason: CheckoutOutletDroppedReason | null =
+    chosenOutletId !== null && resolvedOutletId !== chosenOutletId ? 'order-type-changed' : null
+
   return {
     isPickerVisible,
     choices: resolution.choices,
@@ -104,6 +140,8 @@ export function useCheckoutOutlet({
     select: useCallback((outletId: string) => setChosenOutletId(outletId), []),
     clearSelection: useCallback(() => setChosenOutletId(null), []),
     mode,
-    isMissingRequiredSelection: isPickerVisible && resolvedOutletId === null,
+    isLoading,
+    droppedReason,
+    isMissingRequiredSelection,
   }
 }
