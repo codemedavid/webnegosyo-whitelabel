@@ -440,6 +440,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           is_owner: boolean
+          outlet_id: string | null
           permissions: string[] | null
           role: string
           tenant_id: string | null
@@ -451,6 +452,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
+          outlet_id?: string | null
           permissions?: string[] | null
           role: string
           tenant_id?: string | null
@@ -462,6 +464,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
+          outlet_id?: string | null
           permissions?: string[] | null
           role?: string
           tenant_id?: string | null
@@ -469,6 +472,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "app_users_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "app_users_tenant_id_fkey"
             columns: ["tenant_id"]
