@@ -18,7 +18,7 @@
  */
 
 import { render, screen, fireEvent } from '@testing-library/react'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
 import type { UseCheckoutOutletResult } from '@/hooks/use-checkout-outlet'
@@ -163,7 +163,7 @@ describe('changing the order type explains itself', () => {
     await waitFor(() => expect(result.current.choices).toHaveLength(3))
 
     // Chose the dine-in-only kiosk, then switched the order to delivery.
-    result.current.select('o-dine')
+    act(() => result.current.select('o-dine'))
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-dine'))
 
     rerender({ orderTypeId: 'ot-delivery' })
@@ -190,7 +190,7 @@ describe('changing the order type explains itself', () => {
     )
 
     await waitFor(() => expect(result.current.choices).toHaveLength(2))
-    result.current.select('o-dine')
+    act(() => result.current.select('o-dine'))
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-dine'))
 
     rerender({ orderTypeId: 'ot-delivery' })
