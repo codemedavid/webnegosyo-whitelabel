@@ -55,7 +55,9 @@ describe('BranchComparisonTable', () => {
   it('names the Unassigned bucket so the gap is visible', () => {
     render(<BranchComparisonTable orders={[branchOrder('north', 'North Branch', 400), order()]} />)
 
-    expect(screen.getByText('Unassigned')).toBeInTheDocument()
+    // Targeted by row rather than by text: the word also appears in the note
+    // below the table that explains what the bucket holds.
+    expect(screen.getByTestId('branch-name-unassigned')).toHaveTextContent('Unassigned')
   })
 
   it('explains what Unassigned means rather than leaving the owner guessing', () => {
