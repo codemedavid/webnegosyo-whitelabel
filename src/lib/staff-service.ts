@@ -143,6 +143,19 @@ function assertNotOwner(record: StaffRecord): void {
   }
 }
 
+/**
+ * Whether the asking account may touch this one at all.
+ *
+ * A branch admin able to create accounts but not edit or remove them would
+ * leave the owner cleaning up after every branch, so the same check guards
+ * every write.
+ */
+function assertCanManage(record: StaffRecord, context: StaffBranchContext): void {
+  if (!context.actor) return
+  if (canManageBranchStaff(context.actor, record.outlet_id ?? null)) return
+  throw new Error('You cannot manage staff for that branch')
+}
+
 /** Creates a staff account (auth user + app_users row), enforcing the per-branch limit. */
 export async function createStaff(
   store: StaffStore,
@@ -189,10 +202,12 @@ export async function updateStaffPermissions(
   store: StaffStore,
   tenantId: string,
   userId: string,
-  permissions: string[]
+  permissions: string[],
+  context: StaffBranchContext = {}
 ): Promise<void> {
   const record = await findTenantStaff(store, tenantId, userId)
   assertNotOwner(record)
+  assertCanManage(record, context)
   const validated = validatePermissionKeys(permissions)
   await store.updateStaffRow(userId, { permissions: validated })
 }
@@ -232,11 +247,13 @@ export async function resetStaffPassword(
   store: StaffStore,
   tenantId: string,
   userId: string,
-  newPassword: string
+  newPassword: string,
+  context: StaffBranchContext = {}
 ): Promise<void> {
   assertValidPassword(newPassword)
   const record = await findTenantStaff(store, tenantId, userId)
   assertNotOwner(record)
+  assertCanManage(record, context)
   await store.updateAuthPassword(userId, newPassword)
 }
 
@@ -244,9 +261,11 @@ export async function resetStaffPassword(
 export async function removeStaff(
   store: StaffStore,
   tenantId: string,
-  userId: string
+  userId: string,
+  context: StaffBranchContext = {}
 ): Promise<void> {
   const record = await findTenantStaff(store, tenantId, userId)
   assertNotOwner(record)
+  assertCanManage(record, context)
   await store.deleteAuthUser(userId)
 }

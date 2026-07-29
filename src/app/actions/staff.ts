@@ -3,15 +3,18 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantOwner } from '@/lib/admin-service'
+import { verifyStaffManager, verifyTenantOwner } from '@/lib/admin-service'
 import {
   createStaff,
   removeStaff,
   resetStaffPassword,
+  updateStaffBranch,
   updateStaffPermissions,
+  type StaffBranchContext,
   type StaffRecord,
   type StaffStore,
 } from '@/lib/staff-service'
+import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 
 // ============================================
 // Staff Management Actions (owner-only)
@@ -26,7 +29,9 @@ function makeSupabaseStaffStore(): StaffStore {
     listStaff: async (tenantId) => {
       const { data, error } = await admin
         .from('app_users')
-        .select('user_id, tenant_id, role, is_owner, permissions, display_name, email, created_at')
+        .select(
+          'user_id, tenant_id, role, is_owner, outlet_id, permissions, display_name, email, created_at'
+        )
         .eq('tenant_id', tenantId)
         .eq('role', 'admin')
         .order('created_at', { ascending: true })
@@ -50,6 +55,7 @@ function makeSupabaseStaffStore(): StaffStore {
         role: row.role,
         tenant_id: row.tenant_id,
         is_owner: row.is_owner,
+        outlet_id: row.outlet_id ?? null,
         permissions: row.permissions,
         display_name: row.display_name,
         email: row.email,
@@ -83,11 +89,36 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
+/**
+ * Establish that the caller manages staff, and gather what the service layer
+ * needs to check each individual branch: the store's own branches, and the
+ * caller's own scope.
+ */
+async function staffManagerContext(tenantId: string): Promise<StaffBranchContext> {
+  const { userRole } = await verifyStaffManager(tenantId)
+
+  const { data, error } = await createAdminClient()
+    .from('outlets')
+    .select('id')
+    .eq('tenant_id', tenantId)
+  if (error) throw new Error(error.message)
+
+  return {
+    outlets: (data ?? []) as { id: string }[],
+    actor: userRole,
+  }
+}
+
 export async function listStaffAction(tenantId: string) {
   try {
-    await verifyTenantOwner(tenantId)
+    const { user, userRole } = await verifyStaffManager(tenantId)
     const staff = await makeSupabaseStaffStore().listStaff(tenantId)
-    return { success: true as const, data: staff }
+    // A branch admin sees only its own branch's people — the list is also the
+    // menu of accounts it can act on. Its own row stays visible either way.
+    const visible = staff.filter(
+      (s) => canManageBranchStaff(userRole, s.outlet_id ?? null) || s.user_id === user.id
+    )
+    return { success: true as const, data: visible }
   } catch (error) {
     return { success: false as const, error: errorMessage(error, 'Failed to load staff') }
   }
@@ -96,15 +127,37 @@ export async function listStaffAction(tenantId: string) {
 export async function createStaffAction(
   tenantId: string,
   tenantSlug: string,
-  input: { email: string; password: string; displayName: string; permissions: string[] }
+  input: {
+    email: string
+    password: string
+    displayName: string
+    permissions: string[]
+    outletId?: string | null
+  }
 ) {
   try {
-    await verifyTenantOwner(tenantId)
-    const created = await createStaff(makeSupabaseStaffStore(), tenantId, input)
+    const context = await staffManagerContext(tenantId)
+    const created = await createStaff(makeSupabaseStaffStore(), tenantId, input, context)
     revalidatePath(`/${tenantSlug}/admin/settings`)
     return { success: true as const, data: created }
   } catch (error) {
     return { success: false as const, error: errorMessage(error, 'Failed to create staff') }
+  }
+}
+
+export async function updateStaffBranchAction(
+  tenantId: string,
+  tenantSlug: string,
+  userId: string,
+  outletId: string | null
+) {
+  try {
+    const context = await staffManagerContext(tenantId)
+    await updateStaffBranch(makeSupabaseStaffStore(), tenantId, userId, outletId, context)
+    revalidatePath(`/${tenantSlug}/admin/settings`)
+    return { success: true as const }
+  } catch (error) {
+    return { success: false as const, error: errorMessage(error, 'Failed to update branch') }
   }
 }
 
@@ -115,8 +168,14 @@ export async function updateStaffPermissionsAction(
   permissions: string[]
 ) {
   try {
-    await verifyTenantOwner(tenantId)
-    await updateStaffPermissions(makeSupabaseStaffStore(), tenantId, userId, permissions)
+    const context = await staffManagerContext(tenantId)
+    await updateStaffPermissions(
+      makeSupabaseStaffStore(),
+      tenantId,
+      userId,
+      permissions,
+      context
+    )
     revalidatePath(`/${tenantSlug}/admin/settings`)
     return { success: true as const }
   } catch (error) {
@@ -130,8 +189,8 @@ export async function resetStaffPasswordAction(
   newPassword: string
 ) {
   try {
-    await verifyTenantOwner(tenantId)
-    await resetStaffPassword(makeSupabaseStaffStore(), tenantId, userId, newPassword)
+    const context = await staffManagerContext(tenantId)
+    await resetStaffPassword(makeSupabaseStaffStore(), tenantId, userId, newPassword, context)
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: errorMessage(error, 'Failed to reset password') }
@@ -140,8 +199,8 @@ export async function resetStaffPasswordAction(
 
 export async function removeStaffAction(tenantId: string, tenantSlug: string, userId: string) {
   try {
-    await verifyTenantOwner(tenantId)
-    await removeStaff(makeSupabaseStaffStore(), tenantId, userId)
+    const context = await staffManagerContext(tenantId)
+    await removeStaff(makeSupabaseStaffStore(), tenantId, userId, context)
     revalidatePath(`/${tenantSlug}/admin/settings`)
     return { success: true as const }
   } catch (error) {

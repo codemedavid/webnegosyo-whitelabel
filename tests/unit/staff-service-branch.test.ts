@@ -1,6 +1,9 @@
 import {
   createStaff,
+  removeStaff,
+  resetStaffPassword,
   updateStaffBranch,
+  updateStaffPermissions,
   type StaffRecord,
   type StaffStore,
 } from '@/lib/staff-service'
@@ -322,5 +325,81 @@ describe('updateStaffBranch', () => {
         actor: owner,
       })
     ).rejects.toThrow(/maximum|limit/i)
+  })
+})
+
+/**
+ * A branch admin that can create accounts but not edit or remove them would be
+ * half a feature — the owner would still have to clean up after every branch.
+ * The same branch check therefore guards every write, not just creation.
+ */
+describe('managing an existing account across branches', () => {
+  const northStaff = () => [makeStaffRecord({ user_id: 'a', outlet_id: 'outlet-north' })]
+  const southStaff = () => [makeStaffRecord({ user_id: 'a', outlet_id: 'outlet-south' })]
+  const context = { outlets: OUTLETS, actor: northAdmin }
+
+  it('lets a branch admin change permissions for its own branch', async () => {
+    const { store, read } = makeFakeStore(northStaff())
+
+    await updateStaffPermissions(store, 'tenant-1', 'a', ['orders', 'menu'], context)
+
+    expect(read()[0].permissions).toEqual(['orders', 'menu'])
+  })
+
+  it("refuses a branch admin changing another branch's permissions", async () => {
+    const { store } = makeFakeStore(southStaff())
+
+    await expect(
+      updateStaffPermissions(store, 'tenant-1', 'a', ['orders'], context)
+    ).rejects.toThrow(/permission|allowed|cannot/i)
+  })
+
+  it('lets a branch admin reset a password at its own branch', async () => {
+    const { store } = makeFakeStore(northStaff())
+
+    await expect(
+      resetStaffPassword(store, 'tenant-1', 'a', 'supersecret1', context)
+    ).resolves.toBeUndefined()
+  })
+
+  it("refuses a branch admin resetting another branch's password", async () => {
+    const { store } = makeFakeStore(southStaff())
+
+    await expect(
+      resetStaffPassword(store, 'tenant-1', 'a', 'supersecret1', context)
+    ).rejects.toThrow(/permission|allowed|cannot/i)
+  })
+
+  it('lets a branch admin remove its own branch staff', async () => {
+    const { store, read } = makeFakeStore(northStaff())
+
+    await removeStaff(store, 'tenant-1', 'a', context)
+
+    expect(read()).toHaveLength(0)
+  })
+
+  it("refuses a branch admin removing another branch's staff", async () => {
+    const { store, read } = makeFakeStore(southStaff())
+
+    await expect(removeStaff(store, 'tenant-1', 'a', context)).rejects.toThrow(
+      /permission|allowed|cannot/i
+    )
+    expect(read()).toHaveLength(1)
+  })
+
+  it('refuses a branch admin acting on a store-wide account', async () => {
+    const { store } = makeFakeStore([makeStaffRecord({ user_id: 'a', outlet_id: null })])
+
+    await expect(removeStaff(store, 'tenant-1', 'a', context)).rejects.toThrow(
+      /permission|allowed|cannot/i
+    )
+  })
+
+  it('lets the owner act on any branch', async () => {
+    const { store, read } = makeFakeStore(southStaff())
+
+    await removeStaff(store, 'tenant-1', 'a', { outlets: OUTLETS, actor: owner })
+
+    expect(read()).toHaveLength(0)
   })
 })

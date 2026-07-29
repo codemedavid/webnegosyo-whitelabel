@@ -12,6 +12,11 @@ import {
   hasPermission,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
+import {
+  asAppUserQueryClient,
+  fetchAppUserScope,
+} from '@/lib/queries/fetch-app-user-scope'
+import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { z } from 'zod'
 
 // ============================================
@@ -164,14 +169,15 @@ export async function verifyTenantAdmin(tenantId: string) {
     throw new Error('Unauthorized: Not authenticated')
   }
 
-  // Check if user is admin of this tenant or superadmin
-  const { data: userRoleData, error: roleError } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, is_owner, permissions')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  // Check if user is admin of this tenant or superadmin. Read through the
+  // resilient helper: naming the branch column here before its migration is
+  // applied would 400 every admin action, not just the branch feature.
+  const { appUser, error: roleError } = await fetchAppUserScope(
+    asAppUserQueryClient(supabase),
+    user.id
+  )
 
-  if (roleError || !userRoleData) {
+  if (roleError || !appUser) {
     throw new Error('Unauthorized: User role not found')
   }
 
@@ -180,7 +186,8 @@ export async function verifyTenantAdmin(tenantId: string) {
     tenant_id: string | null
     is_owner?: boolean | null
     permissions?: string[] | null
-  } = userRoleData
+    outlet_id?: string | null
+  } = appUser
 
   const isAuthorized =
     userRole.role === 'superadmin' ||
@@ -217,6 +224,30 @@ export async function verifyTenantOwner(tenantId: string) {
   if (!canManageStaff(result.userRole)) {
     throw new Error('Unauthorized: Only the store owner can manage this')
   }
+  return result
+}
+
+/**
+ * Verify the caller may manage staff accounts: the tenant owner, a superadmin,
+ * or a branch admin — an account confined to one branch that holds
+ * `branch_staff`, and may manage only that branch's people.
+ *
+ * The service layer re-checks the specific branch on every write
+ * (`staff-service.ts`); this only establishes that the caller manages staff at
+ * all.
+ */
+export async function verifyStaffManager(tenantId: string) {
+  const result = await verifyTenantAdmin(tenantId)
+  const isOwner = canManageStaff(result.userRole)
+  const isBranchAdmin = canManageBranchStaff(
+    result.userRole,
+    result.userRole.outlet_id ?? null
+  )
+
+  if (!isOwner && !isBranchAdmin) {
+    throw new Error('Unauthorized: Only the store owner can manage this')
+  }
+
   return result
 }
 
