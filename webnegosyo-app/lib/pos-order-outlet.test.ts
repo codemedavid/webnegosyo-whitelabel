@@ -1,4 +1,5 @@
-import { buildPosOrder, type PosOrderContext } from "./pos-order";
+import { buildPosOrder, type PosOrderContext, type PosTender } from "./pos-order";
+import { addLine, type PosCartLine } from "./pos-cart";
 import { ORDER_OUTLET_ID_KEY, ORDER_OUTLET_NAME_KEY } from "./order-outlet";
 
 /**
@@ -13,22 +14,25 @@ import { ORDER_OUTLET_ID_KEY, ORDER_OUTLET_NAME_KEY } from "./order-outlet";
  * order it produces today.
  */
 
-const CART = [
-  {
-    menuItemId: "item-1",
-    name: "Latte",
-    quantity: 1,
-    basePrice: 100,
-    subtotal: 100,
-    note: "",
-    selections: [],
-  },
-];
+const CART: PosCartLine[] = addLine([], {
+  menuItemId: "m-latte",
+  name: "Latte",
+  basePrice: 100,
+  quantity: 1,
+  selections: [],
+});
+
+const CASH_TENDER: PosTender = {
+  methodName: "Cash",
+  isCash: true,
+  cashTendered: 200,
+  changeDue: 100,
+};
 
 function context(overrides: Partial<PosOrderContext> = {}): PosOrderContext {
   return {
-    cart: CART as PosOrderContext["cart"],
-    tender: { isCash: true, cashTendered: 100, changeDue: 0, methodName: "Cash" } as PosOrderContext["tender"],
+    cart: CART,
+    tender: CASH_TENDER,
     clientOrderId: "client-1",
     ...overrides,
   };

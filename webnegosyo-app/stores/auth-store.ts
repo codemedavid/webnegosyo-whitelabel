@@ -34,6 +34,13 @@ interface AuthState {
   /** Per-feature permission keys; null = full access (owner/legacy admins). */
   permissions: string[] | null;
   role: string | null;
+  /**
+   * Branch this session is confined to; null = the whole store. Order screens
+   * filter on it and the register stamps it onto a counter sale.
+   */
+  outletId: string | null;
+  /** The branch's name at sign-in, snapshotted onto counter sales. */
+  outletName: string | null;
   setAuth: (data: Partial<AuthState>) => void;
   clear: () => void;
 }
@@ -53,6 +60,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isOwner: false,
   permissions: null,
   role: null,
+  outletId: null,
+  outletName: null,
   setAuth: (data) => set(data),
   clear: () =>
     set({
@@ -70,5 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       isOwner: false,
       permissions: null,
       role: null,
+      outletId: null,
+      outletName: null,
     }),
 }));

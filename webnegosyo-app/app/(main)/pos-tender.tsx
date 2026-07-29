@@ -42,6 +42,8 @@ const updatePaymentStatusRef =
 export default function PosTenderScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const userId = useAuthStore((s) => s.userId);
+  const outletId = useAuthStore((s) => s.outletId);
+  const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
@@ -151,6 +153,10 @@ export default function PosTenderScreen() {
         serviceCharge,
         customerName,
         cashierId: userId ?? undefined,
+        // A counter sale belongs to the till that rang it, so the branch on
+        // the session is stamped onto the order. Null for a single-location
+        // register, which stamps nothing.
+        outlet: outletId && outletName ? { id: outletId, name: outletName } : null,
       });
 
       const orderId = await createOrder(args);

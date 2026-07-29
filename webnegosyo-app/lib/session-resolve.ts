@@ -23,6 +23,14 @@ export interface AppUserRow {
   role: string | null;
   is_owner: boolean | null;
   permissions: string[] | null;
+  /** Branch this account is confined to. NULL = the whole store. */
+  outlet_id?: string | null;
+}
+
+/** Shape of the `outlets` row the app selects for a branch-scoped account. */
+export interface OutletRow {
+  id: string;
+  name: string;
 }
 
 /** Shape of the `tenants` row the app selects. */
@@ -55,6 +63,16 @@ export interface SessionAuthPatch {
   isOwner: boolean;
   permissions: string[] | null;
   role: string | null;
+  /**
+   * Branch this session is confined to; null means the whole store. The order
+   * screens filter on it, and the register stamps it onto a counter sale.
+   */
+  outletId: string | null;
+  /**
+   * The branch's name at sign-in. Written onto counter sales as a snapshot, so
+   * renaming a branch does not rewrite the tickets it already took.
+   */
+  outletName: string | null;
 }
 
 export interface SessionResult {
@@ -80,10 +98,22 @@ export function needsTenantLookup(appUser: AppUserRow): boolean {
   return !isSuperadminRow(appUser);
 }
 
+/**
+ * Whether the caller still needs to fetch the branch row.
+ *
+ * Only a branch-confined account has one. An owner or a superadmin is never
+ * confined, so asking would be a guaranteed miss.
+ */
+export function needsOutletLookup(appUser: AppUserRow): boolean {
+  if (isSuperadminRow(appUser) || appUser.is_owner) return false;
+  return typeof appUser.outlet_id === "string" && appUser.outlet_id.trim() !== "";
+}
+
 export function resolveSession(
   userId: string,
   appUser: AppUserRow | null,
-  tenant: TenantRow | null
+  tenant: TenantRow | null,
+  outlet?: OutletRow | null
 ): SessionResult {
   if (!appUser) return { mode: "denied", reason: DENIED_NOT_ADMIN };
 
@@ -106,6 +136,9 @@ export function resolveSession(
         isOwner: false,
         permissions: null,
         role: appUser.role,
+        // A superadmin is never confined to a branch, impersonating or not.
+        outletId: null,
+        outletName: null,
       },
     };
   }
@@ -132,6 +165,10 @@ export function resolveSession(
       isOwner: appUser.is_owner ?? false,
       permissions: appUser.permissions ?? null,
       role: appUser.role,
+      // A branch row that cannot be read degrades to the store-wide view this
+      // account had before branches existed, rather than locking it out.
+      outletId: outlet?.id ?? null,
+      outletName: outlet?.name ?? null,
     },
   };
 }

@@ -16,6 +16,8 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
 import {
   needsTenantLookup,
+  needsOutletLookup,
+  type OutletRow,
   resolveSession,
   type TenantRow,
 } from "../../lib/session-resolve";
@@ -63,7 +65,7 @@ export default function LoginScreen() {
 
       const { data: appUser } = await supabase
         .from("app_users")
-        .select("tenant_id, role, is_owner, permissions")
+        .select("tenant_id, role, is_owner, permissions, outlet_id")
         .eq("user_id", authData.user.id)
         .in("role", ["admin", "superadmin"])
         .single();
@@ -79,7 +81,19 @@ export default function LoginScreen() {
         tenant = (tenantRow as TenantRow | null) ?? null;
       }
 
-      const session = resolveSession(authData.user.id, appUser ?? null, tenant);
+      // Branch-confined accounts carry their branch onto the session; the
+      // name is snapshotted onto counter sales, so it is read here once.
+      let outlet: OutletRow | null = null;
+      if (appUser && needsOutletLookup(appUser)) {
+        const { data: outletRow } = await supabase
+          .from("outlets")
+          .select("id, name")
+          .eq("id", appUser.outlet_id)
+          .single();
+        outlet = (outletRow as OutletRow | null) ?? null;
+      }
+
+      const session = resolveSession(authData.user.id, appUser ?? null, tenant, outlet);
 
       if (session.mode === "denied" || !session.auth || !session.landingHref) {
         await supabase.auth.signOut();
