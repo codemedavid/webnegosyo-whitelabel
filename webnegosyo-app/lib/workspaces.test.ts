@@ -63,6 +63,13 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("analytics", "operations")).toBe(false);
   });
 
+  it("puts branch comparison in the insights view", () => {
+    // It answers "how are my branches doing against each other", which is an
+    // insight, not a day-to-day operation.
+    expect(isTabInWorkspace("branches", "insights")).toBe(true);
+    expect(isTabInWorkspace("branches", "operations")).toBe(false);
+  });
+
   it("shows counter-sale tabs only in the register view", () => {
     expect(isTabInWorkspace("pos", "register")).toBe(true);
     expect(isTabInWorkspace("pos-sales", "register")).toBe(true);
