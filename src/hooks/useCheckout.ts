@@ -37,8 +37,7 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
 import { createOrderAction } from '@/app/actions/orders'
-import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
-import { readOutletSelection } from '@/lib/outlets/outlet-selection'
+import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
@@ -147,6 +146,9 @@ export function useCheckout(tenantSlug: string) {
 
   // Compute service charge from selected order type
   const selectedOrderTypeData = orderTypes.find(ot => ot.id === orderType)
+
+  // Which branch takes this order. No-ops entirely for single-location tenants.
+  const outlet = useCheckoutOutlet({ tenant, tenantSlug, orderTypes, orderTypeId: orderType })
   const serviceChargeAmount = (() => {
     if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
     if (selectedOrderTypeData.service_charge_type === 'percentage') {
@@ -770,6 +772,12 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
+    // Multi-branch, "at checkout" timing: an order has to belong to a branch.
+    if (outlet.isMissingRequiredSelection) {
+      toast.error('Please choose a branch for this order')
+      return
+    }
+
     // Distance-based delivery: block submit when the chosen address is outside the radius.
     if (selectedOrderTypeData?.type === 'delivery' && deliveryOutOfRange) {
       toast.error('This address is outside the delivery area. Please choose a closer address or switch to pickup.')
@@ -1074,14 +1082,11 @@ export function useCheckout(tenantSlug: string) {
           contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
         }
 
-        // Which branch is taking this order. Read at submit time from the same
-        // storage the branch picker writes to, so no new prop has to be drilled
-        // through the checkout tree — and nothing is read at all for the tenants
-        // who never turned branches on. The server re-validates it regardless.
-        const selectedOutletId =
-          isMultiBranchEnabled(tenant) && typeof window !== 'undefined'
-            ? readOutletSelection(window.localStorage, tenant.slug, Date.now())?.outletId
-            : undefined
+        // Which branch is taking this order, under either timing: the splash
+        // chooser's stored answer, or the one picked on this very page. Resolved
+        // by useCheckoutOutlet, which returns null for the tenants who never
+        // turned branches on. The server re-validates it regardless.
+        const selectedOutletId = outlet.selectedOutletId ?? undefined
 
         // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
         // is captured from the un-normalized customerData.delivery_address), so a
@@ -1193,6 +1198,8 @@ export function useCheckout(tenantSlug: string) {
     setOrderType,
     selectedOrderTypeData,
     messengerEnabled,
+    // branch (multi-branch tenants only)
+    outlet,
     // customer form
     formFields,
     customerData,

@@ -20,6 +20,7 @@ import {
   PaymentDetailsDialog,
   QrCodeDialog,
 } from '@/components/customer/checkout-templates/checkout-shared'
+import { CheckoutOutletSection } from '@/components/customer/checkout-templates/checkout-outlet-section'
 import type { CheckoutTemplate } from '@/lib/checkout-templates'
 
 export default function CheckoutPage() {
@@ -40,6 +41,11 @@ export default function CheckoutPage() {
   return (
     <>
       <div data-branding-scope="checkout/colors">
+        {/* Asked here, above the form, only for merchants who moved the branch
+            question to checkout — so every design gets it from one place. */}
+        <div className="mx-auto max-w-2xl px-4 pt-4">
+          <CheckoutOutletSection outlet={checkout.outlet} />
+        </div>
         <CheckoutTemplateRenderer template={template} checkout={checkout} />
       </div>
       {/* Shared overlays — rendered for every design */}
