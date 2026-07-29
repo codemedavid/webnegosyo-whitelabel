@@ -266,3 +266,51 @@ Traced the order-creating paths rather than assuming:
   Slice D builds that view; today they are simply invisible to branch accounts.
 - `app/(main)/scan.tsx` also calls `createOrder`; it was **not** audited or
   stamped in this pass.
+
+## Slice C foundation — the app's own branch rules
+
+### 9. `webnegosyo-app/lib/branch-scope.ts`
+
+- RED: `cd webnegosyo-app && npx jest lib/branch-scope` →
+  `TS2307: Cannot find module './branch-scope'`, `Tests: 0 total`.
+- GREEN: same command → `Tests: 19 passed, 19 total`.
+- Whole app after the QR-handoff wiring: `npx jest` → `Tests: 911 passed`.
+- **Not a blind copy of the web module.** Orders reach the app from Convex,
+  where the blob is `customerData` (camelCase); the web module reads
+  `customer_data`, the platform-Supabase column name. Reading the wrong key
+  would hide every order from every branch account, and the symptom would look
+  like an empty store rather than a bug. The tests pin both keys.
+- Guarantees: a demo session and a superadmin (impersonating or not) are never
+  confined; an explicit `outlet_id` column wins over the blob; a malformed or
+  missing blob degrades to "no branch" instead of throwing; `undefined` (a
+  Convex query still loading) filters to an empty list so screens need no null
+  check.
+
+### 10. QR-handoff orders stamped (closes the Slice A gap)
+
+`app/(main)/scan.tsx` now stamps the scanning staff member's branch over
+whatever the handoff payload carried — the person scanning *is* the branch
+taking the order. Covered by `order-outlet.ts`'s own tests rather than a screen
+test; the wiring itself is a single call.
+
+## Foreign artifacts in this working tree
+
+Another session is committing to this same branch concurrently. Observed and
+deliberately left untouched:
+
+- `e2e/` — untracked Playwright specs; Jest's `*.spec.ts` pattern sweeps them
+  up, which is the one failing suite in the web `npx jest` run.
+- `webnegosyo-app/lib/order-balance.test.ts` — untracked RED reproducer for a
+  module that does not exist yet; it is the sole `tsc --noEmit` error in the
+  app package.
+- commit `454b1dd test: add reproducer for the branch question as its own
+  checkout screen` — not from this work.
+
+Neither belongs to this feature; do not attribute their state to it.
+
+## Remaining after this block
+
+Slice B (Convex/tenant-Supabase/POS-queue/realtime read paths), the rest of
+Slice C (screens actually calling `filterOrdersToScope`, branch name in the
+app header), Slice D (cross-branch analytics), plus the deferred branch RLS and
+Convex push targeting. See `docs/plans/branch-scoped-operations.plan.md`.
