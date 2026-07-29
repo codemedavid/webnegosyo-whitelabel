@@ -61,7 +61,9 @@ export const WORKSPACES: readonly Workspace[] = [
     key: "business",
     label: "Business",
     description: "Your branches, how they compare, and who runs them",
-    tabs: ["portfolio", "branches", "team"],
+    // The roster ("team") joins these when its screen lands; a registered tab
+    // with no route file breaks the tab bar for every account.
+    tabs: ["portfolio", "branches"],
     defaultTab: "portfolio",
   },
 ] as const;

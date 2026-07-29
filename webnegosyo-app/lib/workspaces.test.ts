@@ -20,7 +20,9 @@ describe("WORKSPACES registry", () => {
   it("owns the branch portfolio, the roster and the branch list in Business", () => {
     // Business is the owner's view of the company rather than of a shift: which
     // branches exist, how they compare, and who runs them.
-    expect(getWorkspace("business").tabs).toEqual(["portfolio", "branches", "team"]);
+    // The roster ("team") joins this list when its screen lands; a tab
+    // registered without a route file breaks the tab bar for everyone.
+    expect(getWorkspace("business").tabs).toEqual(["portfolio", "branches"]);
     expect(getWorkspace("business").defaultTab).toBe("portfolio");
   });
 
