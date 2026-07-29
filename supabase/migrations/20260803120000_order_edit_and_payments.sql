@@ -174,26 +174,39 @@ where o.payment_status in ('paid', 'verified')
 alter table public.order_payments enable row level security;
 alter table public.order_revisions enable row level security;
 
--- Reads are scoped through the parent order, so a row is visible exactly when
--- the order it settles is. Writes are admin-only: a customer must never be
--- able to record their own payment.
+-- Deliberately identical in shape to `orders_select_by_tenant` /
+-- `orders_write_admin`: a superadmin sees everything, a tenant admin sees only
+-- their own tenant's rows, and nobody else sees anything. Note that
+-- `app_users` keys on `user_id`, NOT `id`.
+--
+-- Scoping through the parent order alone would NOT be enough — that check
+-- passes for any authenticated user, including a customer, so it would leak
+-- every merchant's takings.
 drop policy if exists order_payments_select on public.order_payments;
 create policy order_payments_select on public.order_payments
   for select using (
     exists (
-      select 1 from public.orders o
-      where o.id = order_payments.order_id
-        and o.tenant_id = order_payments.tenant_id
+      select 1 from public.app_users au
+      where au.user_id = auth.uid()
+        and (
+          au.role = 'superadmin'
+          or (au.role = 'admin' and au.tenant_id = order_payments.tenant_id)
+        )
     )
   );
 
+-- ALL rather than INSERT so the same rule governs any future correction path;
+-- the ledger stays append-only by application policy, not by a missing grant.
 drop policy if exists order_payments_write_admin on public.order_payments;
 create policy order_payments_write_admin on public.order_payments
-  for insert with check (
+  for all using (
     exists (
-      select 1 from public.app_users u
-      where u.id = auth.uid()
-        and (u.role = 'superadmin' or u.tenant_id = order_payments.tenant_id)
+      select 1 from public.app_users au
+      where au.user_id = auth.uid()
+        and (
+          au.role = 'superadmin'
+          or (au.role = 'admin' and au.tenant_id = order_payments.tenant_id)
+        )
     )
   );
 
@@ -201,19 +214,25 @@ drop policy if exists order_revisions_select on public.order_revisions;
 create policy order_revisions_select on public.order_revisions
   for select using (
     exists (
-      select 1 from public.orders o
-      where o.id = order_revisions.order_id
-        and o.tenant_id = order_revisions.tenant_id
+      select 1 from public.app_users au
+      where au.user_id = auth.uid()
+        and (
+          au.role = 'superadmin'
+          or (au.role = 'admin' and au.tenant_id = order_revisions.tenant_id)
+        )
     )
   );
 
 drop policy if exists order_revisions_write_admin on public.order_revisions;
 create policy order_revisions_write_admin on public.order_revisions
-  for insert with check (
+  for all using (
     exists (
-      select 1 from public.app_users u
-      where u.id = auth.uid()
-        and (u.role = 'superadmin' or u.tenant_id = order_revisions.tenant_id)
+      select 1 from public.app_users au
+      where au.user_id = auth.uid()
+        and (
+          au.role = 'superadmin'
+          or (au.role = 'admin' and au.tenant_id = order_revisions.tenant_id)
+        )
     )
   );
 
