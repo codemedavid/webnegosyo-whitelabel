@@ -2,7 +2,7 @@
 
 **Source plan**: produced inline in-session (`/ecc:plan`), not written to a `.plan.md` file.
 **Scope confirmed with the user**: merchant mobile app only · platform Supabase + Convex backends · ledger-based settlement.
-**Status**: Phases 1–2 complete. Phases 3–4 (backend mutation, UI) not started.
+**Status**: Phases 1–3 complete (data model applied and probed, pure logic, backend write path on both backends). Phase 4 (UI) not started.
 
 ## User journeys
 
@@ -57,16 +57,41 @@ The riskiest translation in the feature: a placed order must become a register c
 - The web registry-pinning test `tests/unit/staff-permissions.test.ts` **failed as designed** on the new keys and was updated to enumerate them.
 - **GREEN**: `npx jest tests/unit/staff-permissions` → `31 passed`.
 
-### Task 7 — Migration `20260803120000_order_edit_and_payments.sql`
+### Task 7 — Migration `20260803120000_order_edit_and_payments.sql` — APPLIED 2026-07-29
 
-Written and committed. **Not applied to any Supabase project** — awaiting the user's go-ahead.
+`order_payments` (append-only ledger), `order_revisions` (immutable snapshots), `orders.amount_paid` / `revision_number` / `edited_at` / `edited_by`, plus the `sync_order_amount_paid` trigger.
 
-- `order_payments` (append-only ledger), `order_revisions` (immutable before/after snapshots), `orders.amount_paid` / `revision_number` / `edited_at` / `edited_by`.
-- `amount_paid` is trigger-maintained from the ledger; balance stays derived.
-- `(order_id, revision_number)` unique doubles as the optimistic lock.
-- Backfills an opening charge row for every already-paid order.
-- Additive and idempotent (`if not exists` throughout), so it is safe to re-run.
-- **No test evidence** — this is unverified until applied and probed. See gaps.
+**The first apply attempt failed, and usefully.** `ERROR: 42703: column u.id does not exist` — `app_users` keys on `user_id`. Investigating that exposed a worse bug in the same policy: the SELECT policy scoped only through the parent order's `tenant_id`, a check that passes for **any authenticated user including a customer**. Shipped as written it would have exposed every merchant's takings. Both policies were rewritten to mirror `orders_select_by_tenant` / `orders_write_admin` exactly.
+
+Live probe after applying (`mcp__supabase__execute_sql`):
+
+| Probe | Result |
+|---|---|
+| Backfill | 38 paid orders → 38 ledger rows |
+| `amount_paid` cache vs `total` on paid orders | 0 mismatches |
+| Insert charge ₱150 | `amount_paid` → 150.00 |
+| Insert refund ₱40 | `amount_paid` → 110.00 |
+| Insert amount `-5` | rejected (`check_violation`) |
+| Insert kind `'discount'` | rejected (`check_violation`) |
+| Duplicate `(order_id, revision_number)` | rejected (`unique_violation`) — the optimistic lock works |
+| Delete probe rows | `amount_paid` → 0.00, ledger back to 38, 0 mismatches |
+
+Verified by asserting row counts, since `raise notice` output is not returned through MCP. The probe left no trace.
+
+### Task 8 — Platform write path (`lib/backends/order-revise.ts` + adapter)
+
+- **RED**: `npx jest lib/backends/order-revise.test.ts lib/backends/supabase-adapter.test.ts` → `TS2307: Cannot find module './order-revise'`, plus a genuine **runtime** failure: `● isPlatformRefSupported › claims the order-edit refs` (`1 failed, 22 passed`).
+- **GREEN**: `npx jest` → `63 suites, 995 tests passed` (up from 62/975).
+- Two bugs surfaced during implementation: the narrow `PlatformQueryBuilder` interface had no `delete` (added deliberately, with a note that widening it widens what the adapter can destroy), and one test passed a stale expected-revision by accident so it was tripping the concurrency guard instead of asserting the revision bump.
+- **Guaranteed**: the total is recomputed from items and a caller-supplied total is ignored; each subtotal is forced to `price × quantity`; delivery fee and service charge are added; `revision_number` bumps and `edited_at`/`edited_by` are stamped; `item_count` is recounted; both sides are snapshotted into the revision row; a stale revision is refused; emptying an order is refused (that is a cancellation); non-positive/oversized quantities and negative/implausible prices are refused; payment amounts are stored unsigned with the kind carrying direction, rounded to centavos, non-positive and non-finite amounts refused, references trimmed, absent optionals written as `null` not `undefined`.
+
+### Task 9 — Convex write path
+
+`reviseOrder`, `recordPayment`, `getOrderPayments`, `getOrderRevisions` mutations/queries; `orderPayments` + `orderRevisions` tables; `amountPaid`/`revisionNumber`/`editedAt`/`editedBy` on `orders` (all optional so pre-existing orders keep validating). `CURRENT_SCHEMA_VERSION` bumped 13 → 14 and the template rebundled.
+
+- **Validated**: `npx tsc --noEmit -p .` in `convex-template` → clean; bundle grepped and confirmed to contain `reviseOrder` and `orderPayments`; web `npx jest tests/unit` → `271 suites, 3390 tests passed`.
+- Convex gets atomicity the platform backend cannot: the whole handler is one transaction. With no triggers available, `recordPayment` maintains the `amountPaid` cache inside that same transaction.
+- **No unit tests** — Convex functions are not covered by either Jest project. This is the weakest link in the phase; see gaps.
 
 ## Test specification
 
@@ -88,33 +113,46 @@ Written and committed. **Not applied to any Supabase project** — awaiting the 
 | 14 | An edit moves only the stock difference | `lib/order-stock-delta.test.ts:moves only the difference` | unit | PASS |
 | 15 | A same-item modifier swap moves no stock | `lib/order-stock-delta.test.ts:nets a swap…to zero` | unit | PASS |
 | 16 | The permission registry enumerates the new keys across all surfaces | `tests/unit/staff-permissions.test.ts` | unit | PASS |
+| 17 | An edit's total is recomputed, never taken from the caller | `lib/backends/order-revise.test.ts:ignores a caller-supplied total` | unit | PASS |
+| 18 | Each line's subtotal is forced to price × quantity | `lib/backends/order-revise.test.ts:forces each line's subtotal` | unit | PASS |
+| 19 | An edit built on a stale revision is refused | `lib/backends/order-revise.test.ts:refuses an edit built against a stale revision` | unit | PASS |
+| 20 | An order cannot be emptied by editing | `lib/backends/order-revise.test.ts:refuses to empty an order` | unit | PASS |
+| 21 | Implausible quantities and prices are refused | `lib/backends/order-revise.test.ts:refuses a non-positive quantity / implausible price / negative price` | unit | PASS |
+| 22 | Payment amounts are unsigned, positive, finite, and centavo-rounded | `lib/backends/order-revise.test.ts:buildPaymentRow` | unit | PASS |
+| 23 | The platform adapter claims the order-edit refs | `lib/backends/supabase-adapter.test.ts:claims the order-edit refs` | unit | PASS |
+| 24 | The ledger trigger, constraints and optimistic lock behave on the live DB | live probe, see Task 7 | integration | PASS |
 
 ## Coverage
 
 ```
-npx jest --coverage --collectCoverageFrom='lib/order-{balance,edit-cart,revision,stock-delta,edit-guards}.ts'
-
-File                  | % Stmts | % Branch | % Funcs | % Lines
-All files             |   98.57 |    90.14 |   96.96 |   98.41
- order-balance.ts     |     100 |     100  |     100 |     100
- order-edit-cart.ts   |   98.14 |   83.78  |     100 |   97.82
- order-edit-guards.ts |     100 |     100  |     100 |     100
- order-revision.ts    |   97.29 |   93.75  |   85.71 |   97.22
- order-stock-delta.ts |     100 |     100  |     100 |     100
+All files              |   98.78 |    94.16 |   97.43 |   98.66
+ lib                   |   98.57 |    90.14 |   96.96 |   98.41
+  order-balance.ts     |     100 |      100 |     100 |     100
+  order-edit-cart.ts   |   98.14 |    83.78 |     100 |   97.82
+  order-edit-guards.ts |     100 |      100 |     100 |     100
+  order-revision.ts    |   97.29 |    93.75 |   85.71 |   97.22
+  order-stock-delta.ts |     100 |      100 |     100 |     100
+ lib/backends          |     100 |      100 |     100 |     100
+  order-revise.ts      |     100 |      100 |     100 |     100
+Tests:       83 passed, 83 total
 ```
 
-Well above the 80% bar. Full merchant app suite: **62 suites, 975 tests, all passing** — no regressions.
+Well above the 80% bar, but note this measures only the TypeScript modules. Convex functions are outside every coverage report in this repo.
+
+Full suites: merchant app **63 suites / 995 tests**; web **271 suites / 3390 tests**. No regressions.
 
 ## Known gaps
 
 These are real and deliberate, not oversights:
 
-1. **The migration is unverified.** It has never been applied or probed. Nothing in this report proves the trigger, the backfill, or the RLS policies behave as written.
-2. **No backend write path exists yet** (Phase 3). `orders:reviseOrder` and `orders:recordPayment` are not implemented on either backend and are not in the merchant app adapter's `SUPPORTED_MUTATION_REFS`, so nothing can actually save an edit today.
-3. **No UI** (Phase 4). None of these modules is wired to a screen.
-4. **Screens are not unit-tested by design** — `webnegosyo-app/jest.config.js` scopes Jest to `lib/` and `theme/`; UI is exercised manually via Expo. Phase 4 will need manual verification across backend × settlement-direction.
-5. **`order-edit-cart.ts:217` and `order-revision.ts:45` are uncovered** — both are defensive fallbacks on the orphan/duplicate paths.
-6. **The POS price divergence is not fixed upstream.** `pos-order.ts:toOrderItem` still writes the base price into `order_items.price`. Hydration tolerates it, and the revise path normalizes to the web convention, but a POS-created order remains inconsistent with a web-created one until it is edited.
+1. **No UI** (Phase 4). None of this is wired to a screen, so no merchant can edit an order yet. The write path exists and is tested; nothing calls it.
+2. **The RLS policies were not probed under a real user session.** The live probe ran through MCP with elevated rights, which does not exercise the policies. The policy text is now copied from the working `orders` policies, but "an ordinary tenant admin can insert a payment, and cannot see another tenant's" is asserted by construction, not by test.
+3. **Convex `reviseOrder` / `recordPayment` have no automated tests at all.** Neither Jest project covers `convex-template/`. They typecheck and they bundle; that is all that is proven. They have not been deployed to a scratch tenant or executed once.
+4. **The platform revise path is not atomic.** PostgREST cannot span a transaction across the revision insert, item delete/insert, and order patch. The order of writes is chosen so the worst partial failure leaves an audit row for an edit that did not fully apply, rather than a rewritten bill with no record — but moving it into a Postgres RPC is a real follow-up, not a nicety.
+5. **Screens are not unit-tested by design** — `webnegosyo-app/jest.config.js` scopes Jest to `lib/` and `theme/`. Phase 4 needs manual verification across backend × settlement-direction.
+6. **Stock movement is computed but never applied.** `stockDelta` is tested and unused; nothing calls the inventory path yet.
+7. **`order-edit-cart.ts:217` and `order-revision.ts:45` are uncovered** — defensive fallbacks on the orphan/duplicate paths.
+8. **The POS price divergence is not fixed upstream.** `pos-order.ts:toOrderItem` still writes the base price into `order_items.price`. Hydration tolerates it and the revise path normalizes to the web convention, but a POS-created order stays inconsistent with a web-created one until it is edited.
 
 ## Merge evidence
 
@@ -126,4 +164,8 @@ Checkpoint commits on `feat/platform-supabase-order-parity`:
 | `f016492` | GREEN — 32 passed; full app suite 943 passed |
 | `2db2232` | RED — guards, revision, stock-delta reproducers (TS2307, 0 tests run) |
 | `2f721f1` | GREEN — 62 suites / 975 tests; web permissions 31 passed |
-| `bdaf1d5` | Migration (no test evidence — unapplied) |
+| `bdaf1d5` | Migration written (unapplied at that point) |
+| `f7b4ad7` | Migration APPLIED + RLS fix — live probe results in Task 7 |
+| `8244ba6` | RED — revise/payment reproducers (TS2307 + runtime ref failure) |
+| `059faf4` | GREEN — 63 suites / 995 tests |
+| `975c314` | Convex backend + schema v14 + rebundle; web 271 suites / 3390 tests |
