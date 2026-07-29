@@ -7,13 +7,27 @@ import {
 } from "./workspaces";
 
 describe("WORKSPACES registry", () => {
-  it("defines the four merchant views", () => {
+  it("defines the five merchant views", () => {
     expect(WORKSPACES.map((w) => w.key)).toEqual([
       "operations",
       "register",
       "insights",
       "products",
+      "business",
     ]);
+  });
+
+  it("owns the branch portfolio, the roster and the branch list in Business", () => {
+    // Business is the owner's view of the company rather than of a shift: which
+    // branches exist, how they compare, and who runs them.
+    expect(getWorkspace("business").tabs).toEqual(["portfolio", "branches", "team"]);
+    expect(getWorkspace("business").defaultTab).toBe("portfolio");
+  });
+
+  it("moved the branch comparison out of Insights", () => {
+    // It reads as a branch screen, not a chart, and the disjointness rule below
+    // means it cannot live in both.
+    expect(isTabInWorkspace("branches", "insights")).toBe(false);
   });
 
   it("keeps operations first so getWorkspace's fallback stays the order queue", () => {
