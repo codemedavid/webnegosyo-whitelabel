@@ -37,6 +37,14 @@ export function useOutlets(): OutletsResult {
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 
+  // A branch belongs to one store, so the branch being viewed cannot outlive
+  // the tenant it belongs to: signing out (tenantId → null) or a superadmin
+  // opening a different store must both drop it. Keyed on the tenant alone, so
+  // a pull-to-refresh does not throw the merchant back to the whole store.
+  useEffect(() => {
+    useBranchContextStore.getState().clear();
+  }, [tenantId]);
+
   useEffect(() => {
     if (!tenantId) {
       setOutlets([]);

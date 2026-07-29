@@ -9,6 +9,8 @@ import { isTabAllowed } from "../../lib/staff-permissions";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
+import { BranchContextBar } from "../../components/BranchContextBar";
+import { useBranchLanding } from "../../lib/use-branch-landing";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -45,6 +47,10 @@ export default function MainLayout() {
   // Only the active view's tabs are visible; the rest keep href: null so
   // their routes still exist for direct navigation (e.g. order detail push).
   // Restricted staff additionally only see tabs they hold permission for.
+  // Opens a multi-branch owner on the portfolio, and loads the branch list the
+  // context rules validate selections against.
+  useBranchLanding();
+
   const workspace = useWorkspaceStore((s) => s.workspace);
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
@@ -61,6 +67,8 @@ export default function MainLayout() {
       <GlobalOrderAlerts />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
+      {/* Renders only when the visible orders are one branch's, not the store's. */}
+      <BranchContextBar />
       <Tabs
       screenOptions={{
         headerShown: false,
