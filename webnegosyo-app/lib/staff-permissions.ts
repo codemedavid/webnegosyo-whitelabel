@@ -11,7 +11,13 @@ export type StaffPermissionKey =
   | "store_setup"
   | "customers"
   | "settings"
-  | "pos";
+  | "pos"
+  // Rewriting a placed customer's bill, and moving money back out of the
+  // drawer. Granted separately from "orders" (which only advances status) and
+  // from each other, because a refund is the one action here that editing
+  // again cannot undo.
+  | "order_edit"
+  | "order_refund";
 
 export interface StaffPermissionHolder {
   role: string | null;

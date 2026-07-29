@@ -29,6 +29,10 @@ describe('staff permission registry', () => {
       'pos',
       // Multi-branch: lets a branch admin manage staff at its own branch only.
       'branch_staff',
+      // Order editing: rewriting a placed bill, and returning money on it.
+      // Separate from 'orders', which only advances status.
+      'order_edit',
+      'order_refund',
     ])
   })
 

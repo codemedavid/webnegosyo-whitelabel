@@ -12,6 +12,8 @@ export const STAFF_PERMISSION_KEYS = [
   'settings',
   'pos',
   'branch_staff',
+  'order_edit',
+  'order_refund',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -51,6 +53,14 @@ export const STAFF_PERMISSION_LABELS: Record<
   branch_staff: {
     label: 'Branch Staff',
     description: 'Add and manage staff accounts for their own branch only',
+  },
+  order_edit: {
+    label: 'Edit Orders',
+    description: 'Change the items on a placed order and settle the difference',
+  },
+  order_refund: {
+    label: 'Issue Refunds',
+    description: 'Return money on an edited order — grant sparingly',
   },
 }
 

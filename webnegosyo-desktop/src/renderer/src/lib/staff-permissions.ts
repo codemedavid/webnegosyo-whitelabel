@@ -10,6 +10,10 @@ export type StaffPermissionKey =
   | 'customers'
   | 'settings'
   | 'pos'
+  // Rewriting a placed customer's bill, and moving money back out of the
+  // drawer. Granted separately from 'orders' (which only advances status).
+  | 'order_edit'
+  | 'order_refund'
 
 export interface StaffPermissionHolder {
   role: string | null
