@@ -10,7 +10,7 @@ import {
   resolveOutletSelectionTiming,
   shouldPickOutletAtCheckout,
 } from '@/lib/outlets/selection-timing'
-import type { RankedOutlet } from '@/lib/outlets/nearest-outlet'
+import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { OrderType, Outlet, Tenant } from '@/types/database'
 
 interface UseCheckoutOutletInput {
@@ -28,6 +28,10 @@ export interface UseCheckoutOutletResult {
   /** The branch this order will be attributed to, under either timing. */
   selectedOutletId: string | null
   select: (outletId: string) => void
+  /** Drops the current choice, which brings the branch screen back. */
+  clearSelection: () => void
+  /** The order type's mode, for labelling the screen. Null for custom types. */
+  mode: OutletOrderMode | null
   /** True when the customer must answer before the order can be placed. */
   isMissingRequiredSelection: boolean
 }
@@ -98,6 +102,8 @@ export function useCheckoutOutlet({
     choices: resolution.choices,
     selectedOutletId: isAfterTiming ? resolvedOutletId : storedOutletId,
     select: useCallback((outletId: string) => setChosenOutletId(outletId), []),
+    clearSelection: useCallback(() => setChosenOutletId(null), []),
+    mode,
     isMissingRequiredSelection: isPickerVisible && resolvedOutletId === null,
   }
 }

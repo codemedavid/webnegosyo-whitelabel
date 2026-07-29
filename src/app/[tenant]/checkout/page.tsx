@@ -20,7 +20,8 @@ import {
   PaymentDetailsDialog,
   QrCodeDialog,
 } from '@/components/customer/checkout-templates/checkout-shared'
-import { CheckoutOutletSection } from '@/components/customer/checkout-templates/checkout-outlet-section'
+import { CheckoutOutletSummary } from '@/components/customer/checkout-templates/checkout-outlet-section'
+import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
 import type { CheckoutTemplate } from '@/lib/checkout-templates'
 
 export default function CheckoutPage() {
@@ -36,15 +37,22 @@ export default function CheckoutPage() {
     return <CheckoutConfirmation checkout={checkout} />
   }
 
+  // Merchants who moved the branch question to checkout: it gets the screen to
+  // itself, exactly as the pre-menu splash does, rather than sitting as one more
+  // field on the form. The form is not rendered behind it — an unanswerable
+  // order should not be half-visible, and the CTA must be unreachable, not just
+  // covered. Returns to this state whenever the customer taps "Change".
+  if (checkout.outlet.isMissingRequiredSelection) {
+    return <CheckoutOutletScreen outlet={checkout.outlet} />
+  }
+
   const template = (checkout.tenant.checkout_template || 'classic') as CheckoutTemplate
 
   return (
     <>
       <div data-branding-scope="checkout/colors">
-        {/* Asked here, above the form, only for merchants who moved the branch
-            question to checkout — so every design gets it from one place. */}
         <div className="mx-auto max-w-2xl px-4 pt-4">
-          <CheckoutOutletSection outlet={checkout.outlet} />
+          <CheckoutOutletSummary outlet={checkout.outlet} />
         </div>
         <CheckoutTemplateRenderer template={template} checkout={checkout} />
       </div>

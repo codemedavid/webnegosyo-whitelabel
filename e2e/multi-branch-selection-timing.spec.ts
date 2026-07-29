@@ -135,7 +135,7 @@ test.describe('branch asked at checkout', () => {
     await expect(page.getByText(GATE_HEADING)).toHaveCount(0)
   })
 
-  test('asks which branch on the checkout page and blocks the order until answered', async ({
+  test('takes over checkout with the branch screen until a branch is chosen', async ({
     page,
   }) => {
     const item = await menuItemOf(afterTenant.id)
@@ -143,21 +143,21 @@ test.describe('branch asked at checkout', () => {
 
     await page.goto(`/${afterTenant.slug}/checkout`)
 
-    // Both seeded branches are offered.
-    const picker = page.getByRole('button', { name: /Branch/ })
-    await expect(picker.filter({ hasText: afterTenant.outletNames[0] })).toBeVisible()
-    await expect(picker.filter({ hasText: afterTenant.outletNames[1] })).toBeVisible()
+    // The branch question owns the screen: both branches are offered and the
+    // checkout form behind it is not reachable yet.
+    await expect(page.getByText(afterTenant.outletNames[0])).toBeVisible()
+    await expect(page.getByText(afterTenant.outletNames[1])).toBeVisible()
+    await expect(submitButton(page)).toBeHidden()
 
-    // Nothing chosen yet, so the order is refused rather than placed branchless.
-    await submitButton(page).click()
-    await expect(page.getByText(/choose a branch/i)).toBeVisible()
+    // Answering it hands over to the normal checkout, which names the branch.
+    await page.getByText(afterTenant.outletNames[1]).click()
+    await expect(submitButton(page)).toBeVisible()
+    await expect(page.getByText('Ordering from')).toBeVisible()
 
-    // Choosing one clears the block.
-    await picker.filter({ hasText: afterTenant.outletNames[1] }).click()
-    await expect(picker.filter({ hasText: afterTenant.outletNames[1] })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    // "Change" puts the customer back on the same screen, not a second one.
+    await page.getByRole('button', { name: /^Change$/ }).click()
+    await expect(submitButton(page)).toBeHidden()
+    await expect(page.getByText(afterTenant.outletNames[0])).toBeVisible()
   })
 
   /**

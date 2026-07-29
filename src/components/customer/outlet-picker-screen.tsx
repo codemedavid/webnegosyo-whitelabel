@@ -16,7 +16,12 @@ export interface PickerOutlet extends SelectableOutlet {
 }
 
 interface OutletPickerScreenProps {
-  mode: OutletOrderMode
+  /**
+   * Null only on the checkout-timing path, where a merchant's custom order type
+   * (say "Catering") maps to no mode. Every branch is then on offer, so the
+   * subtitle drops the mode rather than naming the wrong one.
+   */
+  mode: OutletOrderMode | null
   ranked: RankedOutlet<PickerOutlet>[]
   isLocating: boolean
   onLocate: () => void
@@ -98,7 +103,7 @@ export function OutletPickerScreen({
           />
         </label>
         <p className="mt-2 px-1 text-xs text-muted-foreground">
-          Showing branches for {OUTLET_MODE_LABELS[mode].toLowerCase()}
+          {mode ? `Showing branches for ${OUTLET_MODE_LABELS[mode].toLowerCase()}` : 'Showing all branches'}
         </p>
       </div>
 
