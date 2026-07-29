@@ -18,6 +18,14 @@ interface UseCheckoutOutletInput {
   tenantSlug: string
   orderTypes: readonly OrderType[]
   orderTypeId: string | null
+  /**
+   * Whether `orderTypes` is the tenant's real list rather than the empty array
+   * it starts as. The two are indistinguishable from the array alone, and the
+   * difference matters: the order type is what narrows the branches, so
+   * offering a list before it lands means offering branches that may be ruled
+   * out a moment later. Defaults to true for callers with nothing to wait on.
+   */
+  areOrderTypesReady?: boolean
 }
 
 /** Why a branch the customer had already chosen is no longer chosen. */
@@ -60,6 +68,7 @@ export function useCheckoutOutlet({
   tenantSlug,
   orderTypes,
   orderTypeId,
+  areOrderTypesReady = true,
 }: UseCheckoutOutletInput): UseCheckoutOutletResult {
   const isAfterTiming = isMultiBranchEnabled(tenant) && resolveOutletSelectionTiming(tenant) === 'after'
 
@@ -109,7 +118,9 @@ export function useCheckoutOutlet({
 
   const isPickerVisible = shouldPickOutletAtCheckout(tenant, outlets) && resolution.choices.length > 1
 
-  const isLoading = isAfterTiming && !hasLoadedOutlets
+  // Both halves of the question have to be in hand: the branches themselves,
+  // and the order type that decides which of them are eligible.
+  const isLoading = isAfterTiming && (!hasLoadedOutlets || !areOrderTypesReady)
 
   /**
    * Whether this order MUST name a branch before it can be placed.

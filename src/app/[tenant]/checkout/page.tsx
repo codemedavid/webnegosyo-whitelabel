@@ -29,9 +29,6 @@ export default function CheckoutPage() {
   const tenantSlug = params.tenant as string
   const checkout = useCheckout(tenantSlug)
 
-  if (checkout.isLoading) return <CheckoutLoading />
-  if (!checkout.tenant) return <CheckoutNotFound />
-
   // Order confirmation / thank-you view (shared across all designs)
   if (checkout.checkoutComplete && checkout.completedOrderData) {
     return <CheckoutConfirmation checkout={checkout} />
@@ -42,9 +39,20 @@ export default function CheckoutPage() {
   // field on the form. The form is not rendered behind it — an unanswerable
   // order should not be half-visible, and the CTA must be unreachable, not just
   // covered. Returns to this state whenever the customer taps "Change".
+  //
+  // Deliberately ahead of the loading screen. Checkout loads in a chain —
+  // tenant, then order types, then form fields and payment methods — and the
+  // branch question needs only the first two. Waiting out the rest left the
+  // customer watching a spinner before being asked something the app could
+  // already ask; the form now finishes arriving behind this screen while they
+  // answer it. The hook reports its OWN readiness, so this never renders an
+  // empty picker.
   if (checkout.outlet.isMissingRequiredSelection) {
     return <CheckoutOutletScreen outlet={checkout.outlet} />
   }
+
+  if (checkout.isLoading) return <CheckoutLoading />
+  if (!checkout.tenant) return <CheckoutNotFound />
 
   const template = (checkout.tenant.checkout_template || 'classic') as CheckoutTemplate
 

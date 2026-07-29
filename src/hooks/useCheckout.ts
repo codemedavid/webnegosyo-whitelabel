@@ -80,6 +80,10 @@ export function useCheckout(tenantSlug: string) {
   // saved tenant when the checkout page renders inside the preview iframe.
   const tenant = useBrandingPreviewTenant(fetchedTenant)
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
+  // Distinguishes "not fetched yet" from "this tenant has none", which the
+  // array alone cannot. The branch picker needs the difference — see
+  // `areOrderTypesReady` in useCheckoutOutlet.
+  const [areOrderTypesReady, setAreOrderTypesReady] = useState(false)
   const [formFields, setFormFields] = useState<CustomerFormField[]>([])
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -148,7 +152,13 @@ export function useCheckout(tenantSlug: string) {
   const selectedOrderTypeData = orderTypes.find(ot => ot.id === orderType)
 
   // Which branch takes this order. No-ops entirely for single-location tenants.
-  const outlet = useCheckoutOutlet({ tenant, tenantSlug, orderTypes, orderTypeId: orderType })
+  const outlet = useCheckoutOutlet({
+    tenant,
+    tenantSlug,
+    orderTypes,
+    orderTypeId: orderType,
+    areOrderTypesReady,
+  })
   const serviceChargeAmount = (() => {
     if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
     if (selectedOrderTypeData.service_charge_type === 'percentage') {
@@ -240,6 +250,7 @@ export function useCheckout(tenantSlug: string) {
         const enabledOrderTypes = await getEnabledOrderTypesByTenantClient(data.id)
         if (isCancelled) return
         setOrderTypes(enabledOrderTypes)
+        setAreOrderTypesReady(true)
 
         // Determine the active order type for form fields fetch
         let activeOrderType = orderType
