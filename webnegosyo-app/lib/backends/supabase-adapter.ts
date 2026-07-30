@@ -31,6 +31,7 @@ import {
   type RecordPaymentArgs,
   type ReviseOrderArgs,
 } from "./order-revise";
+import type { BranchScope } from "../branch-scope";
 
 /**
  * The slice of supabase-js this adapter uses. Narrow on purpose: it keeps the
@@ -143,17 +144,41 @@ function asRecord(args: unknown): Record<string, unknown> {
   return args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 }
 
+/** A store-wide account, and the default for every caller that passes no scope. */
+const STORE_WIDE: BranchScope = { kind: "all" };
+
+/**
+ * Narrow a query to one branch, when the account is confined to one.
+ *
+ * Layered ON TOP of the tenant filter, never instead of it: outlet ids are
+ * unique today, but relying on that would put a cross-tenant leak one schema
+ * change away. A store-wide account adds no clause at all, so the query 121
+ * live platform tenants run stays exactly what it is today.
+ *
+ * `column` is a parameter because `order_items` has no branch of its own and is
+ * scoped through the join on its parent order — the same way its tenant is.
+ */
+function scopeToBranch(
+  builder: PlatformQueryBuilder,
+  scope: BranchScope,
+  column = "outlet_id"
+): PlatformQueryBuilder {
+  if (scope.kind === "all") return builder;
+  return builder.eq(column, scope.outletId);
+}
+
 // --- queries --------------------------------------------------------------
 
 async function getOrders(
   client: PlatformClient,
   tenantId: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  scope: BranchScope
 ) {
-  let builder = client
-    .from("orders")
-    .select(ORDER_COLUMNS)
-    .eq("tenant_id", tenantId);
+  let builder = scopeToBranch(
+    client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
+    scope
+  );
 
   if (typeof args.status === "string") {
     builder = builder.eq("status", args.status);
@@ -171,17 +196,22 @@ async function getOrders(
 async function getOrderById(
   client: PlatformClient,
   tenantId: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  scope: BranchScope
 ) {
+  // Scoped as well as fetched by id: without it a deep link — or a stale
+  // notification — opens another branch's order in full, line items included.
   const row = await unwrap<(PlatformOrderRow & {
     order_items: PlatformOrderItemRow[] | null;
   }) | null>(
-    client
-      .from("orders")
-      .select(ORDER_WITH_ITEMS_COLUMNS)
-      .eq("id", args.orderId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle()
+    scopeToBranch(
+      client
+        .from("orders")
+        .select(ORDER_WITH_ITEMS_COLUMNS)
+        .eq("id", args.orderId)
+        .eq("tenant_id", tenantId),
+      scope
+    ).maybeSingle()
   );
 
   if (!row) return null;
@@ -193,24 +223,35 @@ async function getOrderById(
  * Product analytics joins these back to their order's date, so fetching them in
  * one bounded read avoids an N+1 (one getOrderById per order).
  */
-async function getAllOrderItems(client: PlatformClient, tenantId: string) {
+async function getAllOrderItems(
+  client: PlatformClient,
+  tenantId: string,
+  scope: BranchScope
+) {
   const rows = await unwrap<PlatformOrderItemRow[] | null>(
-    client
-      .from("order_items")
-      .select(ORDER_ITEM_COLUMNS)
-      .eq("orders.tenant_id", tenantId)
-      .limit(STATS_LIMIT)
+    scopeToBranch(
+      client
+        .from("order_items")
+        .select(ORDER_ITEM_COLUMNS)
+        .eq("orders.tenant_id", tenantId),
+      scope,
+      "orders.outlet_id"
+    ).limit(STATS_LIMIT)
   );
 
   return (rows ?? []).map((row) => toOrderItemDto(row));
 }
 
-async function getRealtimeQueue(client: PlatformClient, tenantId: string) {
+async function getRealtimeQueue(
+  client: PlatformClient,
+  tenantId: string,
+  scope: BranchScope
+) {
   const rows = await unwrap<PlatformOrderRow[] | null>(
-    client
-      .from("orders")
-      .select(ORDER_COLUMNS)
-      .eq("tenant_id", tenantId)
+    scopeToBranch(
+      client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
+      scope
+    )
       .in("status", OPEN_STATUSES)
       .order("created_at", { ascending: false })
       .limit(QUEUE_LIMIT)
@@ -222,14 +263,14 @@ async function getRealtimeQueue(client: PlatformClient, tenantId: string) {
 async function getStatsBetween(
   client: PlatformClient,
   tenantId: string,
+  scope: BranchScope,
   startMs: number,
   endMs?: number
 ) {
-  let builder = client
-    .from("orders")
-    .select(ORDER_COLUMNS)
-    .eq("tenant_id", tenantId)
-    .gte("created_at", new Date(startMs).toISOString());
+  let builder = scopeToBranch(
+    client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
+    scope
+  ).gte("created_at", new Date(startMs).toISOString());
 
   if (endMs !== undefined) {
     builder = builder.lte("created_at", new Date(endMs).toISOString());
@@ -388,30 +429,41 @@ async function recordPayment(
 
 // --- dispatch -------------------------------------------------------------
 
+/**
+ * `scope` is the ACCOUNT's branch, not the branch an owner has drilled into.
+ *
+ * The distinction matters in both directions. Narrowing by the drill-down would
+ * leave the portfolio and the Branches comparison unable to read the branches
+ * they exist to compare — and an owner may see the whole store anyway, so there
+ * is no safety to be had from it. Narrowing by the account, on the other hand,
+ * is the only thing that stops a manager's device receiving rows it may not see.
+ */
 export async function runPlatformQuery(
   client: PlatformClient,
   tenantId: string,
   ref: string,
-  args: unknown
+  args: unknown,
+  scope: BranchScope = STORE_WIDE
 ): Promise<unknown> {
   const tenant = requireTenant(tenantId);
   const params = asRecord(args);
 
   switch (ref) {
     case "orders:getOrders":
-      return getOrders(client, tenant, params);
+      return getOrders(client, tenant, params, scope);
     case "orders:getAllOrderItems":
-      return getAllOrderItems(client, tenant);
+      return getAllOrderItems(client, tenant, scope);
     case "orders:getOrderById":
-      return getOrderById(client, tenant, params);
+      return getOrderById(client, tenant, params, scope);
     case "orders:getRealtimeQueue":
-      return getRealtimeQueue(client, tenant);
+      return getRealtimeQueue(client, tenant, scope);
     case "orders:getDashboardStats":
-      return getStatsBetween(client, tenant, localDayStartMs(Date.now()));
+      return getStatsBetween(client, tenant, scope, localDayStartMs(Date.now()));
     case "orders:getDashboardStatsByPeriod":
       return getStatsBetween(
         client,
         tenant,
+        scope,
         Number(params.startDate),
         Number(params.endDate)
       );

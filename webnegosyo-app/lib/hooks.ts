@@ -11,13 +11,15 @@ import {
 } from "./backends/supabase-adapter";
 import {
   buildOrderSubscription,
-  isOrderChangeForTenant,
+  isOrderChangeInScope,
   isRefRealtimeBacked,
   resolvePollMs,
   resolveRealtimeStatus,
   type OrderChangePayload,
   type RealtimeStatus,
 } from "./backends/supabase-realtime";
+import { useAccountBranchScope } from "./use-branch-scope";
+import type { BranchScope } from "./branch-scope";
 
 interface SafeQueryResult<T> {
   data: T | undefined;
@@ -76,7 +78,8 @@ function useScopedTenantId(): string | null {
 function usePlatformQuery<T>(
   refName: string,
   args: Record<string, unknown> | "skip" | undefined,
-  tenantId: string | null
+  tenantId: string | null,
+  scope: BranchScope
 ): SafeQueryResult<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +91,11 @@ function usePlatformQuery<T>(
   // fetch loops forever.
   const argsKey = JSON.stringify(args ?? {});
   const isSkipped = args === "skip" || !tenantId;
+
+  // The branch is part of what the query asked for. Left out of the effect's
+  // dependencies, a session that resolves its branch after the first fetch would
+  // keep showing the unscoped result until the next poll.
+  const scopeKey = scope.kind === "all" ? "all" : `branch:${scope.outletId}`;
 
   // Lets the realtime subscription trigger a re-read without depending on the
   // fetch effect's identity, so an incoming order does not resubscribe.
@@ -114,7 +122,8 @@ function usePlatformQuery<T>(
           platformClient,
           tenantId,
           refName,
-          JSON.parse(argsKey)
+          JSON.parse(argsKey),
+          scope
         );
         if (!isCurrent) return;
         setData(result as T);
@@ -142,7 +151,10 @@ function usePlatformQuery<T>(
       isCurrent = false;
       clearInterval(timer);
     };
-  }, [refName, argsKey, tenantId, isSkipped, realtimeStatus]);
+    // `scopeKey` rather than `scope` alone: the hook memoises the object, but a
+    // value-identity key means a re-resolved-but-equal scope cannot restart the
+    // poll timer.
+  }, [refName, argsKey, tenantId, isSkipped, realtimeStatus, scopeKey, scope]);
 
   // Subscribe to this tenant's order changes so a new order lands immediately
   // instead of on the next poll. Deliberately does NOT depend on `argsKey` —
@@ -163,8 +175,12 @@ function usePlatformQuery<T>(
         binding,
         (payload: OrderChangePayload) => {
           // The server-side filter should already have excluded other tenants;
-          // this is the second line of defence before we act on the row.
-          if (!isOrderChangeForTenant(payload, tenantId)) return;
+          // this is the second line of defence before we act on the row. Only
+          // one filter clause per binding is allowed and it is spent on the
+          // tenant, so the BRANCH check has nowhere else to happen — without it
+          // a manager's queue refetches, and the chime fires, for a sale at
+          // another branch.
+          if (!isOrderChangeInScope(payload, tenantId, scope)) return;
           reloadRef.current();
         }
       )
@@ -178,7 +194,7 @@ function usePlatformQuery<T>(
       setRealtimeStatus("disconnected");
       void supabase.removeChannel(channel);
     };
-  }, [refName, tenantId, isSkipped]);
+  }, [refName, tenantId, isSkipped, scopeKey, scope]);
 
   return { data, isLoading: isSkipped ? false : isLoading, error, isMissingFunction: false };
 }
@@ -193,6 +209,19 @@ export function useSafeQuery<T>(
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
+  /**
+   * The branch this ACCOUNT may see — deliberately not `useBranchScope`, which
+   * is already narrowed to the branch an owner has drilled into.
+   *
+   * Fetching through the narrowed scope would leave the portfolio and the
+   * Branches comparison unable to read the branches they exist to compare, and
+   * an owner may see the whole store regardless, so the drill-down stays a
+   * client-side narrowing. What the account is confined to is a different
+   * matter: pushing that into the query is the only thing that stops a
+   * manager's device receiving rows it may not see.
+   */
+  const accountScope = useAccountBranchScope();
+
   // Screens address their backend by string ref, so the ref doubles as its name.
   const refName = String(ref);
   const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
@@ -200,7 +229,8 @@ export function useSafeQuery<T>(
   const platformResult = usePlatformQuery<T>(
     refName,
     args,
-    route === "platform" ? tenantId : null
+    route === "platform" ? tenantId : null,
+    accountScope
   );
 
   // Convex stays untouched for every tenant that routes to it; a platform

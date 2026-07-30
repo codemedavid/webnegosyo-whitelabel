@@ -18,6 +18,8 @@
  * seeing different numbers for the same day.
  */
 
+import { ORDER_OUTLET_ID_KEY } from "../order-outlet";
+
 /** Statuses an order can hold, in pipeline order. */
 export const ORDER_STATUSES = [
   "pending",
@@ -81,6 +83,8 @@ export interface PlatformOrderItemRow {
 export interface PlatformOrderRow {
   id: string;
   tenant_id: string;
+  /** Branch that took the order; null on every single-location tenant. */
+  outlet_id?: string | null;
   customer_name: string | null;
   customer_contact: string | null;
   customer_data: Record<string, unknown> | null;
@@ -359,6 +363,11 @@ export interface CreateOrderArgs {
 
 export interface OrderInsert {
   tenant_id: string;
+  /**
+   * Branch that took the order. The platform database has a real column for it;
+   * the other backends only have `customer_data`, so both carry it.
+   */
+  outlet_id: string | null;
   customer_name: string;
   customer_contact: string;
   customer_data: Record<string, unknown> | null;
@@ -396,6 +405,28 @@ export interface OrderItemInsert {
 }
 
 /**
+ * The branch a new order belongs to, read out of the blob the register stamped.
+ *
+ * `buildPosOrder` writes the branch into `customerData`, because that is the
+ * only carrier Convex and tenant-owned projects have. The platform database
+ * also has an `outlet_id` column, and order reads are narrowed by that column
+ * server-side — so a counter sale that filled only the blob would be invisible
+ * to the very branch that rang it up. Promoting it here, at the one place every
+ * platform order is built, keeps the two in step.
+ *
+ * A blank or non-string value yields null rather than an empty string: an empty
+ * string is not a valid uuid, and Postgres would reject the whole sale.
+ */
+function outletIdFromCustomerData(
+  customerData: Record<string, unknown> | undefined
+): string | null {
+  const value = customerData?.[ORDER_OUTLET_ID_KEY];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
  * Build the rows a new order writes. Split from the insert itself so the status
  * rule — which decides whether a merchant has to tap "confirm" — is provable
  * without a database.
@@ -406,6 +437,7 @@ export function buildCreateOrderRows(
 ): { order: OrderInsert; items: OrderItemInsert[] } {
   const order: OrderInsert = {
     tenant_id: tenantId,
+    outlet_id: outletIdFromCustomerData(args.customerData),
     customer_name: args.customerName,
     customer_contact: args.customerContact,
     customer_data: args.customerData ?? null,

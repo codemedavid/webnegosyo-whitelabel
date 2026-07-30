@@ -14,6 +14,8 @@
  * permanent safety net rather than removed; see `resolvePollMs`.
  */
 
+import { isOrderInScope, type BranchScope } from "../branch-scope";
+
 /** Poll interval while realtime is delivering — a safety net, not the main path. */
 export const REALTIME_FALLBACK_POLL_MS = 60000;
 
@@ -35,10 +37,21 @@ export interface OrderSubscription {
   binding: OrderChannelBinding;
 }
 
+/**
+ * A row as a `postgres_changes` payload carries it. `replica identity full`
+ * means every column is present, so the branch can be read off it directly.
+ */
+export interface OrderChangeRow {
+  tenant_id?: string | null;
+  outlet_id?: string | null;
+  customerData?: unknown;
+  customer_data?: unknown;
+}
+
 /** Rows a `postgres_changes` payload can carry, depending on the event. */
 export interface OrderChangePayload {
-  new?: { tenant_id?: string | null } | null;
-  old?: { tenant_id?: string | null } | null;
+  new?: OrderChangeRow | null;
+  old?: OrderChangeRow | null;
 }
 
 /**
@@ -92,6 +105,40 @@ export function isOrderChangeForTenant(
   // DELETE payloads carry `old`; INSERT/UPDATE carry `new`.
   const rowTenantId = payload.new?.tenant_id ?? payload.old?.tenant_id ?? null;
   return rowTenantId != null && rowTenantId === tenantId;
+}
+
+/**
+ * Whether an incoming change is one this session may act on at all.
+ *
+ * Supabase Realtime accepts exactly ONE filter clause per binding, and it is
+ * spent on `tenant_id` — so the branch has to be checked here, when the payload
+ * lands. That is not a formality: a manager whose queue refetched, or whose
+ * device chimed, for a sale at another branch would learn that the sale
+ * happened. The read scoping exists to prevent exactly that.
+ *
+ * The row is read through `getOrderOutletId`, so a row that carries the branch
+ * only in `customer_data` — written before the column was backfilled, or by a
+ * backend that has no column — is attributed the same way the order lists
+ * attribute it. Client and server then agree on which orders exist, instead of
+ * the queue count disagreeing with the queue.
+ */
+export function isOrderChangeInScope(
+  payload: OrderChangePayload,
+  tenantId: string,
+  scope: BranchScope
+): boolean {
+  if (!isOrderChangeForTenant(payload, tenantId)) return false;
+  if (scope.kind === "all") return true;
+
+  const row = payload.new ?? payload.old ?? null;
+  if (!row) return false;
+
+  // Realtime delivers snake_case columns; `getOrderOutletId` reads the camelCase
+  // blob key the Convex DTOs use, so hand it both spellings of the blob.
+  return isOrderInScope(scope, {
+    outlet_id: row.outlet_id ?? null,
+    customerData: row.customerData ?? row.customer_data,
+  });
 }
 
 /**

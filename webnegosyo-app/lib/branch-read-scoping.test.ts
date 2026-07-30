@@ -26,7 +26,10 @@ describe("platform read scoping", () => {
     // `business-screen-mount` pins on the screens, one layer down. An owner is
     // entitled to the whole store anyway, so pushing their selection to the
     // server buys no safety.
-    expect(HOOKS()).not.toMatch(/\buseBranchScope\b/);
+    //
+    // Asserted on the IMPORT, not on any mention: prose explaining why the
+    // narrowed hook is not used would otherwise fail its own guardrail.
+    expect(HOOKS()).not.toMatch(/import \{[^}]*\buseBranchScope\b[^}]*\}/);
   });
 
   it("passes the scope into the platform query", () => {
