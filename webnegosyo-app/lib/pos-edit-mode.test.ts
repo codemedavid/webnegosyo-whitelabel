@@ -54,7 +54,6 @@ function deliveryOrder() {
     total: 260,
     revisionNumber: 0,
     deliveryFee: 50,
-    serviceChargeAmount: 10,
     items: [orderItem()],
   };
 }
@@ -156,20 +155,50 @@ describe("enterEditMode", () => {
   });
 
   /**
-   * The fee the register cannot compute. `deliveryFee` and
-   * `serviceChargeAmount` are properties of the ORDER, not of the cart, so
-   * they have to be carried across explicitly or the re-total drops them.
+   * The fee the register cannot compute. `deliveryFee` is a property of the
+   * ORDER, not of the cart, so it has to be carried across explicitly or the
+   * re-total drops it.
    */
-  it("carries the order's delivery fee and service charge into the context", () => {
+  it("carries the order's delivery fee into the context", () => {
     const { context } = enterEditMode(deliveryOrder(), [], EMPTY_CATALOG);
 
     expect(context.deliveryFee).toBe(50);
-    expect(context.serviceChargeAmount).toBe(10);
   });
 
-  it("treats absent fees as zero rather than undefined", () => {
-    // A counter sale has neither; `undefined + subtotal` is NaN, which would
-    // render an amount due of "₱NaN" on the tender screen.
+  /**
+   * The service charge is NOT stored on an order — not on the platform DTO,
+   * not in the Convex schema. `reviseOrder` accepts a `serviceChargeAmount`
+   * argument and folds it into the total, but nothing ever persists it, so
+   * there is no field to read back on the next edit.
+   *
+   * It is recoverable, though: whatever the placed total held beyond the line
+   * items and the delivery fee is, by definition, the rest of the bill. Here
+   * ₱260 − ₱200 of food − ₱50 of delivery leaves the ₱10 charge.
+   *
+   * Deliberately NOT called "service charge": the residue is whatever the
+   * checkout added or took off, which may also be a discount or a rounding
+   * adjustment. Naming it for one of its causes would invite someone to
+   * recompute it from the order type's rate, which is exactly the mistake.
+   */
+  it("recovers the rest of the bill from the placed total", () => {
+    const { context } = enterEditMode(deliveryOrder(), [], EMPTY_CATALOG);
+
+    expect(context.carriedCharges).toBe(10);
+  });
+
+  it("preserves a discount rather than clamping it away", () => {
+    // ₱200 of food sold for ₱180. The residue is negative and real; floored at
+    // zero it would re-bill the customer the ₱20 they were given.
+    const { context } = enterEditMode(
+      { _id: "order-3", total: 180, items: [orderItem()] },
+      [],
+      EMPTY_CATALOG,
+    );
+
+    expect(context.carriedCharges).toBe(-20);
+  });
+
+  it("carries nothing when the total is exactly its line items", () => {
     const { context } = enterEditMode(
       { _id: "order-2", total: 200, revisionNumber: 0, items: [orderItem()] },
       [],
@@ -177,7 +206,19 @@ describe("enterEditMode", () => {
     );
 
     expect(context.deliveryFee).toBe(0);
-    expect(context.serviceChargeAmount).toBe(0);
+    expect(context.carriedCharges).toBe(0);
+  });
+
+  /**
+   * The identity that makes the whole carry-forward trustworthy: reopening an
+   * order and changing nothing must reproduce the bill the customer agreed to,
+   * to the centavo. If this drifts, every edit quietly re-prices the order.
+   */
+  it("reproduces the placed total exactly when nothing is changed", () => {
+    const order = deliveryOrder();
+    const { context, cart } = enterEditMode(order, [], EMPTY_CATALOG);
+
+    expect(editModeTotals(cart, context).newTotal).toBe(order.total);
   });
 
   it("records the revision the register opened, for the optimistic lock", () => {
@@ -243,7 +284,7 @@ describe("editModeTotals", () => {
       expectedRevisionNumber: 0,
       originalTotal: 260,
       deliveryFee: 50,
-      serviceChargeAmount: 10,
+      carriedCharges: 10,
       payments: [{ kind: "charge", amount: 260 }],
       originalItems: [
         {
@@ -263,7 +304,7 @@ describe("editModeTotals", () => {
    * would re-bill a ₱260 delivery order at ₱200 and hand the customer ₱60 back
    * — ₱50 of which was the courier's.
    */
-  it("adds the carried delivery fee and service charge to the items total", () => {
+  it("adds the carried delivery fee and remaining charges to the items total", () => {
     const totals = editModeTotals(cartOf({ id: "item-latte", price: 100, qty: 2 }), contextWith());
 
     expect(totals.itemsTotal).toBe(200);
