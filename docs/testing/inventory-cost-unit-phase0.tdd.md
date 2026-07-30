@@ -240,3 +240,69 @@ stayed independently claimable, and `leftover: 0` rows remained.
   `verifyTenantPermission` the web path enforces. Unchanged by this work.
 - `current_qty` still has no non-negative CHECK. The claim removes the
   concurrency route to negative stock but not an oversell against thin stock.
+
+---
+
+# Phase 1 — the daily inventory report (pure reconciliation)
+
+## User journeys
+
+1. As a merchant, I want to see what today's ingredients cost against what I
+   sold, so that I know whether the day's revenue actually covered it.
+2. As a merchant, I want tomorrow's physical count compared against what the POS
+   says I sold, so that anything missing is named and priced rather than
+   discovered a month later as an unexplained margin gap.
+
+## Execution
+
+`sale` rows are recipe-derived, never counted — that is precisely *theoretical
+usage*. A stocktake already stores the *discrepancy* as its delta. So both sides
+of the comparison were already in the ledger with no reader; this adds the
+reader and no migration.
+
+- **RED**: `Cannot find module '../../src/lib/inventory/daily-report'` —
+  `Tests: 0 total`.
+- **GREEN**: `npx jest --config jest.config.cjs tests/unit/inventory-daily-report.test.ts`
+  → `Tests: 16 passed, 16 total`; whole subsystem
+  `Test Suites: 1 skipped, 47 passed, 47 of 48 total`,
+  `Tests: 8 skipped, 496 passed, 504 total`.
+
+One intermediate failure was `Expected: 0, Received: -0` — negating a zero sum
+yields `-0`, which formats as "-0" and reads on a report as a loss too small to
+name rather than as nothing at all. Fixed with a `magnitude` helper rather than
+by loosening the assertion.
+
+## Test specification
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|---|---|---|---|
+| 24 | Opening is the balance before the first movement, not zero | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 25 | `opening + received − sold − waste ± count = closing` holds | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 26 | A void nets off its sale, so a cancelled order consumed nothing | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 27 | Usage is reported as a positive magnitude, never `-0` | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 28 | Theoretical usage valued at unit cost gives COGS | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 29 | Waste is valued separately from COGS | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 30 | A short count is shrinkage, priced as a positive loss | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 31 | A long count is NOT negative shrinkage | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 32 | Rows rank by peso shrinkage, not percentage | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 33 | Ingredients that did not move are left out | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 34 | A zero-variance count still appears, flagged as counted | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 35 | Counted vs uncounted are reported, so a clean report is not mistaken for a checked one | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 36 | An unpriced ingredient contributes quantities but no money, and is counted as uncosted | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 37 | A movement naming a deleted ingredient is dropped, not crashed on | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 38 | An empty day reports nothing rather than zeroes | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+| 39 | Opening/closing come from time order, not array order | `tests/unit/inventory-daily-report.test.ts` | unit | PASS |
+
+## Known gaps — Phase 1 is the ARITHMETIC only
+
+- **No reader, no screen.** `daily-report-read.ts` (RLS server client, Asia/Manila
+  day boundary) and the Reports tab are not built. Nothing renders this yet.
+- **No revenue.** The COGS side is complete; food-cost % needs the order backend
+  and is Phase 2. The ledger is always platform-side but ORDERS are not, so
+  Convex tenants need the `platform-analytics-merge.ts` fan-out.
+- **No verdict or threshold.** Ranking exists; the 1–2% / 3–5% / >5% judgement
+  and the count-session table are Phase 3.
+- **Recipe coverage is not consulted.** A tenant with no recipes produces a
+  report showing zero usage and zero shrinkage, which reads as a perfect day.
+  The report must state its coverage before it states a verdict — this is the
+  single most important thing Phase 3 must not omit.
