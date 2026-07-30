@@ -91,6 +91,41 @@ describe("buildRevisionRows", () => {
     expect(itemRows[0].subtotal).toBe(200);
   });
 
+  /**
+   * The row must be internally consistent: the stored price is rounded for
+   * storage, so the stored subtotal has to be built from that same rounded
+   * price. Deriving it from the raw submitted price instead writes a line whose
+   * own numbers contradict each other — a printed receipt showing "10.01 x 3 =
+   * 30.02", on the one feature whose entire purpose is a bill that stays
+   * defensible weeks later.
+   *
+   * The Convex backend is pinned to the same rule in
+   * `convex-template/convex/orderRevise.test.ts`; the two must not drift.
+   */
+  it("builds the subtotal from the price it actually stores", () => {
+    const { itemRows } = buildRevisionRows(
+      TENANT,
+      reviseArgs({
+        items: [
+          {
+            menuItemId: "item-latte",
+            menuItemName: "Latte",
+            quantity: 3,
+            price: 10.005,
+            subtotal: 30.015,
+          },
+        ],
+      }),
+      previous(),
+    );
+
+    expect(itemRows[0].price).toBe(10.01);
+    expect(itemRows[0].subtotal).toBe(30.03);
+    expect(itemRows[0].subtotal).toBe(
+      Math.round(itemRows[0].price * itemRows[0].quantity * 100) / 100,
+    );
+  });
+
   it("adds the delivery fee and service charge to the total", () => {
     const { orderPatch } = buildRevisionRows(
       TENANT,
