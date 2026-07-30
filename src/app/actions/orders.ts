@@ -18,6 +18,17 @@ import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
+import {
+  resolveOrderLinePrice,
+  type StoreMenuItemPricing,
+} from '@/lib/order-line-price-floor'
+import {
+  buildOutletMenuIndex,
+  findOutletMenuOverride,
+  type OutletMenuIndex,
+  type OutletMenuOverrideRow,
+} from '@/lib/outlets/outlet-menu-overrides'
+import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -344,10 +355,16 @@ export async function createOrderAction(
     }
 
     // SERVER-SIDE PRICE VALIDATION (runs before BOTH Supabase and Convex paths)
+    //
+    // The floor each line is held to is decided in `resolveOrderLinePrice`, from
+    // the price the customer was actually shown: the store-wide dish, its sale
+    // price if it has one, and then the chosen branch's override on top. A floor
+    // built from the bare list price overcharges every discounted line and undoes
+    // per-branch pricing in the direction merchants use it most — cheaper here.
     const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
     const { data: dbItems, error: priceCheckError } = await supabaseAdmin
       .from('menu_items')
-      .select('id, price, name')
+      .select('id, price, discounted_price, is_available, name')
       .eq('tenant_id', tenantId)
       .in('id', menuItemIds)
 
@@ -355,32 +372,49 @@ export async function createOrderAction(
       return { success: false, error: 'Failed to verify item prices' }
     }
 
-    const priceMap = new Map((dbItems || []).map((i: { id: string; price: number }) => [i.id, i.price]))
-    const MAX_QUANTITY = 99
-    const MAX_PRICE = 1_000_000
+    const storeItems = new Map(
+      ((dbItems ?? []) as unknown as StoreMenuItemPricing[]).map(i => [i.id, i])
+    )
 
-    for (const item of items) {
-      const dbPrice = priceMap.get(item.menu_item_id)
-      if (dbPrice === undefined) {
-        return { success: false, error: `Menu item not found: ${item.menu_item_name}` }
+    // Only a branch-carrying order needs overrides, and only for the dishes in
+    // it. A tenant without the feature issues exactly the queries it does today.
+    let branchOverrides: OutletMenuIndex = buildOutletMenuIndex([])
+    if (resolvedOutlet) {
+      const { data: overrideRows, error: overrideError } = await supabaseAdmin
+        .from('outlet_menu_items')
+        .select(OUTLET_MENU_OVERRIDE_SELECT)
+        .eq('tenant_id', tenantId)
+        .eq('outlet_id', resolvedOutlet.id)
+        .in('menu_item_id', menuItemIds)
+
+      // Not swallowed. An empty override set is the specific claim "this branch
+      // sells at the store-wide price", which on a failed query would charge one
+      // branch's customers another branch's prices.
+      if (overrideError) {
+        return { success: false, error: 'Failed to verify branch prices' }
       }
-      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_QUANTITY) {
-        return { success: false, error: `Invalid quantity for ${item.menu_item_name}` }
-      }
-      // Ensure price is at least the DB base price (variations can add to it)
-      if (item.price < dbPrice - 0.01) {
-        item.price = dbPrice
-      }
-      if (item.price > MAX_PRICE) {
-        return { success: false, error: `Price exceeds maximum for ${item.menu_item_name}` }
-      }
-      // Enforce subtotal = price × quantity
-      const expectedSubtotal = Math.round(item.price * item.quantity * 100) / 100
-      const submittedSubtotal = Math.round(item.subtotal * 100) / 100
-      if (Math.abs(submittedSubtotal - expectedSubtotal) > 0.02) {
-        item.subtotal = expectedSubtotal
-      }
+      branchOverrides = buildOutletMenuIndex(
+        (overrideRows ?? []) as unknown as OutletMenuOverrideRow[]
+      )
     }
+
+    // Rebuilt rather than mutated in place: the caller's array is not ours to
+    // rewrite, and a re-priced copy is what every downstream path should use.
+    const pricedItems: typeof items = []
+    for (const item of items) {
+      const result = resolveOrderLinePrice(
+        item,
+        storeItems.get(item.menu_item_id),
+        findOutletMenuOverride(branchOverrides, resolvedOutlet?.id ?? null, item.menu_item_id)
+      )
+
+      if (!result.ok) {
+        return { success: false, error: result.error }
+      }
+
+      pricedItems.push({ ...item, price: result.price, subtotal: result.subtotal })
+    }
+    items = pricedItems
 
     // Convex has no payment-proof columns, so proof rides in customerData (same
     // pattern as advance-order schedule) to stay cross-tenant compatible.
