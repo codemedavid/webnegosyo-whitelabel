@@ -69,7 +69,8 @@ describe('BranchTeamPanel', () => {
     it('shows what each of them can reach', () => {
       renderPanel({ members: [makeStaff({ permissions: ['orders'] })] })
 
-      expect(screen.getByText(/orders/i)).toBeInTheDocument()
+      const row = screen.getByTestId('staff-row-u1')
+      expect(within(row).getByText('Orders')).toBeInTheDocument()
     })
 
     it('names the store-wide accounts that can also act on this branch', () => {
