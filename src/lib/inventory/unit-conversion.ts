@@ -47,3 +47,24 @@ export function convertQuantity(qty: number, from: InventoryUnit, to: InventoryU
   if (from.id === to.id) return qty
   return (qty * from.to_base_factor) / to.to_base_factor
 }
+
+/**
+ * Convert a *price per unit* from one unit to another within the same dimension.
+ *
+ * This is the inverse of `convertQuantity` and deliberately its own function.
+ * A quantity scales up when the unit gets smaller (2 kg is 2000 g) while a
+ * price scales down (P120/kg is P0.12/g), so reusing `convertQuantity` on a
+ * price does not merely fail to help — it moves the figure the wrong way by the
+ * same factor. Their product, the total value of the stock, is what stays
+ * constant, and that invariant is what this pair is tested against.
+ */
+export function convertUnitCost(cost: number, from: InventoryUnit, to: InventoryUnit): number {
+  assertFinite(cost)
+  if (from.dimension !== to.dimension) {
+    throw new Error(
+      `Cannot convert a price across dimensions: ${from.abbreviation} (${from.dimension}) → ${to.abbreviation} (${to.dimension})`,
+    )
+  }
+  if (from.id === to.id) return cost
+  return (cost * to.to_base_factor) / from.to_base_factor
+}

@@ -23,7 +23,7 @@ import {
   resolveMovementDelta,
   movingAverageUnitCost,
 } from '@/lib/inventory/stock-ledger'
-import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
+import { convertUnitCost, type InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 export { stockMovementInputSchema, type StockMovementInput }
 
@@ -151,6 +151,17 @@ export async function recordStockMovementWith(
     currentQty: item.current_qty,
   })
 
+  // The merchant prices a delivery in the unit they buy in (P120 per kg) but
+  // `unit_cost` is per STOCK unit, because every figure that consumes it — the
+  // moving average, recipe cost, and the report's COGS — pairs it with a
+  // quantity already converted to stock units. Storing the typed price verbatim
+  // was the 1000x defect: it looks correct on the receiving screen and only
+  // surfaces three screens away as an impossible food cost.
+  const unitCostInStockUnit =
+    validated.unit_cost === undefined
+      ? undefined
+      : convertUnitCost(validated.unit_cost, toUnit(enteredUnit), toUnit(stockUnit))
+
   const { data: movementRow, error: movementError } = await supabase
     .from('stock_movements')
     .insert({
@@ -160,7 +171,7 @@ export async function recordStockMovementWith(
       quantity_delta: quantityDelta,
       entered_quantity: validated.quantity,
       entered_unit_id: validated.unit_id,
-      unit_cost: validated.unit_cost ?? null,
+      unit_cost: unitCostInStockUnit ?? null,
       note: validated.note ?? null,
       order_id: validated.order_id ?? null,
     } as never)
@@ -171,12 +182,15 @@ export async function recordStockMovementWith(
 
   // A delivery at a new price blends into the cost of stock already on hand.
   // Only when a price was actually supplied — see `stockMovementInputSchema`.
-  if (validated.reason === 'receive' && validated.unit_cost !== undefined) {
+  if (validated.reason === 'receive' && unitCostInStockUnit !== undefined) {
+    // Every term here is per stock unit: the shelf's existing cost, the
+    // delivery's converted price, and both quantities. Mixing units in a
+    // weighted average silently biases the blend rather than failing.
     const blended = movingAverageUnitCost({
       currentQty: item.current_qty,
       currentUnitCost: item.unit_cost,
       receivedQty: quantityDelta,
-      receivedUnitCost: validated.unit_cost,
+      receivedUnitCost: unitCostInStockUnit,
     })
     const { error: costError } = await supabase
       .from('inventory_items')
