@@ -2,7 +2,7 @@
 
 **Source plan**: produced inline in-session (`/ecc:plan`), not written to a `.plan.md` file. Continues `order-editing-pos-mode.tdd.md`, which recorded Phases 1–3 as complete and Phase 4 (the screens) as not started.
 
-**Scope of this run**: the two read seams the screens depend on, plus the first two hardening items from that document's "Known gaps" list. **The screens themselves are still not built** — see Remaining work.
+**Scope of this run**: the two read seams the screens depend on, the first two hardening items from that document's "Known gaps" list, and then — once Convex v16 was deployed — the screens themselves.
 
 ## Why this ran before the screens
 
@@ -106,19 +106,43 @@ Carried forward from `order-editing-pos-mode.tdd.md`, with this run's changes ma
 6. **The POS price divergence is still not fixed upstream.** `pos-order.ts:toOrderItem` still writes the base price into `order_items.price`.
 7. **Schema v16 is bundled but not deployed.** No tenant has received it, and `reviseOrder`/`recordPayment` have still never run once.
 
+## Phase 4B — the screens (after v16 was deployed)
+
+v16 was deployed to **Gungjeon Unlimited**, verified by reading `convex_schema_version = 16` off the tenant row rather than taking the deploy on trust. The screens were then built on top.
+
+### Task 6 — Payments and edit-history view models (`lib/order-history-view.ts`)
+
+- **RED**: `npx jest lib/order-history-view.test.ts` -> `Cannot find module './order-history-view'`. **0 tests**.
+- **GREEN**: **20 passed**.
+- **Guaranteed**: a refund renders as money *leaving* (`-P40.00`) even though the ledger stores it unsigned; centavos always show, so a merchant can total the card by hand; a missing method name renders "Payment", never `undefined`; the ledger keeps the order it was taken in, because that sequence is the story an edited bill has to tell; revision history is re-sorted newest-first here rather than trusted from a backend; an order with an empty ledger reports `collect` for its whole total rather than `settled`. The summary routes through `order-balance.ts`, so this card and the settle screen cannot show a cashier different numbers.
+
+### Tasks 7-9 — The three screens
+
+`components/order/SettlementCards.tsx`, `app/(main)/order-edit/[orderId].tsx`, `app/(main)/order-settle/[orderId].tsx`, plus the permission-gated Edit button on order detail.
+
+Routes are flat (`order-edit/`, `order-settle/`) rather than nested under `order/[orderId]/`, which would have put a file and a directory on the same route segment.
+
+- **Validated**: `npx tsc --noEmit` -> exit 0; `npx expo lint` -> **0 errors**; full app suite **82 suites / 1307 tests**.
+- **A pre-existing guardrail caught a real bug in this work.** `lib/tab-navigation.test.ts` failed on `router.replace("/(main)/order-settle/...")` — replacing into the tab navigator breaks it. Changed to `router.push`. Backing out of settle therefore lands on a now-stale edit screen, which is safe rather than merely tolerated: the optimistic lock refuses that second save and says why.
+- The edit screen refuses to open when the ledger read fails, rather than opening an order that would look unpaid.
+- Settlement offers **every** active payment method, not only those linked to the order's type (`listAllPaymentMethods`): a GCash delivery order topped up with cash at the counter must be closable.
+
+### Not done: 4B.4, and why
+
+`pos-sales.tsx` still calls `summarizeCounterSales` with one argument, so the drawer split stays **inert**. It needs every settlement row for the day's counter sales, and **no bulk ledger query exists on either backend** — only `getOrderPayments(orderId)`, which would be an N+1 across a shift. Closing it means a new `orders:getPaymentsSince` on Convex *and* the adapter, a bump to v17, a rebundle, and another tenant deploy. Deliberately not started at the end of a long session, on cash-reconciliation code.
+
 ## Remaining work, in order
 
 | # | Task | Blocked on |
 |---|---|---|
-| 5.2 | Deploy v16 to a scratch tenant and execute both mutations once | needs a real Convex deployment — **user action** |
-| 4B.1 | Edit entry point + payments/revision cards on order detail | nothing |
-| 4B.2 | `order/[orderId]/edit.tsx` | 4B.1 |
-| 4B.3 | `order/[orderId]/settle.tsx` | 4B.2 |
-| 4B.4 | Pass the ledger into `summarizeCounterSales` in `pos-sales.tsx` | nothing |
+| — | Try the edit -> settle flow on Gungjeon Unlimited | **ready now** |
+| 4B.4 | Bulk ledger query, then pass it into `summarizeCounterSales` | needs Convex v17 + a deploy |
 | 4B.5 | Apply the stock delta on save | the concurrent inventory work on `order-stock-claim.ts` |
 | 5.3 | Probe RLS under a real user session | user action |
 | 5.4 | Move the platform revise into a Postgres RPC | nothing |
 | 5.5 | Fix `pos-order.ts:toOrderItem` price convention | nothing |
+
+Superseded: 5.2 (v16 deployed and verified), 4B.1-4B.3 (built above).
 
 ## Merge evidence
 
@@ -135,3 +159,7 @@ Checkpoint commits on `feat/platform-supabase-order-parity`:
 | `e10277a` | RED — platform subtotal consistency (Expected 30.03, Received 30.02) |
 | `a425a89` | GREEN — app suite 81 suites / 1285 tests; tsc clean |
 | `a513c1f` | Coverage — `orderRevise.ts` to 100% |
+| `419791c` | RED — payments/edit-history view models (module not found, 0 tests run) |
+| `5a7ddcd` | GREEN — 20 passed |
+| `4cd9177` | Order detail: settlement + history cards, gated Edit button |
+| `843a973` | Edit and settle screens; 82 suites / 1307 tests; tsc + lint clean |
