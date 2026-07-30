@@ -49,6 +49,36 @@ export async function notifyOrderStockRestore(
   await postStockAction({ tenantId, orderId, action: "restore" });
 }
 
+/**
+ * Fire-and-forget: move the stock a saved order edit is responsible for.
+ *
+ * Sends only the DIFFERENCE, in both directions — one edit can add a latte and
+ * drop a bun. The platform claims each direction against `revision`, so a
+ * retried save is a no-op while the next edit still moves stock.
+ *
+ * Never throws, for the same reason as depletion: by the time this runs the
+ * bill has been rewritten and the money settled. A drifting ledger is
+ * reconcilable by stocktake; a save that fails after the customer has paid the
+ * difference is not.
+ */
+export async function notifyOrderStockRevision(
+  tenantId: string,
+  orderId: string,
+  revision: number,
+  movement: { deplete: readonly PosStockItem[]; restore: readonly PosStockItem[] },
+): Promise<void> {
+  if (movement.deplete.length === 0 && movement.restore.length === 0) return;
+
+  await postStockAction({
+    tenantId,
+    orderId,
+    action: "revise",
+    revision,
+    deplete: movement.deplete,
+    restore: movement.restore,
+  });
+}
+
 /** The one authenticated call both directions share. Never throws. */
 async function postStockAction(body: Record<string, unknown>): Promise<void> {
   try {

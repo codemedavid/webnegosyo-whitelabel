@@ -74,6 +74,12 @@ export async function applyOrderStockMovements(
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void',
+  /**
+   * Which revision of the order this movement belongs to. 0 is the original
+   * sale; a saved edit passes its own, so it can move stock on an order that
+   * already claimed both directions. See migration 20260806120000.
+   */
+  revision: number = 0,
 ): Promise<OrderStockResult> {
   if (items.length === 0) return EMPTY_RESULT
   const supabase = createAdminClient()
@@ -82,7 +88,7 @@ export async function applyOrderStockMovements(
   // would take stock down twice for one sale with two ledger rows each claiming
   // to be the truth. The claim is a unique-indexed row, so the database refuses
   // the second caller — a SELECT-then-INSERT here let every racing call through.
-  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction))) {
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction, revision))) {
     return EMPTY_RESULT
   }
 
@@ -93,11 +99,11 @@ export async function applyOrderStockMovements(
   try {
     const result = await depleteClaimedOrder(supabase, tenantId, orderId, items, direction)
     if (result.movementCount === 0) {
-      await releaseOrderStockApplication(supabase, tenantId, orderId, direction)
+      await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
     }
     return result
   } catch (error) {
-    await releaseOrderStockApplication(supabase, tenantId, orderId, direction)
+    await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
     throw error
   }
 }
@@ -361,9 +367,10 @@ export async function applyOrderStockBestEffort(
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void' = 'sale',
+  revision: number = 0,
 ): Promise<void> {
   try {
-    const result = await applyOrderStockMovements(tenantId, orderId, items, direction)
+    const result = await applyOrderStockMovements(tenantId, orderId, items, direction, revision)
     if (result.skipped.length > 0) {
       console.warn('[inventory] Skipped stock movements for order', {
         orderId,
@@ -372,5 +379,37 @@ export async function applyOrderStockBestEffort(
     }
   } catch (error) {
     console.error('[inventory] Stock depletion failed for order', orderId, error)
+  }
+}
+
+/**
+ * Move the stock a saved order edit is responsible for.
+ *
+ * An edit moves only the DIFFERENCE — the order's original sale already spent
+ * its ingredients. Both directions can appear in one edit (a customer swaps a
+ * bun for a latte), so this writes up to two ledger entries and claims each
+ * against the revision being saved.
+ *
+ * Best-effort, like every other order-driven stock write: by the time this runs
+ * the bill has been rewritten and the money settled. A drifting ledger is
+ * reconcilable by stocktake; a save that refuses to complete because of a stock
+ * write leaves the customer holding a receipt that disagrees with the kitchen.
+ */
+export async function applyOrderRevisionStockBestEffort(
+  tenantId: string,
+  orderId: string,
+  revision: number,
+  deplete: readonly DepletionOrderItem[],
+  restore: readonly DepletionOrderItem[],
+): Promise<void> {
+  // Returns first. If the two directions touch the same ingredient — which a
+  // swap between two dishes sharing one — putting stock back before taking it
+  // out keeps the running total from dipping through a floor it never really
+  // crossed, and so from auto-86ing a dish for the width of one transaction.
+  if (restore.length > 0) {
+    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision)
+  }
+  if (deplete.length > 0) {
+    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision)
   }
 }

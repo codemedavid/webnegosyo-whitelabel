@@ -31,7 +31,8 @@ import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
-import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
+import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { posStockRevision } from "../../lib/pos-stock-revision";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -230,10 +231,21 @@ export default function PosTenderScreen() {
         });
       }
 
-      // Stock is deliberately NOT adjusted here. Applying the delta of an edit
-      // is its own piece of work (order-stock-delta.ts has the arithmetic, but
-      // nothing claims it against the ledger yet), and spending ingredients
-      // twice would be worse than not spending them at all.
+      // Move only the ingredients the edit is responsible for. The original
+      // sale already spent the order's stock, so this is the difference in
+      // both directions — an edit can add a latte and drop a bun at once.
+      //
+      // Claimed against the revision this save just wrote, so a retry is a
+      // no-op while the NEXT edit still moves stock. Never throws: the bill is
+      // already rewritten and the money settled by this point.
+      if (tenantId) {
+        await notifyOrderStockRevision(
+          tenantId,
+          editContext.orderId,
+          editContext.expectedRevisionNumber + 1,
+          posStockRevision(editContext.originalStockItems, buildPosStockItems(lines)),
+        );
+      }
 
       endEdit();
       router.back();
@@ -249,6 +261,7 @@ export default function PosTenderScreen() {
     edit,
     isCompleting,
     hasOrderBackend,
+    tenantId,
     lines,
     editReason,
     userId,

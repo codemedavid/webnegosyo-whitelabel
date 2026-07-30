@@ -28,9 +28,9 @@ import { createClient } from '@supabase/supabase-js'
  */
 
 /** What the caller wants done to this order's stock. */
-type StockAction = 'deplete' | 'restore'
+type StockAction = 'deplete' | 'restore' | 'revise'
 
-const STOCK_ACTIONS: readonly StockAction[] = ['deplete', 'restore']
+const STOCK_ACTIONS: readonly StockAction[] = ['deplete', 'restore', 'revise']
 
 /** One configured line of the sale, as the register sends it. */
 interface OrderStockItemInput {
@@ -42,6 +42,33 @@ interface OrderStockItemInput {
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
+/**
+ * Validate and normalise the lines a caller sent into depletion items.
+ *
+ * Anything without a menu item or a positive quantity is dropped rather than
+ * rejected: one unresolvable line must not stop the rest of an order's stock
+ * from moving.
+ */
+function toDepletionItems(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return (value as OrderStockItemInput[])
+    .filter((item) => typeof item?.menuItemId === 'string' && Number(item?.quantity) > 0)
+    .map((item) => {
+      const optionIds = toStringArray(item.optionIds)
+      return {
+        menuItemId: item.menuItemId as string,
+        quantity: Number(item.quantity),
+        // The same id set feeds both buckets: an id is unique per option, so
+        // whichever recipe target exists matches and the other finds nothing.
+        // Mirrors `depleteStockForOrder` in src/app/actions/orders.ts.
+        optionIds,
+        modifierOptionIds: optionIds,
+        addonIds: [] as string[],
+      }
+    })
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -121,21 +148,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true })
   }
 
-  const items = (rawItems as OrderStockItemInput[])
-    .filter((item) => typeof item?.menuItemId === 'string' && Number(item?.quantity) > 0)
-    .map((item) => {
-      const optionIds = toStringArray(item.optionIds)
-      return {
-        menuItemId: item.menuItemId as string,
-        quantity: Number(item.quantity),
-        // The same id set feeds both buckets: an id is unique per option, so
-        // whichever recipe target exists matches and the other finds nothing.
-        // Mirrors `depleteStockForOrder` in src/app/actions/orders.ts.
-        optionIds,
-        modifierOptionIds: optionIds,
-        addonIds: [],
-      }
-    })
+  // A saved edit moves only the DIFFERENCE — the order's original sale already
+  // spent its ingredients. The caller sends both directions because one edit
+  // can do both (a customer swaps a bun for a latte), already netted per
+  // configuration by `lib/pos-stock-revision.ts` on the client.
+  if (action === 'revise') {
+    const revision = Number(body?.revision)
+    // Revision 0 is the original sale's claim. An edit that arrived without a
+    // usable revision would collide with it and be silently refused as a
+    // duplicate, so it is rejected loudly instead.
+    if (!Number.isInteger(revision) || revision < 1) {
+      return NextResponse.json(
+        { error: 'revision must be an integer of at least 1' },
+        { status: 400 },
+      )
+    }
+
+    const { applyOrderRevisionStockBestEffort } = await import(
+      '@/lib/inventory/order-stock-service'
+    )
+    await applyOrderRevisionStockBestEffort(
+      tenantId,
+      orderId,
+      revision,
+      toDepletionItems(body?.deplete),
+      toDepletionItems(body?.restore),
+    )
+    return NextResponse.json({ success: true })
+  }
+
+  const items = toDepletionItems(rawItems)
 
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
   await applyOrderStockBestEffort(tenantId, orderId, items)

@@ -30,6 +30,7 @@ import { canEditOrder, type EditGate } from "./order-edit-guards";
 import { diffOrderItems } from "./order-revision";
 
 import type { PosCartLine } from "./pos-cart";
+import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
 import type { StaffPermissionHolder } from "./staff-permissions";
 import type { BranchScope, ScopedOrderLike } from "./branch-scope";
@@ -51,6 +52,14 @@ export interface OrderEditContext {
   originalTotal: number;
   /** The items as placed, for the dirty check and the audit snapshot. */
   originalItems: RevisedOrderItem[];
+  /**
+   * The items as placed, in the shape stock depletion needs — with option ids.
+   *
+   * Captured on load because once the edit begins the "before" is gone, and
+   * {@link originalItems} cannot stand in: it names its modifiers but carries
+   * no option ids, and an option's recipe is found by id.
+   */
+  originalStockItems: PosStockItem[];
   /** Carried across untouched; the register cannot recompute it. */
   deliveryFee: number;
   /**
@@ -156,6 +165,7 @@ export function enterEditMode(
       expectedRevisionNumber: order.revisionNumber ?? 0,
       originalTotal: order.total,
       originalItems: posCartToOrderItems(lines, catalog),
+      originalStockItems: buildPosStockItems(lines),
       deliveryFee,
       carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee),
       payments: [...payments],
