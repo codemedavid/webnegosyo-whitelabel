@@ -109,6 +109,17 @@ export function needsOutletLookup(appUser: AppUserRow): boolean {
   return typeof appUser.outlet_id === "string" && appUser.outlet_id.trim() !== "";
 }
 
+/**
+ * The branch this account is confined to, read from the account row itself.
+ *
+ * Mirrors `needsOutletLookup`: an owner or superadmin is never confined, and a
+ * blank id means the whole store.
+ */
+function confinedOutletId(appUser: AppUserRow): string | null {
+  if (!needsOutletLookup(appUser)) return null;
+  return (appUser.outlet_id as string).trim();
+}
+
 export function resolveSession(
   userId: string,
   appUser: AppUserRow | null,
@@ -165,9 +176,13 @@ export function resolveSession(
       isOwner: appUser.is_owner ?? false,
       permissions: appUser.permissions ?? null,
       role: appUser.role,
-      // A branch row that cannot be read degrades to the store-wide view this
-      // account had before branches existed, rather than locking it out.
-      outletId: outlet?.id ?? null,
+      // The account column is the boundary; the outlets row only supplies a
+      // label. Taking the scope from the join meant any failed lookup — a
+      // cold-start network blip, a deleted branch, a projection that quietly
+      // stopped selecting the column — widened a manager to the whole store.
+      // Convex tenants have no server-side backstop, so that was the only gate.
+      // A missing branch row now costs the *name*, never the confinement.
+      outletId: confinedOutletId(appUser),
       outletName: outlet?.name ?? null,
     },
   };

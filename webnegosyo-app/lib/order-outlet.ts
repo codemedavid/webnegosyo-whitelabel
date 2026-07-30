@@ -25,6 +25,25 @@ export interface OrderOutletContext {
 }
 
 /**
+ * The branch to credit a counter sale to, from the session's branch fields.
+ *
+ * The id is the attribution and the name is only a display snapshot, so an
+ * unknown name falls back to the id rather than dropping the branch — the same
+ * choice `branch-kpis` makes for its labels. Requiring both meant a failed
+ * outlets lookup booked the sale to nobody while the session knew the branch.
+ */
+export function posOutletContext(
+  outletId: string | null | undefined,
+  outletName: string | null | undefined,
+): OrderOutletContext | null {
+  const id = typeof outletId === "string" ? outletId.trim() : "";
+  if (id === "") return null;
+
+  const name = typeof outletName === "string" ? outletName.trim() : "";
+  return { id, name: name === "" ? id : name };
+}
+
+/**
  * Stamp the branch onto an order's `customerData`.
  *
  * With no branch the caller's payload is returned as it is — no added key — so

@@ -63,12 +63,23 @@ describe("resolveSession with a branch", () => {
   });
 
   it("still grants the session when the branch row cannot be read", () => {
-    // A missing branch must not lock the account out; it degrades to the
-    // store-wide view the account had before branches existed.
+    // A missing branch must not lock the account out.
     const result = resolveSession("user-1", appUser({ outlet_id: "outlet-gone" }), TENANT, null);
 
     expect(result.mode).toBe("merchant");
-    expect(result.auth?.outletId).toBeNull();
+  });
+
+  it("keeps the account confined when the branch row cannot be read", () => {
+    // This used to degrade to the store-wide view. That was defensible while
+    // the branch only narrowed what was *rendered*, but the same column is now
+    // a security boundary, so degrading widened a manager to every branch —
+    // and on a Convex tenant, where nothing re-checks server-side, that
+    // fallback was the only gate. A failed lookup now costs the display name
+    // and nothing else.
+    const result = resolveSession("user-1", appUser({ outlet_id: "outlet-gone" }), TENANT, null);
+
+    expect(result.auth?.outletId).toBe("outlet-gone");
+    expect(result.auth?.outletName).toBeNull();
   });
 
   it("leaves a superadmin unscoped", () => {

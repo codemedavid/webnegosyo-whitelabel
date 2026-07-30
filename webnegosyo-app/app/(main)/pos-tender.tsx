@@ -26,6 +26,7 @@ import {
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
 import { formatPeso } from "../../lib/format";
@@ -157,7 +158,7 @@ export default function PosTenderScreen() {
         // A counter sale belongs to the till that rang it, so the branch on
         // the session is stamped onto the order. Null for a single-location
         // register, which stamps nothing.
-        outlet: outletId && outletName ? { id: outletId, name: outletName } : null,
+        outlet: posOutletContext(outletId, outletName),
       });
 
       const orderId = await createOrder(args);
