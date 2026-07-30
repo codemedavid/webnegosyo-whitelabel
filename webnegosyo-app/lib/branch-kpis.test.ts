@@ -64,7 +64,10 @@ const OUTLETS = [
   { id: "pasig", name: "Pasig" },
 ];
 
-function rowFor(rows: readonly { outletId: string | null }[], outletId: string | null) {
+function rowFor<T extends { outletId: string | null }>(
+  rows: readonly T[],
+  outletId: string | null,
+): T {
   const row = rows.find((r) => r.outletId === outletId);
   if (!row) throw new Error(`no row for ${outletId}`);
   return row;
@@ -126,7 +129,7 @@ describe("buildBranchKpis — membership and totals", () => {
   it("reads the branch out of the blob when POS never stamped the column", () => {
     // POS sales carry the branch in customerData only — a naive column filter
     // hides every counter sale from the branch that rang it up.
-    const orders = [order({ customerData: { outletId: "makati" }, total: 320 })];
+    const orders = [order({ customerData: { outlet_id: "makati" }, total: 320 })];
 
     const rows = buildBranchKpis(orders, OUTLETS, WEEK);
 
