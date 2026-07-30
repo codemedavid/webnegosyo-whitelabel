@@ -128,11 +128,20 @@ describe("payment method editor screen", () => {
     expect(screen()).toMatch(/validatePaymentMethodInput/);
   });
 
-  it("blocks every write in the demo session", () => {
-    // Save, delete and the QR upload each reach a real store, so each needs
-    // its own guard — one guard on save would leave the other two open.
-    const guards = screen().match(/isDemo/g) ?? [];
-    expect(guards.length).toBeGreaterThanOrEqual(3);
+  it.each(["handlePickQr", "handleSave", "handleDelete"])(
+    "blocks %s in the demo session",
+    (handler) => {
+      // Each of the three reaches a real store, so each needs its own guard —
+      // guarding save alone would leave the other two open.
+      expect(screen()).toMatch(
+        new RegExp(`const ${handler} = [\\s\\S]{0,80}blockedByDemo\\(\\)`),
+      );
+    },
+  );
+
+  it("decides demo-readonly from the auth store, not a prop", () => {
+    expect(screen()).toMatch(/useAuthStore\.getState\(\)\.isDemo/);
+    expect(screen()).toMatch(/DEMO_READONLY_MESSAGE/);
   });
 
   it("waits for a tenant before loading or saving", () => {

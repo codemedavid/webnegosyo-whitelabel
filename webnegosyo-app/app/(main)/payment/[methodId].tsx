@@ -80,11 +80,15 @@ export default function PaymentMethodEditorScreen() {
     }));
   };
 
+  /** True when this session may not write; alerts the merchant if so. */
+  const blockedByDemo = (): boolean => {
+    if (!useAuthStore.getState().isDemo) return false;
+    Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+    return true;
+  };
+
   const handlePickQr = async () => {
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
-    }
+    if (blockedByDemo()) return;
     const outcome = await pickQrImage();
     if (outcome.status === "unavailable") {
       Alert.alert(
@@ -111,10 +115,7 @@ export default function PaymentMethodEditorScreen() {
   };
 
   const handleSave = async () => {
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
-    }
+    if (blockedByDemo()) return;
     if (!tenantId) return;
 
     const validation = validatePaymentMethodInput(form);
@@ -145,10 +146,7 @@ export default function PaymentMethodEditorScreen() {
   };
 
   const handleDelete = () => {
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
-    }
+    if (blockedByDemo()) return;
     Alert.alert(
       "Delete payment method",
       "Customers will no longer be offered this at checkout. Delete it?",

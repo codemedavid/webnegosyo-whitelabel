@@ -56,6 +56,7 @@ import {
   buildEditorFormState,
   createPaymentMethod,
   deletePaymentMethod,
+  getPaymentMethod,
   isOfferedNowhere,
   listManagedPaymentMethods,
   moveMethod,
@@ -313,6 +314,60 @@ describe("listManagedPaymentMethods", () => {
     queued = [{ data: null, error: new Error("permission denied") }];
 
     await expect(listManagedPaymentMethods("t-1")).rejects.toThrow(
+      "permission denied",
+    );
+  });
+});
+
+describe("getPaymentMethod", () => {
+  it("reads one method scoped to the tenant", async () => {
+    queued = [{ data: null, error: null }];
+
+    await getPaymentMethod("pm-1", "t-1");
+
+    expect(argsFor("eq")).toEqual([
+      ["id", "pm-1"],
+      ["tenant_id", "t-1"],
+    ]);
+  });
+
+  it("returns null when the method is not this tenant's", async () => {
+    // maybeSingle, not single: opening a stale link should show "not found",
+    // not an error the merchant reads as the app being broken.
+    queued = [{ data: null, error: null }];
+
+    expect(await getPaymentMethod("pm-1", "t-1")).toBeNull();
+  });
+
+  it("flattens the links so the editor can tick the right order types", async () => {
+    queued = [
+      {
+        data: {
+          id: "pm-1",
+          tenant_id: "t-1",
+          name: "GCash",
+          details: null,
+          qr_code_url: null,
+          is_active: true,
+          order_index: 0,
+          require_payment_proof: true,
+          payment_method_order_types: [{ order_type_id: "ot-2" }],
+        },
+        error: null,
+      },
+    ];
+
+    expect(await getPaymentMethod("pm-1", "t-1")).toMatchObject({
+      name: "GCash",
+      require_payment_proof: true,
+      order_type_ids: ["ot-2"],
+    });
+  });
+
+  it("surfaces a query error instead of reporting the method missing", async () => {
+    queued = [{ data: null, error: new Error("permission denied") }];
+
+    await expect(getPaymentMethod("pm-1", "t-1")).rejects.toThrow(
       "permission denied",
     );
   });
