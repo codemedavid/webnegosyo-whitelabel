@@ -615,6 +615,82 @@ describe("branch-scoped reads", () => {
   });
 });
 
+/**
+ * A write is addressed by id, so it never passes through the read filter that
+ * now hides other branches. A stale notification, a deep link, or a screen left
+ * open across a branch switch could otherwise still mutate an order the account
+ * may not see. The branch goes into the WHERE clause of the write itself, which
+ * makes the check atomic with the update rather than a read-then-write race.
+ */
+describe("branch-scoped writes", () => {
+  const BRANCH: BranchScope = { kind: "branch", outletId: "outlet-north" };
+
+  it("narrows a status patch to the account's branch", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(
+      client,
+      TENANT,
+      "orders:updateOrderStatus",
+      { orderId: "order-9", status: "ready" },
+      BRANCH
+    );
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("narrows a payment-status patch to the account's branch", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(
+      client,
+      TENANT,
+      "orders:updatePaymentStatus",
+      { orderId: "order-9", paymentStatus: "paid" },
+      BRANCH
+    );
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("refuses to revise an order outside the account's branch", async () => {
+    // Arrange: the revise path reads the order first, so an out-of-branch order
+    // comes back as absent under the same filter the reads use.
+    const { client } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(
+        client,
+        TENANT,
+        "orders:reviseOrder",
+        { orderId: "order-9", items: [], total: 0 },
+        BRANCH
+      )
+    ).rejects.toThrow();
+  });
+
+  it("adds no branch filter to a store-wide account's patch", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+      orderId: "order-9",
+      status: "ready",
+    });
+
+    // Assert
+    expect(opsOf(calls, "eq").map(([column]) => column)).not.toContain("outlet_id");
+  });
+});
+
 describe("tenant guard", () => {
   it("refuses to run without a tenant rather than querying every tenant's orders", async () => {
     // Arrange: a superadmin who has not entered a store has no tenant, and
