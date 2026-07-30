@@ -11,6 +11,7 @@ import { stockMovementInputSchema } from '@/lib/inventory/schemas'
 import {
   EMPTY_STOCK_DRAFT,
   buildStockMovementInput,
+  describeDeliveryPriceUnit,
   type StockMovementDraft,
 } from '@/lib/inventory/stock-form'
 
@@ -95,5 +96,49 @@ describe('stockMovementInputSchema', () => {
         }),
       ).not.toThrow()
     }
+  })
+})
+
+/**
+ * Phase 0 — the delivery price is per the unit the merchant entered in, and the
+ * server converts it to the ingredient's stock unit before storing it. The
+ * dialog therefore has to name both units, because "Unit cost" beside a unit
+ * dropdown reads as either one and guessing wrong is a silent 1000x error.
+ *
+ * The wording lives here rather than in the component because the unit
+ * dropdown is a Radix `Select` that cannot be driven under jsdom — testing the
+ * rule through the widget would prove less and break more.
+ */
+describe('describeDeliveryPriceUnit', () => {
+  const perUnit = (abbrev: string) => abbrev
+
+  test('names the entered unit in the label', () => {
+    // Arrange / Act
+    const described = describeDeliveryPriceUnit('kg', 'g', perUnit)
+
+    // Assert
+    expect(described.label).toMatch(/cost per kg/i)
+  })
+
+  test('says the price will be converted when the units differ', () => {
+    const described = describeDeliveryPriceUnit('kg', 'g', perUnit)
+
+    expect(described.conversionHint).toMatch(/converted to g/i)
+  })
+
+  test('says nothing about conversion when the units already match', () => {
+    // Arrange — no conversion happens, so mentioning one is noise.
+    const described = describeDeliveryPriceUnit('g', 'g', perUnit)
+
+    expect(described.label).toMatch(/cost per g/i)
+    expect(described.conversionHint).toBeNull()
+  })
+
+  test('falls back to the stock unit before the merchant picks one', () => {
+    // Arrange — the dialog opens with no unit selected.
+    const described = describeDeliveryPriceUnit('', 'g', perUnit)
+
+    expect(described.label).toMatch(/cost per g/i)
+    expect(described.conversionHint).toBeNull()
   })
 })

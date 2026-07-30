@@ -44,6 +44,7 @@ import type {
 import {
   EMPTY_STOCK_DRAFT,
   buildStockMovementInput,
+  describeDeliveryPriceUnit,
   type StockMovementDraft,
 } from '@/lib/inventory/stock-form'
 import {
@@ -530,12 +531,12 @@ function IngredientsTab({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Unit</Label>
+                  <Label htmlFor="stock-unit">Unit</Label>
                   <Select
                     value={stockDraft.unit_id || undefined}
                     onValueChange={(value) => setStockDraft((d) => ({ ...d, unit_id: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="stock-unit">
                       <SelectValue placeholder="Select a unit" />
                     </SelectTrigger>
                     <SelectContent>
@@ -551,7 +552,17 @@ function IngredientsTab({
 
               {stockDraft.reason === 'receive' && (
                 <div className="space-y-1">
-                  <Label htmlFor="stock-cost">Unit cost (₱, optional)</Label>
+                  {/*
+                    The price is per the unit the merchant is entering in, and the
+                    server converts it to the stock unit. Naming both is the whole
+                    point: "Unit cost" beside a unit dropdown reads as either one,
+                    and guessing wrong is a 1000x error the merchant cannot see
+                    from this screen.
+                  */}
+                  <Label htmlFor="stock-cost">
+                    {describeDeliveryPriceUnit(stockDraft.unit_id, stockItem.stock_unit_id, unitLabel)
+                      .label}
+                  </Label>
                   <Input
                     id="stock-cost"
                     type="number"
@@ -563,7 +574,12 @@ function IngredientsTab({
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Leave blank to keep the current cost. A price here is blended with the stock
-                    already on hand.
+                    already on hand.{' '}
+                    {describeDeliveryPriceUnit(
+                      stockDraft.unit_id,
+                      stockItem.stock_unit_id,
+                      unitLabel,
+                    ).conversionHint ?? ''}
                   </p>
                 </div>
               )}

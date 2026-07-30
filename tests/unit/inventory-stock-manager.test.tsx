@@ -219,3 +219,41 @@ describe('InventoryManager stock history', () => {
     await waitFor(() => expect(getStockMovementsAction).toHaveBeenCalledTimes(2))
   })
 })
+
+/**
+ * Phase 0 — the price is now converted from the unit the merchant picked into
+ * the ingredient's stock unit, so the screen has to say which unit it is asking
+ * about. "Unit cost" beside a unit dropdown is ambiguous exactly where the
+ * 1000x error used to live, and the merchant cannot tell a right answer from a
+ * wrong one without being told.
+ */
+describe('InventoryManager delivery price unit', () => {
+  const KILOGRAM: InventoryUnitRow = {
+    id: '33333333-3333-4333-8333-333333333333', tenant_id: 't1', name: 'Kilogram',
+    abbreviation: 'kg', dimension: 'weight', to_base_factor: 1000, is_base: false,
+    is_active: true, created_at: '', updated_at: '',
+  }
+
+  function renderWithUnits() {
+    render(
+      <InventoryManager
+        tenantId="t1"
+        tenantSlug="demo"
+        initialIngredients={[FLOUR]}
+        initialUnits={[GRAM, KILOGRAM]}
+      />,
+    )
+  }
+
+  it('names the unit the price is per, defaulting to the stock unit', () => {
+    // Arrange
+    renderWithUnits()
+
+    // Act
+    openStock()
+
+    // Assert — the field must state "per g", not a bare "Unit cost".
+    expect(screen.getByLabelText(/cost per g/i)).toBeInTheDocument()
+  })
+
+})

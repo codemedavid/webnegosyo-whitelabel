@@ -65,3 +65,41 @@ export function buildStockMovementInput(
     note: note === '' ? undefined : note,
   })
 }
+
+export interface DeliveryPriceUnitCopy {
+  /** Field label, naming the unit the merchant is quoting a price in. */
+  label: string
+  /** Only when the shelf is measured differently; null when there is nothing to convert. */
+  conversionHint: string | null
+}
+
+/**
+ * How the delivery-price field describes itself.
+ *
+ * A price is per-unit, so it must state WHICH unit. The merchant enters a
+ * quantity in whatever unit they buy in, the server converts the price into the
+ * ingredient's stock unit, and the two are only sometimes the same — so the
+ * label follows the entered unit and the hint appears only when a conversion
+ * actually happens. Saying "converted to g" on a gram-entered price is noise
+ * that trains merchants to stop reading the line that matters.
+ *
+ * Pure, and separate from the dialog: the unit picker is a Radix `Select` that
+ * cannot be driven under jsdom, so a rule proven only through the widget would
+ * not be proven at all.
+ */
+export function describeDeliveryPriceUnit(
+  enteredUnitId: string,
+  stockUnitId: string,
+  unitLabel: (unitId: string) => string,
+): DeliveryPriceUnitCopy {
+  // Before the merchant picks anything the dialog is quoting the shelf's unit.
+  const effectiveUnitId = enteredUnitId || stockUnitId
+  const isConverted = effectiveUnitId !== stockUnitId
+
+  return {
+    label: `Cost per ${unitLabel(effectiveUnitId)} (₱, optional)`,
+    conversionHint: isConverted
+      ? `It is converted to ${unitLabel(stockUnitId)} to match the shelf.`
+      : null,
+  }
+}
