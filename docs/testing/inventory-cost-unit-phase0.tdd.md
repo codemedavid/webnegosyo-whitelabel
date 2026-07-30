@@ -140,3 +140,103 @@ The claim-check shape — a separate table holding one row per
 `(tenant_id, order_id, reason)` with a UNIQUE constraint, inserted before the
 ledger write, where `23505` means "already applied" — achieves the same
 idempotency without constraining the ledger's row shape at all. Not yet built.
+
+---
+
+# Phase 0, task 3 — one order deducts stock exactly once
+
+## User journey
+
+As a merchant, I want a retried or replayed order to deduct my ingredients once,
+so that a burst of duplicate requests cannot drive my stock negative and take my
+whole menu off sale.
+
+## Execution
+
+Both ledger writers guarded themselves with SELECT-then-INSERT over
+`stock_movements`. Under concurrency that is not a guard: N parallel calls all
+read "none" and all insert. Reached through the PUBLIC
+`/api/inventory/customer-order-stock` route — which is unauthenticated by design,
+since a diner has no account — N deltas apply, `current_qty` has no non-negative
+CHECK, and auto-86 then hides every dish touching those ingredients.
+
+- **RED**: `Cannot find module '../../src/lib/inventory/order-stock-claim'` —
+  `Tests: 0 total`, commit `test: add reproducer for concurrent order depletion`.
+- **GREEN**: `npx jest --config jest.config.cjs --testPathPatterns="inventory"` →
+  `Test Suites: 1 skipped, 46 passed, 46 of 47 total`,
+  `Tests: 8 skipped, 479 passed, 487 total`.
+
+## Correction to the subsystem review, now acted on
+
+The review recommended `UNIQUE (tenant_id, order_id, reason)` on
+`stock_movements`. **That constraint would reject every real order.** One order
+writes one row per ingredient, all sharing those three values; and
+`resolveOrderDepletions` keys totals on `inventory_item_id::unit_id`
+(`order-depletion.ts:83`), so even a four-column variant would reject an order
+whose base recipe uses grams and whose addon uses kilograms for the same
+ingredient.
+
+The constraint therefore lives on a separate claim row — one per
+`(tenant_id, order_id, reason)` in `order_stock_applications` — and the ledger's
+row shape is untouched.
+
+## Claim lifecycle
+
+The claim is taken BEFORE the ledger write and released on every exit that
+writes nothing (no recipes, no depletions, all rows skipped, or any throw). A
+claim outliving a depletion that never happened marks the order permanently done
+with its stock still on the shelf — silent, and worse than the double-deduction
+the claim exists to stop. `depleteClaimedOrder` was split out so the release has
+exactly one place to live rather than five.
+
+`releaseOrderStockApplication` never throws: the caller is already handling an
+error when it gets there, and the cost of a leaked claim is a retry that no-ops.
+
+## Test specification
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|---|---|---|---|
+| 12 | A first claim succeeds and inserts into `order_stock_applications` | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 13 | A 23505 duplicate is refused, not thrown | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 14 | Any other DB error throws rather than reading as already-applied | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 15 | Sale and void are claimed independently | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 16 | A release is scoped to one tenant, order and direction | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 17 | A failed release never sinks the caller | `tests/unit/inventory-order-stock-claim.test.ts` | unit | PASS |
+| 18 | A lost claim stops depletion before it reads recipes | `tests/unit/inventory-order-stock-guards.test.ts` | integration (module seam) | PASS |
+| 19 | A won claim proceeds to deplete | `tests/unit/inventory-order-stock-guards.test.ts` | integration (module seam) | PASS |
+| 20 | An uncosted menu claims, finds nothing, and hands the claim back | `tests/unit/inventory-order-stock-besteffort.test.ts` | integration (module seam) | PASS |
+| 21 | A lost claim stops a duplicate cancellation from restoring twice | `tests/unit/inventory-order-stock-reverse.test.ts` | integration (module seam) | PASS |
+| 22 | A duplicate restore never reaches the alert path | `tests/unit/inventory-stock-alerts-wiring.test.ts` | integration (real modules) | PASS |
+| 23 | A duplicate restore never re-enables a menu item | `tests/unit/inventory-alerts-integration.test.ts` | integration (real modules) | PASS |
+
+Five suites stubbed the old SELECT guard. They were **rewritten to the claim,
+not deleted** — the guarantees they encode are still the right guarantees; only
+the mechanism beneath them changed.
+
+## Live database
+
+Migration `20260805120000_order_stock_applications` **APPLIED 2026-07-30** via
+MCP. Post-apply probe:
+
+```
+claims_backfilled: 0   distinct_order_directions: 0
+unique_index: 1        policies: 2
+```
+
+Zero backfilled because no order has ever depleted stock platform-wide — the one
+tenant with inventory enabled (`brewdazeexpress`) still has 0 recipes, so nothing
+has ever reached the ledger through an order. The backfill is written and correct
+for the moment that changes.
+
+Constraint probed in-database and rolled back: a duplicate
+`(tenant, order, 'sale')` raised `unique_violation`, the same order's `'void'`
+stayed independently claimable, and `leftover: 0` rows remained.
+
+## Known gaps
+
+- The `stock_movements` RLS policies are still `FOR ALL`, so an admin can DELETE
+  ledger rows without restoring `current_qty`. Unchanged by this work.
+- Both admin inventory API routes still authorize on role alone and skip the
+  `verifyTenantPermission` the web path enforces. Unchanged by this work.
+- `current_qty` still has no non-negative CHECK. The claim removes the
+  concurrency route to negative stock but not an oversell against thin stock.
