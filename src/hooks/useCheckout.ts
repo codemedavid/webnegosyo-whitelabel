@@ -36,6 +36,8 @@ import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
+import { useKioskMode } from '@/hooks/use-kiosk-mode'
+import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
@@ -73,6 +75,10 @@ export interface CompletedOrderData {
 export function useCheckout(tenantSlug: string) {
   const router = useRouter()
   const { items, bundleItems, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
+
+  // A counter tablet running `?kiosk=1` serves a queue, not a person: it never
+  // hands off to Messenger, and it returns itself to the menu after an order.
+  const { isKiosk } = useKioskMode(tenantSlug)
 
   const [fetchedTenant, setTenant] = useState<Tenant | null>(null)
   // Branding Studio live preview — merges the editor's unsaved draft over the
@@ -361,10 +367,20 @@ export function useCheckout(tenantSlug: string) {
 
   // Per-order-type toggle: when off, checkout never touches Messenger and the
   // CTA reads "Complete Order" instead of "Send Order via Messenger".
-  const messengerEnabled = isMessengerEnabledForOrderType(selectedOrderTypeData)
+  // A kiosk overrides both: it also gates the proactive send-order-public POST
+  // in PHASE 4, which is already conditioned on `messengerEnabled`.
+  const messengerEnabled = isMessengerEnabledForOrderType(selectedOrderTypeData, { isKiosk })
 
   // Auto-open Messenger only when BOTH the tenant switch and the order type allow it.
-  const messengerRedirectEnabled = isMessengerRedirectEnabledForOrderType(tenant, selectedOrderTypeData)
+  const messengerRedirectEnabled = isMessengerRedirectEnabledForOrderType(tenant, selectedOrderTypeData, { isKiosk })
+
+  // Takes the kiosk back to the menu three seconds after the order. No-ops
+  // entirely when `isKiosk` is false, so the phone flow is unchanged.
+  const { countdown: kioskCountdown } = useKioskReturn({
+    isKiosk,
+    isCheckoutComplete: checkoutComplete,
+    tenantSlug,
+  })
 
   // Countdown timer: redirect to Messenger after 3 seconds, auto-expand message if no URL
   useEffect(() => {
@@ -1177,6 +1193,9 @@ export function useCheckout(tenantSlug: string) {
     setOrderType,
     selectedOrderTypeData,
     messengerEnabled,
+    // kiosk mode (counter tablet): no Messenger, auto-return to the menu
+    isKiosk,
+    kioskCountdown,
     // customer form
     formFields,
     customerData,

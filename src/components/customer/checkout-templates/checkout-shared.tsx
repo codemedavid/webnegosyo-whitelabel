@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
 import { resolveFinalSubmitLabel } from '@/lib/messenger-availability'
+import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { PaymentProofField } from '@/components/customer/payment-proof-field'
 import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
@@ -63,6 +64,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
   const {
     tenant, completedOrderData, redirectCountdown, trackingOrderId, trackingToken,
     messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
+    isKiosk, kioskCountdown,
   } = checkout
 
   if (!tenant || !completedOrderData) return null
@@ -188,6 +190,35 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             </div>
           )}
 
+          {/* Kiosk: say what is about to happen, and offer a way to skip the wait. */}
+          {isKiosk ? (
+            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+              <div className="space-y-4 text-center">
+                <p className="text-sm font-medium text-gray-900">
+                  Your order has been sent to {tenant.name}.
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-gray-600" aria-live="polite">
+                    Returning to the menu
+                    {kioskCountdown !== null && kioskCountdown > 0 && (
+                      <> in <span className="font-bold text-green-700">{kioskCountdown}s</span></>
+                    )}
+                    ...
+                  </p>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+                  onClick={() => router.push(kioskReturnPath(tenantSlug))}
+                >
+                  <ArrowLeft className="mr-2 h-5 w-5" />
+                  Start a New Order
+                </Button>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* Messenger Redirect Section — skipped when the order type has Messenger turned off */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
             {!messengerEnabled ? (
@@ -336,6 +367,8 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               Back to Menu
             </Button>
           </div>
+          </>
+          )}
 
         </div>
       </main>
