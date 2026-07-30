@@ -27,7 +27,7 @@ import {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function order(overrides: Partial<RevisableOrderLike> = {}): RevisableOrderLike {
-  return { total: 250, revisionNumber: 1, ...overrides };
+  return { total: 250, revisionNumber: 1, status: "confirmed", ...overrides };
 }
 
 function item(overrides: Partial<RevisedItemLike> = {}): RevisedItemLike {
@@ -69,6 +69,38 @@ describe("assertRevisable", () => {
 
     // Act + Assert
     expect(() => assertRevisable(current, 0, [item()])).not.toThrow();
+  });
+
+  /**
+   * The client gate in `webnegosyo-app/lib/order-edit-guards.ts` already refuses
+   * these statuses, but a gate the server does not repeat is a UI preference,
+   * not a rule: a screen opened while an order was `confirmed` survives the
+   * kitchen starting, and its save would otherwise still land.
+   */
+  it("refuses to edit an order the kitchen has started", () => {
+    const current = order({ status: "preparing" });
+
+    expect(() => assertRevisable(current, 1, [item()])).toThrow(/kitchen/i);
+  });
+
+  it("refuses to edit an order that is ready, delivered or cancelled", () => {
+    for (const status of ["ready", "delivered", "cancelled"]) {
+      expect(() => assertRevisable(order({ status }), 1, [item()])).toThrow();
+    }
+  });
+
+  it("still allows a pending or confirmed order", () => {
+    for (const status of ["pending", "confirmed"]) {
+      expect(() => assertRevisable(order({ status }), 1, [item()])).not.toThrow();
+    }
+  });
+
+  it("reports the status refusal before the stale revision", () => {
+    // A started ticket cannot be edited even after reopening, so telling the
+    // cashier to reopen it would send them round a loop that never ends.
+    const current = order({ status: "preparing", revisionNumber: 5 });
+
+    expect(() => assertRevisable(current, 1, [item()])).toThrow(/kitchen/i);
   });
 
   it("refuses to empty an order by editing", () => {

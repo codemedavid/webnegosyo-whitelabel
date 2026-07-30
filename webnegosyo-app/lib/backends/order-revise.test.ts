@@ -39,6 +39,7 @@ function reviseArgs(overrides: Partial<ReviseOrderArgs> = {}): ReviseOrderArgs {
 function previous(overrides: Partial<PreviousOrderState> = {}): PreviousOrderState {
   return {
     revisionNumber: 0,
+    status: "confirmed",
     total: 100,
     items: [
       {
@@ -124,6 +125,33 @@ describe("buildRevisionRows", () => {
     expect(itemRows[0].subtotal).toBe(
       Math.round(itemRows[0].price * itemRows[0].quantity * 100) / 100,
     );
+  });
+
+  /**
+   * Mirrors the Convex rule in `convex-template/convex/orderRevise.test.ts` and
+   * the client gate in `lib/order-edit-guards.ts`. All three must agree, or a
+   * merchant's protection depends on which backend they happen to be on.
+   */
+  it("refuses to edit an order the kitchen has started", () => {
+    expect(() =>
+      buildRevisionRows(TENANT, reviseArgs(), previous({ status: "preparing" })),
+    ).toThrow(/kitchen/i);
+  });
+
+  it("refuses to edit an order that is ready, delivered or cancelled", () => {
+    for (const status of ["ready", "delivered", "cancelled"]) {
+      expect(() =>
+        buildRevisionRows(TENANT, reviseArgs(), previous({ status })),
+      ).toThrow();
+    }
+  });
+
+  it("still allows a pending or confirmed order", () => {
+    for (const status of ["pending", "confirmed"]) {
+      expect(() =>
+        buildRevisionRows(TENANT, reviseArgs(), previous({ status })),
+      ).not.toThrow();
+    }
   });
 
   it("adds the delivery fee and service charge to the total", () => {
