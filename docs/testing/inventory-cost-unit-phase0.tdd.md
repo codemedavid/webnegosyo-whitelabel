@@ -555,28 +555,106 @@ produced no output.
   caller ever saw a client. Only the builder returned by `from()` may be
   awaitable, which is also how the real client behaves.
 
+## Phase 3a SHIPPED 2026-07-30 — the verdict, and refusing to give one
+
+Turns the day's figures into a claim. The `inventory_counts` session table
+(Phase 3b) is deliberately NOT built — see below.
+
+The measurement is the trade's standard **actual-versus-theoretical (AvT)**:
+shrinkage cost as a share of theoretical usage cost. Benchmarks are the
+industry's — ≤2% well run, ≤5% worth watching, above 5% worth investigating.
+Note this needs **no revenue**, so the verdict survives an unreadable order
+backend.
+
+### RED → GREEN
+
+| Cycle | RED | GREEN |
+|---|---|---|
+| 1 — `judgeVariance` (pure) | `4fbbfb4` — `Cannot find module '@/lib/inventory/variance-verdict'`, `Tests: 0 total` | `bdd9b0c` — `Tests: 14 passed, 14 total` |
+| refactor | — | `2860e12` — level computed once; `Tests: 14 passed` |
+| 2 — the verdict on screen | `f369fcd` — `Tests: 7 failed, 2 passed, 9 total` | `e97b921` — `Tests: 9 passed, 9 total` |
+
+Cycle 2's two passing-at-RED tests were the back-compat guards (no verdict when
+coverage is unknown; figures survive a refusal). They passed vacuously against a
+panel with no verdict at all and exist to keep it honest now that it has one.
+
+**Validation after GREEN**
+
+```
+npx jest --testPathPatterns="inventory"
+Test Suites: 1 skipped, 59 passed, 59 of 60 total
+Tests:       8 skipped, 615 passed, 623 total
+```
+
+`npx eslint` clean on all four changed files. `npx tsc --noEmit | grep '^src/'`
+reported six errors in `src/lib/outlets/supabase-outlet-menu-repository.ts` —
+an **untracked file from a concurrent session in this shared working tree**,
+present in no commit of this sequence and not touched by this work.
+
+### Guarantees added (102–116)
+
+| # | What is guaranteed | Test | Type |
+|---|---|---|---|
+| 102 | 1% shortfall grades `good`, and the percentage is variance ÷ usage | `inventory-variance-verdict.test.ts:calls a 1% shortfall well run` | unit |
+| 103–104 | 4% grades `watch`, 8% grades `investigate` | `…` ×2 | unit |
+| 105 | Exactly 2% is still `good` (top of the "well run" band) | `…:treats exactly 2% as still well run` | unit |
+| 106 | Exactly 5% is `watch`, not `investigate` | `…:treats exactly 5% as watch` | unit |
+| 107 | A spotless day is graded `good`, not withheld | `…:reports a spotless day as good` | unit |
+| 108 | Every verdict carries a non-empty headline and detail | `…:always carries a headline` | unit |
+| 109 | **No recipes ⇒ no verdict**, and the detail names recipes | `…:refuses when no dish has a recipe` +1 | unit |
+| 110 | **Nothing counted ⇒ no verdict**, and the detail names counting | `…:refuses when nothing was physically counted` +1 | unit |
+| 111 | Missing recipes are blamed before a missing count | `…:blames the missing recipes first` | unit |
+| 112 | Zero usage ⇒ no verdict (no denominator) | `…:refuses when recipes exist but the day used nothing` | unit |
+| 113 | A refusal still explains itself | `…:still explains itself` | unit |
+| 114 | The screen states the verdict and its percentage | `inventory-verdict-panel.test.tsx` ×2 | unit |
+| 115 | **The screen shows no percentage at all when it refused** | `…:never shows a percentage when it refused to judge` | unit |
+| 116 | The day's figures survive a refusal; an unknown coverage omits the verdict entirely; the manager counts only dishes that really have a recipe | `…` ×4 | unit |
+
+### Decisions worth not re-deriving
+
+- **The refusal is the feature.** Guarantees 109–112 exist because a tenant with
+  no recipes deducts nothing, so usage is 0, shrinkage is 0, and the day grades
+  perfectly *forever*. `brewdazeexpress` is exactly this shape today: inventory
+  on, 51 dishes, 0 recipes.
+- **Refusals are ordered by depth: recipes → count → usage.** Counting a shelf
+  whose usage is never deducted still yields a meaningless comparison, so the
+  recipe fault is named first when several apply.
+- **An EMPTY `coverageRows` yields `undefined`, not `0`.** The prop defaults to
+  `[]`, so passing `0` would let a caller that simply did not supply coverage
+  masquerade as the finding "no dish has a recipe" — a missing prop must never
+  become a claim about the kitchen.
+- **Three-state props throughout**, matching Phase 2's revenue: value / explicit
+  "cannot" / absent. Absent renders the earlier report unchanged, which is why
+  every pre-existing panel test still passes untouched.
+- **Verdict wording lives with the verdict logic**, not in `daily-report-view.ts`
+  like the other wording. A grade and its justification are one statement; split
+  apart they can drift into contradicting each other.
+- **The verdict needs no revenue**, because AvT measures against usage, not
+  sales. A tenant whose order backend is unreachable still gets a verdict.
+- **The verdict leads the panel**, above the caveats and figures: it is the
+  answer, and the numbers are the working.
+- `formatFoodCostPercent` now delegates to a general `formatPercent` so the two
+  percentages on the screen cannot render differently.
+
 ## Still not built
 
-**Phase 3 — variance verdict + thresholds + `inventory_counts`.** Must not omit:
-a tenant with no recipes produces zero usage and zero shrinkage, which reads as a
-perfect day. `brewdazeexpress` has inventory on, 51 dishes and 0 recipes and
-would score flawlessly forever. The page already loads `coverageRows`, so the
-coverage gate needs no new query. The verdict now has a denominator to work
-with, since Phase 2 supplies revenue.
+**Phase 3b — `inventory_counts` session table.** NOT built, deliberately: the
+verdict above needed no migration, and shipping the judgement first means the
+count-session UI can be designed against a screen that exists. It remains the
+first intended writer of `stock_movements.created_by`, which still has **zero
+writers**, so "who counted this" is unanswerable today.
 
 **Phase 4 — merchant-app read-only mirror**, following the
 `webnegosyo-app/lib/inventory-stock.ts` guardrail-test precedent.
 
-**Known gap in Phase 2's coverage:** `page.tsx` wiring is not unit-tested. It is
-an async server component, matching the Phase 1c precedent where the tab test
-covers `InventoryManager` rather than the page. The revenue passthrough IS
-covered at the manager level.
+**Known gap:** `page.tsx` wiring remains un-unit-tested (async server
+component), matching the Phase 1c precedent — the passthrough is covered at the
+`InventoryManager` level instead.
 
 **Deliberately out of scope:** per-branch inventory. `inventory_items` and
 `stock_movements` have no `outlet_id`, so a multi-branch tenant gets one merged
-shelf — while revenue, by contrast, CAN be branch-scoped. Any future per-branch
-report must fix the ledger first, or the two halves of the ratio will describe
-different shops.
+shelf — while revenue CAN be branch-scoped. Any future per-branch report must fix
+the ledger first, or the two halves of the ratio describe different shops.
 
 **Still open from the review, untouched:** `stock_movements` RLS is `FOR ALL` so
 admins can DELETE ledger rows without restoring `current_qty`; both admin
