@@ -178,3 +178,109 @@ Another Claude session is committing to this branch. During this run an
 untracked `tests/unit/branch-manager-branch-surfaces.test.ts` appeared with 14
 failing tests — their in-flight RED gate, not a regression here. It was left
 untouched and uncommitted. Only explicit paths were staged.
+
+---
+
+# Phase 2b — branch-scoped Convex order reads
+
+Added after the above, same branch. Commits `726131d` (RED) → `f5c7993` (GREEN).
+
+## Journeys
+
+1. As a **branch manager**, I want only my branch's orders to reach my device, so
+   other branches' customer names and phone numbers are not shipped to it.
+2. As an **owner**, I want to keep seeing every branch.
+3. As a **single-location merchant**, I want nothing to change.
+
+## The constraint that shaped the design
+
+`hooks.ts` passes query args straight to `useQuery`, and a Convex deployment on
+an older bundle **rejects an argument its validator does not know**. `hooks.ts`
+classifies that rejection as a stale bundle and shows "needs a backend update"
+instead of the orders. Live versions: **32 tenants at v13**, 10 at v5, 1 at v14.
+
+So `outletId` is sent **only when the account is branch-scoped** — which by
+definition only happens on a tenant that has branches, and therefore one we
+deploy. Journey 3 is protected by construction: a store-wide account produces
+byte-identical args, with the key *absent* (not `undefined`, which the validator
+would still see).
+
+## The trap that would have inverted the feature
+
+Orders written before v15 carry the branch **only** in `customerData.outlet_id`.
+Filtering on the new column alone would have *hidden* every existing branch
+order — the same trap recorded for the platform backend, where a naive
+`.eq('outlet_id')` would have hidden every counter sale from the branch that rang
+it up. **Both live orders on `gungjeon-unlimited` are blob-only right now**, so
+this fallback is load-bearing from day one, not defensive padding.
+
+`resolveOrderOutletId` reads column-then-blob, and the queries over-fetch to
+`BRANCH_SCAN_LIMIT` (500) before filtering in memory — correctness over the
+index until a backfill lands.
+
+## RED / GREEN
+
+| Task | RED | GREEN |
+|---|---|---|
+| Which args a Convex order query sends | `TS2307: Cannot find module './convex-order-scope'` (compile-time) | `Tests: 8 passed` |
+| Branch of a pre-v15 order | 3 failed / 9 passed — `resolveOrderOutletId is not a function` | `Tests: 12 passed` |
+| Filtering a page to one branch | 3 failed / 12 passed — `filterOrdersToOutlet is not a function` | `Tests: 15 passed` |
+
+## Added guarantees
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 21 | A confined account's query asks for its branch | `convex-order-scope.test.ts:asks the backend for one branch…` | PASS |
+| 22 | A store-wide account sends byte-identical args (key absent) | `…:sends exactly today's arguments for a store-wide account` | PASS |
+| 23 | The arg never goes to a query that cannot accept it | `…:never adds the argument to a query that cannot accept it` | PASS |
+| 24 | The live queue is scoped too, not just the list | `…:scopes the live queue as well as the list` | PASS |
+| 25 | A skipped query stays skipped | `…:passes a skipped query through untouched` | PASS |
+| 26 | A caller's own `outletId` cannot narrow an owner's view | `…:does not let a caller's own outletId survive…` | PASS |
+| 27 | The scoped-ref set is pinned against silent additions | `…:lists only refs whose backend validator accepts a branch` | PASS |
+| 28 | A pre-v15 order's branch is still found (blob fallback) | `pushRecipients.test.ts:falls back to the blob…` | PASS |
+| 29 | The column wins once an order has one | `…:prefers the column once an order has one` | PASS |
+| 30 | Unbranched orders are excluded from a branch view | `filterOrdersToOutlet:excludes unbranched orders…` | PASS |
+| 31 | No branch asked for returns every order untouched | `…:returns every order untouched when no branch is asked for` | PASS |
+
+Note the deliberate asymmetry with push: `filterOrdersToOutlet` **excludes**
+unbranched orders, while `recipientsForOutlet` **includes** them. A missed
+notification loses an order; a row missing from a branch list is still reachable
+from the store-wide view.
+
+## Validation
+
+```bash
+npx jest --config jest.config.cjs --testPathPatterns=pushRecipients   # 15 passed
+cd webnegosyo-app && npx jest                                        # 81 suites, 1274 tests
+cd webnegosyo-app && npx tsc --noEmit                                # exit 0
+cd convex-template && npx tsc --noEmit                               # exit 0
+npm run convex:prebundle                                             # Modules: 15
+npx jest --config jest.config.cjs --testPathPatterns=convex-push-bundle  # 5 passed
+```
+
+Folded into **v15** rather than bumping to 16, after verifying no tenant has been
+deployed to v15 (32@v13, 10@v5, 1@v14, 1@v9). Bundle rebuilt.
+
+Lint: `npm run lint` reports no error or warning for any file added or changed
+here. Two nearby diagnostics were checked and are pre-existing — the `any` at
+`convex-template/convex/orders.ts:201` is inside `reviseOrder` (only its line
+number moved) and the unused-directive warning in `hooks.ts` is byte-identical at
+`HEAD`.
+
+## Known gaps
+
+- **`by_outlet` is created but never used.** The filter cannot trust it while
+  blob-only orders exist. A backfill promoting `customerData.outlet_id` into the
+  column would let the queries use the index and drop the over-fetch — not done.
+- **`BRANCH_SCAN_LIMIT` is a ceiling, not pagination.** A branch whose orders sit
+  deeper than 500 rows in a status bucket would be truncated.
+- Still not deployed, still needs an app rebuild, still no owner account on
+  `gungjeon-unlimited` to exercise journey 2. Unchanged from Phase 2a.
+
+## Concurrent-session note
+
+Three inventory suites (`inventory-order-stock-besteffort`,
+`inventory-alerts-integration`, `inventory-stock-alerts-wiring`) fail in the root
+run. They are another session's **uncommitted** in-flight work in the shared tree
+(`src/lib/inventory/order-stock-service.ts` and their own tests appear in
+`git diff`), not a regression here. Left untouched; only explicit paths staged.
