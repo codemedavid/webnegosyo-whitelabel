@@ -869,6 +869,36 @@ export interface Outlet {
   updated_at: string;
 }
 
+/**
+ * One branch's opinion about one menu item.
+ *
+ * Override-only: a row exists solely because a branch differs from the
+ * store-wide menu. NO ROW means listed, available, and priced exactly as
+ * `menu_items` says — the behaviour every branch had before per-branch menus
+ * existed. Resolution is in `src/lib/outlets/outlet-menu-overrides.ts`; nothing
+ * should read these fields directly.
+ *
+ * Mirrors `outlet_menu_items` from `20260806120000_outlet_menu_overrides.sql`.
+ */
+export interface OutletMenuOverride {
+  id: string;
+  tenant_id: string;
+  outlet_id: string;
+  menu_item_id: string;
+  /** false = this branch does not carry the dish at all. */
+  is_listed: boolean;
+  /** false = listed but currently unorderable here (86'd at this branch). */
+  is_available: boolean;
+  /** Null = inherit `menu_items.price`. Zero is a real free item, not "unset". */
+  price: number | null;
+  /** Null = inherit `menu_items.discounted_price` — see `discount_cleared`. */
+  discounted_price: number | null;
+  /** true = this branch opts OUT of the store-wide discount and sells at full price. */
+  discount_cleared: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A single most-ordered item in a customer's derived profile. */
 export interface CustomerTopItem {
   name: string;
