@@ -108,6 +108,38 @@ export interface PlatformOrderRow {
   updated_at: string | null;
 }
 
+/** A `public.order_payments` row as PostgREST returns it. */
+export interface PlatformOrderPaymentRow {
+  id: string;
+  order_id: string;
+  kind: "charge" | "refund";
+  amount: number | null;
+  payment_method_id: string | null;
+  payment_method_name: string | null;
+  reference: string | null;
+  proof_url: string | null;
+  proof_public_id: string | null;
+  recorded_by: string | null;
+  outlet_id: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** A `public.order_revisions` row as PostgREST returns it. */
+export interface PlatformOrderRevisionRow {
+  id: string;
+  order_id: string;
+  revision_number: number | null;
+  items_before: unknown[] | null;
+  items_after: unknown[] | null;
+  total_before: number | null;
+  total_after: number | null;
+  reason: string | null;
+  revised_by: string | null;
+  outlet_id: string | null;
+  created_at: string;
+}
+
 export interface OrderItemDto {
   _id: string;
   /** Parent order. Convex items carry this too; day-attribution needs it. */
@@ -158,6 +190,42 @@ export interface OrderDto {
 
 export interface OrderWithItemsDto extends OrderDto {
   items: OrderItemDto[];
+}
+
+/**
+ * A settlement row as the screens receive it, matching the Convex
+ * `orderPayments` document field-for-field so one component renders both.
+ */
+export interface OrderPaymentDto {
+  _id: string;
+  _creationTime: number;
+  orderId: string;
+  kind: "charge" | "refund";
+  /** Always positive; `kind` carries the direction. */
+  amount: number;
+  paymentMethodId?: string;
+  paymentMethodName?: string;
+  reference?: string;
+  proofUrl?: string;
+  proofPublicId?: string;
+  recordedBy?: string;
+  outletId?: string;
+  note?: string;
+}
+
+/** An edit snapshot as the screens receive it, matching Convex `orderRevisions`. */
+export interface OrderRevisionDto {
+  _id: string;
+  _creationTime: number;
+  orderId: string;
+  revisionNumber: number;
+  itemsBefore: unknown[];
+  itemsAfter: unknown[];
+  totalBefore: number;
+  totalAfter: number;
+  reason?: string;
+  revisedBy?: string;
+  outletId?: string;
 }
 
 export type RealtimeQueue = Record<QueueStatus, OrderDto[]>;
@@ -279,6 +347,48 @@ export function toOrderDto(
     clientOrderId: optional(row.client_order_id),
     revisionNumber: toNumber(row.revision_number),
     amountPaid: toNumber(row.amount_paid),
+  };
+}
+
+/**
+ * One settlement row, in the camelCase shape Convex returns its own documents.
+ *
+ * The edit session nets these through `computeBalance`, which reads `kind` and
+ * `amount`. Handing it snake_case would net to zero and report a fully-paid
+ * order as unpaid — so the mapping is load-bearing, not cosmetic.
+ */
+export function toOrderPaymentDto(row: PlatformOrderPaymentRow): OrderPaymentDto {
+  return {
+    _id: row.id,
+    _creationTime: Date.parse(row.created_at),
+    orderId: row.order_id,
+    kind: row.kind,
+    amount: toNumber(row.amount),
+    paymentMethodId: optional(row.payment_method_id),
+    paymentMethodName: optional(row.payment_method_name),
+    reference: optional(row.reference),
+    proofUrl: optional(row.proof_url),
+    proofPublicId: optional(row.proof_public_id),
+    recordedBy: optional(row.recorded_by),
+    outletId: optional(row.outlet_id),
+    note: optional(row.note),
+  };
+}
+
+/** One before/after edit snapshot, in the shape Convex returns. */
+export function toOrderRevisionDto(row: PlatformOrderRevisionRow): OrderRevisionDto {
+  return {
+    _id: row.id,
+    _creationTime: Date.parse(row.created_at),
+    orderId: row.order_id,
+    revisionNumber: toNumber(row.revision_number),
+    itemsBefore: row.items_before ?? [],
+    itemsAfter: row.items_after ?? [],
+    totalBefore: toNumber(row.total_before),
+    totalAfter: toNumber(row.total_after),
+    reason: optional(row.reason),
+    revisedBy: optional(row.revised_by),
+    outletId: optional(row.outlet_id),
   };
 }
 

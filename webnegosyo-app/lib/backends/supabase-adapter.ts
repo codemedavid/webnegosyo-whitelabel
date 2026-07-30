@@ -20,9 +20,13 @@ import {
   summarizeDashboardStats,
   toOrderDto,
   toOrderItemDto,
+  toOrderPaymentDto,
+  toOrderRevisionDto,
   toOrderWithItems,
   type CreateOrderArgs,
   type PlatformOrderItemRow,
+  type PlatformOrderPaymentRow,
+  type PlatformOrderRevisionRow,
   type PlatformOrderRow,
 } from "./supabase-orders";
 import {
@@ -93,6 +97,8 @@ const SUPPORTED_QUERY_REFS = [
   "orders:getOrders",
   "orders:getOrderById",
   "orders:getAllOrderItems",
+  "orders:getOrderPayments",
+  "orders:getOrderRevisions",
   "orders:getRealtimeQueue",
   "orders:getDashboardStats",
   "orders:getDashboardStatsByPeriod",
@@ -240,6 +246,51 @@ async function getAllOrderItems(
   );
 
   return (rows ?? []).map((row) => toOrderItemDto(row));
+}
+
+/**
+ * An order's settlement ledger, oldest first — the order the money actually
+ * moved in, which is what a merchant reading the history expects.
+ *
+ * Not branch-scoped: `order_payments` has no `outlet_id` filter worth applying
+ * here, because the order id is only reachable through `getOrderById`, which is
+ * already scoped. Tenant scoping IS applied, since a superadmin's RLS grant
+ * spans every tenant and an unscoped read would expose another merchant's
+ * takings.
+ */
+async function getOrderPayments(
+  client: PlatformClient,
+  tenantId: string,
+  args: Record<string, unknown>
+) {
+  const rows = await unwrap<PlatformOrderPaymentRow[] | null>(
+    client
+      .from("order_payments")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("order_id", String(args.orderId))
+      .order("created_at", { ascending: true })
+  );
+
+  return (rows ?? []).map(toOrderPaymentDto);
+}
+
+/** An order's edit history, newest first, mirroring Convex `getOrderRevisions`. */
+async function getOrderRevisions(
+  client: PlatformClient,
+  tenantId: string,
+  args: Record<string, unknown>
+) {
+  const rows = await unwrap<PlatformOrderRevisionRow[] | null>(
+    client
+      .from("order_revisions")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("order_id", String(args.orderId))
+      .order("revision_number", { ascending: false })
+  );
+
+  return (rows ?? []).map(toOrderRevisionDto);
 }
 
 async function getRealtimeQueue(
@@ -473,6 +524,10 @@ export async function runPlatformQuery(
       return getAllOrderItems(client, tenant, scope);
     case "orders:getOrderById":
       return getOrderById(client, tenant, params, scope);
+    case "orders:getOrderPayments":
+      return getOrderPayments(client, tenant, params);
+    case "orders:getOrderRevisions":
+      return getOrderRevisions(client, tenant, params);
     case "orders:getRealtimeQueue":
       return getRealtimeQueue(client, tenant, scope);
     case "orders:getDashboardStats":
