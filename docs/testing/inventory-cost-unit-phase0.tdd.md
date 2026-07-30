@@ -358,9 +358,123 @@ Guarantee 47 is enforced by making `createAdminClient` *throw* in the mock rathe
 than by trusting the convention, so the service-role client cannot creep onto a
 read path later without a test failing.
 
+## Phase 1c — the Reports tab (2026-07-30)
+
+The report had been correct and completely unreachable: `getDailyInventoryReport`
+had no caller and no tab offered it. This phase is the surface.
+
+### RED
+
+```
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-daily-report-view"
+Cannot find module '../../src/lib/inventory/daily-report-view'
+Tests: 0 total
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-daily-report-panel"
+Cannot find module '../../src/components/admin/daily-report-panel'
+Tests: 0 total
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-business-day"
+Tests: 6 failed, 9 passed, 15 total      # resolveReportDay missing; the 9 are Phase 1b
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-reports-tab"
+Tests: 2 failed, 2 passed, 4 total       # no Reports tab, no defaultTab
+```
+
+### GREEN
+
+```
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-daily-report-view"
+Tests: 15 passed, 15 total
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-daily-report-panel"
+Tests: 11 passed, 11 total
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory-reports-tab|inventory-business-day"
+Tests: 19 passed, 19 total
+
+$ npx jest --config jest.config.cjs --testPathPatterns="inventory"
+Test Suites: 1 skipped, 52 passed, 52 of 53 total
+Tests:       8 skipped, 547 passed, 555 total
+
+$ npx eslint <changed files>            # clean
+$ npx tsc --noEmit | grep '^src/'       # no output
+```
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|---|---|---|---|
+| 50 | Money always shows centavos and groups thousands without a locale | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 51 | Nothing spent renders as ₱0.00, not as an empty cell | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 52 | A negative amount keeps a readable sign | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 53 | Quantities carry their unit and trim NUMERIC(16,4) trailing zeros | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 54 | The day is labelled with its weekday, stably across month boundaries | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 55 | A malformed day key throws rather than rendering garbage | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 56 | An uncounted day says so, singular and plural | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 57 | An unpriced ingredient says so, singular and plural | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 58 | No caveat is shown when everything was counted and priced | `tests/unit/inventory-daily-report-view.test.ts` | unit | PASS |
+| 59 | The panel names the day being reported | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 60 | Each row shows its usage quantity and its cost | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 61 | The day totals COGS, waste and shrinkage in money | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 62 | The panel preserves the core's worst-first ranking | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 63 | Both caveats surface on the screen, not just in the model | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 64 | Counted ingredients are marked as counted | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 65 | A day with no movement reads as "no stock moved", not an empty table | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 66 | Day links carry `tab=reports` so stepping a day keeps the tab | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 67 | No next-day link exists once the report reaches the latest day | `tests/unit/inventory-daily-report-panel.test.tsx` | unit (RTL) | PASS |
+| 68 | The report defaults to yesterday, not today | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 69 | An explicit day is honoured, including today | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 70 | A malformed `?day=` falls back instead of throwing | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 71 | A future day is clamped to today | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 72 | The Reports tab appears only when a report was loaded | `tests/unit/inventory-reports-tab.test.tsx` | unit (RTL) | PASS |
+| 73 | `?tab=reports` opens straight onto the report | `tests/unit/inventory-reports-tab.test.tsx` | unit (RTL) | PASS |
+| 74 | An unknown tab in the URL falls back rather than opening nothing | `tests/unit/inventory-reports-tab.test.tsx` | unit (RTL) | PASS |
+
+### Decisions worth not re-deriving
+
+- **The caveats render ABOVE the numbers.** A merchant has to learn why a report
+  is clean before they trust that it is. An uncounted day and a genuinely tidy
+  day produce the identical zero, and putting that in a footnote is how the
+  feature becomes quietly reassuring instead of useful (guarantee 63).
+- **`resolveReportDay` never throws.** The day arrives from `?day=`, so it is
+  untrusted. A report is a read; a hand-edited or stale URL is a reason to show
+  a sensible day, not to 500 the whole inventory page (guarantee 70).
+- **A future day is clamped, not shown.** An empty future report is
+  indistinguishable from a day whose data went missing (guarantee 71).
+- **The panel does not sort.** The core already ranked rows worst-first by peso;
+  re-sorting in the view would bury an expensive loss under a cheap one
+  (guarantee 62).
+- **No `toLocaleString` anywhere in `daily-report-view.ts`.** Month names and
+  thousands grouping are done by hand. This repo has shipped SSR-locale
+  hydration bugs twice; the existing `Timestamp` component in
+  `inventory-overview.tsx` works around it with a mount flag, and the report
+  avoids needing one at all.
+- **`latestDayKey` is a prop, not a `new Date()` in render.** A clock read
+  inside a component is a hydration mismatch waiting to happen; the page reads
+  it once, server-side.
+- **The tab column count is a lookup table, not `grid-cols-${n}`.** Tailwind
+  scans for literal class names, so an interpolated one compiles to nothing and
+  the tab bar silently stacks.
+- **A failed report read hides the tab rather than failing the page.** The rest
+  of inventory stays usable, and no empty report is shown that would read as a
+  day with no trade.
+
 ## Still not built
 
-No screen. `daily-report-read.ts` has no caller — the Reports tab on
-`InventoryManager` is the next step, and until it exists nothing renders this.
-Revenue/food-cost % (Phase 2) and the verdict + `inventory_counts` session
-(Phase 3) are unchanged from the Phase 1 note above.
+**Phase 2 — revenue match / food cost %.** The COGS half is now complete and
+visible. The blocker is structural: the ledger is always platform-side but
+ORDERS are not, so a Convex or per-tenant-Supabase tenant would show ₱0 revenue
+and a nonsense percentage. Revenue must be fetched through the `order-backend.ts`
+seam, and the percentage OMITTED rather than zeroed when revenue is unavailable.
+
+**Phase 3 — variance verdict + thresholds + `inventory_counts`.** Must not omit:
+a tenant with no recipes produces zero usage and zero shrinkage, which reads as a
+perfect day. `brewdazeexpress` has inventory on, 51 dishes and 0 recipes and
+would score flawlessly forever. The page already loads `coverageRows`, so the
+coverage gate needs no new query.
+
+**Phase 4 — merchant-app read-only mirror**, following the
+`webnegosyo-app/lib/inventory-stock.ts` guardrail-test precedent.
+
+**Not deployed.** The branch is ~490 commits ahead of `origin/main` with no
+upstream, so none of this — Phase 0's correctness fixes included — is in front
+of a merchant.
