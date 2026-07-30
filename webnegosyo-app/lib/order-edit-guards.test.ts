@@ -24,12 +24,43 @@ describe("canEditOrder", () => {
     ).toEqual({ allowed: true });
   });
 
-  it("allows editing an order that is already being prepared", () => {
-    // The kitchen is mid-ticket but the bill is not final — this is exactly
-    // when "make that a large" happens.
+  it("allows editing an order the merchant has confirmed but not started", () => {
+    // Confirmed means accepted, not cooked. The bill is still open and no
+    // ingredients have been committed, so a correction here costs nothing.
+    expect(
+      canEditOrder({ status: "confirmed", backend: "convex", user: OWNER }).allowed,
+    ).toBe(true);
+  });
+
+  /**
+   * Editing stops the moment the kitchen starts.
+   *
+   * This REVERSES the original rule, which allowed edits through `preparing` on
+   * the theory that "make that a large" happens mid-ticket. In practice the
+   * ticket has already been printed and the food started, so an edit silently
+   * desynchronises the bill from what is actually being cooked — and the stock
+   * already moved against the original lines.
+   */
+  it("refuses to edit an order the kitchen has started", () => {
+    const gate = canEditOrder({ status: "preparing", backend: "convex", user: OWNER });
+
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toMatch(/prepar/i);
+  });
+
+  it("refuses to edit an order that is ready", () => {
+    // `ready` is past `preparing`, so anything blocked there is blocked here.
+    const gate = canEditOrder({ status: "ready", backend: "convex", user: OWNER });
+
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBeTruthy();
+  });
+
+  it("refuses the owner too — this is a status rule, not a permission one", () => {
+    // No one can un-cook food, so there is no role for which this is allowed.
     expect(
       canEditOrder({ status: "preparing", backend: "convex", user: OWNER }).allowed,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("refuses to edit a delivered order", () => {
