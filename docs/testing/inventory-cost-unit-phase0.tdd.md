@@ -458,22 +458,131 @@ $ npx tsc --noEmit | grep '^src/'       # no output
   of inventory stays usable, and no empty report is shown that would read as a
   day with no trade.
 
-## Still not built
+## Phase 2 SHIPPED 2026-07-30 — does the day's revenue cover its stock?
 
-**Phase 2 — revenue match / food cost %.** The COGS half is now complete and
-visible. The blocker is structural: the ledger is always platform-side but
-ORDERS are not, so a Convex or per-tenant-Supabase tenant would show ₱0 revenue
-and a nonsense percentage. Revenue must be fetched through the `order-backend.ts`
-seam, and the percentage OMITTED rather than zeroed when revenue is unavailable.
+The question the feature was asked for, in the merchant's own words: *"check if
+the revenue today is just enough for the inventory that has been deducted."*
+COGS was already on screen; this adds the other half of the ratio.
+
+### The blocker was smaller than recorded
+
+The Phase 1c report above states that Convex tenants could not supply revenue.
+That was wrong. `convex-template/convex/orders.ts:514`
+`getDashboardStatsByPeriod` takes **arbitrary `startDate`/`endDate` epoch
+millis**, already excludes cancelled orders, and is **already deployed to every
+Convex tenant** because the superadmin analytics fan-out calls it. The Manila
+window maps straight onto it. **Phase 2 needed no Convex deploy and no
+migration.**
+
+### RED → GREEN
+
+| Cycle | RED | GREEN |
+|---|---|---|
+| 1 — food cost arithmetic + wording | `ee0d89c` — `Cannot find module '@/lib/inventory/food-cost'`, `Tests: 0 total` | `f523333` — `Tests: 29 passed` (15 new + 14 pre-existing view tests) |
+| 2 — revenue read across three backends | `a78a804` — `Cannot find module '@/lib/inventory/daily-revenue-read'`, `Tests: 0 total` | `a2d53aa` — `Tests: 15 passed, 15 total` |
+| 3 — the screen | `2f4ea2b` — `Tests: 5 failed, 3 passed, 8 total` | `9022592` — `Tests: 23 passed, 23 total` |
+
+Cycle 3's three passing-at-RED tests were the negative guards (no percentage
+when revenue is unknown, no revenue card when the prop is absent). They passed
+vacuously against a panel with no revenue support at all, and exist to keep the
+feature honest once it had it — the five that failed are the additive ones.
+
+**Validation after GREEN**
+
+```
+npx jest --testPathPatterns="inventory"
+Test Suites: 1 skipped, 55 passed, 55 of 56 total
+Tests:       8 skipped, 584 passed, 592 total
+```
+
+`npx eslint` clean on all six changed files. `npx tsc --noEmit | grep '^src/'`
+produced no output.
+
+### Guarantees added (75–97)
+
+| # | What is guaranteed | Test | Type |
+|---|---|---|---|
+| 75 | Food cost is COGS ÷ sales × 100 | `inventory-food-cost.test.ts:divides cost of goods by sales` | unit |
+| 76 | The pure function does not pre-round | `…:does not pre-round` | unit |
+| 77 | **Unreadable revenue yields `null`, never `0`** | `…:returns null when revenue could not be read at all` | unit |
+| 78 | Zero sales yields `null`, not `Infinity`/`∞%` | `…:returns null when the day took no money` | unit |
+| 79 | Negative revenue yields `null` | `…:returns null rather than a negative percentage` | unit |
+| 80 | A real 0% (sales, no recipes) is still reported as 0 | `…:reports a genuine zero` | unit |
+| 81 | Negative COGS (voids > sales) stays visible, unclamped | `…:keeps a negative cost of goods visible` | unit |
+| 82–84 | Percentage renders to 1 dp, rounds, keeps its sign | `…formatFoodCostPercent` ×3 | unit |
+| 85–88 | The "unreadable" and "no sales" caveats are distinct sentences, absent on a normal day | `…describeRevenueCaveat` ×4 | unit |
+| 89 | Platform backend sums the day's order totals | `inventory-daily-revenue-read.test.ts:sums the day's order totals` | unit |
+| 90 | The query uses the half-open **Manila** window, not a UTC day | `…:asks for the half-open Manila window` | unit |
+| 91 | Cancelled orders are excluded | `…:excludes cancelled orders` | unit |
+| 92 | The read is tenant-scoped | `…:scopes to the tenant` | unit |
+| 93 | A genuinely empty day returns `0`, distinct from `null` | `…:reports a genuine zero when the day sold nothing` | unit |
+| 94 | A query error, an unbuildable client, or a misconfigured tenant project returns `null` | `…` ×3 | unit |
+| 95 | A per-tenant-Supabase tenant reads its OWN project, never the platform one | `…:reads the tenant's own project` | unit |
+| 96 | Convex is reached via `getDashboardStatsByPeriod` with the window's epoch bounds, routed on the deployment URL alone | `…` ×2 | unit |
+| 97 | Convex error, timeout, missing key, or a response without `totalRevenue` all return `null` | `…` ×4 | unit |
+| 98 | The screen shows sales and the percentage | `inventory-daily-report-revenue-panel.test.tsx` ×2 | unit |
+| 99 | **The screen never prints a percentage when revenue is unknown** | `…:never prints a percentage when the takings could not be read` | unit |
+| 100 | The stock figures survive an unreadable revenue | `…:still reports the stock cost when the takings are unknown` | unit |
+| 101 | A caller supplying no revenue gets the original three-card report | `…:omits the takings entirely` | unit |
+
+### Decisions worth not re-deriving
+
+- **`null` ≠ `0`, at every layer.** A tenant whose order backend timed out has an
+  unknown food cost, not a perfect one. The pure function, the read layer and
+  the panel each preserve the distinction; the panel renders an em-dash and a
+  sentence, never "0.0%".
+- **Three-state revenue prop.** `number` = real money, `null` = tried and
+  failed, **absent** = this caller does not deal in revenue. Absent renders the
+  original stock-only report, so no existing caller gained an alarming
+  "could not be read" notice.
+- **The figure is order `total`, deliberately including delivery fees.** That
+  makes the percentage slightly optimistic for a delivery-heavy tenant. Accepted
+  because every other revenue surface in the product (dashboard, merchant app
+  daily stats, superadmin analytics) uses `total` — an inventory screen quoting a
+  different "revenue today" than the dashboard is a worse bug, since a merchant
+  reconciling two disagreeing figures trusts neither. Revisit only by changing
+  all surfaces together.
+- **Convex needs no new function.** `getDashboardStatsByPeriod` already takes
+  arbitrary epoch bounds. Deploying a new Convex query would have required
+  prebundling, bumping `CURRENT_SCHEMA_VERSION`, and every tenant redeploying.
+- **The Convex read is time-boxed** (6s default) with the same `withTimeout`
+  shape as `convex-platform-aggregator.ts`, so one asleep deployment cannot hang
+  an admin page render.
+- **The per-tenant-Supabase path mirrors `tenant-order-queue.ts`** — the
+  established admin-read pattern for that backend.
+- A **test-only bug** cost one cycle: the fake Supabase client was itself a
+  thenable, so `async () => client` unwrapped it into the query result before the
+  caller ever saw a client. Only the builder returned by `from()` may be
+  awaitable, which is also how the real client behaves.
+
+## Still not built
 
 **Phase 3 — variance verdict + thresholds + `inventory_counts`.** Must not omit:
 a tenant with no recipes produces zero usage and zero shrinkage, which reads as a
 perfect day. `brewdazeexpress` has inventory on, 51 dishes and 0 recipes and
 would score flawlessly forever. The page already loads `coverageRows`, so the
-coverage gate needs no new query.
+coverage gate needs no new query. The verdict now has a denominator to work
+with, since Phase 2 supplies revenue.
 
 **Phase 4 — merchant-app read-only mirror**, following the
 `webnegosyo-app/lib/inventory-stock.ts` guardrail-test precedent.
+
+**Known gap in Phase 2's coverage:** `page.tsx` wiring is not unit-tested. It is
+an async server component, matching the Phase 1c precedent where the tab test
+covers `InventoryManager` rather than the page. The revenue passthrough IS
+covered at the manager level.
+
+**Deliberately out of scope:** per-branch inventory. `inventory_items` and
+`stock_movements` have no `outlet_id`, so a multi-branch tenant gets one merged
+shelf — while revenue, by contrast, CAN be branch-scoped. Any future per-branch
+report must fix the ledger first, or the two halves of the ratio will describe
+different shops.
+
+**Still open from the review, untouched:** `stock_movements` RLS is `FOR ALL` so
+admins can DELETE ledger rows without restoring `current_qty`; both admin
+inventory routes authorize on role alone and skip `verifyTenantPermission`;
+`current_qty` has no non-negative CHECK; stocktake is still a read-modify-write
+that a concurrent sale can swallow.
 
 **Not deployed.** The branch is ~490 commits ahead of `origin/main` with no
 upstream, so none of this — Phase 0's correctness fixes included — is in front
