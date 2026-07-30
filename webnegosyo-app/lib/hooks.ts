@@ -19,6 +19,7 @@ import {
   type RealtimeStatus,
 } from "./backends/supabase-realtime";
 import { useAccountBranchScope } from "./use-branch-scope";
+import { convexOrderQueryArgs } from "./convex-order-scope";
 import type { BranchScope } from "./branch-scope";
 
 interface SafeQueryResult<T> {
@@ -235,7 +236,15 @@ export function useSafeQuery<T>(
 
   // Convex stays untouched for every tenant that routes to it; a platform
   // tenant skips it so no request is made against a deployment it does not have.
-  const queryArgs = route !== "convex" || !convexUrl ? "skip" : (args ?? {});
+  //
+  // A branch-scoped account additionally asks Convex to narrow the order reads,
+  // so other branches' rows never cross the wire. Only for such an account: a
+  // deployment on an older bundle rejects the unknown argument and the screen
+  // would show "needs a backend update" instead of the orders.
+  const queryArgs =
+    route !== "convex" || !convexUrl
+      ? "skip"
+      : convexOrderQueryArgs(refName, args, accountScope);
 
   let result: T | undefined;
   let hookError: string | null = null;

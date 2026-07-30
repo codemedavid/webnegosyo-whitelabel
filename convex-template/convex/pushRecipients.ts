@@ -54,6 +54,49 @@ export function orderOutletIdFromCustomerData(
   return normalizeOutletId(blob[ORDER_OUTLET_ID_KEY]);
 }
 
+/** An order as far as branch attribution is concerned. */
+export interface BranchedOrderLike {
+  outletId?: string | null;
+  customerData?: unknown;
+}
+
+/**
+ * The branch an order belongs to, from the column or — failing that — the blob.
+ *
+ * v15 promotes the branch into a real `outletId` field, but every order already
+ * in a tenant's database has only `customerData.outlet_id`. Reading the column
+ * alone would *hide* every existing branch order from the branch that took it —
+ * the same trap the platform backend hit, where a naive `.eq('outlet_id')` would
+ * have hidden every counter sale. Both live orders on the only multi-branch
+ * tenant are blob-only today, so this fallback is load-bearing from day one, not
+ * defensive padding.
+ */
+export function resolveOrderOutletId(order: BranchedOrderLike): string | null {
+  return (
+    normalizeOutletId(order.outletId) ??
+    orderOutletIdFromCustomerData(order.customerData)
+  );
+}
+
+/**
+ * The subset of `orders` belonging to `outletId`, or all of them if none given.
+ *
+ * An order with no branch is excluded from a branch view: it belongs to no
+ * branch, and showing it to a manager would surface a sale they cannot act on.
+ * Note the asymmetry with `recipientsForOutlet`, which *includes* unbranched
+ * orders — a missed notification loses an order, whereas a row missing from a
+ * list is still reachable from the store-wide view.
+ */
+export function filterOrdersToOutlet<T extends BranchedOrderLike>(
+  orders: readonly T[],
+  outletId: string | null | undefined,
+): T[] {
+  const wanted = normalizeOutletId(outletId);
+  if (wanted === null) return [...orders];
+
+  return orders.filter((order) => resolveOrderOutletId(order) === wanted);
+}
+
 /**
  * The devices to ring for an order from `orderOutletId`.
  *

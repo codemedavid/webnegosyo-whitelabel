@@ -2,7 +2,10 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { localDayStartMs } from "./time";
-import { orderOutletIdFromCustomerData } from "./pushRecipients";
+import {
+  orderOutletIdFromCustomerData,
+  filterOrdersToOutlet,
+} from "./pushRecipients";
 
 // --- MUTATIONS ---
 
@@ -91,10 +94,17 @@ export const createOrder = mutation({
     // pickups, audibly notifies the merchant.
     const skipPending = args.source === "qr_handoff" || args.source === "pos";
 
+    // The branch arrives inside `customerData` (the only carrier that works
+    // across every tenant schema). Promote it to a column so it can be indexed
+    // and queried — undefined for a single-location store, which stamps none.
+    const outletId =
+      orderOutletIdFromCustomerData(args.customerData) ?? undefined;
+
     const orderId = await ctx.db.insert("orders", {
       ...orderData,
       status: skipPending ? "confirmed" : "pending",
       paymentStatus: "pending",
+      outletId,
     });
 
     for (const item of items) {
@@ -113,7 +123,7 @@ export const createOrder = mutation({
       total: args.total,
       itemCount: args.itemCount,
       orderId: orderId,
-      outletId: orderOutletIdFromCustomerData(args.customerData) ?? undefined,
+      outletId,
     });
 
     return orderId;
@@ -358,6 +368,16 @@ export const updateLalamoveDetailsInternal = internalMutation({
 // Safety cap for queries that load orders — prevents OOM on large datasets
 const QUERY_LIMIT = 10000;
 
+/**
+ * How deep to scan when filtering to a branch.
+ *
+ * Orders predating v15 carry the branch only in `customerData`, so the
+ * `by_outlet` index cannot be trusted to find them and the filter runs in
+ * memory. A page of 50 could otherwise return nothing for a quiet branch whose
+ * orders sit below the cut. Sized to match the platform adapter's own ceiling.
+ */
+const BRANCH_SCAN_LIMIT = 500;
+
 export const getOrders = query({
   args: {
     status: v.optional(
@@ -371,22 +391,31 @@ export const getOrders = query({
       )
     ),
     limit: v.optional(v.number()),
+    // Narrow to one branch. Optional so a store-wide account, and every caller
+    // on an older app build, keeps today's behaviour exactly.
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+
+    // Branch filtering cannot use `by_outlet` here: orders written before v15
+    // carry the branch only in `customerData`, so an indexed lookup on the
+    // column would silently drop them. Over-fetch and filter on the resolved
+    // branch instead — correctness over the index until a backfill lands.
+    const take = args.outletId ? Math.max(limit, BRANCH_SCAN_LIMIT) : limit;
+
     let orders;
     if (args.status) {
       orders = await ctx.db
         .query("orders")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
         .order("desc")
-        .take(args.limit ?? 50);
+        .take(take);
     } else {
-      orders = await ctx.db
-        .query("orders")
-        .order("desc")
-        .take(args.limit ?? 50);
+      orders = await ctx.db.query("orders").order("desc").take(take);
     }
-    return orders;
+
+    return filterOrdersToOutlet(orders, args.outletId).slice(0, limit);
   },
 });
 
@@ -434,17 +463,27 @@ export const getOrderByClientId = query({
 });
 
 export const getRealtimeQueue = query({
-  handler: async (ctx) => {
+  args: {
+    // Narrow to one branch. Optional so every existing caller is unaffected.
+    outletId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const statuses = ["pending", "confirmed", "preparing", "ready"] as const;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: Record<string, any[]> = {};
 
+    // Same over-fetch as getOrders, and for the same reason: the branch may live
+    // only in `customerData`, so the filter runs after the read.
+    const take = args.outletId ? BRANCH_SCAN_LIMIT : 50;
+
     for (const status of statuses) {
-      result[status] = await ctx.db
+      const rows = await ctx.db
         .query("orders")
         .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
-        .take(50);
+        .take(take);
+
+      result[status] = filterOrdersToOutlet(rows, args.outletId).slice(0, 50);
     }
 
     return result;

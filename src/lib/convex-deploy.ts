@@ -48,6 +48,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // two-branch store woke both branches for every sale. Absent on either side
 // means store-wide, so an owner's phone, a token from an older app build, and a
 // single-location store all keep hearing everything. Rule in pushRecipients.ts.
+// v15 also adds orders.outletId + a by_outlet index, promoted out of
+// customerData.outlet_id on create, and an optional outletId argument on
+// getOrders/getRealtimeQueue so a branch-scoped device stops receiving other
+// branches' rows. Filtering resolves column-then-blob and over-fetches, because
+// orders written before v15 carry the branch only in customerData — an indexed
+// lookup on the column alone would hide every one of them.
 const CURRENT_SCHEMA_VERSION = 15;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;

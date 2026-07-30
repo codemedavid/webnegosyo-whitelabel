@@ -1,6 +1,8 @@
 import {
   orderOutletIdFromCustomerData,
   recipientsForOutlet,
+  resolveOrderOutletId,
+  filterOrdersToOutlet,
   type PushTokenLike,
 } from "./pushRecipients";
 
@@ -104,5 +106,60 @@ describe("orderOutletIdFromCustomerData", () => {
   it("is null for a non-string or blank branch", () => {
     expect(orderOutletIdFromCustomerData({ outlet_id: "  " })).toBeNull();
     expect(orderOutletIdFromCustomerData({ outlet_id: 42 })).toBeNull();
+  });
+});
+
+/**
+ * The branch of an order that may predate the `outletId` column.
+ *
+ * v15 promotes the branch out of `customerData` into a real field, but every
+ * order already in a tenant's database has only the blob. Filtering on the
+ * column alone would therefore *hide* every existing branch order — the same
+ * trap the platform backend hit, where a naive `.eq('outlet_id')` would have
+ * hidden every counter sale from the branch that rang it up.
+ */
+describe("resolveOrderOutletId", () => {
+  it("prefers the column once an order has one", () => {
+    expect(
+      resolveOrderOutletId({ outletId: "outlet-north", customerData: {} })
+    ).toBe("outlet-north");
+  });
+
+  it("falls back to the blob for an order written before the column existed", () => {
+    // Both live orders on the only multi-branch tenant look exactly like this.
+    expect(
+      resolveOrderOutletId({ customerData: { outlet_id: "outlet-south" } })
+    ).toBe("outlet-south");
+  });
+
+  it("is null for an order with no branch anywhere", () => {
+    expect(resolveOrderOutletId({})).toBeNull();
+    expect(resolveOrderOutletId({ outletId: "  ", customerData: {} })).toBeNull();
+  });
+});
+
+describe("filterOrdersToOutlet", () => {
+  const north = { id: "a", outletId: "outlet-north", customerData: {} };
+  const southBlob = { id: "b", customerData: { outlet_id: "outlet-south" } };
+  const unbranched = { id: "c", customerData: {} };
+
+  it("keeps only the branch's orders, column or blob", () => {
+    const kept = filterOrdersToOutlet([north, southBlob, unbranched], "outlet-south");
+
+    expect(kept.map((o) => o.id)).toEqual(["b"]);
+  });
+
+  it("returns every order untouched when no branch is asked for", () => {
+    // The store-wide path must not pay for a filter it does not want, and must
+    // not drop unbranched orders.
+    const all = [north, southBlob, unbranched];
+
+    expect(filterOrdersToOutlet(all, undefined)).toEqual(all);
+  });
+
+  it("excludes unbranched orders from a branch view", () => {
+    // An order with no branch belongs to no branch. Including it would show a
+    // manager a sale from a store-wide channel they cannot act on.
+    expect(filterOrdersToOutlet([unbranched], "outlet-north")).toEqual([]);
   });
 });

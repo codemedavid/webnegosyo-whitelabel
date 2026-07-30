@@ -49,9 +49,14 @@ export default defineSchema({
     revisionNumber: v.optional(v.number()),
     editedAt: v.optional(v.string()),
     editedBy: v.optional(v.string()),
+    // The branch this order belongs to, promoted out of `customerData.outlet_id`
+    // on create so it can be queried and indexed. Optional: single-location
+    // stores stamp no branch, and orders written before v15 have none.
+    outletId: v.optional(v.string()),
   })
     .index("by_status", ["status"])
-    .index("by_client_order_id", ["clientOrderId"]),
+    .index("by_client_order_id", ["clientOrderId"])
+    .index("by_outlet", ["outletId"]),
 
   // Append-only settlement ledger. Mirrors `public.order_payments` on the
   // platform backend: the original tender, an additional charge after an edit
