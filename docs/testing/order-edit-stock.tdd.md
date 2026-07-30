@@ -52,7 +52,7 @@ The existing reverse suite's stub returns its rows whatever is asked for, so it 
 - **RED** — `npx jest tests/unit/inventory-order-stock-claim-revision.test.ts`, insert omits `revision`. Commit `776a479`.
 - **GREEN** — 11/11 across both claim suites. Commit `0ab2b12`.
 
-Migration `20260806120000_order_stock_application_revision.sql` adds `revision INTEGER NOT NULL DEFAULT 0` and moves the unique index onto it. The revision number is the right key: minted by the order's optimistic lock, monotonic per order, and unusable twice without the save itself being refused. The old index is **DROPped** rather than supplemented — leaving it would keep refusing the second edit and make the migration a no-op.
+Migration `20260806130000_order_stock_application_revision.sql` (APPLIED 2026-07-30) adds `revision INTEGER NOT NULL DEFAULT 0` and moves the unique index onto it. The revision number is the right key: minted by the order's optimistic lock, monotonic per order, and unusable twice without the save itself being refused. The old index is **DROPped** rather than supplemented — leaving it would keep refusing the second edit and make the migration a no-op.
 
 ### Task 4 — capturing the "before", and the wiring
 
@@ -98,7 +98,6 @@ Web: the eight order-stock suites → **45/45**. `tsc` reports errors only in pr
 
 | Gap | Why it is still open |
 |---|---|
-| **Migration `20260806120000` is not applied** | Until it is, `revision` does not exist and every edit's stock write fails on insert. Best-effort, so the save still succeeds — but no stock moves. **User action.** |
 | **Convex v17 still bundled, not deployed** | Unchanged from the previous cycle. |
 | Stock movement is best-effort | Deliberate, and consistent with every other order-driven stock write: by the time it runs the bill is rewritten and the money settled. A drifting ledger is reconcilable by stocktake; a save that fails after the customer paid the difference is not. |
 | `order-stock-delta.ts` is now redundant for ledger work | Left in place — it is still correct for the unit-level view and has its own tests. Anything touching the ledger should use `pos-stock-revision.ts`; the header of each says so. |
@@ -114,6 +113,6 @@ Web: the eight order-stock suites → **45/45**. `tsc` reports errors only in pr
 | `06809f3` | RED — over-restore, expected 400 received 600 |
 | `8aad9d9` | GREEN — 27/27 |
 | `776a479` | RED — claim carries no revision |
-| `0ab2b12` | GREEN — 11/11, plus migration 20260806120000 |
+| `0ab2b12` | GREEN — 11/11, plus migration 20260806130000 |
 | `b6213aa` | RED — `originalStockItems` absent |
 | `c7d66e5` | GREEN — 27/27, route + service + mobile wiring |

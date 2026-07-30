@@ -77,7 +77,7 @@ export async function applyOrderStockMovements(
   /**
    * Which revision of the order this movement belongs to. 0 is the original
    * sale; a saved edit passes its own, so it can move stock on an order that
-   * already claimed both directions. See migration 20260806120000.
+   * already claimed both directions. See migration 20260806130000.
    */
   revision: number = 0,
 ): Promise<OrderStockResult> {
