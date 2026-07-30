@@ -42,7 +42,13 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // reviseOrder / recordPayment mutations behind them. Convex has no triggers,
 // so recordPayment maintains the amountPaid cache inside its own transaction —
 // the platform backend gets the same guarantee from a database trigger.
-const CURRENT_SCHEMA_VERSION = 14;
+// v15: branch-targeted push. pushTokens.outletId binds a device to a branch, and
+// sendOrderNotification now rings only the devices matching the order's branch
+// (read from customerData.outlet_id) instead of every registered device — a
+// two-branch store woke both branches for every sale. Absent on either side
+// means store-wide, so an owner's phone, a token from an older app build, and a
+// single-location store all keep hearing everything. Rule in pushRecipients.ts.
+const CURRENT_SCHEMA_VERSION = 15;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

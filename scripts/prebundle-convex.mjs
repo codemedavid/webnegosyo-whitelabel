@@ -63,9 +63,16 @@ async function main() {
   console.log(`  Convex version: ${convexVersion}`);
   console.log(`  Source: ${CONVEX_DIR}`);
 
-  // 1. Compile user TypeScript files (excluding _generated/)
+  // 1. Compile user TypeScript files (excluding _generated/ and unit tests).
+  // Test files sit beside the modules they cover so the platform repo's Jest run
+  // can reach them, but they must never ship: `describe`/`it` do not exist in
+  // the Convex runtime, and this bundle is pushed to every tenant.
   const tsFiles = readdirSync(CONVEX_DIR).filter(
-    (f) => f.endsWith(".ts") && !f.startsWith("_")
+    (f) =>
+      f.endsWith(".ts") &&
+      !f.startsWith("_") &&
+      !f.endsWith(".test.ts") &&
+      !f.endsWith(".spec.ts")
   );
 
   const modules = [];
