@@ -306,3 +306,61 @@ by loosening the assertion.
   report showing zero usage and zero shrinkage, which reads as a perfect day.
   The report must state its coverage before it states a verdict — this is the
   single most important thing Phase 3 must not omit.
+
+---
+
+# Phase 1b — the read layer and the business day
+
+## User journey
+
+As a merchant, I want the report to cover *my* trading day, so that a dinner
+service is not split across two reports and every day stops looking short.
+
+## Execution
+
+- **RED**: `Cannot find module '../../src/lib/inventory/business-day'` and
+  `.../daily-report-read'` — `Tests: 0 total` in both cases.
+- **GREEN**: `tests/unit/inventory-business-day.test.ts` → `9 passed`;
+  `tests/unit/inventory-daily-report-read.test.ts` → `6 passed`; subsystem
+  `Test Suites: 1 skipped, 49 passed, 49 of 50 total`,
+  `Tests: 8 skipped, 511 passed, 519 total`. Lint clean, `src/` tsc clean.
+
+**Why a fixed +08:00 offset, not `Intl`:** the Philippines has observed no
+daylight saving since 1978 and the platform is single-market, so a fixed offset
+is exact here and depends on no runtime timezone database. If the platform ever
+ships outside PH this becomes a per-tenant setting, not a cleverer calculation —
+recorded so the shortcut is a decision rather than an oversight.
+
+The window is **half-open** (`>= start`, `< end`) so consecutive days tile the
+timeline and no movement is counted on two reports.
+
+## Test specification
+
+| # | What is guaranteed | Test file | Type | Result |
+|---|---|---|---|---|
+| 40 | A Manila day starts at 16:00 UTC the day before | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 41 | Consecutive day windows tile without overlapping | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 42 | A malformed day key throws rather than yielding an empty report | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 43 | A sale just after Manila midnight belongs to the new day, not the old | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 44 | `previousBusinessDayKey` crosses month and year boundaries | `tests/unit/inventory-business-day.test.ts` | unit | PASS |
+| 45 | Every read is scoped to the tenant (all three tables) | `tests/unit/inventory-daily-report-read.test.ts` | integration (module seam) | PASS |
+| 46 | The ledger read is bounded to the Manila day, half-open | `tests/unit/inventory-daily-report-read.test.ts` | integration (module seam) | PASS |
+| 47 | The read side never reaches for the service-role client | `tests/unit/inventory-daily-report-read.test.ts` | integration (module seam) | PASS |
+| 48 | The day's reconciled report is returned with its stock units | `tests/unit/inventory-daily-report-read.test.ts` | integration (module seam) | PASS |
+| 49 | A quiet day returns empty rather than failing | `tests/unit/inventory-daily-report-read.test.ts` | integration (module seam) | PASS |
+
+Guarantee 45 is deliberately unlike its neighbours: the review found that across
+~50 inventory suites exactly one asserts a tenant filter *argument*, because the
+shared Supabase stubs record calls and discard what they were given — so deleting
+`.eq('tenant_id', …)` leaves those suites green. This stub records arguments.
+
+Guarantee 47 is enforced by making `createAdminClient` *throw* in the mock rather
+than by trusting the convention, so the service-role client cannot creep onto a
+read path later without a test failing.
+
+## Still not built
+
+No screen. `daily-report-read.ts` has no caller — the Reports tab on
+`InventoryManager` is the next step, and until it exists nothing renders this.
+Revenue/food-cost % (Phase 2) and the verdict + `inventory_counts` session
+(Phase 3) are unchanged from the Phase 1 note above.
