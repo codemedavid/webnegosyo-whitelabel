@@ -34,6 +34,17 @@ describe("normalizePhoneE164", () => {
     ]);
   });
 
+  it("treats a 00 international prefix as the E.164 it stands in for", () => {
+    expect(normalizePhoneE164("0063 917 123 4567")).toBe("+639171234567");
+  });
+
+  it("trusts only already-international input for a region it does not know", () => {
+    // The parameter exists for a future market; until one is added, guessing a
+    // national format would invent a customer.
+    expect(normalizePhoneE164("+6591234567", "SG" as "PH")).toBe("+6591234567");
+    expect(normalizePhoneE164("91234567", "SG" as "PH")).toBeNull();
+  });
+
   it("returns null for input it cannot confidently normalize", () => {
     expect(normalizePhoneE164("12345")).toBeNull();
     expect(normalizePhoneE164("")).toBeNull();
