@@ -131,11 +131,33 @@ Routes are flat (`order-edit/`, `order-settle/`) rather than nested under `order
 
 `pos-sales.tsx` still calls `summarizeCounterSales` with one argument, so the drawer split stays **inert**. It needs every settlement row for the day's counter sales, and **no bulk ledger query exists on either backend** — only `getOrderPayments(orderId)`, which would be an N+1 across a shift. Closing it means a new `orders:getPaymentsSince` on Convex *and* the adapter, a bump to v17, a rebundle, and another tenant deploy. Deliberately not started at the end of a long session, on cash-reconciliation code.
 
+## Task 10 — Editing stops when the kitchen starts (requested after first use)
+
+**A rule change, not a bug fix.** The original gate allowed edits through `preparing`, with an explicit rationale in the test: "the kitchen is mid-ticket but the bill is not final — this is exactly when 'make that a large' happens." The merchant reversed that: once the ticket is printed and the food started, an edit desynchronises the bill from what is actually being cooked, and the stock has already moved against the original lines. `ready` is past `preparing`, so it is blocked too. Editable statuses are now **`pending` and `confirmed` only**.
+
+This is a STATUS rule, not a permission one — no role can un-cook food, so there is deliberately no owner override.
+
+### The rule was enforced in three places, not one
+
+The screen gate alone would have been a UI preference rather than a rule: an edit screen opened while an order was still `confirmed` survives the kitchen starting, and its save would otherwise still land. The revision lock does not catch this, because the revision number has not changed — only the status has. So the rule is enforced on both write paths as well, duplicated the way `staff-permissions.ts` already is across surfaces.
+
+- **RED (screen gate)**: `npx jest lib/order-edit-guards.test.ts` → **3 failed, 18 passed**, including the pre-existing test that asserted the opposite.
+- **RED (write paths)**: `npx jest --config jest.config.cjs convex-template/convex/orderRevise.test.ts` → **3 failed, 30 passed**; `npx jest lib/backends/order-revise.test.ts` → compile failure on the new `status` field, **0 tests**.
+- **GREEN**: merchant app **82 suites / 1313 tests**; `npx tsc --noEmit` exit 0 in both projects; `npx expo lint` **0 errors**.
+- **One assertion was corrected, not the behaviour**: the first test matched `/prepar/i`, but the message reads "The kitchen has already started this order…". The message is the better copy, so the over-specific regex was relaxed to `/kitchen/i`.
+- **Guaranteed**: `preparing`, `ready`, `delivered` and `cancelled` are refused by the screen gate *and* by both write paths; `pending` and `confirmed` still pass all three; the status refusal is reported **ahead of** the stale-revision one, because a started ticket stays uneditable however many times it is reopened and "reopen and try again" would send the cashier round a loop that never ends; the owner is refused too.
+- The platform adapter now selects `status` alongside `total, revision_number` — without that the rule would have been dormant on that backend, refusing nothing.
+
+**Coverage**: `order-edit-guards.ts` 100% stmts, `order-revise.ts` 100% stmts, `orderRevise.ts` 100% stmts.
+
+**Schema v17 bundled** (`kitchen has already started` confirmed present in `convex-push-bundle.json`) — **needs a redeploy to reach Gungjeon Unlimited**. Until then that tenant has the screen gate but not the Convex write-path guard.
+
 ## Remaining work, in order
 
 | # | Task | Blocked on |
 |---|---|---|
-| — | Try the edit -> settle flow on Gungjeon Unlimited | **ready now** |
+| — | **Redeploy v17** to Gungjeon Unlimited, so the kitchen-started rule reaches the write path | **user action** |
+| — | Try the edit -> settle flow on Gungjeon Unlimited | **ready now** (screen gate already correct) |
 | 4B.4 | Bulk ledger query, then pass it into `summarizeCounterSales` | needs Convex v17 + a deploy |
 | 4B.5 | Apply the stock delta on save | the concurrent inventory work on `order-stock-claim.ts` |
 | 5.3 | Probe RLS under a real user session | user action |
@@ -163,3 +185,6 @@ Checkpoint commits on `feat/platform-supabase-order-parity`:
 | `5a7ddcd` | GREEN — 20 passed |
 | `4cd9177` | Order detail: settlement + history cards, gated Edit button |
 | `843a973` | Edit and settle screens; 82 suites / 1307 tests; tsc + lint clean |
+| `fdcbae3` | RED — kitchen-started gate (3 failed, 18 passed) |
+| `583c440` | RED — same rule on both write paths (3 failed Convex; compile failure platform) |
+| `ab0d325` | GREEN — 82 suites / 1313 tests; schema v17 + rebundle; tsc + lint clean |
