@@ -77,7 +77,7 @@ function wire(options: {
   flourQty: number
   openAlerts?: unknown[]
   recordedSales?: unknown[]
-  alreadyRestored?: unknown[]
+  alreadyRestored?: boolean
 }) {
   const tables = {
     tenants: table({ low_stock_alerts_enabled: true, auto_86_enabled: true }),
@@ -101,16 +101,25 @@ function wire(options: {
     menu_items: table([{ id: 'menu-carbonara' }]),
   }
 
-  // Depletion reads `stock_movements` once (idempotency); restore reads it
-  // twice (the sale it reverses, then its own already-ran guard).
-  const movementAnswers = [options.recordedSales ?? [], options.alreadyRestored ?? []]
-  let movementCall = 0
+  // Idempotency is a claim row now, not a read of the ledger, so
+  // `stock_movements` answers one thing: the sale a restore reverses.
   const movements = table([])
 
   from.mockImplementation((name: string) => {
+    if (name === 'order_stock_applications') {
+      return {
+        insert: () =>
+          Promise.resolve({
+            data: null,
+            error: options.alreadyRestored ? { code: '23505', message: 'duplicate key' } : null,
+          }),
+        delete: () => ({
+          eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
+        }),
+      }
+    }
     if (name === 'stock_movements') {
-      const answer = movementAnswers[movementCall++] ?? []
-      const t = table(answer)
+      const t = table(options.recordedSales ?? [])
       // One shared write log, so the assertions do not care which read it was.
       t.writes.insert = movements.writes.insert
       return t
@@ -213,7 +222,7 @@ describe('cancelling that order', () => {
     const tables = wire({
       flourQty: 0,
       recordedSales: THE_SALE,
-      alreadyRestored: [{ id: 'mv-void' }],
+      alreadyRestored: true,
     })
 
     const result = await reverseOrderStockMovements('t1', 'order-1')

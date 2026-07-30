@@ -56,14 +56,14 @@ describe('applyOrderStockBestEffort', () => {
 
   it('stops early when the tenant has no recipes for these items', async () => {
     // An uncosted menu is the common case; it must not read further tables.
-    // Two reads are expected now: the idempotency guard, then recipes.
+    // Three writes/reads are expected: claim the order, find no recipes, then
+    // hand the claim back so a retry after the recipe is added still deducts.
     from.mockImplementation((table: string) => {
-      if (table === 'stock_movements') {
+      if (table === 'order_stock_applications') {
         return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }),
-            }),
+          insert: () => Promise.resolve({ data: null, error: null }),
+          delete: () => ({
+            eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
           }),
         }
       }
@@ -74,6 +74,10 @@ describe('applyOrderStockBestEffort', () => {
 
     await applyOrderStockBestEffort('t1', 'o1', ITEMS)
 
-    expect(from.mock.calls.map((c) => c[0])).toEqual(['stock_movements', 'recipes'])
+    expect(from.mock.calls.map((c) => c[0])).toEqual([
+      'order_stock_applications',
+      'recipes',
+      'order_stock_applications',
+    ])
   })
 })

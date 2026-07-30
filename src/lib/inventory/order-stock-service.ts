@@ -18,6 +18,10 @@ import {
   type DepletionOrderItem,
 } from '@/lib/inventory/order-depletion'
 import { resolveMovementDelta } from '@/lib/inventory/stock-ledger'
+import {
+  claimOrderStockApplication,
+  releaseOrderStockApplication,
+} from '@/lib/inventory/order-stock-claim'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 function toUnit(row: InventoryUnitRow): InventoryUnit {
@@ -76,20 +80,41 @@ export async function applyOrderStockMovements(
 
   // Idempotency. The order-creation path is retryable, and depleting twice
   // would take stock down twice for one sale with two ledger rows each claiming
-  // to be the truth. Keyed on direction as well as order, so an order that was
-  // sold and then voided stays independently correct in both directions.
-  const { data: existing, error: existingError } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-    .eq('reason', direction)
-    .limit(1)
-  if (existingError) throw existingError
-  if (existing && existing.length > 0) {
-    console.warn('[inventory] Stock movements already recorded for order', { orderId, direction })
+  // to be the truth. The claim is a unique-indexed row, so the database refuses
+  // the second caller — a SELECT-then-INSERT here let every racing call through.
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction))) {
     return EMPTY_RESULT
   }
+
+  // Every exit between the claim and the ledger write has to hand the claim
+  // back. A claim that outlives a depletion which never happened marks the
+  // order permanently done with its stock still on the shelf — the failure mode
+  // is silent, and worse than the double-deduction the claim exists to stop.
+  try {
+    const result = await depleteClaimedOrder(supabase, tenantId, orderId, items, direction)
+    if (result.movementCount === 0) {
+      await releaseOrderStockApplication(supabase, tenantId, orderId, direction)
+    }
+    return result
+  } catch (error) {
+    await releaseOrderStockApplication(supabase, tenantId, orderId, direction)
+    throw error
+  }
+}
+
+/**
+ * The depletion itself, once this caller owns the claim.
+ *
+ * Split out so the claim's release has exactly one place to live: this body has
+ * five exits and a caller that forgot one of them would leak a claim.
+ */
+async function depleteClaimedOrder(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  orderId: string,
+  items: readonly DepletionOrderItem[],
+  direction: 'sale' | 'void',
+): Promise<OrderStockResult> {
 
   const menuItemIds = [...new Set(items.map((i) => i.menuItemId))]
   const { data: recipeRows, error: recipeError } = await supabase
@@ -224,16 +249,10 @@ export async function reverseOrderStockMovements(
   }>
   if (sales.length === 0) return EMPTY_RESULT
 
-  const { data: existing, error: existingError } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-    .eq('reason', 'void')
-    .limit(1)
-  if (existingError) throw existingError
-  if (existing && existing.length > 0) {
-    console.warn('[inventory] Order already restored', { orderId })
+  // Same claim, opposite direction: cancelling twice would put the stock back
+  // twice. The database refuses the second caller; the SELECT this replaces let
+  // every racing cancellation through.
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void'))) {
     return EMPTY_RESULT
   }
 
@@ -261,7 +280,12 @@ export async function reverseOrderStockMovements(
   }))
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
-  if (insertError) throw insertError
+  if (insertError) {
+    // The claim outliving a reversal that never wrote would leave the order
+    // permanently un-restorable, its ingredients still counted as sold.
+    await releaseOrderStockApplication(supabase, tenantId, orderId, 'void')
+    throw insertError
+  }
 
   // A cancellation is a restock. Without this the ingredient came back but the
   // alert stayed open and the dish auto-86'd by the original sale stayed off

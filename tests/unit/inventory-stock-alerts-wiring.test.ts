@@ -172,13 +172,27 @@ describe('cancellation restore reaches the alert path', () => {
    * is reversing, once to check it has not already run — so this hands out a
    * different answer per call rather than the same rows to both.
    */
-  function wireRestore(saleRows: unknown[], alreadyRestored: unknown[] = []) {
-    const movementAnswers = [saleRows, alreadyRestored]
-    let movementCall = 0
+  /**
+   * `alreadyRestored` now models a LOST CLAIM rather than a second SELECT over
+   * the ledger: the already-restored guard moved to `order_stock_applications`,
+   * whose unique index is what refuses the duplicate cancellation.
+   */
+  function wireRestore(saleRows: unknown[], alreadyRestored = false) {
     from.mockImplementation((name: string) => {
       switch (name) {
+        case 'order_stock_applications':
+          return {
+            insert: () =>
+              Promise.resolve({
+                data: null,
+                error: alreadyRestored ? { code: '23505', message: 'duplicate key' } : null,
+              }),
+            delete: () => ({
+              eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
+            }),
+          }
         case 'stock_movements':
-          return table(movementAnswers[movementCall++] ?? [])
+          return table(saleRows)
         case 'inventory_items':
           // Emptied by the sale this cancellation is reversing.
           return table([{ ...FLOUR, current_qty: 0 }])
@@ -231,7 +245,7 @@ describe('cancellation restore reaches the alert path', () => {
 
   it('does not run the alert path when the order was already restored', async () => {
     // Otherwise a retried cancellation would re-report a delta it never applied.
-    wireRestore([SALE], [{ id: 'mv-void' }])
+    wireRestore([SALE], true)
 
     await reverseOrderStockMovements('t1', 'order-1')
 
