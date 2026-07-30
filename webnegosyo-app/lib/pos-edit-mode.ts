@@ -1,0 +1,217 @@
+/**
+ * Editing a placed order inside the register.
+ *
+ * Order editing used to live on two screens of its own. It now runs on the POS
+ * — the same product grid, the same modifier sheet, the same tender screen —
+ * because a cashier correcting a bill is doing the same job as a cashier
+ * ringing one up, and the standalone screens were a worse copy of the register.
+ *
+ * This module is the whole of the difference between the two modes. The screens
+ * stay presentational: Jest is scoped to `lib/` and `theme/` in this app, so a
+ * judgement made in `pos.tsx` or `pos-tender.tsx` is a judgement made untested.
+ *
+ * Pure and side-effect free — no clock, no network, no id generation.
+ */
+
+import {
+  computeBalance,
+  settlementIntent,
+  type OrderPayment,
+  type SettlementIntent,
+} from "./order-balance";
+import {
+  hydratePosCart,
+  posCartToOrderItems,
+  type ModifierCatalog,
+  type RevisedOrderItem,
+} from "./order-edit-cart";
+import { canEditOrder, type EditGate } from "./order-edit-guards";
+import { diffOrderItems } from "./order-revision";
+import type { OrderItemDto } from "./backends/supabase-orders";
+import type { PosCartLine } from "./pos-cart";
+import type { OrderBackend } from "./order-backend";
+import type { StaffPermissionHolder } from "./staff-permissions";
+import type { BranchScope, ScopedOrderLike } from "./branch-scope";
+
+/**
+ * Everything the register needs to remember about the order it is editing,
+ * beyond the cart itself.
+ *
+ * `deliveryFee` and `serviceChargeAmount` are the reason this type exists. They
+ * belong to the ORDER, not to the cart: the register derives a service charge
+ * from the chosen order type and has no concept of delivery at all. Rebuilding
+ * the total from the cart alone would quietly drop both.
+ */
+export interface OrderEditContext {
+  orderId: string;
+  /** Checked against the stored revision on save, to catch a concurrent edit. */
+  expectedRevisionNumber: number;
+  /** The bill as placed, for the was/now header. */
+  originalTotal: number;
+  /** The items as placed, for the dirty check and the audit snapshot. */
+  originalItems: RevisedOrderItem[];
+  /** Carried across untouched; the register cannot recompute it. */
+  deliveryFee: number;
+  /** Likewise — the amount actually billed, not the order type's rate. */
+  serviceChargeAmount: number;
+  /** The settlement ledger as it stood when the register opened the order. */
+  payments: OrderPayment[];
+}
+
+/** The order as the detail screen already has it. */
+export interface EditableOrderLike {
+  _id: string;
+  total: number;
+  revisionNumber?: number;
+  deliveryFee?: number;
+  serviceChargeAmount?: number;
+  items: OrderItemDto[];
+}
+
+export interface EnterEditModeRequest {
+  /** The register's current cart. A counter sale in progress blocks the load. */
+  cart: readonly PosCartLine[];
+  status: string;
+  backend: OrderBackend;
+  user: StaffPermissionHolder;
+  scope?: BranchScope;
+  order?: ScopedOrderLike;
+}
+
+/**
+ * May the register open this order for editing right now?
+ *
+ * The status, permission, backend and branch rules are NOT re-implemented here.
+ * They are {@link canEditOrder}'s, and the Convex and platform write paths
+ * enforce the same set — a fourth copy would be a fourth thing to keep in step.
+ *
+ * The one rule this adds is the register's own: the cart is a single global
+ * store shared with counter sales, so loading a placed order into a non-empty
+ * one would fold a waiting customer's food into the bill being edited. The
+ * cashier would not find out until the tender screen, after the rewrite.
+ *
+ * The order's own refusal is reported first. A delivered order cannot be edited
+ * however tidy the register is, so asking the cashier to clear their sale would
+ * waste the clearing.
+ */
+export function canEnterEditMode({
+  cart,
+  status,
+  backend,
+  user,
+  scope,
+  order,
+}: EnterEditModeRequest): EditGate {
+  const gate = canEditOrder({ status, backend, user, scope, order });
+  if (!gate.allowed) return gate;
+
+  if (cart.length > 0) {
+    return {
+      allowed: false,
+      reason:
+        "The register has a sale in progress. Finish or clear it before editing an order.",
+    };
+  }
+
+  return { allowed: true };
+}
+
+export interface EnteredEditMode {
+  context: OrderEditContext;
+  /** The order's items, as register cart lines. */
+  cart: PosCartLine[];
+  /** Items or modifiers no longer on the live menu, for the screen to warn on. */
+  warnings: string[];
+}
+
+/**
+ * Load a placed order into the register.
+ *
+ * Hydration is {@link hydratePosCart}'s: anything that no longer matches the
+ * live menu is reported rather than dropped, and every line keeps the price it
+ * was actually sold at.
+ */
+export function enterEditMode(
+  order: EditableOrderLike,
+  payments: readonly OrderPayment[],
+  catalog: ModifierCatalog,
+): EnteredEditMode {
+  const { lines, unresolved } = hydratePosCart(order.items, catalog);
+
+  return {
+    cart: lines,
+    context: {
+      orderId: order._id,
+      expectedRevisionNumber: order.revisionNumber ?? 0,
+      originalTotal: order.total,
+      originalItems: posCartToOrderItems(lines, catalog),
+      // Zero, not undefined: `undefined + subtotal` is NaN, and the tender
+      // screen would ask the cashier for "₱NaN".
+      deliveryFee: order.deliveryFee ?? 0,
+      serviceChargeAmount: order.serviceChargeAmount ?? 0,
+      payments: [...payments],
+    },
+    warnings: unresolved.map((item) =>
+      item.optionName
+        ? `"${item.optionName}" on ${item.menuItemName} is no longer on the menu.`
+        : `${item.menuItemName} is no longer on the menu.`,
+    ),
+  };
+}
+
+export interface EditModeTotals {
+  /** The cart alone, before the carried fees. */
+  itemsTotal: number;
+  /** What the order is now worth, fees included. */
+  newTotal: number;
+  /** Positive: collect. Negative: refund. */
+  balance: number;
+  intent: SettlementIntent;
+  isDirty: boolean;
+  canSave: boolean;
+  /** Why saving is blocked, shown to the cashier verbatim. */
+  blockedReason?: string;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * What the edited order is worth, and what the cashier owes or is owed.
+ *
+ * The single place the carried fees are re-applied, so there is one answer to
+ * "what does this order cost now" rather than one per screen.
+ */
+export function editModeTotals(
+  cart: readonly PosCartLine[],
+  context: OrderEditContext,
+): EditModeTotals {
+  const itemsTotal = round2(cart.reduce((sum, line) => sum + line.subtotal, 0));
+  const newTotal = round2(
+    itemsTotal + context.deliveryFee + context.serviceChargeAmount,
+  );
+
+  const balance = computeBalance(newTotal, context.payments);
+
+  // Same identity rule the revision diff uses, so "is this dirty?" and "what
+  // changed?" can never disagree — an enabled Save button beside an empty
+  // change list is a bug the cashier cannot explain.
+  const isDirty =
+    diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0;
+
+  const blockedReason =
+    cart.length === 0
+      ? "An order cannot be emptied by editing. Cancel it instead."
+      : undefined;
+
+  return {
+    itemsTotal,
+    newTotal,
+    balance,
+    intent: settlementIntent(balance),
+    isDirty,
+    canSave: isDirty && !blockedReason,
+    ...(blockedReason ? { blockedReason } : {}),
+  };
+}
