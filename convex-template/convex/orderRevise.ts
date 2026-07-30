@@ -34,7 +34,28 @@ export interface RevisableOrderLike {
   total: number;
   /** Absent on every order placed before order editing shipped. */
   revisionNumber?: number;
+  status?: string;
 }
+
+/**
+ * Statuses past the point of editing, keyed to the message the cashier sees.
+ *
+ * The line is drawn where the kitchen starts: up to `confirmed` nothing has
+ * been cooked and a correction costs nothing, but from `preparing` the ticket
+ * is on the line and the stock has already moved against the original items.
+ *
+ * Duplicated deliberately in `webnegosyo-app/lib/order-edit-guards.ts` (the
+ * screen gate) and `lib/backends/order-revise.ts` (the platform write path),
+ * the same arrangement `staff-permissions.ts` uses. All three must agree, or a
+ * merchant's protection depends on which backend they happen to be on.
+ */
+const UNEDITABLE_STATUSES: Record<string, string> = {
+  preparing:
+    "The kitchen has already started this order, so it can no longer be edited.",
+  ready: "This order is ready for handover and can no longer be edited.",
+  delivered: "This order was already delivered and can no longer be edited.",
+  cancelled: "This order was cancelled and can no longer be edited.",
+};
 
 /** One line as the edit screen submits it. */
 export interface RevisedItemLike {
@@ -73,6 +94,12 @@ export function assertRevisable(
   expectedRevisionNumber: number,
   items: readonly RevisedItemLike[],
 ): void {
+  // Reported before the stale-revision check: a started ticket stays
+  // uneditable however many times it is reopened, so "reopen and try again"
+  // would send the cashier round a loop that never ends.
+  const statusRefusal = order.status ? UNEDITABLE_STATUSES[order.status] : undefined;
+  if (statusRefusal) throw new Error(statusRefusal);
+
   if ((order.revisionNumber ?? 0) !== expectedRevisionNumber) {
     throw new Error(
       "This order changed while you were editing it — reopen it and try again.",

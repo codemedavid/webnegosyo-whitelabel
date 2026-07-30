@@ -49,9 +49,31 @@ export interface ReviseOrderArgs {
 /** The order as it stands before this edit. */
 export interface PreviousOrderState {
   revisionNumber: number;
+  /** Absent only in callers that predate the kitchen-started rule. */
+  status?: string;
   total: number;
   items: ReviseOrderItem[];
 }
+
+/**
+ * Statuses past the point of editing, keyed to the message the cashier sees.
+ *
+ * The line is drawn where the kitchen starts: up to `confirmed` nothing has
+ * been cooked and a correction costs nothing, but from `preparing` the ticket
+ * is on the line and the stock has already moved against the original items.
+ *
+ * Duplicated deliberately in `lib/order-edit-guards.ts` (the screen gate) and
+ * `convex-template/convex/orderRevise.ts` (the Convex write path), the same
+ * arrangement `staff-permissions.ts` uses. All three must agree, or a
+ * merchant's protection depends on which backend they happen to be on.
+ */
+const UNEDITABLE_STATUSES: Record<string, string> = {
+  preparing:
+    "The kitchen has already started this order, so it can no longer be edited.",
+  ready: "This order is ready for handover and can no longer be edited.",
+  delivered: "This order was already delivered and can no longer be edited.",
+  cancelled: "This order was cancelled and can no longer be edited.",
+};
 
 export interface OrderRevisionPatch {
   total: number;
@@ -145,6 +167,14 @@ export function buildRevisionRows(
   itemRows: OrderItemRow[];
   revision: OrderRevisionRow;
 } {
+  // Reported before the stale-revision check: a started ticket stays
+  // uneditable however many times it is reopened, so "reopen and try again"
+  // would send the cashier round a loop that never ends.
+  const statusRefusal = previous.status
+    ? UNEDITABLE_STATUSES[previous.status]
+    : undefined;
+  if (statusRefusal) throw new Error(statusRefusal);
+
   if (args.expectedRevisionNumber !== previous.revisionNumber) {
     throw new Error(
       "This order changed while you were editing it — reopen it and try again.",

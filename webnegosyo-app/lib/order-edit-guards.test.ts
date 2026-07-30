@@ -45,7 +45,7 @@ describe("canEditOrder", () => {
     const gate = canEditOrder({ status: "preparing", backend: "convex", user: OWNER });
 
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toMatch(/prepar/i);
+    expect(gate.reason).toMatch(/kitchen/i);
   });
 
   it("refuses to edit an order that is ready", () => {

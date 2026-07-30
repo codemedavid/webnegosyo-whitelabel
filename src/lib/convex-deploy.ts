@@ -60,7 +60,11 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // is unchanged except for one fix: a line's subtotal is now computed from the
 // price actually stored (round2(price) x quantity) rather than from the raw
 // submitted price, so an edited receipt always adds up.
-const CURRENT_SCHEMA_VERSION = 16;
+// v17 refuses an edit once the kitchen has started (`preparing` onward). The
+// screen gate alone was a UI preference, not a rule: an edit screen opened
+// while an order was still `confirmed` survived the kitchen starting, and its
+// save would otherwise still land.
+const CURRENT_SCHEMA_VERSION = 17;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

@@ -424,11 +424,12 @@ async function reviseOrder(
   const current = await unwrap<{
     total: number | null;
     revision_number: number | null;
+    status: string | null;
   } | null>(
     scopeToBranch(
       client
         .from("orders")
-        .select("total, revision_number")
+        .select("total, revision_number, status")
         .eq("id", reviseArgs.orderId)
         .eq("tenant_id", tenantId),
       scope
@@ -442,6 +443,7 @@ async function reviseOrder(
 
   const { orderPatch, itemRows, revision } = buildRevisionRows(tenantId, reviseArgs, {
     revisionNumber: current.revision_number ?? 0,
+    status: current.status ?? undefined,
     total: current.total ?? 0,
     items: (currentItems ?? []).map((row) => ({
       menuItemId: row.menu_item_id ?? "",

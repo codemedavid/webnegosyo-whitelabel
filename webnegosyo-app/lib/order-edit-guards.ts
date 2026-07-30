@@ -21,11 +21,23 @@ export interface EditGate {
 const ALLOWED: EditGate = { allowed: true };
 
 /**
- * Statuses past the point of editing. A delivered order has been handed over
- * and a cancelled one has already been reversed; changing either would
- * rewrite history rather than correct a live ticket.
+ * Statuses past the point of editing.
+ *
+ * The line is drawn where the kitchen starts. Up to `confirmed` the order is
+ * accepted but untouched, so a correction costs nothing. From `preparing` the
+ * ticket has been printed and the food started: an edit there desynchronises
+ * the bill from what is actually being cooked, and the stock has already moved
+ * against the original lines. `delivered` has been handed over and `cancelled`
+ * already reversed — editing either rewrites history rather than correcting a
+ * live ticket.
+ *
+ * This is a STATUS rule, not a permission one: no role can un-cook food, so
+ * there is deliberately no override.
  */
 const FINAL_STATUSES: Record<string, string> = {
+  preparing:
+    "The kitchen has already started this order, so it can no longer be edited.",
+  ready: "This order is ready for handover and can no longer be edited.",
   delivered: "This order was already delivered and can no longer be edited.",
   cancelled: "This order was cancelled and can no longer be edited.",
 };
