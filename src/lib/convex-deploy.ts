@@ -54,7 +54,13 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // branches' rows. Filtering resolves column-then-blob and over-fetches, because
 // orders written before v15 carry the branch only in customerData — an indexed
 // lookup on the column alone would hide every one of them.
-const CURRENT_SCHEMA_VERSION = 15;
+// v16 moves the order-edit rules out of the reviseOrder/recordPayment handlers
+// and into orderRevise.ts, which is Convex-import-free and therefore unit
+// tested — those handlers previously had no automated coverage at all. Behaviour
+// is unchanged except for one fix: a line's subtotal is now computed from the
+// price actually stored (round2(price) x quantity) rather than from the raw
+// submitted price, so an edited receipt always adds up.
+const CURRENT_SCHEMA_VERSION = 16;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

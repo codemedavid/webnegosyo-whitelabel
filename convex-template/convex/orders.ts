@@ -6,6 +6,14 @@ import {
   orderOutletIdFromCustomerData,
   filterOrdersToOutlet,
 } from "./pushRecipients";
+import {
+  assertRevisable,
+  priceRevisedItems,
+  computeRevisedTotal,
+  countRevisedItems,
+  normalizePaymentAmount,
+  netAmountPaid,
+} from "./orderRevise";
 
 // --- MUTATIONS ---
 
@@ -186,37 +194,20 @@ export const reviseOrder = mutation({
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("That order no longer exists.");
 
-    if ((order.revisionNumber ?? 0) !== args.expectedRevisionNumber) {
-      throw new Error(
-        "This order changed while you were editing it — reopen it and try again."
-      );
-    }
-
-    if (args.items.length === 0) {
-      throw new Error("An order cannot be emptied by editing. Cancel it instead.");
-    }
-
-    const round2 = (n: number) => Math.round(n * 100) / 100;
-
-    const priced = args.items.map((item: any) => {
-      if (!Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > 99) {
-        throw new Error(`Invalid quantity for "${item.menuItemName}".`);
-      }
-      if (!Number.isFinite(item.price) || item.price < 0 || item.price > 1000000) {
-        throw new Error(`Invalid price for "${item.menuItemName}".`);
-      }
-      return { ...item, subtotal: round2(item.price * item.quantity) };
-    });
+    // Every rule below lives in `orderRevise.ts` so it can be unit-tested, and
+    // so it cannot drift from the platform backend's identical guard rails.
+    assertRevisable(order, args.expectedRevisionNumber, args.items);
+    const priced = priceRevisedItems(args.items);
 
     const existing = await ctx.db
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .collect();
 
-    const total = round2(
-      priced.reduce((sum, item) => sum + item.subtotal, 0) +
-        (args.deliveryFee ?? 0) +
-        (args.serviceChargeAmount ?? 0)
+    const total = computeRevisedTotal(
+      priced,
+      args.deliveryFee,
+      args.serviceChargeAmount
     );
     const revisionNumber = (order.revisionNumber ?? 0) + 1;
 
@@ -241,7 +232,7 @@ export const reviseOrder = mutation({
 
     await ctx.db.patch(args.orderId, {
       total,
-      itemCount: priced.reduce((sum, item) => sum + item.quantity, 0),
+      itemCount: countRevisedItems(priced),
       revisionNumber,
       editedAt: args.editedAt,
       editedBy: args.revisedBy,
@@ -273,13 +264,9 @@ export const recordPayment = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (!Number.isFinite(args.amount) || args.amount <= 0) {
-      throw new Error("A payment amount must be a positive number.");
-    }
-
     await ctx.db.insert("orderPayments", {
       ...args,
-      amount: Math.round(args.amount * 100) / 100,
+      amount: normalizePaymentAmount(args.amount),
     });
 
     const ledger = await ctx.db
@@ -287,14 +274,7 @@ export const recordPayment = mutation({
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .collect();
 
-    const amountPaid = ledger.reduce(
-      (sum, row) => (row.kind === "refund" ? sum - row.amount : sum + row.amount),
-      0
-    );
-
-    await ctx.db.patch(args.orderId, {
-      amountPaid: Math.round(amountPaid * 100) / 100,
-    });
+    await ctx.db.patch(args.orderId, { amountPaid: netAmountPaid(ledger) });
 
     return args.orderId;
   },

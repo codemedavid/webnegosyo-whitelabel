@@ -23,6 +23,8 @@ import {
  * merchant on the shared Supabase.
  */
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 function order(overrides: Partial<RevisableOrderLike> = {}): RevisableOrderLike {
   return { total: 250, revisionNumber: 1, ...overrides };
 }
@@ -103,15 +105,19 @@ describe("priceRevisedItems", () => {
     expect(priced[0].subtotal).toBe(240);
   });
 
-  it("rounds a line to centavos rather than carrying float drift into the bill", () => {
-    // Arrange
+  it("builds the subtotal from the price it actually stores, so a receipt adds up", () => {
+    // Arrange: 10.005 stores as 10.01. Computing the subtotal from the RAW
+    // price instead would store 30.02 next to a unit price of 10.01 — a printed
+    // line a customer cannot total, on the one feature whose whole purpose is
+    // an edited bill that is defensible weeks later.
     const submitted = [item({ price: 10.005, quantity: 3 })];
 
     // Act
     const priced = priceRevisedItems(submitted);
 
     // Assert
-    expect(priced[0].subtotal).toBe(30.02);
+    expect(priced[0].subtotal).toBe(30.03);
+    expect(priced[0].subtotal).toBe(round2(priced[0].price * priced[0].quantity));
   });
 
   it("rounds the stored unit price too, matching the platform backend", () => {
