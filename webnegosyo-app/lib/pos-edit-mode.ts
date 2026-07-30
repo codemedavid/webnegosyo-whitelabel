@@ -37,7 +37,7 @@ import type { BranchScope, ScopedOrderLike } from "./branch-scope";
  * Everything the register needs to remember about the order it is editing,
  * beyond the cart itself.
  *
- * `deliveryFee` and `serviceChargeAmount` are the reason this type exists. They
+ * `deliveryFee` and `carriedCharges` are the reason this type exists. They
  * belong to the ORDER, not to the cart: the register derives a service charge
  * from the chosen order type and has no concept of delivery at all. Rebuilding
  * the total from the cart alone would quietly drop both.
@@ -52,8 +52,16 @@ export interface OrderEditContext {
   originalItems: RevisedOrderItem[];
   /** Carried across untouched; the register cannot recompute it. */
   deliveryFee: number;
-  /** Likewise — the amount actually billed, not the order type's rate. */
-  serviceChargeAmount: number;
+  /**
+   * Everything in the placed total that is neither a line item nor the
+   * delivery fee — see {@link deriveCarriedCharges}.
+   *
+   * Travels to the revise mutation as its `serviceChargeAmount` argument,
+   * which is the only channel available, but it is deliberately NOT named for
+   * the service charge: the same residue also carries discounts and rounding.
+   * May be negative.
+   */
+  carriedCharges: number;
   /** The settlement ledger as it stood when the register opened the order. */
   payments: OrderPayment[];
 }
@@ -64,7 +72,6 @@ export interface EditableOrderLike {
   total: number;
   revisionNumber?: number;
   deliveryFee?: number;
-  serviceChargeAmount?: number;
   items: OrderItemDto[];
 }
 
@@ -137,6 +144,9 @@ export function enterEditMode(
   catalog: ModifierCatalog,
 ): EnteredEditMode {
   const { lines, unresolved } = hydratePosCart(order.items, catalog);
+  // Zero, not undefined: `undefined + subtotal` is NaN, and the tender screen
+  // would ask the cashier for "₱NaN".
+  const deliveryFee = order.deliveryFee ?? 0;
 
   return {
     cart: lines,
@@ -145,10 +155,8 @@ export function enterEditMode(
       expectedRevisionNumber: order.revisionNumber ?? 0,
       originalTotal: order.total,
       originalItems: posCartToOrderItems(lines, catalog),
-      // Zero, not undefined: `undefined + subtotal` is NaN, and the tender
-      // screen would ask the cashier for "₱NaN".
-      deliveryFee: order.deliveryFee ?? 0,
-      serviceChargeAmount: order.serviceChargeAmount ?? 0,
+      deliveryFee,
+      carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee),
       payments: [...payments],
     },
     warnings: unresolved.map((item) =>
@@ -177,6 +185,36 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function itemsTotalOf(cart: readonly PosCartLine[]): number {
+  return round2(cart.reduce((sum, line) => sum + line.subtotal, 0));
+}
+
+/**
+ * The part of a placed bill that is neither its line items nor its delivery.
+ *
+ * Derived rather than read, because no backend stores it: the platform orders
+ * table has no service-charge column and the Convex schema has no field. The
+ * revise mutation accepts a `serviceChargeAmount` argument and folds it into
+ * the total, but nothing persists it, so reading it back on a later edit
+ * always yields nothing and the charge disappears from the bill.
+ *
+ * Recomputing it from the order type's rate would be worse than dropping it:
+ * the rate may have changed since, and the residue is not only a service
+ * charge — a discount or a rounding adjustment lands here too. Subtracting
+ * what IS known preserves whatever the checkout actually did, whichever of
+ * those it was.
+ *
+ * Not floored at zero: a negative residue is a discount the customer was
+ * given, and clamping it would re-bill them for it.
+ */
+function deriveCarriedCharges(
+  placedTotal: number,
+  cart: readonly PosCartLine[],
+  deliveryFee: number,
+): number {
+  return round2(placedTotal - itemsTotalOf(cart) - deliveryFee);
+}
+
 /**
  * What the edited order is worth, and what the cashier owes or is owed.
  *
@@ -187,10 +225,8 @@ export function editModeTotals(
   cart: readonly PosCartLine[],
   context: OrderEditContext,
 ): EditModeTotals {
-  const itemsTotal = round2(cart.reduce((sum, line) => sum + line.subtotal, 0));
-  const newTotal = round2(
-    itemsTotal + context.deliveryFee + context.serviceChargeAmount,
-  );
+  const itemsTotal = itemsTotalOf(cart);
+  const newTotal = round2(itemsTotal + context.deliveryFee + context.carriedCharges);
 
   const balance = computeBalance(newTotal, context.payments);
 
