@@ -100,6 +100,10 @@ export interface PlatformOrderRow {
   delivery_fee: number | null;
   scheduled_for: string | null;
   client_order_id: string | null;
+  /** Bumped by every saved edit; the optimistic lock is checked against it. */
+  revision_number?: number | null;
+  /** Trigger-maintained cache of the `order_payments` ledger. */
+  amount_paid?: number | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -142,6 +146,14 @@ export interface OrderDto {
   deliveryFee?: number;
   scheduledFor?: string;
   clientOrderId?: string;
+  /**
+   * How many times this order has been edited. Always a number: the edit
+   * screen submits it as the optimistic lock, and an absent value there would
+   * read as revision 0 and refuse every edit after the first.
+   */
+  revisionNumber: number;
+  /** Net of the settlement ledger. 0 on an order billed but not yet paid. */
+  amountPaid: number;
 }
 
 export interface OrderWithItemsDto extends OrderDto {
@@ -265,6 +277,8 @@ export function toOrderDto(
     deliveryFee: row.delivery_fee === null ? undefined : toNumber(row.delivery_fee),
     scheduledFor: optional(row.scheduled_for),
     clientOrderId: optional(row.client_order_id),
+    revisionNumber: toNumber(row.revision_number),
+    amountPaid: toNumber(row.amount_paid),
   };
 }
 
