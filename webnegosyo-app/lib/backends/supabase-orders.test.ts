@@ -145,6 +145,73 @@ describe("toOrderDto", () => {
     // Assert
     expect(dto.itemCount).toBe(7);
   });
+
+  /**
+   * The edit screen feeds `revisionNumber` into the optimistic lock that
+   * protects a real customer's bill from two cashiers saving at once. If the
+   * read path drops the column, every edit submits revision 0 and the second
+   * save on any order is refused with a concurrency message that is false.
+   */
+  it("carries the revision number the optimistic lock is checked against", () => {
+    // Arrange
+    const row = orderRow({ revision_number: 2 });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.revisionNumber).toBe(2);
+  });
+
+  it("reads an order never edited as revision 0, not undefined", () => {
+    // Arrange: every order placed before the ledger migration.
+    const row = orderRow({ revision_number: null });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert: `undefined` would silently become 0 in the session anyway, but
+    // only after the screen had already rendered a blank "revision —".
+    expect(dto.revisionNumber).toBe(0);
+  });
+
+  /**
+   * `amount_paid` is the trigger-maintained cache of the settlement ledger.
+   * Without it the edit screen cannot show "was / now / still owing" before the
+   * ledger query resolves.
+   */
+  it("carries the amount already paid", () => {
+    // Arrange
+    const row = orderRow({ amount_paid: 110 });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.amountPaid).toBe(110);
+  });
+
+  it("coerces amount_paid from the string PostgREST returns for numeric", () => {
+    // Arrange
+    const row = orderRow({ amount_paid: "110.50" as unknown as number });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.amountPaid).toBe(110.5);
+  });
+
+  it("reads an unpaid order as 0 paid, so it is never mistaken for settled", () => {
+    // Arrange
+    const row = orderRow({ amount_paid: null });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.amountPaid).toBe(0);
+  });
 });
 
 describe("toOrderItemDto", () => {
