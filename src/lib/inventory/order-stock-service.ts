@@ -233,21 +233,27 @@ export async function reverseOrderStockMovements(
 ): Promise<OrderStockResult> {
   const supabase = createAdminClient()
 
-  const { data: saleRows, error: saleError } = await supabase
+  // EVERY movement this order recorded, not just its sale.
+  //
+  // Filtering to `sale` was correct exactly as long as a sale was the only
+  // thing an order could record. Order editing broke that: an edit that removes
+  // an item writes a `void` correction putting those ingredients back while the
+  // order is still live, so reversing the sale rows alone gives back stock that
+  // was already given back — inventing inventory that never existed.
+  const { data: movementRows, error: movementError } = await supabase
     .from('stock_movements')
     .select('inventory_item_id, quantity_delta, entered_quantity, entered_unit_id')
     .eq('tenant_id', tenantId)
     .eq('order_id', orderId)
-    .eq('reason', 'sale')
-  if (saleError) throw saleError
+  if (movementError) throw movementError
 
-  const sales = (saleRows ?? []) as unknown as Array<{
+  const movements = (movementRows ?? []) as unknown as Array<{
     inventory_item_id: string
     quantity_delta: number
     entered_quantity: number | null
     entered_unit_id: string | null
   }>
-  if (sales.length === 0) return EMPTY_RESULT
+  if (movements.length === 0) return EMPTY_RESULT
 
   // Same claim, opposite direction: cancelling twice would put the stock back
   // twice. The database refuses the second caller; the SELECT this replaces let
@@ -264,20 +270,52 @@ export async function reverseOrderStockMovements(
     .from('inventory_items')
     .select('*')
     .eq('tenant_id', tenantId)
-    .in('id', [...new Set(sales.map((s) => s.inventory_item_id))])
+    .in('id', [...new Set(movements.map((m) => m.inventory_item_id))])
   const inventoryItems = (itemRows ?? []) as unknown as InventoryItem[]
 
-  const rows = sales.map((sale) => ({
-    tenant_id: tenantId,
-    inventory_item_id: sale.inventory_item_id,
-    reason: 'void' as const,
-    quantity_delta: -sale.quantity_delta,
-    // Carried across so the reversal reads "0.6 kg returned", matching the
-    // sale's audit trail rather than showing a bare converted number.
-    entered_quantity: sale.entered_quantity,
-    entered_unit_id: sale.entered_unit_id,
-    order_id: orderId,
-  }))
+  // Netted per ingredient AND entered unit. Grouping on the unit too keeps the
+  // audit value coherent: the same ingredient can be recorded in grams by a
+  // base recipe and kilograms by an addon, and summing those into one
+  // `entered_quantity` would print a number that means nothing.
+  const netted = new Map<
+    string,
+    { inventoryItemId: string; enteredUnitId: string | null; delta: number; entered: number }
+  >()
+
+  for (const movement of movements) {
+    const key = `${movement.inventory_item_id}|${movement.entered_unit_id ?? ''}`
+    const existing = netted.get(key)
+    // `entered_quantity` is stored unsigned — the reason carries the direction —
+    // so it has to be signed by its own movement before it can be netted.
+    // Summing the raw magnitudes would report 800 g entered for a 400 g net.
+    const enteredSigned =
+      (movement.entered_quantity ?? 0) * Math.sign(movement.quantity_delta)
+
+    netted.set(key, {
+      inventoryItemId: movement.inventory_item_id,
+      enteredUnitId: movement.entered_unit_id,
+      delta: (existing?.delta ?? 0) + movement.quantity_delta,
+      entered: (existing?.entered ?? 0) + enteredSigned,
+    })
+  }
+
+  const rows = [...netted.values()]
+    // An ingredient an edit already returned in full has nothing left to give
+    // back, and a zero-delta ledger row reads as a real event that never was.
+    .filter((entry) => entry.delta !== 0)
+    .map((entry) => ({
+      tenant_id: tenantId,
+      inventory_item_id: entry.inventoryItemId,
+      reason: 'void' as const,
+      quantity_delta: -entry.delta,
+      // Carried across so the reversal reads "0.6 kg returned", matching the
+      // sale's audit trail rather than showing a bare converted number.
+      entered_quantity: entry.entered === 0 ? null : Math.abs(entry.entered),
+      entered_unit_id: entry.enteredUnitId,
+      order_id: orderId,
+    }))
+
+  if (rows.length === 0) return EMPTY_RESULT
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
   if (insertError) {
