@@ -11,14 +11,20 @@ import { getRecipeCoverage } from '@/lib/inventory/recipe-coverage-read'
 import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
 import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
+import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
+import { resolveReportDay } from '@/lib/inventory/business-day'
+import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminInventoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenant: string }>
+  searchParams: Promise<{ tab?: string; day?: string }>
 }) {
   const { tenant: tenantSlug } = await params
+  const { tab, day } = await searchParams
 
   const tenantData = await getCachedTenantBySlug(tenantSlug)
   if (!tenantData) {
@@ -65,6 +71,18 @@ export default async function AdminInventoryPage({
     },
   })
 
+  // The report reconciles one Manila day: what the trade took off the shelf and
+  // what it cost. A failure here must not take the rest of inventory down with
+  // it — the tab simply does not appear, which is honest about having no
+  // figures rather than showing a day that looks empty.
+  const { dayKey, latestDayKey } = resolveReportDay(day, new Date().toISOString())
+  let dailyReport: DailyInventoryReportForDay | undefined
+  try {
+    dailyReport = await getDailyInventoryReport(tenant.id, dayKey)
+  } catch (error) {
+    console.error('[inventory] daily report read failed', { tenantId: tenant.id, dayKey, error })
+  }
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -94,6 +112,9 @@ export default async function AdminInventoryPage({
         autoHidden={autoHidden}
         activity={activity.entries}
         activityLoadFailed={activity.loadFailed}
+        dailyReport={dailyReport}
+        latestDayKey={latestDayKey}
+        defaultTab={tab}
       />
     </div>
   )

@@ -85,3 +85,50 @@ export function previousBusinessDayKey(dayKey: string): string {
   const previous = Date.parse(`${dayKey}T00:00:00.000Z`) - MILLISECONDS_PER_DAY
   return new Date(previous).toISOString().slice(0, 10)
 }
+
+export interface ReportDaySelection {
+  /** The day to report on. */
+  dayKey: string
+  /** The most recent day worth offering — today, in Manila. */
+  latestDayKey: string
+}
+
+function isRealDayKey(value: string): boolean {
+  if (!DAY_KEY_PATTERN.test(value)) return false
+
+  // `Date.parse` accepts "2026-13-45" on some engines by rolling over, so the
+  // round-trip is what actually rejects an impossible date.
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+/**
+ * Which day the report should show, given an untrusted `?day=` and the clock.
+ *
+ * The day arrives from a URL, so it can be hand-edited, stale, or nonsense. A
+ * report is a read: a bad query string is a reason to show a sensible day, not
+ * to fail the whole inventory page.
+ *
+ * Defaults to YESTERDAY. Today is always mid-service — half its trade has not
+ * happened yet — so it always reads short, and a figure that always looks short
+ * teaches a merchant to ignore it. Today can still be asked for deliberately.
+ *
+ * A future day is refused rather than shown empty: an empty future report is
+ * indistinguishable from a day whose data went missing.
+ */
+export function resolveReportDay(
+  requestedDay: string | undefined,
+  nowIso: string,
+): ReportDaySelection {
+  const latestDayKey = toBusinessDayKey(nowIso)
+  const fallback = previousBusinessDayKey(latestDayKey)
+
+  if (!requestedDay || !isRealDayKey(requestedDay)) {
+    return { dayKey: fallback, latestDayKey }
+  }
+
+  return {
+    dayKey: requestedDay > latestDayKey ? latestDayKey : requestedDay,
+    latestDayKey,
+  }
+}

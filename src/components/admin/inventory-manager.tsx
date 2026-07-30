@@ -27,6 +27,8 @@ import {
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { RecipeWorkbench } from '@/components/admin/recipe-workbench'
 import { InventoryOverview } from '@/components/admin/inventory-overview'
+import { DailyReportPanel } from '@/components/admin/daily-report-panel'
+import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import type { InventoryHealth } from '@/lib/inventory/inventory-health'
 import type { AutoHiddenDish } from '@/lib/inventory/auto-86-blame'
@@ -106,9 +108,26 @@ interface InventoryManagerProps {
   activity?: ActivityFeedEntry[]
   /** The ledger read failed — distinct from a quiet day with nothing in it. */
   activityLoadFailed?: boolean
+  /**
+   * One reconciled Manila day. Optional so the surface degrades to the tabs
+   * that were always here rather than showing an empty Reports tab, which
+   * would read as a day with no trade.
+   */
+  dailyReport?: DailyInventoryReportForDay
+  /** Today, in Manila. Passed in so the render stays deterministic. */
+  latestDayKey?: string
+  /** Which tab the URL asked for; an unknown value falls back to the default. */
+  defaultTab?: string
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
+
+/** Literal class names, because Tailwind cannot see an interpolated one. */
+const TAB_GRID_COLUMNS: Record<number, string> = {
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+  5: 'grid-cols-5',
+}
 
 export function InventoryManager({
   tenantId,
@@ -123,19 +142,46 @@ export function InventoryManager({
   autoHidden = [],
   activity = [],
   activityLoadFailed = false,
+  dailyReport,
+  latestDayKey,
+  defaultTab,
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
 
+  const canShowReport = Boolean(dailyReport && latestDayKey)
+
+  // Overview leads by default: "what is happening?" is the question a merchant
+  // arrives with. The URL can override it, because the report's day links carry
+  // their tab — without that, stepping a day would land back here and read as a
+  // broken link. An unknown tab falls back rather than opening nothing.
+  const availableTabs = [
+    ...(health ? ['overview'] : []),
+    'ingredients',
+    'recipes',
+    'units',
+    ...(canShowReport ? ['reports'] : []),
+  ]
+  const initialTab =
+    defaultTab && availableTabs.includes(defaultTab)
+      ? defaultTab
+      : health
+        ? 'overview'
+        : 'ingredients'
+
   return (
-    // Overview leads, and is the default: "what is happening?" is the question a
-    // merchant arrives with, and it was the one tab the page did not have.
-    <Tabs defaultValue={health ? 'overview' : 'ingredients'}>
-      <TabsList className={cn('grid w-full max-w-md', health ? 'grid-cols-4' : 'grid-cols-3')}>
+    <Tabs defaultValue={initialTab}>
+      {/*
+        The column count is looked up, never interpolated — Tailwind scans for
+        literal class names, so a `grid-cols-${n}` template compiles to nothing
+        and the tabs stack.
+      */}
+      <TabsList className={cn('grid w-full max-w-xl', TAB_GRID_COLUMNS[availableTabs.length])}>
         {health && <TabsTrigger value="overview">Overview</TabsTrigger>}
         <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
         <TabsTrigger value="recipes">Recipes</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
+        {canShowReport && <TabsTrigger value="reports">Reports</TabsTrigger>}
       </TabsList>
 
       {health && (
@@ -179,6 +225,16 @@ export function InventoryManager({
           onChange={setUnits}
         />
       </TabsContent>
+
+      {dailyReport && latestDayKey && (
+        <TabsContent value="reports" className="pt-4">
+          <DailyReportPanel
+            tenantSlug={tenantSlug}
+            report={dailyReport}
+            latestDayKey={latestDayKey}
+          />
+        </TabsContent>
+      )}
     </Tabs>
   )
 }
