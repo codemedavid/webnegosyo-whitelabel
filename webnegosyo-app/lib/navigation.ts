@@ -24,3 +24,15 @@ export const NEW_PRODUCT_ID = "new" as const;
 export function productHref(productId: string): `/(main)/product/${string}` {
   return `/(main)/product/${encodeURIComponent(productId)}`;
 }
+
+/** Sentinel methodId that puts the payment method editor into create mode. */
+export const NEW_PAYMENT_METHOD_ID = "new" as const;
+
+/**
+ * Build the href for the payment method editor screen.
+ *
+ * @param methodId an existing method id, or {@link NEW_PAYMENT_METHOD_ID}.
+ */
+export function paymentMethodHref(methodId: string): `/(main)/payment/${string}` {
+  return `/(main)/payment/${encodeURIComponent(methodId)}`;
+}

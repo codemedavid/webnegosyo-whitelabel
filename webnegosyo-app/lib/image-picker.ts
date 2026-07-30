@@ -32,6 +32,9 @@ const DEFAULT_MIME_TYPE = "image/jpeg";
  */
 export const LOGO_FILE_NAME = "logo.jpg";
 
+/** Fallback name for a payment QR the picker did not name. */
+export const QR_FILE_NAME = "payment-qr.jpg";
+
 /**
  * True when `error` is the "native module not linked" failure raised by
  * expo-modules-core (e.g. the picker's native side isn't in this build).
@@ -116,4 +119,12 @@ export function pickProductImage(): Promise<PickImageOutcome> {
  */
 export function pickLogoImage(): Promise<PickImageOutcome> {
   return pickImage([1, 1], LOGO_FILE_NAME);
+}
+
+/**
+ * Pick a payment QR code. Crops square because a QR is square — cropping it to
+ * 4:3 would clip a corner marker and leave a code nothing can scan.
+ */
+export function pickQrImage(): Promise<PickImageOutcome> {
+  return pickImage([1, 1], QR_FILE_NAME);
 }

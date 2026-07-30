@@ -54,7 +54,9 @@ export const WORKSPACES: readonly Workspace[] = [
     description: "Menu performance, product management, and stock",
     // Inventory belongs beside the products it is spent on: the merchant who
     // 86s an item and the merchant who reorders its flour are the same person.
-    tabs: ["product-analytics", "product-management", "inventory"],
+    // How the merchant gets paid sits beside what they sell: both are the
+    // storefront's setup, and neither is a view of a shift.
+    tabs: ["product-analytics", "product-management", "inventory", "payments"],
     defaultTab: "product-analytics",
   },
   {

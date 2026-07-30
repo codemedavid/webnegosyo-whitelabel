@@ -72,6 +72,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   "product-management": "menu",
   // Reordering an ingredient is a menu decision, so it rides the same key.
   inventory: "menu",
+  // Where the store's money lands is store setup, not a shift task. An
+  // unmapped tab defaults to allowed, which would let any cashier retire the
+  // merchant's GCash account mid-service.
+  payments: "store_setup",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

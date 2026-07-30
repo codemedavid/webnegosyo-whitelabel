@@ -183,6 +183,15 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="payments"
+        options={{
+          href: show("payments"),
+          title: "Payment Methods",
+          tabBarLabel: "Payments",
+          tabBarIcon: ({ color }) => <TabIcon symbol="₱" color={color} />,
+        }}
+      />
       {/* Business view */}
       <Tabs.Screen
         name="portfolio"
@@ -206,6 +215,10 @@ export default function MainLayout() {
       <Tabs.Screen
         name="product/[productId]"
         options={{ href: null, title: "Product" }}
+      />
+      <Tabs.Screen
+        name="payment/[methodId]"
+        options={{ href: null, title: "Payment Method" }}
       />
       <Tabs.Screen
         name="scan"

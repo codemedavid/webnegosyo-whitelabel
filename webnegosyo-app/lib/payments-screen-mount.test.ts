@@ -20,6 +20,18 @@ function read(...segments: string[]): string {
   return readFileSync(join(ROOT, ...segments), "utf8");
 }
 
+/**
+ * The same source with comments stripped, for asserting that a call is absent.
+ * Explaining in prose why `router.replace` is wrong here is exactly what a
+ * screen should do, and a whole-file regex cannot tell that apart from making
+ * the call.
+ */
+function readCode(...segments: string[]): string {
+  return read(...segments)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+}
+
 describe("payments tab registration", () => {
   it("belongs to the Products view, beside the rest of store setup", () => {
     expect(workspaceForTab("payments")).toBe("products");
@@ -139,6 +151,8 @@ describe("payment method editor screen", () => {
     // router.replace inside the (main) tab tree renames its state key and
     // remounts it, crashing with "Cannot read property 'stale' of undefined".
     expect(screen()).toMatch(/goTo\(router,/);
-    expect(screen()).not.toMatch(/router\.replace/);
+    expect(readCode("app", "(main)", "payment", "[methodId].tsx")).not.toMatch(
+      /router\.replace/,
+    );
   });
 });
