@@ -2,6 +2,7 @@ import {
   assertRevisable,
   priceRevisedItems,
   computeRevisedTotal,
+  countRevisedItems,
   normalizePaymentAmount,
   netAmountPaid,
   type RevisableOrderLike,
@@ -216,6 +217,20 @@ describe("computeRevisedTotal", () => {
 
     // Act + Assert
     expect(computeRevisedTotal(priced)).toBe(0.3);
+  });
+});
+
+describe("countRevisedItems", () => {
+  it("counts units, not lines", () => {
+    // Arrange: `itemCount` drives the "3 items" badge on every order list. It
+    // has to follow the edit, or the queue keeps showing the pre-edit count.
+    const priced = priceRevisedItems([
+      item({ quantity: 2 }),
+      item({ menuItemId: "menu-2", quantity: 3 }),
+    ]);
+
+    // Act + Assert
+    expect(countRevisedItems(priced)).toBe(5);
   });
 });
 
