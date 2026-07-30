@@ -636,16 +636,101 @@ present in no commit of this sequence and not touched by this work.
 - `formatFoodCostPercent` now delegates to a general `formatPercent` so the two
   percentages on the screen cannot render differently.
 
+## Phase 4a SHIPPED 2026-07-30 — the merchant app's copy, drift-guarded
+
+The app cannot import the web app's `src/`, so the pure core is **copied** into
+`webnegosyo-app/lib/daily-report/`. Copies rot — this repo already carries three
+hand-synced copies of the staff-permission registry — and a report that graded a
+day differently on the phone than on the web would leave a merchant holding two
+verdicts about one day with no way to choose.
+
+So the guardrail is mechanical, not a matter of care: **every ported module must
+be textually identical to its web original**, ignoring only `import` lines
+(`@/lib/inventory/x` here being `./x`). Five modules are ported:
+`business-day`, `daily-report`, `daily-report-view`, `food-cost`,
+`variance-verdict`.
+
+### RED → GREEN
+
+| Cycle | RED | GREEN |
+|---|---|---|
+| 1 — port + parity guardrail | `84cc11c` — compile-time RED, all five modules and `./movement-reason` unresolvable, `Tests: 0 total` | (with cycle 2's port commit) `Tests: 11 passed, 11 total` |
+| 2 — the read layer | `e958db4` — `Cannot find module './daily-report-service'`, `Tests: 0 total` | `fb063d0` — `Tests: 8 passed, 8 total` |
+
+**The guardrail was proven to bite.** Changing `GOOD_MAX_PERCENT` from `2` to
+`3` in the app copy alone produced:
+
+```
+✕ variance-verdict.ts has not drifted from src/lib/inventory
+Tests: 1 failed, 10 passed, 11 total
+```
+
+The change was reverted and green re-confirmed. A drift guard that cannot fail
+is worthless, so this check is part of the evidence rather than an assumption.
+
+**Validation after GREEN**
+
+```
+webnegosyo-app$ npx jest
+Test Suites: 90 passed, 90 total
+Tests:       1469 passed, 1469 total
+
+$ npx jest --testPathPatterns="inventory"     # web, unchanged
+Test Suites: 1 skipped, 59 passed, 59 of 60 total
+Tests:       8 skipped, 615 passed, 623 total
+```
+
+`npx tsc --noEmit -p webnegosyo-app/tsconfig.json` reported nothing under
+`lib/daily-report`.
+
+### Guarantees added (117–135)
+
+| # | What is guaranteed | Test | Type |
+|---|---|---|---|
+| 117–121 | Each of the five ported modules is textually identical to its web original, imports aside | `webnegosyo-app/lib/daily-report/parity.test.ts` (`test.each`) | unit |
+| 122 | The app's movement-reason union matches the web ledger's `StockMovementReason` exactly — including `sale` and `void` | `…:covers every reason the web ledger can write` | unit |
+| 123–127 | The ported core runs: reconciles a day, grades one, refuses a recipe-less one, omits food cost on unknown takings, uses the Manila day | `…the ported core actually runs` ×5 | unit |
+| 128 | The read reconciles through the shared core | `daily-report-service.test.ts:reconciles the day` | unit |
+| 129 | It asks for the half-open **Manila** window | `…:asks for the half-open Manila window` | unit |
+| 130 | Every one of the three reads is tenant-scoped | `…:scopes every read to the tenant` | unit |
+| 131 | An empty tenant returns null **without querying at all** | `…:returns null without querying` | unit |
+| 132–133 | An unreadable ledger or ingredient list returns `null`, never an empty report | `…` ×2 | unit |
+| 134 | An unreadable unit catalog costs the suffix, not the day's figures | `…:survives an unreadable unit catalog` | unit |
+| 135 | A nonsense day returns `null` rather than throwing | `…:returns null rather than throwing` | unit |
+
+### Decisions worth not re-deriving
+
+- **Parity is asserted on the TEXT, not on behaviour.** Behavioural mirroring
+  would need the whole web suite duplicated; comparing sources catches drift the
+  moment it is written, and the five smoke tests confirm the copies are wired
+  rather than merely present.
+- **`null`, never an empty report.** An empty report reads as "nothing moved
+  today", which on a phone with a poor connection is the most misleading thing
+  the screen could say. Same reasoning as `null`-not-`0` in Phase 2.
+- **`movement-reason.ts` is app-local and deliberately NOT reused from
+  `lib/inventory-movement.ts`**, whose `ManualMovementReason` lists only the
+  three a merchant types by hand. A report blind to `sale` and `void` would show
+  a day of pure deliveries and grade it immaculate. Guarantee 122 locks it to
+  the web ledger.
+- **An unreadable unit catalog degrades to a missing suffix**, matching
+  `loadInventoryStock` — the numbers matter more than the "g".
+- The test mocks `./supabase` at module scope because the real client imports
+  `expo-constants`, which this jest setup cannot transform. Established pattern
+  from `inventory-service.test.ts`.
+
 ## Still not built
 
-**Phase 3b — `inventory_counts` session table.** NOT built, deliberately: the
-verdict above needed no migration, and shipping the judgement first means the
-count-session UI can be designed against a screen that exists. It remains the
-first intended writer of `stock_movements.created_by`, which still has **zero
-writers**, so "who counted this" is unanswerable today.
+**Phase 4b — the app SCREEN.** The read and the core are in place and tested;
+nothing renders them yet, so no merchant sees a report on their phone. This is
+the same gap Phase 1b left on the web, and it is the next thing worth building.
+Follow `lib/inventory-screen-mount.test.ts` for the wiring guardrail (tab
+registration, tenant gate, no inline Supabase, no re-derived judgements).
 
-**Phase 4 — merchant-app read-only mirror**, following the
-`webnegosyo-app/lib/inventory-stock.ts` guardrail-test precedent.
+**Phase 3b — `inventory_counts` session table.** NOT built, deliberately: the
+verdict needed no migration, and the count-session UI is better designed against
+a screen that exists. It remains the first intended writer of
+`stock_movements.created_by`, which still has **zero writers**, so "who counted
+this" is unanswerable today.
 
 **Known gap:** `page.tsx` wiring remains un-unit-tested (async server
 component), matching the Phase 1c precedent — the passthrough is covered at the
