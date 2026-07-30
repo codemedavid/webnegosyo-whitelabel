@@ -15,9 +15,15 @@ import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
+import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
+import { canEditOrder } from "../../../lib/order-edit-guards";
+import { useBranchScope } from "../../../lib/use-branch-scope";
+import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
+const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
 
@@ -333,6 +339,32 @@ export default function OrderDetailScreen() {
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { printOrder, autoPrint, hasPrinter } = useOrderPrint();
 
+  // The settlement ledger. A backend that cannot serve these refs reports an
+  // error rather than an empty list — which is the point: an empty ledger and
+  // an unavailable one must not look alike, because one of them means "already
+  // paid". On error the cards are hidden entirely rather than shown as unpaid.
+  const { data: payments, error: paymentsError } = useSafeQuery<OrderPaymentLike[]>(
+    getOrderPaymentsRef,
+    orderId ? { orderId } : "skip",
+  );
+  const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(
+    getOrderRevisionsRef,
+    orderId ? { orderId } : "skip",
+  );
+
+  const scope = useBranchScope();
+  const { isOwner, permissions, role, orderBackend, isDemo } = useAuthStore();
+
+  const editGate = order
+    ? canEditOrder({
+        status: order.status,
+        backend: orderBackend ?? "convex",
+        user: { role, isOwner, permissions },
+        scope,
+        order,
+      })
+    : { allowed: false as const };
+
   const itemImageIds = (order?.items ?? [])
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
@@ -527,8 +559,39 @@ export default function OrderDetailScreen() {
         );
       })()}
 
+      <SettlementCard
+        total={order.total}
+        payments={payments ?? []}
+        isLedgerAvailable={!paymentsError}
+      />
+
+      <RevisionHistoryCard revisions={revisions ?? []} />
+
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
         <View style={styles.actions}>
+          {/*
+            The gate's refusal is rendered verbatim rather than hiding the
+            button: a cashier who cannot see why editing is unavailable calls
+            support, and the reasons are written to be acted on ("ask a manager",
+            "this order belongs to another branch").
+          */}
+          {editGate.allowed ? (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                if (isDemo) {
+                  Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+                  return;
+                }
+                router.push(`/(main)/order/${order._id}/edit`);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.editButtonText}>Edit Order</Text>
+            </TouchableOpacity>
+          ) : editGate.reason ? (
+            <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+          ) : null}
           {nextStatus && (
             <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
               <Text style={styles.primaryActionText}>
@@ -593,6 +656,20 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  editButton: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  editButtonText: { color: colors.textPrimary, ...typography.body, fontWeight: "700" },
+  editBlockedText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: spacing.md,
+  },
   reprintButton: {
     borderWidth: 1,
     borderColor: colors.primary,
