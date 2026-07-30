@@ -138,6 +138,11 @@ export default function PosScreen() {
     [lines, editContext],
   );
 
+  // The register rings up the branch it belongs to. A store-wide account (the
+  // owner, a single-location merchant) gets the store-wide menu, exactly as
+  // before per-branch pricing existed.
+  const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
+
   useEffect(() => {
     if (!tenantId) return;
     let cancelled = false;
@@ -147,7 +152,7 @@ export default function PosScreen() {
       setLoadError(null);
       try {
         const [products, cats, types] = await Promise.all([
-          listProducts(id),
+          listProducts(id, registerOutletId),
           listCategories(id),
           listOrderTypes(id),
         ]);
@@ -181,7 +186,7 @@ export default function PosScreen() {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, setOrderType]);
+  }, [tenantId, setOrderType, registerOutletId]);
 
   // Returning from a completed sale must never show the previous cart's state.
   useFocusEffect(

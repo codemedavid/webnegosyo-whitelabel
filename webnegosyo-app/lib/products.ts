@@ -1,5 +1,10 @@
 import { supabase } from "./supabase";
 import {
+  buildOutletMenuIndex,
+  resolveMenuForOutlet,
+  type OutletMenuOverrideRow,
+} from "./outlet-menu-overrides";
+import {
   normalizeModifierGroups,
   splitGroupsToLegacyColumns,
   type ModifierGroup,
@@ -196,7 +201,20 @@ function toMenuItemRow(input: ProductInput): Record<string, unknown> {
   return { ...input, ...splitGroupsToLegacyColumns(input.modifier_groups) };
 }
 
-export async function listProducts(tenantId: string): Promise<Product[]> {
+/**
+ * The store's products, priced for one branch when the register belongs to one.
+ *
+ * Without `outletId` this is the store-wide menu, which is what a
+ * single-location merchant has always seen. With it, the list is exactly what
+ * that branch sells: dishes it does not carry are gone, its prices are its own,
+ * and anything it has run out of comes back marked unavailable rather than
+ * missing — so the cashier sees a greyed-out tile instead of wondering where a
+ * dish went.
+ */
+export async function listProducts(
+  tenantId: string,
+  outletId?: string | null,
+): Promise<Product[]> {
   const { data, error } = await supabase
     .from("menu_items")
     .select("*, category:categories(*)")
@@ -204,7 +222,25 @@ export async function listProducts(tenantId: string): Promise<Product[]> {
     .order("order", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as unknown as Product[];
+  const products = (data ?? []) as unknown as Product[];
+
+  if (!outletId) return products;
+
+  const { data: overrideRows, error: overrideError } = await supabase
+    .from("outlet_menu_items")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("outlet_id", outletId);
+
+  // Not swallowed: an empty override set is the claim "this branch sells at the
+  // store-wide price", which after a failed query rings up the wrong money.
+  if (overrideError) throw overrideError;
+
+  const index = buildOutletMenuIndex(
+    (overrideRows ?? []) as unknown as OutletMenuOverrideRow[],
+  );
+
+  return resolveMenuForOutlet(products, index, outletId) as Product[];
 }
 
 export async function createProduct(
