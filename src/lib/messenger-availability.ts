@@ -33,19 +33,37 @@ export const FINAL_SUBMIT_LABEL = {
   complete: 'Complete Order',
 } as const
 
+/**
+ * A kiosk overrides both flags. A counter tablet has no customer Facebook
+ * account to hand off to, so opening Messenger there strands the queue on a
+ * logged-out login page — or on the previous customer's inbox.
+ *
+ * Optional so callers that have nothing to do with kiosks (the admin order-type
+ * screen) keep their current behavior with no argument at all.
+ */
+export interface MessengerContext {
+  isKiosk?: boolean
+}
+
 /** Whether the selected order type uses Messenger. Unset → enabled. */
 export function isMessengerEnabledForOrderType(
-  orderType: MessengerOrderTypeConfig | null | undefined
+  orderType: MessengerOrderTypeConfig | null | undefined,
+  context?: MessengerContext
 ): boolean {
+  if (context?.isKiosk) return false
   return orderType?.messenger_enabled !== false
 }
 
 /** Auto-redirect requires BOTH the tenant switch and the order type to allow Messenger. */
 export function isMessengerRedirectEnabledForOrderType(
   tenant: MessengerTenantConfig | null | undefined,
-  orderType: MessengerOrderTypeConfig | null | undefined
+  orderType: MessengerOrderTypeConfig | null | undefined,
+  context?: MessengerContext
 ): boolean {
-  return tenant?.messenger_redirect_enabled !== false && isMessengerEnabledForOrderType(orderType)
+  return (
+    tenant?.messenger_redirect_enabled !== false &&
+    isMessengerEnabledForOrderType(orderType, context)
+  )
 }
 
 /** Label for the primary checkout CTA. */
