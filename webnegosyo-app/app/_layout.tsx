@@ -23,6 +23,7 @@ import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
 import {
   shouldRegisterPushToken,
+  pushRegistrationOutletId,
   pushTokenCleanup,
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
@@ -208,6 +209,9 @@ function usePushNotifications() {
       convexUrl,
       isSuperadmin,
       impersonatedTenantId,
+      // The account's branch, read fresh rather than subscribed: this effect
+      // only re-runs on the deps below, and the branch is fixed for a session.
+      outletId: useAuthStore.getState().outletId,
     };
 
     // A superadmin viewing someone else's store is a spectator: never subscribe
@@ -250,6 +254,9 @@ function usePushNotifications() {
                 userId,
                 token,
                 platform: Platform.OS === "ios" ? "ios" : "android",
+                // Binds this device to its branch so it is only rung for that
+                // branch's orders. Omitted for an owner, who hears every one.
+                outletId: pushRegistrationOutletId(session),
               },
               format: "json",
             }),

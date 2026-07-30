@@ -20,6 +20,13 @@ export interface PushRegistrationState {
   isSuperadmin: boolean;
   /** Set while a superadmin is viewing someone else's store. */
   impersonatedTenantId: string | null;
+  /**
+   * The branch this *account* is confined to; null for an owner.
+   *
+   * Deliberately the account scope, not the branch an owner is currently
+   * viewing — see `pushRegistrationOutletId`.
+   */
+  outletId?: string | null;
 }
 
 /** A deployment to unregister this device from, or null when there is nothing to do. */
@@ -43,6 +50,28 @@ export function shouldRegisterPushToken(state: PushRegistrationState): boolean {
   if (!state.isAuthenticated) return false;
   if (!state.userId || !state.convexUrl) return false;
   return !isImpersonating(state);
+}
+
+/**
+ * The branch to register this device under, or undefined for store-wide.
+ *
+ * The backend rings only the devices bound to an order's branch, so this decides
+ * what the phone hears. Two things make the *account* scope the right source:
+ *
+ * - A token outlives the screen that wrote it. Registering under the branch an
+ *   owner happened to be viewing would leave them deaf to every other branch
+ *   after they backed out of it — a silent failure they could not diagnose.
+ * - It is the same boundary `session-resolve` derives the session from, so a
+ *   manager's alerts and a manager's order list can never disagree.
+ *
+ * Undefined rather than null: it is sent as a Convex mutation argument, and an
+ * absent optional is the encoding for "no branch".
+ */
+export function pushRegistrationOutletId(
+  state: PushRegistrationState
+): string | undefined {
+  const trimmed = typeof state.outletId === "string" ? state.outletId.trim() : "";
+  return trimmed === "" ? undefined : trimmed;
 }
 
 /**

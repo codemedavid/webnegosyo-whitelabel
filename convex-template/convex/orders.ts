@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { localDayStartMs } from "./time";
+import { orderOutletIdFromCustomerData } from "./pushRecipients";
 
 // --- MUTATIONS ---
 
@@ -105,11 +106,14 @@ export const createOrder = mutation({
 
     // Send push notification to admin devices for every new order — pickup,
     // delivery, online, or counter — so nothing slips through silently.
+    // Scoped to the order's branch when it has one: a multi-branch store used
+    // to wake every branch for every sale.
     await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
       customerName: args.customerName,
       total: args.total,
       itemCount: args.itemCount,
       orderId: orderId,
+      outletId: orderOutletIdFromCustomerData(args.customerData) ?? undefined,
     });
 
     return orderId;

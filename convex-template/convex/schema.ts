@@ -153,6 +153,10 @@ export default defineSchema({
     userId: v.string(),
     token: v.string(),
     platform: v.union(v.literal("ios"), v.literal("android")),
+    // The branch this device belongs to. Absent means store-wide — an owner's
+    // device, or one registered by an app build that predates this field — and
+    // such a device hears every branch. See `pushRecipients.ts`.
+    outletId: v.optional(v.string()),
   })
     .index("by_user", ["userId"]),
 
