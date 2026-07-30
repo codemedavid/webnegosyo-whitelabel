@@ -16,6 +16,7 @@ import {
   resolveBusinessDayWindow,
   toBusinessDayKey,
   previousBusinessDayKey,
+  resolveReportDay,
 } from '@/lib/inventory/business-day'
 
 describe('resolveBusinessDayWindow', () => {
@@ -79,5 +80,50 @@ describe('previousBusinessDayKey', () => {
 
   test('steps across a year boundary', () => {
     expect(previousBusinessDayKey('2026-01-01')).toBe('2025-12-31')
+  })
+})
+
+/**
+ * Phase 1c — turning a URL into a day.
+ *
+ * The day arrives from `?day=` and is therefore untrusted. A hand-edited or
+ * stale URL must never take down the inventory page: the report is a read, and
+ * a bad query string is a reason to show a sensible day, not a 500.
+ */
+describe('resolveReportDay', () => {
+  const NOW = '2026-07-30T05:00:00.000Z' // 1pm Manila on the 30th
+
+  test('defaults to yesterday, because today is always mid-service', () => {
+    // Today always reads short — half its trade has not happened yet — and a
+    // report that always looks short trains a merchant to ignore it.
+    expect(resolveReportDay(undefined, NOW)).toEqual({
+      dayKey: '2026-07-29',
+      latestDayKey: '2026-07-30',
+    })
+  })
+
+  test('honours an explicit day', () => {
+    expect(resolveReportDay('2026-07-04', NOW).dayKey).toBe('2026-07-04')
+  })
+
+  test('allows today to be asked for deliberately', () => {
+    // Mid-service is a legitimate thing to look at, as long as it is chosen.
+    expect(resolveReportDay('2026-07-30', NOW).dayKey).toBe('2026-07-30')
+  })
+
+  test('falls back rather than throwing on a malformed day', () => {
+    // A bad URL must not break the page.
+    expect(resolveReportDay('not-a-date', NOW).dayKey).toBe('2026-07-29')
+    expect(resolveReportDay('2026-13-45', NOW).dayKey).toBe('2026-07-29')
+  })
+
+  test('refuses a day in the future, which could only ever be empty', () => {
+    // An empty future report is indistinguishable from a day that lost its data.
+    expect(resolveReportDay('2027-01-01', NOW).dayKey).toBe('2026-07-30')
+  })
+
+  test('treats late Manila evening as still today when choosing the default', () => {
+    // 11pm Manila on the 30th is 15:00 UTC on the 30th; yesterday is the 29th.
+    expect(resolveReportDay(undefined, '2026-07-30T15:00:00.000Z').dayKey).toBe('2026-07-29')
   })
 })
