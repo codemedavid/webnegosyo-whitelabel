@@ -14,6 +14,12 @@ export interface AdminSidebarFlags {
   convexConfigured?: boolean | null
   inventoryEnabled?: boolean | null
   multiBranchEnabled?: boolean | null
+  /**
+   * True when the signed-in account runs one branch rather than the store.
+   * Optional so every existing caller keeps today's behaviour: absent means
+   * store-wide, which is what every account meant before branches existed.
+   */
+  isBranchScopedAccount?: boolean | null
 }
 
 export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
@@ -33,7 +39,11 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
 
   if (!flags.bundlesEnabled) paths.add('/bundles')
   if (!flags.inventoryEnabled) paths.add('/inventory')
-  if (!flags.multiBranchEnabled) paths.add('/outlets')
+  // Branches is hidden both when the store has none and when the account runs
+  // only one of them: the section lists every branch the store has, which is
+  // not a manager's to read. The route is gated too (`isStoreWideAdminPath`);
+  // hiding the entry is what stops it being offered.
+  if (!flags.multiBranchEnabled || flags.isBranchScopedAccount) paths.add('/outlets')
 
   return paths
 }

@@ -142,12 +142,24 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
  * prefix), or null when the route is open to all staff.
  */
 export function permissionForAdminPath(pathname: string): StaffPermissionKey | null {
+  const section = adminSectionForPath(pathname)
+  if (section === null) return null
+  return ADMIN_SECTION_PERMISSIONS[section] ?? null
+}
+
+/**
+ * The admin section a pathname names (with or without a tenant prefix), or
+ * null when the path is not an admin section — the dashboard itself included.
+ *
+ * Exported because more than permissions are decided per section: the branch
+ * rules gate `outlets` the same way, and two copies of this parse could drift
+ * into gating different paths.
+ */
+export function adminSectionForPath(pathname: string): string | null {
   const segments = pathname.split('/').filter(Boolean)
   const adminIndex = segments.indexOf('admin')
   if (adminIndex === -1) return null
-  const section = segments[adminIndex + 1]
-  if (!section) return null
-  return ADMIN_SECTION_PERMISSIONS[section] ?? null
+  return segments[adminIndex + 1] ?? null
 }
 
 // Merchant mobile app tab routes (webnegosyo-app app/(main)/*) mapped to

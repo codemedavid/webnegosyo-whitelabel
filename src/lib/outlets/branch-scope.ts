@@ -18,6 +18,7 @@
  */
 
 import {
+  adminSectionForPath,
   hasPermission,
   type PermissionHolder,
   type StaffPermissionKey,
@@ -148,10 +149,51 @@ export function canManageBranchStaff(
  * policy, which is what actually stops a caller who skips the server action.
  */
 export function canManageOutlets(user: BranchScopedUser): boolean {
+  return isStoreWideAccount(user)
+}
+
+/**
+ * May this account see the store's branches at all — the directory, the
+ * comparison table, the nav entry that leads to them?
+ *
+ * The same store-wide test as `canManageOutlets`, deliberately: a manager who
+ * cannot rename South but can read its address, its opening hours and its
+ * takings has still been shown the shape of the company. Naming the two rules
+ * separately keeps the call sites honest about which one they are asking, and
+ * lets them diverge if reading a branch list ever becomes something a manager
+ * needs.
+ */
+export function canViewBranchDirectory(user: BranchScopedUser): boolean {
+  return isStoreWideAccount(user)
+}
+
+/**
+ * Whether the account runs the store rather than one of its branches.
+ *
+ * A blank id reads as store-wide, exactly as in `resolveBranchScope`: an
+ * account must not be store-wide for reads and branch-locked for writes.
+ */
+function isStoreWideAccount(user: BranchScopedUser): boolean {
   if (user.role === 'superadmin' || user.is_owner) return true
   if (user.role !== 'admin') return false
 
   return trimmed(user.outlet_id) === ''
+}
+
+/** Admin sections only a store-wide account may open. */
+const STORE_WIDE_ADMIN_SECTIONS: ReadonlySet<string> = new Set(['outlets'])
+
+/**
+ * Whether this admin pathname belongs to a section reserved for a store-wide
+ * account.
+ *
+ * Section-level, not page-level: `/admin/outlets/<id>` is as much another
+ * branch as the list it was linked from, and a gate that only knew the index
+ * would be one guessed URL from useless.
+ */
+export function isStoreWideAdminPath(pathname: string): boolean {
+  const section = adminSectionForPath(pathname)
+  return section !== null && STORE_WIDE_ADMIN_SECTIONS.has(section)
 }
 
 /** The branch fields needed to validate an assignment against the tenant. */

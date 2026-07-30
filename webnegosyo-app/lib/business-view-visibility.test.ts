@@ -77,15 +77,19 @@ describe("visibleWorkspaces", () => {
   });
 
   it("keeps honouring staff permissions", () => {
-    // Composition, not replacement: a cashier with only the POS grant keeps
-    // seeing only Register, branches or no branches.
+    // Composition, not replacement. A cashier with only the POS grant sees
+    // Register plus Operations — the dashboard is ungated for every staff
+    // member — and, branches or no branches, never Business.
     const cashier: StaffPermissionHolder = {
       role: "admin",
       isOwner: false,
       permissions: ["pos"],
     };
 
-    expect(keys(cashier, { accountScope: ALL, activeOutletCount: 3 })).toEqual(["register"]);
+    expect(keys(cashier, { accountScope: ALL, activeOutletCount: 3 })).toEqual([
+      "operations",
+      "register",
+    ]);
   });
 });
 
@@ -138,18 +142,21 @@ describe("activeWorkspace", () => {
     ).toBe("operations");
   });
 
-  it("falls back to the first view the account may see", () => {
-    // A cashier has no Operations either; the fallback must be a view that
-    // actually exists for them.
+  it("falls back to a view the account actually has, not a fixed one", () => {
+    // Operations survives every permission set today (the dashboard is
+    // ungated), so the fallback reads as "the first visible view" rather than
+    // as a hardcoded route — the distinction that keeps this correct if the
+    // dashboard ever becomes gated.
     const cashier: StaffPermissionHolder = {
       role: "admin",
       isOwner: false,
       permissions: ["pos"],
     };
+    const audience = { accountScope: ALL, activeOutletCount: 3 };
 
-    expect(
-      activeWorkspace("business", cashier, { accountScope: ALL, activeOutletCount: 3 }),
-    ).toBe("register");
+    expect(activeWorkspace("business", cashier, audience)).toBe(
+      visibleWorkspaces(cashier, audience)[0].key,
+    );
   });
 });
 

@@ -43,6 +43,8 @@ export default async function AdminLayout({
     tenant_id: string | null
     is_owner?: boolean | null
     permissions?: string[] | null
+    /** Absent when the row came through the pre-branch fallback projection. */
+    outlet_id?: string | null
   }
   const role = userRole as UserRoleType
   const isAuthorized =
@@ -61,6 +63,10 @@ export default async function AdminLayout({
         role: role.role,
         is_owner: role.is_owner ?? false,
         permissions: role.permissions ?? null,
+        // The branch this account is confined to, if any. Dropping it here is
+        // what let the Branches entry render for a manager: the read already
+        // returns the column, nothing downstream was given it.
+        outlet_id: role.outlet_id ?? null,
       }}
     >
       {children}

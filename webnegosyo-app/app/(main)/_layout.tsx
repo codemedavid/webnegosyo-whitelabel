@@ -6,6 +6,8 @@ import { useAuthStore } from "../../stores/auth-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { isTabInWorkspace } from "../../lib/workspaces";
 import { isTabAllowed } from "../../lib/staff-permissions";
+import { activeWorkspace, isBusinessTabVisible } from "../../lib/portfolio-landing";
+import { usePortfolioAudience } from "../../lib/use-portfolio-audience";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
@@ -51,13 +53,24 @@ export default function MainLayout() {
   // context rules validate selections against.
   useBranchLanding();
 
-  const workspace = useWorkspaceStore((s) => s.workspace);
+  const storedWorkspace = useWorkspaceStore((s) => s.workspace);
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
   const caller = { role, isOwner, permissions };
+  const audience = usePortfolioAudience();
+  // The stored view can outlive the right to see it, so it is resolved against
+  // what this account may actually see — otherwise a persisted "business"
+  // leaves a branch manager with an empty tab bar.
+  const workspace = activeWorkspace(storedWorkspace, caller, audience);
+  // Three gates: the active view owns the tab, the account's staff grants
+  // permit it, and — for the Business tabs — the account runs the store rather
+  // than one branch. A registered tab is reachable even when the switcher
+  // never named its view, so the branch rule has to be asked here too.
   const show = (tab: string) =>
-    isTabInWorkspace(tab, workspace) && isTabAllowed(caller, tab)
+    isTabInWorkspace(tab, workspace) &&
+    isTabAllowed(caller, tab) &&
+    isBusinessTabVisible(tab, audience)
       ? undefined
       : null;
 

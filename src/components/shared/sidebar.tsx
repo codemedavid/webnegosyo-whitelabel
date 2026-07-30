@@ -73,6 +73,7 @@ function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags) {
     convexConfigured,
     inventoryEnabled,
     multiBranchEnabled,
+    isBranchScopedAccount,
   } = flags
 
   const hiddenPaths = useMemo(
@@ -84,6 +85,7 @@ function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags) {
         convexConfigured,
         inventoryEnabled,
         multiBranchEnabled,
+        isBranchScopedAccount,
       }),
     [
       enableOrderManagement,
@@ -92,6 +94,7 @@ function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags) {
       convexConfigured,
       inventoryEnabled,
       multiBranchEnabled,
+      isBranchScopedAccount,
     ]
   )
 

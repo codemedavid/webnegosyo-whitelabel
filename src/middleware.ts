@@ -2,6 +2,12 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolveTenantSlugFromRequest } from '@/lib/tenant'
 import { hasPermission, permissionForAdminPath } from '@/lib/staff-permissions'
+import { canViewBranchDirectory, isStoreWideAdminPath } from '@/lib/outlets/branch-scope'
+import {
+  asAppUserQueryClient,
+  fetchAppUserScope,
+  type AppUserScopeRow,
+} from '@/lib/queries/fetch-app-user-scope'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -156,20 +162,12 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    // Verify user is admin of this specific tenant or superadmin
-    const { data: appUser } = await supabase
-      .from('app_users')
-      .select('role, tenant_id, is_owner, permissions')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    // Cast for TypeScript
-    const userRole = appUser as {
-      role: string
-      tenant_id: string | null
-      is_owner?: boolean | null
-      permissions?: string[] | null
-    } | null
+    // Verify user is admin of this specific tenant or superadmin.
+    // Read through the resilient helper: it adds the branch column this gate
+    // needs, and falls back to the pre-branch projection rather than 400ing
+    // every admin page if the migration is not applied yet.
+    const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+    const userRole: AppUserScopeRow | null = appUser
 
     // If superadmin, allow access to any tenant admin
     if (userRole?.role === 'superadmin') {
@@ -195,6 +193,14 @@ export async function middleware(request: NextRequest) {
         if (requiredPermission && !hasPermission(userRole, requiredPermission)) {
           url.pathname = `/${tenantSlug}/admin`
           url.searchParams.set('denied', requiredPermission)
+          return NextResponse.redirect(url)
+        }
+        // Sections that describe the whole store — the branch directory — are
+        // closed to an account that runs one branch. The nav entry is hidden
+        // too, but typing the URL must not be a way around it.
+        if (isStoreWideAdminPath(pathname) && !canViewBranchDirectory(userRole)) {
+          url.pathname = `/${tenantSlug}/admin`
+          url.searchParams.set('denied', 'branches')
           return NextResponse.redirect(url)
         }
         return supabaseResponse

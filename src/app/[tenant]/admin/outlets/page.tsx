@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug } from '@/lib/cache'
+import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { canViewBranchDirectory } from '@/lib/outlets/branch-scope'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { OutletsManager } from '@/components/admin/outlets-manager'
@@ -46,6 +47,14 @@ export default async function AdminOutletsPage({
   // tenant can never reach a half-configured branches surface — and nothing
   // here runs a query for them.
   if (!isMultiBranchEnabled(tenant)) {
+    notFound()
+  }
+
+  // This page names every branch the store has — addresses, hours, takings —
+  // so it is the owner's. Middleware already bounces a branch manager; this is
+  // the layer that does not depend on which request path reached the render.
+  const caller = await getCachedCurrentUserRole()
+  if (!caller || !canViewBranchDirectory(caller)) {
     notFound()
   }
 
