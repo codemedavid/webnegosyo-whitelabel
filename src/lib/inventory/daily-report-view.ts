@@ -56,6 +56,43 @@ export function formatQuantity(quantity: number, unitAbbreviation: string): stri
 }
 
 /**
+ * A food cost percentage.
+ *
+ * One decimal place: whole numbers read as rounded guesses, and two decimals
+ * imply a precision the underlying costs do not have. `toFixed` is used rather
+ * than any locale formatter, for the hydration reason at the top of this file.
+ */
+export function formatFoodCostPercent(percent: number): string {
+  return `${percent.toFixed(1)}%`
+}
+
+/**
+ * Why there is no food cost percentage, when there isn't one.
+ *
+ * Two causes that look identical in the data and mean opposite things: a day
+ * that genuinely sold nothing, and a day whose sales this report failed to
+ * fetch. The first is the merchant's own quiet day; the second is our fault and
+ * says nothing about the shop. Collapsing them into one message — or worse,
+ * into a "0%" — is exactly the failure this phase exists to avoid.
+ *
+ * Returns `null` when the day has sales and the percentage speaks for itself.
+ */
+export function describeRevenueCaveat(revenue: number | null): string | null {
+  if (revenue === null) {
+    return (
+      'Sales for this day could not be read, so the food cost percentage is not shown.' +
+      ' The stock figures below are unaffected.'
+    )
+  }
+
+  if (revenue <= 0) {
+    return 'No sales were recorded for this day, so there is nothing to compare the stock cost against.'
+  }
+
+  return null
+}
+
+/**
  * The day, named.
  *
  * The weekday is included because a merchant reasons in "last Saturday", not in
