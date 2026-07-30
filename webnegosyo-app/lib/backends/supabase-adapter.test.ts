@@ -128,10 +128,128 @@ describe("isPlatformRefSupported", () => {
     expect(isPlatformRefSupported("orders:recordPayment")).toBe(true);
   });
 
+  /**
+   * The write refs alone are not enough. An edit session opens with the
+   * settlement ledger, and a ref the adapter cannot serve reports unsupported —
+   * so on the platform backend the session would open with no payments, read a
+   * fully-paid order as unpaid, and ask the cashier to collect the whole bill a
+   * second time.
+   */
+  it("claims the ledger read refs the edit session opens with", () => {
+    expect(isPlatformRefSupported("orders:getOrderPayments")).toBe(true);
+    expect(isPlatformRefSupported("orders:getOrderRevisions")).toBe(true);
+  });
+
   it("does not claim refs it cannot serve yet", () => {
     // Analytics still lives only on Convex. Claiming it would make the screen
     // render an empty chart instead of its "needs a backend update" placeholder.
     expect(isPlatformRefSupported("analytics:getUpsellAnalytics")).toBe(false);
+  });
+});
+
+describe("runPlatformQuery — the settlement ledger", () => {
+  it("returns an order's payments oldest first, in the shape Convex returns", async () => {
+    // Arrange: the edit session consumes these through `computeBalance`, which
+    // reads camelCase `kind` and `amount`. A snake_case row would net to zero
+    // and read as an unpaid order.
+    const { client, calls } = fakeClient({
+      order_payments: [
+        {
+          data: [
+            {
+              id: "pay-1",
+              order_id: "order-1",
+              kind: "charge",
+              amount: "150.00",
+              payment_method_name: "GCash",
+              reference: "REF-9",
+              created_at: "2026-07-29T02:00:00.000Z",
+            },
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    // Act
+    const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderPayments", {
+      orderId: "order-1",
+    })) as Array<Record<string, unknown>>;
+
+    // Assert
+    expect(rows[0].kind).toBe("charge");
+    expect(rows[0].amount).toBe(150);
+    expect(rows[0].paymentMethodName).toBe("GCash");
+    expect(rows[0].reference).toBe("REF-9");
+    expect(opsOf(calls, "order")[0]).toEqual(["created_at", { ascending: true }]);
+  });
+
+  it("scopes the ledger to the caller's tenant and the asked-for order", async () => {
+    // Arrange: `order_payments` carries its own tenant_id, and a superadmin's
+    // RLS grant spans every tenant — an unscoped read would show another
+    // merchant's takings.
+    const { client, calls } = fakeClient({
+      order_payments: [{ data: [], error: null }],
+    });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" });
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+    expect(opsOf(calls, "eq")).toContainEqual(["order_id", "order-1"]);
+  });
+
+  it("surfaces a ledger error instead of reporting an order as unpaid", async () => {
+    // Arrange: this is the dangerous silent failure — an empty ledger and a
+    // failed read are indistinguishable, and one of them tells the cashier to
+    // collect a bill that was already paid.
+    const { client } = fakeClient({
+      order_payments: [{ data: null, error: { message: "permission denied" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" })
+    ).rejects.toThrow("permission denied");
+  });
+
+  it("returns revision history newest first, in the shape Convex returns", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      order_revisions: [
+        {
+          data: [
+            {
+              id: "rev-1",
+              order_id: "order-1",
+              revision_number: 2,
+              items_before: [],
+              items_after: [],
+              total_before: "250.00",
+              total_after: "370.00",
+              reason: "Customer added a drink",
+              revised_by: "staff-1",
+              created_at: "2026-07-29T02:00:00.000Z",
+            },
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    // Act
+    const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", {
+      orderId: "order-1",
+    })) as Array<Record<string, unknown>>;
+
+    // Assert
+    expect(rows[0].revisionNumber).toBe(2);
+    expect(rows[0].totalBefore).toBe(250);
+    expect(rows[0].totalAfter).toBe(370);
+    expect(rows[0].reason).toBe("Customer added a drink");
+    expect(rows[0].revisedBy).toBe("staff-1");
+    expect(opsOf(calls, "order")[0]).toEqual(["revision_number", { ascending: false }]);
   });
 });
 
