@@ -337,6 +337,9 @@ describe("editModeTotals", () => {
           subtotal: 200,
         },
       ],
+      originalStockItems: [
+        { menuItemId: "item-latte", quantity: 2, optionIds: [] },
+      ],
       ...overrides,
     };
   }
