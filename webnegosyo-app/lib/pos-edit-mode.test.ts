@@ -270,6 +270,48 @@ describe("enterEditMode", () => {
     expect(warnings.join(" ")).toMatch(/Venti/);
   });
 
+  /**
+   * The "before" side of the stock movement an edit will make.
+   *
+   * `originalItems` cannot serve: it is `RevisedOrderItem[]`, which names its
+   * modifiers but carries no option IDS, and stock resolution needs the ids to
+   * find an option's recipe. The cart lines have them, so they are captured
+   * here at the moment the order is loaded — after the edit begins, the "before"
+   * is gone.
+   */
+  it("captures the order's stock items, option ids and all", () => {
+    const { context } = enterEditMode(
+      {
+        ...deliveryOrder(),
+        items: [
+          orderItem({
+            variationSelections: [
+              { typeName: "Size", optionName: "Large", priceAdjustment: 0 },
+            ],
+          }),
+        ],
+      },
+      [],
+      {
+        "item-latte": [
+          {
+            id: "grp-size",
+            name: "Size",
+            min_select: 1,
+            max_select: 1,
+            options: [
+              { id: "opt-large", name: "Large", price_modifier: 0 },
+            ],
+          },
+        ],
+      } as never,
+    );
+
+    expect(context.originalStockItems).toEqual([
+      { menuItemId: "item-latte", quantity: 2, optionIds: ["opt-large"] },
+    ]);
+  });
+
   it("remembers the bill as placed, for the was/now header", () => {
     const { context } = enterEditMode(deliveryOrder(), [], EMPTY_CATALOG);
 
