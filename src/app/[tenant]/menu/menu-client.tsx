@@ -11,13 +11,15 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { resolveOutletAvailability } from '@/lib/outlets/outlet-availability'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { useOutletSelection } from '@/hooks/use-outlet-selection'
+import { useBranchMenu } from '@/hooks/use-branch-menu'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
 import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import { toast } from 'sonner'
-import type { Category, MenuItem, Tenant, Outlet } from '@/types/database'
+import type { Category, MenuItem, Tenant, Outlet, OutletMenuOverride } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
@@ -43,6 +45,10 @@ interface MenuClientProps {
   outlets: Outlet[]
   /** True when the branch query failed — ordering is blocked, the menu is not. */
   outletsFailed?: boolean
+  /** Every per-branch listing/price override the tenant has. */
+  menuOverrides?: OutletMenuOverride[]
+  /** True when the override query failed — same treatment as `outletsFailed`. */
+  overridesFailed?: boolean
   tenantSlug: string
   isBrandAdmin: boolean
   error: string | null
@@ -59,7 +65,7 @@ const ProductDetailSheet = dynamic(
 )
 
 
-export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, outlets, outletsFailed, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+export function MenuClient({ tenant: tenantProp, categories, allMenuItems: storeWideMenuItems, bundles, outlets, outletsFailed, menuOverrides, overridesFailed, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   // Branding Studio live preview: when this page runs inside the editor's
   // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
   // every branding consumer below re-renders in real time.
@@ -102,6 +108,23 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       setTenantContext(tenant.id, tenant.slug)
     }
   }, [tenant, setTenantContext])
+
+  // The branch the customer is shopping. Read here as well as inside the gate
+  // because the gate decides whether to ASK; this decides what to SHOW, and the
+  // two have to agree on the answer.
+  const branchSelection = useOutletSelection({
+    isEnabled: isMultiBranchEnabled(tenant),
+    tenantSlug,
+    outlets,
+  })
+
+  // The menu as this branch sells it. With no branch chosen — a single-location
+  // tenant, or one that asks at checkout — this is the store-wide menu itself.
+  const { items: allMenuItems } = useBranchMenu({
+    items: storeWideMenuItems,
+    overrides: menuOverrides,
+    selectedOutletId: branchSelection.outlet?.id ?? null,
+  })
 
   // Virtual "Bundles" category + adapted bundle items
   const { categoriesWithBundles, allItemsWithBundles } = useMemo(() => {
@@ -174,7 +197,10 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   // kitchen (Phase 1, Decision E). The menu still renders; ordering is what stops.
   const outletAvailability = resolveOutletAvailability({
     isEnabled: isMultiBranchEnabled(tenant),
-    didLoadFail: Boolean(outletsFailed),
+    // An override failure is the same class of problem as a branch failure: the
+    // menu on screen may not be the menu this branch sells, so it must not be
+    // ordered from.
+    didLoadFail: Boolean(outletsFailed) || Boolean(overridesFailed),
     outletCount: outlets.length,
   })
 

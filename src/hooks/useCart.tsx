@@ -13,6 +13,7 @@ import {
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
+import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 
 interface CartContextType extends Cart {
   orderType: string | null
@@ -321,7 +322,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const itemIds = [...new Set(currentItems.map((item) => item.menu_item.id))]
     try {
-      const freshData = await fetchFreshCartItemData(itemIds, currentTenantId)
+      // The branch the cart belongs to, read straight from the stored
+      // selection: the re-check must price against the same branch the customer
+      // shopped, or it undoes per-branch pricing right before checkout.
+      const currentSlug = tenantSlugRef.current
+      const storedBranch =
+        currentSlug && typeof window !== 'undefined'
+          ? readOutletSelection(window.localStorage, currentSlug, Date.now())
+          : null
+
+      const freshData = await fetchFreshCartItemData(
+        itemIds,
+        currentTenantId,
+        storedBranch?.outletId ?? null
+      )
       setItems((prevItems): CartItem[] => {
         let hasChanges = false
 

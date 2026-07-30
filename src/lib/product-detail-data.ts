@@ -20,6 +20,8 @@ import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 export interface SelectedTenant {
     id: string
     slug: string
+    /** Opt-in flag for branches; when true the page prices per branch. */
+    multi_branch_enabled?: boolean | null
     name: string
     logo_url: string | null
     primary_color: string | null

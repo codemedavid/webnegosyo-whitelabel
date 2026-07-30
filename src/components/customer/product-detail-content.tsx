@@ -22,6 +22,7 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
+import { useBranchPricing } from '@/hooks/use-branch-pricing'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -287,12 +288,12 @@ const AddonButton = memo(function AddonButton({
 
 export const ProductDetailContent = memo(function ProductDetailContent({
     tenant: tenantProp,
-    item,
+    item: storeWideItem,
     branding: brandingProp,
     category,
-    relatedItems = [],
+    relatedItems: storeWideRelatedItems = [],
     customization = null,
-    complementaryUpsells = [],
+    complementaryUpsells: storeWideComplementaryUpsells = [],
     upgradeUpsells = [],
     menuEngineeringEnabled = false,
     pairingRulesEnabled = false,
@@ -314,6 +315,19 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // server, so when a preview draft is streaming we merge it over the tenant
     // and recompute branding client-side for real-time accuracy.
     const tenant = useBrandingPreviewTenant(tenantProp)
+    // This page is server-rendered and cached for every branch at once, so the
+    // branch is applied here — to the dish, and to everything else on the page
+    // that carries a price. A tenant without branches gets identity back.
+    const branchPricing = useBranchPricing({ tenant: tenantProp, tenantSlug: tenantProp.slug })
+    const item = useMemo(() => branchPricing.resolve(storeWideItem), [branchPricing, storeWideItem])
+    const relatedItems = useMemo(
+        () => branchPricing.resolveAll(storeWideRelatedItems),
+        [branchPricing, storeWideRelatedItems]
+    )
+    const complementaryUpsells = useMemo(
+        () => branchPricing.resolveAll(storeWideComplementaryUpsells),
+        [branchPricing, storeWideComplementaryUpsells]
+    )
     // Operating-hours enforcement: resolves after mount (this page is cached), so
     // the closed notice and the disabled actions appear a frame after hydration.
     const openStatus = useStoreOpenStatus(tenant)
