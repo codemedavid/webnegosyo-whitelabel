@@ -160,6 +160,64 @@ export function resolveMenuForOutlet<T extends OverridableMenuItem>(
   return resolved
 }
 
+/** The one line a menu card shows about branches, or nothing. */
+export interface BranchSummaryLabel {
+  text: string
+  detail: string
+  tone: 'neutral' | 'warning'
+}
+
+/**
+ * Turn a summary into the line the owner reads while scanning the menu list.
+ *
+ * Returns null when there is nothing to say. A dish sold everywhere at one
+ * price is the normal case, and badging it would bury the handful of dishes
+ * that actually differ — which is the only reason the owner is scanning.
+ *
+ * Order matters: "not carried here" outranks "priced differently", because a
+ * missing dish is a bigger fact than a price spread among the branches that
+ * do carry it.
+ */
+export function describeBranchSummary(summary: BranchMenuSummary): BranchSummaryLabel | null {
+  if (summary.branchCount === 0) return null
+
+  if (summary.listedCount === 0) {
+    return {
+      text: 'No branches',
+      detail: `Not on the menu at ${summary.unlistedBranchNames.join(', ')}.`,
+      tone: 'warning',
+    }
+  }
+
+  if (!summary.isEverywhere) {
+    return {
+      text: `${summary.listedCount} of ${summary.branchCount} branches`,
+      detail: `Not on the menu at ${summary.unlistedBranchNames.join(', ')}.`,
+      tone: 'neutral',
+    }
+  }
+
+  if (summary.unavailableBranchNames.length > 0) {
+    return {
+      text: `Out of stock at ${summary.unavailableBranchNames.length}`,
+      detail: `Currently unavailable at ${summary.unavailableBranchNames.join(', ')}.`,
+      tone: 'warning',
+    }
+  }
+
+  if (summary.hasPriceOverrides) {
+    return {
+      text: 'Prices vary',
+      detail: summary.priceRange
+        ? `From ${summary.priceRange.min} to ${summary.priceRange.max} across branches.`
+        : 'Priced differently at some branches.',
+      tone: 'neutral',
+    }
+  }
+
+  return null
+}
+
 /** The effective selling price at a branch — the discount when there is one. */
 function effectivePrice(item: OverridableMenuItem): number {
   return typeof item.discounted_price === 'number' ? item.discounted_price : item.price

@@ -1,12 +1,14 @@
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { getCachedTenantBySlug, getCachedCurrentUserRole, getCachedCategoriesByTenant } from '@/lib/cache'
 import { canViewBranchDirectory } from '@/lib/outlets/branch-scope'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { buildBranchRoster } from '@/lib/outlets/branch-roster'
 import { loadBranchOrders, loadBranchStaff } from '@/lib/outlets/branch-page-data'
 import { BranchDetail } from '@/components/admin/branch-detail'
+import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
+import { getMenuItemsByTenant } from '@/lib/admin-service'
 
 export default async function AdminBranchPage({
   params,
@@ -33,10 +35,13 @@ export default async function AdminBranchPage({
     notFound()
   }
 
-  const [outlets, staff, orders] = await Promise.all([
+  const [outlets, staff, orders, menuItems, categories, menuOverrides] = await Promise.all([
     createSupabaseOutletRepository().listByTenant(tenant.id),
     loadBranchStaff(tenant.id),
     loadBranchOrders(tenant),
+    getMenuItemsByTenant(tenant.id),
+    getCachedCategoriesByTenant(tenant.id),
+    createSupabaseOutletMenuRepository().listByOutlet(tenant.id, outletId),
   ])
 
   const roster = buildBranchRoster({ outlets, staff, orders })
@@ -67,6 +72,9 @@ export default async function AdminBranchPage({
         storeWideMembers={roster.storeWideStaff}
         metrics={entry.metrics}
         hasMetrics={roster.hasMetrics}
+        menuItems={menuItems}
+        categories={categories}
+        menuOverrides={menuOverrides}
       />
     </div>
   )

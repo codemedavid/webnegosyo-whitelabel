@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, Edit, Trash2, Eye, EyeOff, Store } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,16 +34,32 @@ import {
 } from '@/lib/inventory/menu-availability'
 import { deleteMenuItemAction, toggleAvailabilityAction } from '@/app/actions/menu-items'
 import { toast } from 'sonner'
-import type { MenuItem, Category } from '@/types/database'
+import type { MenuItem, Category, OutletMenuOverride } from '@/types/database'
+import {
+  buildOutletMenuIndex,
+  describeBranchSummary,
+  summarizeItemAcrossBranches,
+  type OutletMenuOverrideRow,
+} from '@/lib/outlets/outlet-menu-overrides'
 
 interface MenuItemsListProps {
   items: MenuItem[]
   categories: Category[]
   tenantSlug: string
   tenantId: string
+  /** Empty for a store without branches; the badge then never renders. */
+  outlets?: readonly { id: string; name: string }[]
+  menuOverrides?: readonly OutletMenuOverride[]
 }
 
-export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuItemsListProps) {
+export function MenuItemsList({ items, categories, tenantSlug, tenantId, outlets = [], menuOverrides = [] }: MenuItemsListProps) {
+  // One index for the whole grid rather than one lookup per card: the owner's
+  // "is this the same everywhere" answer comes from the same resolution the
+  // customer's price does, so the badge can never disagree with the storefront.
+  const branchIndex = useMemo(
+    () => buildOutletMenuIndex(menuOverrides as unknown as OutletMenuOverrideRow[]),
+    [menuOverrides]
+  )
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -179,6 +195,24 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId }: MenuI
                     </p>
                   </div>
                 </div>
+
+                {(() => {
+                  const label = outlets.length > 0
+                    ? describeBranchSummary(summarizeItemAcrossBranches(item, outlets, branchIndex))
+                    : null
+                  if (!label) return null
+                  return (
+                    <div className="mb-2">
+                      <Badge
+                        variant={label.tone === 'warning' ? 'destructive' : 'secondary'}
+                        title={label.detail}
+                      >
+                        <Store className="mr-1 h-3 w-3" />
+                        {label.text}
+                      </Badge>
+                    </div>
+                  )
+                })()}
 
                 <div className="mb-3 flex items-center gap-2">
                   {item.discounted_price && (

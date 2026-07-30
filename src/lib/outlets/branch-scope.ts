@@ -153,6 +153,34 @@ export function canManageOutlets(user: BranchScopedUser): boolean {
 }
 
 /**
+ * May this account change what one branch sells — its listings, its prices,
+ * what it has run out of?
+ *
+ * The mirror image of `canManageOutlets`, and deliberately more permissive.
+ * Branch CRUD is store-wide-only because the shape of the company is the
+ * owner's; the menu of the shop you actually run is not. Taking a sold-out dish
+ * off your own board is the everyday reason per-branch menus exist, and routing
+ * it through the owner would make the feature useless in the middle of service.
+ *
+ * A blank target is refused rather than read as "every branch": nothing legally
+ * asks for a menu write against no branch, so a blank one is a bug upstream,
+ * and the safe reading of a bug is no.
+ *
+ * The other half of the guard is `outlet_menu_items_write_admin`, which is what
+ * stops a caller who skips the server action.
+ */
+export function canManageBranchMenu(user: BranchScopedUser, outletId: string): boolean {
+  const target = trimmed(outletId)
+  if (target === '') return false
+
+  if (user.role === 'superadmin') return true
+  if (user.role !== 'admin') return false
+
+  const scope = resolveBranchScope(user)
+  return scope.kind === 'all' || scope.outletId === target
+}
+
+/**
  * May this account see the store's branches at all — the directory, the
  * comparison table, the nav entry that leads to them?
  *

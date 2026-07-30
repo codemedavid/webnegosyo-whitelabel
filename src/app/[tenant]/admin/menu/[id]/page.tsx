@@ -2,6 +2,10 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemById, getLinkableMenuItems } from '@/lib/admin-service'
+import { ItemBranchesPanel } from '@/components/admin/item-branches-panel'
+import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
+import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 
 export default async function EditMenuItemPage({
   params,
@@ -16,10 +20,18 @@ export default async function EditMenuItemPage({
     return <div>Tenant not found</div>
   }
 
-  const [item, categories, linkableItems] = await Promise.all([
+  const isMultiBranch = isMultiBranchEnabled(tenant)
+
+  const [item, categories, linkableItems, outlets, itemOverrides] = await Promise.all([
     getMenuItemById(itemId, tenant.id).catch(() => null),
     getCachedCategoriesByTenant(tenant.id),
     getLinkableMenuItems(tenant.id).catch(() => []),
+    isMultiBranch
+      ? createSupabaseOutletRepository().listByTenant(tenant.id).catch(() => [])
+      : Promise.resolve([]),
+    isMultiBranch
+      ? createSupabaseOutletMenuRepository().listByMenuItem(tenant.id, itemId).catch(() => [])
+      : Promise.resolve([]),
   ])
 
   if (!item) {
@@ -65,6 +77,22 @@ export default async function EditMenuItemPage({
         linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
         convexUrl={tenant.convex_deployment_url ?? undefined}
+      />
+
+      {/*
+        Its own panel below the form rather than a field inside it: a branch
+        override is a separate row with its own permissions, and a branch
+        manager editing what their shop has run out of should not be made to
+        submit the whole dish.
+      */}
+      <ItemBranchesPanel
+        tenantId={tenant.id}
+        tenantSlug={tenantSlug}
+        item={item}
+        outlets={outlets
+          .filter((outlet) => outlet.is_active)
+          .map((outlet) => ({ id: outlet.id, name: outlet.name }))}
+        initialOverrides={itemOverrides}
       />
     </div>
   )

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BranchMenuPanel } from '@/components/admin/branch-menu-panel'
 import { OutletForm } from '@/components/admin/outlet-form'
 import { BranchTeamPanel } from '@/components/admin/branch-team-panel'
 import { updateOutletAction } from '@/app/actions/outlets'
@@ -20,7 +21,7 @@ import {
 import type { BranchComparisonRow } from '@/lib/outlets/branch-analytics'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
-import type { Outlet } from '@/types/database'
+import type { Category, MenuItem, Outlet, OutletMenuOverride } from '@/types/database'
 
 interface BranchDetailProps {
   tenantId: string
@@ -34,6 +35,11 @@ interface BranchDetailProps {
   metrics: BranchComparisonRow | null
   /** False when this store's takings cannot be split by branch at all. */
   hasMetrics: boolean
+  /** The store-wide menu, which this branch's tab edits its answers to. */
+  menuItems: readonly MenuItem[]
+  categories: readonly Category[]
+  /** This branch's existing overrides. */
+  menuOverrides: readonly OutletMenuOverride[]
 }
 
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -64,6 +70,9 @@ export function BranchDetail({
   storeWideMembers,
   metrics,
   hasMetrics,
+  menuItems,
+  categories,
+  menuOverrides,
 }: BranchDetailProps) {
   const router = useRouter()
   const [outlet, setOutlet] = useState(initialOutlet)
@@ -137,6 +146,7 @@ export function BranchDetail({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="menu">Menu</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -184,6 +194,18 @@ export function BranchDetail({
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="menu" className="mt-4">
+          <BranchMenuPanel
+            tenantId={tenantId}
+            tenantSlug={tenantSlug}
+            outletId={outlet.id}
+            outletName={outlet.name}
+            items={menuItems}
+            categories={categories}
+            initialOverrides={menuOverrides}
+          />
         </TabsContent>
 
         <TabsContent value="team" className="mt-4">
