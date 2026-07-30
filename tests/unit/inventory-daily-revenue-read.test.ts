@@ -11,22 +11,34 @@
 
 import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
 
-/** A Supabase query builder that records its calls and resolves to a fixed result. */
+/**
+ * A Supabase client that records its calls and resolves to a fixed result.
+ *
+ * The CLIENT must not itself be thenable — it is handed back from an async
+ * factory, and a thenable would be unwrapped by `await` into the query result
+ * before the caller ever saw a client. Only the builder `from()` returns is
+ * awaitable, which is also how the real client behaves.
+ */
 function fakeSupabase(result: { data: unknown; error: unknown }) {
   const calls: Array<{ method: string; args: unknown[] }> = []
   const builder: Record<string, unknown> = {
-    calls,
     then: (resolve: (value: unknown) => unknown) => resolve(result),
   }
 
-  for (const method of ['from', 'select', 'eq', 'neq', 'gte', 'lt']) {
+  for (const method of ['select', 'eq', 'neq', 'gte', 'lt']) {
     builder[method] = (...args: unknown[]) => {
       calls.push({ method, args })
       return builder
     }
   }
 
-  return builder as { calls: Array<{ method: string; args: unknown[] }> } & Record<string, never>
+  return {
+    calls,
+    from: (...args: unknown[]) => {
+      calls.push({ method: 'from', args })
+      return builder
+    },
+  }
 }
 
 const DAY = '2026-07-29'
