@@ -78,7 +78,7 @@ describe('useKioskReturn', () => {
   })
 
   afterEach(() => {
-    jest.runOnlyPendingTimers()
+    act(() => { jest.runOnlyPendingTimers() })
     jest.useRealTimers()
   })
 
@@ -103,6 +103,21 @@ describe('useKioskReturn', () => {
     advance(3000)
 
     // Assert
+    expect(replace).toHaveBeenCalledWith('/acme/menu?kiosk=1')
+  })
+
+  it('still returns when React re-renders between ticks', () => {
+    // Regression: the effect once depended on the router object. Because that
+    // identity is not stable, every re-render restarted the countdown and its
+    // timers, so a real kiosk counted "3, 3, 3…" and never went back to the
+    // menu. Advancing a second at a time lets a render land between ticks,
+    // which advancing the full delay in one call does not.
+    renderReturn({ isKiosk: true, isCheckoutComplete: true })
+
+    advance(1000)
+    advance(1000)
+    advance(1000)
+
     expect(replace).toHaveBeenCalledWith('/acme/menu?kiosk=1')
   })
 
