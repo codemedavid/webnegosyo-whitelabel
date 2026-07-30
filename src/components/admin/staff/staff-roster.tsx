@@ -30,7 +30,7 @@ import {
   STAFF_PERMISSION_LABELS,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
-import type { StaffRecord } from '@/lib/staff-service'
+import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import {
   createStaffAction,
   removeStaffAction,
@@ -49,7 +49,7 @@ import {
 export interface StaffRosterProps {
   tenantId: string
   tenantSlug: string
-  members: readonly StaffRecord[]
+  members: readonly RosterStaff[]
   /** Every branch the store has — for the move dialog and the branch badges. */
   outlets: readonly StaffOutlet[]
   /**
@@ -78,7 +78,7 @@ const EMPTY_FORM = {
   outletId: '',
 }
 
-function displayNameOf(member: StaffRecord): string {
+function displayNameOf(member: RosterStaff): string {
   return member.display_name || member.email || 'Unnamed account'
 }
 
@@ -115,16 +115,16 @@ export function StaffRoster({
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [addForm, setAddForm] = useState(EMPTY_FORM)
 
-  const [editTarget, setEditTarget] = useState<StaffRecord | null>(null)
+  const [editTarget, setEditTarget] = useState<RosterStaff | null>(null)
   const [editPermissions, setEditPermissions] = useState<string[]>([])
 
-  const [passwordTarget, setPasswordTarget] = useState<StaffRecord | null>(null)
+  const [passwordTarget, setPasswordTarget] = useState<RosterStaff | null>(null)
   const [newPassword, setNewPassword] = useState('')
 
-  const [moveTarget, setMoveTarget] = useState<StaffRecord | null>(null)
+  const [moveTarget, setMoveTarget] = useState<RosterStaff | null>(null)
   const [moveOutletId, setMoveOutletId] = useState('')
 
-  const [removeTarget, setRemoveTarget] = useState<StaffRecord | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<RosterStaff | null>(null)
 
   const handleCreate = async () => {
     setIsSaving(true)

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
-import type { StaffRecord } from '@/lib/staff-service'
+import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import { StaffRoster } from '@/components/admin/staff/staff-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
 
@@ -14,9 +14,9 @@ interface BranchTeamPanelProps {
   /** Every branch, so a member can be moved to one of the others. */
   outlets: readonly StaffOutlet[]
   /** Accounts posted to this branch. */
-  members: readonly StaffRecord[]
+  members: readonly RosterStaff[]
   /** Accounts covering the whole store, which reach this branch too. */
-  storeWideMembers: readonly StaffRecord[]
+  storeWideMembers: readonly RosterStaff[]
 }
 
 /**
