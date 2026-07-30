@@ -23,11 +23,12 @@ import {
   hydratePosCart,
   posCartToOrderItems,
   type ModifierCatalog,
+  type HydratableOrderItem,
   type RevisedOrderItem,
 } from "./order-edit-cart";
 import { canEditOrder, type EditGate } from "./order-edit-guards";
 import { diffOrderItems } from "./order-revision";
-import type { OrderItemDto } from "./backends/supabase-orders";
+
 import type { PosCartLine } from "./pos-cart";
 import type { OrderBackend } from "./order-backend";
 import type { StaffPermissionHolder } from "./staff-permissions";
@@ -72,7 +73,7 @@ export interface EditableOrderLike {
   total: number;
   revisionNumber?: number;
   deliveryFee?: number;
-  items: OrderItemDto[];
+  items: HydratableOrderItem[];
 }
 
 export interface EnterEditModeRequest {

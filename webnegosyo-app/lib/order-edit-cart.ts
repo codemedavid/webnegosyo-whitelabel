@@ -134,7 +134,7 @@ function toSelection(
 }
 
 function selectionsFor(
-  item: OrderItemDto,
+  item: HydratableOrderItem,
   groups: ModifierGroup[],
   onUnresolved: (groupName: string | undefined, optionName: string) => void,
 ): PosCartSelection[] {
@@ -161,8 +161,28 @@ function selectionsFor(
  * Identically-configured items stack, exactly as they would if rung up at the
  * counter. Zero-quantity rows are dropped rather than dividing by zero.
  */
+/**
+ * The parts of an order item hydration actually reads.
+ *
+ * Deliberately narrower than {@link OrderItemDto}: `_id`, `orderId` and
+ * `price` are never touched — `price` explicitly so, since it means different
+ * things depending on who wrote the row (see this module's header). Demanding
+ * the full DTO would force every caller holding a lighter-weight order shape
+ * to cast, and a cast is exactly how a field that IS read goes missing.
+ */
+export type HydratableOrderItem = Pick<
+  OrderItemDto,
+  "menuItemName" | "quantity" | "subtotal"
+> &
+  Partial<
+    Pick<
+      OrderItemDto,
+      "menuItemId" | "specialInstructions" | "variationSelections" | "addons"
+    >
+  >;
+
 export function hydratePosCart(
-  items: readonly OrderItemDto[],
+  items: readonly HydratableOrderItem[],
   catalog: ModifierCatalog,
 ): HydrationResult {
   const unresolved: UnresolvedModifier[] = [];

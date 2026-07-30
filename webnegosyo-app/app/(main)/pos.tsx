@@ -39,6 +39,8 @@ import {
   type ModifierSource,
 } from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
+import { editModeTotals } from "../../lib/pos-edit-mode";
+import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
@@ -86,6 +88,9 @@ export default function PosScreen() {
   const setQty = usePosCartStore((s) => s.setQty);
   const reset = usePosCartStore((s) => s.reset);
   const setOrderType = usePosCartStore((s) => s.setOrderType);
+  const editContext = usePosCartStore((s) => s.editContext);
+  const editWarnings = usePosCartStore((s) => s.editWarnings);
+  const endEdit = usePosCartStore((s) => s.endEdit);
 
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -124,6 +129,14 @@ export default function PosScreen() {
   );
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
+
+  // Every judgement about the edit — what it now costs, what is owed, whether
+  // it may be saved — comes from `pos-edit-mode.ts`, which is unit tested.
+  // Nothing about the money is decided in this file.
+  const edit = useMemo(
+    () => (editContext ? editModeTotals(lines, editContext) : null),
+    [lines, editContext],
+  );
 
   useEffect(() => {
     if (!tenantId) return;
@@ -273,7 +286,40 @@ export default function PosScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      {edit && editContext && (
+        <View style={styles.editBanner}>
+          <View style={styles.editBannerMain}>
+            <Text style={styles.editBannerTitle}>Editing a placed order</Text>
+            <Text style={styles.editBannerTotals}>
+              {formatPeso(editContext.originalTotal)} → {formatPeso(edit.newTotal)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              endEdit();
+              router.back();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel the edit"
+          >
+            <Text style={styles.editBannerCancel}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {editWarnings.length > 0 && (
+        <View style={styles.editWarnings}>
+          {editWarnings.map((warning) => (
+            <Text key={warning} style={styles.editWarningText}>
+              {warning}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {/* The banner already clears the notch, so the header must not re-pad it. */}
+      <View style={[styles.header, edit && styles.headerUnderBanner]}>
         <View style={styles.titleRow}>
           <WorkspaceSwitcher />
           <Text style={styles.count}>
@@ -397,18 +443,27 @@ export default function PosScreen() {
         />
       )}
 
-      <IncomingOrdersSheet
-        orders={incomingOrders}
-        unseenCount={unseenCount}
-        isExpanded={isIncomingExpanded}
-        onToggle={toggleIncoming}
-        onSelect={openIncomingOrder}
-      />
+      {/*
+        Hidden while editing: accepting a new order would push it into the cart
+        that is currently holding someone else's bill.
+      */}
+      {!edit && (
+        <IncomingOrdersSheet
+          orders={incomingOrders}
+          unseenCount={unseenCount}
+          isExpanded={isIncomingExpanded}
+          onToggle={toggleIncoming}
+          onSelect={openIncomingOrder}
+        />
+      )}
 
       <CartSheet
         lines={lines}
         totals={totals}
-        orderTypes={orderTypes}
+        // The order type is fixed for the life of a placed order: switching it
+        // mid-edit would swap the service charge and invalidate the basis the
+        // delivery fee was quoted under. Passing none renders no chips.
+        orderTypes={edit ? [] : orderTypes}
         orderTypeId={orderTypeId}
         isExpanded={isCartExpanded}
         onToggle={toggleCart}
@@ -419,6 +474,22 @@ export default function PosScreen() {
           setIsCartExpanded(false);
         }}
         onCharge={() => router.push("/(main)/pos-tender")}
+        chargeLabel={
+          !edit
+            ? undefined
+            : edit.intent === "collect"
+              ? "Save · collect"
+              : edit.intent === "refund"
+                ? "Save · refund"
+                : "Save changes"
+        }
+        // The difference to settle, not the order's total — the rest is paid.
+        chargeTotal={edit ? Math.abs(edit.balance) : undefined}
+        blockedReason={
+          edit && !edit.canSave
+            ? (edit.blockedReason ?? "Change something to save this order.")
+            : undefined
+        }
       />
 
       {sheetFor && (
@@ -448,6 +519,27 @@ const styles = StyleSheet.create({
     paddingTop: TOP_INSET,
     paddingBottom: spacing.sm,
   },
+  headerUnderBanner: { paddingTop: spacing.sm },
+  editBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingTop: TOP_INSET,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.accentLight,
+  },
+  editBannerMain: { flex: 1 },
+  editBannerTitle: { ...typography.caption, fontWeight: "700", color: colors.accent },
+  editBannerTotals: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
+  editBannerCancel: { ...typography.body, color: colors.accent, fontWeight: "600" },
+  editWarnings: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.warningLight,
+  },
+  editWarningText: { ...typography.small, color: colors.textPrimary },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",

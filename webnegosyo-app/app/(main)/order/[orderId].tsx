@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
@@ -16,7 +16,15 @@ import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
-import { canEditOrder } from "../../../lib/order-edit-guards";
+import { canEnterEditMode, enterEditMode } from "../../../lib/pos-edit-mode";
+import { usePosCartStore } from "../../../stores/pos-cart-store";
+import { listProducts } from "../../../lib/products";
+import {
+  normalizeModifierGroups,
+  type ModifierSource,
+} from "../../../lib/modifier-groups";
+import type { ModifierCatalog } from "../../../lib/order-edit-cart";
+import { goTo } from "../../../lib/tab-navigation";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 
@@ -81,6 +89,8 @@ interface OrderDetail {
   paymentStatus?: string;
   hasUpsellItems?: boolean;
   hasBundleItems?: boolean;
+  /** Bumped by every saved edit; the register checks its optimistic lock on it. */
+  revisionNumber?: number;
   items?: OrderItem[];
 }
 
@@ -353,10 +363,17 @@ export default function OrderDetailScreen() {
   );
 
   const scope = useBranchScope();
-  const { isOwner, permissions, role, orderBackend, isDemo } = useAuthStore();
+  const { isOwner, permissions, role, orderBackend, isDemo, tenantId } = useAuthStore();
+
+  // Editing happens on the register now, so the gate includes the register's
+  // own rule: a placed order may not be loaded over an open counter sale.
+  const registerCart = usePosCartStore((s) => s.lines);
+  const beginEdit = usePosCartStore((s) => s.beginEdit);
+  const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const editGate = order
-    ? canEditOrder({
+    ? canEnterEditMode({
+        cart: registerCart,
         status: order.status,
         backend: orderBackend ?? "convex",
         user: { role, isOwner, permissions },
@@ -364,6 +381,70 @@ export default function OrderDetailScreen() {
         order,
       })
     : { allowed: false as const };
+
+  /**
+   * Load the order into the register and switch to it.
+   *
+   * The live menu is fetched here rather than held on this screen, because it
+   * is only needed to recover the order's modifiers back to option ids and
+   * most visits to this screen never edit anything.
+   */
+  async function handleOpenInRegister() {
+    if (!order || !tenantId || isOpeningEdit) return;
+
+    if (isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+
+    // An order opened without its ledger looks unpaid, and the register would
+    // offer to collect a bill that was already settled.
+    if (paymentsError) {
+      Alert.alert(
+        "Cannot edit this order",
+        "Its payment history could not be loaded, so its bill cannot be edited safely.",
+      );
+      return;
+    }
+
+    setIsOpeningEdit(true);
+    try {
+      const products = await listProducts(tenantId);
+      const catalog: ModifierCatalog = products.reduce<ModifierCatalog>(
+        (acc, product) => ({
+          ...acc,
+          [product.id]: normalizeModifierGroups(product as unknown as ModifierSource),
+        }),
+        {},
+      );
+
+      beginEdit(
+        enterEditMode(
+          {
+            _id: order._id,
+            total: order.total,
+            revisionNumber: order.revisionNumber,
+            deliveryFee: order.deliveryFee,
+            items: order.items ?? [],
+          },
+          payments ?? [],
+          catalog,
+        ),
+      );
+
+      // `goTo`, not `replace`: replacing into a sibling tab renames the tab
+      // navigator's state key and remounts it mid-transition. See
+      // lib/tab-navigation.ts.
+      goTo(router, "/(main)/pos");
+    } catch (err) {
+      Alert.alert(
+        "Could not open the register",
+        err instanceof Error ? err.message : "The menu could not be loaded.",
+      );
+    } finally {
+      setIsOpeningEdit(false);
+    }
+  }
 
   const itemImageIds = (order?.items ?? [])
     .map((it) => it.menuItemId)
@@ -578,16 +659,13 @@ export default function OrderDetailScreen() {
           {editGate.allowed ? (
             <TouchableOpacity
               style={styles.editButton}
-              onPress={() => {
-                if (isDemo) {
-                  Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-                  return;
-                }
-                router.push(`/(main)/order-edit/${order._id}`);
-              }}
+              onPress={handleOpenInRegister}
+              disabled={isOpeningEdit}
               activeOpacity={0.8}
             >
-              <Text style={styles.editButtonText}>Edit Order</Text>
+              <Text style={styles.editButtonText}>
+                {isOpeningEdit ? "Opening register..." : "Edit in register"}
+              </Text>
             </TouchableOpacity>
           ) : editGate.reason ? (
             <Text style={styles.editBlockedText}>{editGate.reason}</Text>

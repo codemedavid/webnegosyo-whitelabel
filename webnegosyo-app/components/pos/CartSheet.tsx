@@ -16,6 +16,18 @@ interface CartSheetProps {
   onChangeQty: (key: string, quantity: number) => void;
   onClear: () => void;
   onCharge: () => void;
+  /**
+   * Overrides the action label. Editing a placed order collects, refunds, or
+   * merely saves — "Charge" is only right for a new counter sale.
+   */
+  chargeLabel?: string;
+  /**
+   * Overrides the amount beside the label. Editing shows the difference to
+   * settle, not the order's total, because the rest is already paid.
+   */
+  chargeTotal?: number;
+  /** Blocks the action with a reason shown in place of the amount. */
+  blockedReason?: string;
 }
 
 /**
@@ -37,6 +49,9 @@ export function CartSheet({
   onChangeQty,
   onClear,
   onCharge,
+  chargeLabel,
+  chargeTotal,
+  blockedReason,
 }: CartSheetProps) {
   const hasItems = lines.length > 0;
   const activeType = orderTypes.find((type) => type.id === orderTypeId);
@@ -153,22 +168,24 @@ export function CartSheet({
       )}
 
       <TouchableOpacity
-        style={[styles.charge, !hasItems && styles.chargeDisabled]}
-        disabled={!hasItems}
+        style={[styles.charge, (!hasItems || blockedReason) && styles.chargeDisabled]}
+        disabled={!hasItems || blockedReason !== undefined}
         onPress={onCharge}
         activeOpacity={0.85}
         accessibilityRole="button"
       >
-        {hasItems ? (
+        {!hasItems ? (
+          <Text style={styles.chargeEmpty}>Tap a product to start the sale</Text>
+        ) : blockedReason ? (
+          <Text style={styles.chargeEmpty}>{blockedReason}</Text>
+        ) : (
           <>
             <View>
-              <Text style={styles.chargeLabel}>Charge</Text>
+              <Text style={styles.chargeLabel}>{chargeLabel ?? "Charge"}</Text>
               {activeType ? <Text style={styles.chargeMeta}>{activeType.name}</Text> : null}
             </View>
-            <Text style={styles.chargeTotal}>{formatPeso(totals.total)}</Text>
+            <Text style={styles.chargeTotal}>{formatPeso(chargeTotal ?? totals.total)}</Text>
           </>
-        ) : (
-          <Text style={styles.chargeEmpty}>Tap a product to start the sale</Text>
         )}
       </TouchableOpacity>
     </View>
