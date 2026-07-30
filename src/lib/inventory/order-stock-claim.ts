@@ -41,14 +41,15 @@ export async function claimOrderStockApplication(
   tenantId: string,
   orderId: string,
   reason: OrderStockDirection,
+  revision: number = 0,
 ): Promise<boolean> {
   const { error } = await supabase
     .from('order_stock_applications')
-    .insert({ tenant_id: tenantId, order_id: orderId, reason } as never)
+    .insert({ tenant_id: tenantId, order_id: orderId, reason, revision } as never)
 
   if (!error) return true
   if (error.code === UNIQUE_VIOLATION) {
-    console.warn('[inventory] Stock already applied for order', { orderId, reason })
+    console.warn('[inventory] Stock already applied for order', { orderId, reason, revision })
     return false
   }
   throw error
@@ -56,6 +57,9 @@ export async function claimOrderStockApplication(
 
 /**
  * Give the claim back after a depletion failed to write.
+ *
+ * `revision` must match the claim that was taken, or the delete finds nothing
+ * and the claim is leaked.
  *
  * Never throws. The caller is already handling an error when it gets here, and
  * a failed release must not replace that error with a less useful one — the
@@ -66,6 +70,7 @@ export async function releaseOrderStockApplication(
   tenantId: string,
   orderId: string,
   reason: OrderStockDirection,
+  revision: number = 0,
 ): Promise<void> {
   try {
     const { error } = await supabase
@@ -74,6 +79,7 @@ export async function releaseOrderStockApplication(
       .eq('tenant_id', tenantId)
       .eq('order_id', orderId)
       .eq('reason', reason)
+      .eq('revision', revision)
     if (error) {
       console.error('[inventory] Could not release stock claim', { orderId, reason }, error)
     }
