@@ -14,6 +14,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Added by migration 20260806120000_outlet_menu_overrides.sql.
+      // Override-only: no row = the branch lists the dish at the store-wide
+      // price. Read through src/lib/outlets/outlet-menu-repository.ts.
+      outlet_menu_items: {
+        Row: {
+          created_at: string
+          discount_cleared: boolean
+          discounted_price: number | null
+          id: string
+          is_available: boolean
+          is_listed: boolean
+          menu_item_id: string
+          outlet_id: string
+          price: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id: string
+          outlet_id: string
+          price?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id?: string
+          outlet_id?: string
+          price?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlet_menu_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       // Added by migration 20260728120000_inventory_low_stock_alerts.sql.
       outlets: {
         Row: {
