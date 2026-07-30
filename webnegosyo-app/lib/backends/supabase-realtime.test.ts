@@ -3,10 +3,12 @@ import {
   REALTIME_FALLBACK_POLL_MS,
   buildOrderSubscription,
   isOrderChangeForTenant,
+  isOrderChangeInScope,
   isRefRealtimeBacked,
   resolvePollMs,
   resolveRealtimeStatus,
 } from "./supabase-realtime";
+import type { BranchScope } from "../branch-scope";
 
 /**
  * The platform backend has no push channel of its own — Convex streams changes,
@@ -97,6 +99,111 @@ describe("isOrderChangeForTenant", () => {
 
     // Assert
     expect(isMine).toBe(false);
+  });
+});
+
+/**
+ * Supabase Realtime accepts exactly ONE filter clause per binding, so the
+ * server-side filter stays on `tenant_id` and the branch is checked when the
+ * payload lands. That is not a shortcut: a manager whose screen refetched — or
+ * whose device chimed — for a sale at another branch would learn that the sale
+ * happened, which is the leak the read scoping exists to close.
+ */
+describe("isOrderChangeInScope", () => {
+  const BRANCH: BranchScope = { kind: "branch", outletId: "outlet-north" };
+  const ALL: BranchScope = { kind: "all" };
+
+  it("accepts a change at the account's own branch", () => {
+    // Act
+    const inScope = isOrderChangeInScope(
+      { new: { tenant_id: "tenant-1", outlet_id: "outlet-north" } },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(true);
+  });
+
+  it("rejects a change at another branch", () => {
+    // Act
+    const inScope = isOrderChangeInScope(
+      { new: { tenant_id: "tenant-1", outlet_id: "outlet-south" } },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(false);
+  });
+
+  it("rejects an unattributed order for a branch account", () => {
+    // Arrange: matches `isOrderInScope` — an order belonging to no branch was
+    // not taken by this one. Client and server must agree, or the queue count
+    // and the queue contents disagree.
+    const inScope = isOrderChangeInScope(
+      { new: { tenant_id: "tenant-1", outlet_id: null } },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(false);
+  });
+
+  it("reads the branch from the old row on a delete", () => {
+    // Act
+    const inScope = isOrderChangeInScope(
+      { old: { tenant_id: "tenant-1", outlet_id: "outlet-north" } },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(true);
+  });
+
+  it("falls back to the branch in customer_data when the column is empty", () => {
+    // Arrange: the other backends have no column, and a platform row written
+    // before the backfill carries the branch only in the blob.
+    const inScope = isOrderChangeInScope(
+      {
+        new: {
+          tenant_id: "tenant-1",
+          outlet_id: null,
+          customer_data: { outlet_id: "outlet-north" },
+        },
+      },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(true);
+  });
+
+  it("accepts every branch for a store-wide account", () => {
+    // Act
+    const inScope = isOrderChangeInScope(
+      { new: { tenant_id: "tenant-1", outlet_id: "outlet-south" } },
+      "tenant-1",
+      ALL
+    );
+
+    // Assert
+    expect(inScope).toBe(true);
+  });
+
+  it("still rejects another tenant's change, whatever the branch says", () => {
+    // Arrange: the tenant check is not replaced by the branch check.
+    const inScope = isOrderChangeInScope(
+      { new: { tenant_id: "tenant-2", outlet_id: "outlet-north" } },
+      "tenant-1",
+      BRANCH
+    );
+
+    // Assert
+    expect(inScope).toBe(false);
   });
 });
 

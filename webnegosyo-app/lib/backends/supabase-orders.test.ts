@@ -391,3 +391,79 @@ describe("buildCreateOrderRows", () => {
     expect(order.has_bundle_items).toBe(false);
   });
 });
+
+/**
+ * The register stamps the branch into `customerData` — the only carrier Convex
+ * and tenant-owned projects have. The platform database also has a real
+ * `outlet_id` column, and once order reads are narrowed by it server-side, a
+ * counter sale that filled only the blob becomes invisible to the very branch
+ * that rang it up. So the column is filled from the blob here, at the one place
+ * every platform order is built.
+ */
+describe("buildCreateOrderRows branch attribution", () => {
+  const args = {
+    customerName: "Walk-in",
+    customerContact: "",
+    total: 100,
+    itemCount: 1,
+    source: "pos" as const,
+    items: [
+      {
+        menuItemId: "menu-1",
+        menuItemName: "Latte",
+        quantity: 1,
+        price: 100,
+        subtotal: 100,
+      },
+    ],
+  };
+
+  it("fills the outlet_id column from the branch in customerData", () => {
+    // Arrange: what `buildPosOrder` produces for a branch register.
+    // Act
+    const { order } = buildCreateOrderRows("tenant-1", {
+      ...args,
+      customerData: { outlet_id: "outlet-north", outlet_name: "North Branch" },
+    });
+
+    // Assert
+    expect(order.outlet_id).toBe("outlet-north");
+  });
+
+  it("keeps the branch in customerData as well, for the other backends", () => {
+    // Act
+    const { order } = buildCreateOrderRows("tenant-1", {
+      ...args,
+      customerData: { outlet_id: "outlet-north", outlet_name: "North Branch" },
+    });
+
+    // Assert
+    expect(order.customer_data).toMatchObject({ outlet_id: "outlet-north" });
+  });
+
+  it("leaves outlet_id null for a single-location register", () => {
+    // Act
+    const { order } = buildCreateOrderRows("tenant-1", args);
+
+    // Assert: a store with no branches must write exactly what it writes today.
+    expect(order.outlet_id).toBeNull();
+  });
+
+  it("ignores a blank or non-string branch in the blob", () => {
+    // Arrange: a malformed blob must not produce an empty-string foreign key,
+    // which Postgres would reject as an invalid uuid and fail the whole sale.
+    // Act
+    const blank = buildCreateOrderRows("tenant-1", {
+      ...args,
+      customerData: { outlet_id: "   " },
+    });
+    const wrongType = buildCreateOrderRows("tenant-1", {
+      ...args,
+      customerData: { outlet_id: 42 },
+    });
+
+    // Assert
+    expect(blank.order.outlet_id).toBeNull();
+    expect(wrongType.order.outlet_id).toBeNull();
+  });
+});

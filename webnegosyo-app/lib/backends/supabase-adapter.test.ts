@@ -4,6 +4,7 @@ import {
   runPlatformMutation,
   type PlatformClient,
 } from "./supabase-adapter";
+import type { BranchScope } from "../branch-scope";
 
 /**
  * The adapter answers the same string function refs the screens already send to
@@ -496,6 +497,121 @@ describe("runPlatformQuery — orders:getAllOrderItems", () => {
 
     // Assert
     expect(items).toEqual([]);
+  });
+});
+
+/**
+ * A branch manager's device must not RECEIVE another branch's orders, not
+ * merely decline to draw them. Client-side filtering already hid them, but the
+ * rows — customer names and phone numbers included — still crossed the wire.
+ *
+ * The scope passed here is the ACCOUNT's, never the branch an owner has drilled
+ * into. Narrowing the query by a viewing selection would leave the portfolio
+ * unable to fetch the branches it is meant to compare, and an owner is entitled
+ * to the whole store anyway, so there is nothing to gain by pushing their
+ * drill-down to the server.
+ */
+describe("branch-scoped reads", () => {
+  const BRANCH: BranchScope = { kind: "branch", outletId: "outlet-north" };
+  const ALL: BranchScope = { kind: "all" };
+
+  it("narrows getOrders to the account's branch", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {}, BRANCH);
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("narrows the live queue to the account's branch", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getRealtimeQueue", {}, BRANCH);
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("narrows the day's stats to the account's branch", async () => {
+    // Arrange: otherwise a manager's dashboard reports the whole company's
+    // takings as their own.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getDashboardStats", {}, BRANCH);
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("narrows a single order fetch, so a deep link cannot open another branch's order", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getOrderById",
+      { orderId: "order-9" },
+      BRANCH
+    );
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+
+  it("narrows line items through their parent order", async () => {
+    // Arrange: `order_items` has no branch of its own, so it is scoped the same
+    // way its tenant is — through the join.
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {}, BRANCH);
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["orders.outlet_id", "outlet-north"]);
+  });
+
+  it("adds no branch filter for a store-wide account", async () => {
+    // Arrange: the overwhelmingly common case must produce the query it
+    // produces today, character for character.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {}, ALL);
+
+    // Assert
+    expect(opsOf(calls, "eq").map(([column]) => column)).not.toContain("outlet_id");
+  });
+
+  it("defaults to store-wide when no scope is passed", async () => {
+    // Arrange: an omitted scope must not silently narrow to nothing.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {});
+
+    // Assert
+    expect(opsOf(calls, "eq").map(([column]) => column)).not.toContain("outlet_id");
+  });
+
+  it("still filters the tenant when a branch is in scope", async () => {
+    // Arrange: the branch predicate is layered ON TOP of the tenant one, never
+    // instead of it — outlet ids are unique, but relying on that would make a
+    // cross-tenant leak one schema change away.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {}, BRANCH);
+
+    // Assert
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
   });
 });
 
