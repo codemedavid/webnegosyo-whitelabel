@@ -5,10 +5,13 @@ import { cn } from '@/lib/utils'
 import { previousBusinessDayKey } from '@/lib/inventory/business-day'
 import {
   describeReportCaveats,
+  describeRevenueCaveat,
   formatBusinessDayLabel,
+  formatFoodCostPercent,
   formatPeso,
   formatQuantity,
 } from '@/lib/inventory/daily-report-view'
+import { resolveFoodCostPercent } from '@/lib/inventory/food-cost'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 
 interface DailyReportPanelProps {
@@ -20,6 +23,13 @@ interface DailyReportPanelProps {
    * component is a hydration mismatch waiting to happen.
    */
   latestDayKey: string
+  /**
+   * The day's takings. Three distinct states, and the distinction is the point:
+   * a number is real money, `null` is "the order backend could not be read",
+   * and ABSENT is "this caller does not deal in revenue at all" — which renders
+   * the original stock-only report rather than an alarming failure notice.
+   */
+  revenue?: number | null
 }
 
 /** The day after `dayKey`, used only to decide whether a next day exists. */
@@ -40,9 +50,11 @@ interface TotalProps {
   amount: number
   hint: string
   tone?: 'neutral' | 'bad'
+  /** Overrides the peso rendering — used for the percentage and for "not known". */
+  display?: string
 }
 
-function Total({ testId, label, amount, hint, tone = 'neutral' }: TotalProps) {
+function Total({ testId, label, amount, hint, tone = 'neutral', display }: TotalProps) {
   return (
     <div className="rounded-xl border bg-card p-4" data-testid={testId}>
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -52,12 +64,24 @@ function Total({ testId, label, amount, hint, tone = 'neutral' }: TotalProps) {
           tone === 'bad' && amount > 0 && 'text-red-600',
         )}
       >
-        {formatPeso(amount)}
+        {display ?? formatPeso(amount)}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
     </div>
   )
 }
+
+/**
+ * Literal class names — Tailwind scans for these as strings and an interpolated
+ * `sm:grid-cols-${n}` compiles to nothing, silently stacking the cards.
+ */
+const TOTALS_GRID = {
+  stock: 'grid gap-3 sm:grid-cols-3',
+  withRevenue: 'grid gap-3 sm:grid-cols-2 lg:grid-cols-5',
+} as const
+
+/** Shown instead of a percentage when the day has no answer. Not "0.0%". */
+const UNKNOWN_FIGURE = '—'
 
 /**
  * One Manila day of the stock ledger, reconciled and priced.
@@ -69,8 +93,19 @@ function Total({ testId, label, amount, hint, tone = 'neutral' }: TotalProps) {
  * ranked them worst-first by peso, and re-sorting here would bury an expensive
  * loss beneath a cheap one.
  */
-export function DailyReportPanel({ tenantSlug, report, latestDayKey }: DailyReportPanelProps) {
-  const caveats = describeReportCaveats(report)
+export function DailyReportPanel({
+  tenantSlug,
+  report,
+  latestDayKey,
+  revenue,
+}: DailyReportPanelProps) {
+  // `undefined` means this caller does not deal in revenue; `null` means it
+  // tried and failed. Only the latter is worth telling the merchant about.
+  const showsRevenue = revenue !== undefined
+  const foodCostPercent = showsRevenue ? resolveFoodCostPercent(report.totals.cogs, revenue) : null
+  const revenueCaveat = showsRevenue ? describeRevenueCaveat(revenue) : null
+
+  const caveats = [...(revenueCaveat ? [revenueCaveat] : []), ...describeReportCaveats(report)]
   const nextDay = nextBusinessDayKey(report.dayKey)
   const hasNextDay = nextDay <= latestDayKey
 
@@ -104,7 +139,29 @@ export function DailyReportPanel({ tenantSlug, report, latestDayKey }: DailyRepo
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={showsRevenue ? TOTALS_GRID.withRevenue : TOTALS_GRID.stock}>
+        {showsRevenue && (
+          <>
+            <Total
+              testId="daily-report-total-revenue"
+              label="Sales"
+              amount={revenue ?? 0}
+              display={revenue === null ? UNKNOWN_FIGURE : undefined}
+              hint="What the day's orders took."
+            />
+            <Total
+              testId="daily-report-food-cost"
+              label="Food cost"
+              amount={foodCostPercent ?? 0}
+              // Never "0.0%" for an unknown day — a dash asks a question, a
+              // zero answers one it has no business answering.
+              display={
+                foodCostPercent === null ? UNKNOWN_FIGURE : formatFoodCostPercent(foodCostPercent)
+              }
+              hint="Stock cost as a share of sales."
+            />
+          </>
+        )}
         <Total
           testId="daily-report-total-cogs"
           label="Cost of goods sold"

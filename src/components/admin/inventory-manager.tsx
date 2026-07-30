@@ -114,6 +114,12 @@ interface InventoryManagerProps {
    * would read as a day with no trade.
    */
   dailyReport?: DailyInventoryReportForDay
+  /**
+   * The same day's takings, for the food cost percentage. `null` means the
+   * tenant's order backend could not be read — distinct from absent, which
+   * means this caller does not supply revenue at all.
+   */
+  dailyRevenue?: number | null
   /** Today, in Manila. Passed in so the render stays deterministic. */
   latestDayKey?: string
   /** Which tab the URL asked for; an unknown value falls back to the default. */
@@ -143,6 +149,7 @@ export function InventoryManager({
   activity = [],
   activityLoadFailed = false,
   dailyReport,
+  dailyRevenue,
   latestDayKey,
   defaultTab,
 }: InventoryManagerProps) {
@@ -231,6 +238,7 @@ export function InventoryManager({
           <DailyReportPanel
             tenantSlug={tenantSlug}
             report={dailyReport}
+            revenue={dailyRevenue}
             latestDayKey={latestDayKey}
           />
         </TabsContent>

@@ -12,6 +12,7 @@ import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
 import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
 import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
+import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
 import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { Tenant } from '@/types/database'
@@ -83,6 +84,12 @@ export default async function AdminInventoryPage({
     console.error('[inventory] daily report read failed', { tenantId: tenant.id, dayKey, error })
   }
 
+  // The takings come from wherever this tenant's orders live, which is not
+  // necessarily this database. `getDailyRevenue` never throws and returns null
+  // when it cannot tell — the panel then omits the percentage and says why,
+  // rather than dividing by a zero it invented.
+  const dailyRevenue = dailyReport ? await getDailyRevenue(tenant, dayKey) : null
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -113,6 +120,7 @@ export default async function AdminInventoryPage({
         activity={activity.entries}
         activityLoadFailed={activity.loadFailed}
         dailyReport={dailyReport}
+        dailyRevenue={dailyRevenue}
         latestDayKey={latestDayKey}
         defaultTab={tab}
       />
