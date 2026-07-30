@@ -127,6 +127,7 @@ export function judgeVariance(input: VarianceVerdictInput): VarianceVerdict {
   }
 
   const percent = (input.shrinkageCost / input.cogs) * 100
+  const level = levelFor(percent)
 
-  return { level: levelFor(percent), percent, ...GRADED[levelFor(percent)] }
+  return { level, percent, ...GRADED[level] }
 }
