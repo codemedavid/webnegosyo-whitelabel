@@ -111,12 +111,18 @@ function toItemRow(item: ReviseOrderItem): OrderItemRow {
     throw new Error(`Invalid price for "${item.menuItemName}".`);
   }
 
+  // The subtotal is built from the price actually STORED, not the raw
+  // submitted one. Rounding the price for storage and then totalling the
+  // unrounded value writes a line that contradicts itself — a receipt reading
+  // "10.01 x 3 = 30.02". Mirrored in `convex-template/convex/orderRevise.ts`.
+  const price = round2(item.price);
+
   return {
     menu_item_id: item.menuItemId,
     menu_item_name: item.menuItemName,
     quantity: item.quantity,
-    price: round2(item.price),
-    subtotal: round2(item.price * item.quantity),
+    price,
+    subtotal: round2(price * item.quantity),
     special_instructions: item.specialInstructions ?? null,
     variation_selections: item.variationSelections ?? null,
     addons: item.addons ?? null,
