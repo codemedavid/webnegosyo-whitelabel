@@ -583,7 +583,7 @@ export default function OrderDetailScreen() {
                   Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
                   return;
                 }
-                router.push(`/(main)/order/${order._id}/edit`);
+                router.push(`/(main)/order-edit/${order._id}`);
               }}
               activeOpacity={0.8}
             >
