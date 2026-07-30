@@ -10,6 +10,7 @@
 
 import type { OrderBackend } from "./order-backend";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
+import { isOrderInScope, type BranchScope, type ScopedOrderLike } from "./branch-scope";
 
 /** The outcome of a gate check. `reason` is user-facing copy. */
 export interface EditGate {
@@ -41,16 +42,34 @@ export interface EditRequest {
   status: string;
   backend: OrderBackend;
   user: StaffPermissionHolder;
+  /**
+   * The branch this session is confined to. Omitted by a single-location store,
+   * which has no branch to check.
+   */
+  scope?: BranchScope;
+  /** The order itself, needed only to read which branch took it. */
+  order?: ScopedOrderLike;
 }
 
 /**
  * May this person edit this order right now?
  *
  * Checks run cheapest-and-most-absolute first: a delivered order is not
- * editable by anyone, so reporting a missing permission there would send a
- * staff member to ask their manager for something that would not help.
+ * editable by anyone, so reporting a missing permission — or the wrong branch —
+ * there would send a staff member to ask their manager for something that would
+ * not help.
+ *
+ * The branch check comes last because it is the most specific: a manager barred
+ * by permission is barred at every branch, so that is the more useful thing to
+ * be told.
  */
-export function canEditOrder({ status, backend, user }: EditRequest): EditGate {
+export function canEditOrder({
+  status,
+  backend,
+  user,
+  scope,
+  order,
+}: EditRequest): EditGate {
   const finalReason = FINAL_STATUSES[status];
   if (finalReason) return { allowed: false, reason: finalReason };
 
@@ -65,6 +84,18 @@ export function canEditOrder({ status, backend, user }: EditRequest): EditGate {
     return {
       allowed: false,
       reason: "You do not have permission to edit orders.",
+    };
+  }
+
+  // Reads are already narrowed to the branch, but a write is addressed by id and
+  // never passes through that filter — a stale notification, a deep link, or a
+  // screen left open across a branch switch could otherwise still rewrite
+  // another branch's bill. Same predicate as the read path, so there is one
+  // answer to "is this order mine" rather than two that can drift.
+  if (scope && !isOrderInScope(scope, order ?? {})) {
+    return {
+      allowed: false,
+      reason: "This order was taken by another branch and cannot be edited here.",
     };
   }
 

@@ -132,6 +132,28 @@ export function canManageBranchStaff(
   return trimmed(targetOutletId) === actorOutletId
 }
 
+/**
+ * May this account create, rename, or deactivate a branch?
+ *
+ * Only a store-wide one. A branch manager is `role='admin'` plus an `outlet_id`
+ * — a deliberate choice that kept every existing role check working — but it
+ * means the tenant-admin grant on `outlets` reaches them too, and a manager of
+ * one branch could rename or deactivate the others. The shape of the company is
+ * the owner's; a branch account runs a branch.
+ *
+ * A blank id reads as store-wide, exactly as in `resolveBranchScope`: an account
+ * must not be store-wide for reads and branch-locked for writes.
+ *
+ * This is the application half of the guard. The other half is the `outlets` RLS
+ * policy, which is what actually stops a caller who skips the server action.
+ */
+export function canManageOutlets(user: BranchScopedUser): boolean {
+  if (user.role === 'superadmin' || user.is_owner) return true
+  if (user.role !== 'admin') return false
+
+  return trimmed(user.outlet_id) === ''
+}
+
 /** The branch fields needed to validate an assignment against the tenant. */
 export interface StaffOutletCandidate {
   id: string

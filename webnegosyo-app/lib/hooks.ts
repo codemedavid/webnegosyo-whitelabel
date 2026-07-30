@@ -333,6 +333,11 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const tenantId = useScopedTenantId();
 
+  // As in `useSafeQuery`: the account's branch, not the one being viewed. An
+  // owner drilled into North must still be able to act on a South order they
+  // opened from the portfolio.
+  const accountScope = useAccountBranchScope();
+
   const refName = String(ref);
   const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
 
@@ -340,9 +345,15 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
   const platformMutate = useCallback<SafeMutation>(
     async (args) => {
       if (!tenantId) throw new Error("No store selected");
-      return runPlatformMutation(platformClient, tenantId, refName, args ?? {});
+      return runPlatformMutation(
+        platformClient,
+        tenantId,
+        refName,
+        args ?? {},
+        accountScope
+      );
     },
-    [refName, tenantId]
+    [refName, tenantId, accountScope]
   );
 
   let convexMutate: SafeMutation | null = null;

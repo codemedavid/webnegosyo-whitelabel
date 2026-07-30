@@ -324,14 +324,24 @@ async function createOrder(
   return inserted.id;
 }
 
+/**
+ * The branch goes into the WHERE clause of the write itself, not into a check
+ * performed beforehand. A read-then-write would leave a window in which the
+ * order changes branch between the two; this way an out-of-branch patch simply
+ * matches no row.
+ */
 async function patchOrder(
   client: PlatformClient,
   tenantId: string,
   orderId: unknown,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  scope: BranchScope
 ) {
   await unwrap(
-    client.from("orders").update(patch).eq("id", orderId).eq("tenant_id", tenantId)
+    scopeToBranch(
+      client.from("orders").update(patch).eq("id", orderId).eq("tenant_id", tenantId),
+      scope
+    )
   );
   return orderId;
 }
@@ -353,20 +363,25 @@ async function patchOrder(
 async function reviseOrder(
   client: PlatformClient,
   tenantId: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  scope: BranchScope
 ): Promise<string> {
   const reviseArgs = args as unknown as ReviseOrderArgs;
 
+  // Scoped to the branch as well as the tenant, so an order at another branch
+  // comes back absent and the revise stops here — before any item is deleted.
   const current = await unwrap<{
     total: number | null;
     revision_number: number | null;
   } | null>(
-    client
-      .from("orders")
-      .select("total, revision_number")
-      .eq("id", reviseArgs.orderId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle()
+    scopeToBranch(
+      client
+        .from("orders")
+        .select("total, revision_number")
+        .eq("id", reviseArgs.orderId)
+        .eq("tenant_id", tenantId),
+      scope
+    ).maybeSingle()
   );
   if (!current) throw new Error("That order no longer exists.");
 
@@ -406,11 +421,14 @@ async function reviseOrder(
   );
 
   await unwrap(
-    client
-      .from("orders")
-      .update(orderPatch)
-      .eq("id", reviseArgs.orderId)
-      .eq("tenant_id", tenantId)
+    scopeToBranch(
+      client
+        .from("orders")
+        .update(orderPatch)
+        .eq("id", reviseArgs.orderId)
+        .eq("tenant_id", tenantId),
+      scope
+    )
   );
 
   return reviseArgs.orderId;
@@ -472,11 +490,19 @@ export async function runPlatformQuery(
   }
 }
 
+/**
+ * `scope` narrows every write to the account's own branch.
+ *
+ * `createOrder` is deliberately NOT narrowed: it is an insert, so there is no
+ * existing row to guard, and the branch it books to comes from the register's
+ * own `customerData` via `buildCreateOrderRows`.
+ */
 export async function runPlatformMutation(
   client: PlatformClient,
   tenantId: string,
   ref: string,
-  args: unknown
+  args: unknown,
+  scope: BranchScope = STORE_WIDE
 ): Promise<unknown> {
   const tenant = requireTenant(tenantId);
   const params = asRecord(args);
@@ -485,13 +511,17 @@ export async function runPlatformMutation(
     case "orders:createOrder":
       return createOrder(client, tenant, params);
     case "orders:updateOrderStatus":
-      return patchOrder(client, tenant, params.orderId, { status: params.status });
+      return patchOrder(client, tenant, params.orderId, { status: params.status }, scope);
     case "orders:updatePaymentStatus":
-      return patchOrder(client, tenant, params.orderId, {
-        payment_status: params.paymentStatus,
-      });
+      return patchOrder(
+        client,
+        tenant,
+        params.orderId,
+        { payment_status: params.paymentStatus },
+        scope
+      );
     case "orders:reviseOrder":
-      return reviseOrder(client, tenant, params);
+      return reviseOrder(client, tenant, params, scope);
     case "orders:recordPayment":
       return recordPayment(client, tenant, params);
     default:
