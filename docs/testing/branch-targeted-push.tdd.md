@@ -76,6 +76,33 @@ exist in the Convex runtime. `scripts/prebundle-convex.mjs` now excludes
 `.test.ts`/`.spec.ts`; re-run reports `Modules: 15` and the only remaining
 `pushRecipients.test` string in the bundle is prose inside a doc comment.
 
+### Task 5 — a regression guard for the shipped artifact
+
+Added in a later session, after the verification pass below. Task 4's bug was
+caught by *reading prebundler output*, which means nothing would catch it next
+time. `tests/unit/convex-push-bundle.test.ts` asserts on the committed bundle
+instead: it carries every template module (catching a **stale** bundle, the
+recurring hazard where a template edit reaches zero tenants), ships no
+`.test.ts`/`.spec.ts` (catching a **poisoned** bundle), and contains the compiled
+string `recipientsForOutlet` — esbuild inlines `pushRecipients.ts` into its
+importers, so only the output proves it shipped.
+
+**No RED was observable**: the prebundler fix had already landed. Rather than
+fabricate one, two assertions prove the guard can fail — one feeds the predicate
+a test module directly, the other runs the *pre-fix* filter
+(`endsWith(".ts") && !startsWith("_")`) against the real directory and asserts it
+leaks. A bundler that stopped reporting its inputs therefore cannot make the
+guard vacuously green.
+
+```
+$ npx jest --config jest.config.cjs --testPathPatterns=convex-push-bundle
+Tests: 5 passed, 5 total
+```
+
+Also confirmed while verifying: the working-tree bundle was byte-identical to the
+committed one once `_meta.generatedAt` is disregarded — the re-run churned only
+the timestamp, so the artifact tenants receive already carries this feature.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -96,6 +123,10 @@ exist in the Convex runtime. `scripts/prebundle-convex.mjs` now excludes
 | 14 | The unfiltered token list is not pushed to | `…:does not push to the unfiltered token list` | guardrail | PASS |
 | 15 | `createOrder` passes the order's branch | `…:passes the new order's branch to the notification` | guardrail | PASS |
 | 16 | The token carries a branch for the filter to match | `…:stores the branch on the token…` | guardrail | PASS |
+| 17 | The pushed bundle is not stale — it carries every template module | `convex-push-bundle.test.ts:is not stale — it carries every template module` | artifact | PASS |
+| 18 | No unit test is ever pushed into the Convex runtime | `…:never ships a unit test into the tenant runtime` | artifact | PASS |
+| 19 | The compiled bundle actually contains the recipient rule | `…:carries the branch-targeting rule, not just a reference to it` | artifact | PASS |
+| 20 | That exclusion guard can fail (not vacuously green) | `…:has teeth…`, `…:would have caught the filter this bundler shipped before` | artifact | PASS |
 
 ## Design decisions worth keeping
 
