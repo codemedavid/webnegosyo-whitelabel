@@ -56,14 +56,19 @@ export function formatQuantity(quantity: number, unitAbbreviation: string): stri
 }
 
 /**
- * A food cost percentage.
+ * A percentage.
  *
  * One decimal place: whole numbers read as rounded guesses, and two decimals
  * imply a precision the underlying costs do not have. `toFixed` is used rather
  * than any locale formatter, for the hydration reason at the top of this file.
  */
-export function formatFoodCostPercent(percent: number): string {
+export function formatPercent(percent: number): string {
   return `${percent.toFixed(1)}%`
+}
+
+/** The food cost share, rendered the same way as every other percentage. */
+export function formatFoodCostPercent(percent: number): string {
+  return formatPercent(percent)
 }
 
 /**

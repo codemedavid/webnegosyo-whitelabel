@@ -11,7 +11,9 @@ import {
   formatPeso,
   formatQuantity,
 } from '@/lib/inventory/daily-report-view'
+import { formatPercent } from '@/lib/inventory/daily-report-view'
 import { resolveFoodCostPercent } from '@/lib/inventory/food-cost'
+import { judgeVariance, type VarianceLevel } from '@/lib/inventory/variance-verdict'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 
 interface DailyReportPanelProps {
@@ -30,6 +32,12 @@ interface DailyReportPanelProps {
    * the original stock-only report rather than an alarming failure notice.
    */
   revenue?: number | null
+  /**
+   * How many dishes have a working recipe. Absent means the caller cannot say,
+   * and the verdict is omitted rather than guessed — a grade built on an
+   * assumed coverage is exactly the false reassurance it exists to prevent.
+   */
+  dishesWithRecipe?: number
 }
 
 /** The day after `dayKey`, used only to decide whether a next day exists. */
@@ -84,6 +92,17 @@ const TOTALS_GRID = {
 const UNKNOWN_FIGURE = '—'
 
 /**
+ * A withheld verdict is styled like the caveats, not like a grade — it is the
+ * report declining to answer, and it must not read as a fourth severity.
+ */
+const VERDICT_TONE: Record<VarianceLevel | 'unknown', string> = {
+  good: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30',
+  watch: 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30',
+  investigate: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30',
+  unknown: 'border-dashed bg-muted/40',
+}
+
+/**
  * One Manila day of the stock ledger, reconciled and priced.
  *
  * Answers the question the merchant actually asked: what did today's trade cost
@@ -98,7 +117,20 @@ export function DailyReportPanel({
   report,
   latestDayKey,
   revenue,
+  dishesWithRecipe,
 }: DailyReportPanelProps) {
+  // Same three-state rule as revenue: absent means "this caller cannot say",
+  // and a verdict is never invented from an assumption.
+  const verdict =
+    dishesWithRecipe === undefined
+      ? null
+      : judgeVariance({
+          cogs: report.totals.cogs,
+          shrinkageCost: report.totals.shrinkageCost,
+          countedCount: report.countedCount,
+          dishesWithRecipe,
+        })
+
   // `undefined` means this caller does not deal in revenue; `null` means it
   // tried and failed. Only the latter is worth telling the merchant about.
   const showsRevenue = revenue !== undefined
@@ -138,6 +170,28 @@ export function DailyReportPanel({
           )}
         </div>
       </div>
+
+      {/*
+        The verdict leads, because it is the answer and the figures are the
+        working. When it declines to judge it says which thing to fix, so an
+        unconfigured system reads as unconfigured rather than as excellent.
+      */}
+      {verdict && (
+        <div
+          className={cn('rounded-xl border p-4', VERDICT_TONE[verdict.level ?? 'unknown'])}
+          data-testid="daily-report-verdict"
+        >
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p className="font-semibold">{verdict.headline}</p>
+            {verdict.percent !== null && (
+              <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                {formatPercent(verdict.percent)} of what the day used is unaccounted for
+              </p>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{verdict.detail}</p>
+        </div>
+      )}
 
       <div className={showsRevenue ? TOTALS_GRID.withRevenue : TOTALS_GRID.stock}>
         {showsRevenue && (

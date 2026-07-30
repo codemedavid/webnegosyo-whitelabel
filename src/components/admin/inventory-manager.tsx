@@ -158,6 +158,12 @@ export function InventoryManager({
 
   const canShowReport = Boolean(dailyReport && latestDayKey)
 
+  // An EMPTY coverage list means the caller could not say what is set up — not
+  // that nothing is. Passing 0 there would let a missing prop masquerade as the
+  // finding "no dish has a recipe", so the verdict is withheld instead.
+  const dishesWithRecipe =
+    coverageRows.length > 0 ? coverageRows.filter((row) => row.hasRecipe).length : undefined
+
   // Overview leads by default: "what is happening?" is the question a merchant
   // arrives with. The URL can override it, because the report's day links carry
   // their tab — without that, stepping a day would land back here and read as a
@@ -239,6 +245,7 @@ export function InventoryManager({
             tenantSlug={tenantSlug}
             report={dailyReport}
             revenue={dailyRevenue}
+            dishesWithRecipe={dishesWithRecipe}
             latestDayKey={latestDayKey}
           />
         </TabsContent>
