@@ -9,6 +9,10 @@
  * The shaping is the ported pure core, so these tests are about the fetch: the
  * window it asks for, the tenant gate, and what it does when a query fails.
  */
+// The real client pulls in expo-constants, which this jest setup cannot
+// transform. Every test injects its own db, so the module only needs to load.
+jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
+
 import { loadDailyReport } from "./daily-report-service";
 
 type Result = { data: unknown; error: unknown };
