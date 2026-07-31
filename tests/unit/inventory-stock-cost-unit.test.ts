@@ -206,3 +206,65 @@ describe('recordStockMovementWith — delivery price is stored per stock unit', 
     expect(captured.movementInsert?.unit_cost).toBeNull()
   })
 })
+
+/**
+ * A stocktake must be resolved against the shelf as it stands AT THE INSERT,
+ * not as it stood when the screen last read it.
+ *
+ * `resolveMovementDelta` computes a stocktake as `counted - currentQty`, where
+ * `currentQty` came from a SELECT earlier in the same request. A sale landing
+ * in that gap is silently absorbed: a probe against the live database (in a
+ * rolled-back transaction) counted 900, had a sale of 50 land mid-flight, and
+ * left the shelf at 850. The merchant physically counted 900 and the system
+ * now disagrees with them, with nothing in the ledger to say why.
+ *
+ * The fix moves the subtraction into the insert, under the row lock the
+ * trigger already takes. The service's job becomes stating WHAT WAS COUNTED —
+ * `target_qty`, in stock units — and letting the database do the arithmetic
+ * against a figure that cannot go stale.
+ */
+describe('recordStockMovementWith — a stocktake states the count, not the difference', () => {
+  test('sends the counted quantity in stock units for the database to resolve', async () => {
+    // Arrange — counted 2 kg on a gram-stocked ingredient.
+    const { client, captured } = buildClient(BEEF, [GRAM, KILOGRAM])
+
+    // Act
+    await recordStockMovementWith(client, '44444444-4444-4444-8444-444444444444', {
+      inventory_item_id: '33333333-3333-4333-8333-333333333333',
+      reason: 'stocktake',
+      quantity: 2,
+      unit_id: '22222222-2222-2222-8222-222222222222',
+    })
+
+    // Assert — the target is the COUNT, converted, never a difference.
+    expect(captured.movementInsert?.target_qty).toBeCloseTo(2000, 8)
+  })
+
+  test('leaves a delivery with no target, so the trigger does not resolve it', async () => {
+    // Only a stocktake states an absolute. A delivery is a relative movement
+    // and must stay one, or two deliveries in a row would overwrite each other.
+    const { client, captured } = buildClient(BEEF, [GRAM, KILOGRAM])
+
+    await recordStockMovementWith(client, '44444444-4444-4444-8444-444444444444', {
+      inventory_item_id: '33333333-3333-4333-8333-333333333333',
+      reason: 'receive',
+      quantity: 500,
+      unit_id: '11111111-1111-4111-8111-111111111111',
+    })
+
+    expect(captured.movementInsert?.target_qty ?? null).toBeNull()
+  })
+
+  test('leaves waste with no target', async () => {
+    const { client, captured } = buildClient(BEEF, [GRAM, KILOGRAM])
+
+    await recordStockMovementWith(client, '44444444-4444-4444-8444-444444444444', {
+      inventory_item_id: '33333333-3333-4333-8333-333333333333',
+      reason: 'waste',
+      quantity: 100,
+      unit_id: '11111111-1111-4111-8111-111111111111',
+    })
+
+    expect(captured.movementInsert?.target_qty ?? null).toBeNull()
+  })
+})
