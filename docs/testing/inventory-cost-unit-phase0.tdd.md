@@ -2264,3 +2264,90 @@ store, not something to fan out unattended.
 
 Also still open: there is no branch **selector** on either surface — the report
 follows the account's own scope, so an owner cannot ask for one branch's report.
+
+---
+
+# Phase 6 — the spinner that would not end
+
+**Source**: a merchant report — "loading takes too much time" — with a
+screenshot of the stock sheet stuck on its spinner while recording a count for
+Brew Daze Express.
+
+## User journey
+
+> As a merchant recording a count at the shelf, I want the write to complete
+> quickly, and to be told something if it cannot, so that I am never left unable
+> to tell whether my count was recorded.
+
+## What was actually wrong
+
+Two separate faults, one slow and one unbounded.
+
+**1. The same identity resolved three times.** A single stocktake made three
+sequential `supabase.auth.getUser()` calls and read `app_users` twice:
+
+| # | Where | Call |
+|---|---|---|
+| 1 | route | `auth.getUser()` to authorize |
+| 2 | route | `app_users` for the permission check |
+| 3 | service | `auth.getUser()` inside `resolveActingBranchScope` |
+| 4 | service | `app_users` again, for the branch |
+| 5 | service | `auth.getUser()` inside `resolveActingUserId`, for `created_by` |
+
+`auth.getUser()` is **not** a local token decode — it calls the auth server to
+verify the JWT. Five round trips, in sequence, before the write begins, from a
+phone on mobile data to a serverless function that is itself round-tripping to
+Supabase.
+
+Fixed by having the route pass the actor it already resolved. Nothing is
+loosened: the scope is still the SERVER's answer from `app_users`, never the
+phone's, which is the property that stops one shop moving another's stock.
+
+**2. `fetch` had no timeout.** A stalled connection left the sheet spinning with
+no error, no confirmation, and no way out but killing the app — and the merchant
+could not tell whether the count had been recorded, which is the one thing that
+screen exists to make certain.
+
+## Task report
+
+RED (`ffd2bc3`, `f1a0d99`) — 4 failed / 2 passed on the actor reproducer;
+compile-time RED (`TS2554`) on the timeout option.
+
+GREEN (`4e4b50e`) — web 374 suites / 4634 tests; app 101 suites / 1698 tests;
+`tsc` and lint clean.
+
+**One implementation attempt failed and was replaced.** Aborting via
+`AbortController` alone did not end the test's hung request: the stub `fetch`
+ignores the signal. Real `fetch` honours it, but React Native's has not always
+propagated an abort as a rejection — so relying on it is exactly how a spinner
+outlives the timeout meant to end it. The final version **aborts and races**:
+the abort releases the socket, the race guarantees the function returns.
+
+**The timeout message deliberately does not say "try again."** A timeout is not
+a failed write — the request may well have landed. "Try again" is the one
+instruction that could make it worse, because a re-entered count is recorded
+twice. It says the count may have been saved and to check the shelf first.
+
+## Test specification
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 323 | A write with a known actor asks the auth server nothing | `inventory-movement-actor.test.ts` | PASS |
+| 324 | It does not re-read `app_users` | `inventory-movement-actor.test.ts` | PASS |
+| 325 | The movement is still attributed to that person | `inventory-movement-actor.test.ts` | PASS |
+| 326 | It is booked to the branch the caller resolved | `inventory-movement-actor.test.ts` | PASS |
+| 327 | A branch outside the acting scope is still refused | `inventory-movement-actor.test.ts` | PASS |
+| 328 | With no actor, it resolves one itself as before | `inventory-movement-actor.test.ts` | PASS |
+| 329 | The route hands on the user it authorized | `api/inventory-movement-authz.test.ts` | PASS |
+| 330 | The scope handed on comes from `app_users`, not the request | `api/inventory-movement-authz.test.ts` | PASS |
+| 331 | A stalled write gives up instead of spinning forever | `inventory-movement-service.test.ts` | PASS |
+| 332 | Its message says the count may already have been saved | `inventory-movement-service.test.ts` | PASS |
+
+## Known gaps
+
+- **Not measured in production.** The round trips removed are counted from the
+  code, not from a trace. If the spinner is still slow, the remaining suspects
+  are serverless cold start and the write's own sequential reads
+  (`inventory_items`, `inventory_units`, insert, cost update, refresh).
+- The order pipeline's path is unchanged — it passes no actor and still resolves
+  one itself, which is correct: a `sale` is deducted by the system, not a person.
