@@ -46,11 +46,13 @@ function wire(
   alerts: unknown[] = [ALERT_ROW],
   items: unknown[] = [FLOUR_ROW],
   units: unknown[] = [KG_ROW],
+  outlets: unknown[] = [],
 ) {
   const tables = {
     stock_alerts: table(alerts),
     inventory_items: table(items),
     inventory_units: table(units),
+    outlets: table(outlets),
   }
   from.mockImplementation((name: keyof typeof tables) => tables[name])
   return tables
@@ -146,5 +148,43 @@ describe('getOpenStockAlerts', () => {
     })
 
     expect(await getOpenStockAlerts('t1')).toEqual([])
+  })
+})
+
+describe('getOpenStockAlerts — the branch an alert is about', () => {
+  it('carries the branch through so the banner can name it', async () => {
+    // Phase C stamps alerts with a branch. A read that drops the column leaves
+    // the merchant reading "Flour is out of stock" across a two-shop chain.
+    wire(
+      [{ ...ALERT_ROW, outlet_id: 'o-south' }],
+      [FLOUR_ROW],
+      [KG_ROW],
+      [{ id: 'o-south', name: 'South' }],
+    )
+
+    const [alert] = await getOpenStockAlerts('t1')
+
+    expect(alert.outletId).toBe('o-south')
+    expect(alert.branchName).toBe('South')
+  })
+
+  it('leaves a store-wide alert unstamped', async () => {
+    wire([{ ...ALERT_ROW, outlet_id: null }])
+
+    const [alert] = await getOpenStockAlerts('t1')
+
+    expect(alert.outletId).toBeNull()
+    expect(alert.branchName).toBeUndefined()
+  })
+
+  it('keeps the alert when the branch name cannot be resolved', async () => {
+    // A deleted outlet. Losing the name costs a suffix, not the whole alert --
+    // the same trade the unit lookup already makes.
+    wire([{ ...ALERT_ROW, outlet_id: 'o-gone' }])
+
+    const alerts = await getOpenStockAlerts('t1')
+
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].branchName).toBeUndefined()
   })
 })
