@@ -112,6 +112,30 @@ export async function recordStockMovement(
  *
  * Authorization is the caller's responsibility and must already have happened.
  */
+/**
+ * Who is entering this movement, or `null` if nobody can be named.
+ *
+ * The daily report can say ₱500 of beef went missing on Tuesday; without this
+ * nothing says who counted the shelf that day, and shrinkage is only
+ * actionable against a person and a time.
+ *
+ * Never throws. Attribution is secondary to the count itself: refusing to
+ * record a stocktake because the identity lookup failed would leave a wrong
+ * quantity on the shelf, which is worse than an unattributed row. A service
+ * client — the order pipeline's — legitimately has no user, and a `sale` is
+ * deducted by the system rather than by a person, so anonymous is the correct
+ * answer there rather than a fallback.
+ */
+async function resolveActingUserId(supabase: StockMovementClient): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error) return null
+    return data.user?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function recordStockMovementWith(
   supabase: StockMovementClient,
   tenantId: string,
@@ -165,6 +189,7 @@ export async function recordStockMovementWith(
   const { data: movementRow, error: movementError } = await supabase
     .from('stock_movements')
     .insert({
+      created_by: await resolveActingUserId(supabase),
       tenant_id: tenantId,
       inventory_item_id: validated.inventory_item_id,
       reason: validated.reason,

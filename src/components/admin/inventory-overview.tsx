@@ -1,27 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  EyeOff,
-  PackageX,
-  TrendingDown,
-} from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, EyeOff, PackageX, TrendingDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import type { AutoHiddenDish } from '@/lib/inventory/auto-86-blame'
 import type { InventoryHealth } from '@/lib/inventory/inventory-health'
-
-interface InventoryOverviewProps {
-  health: InventoryHealth
-  autoHidden: AutoHiddenDish[]
-  activity: ActivityFeedEntry[]
-  /** The ledger read failed — distinct from a quiet day with nothing in it. */
-  activityLoadFailed?: boolean
-}
 
 /**
  * Locale formatting runs on the client only.
@@ -41,39 +26,27 @@ function formatTimestamp(iso: string): string {
   })
 }
 
+/**
+ * A real `<time>`, and never a blank cell.
+ *
+ * The mount gate is the right fix for the hydration mismatch, but rendering an
+ * empty string until it flips meant a screen reader on a slow client heard
+ * nothing where the event time should be. The server emits the machine date —
+ * deterministic, so it hydrates cleanly — and the browser swaps in the
+ * merchant's own locale once it can.
+ */
 function Timestamp({ iso }: { iso: string }) {
   const [isMounted, setIsMounted] = useState(false)
   useEffect(() => setIsMounted(true), [])
 
   return (
-    <span className="shrink-0 text-xs text-muted-foreground">
-      {isMounted ? formatTimestamp(iso) : ''}
-    </span>
-  )
-}
-
-interface StatProps {
-  label: string
-  value: number
-  tone?: 'neutral' | 'warn' | 'bad'
-  hint?: string
-}
-
-function Stat({ label, value, tone = 'neutral', hint }: StatProps) {
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p
-        className={cn(
-          'mt-1 text-3xl font-semibold tabular-nums',
-          tone === 'warn' && value > 0 && 'text-amber-600',
-          tone === 'bad' && value > 0 && 'text-red-600',
-        )}
-      >
-        {value}
-      </p>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    <time
+      dateTime={iso}
+      suppressHydrationWarning
+      className="shrink-0 text-xs text-muted-foreground"
+    >
+      {isMounted ? formatTimestamp(iso) : iso.slice(0, 10)}
+    </time>
   )
 }
 
@@ -83,48 +56,84 @@ const DIRECTION_CLASS = {
   mixed: 'text-muted-foreground',
 } as const
 
+interface FigureProps {
+  value: number
+  label: string
+  tone?: 'neutral' | 'warn' | 'bad'
+}
+
 /**
- * What inventory is doing, and where it cannot.
+ * One figure on the summary line.
  *
- * Every panel here answers a question that previously had no surface at all: a
- * merchant could switch inventory on, have it deduct nothing because no dish had
- * a recipe, and see exactly what a working setup on a quiet day looks like.
+ * These used to be four 3xl tiles filling a screen of their own. They are
+ * context for the list below them, not the content of a page — the merchant
+ * came to find an ingredient, and the count of ingredients is a caption.
  */
-export function InventoryOverview({
-  health,
-  autoHidden,
-  activity,
-  activityLoadFailed = false,
-}: InventoryOverviewProps) {
+function Figure({ value, label, tone = 'neutral' }: FigureProps) {
   return (
-    <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Ingredients"
-          value={health.ingredients.total}
-          hint={`${health.ingredients.ok} in good supply`}
-        />
-        <Stat label="Running low" value={health.ingredients.low} tone="warn" />
-        <Stat label="Out of stock" value={health.ingredients.out} tone="bad" />
-        <Stat
-          label="Dishes set up"
-          value={health.dishes.withRecipe}
-          hint={`of ${health.dishes.total} on your menu`}
-        />
+    <span className="inline-flex items-baseline gap-1.5">
+      <span
+        className={cn(
+          'font-semibold tabular-nums',
+          tone === 'warn' && value > 0 && 'text-amber-800 dark:text-amber-400',
+          tone === 'bad' && value > 0 && 'text-red-600',
+        )}
+      >
+        {value}
+      </span>
+      <span className="text-muted-foreground">{label}</span>
+    </span>
+  )
+}
+
+interface HealthStripProps {
+  health: InventoryHealth
+}
+
+/**
+ * What inventory is doing, and where it cannot — in one line and one banner.
+ *
+ * Sits above the ingredient list rather than on a tab of its own. A merchant
+ * opening inventory at 7pm is looking for an ingredient, not for a dashboard;
+ * these figures are what they need to see on the way past.
+ */
+export function InventoryHealthStrip({ health }: HealthStripProps) {
+  if (health.ingredients.total === 0) {
+    return (
+      <div className="rounded-xl border border-dashed p-10 text-center">
+        <PackageX className="mx-auto h-8 w-8 text-muted-foreground" />
+        <p className="mt-3 font-medium">No ingredients yet</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Add the raw materials you buy — flour, cheese, cooking oil. Stock levels, recipe costs
+          and the daily report all follow from them.
+        </p>
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+        <Figure value={health.ingredients.total} label="ingredients" />
+        <Figure value={health.ingredients.low} label="running low" tone="warn" />
+        <Figure value={health.ingredients.out} label="out of stock" tone="bad" />
+        <span className="text-muted-foreground">
+          <span className="font-semibold tabular-nums text-foreground">
+            {health.dishes.withRecipe}
+          </span>{' '}
+          of {health.dishes.total} dishes set up
+        </span>
+      </p>
 
       {health.gaps.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
           <h3 className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
             Not everything is switched on
           </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Each of these is a part of inventory that cannot run right now.
-          </p>
           <ul className="mt-3 space-y-3">
             {health.gaps.map((gap) => (
-              <li key={gap.id} className="rounded-lg border bg-background p-3">
+              <li key={gap.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium">{gap.title}</p>
                   {!gap.isSelfServe && (
@@ -133,13 +142,32 @@ export function InventoryOverview({
                     </Badge>
                   )}
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">{gap.detail}</p>
+                <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">{gap.detail}</p>
               </li>
             ))}
           </ul>
         </section>
       )}
+    </div>
+  )
+}
 
+interface LogsProps {
+  autoHidden: AutoHiddenDish[]
+  activity: ActivityFeedEntry[]
+  /** The ledger read failed — distinct from a quiet day with nothing in it. */
+  activityLoadFailed?: boolean
+}
+
+/**
+ * What changed, below the list it changed.
+ *
+ * Two logs of unequal priority: what is off the menu is actionable and leads;
+ * recent activity is reference and follows.
+ */
+export function InventoryLogs({ autoHidden, activity, activityLoadFailed = false }: LogsProps) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
       <section className="rounded-xl border bg-card">
         <div className="flex items-center gap-2 border-b p-4">
           <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -176,7 +204,7 @@ export function InventoryOverview({
                       should already have put this back, so surfacing it is the
                       only way a merchant finds a dish stuck off their menu.
                     */
-                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-500">
+                    <p className="mt-1 text-sm text-amber-900 dark:text-amber-200">
                       Its ingredients are back in stock but the dish has not returned. Switch it on
                       yourself under Menu Management.
                     </p>
@@ -219,14 +247,18 @@ export function InventoryOverview({
                       </Badge>
                     )}
                   </p>
-                  <p
-                    className={cn(
-                      'mt-1 text-sm tabular-nums',
-                      DIRECTION_CLASS[entry.direction],
-                    )}
-                  >
+                  <p className={cn('mt-1 text-sm tabular-nums', DIRECTION_CLASS[entry.direction])}>
                     {entry.lines.join(' · ')}
                   </p>
+                  {/*
+                    Rendered only when known. Labelling the unattributed rows
+                    "Unknown" would read as a system that lost the name rather
+                    than one that never recorded it — and every row written
+                    before attribution shipped is unattributed.
+                  */}
+                  {entry.actorName && (
+                    <p className="mt-1 text-xs text-muted-foreground">by {entry.actorName}</p>
+                  )}
                 </div>
                 <Timestamp iso={entry.createdAt} />
               </li>
@@ -234,13 +266,6 @@ export function InventoryOverview({
           </ul>
         )}
       </section>
-
-      {health.ingredients.total === 0 && (
-        <p className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-          <PackageX className="h-4 w-4" />
-          Start on the Ingredients tab — everything else here follows from it.
-        </p>
-      )}
     </div>
   )
 }

@@ -19,6 +19,12 @@ import type { InventoryItem, StockMovement } from '@/types/database'
  */
 const RECENT_MOVEMENT_LIMIT = 120
 
+interface StaffRow {
+  user_id: string
+  display_name: string | null
+  email: string | null
+}
+
 /**
  * The recent ledger for one tenant, newest first, grouped and named.
  *
@@ -35,7 +41,9 @@ export async function getInventoryActivity(
 
     const { data, error } = await supabase
       .from('stock_movements')
-      .select('id, inventory_item_id, reason, quantity_delta, balance_after, order_id, created_at')
+      .select(
+        'id, inventory_item_id, reason, quantity_delta, balance_after, order_id, created_at, created_by',
+      )
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(RECENT_MOVEMENT_LIMIT)
@@ -49,9 +57,26 @@ export async function getInventoryActivity(
 
     const nameById = new Map(ingredients.map((item) => [item.id, item.name]))
 
+    // A roster that cannot be read costs the entries their names, not the
+    // feed. Whoever moved the stock still moved it.
+    const { data: staff } = await supabase
+      .from('app_users')
+      .select('user_id, display_name, email')
+      .eq('tenant_id', tenantId)
+
+    const actorById = new Map(
+      ((staff ?? []) as unknown as StaffRow[]).map((row) => [
+        row.user_id,
+        // The email is a poor label but a true one; a blank name would render
+        // as an entry that claims nobody entered it.
+        row.display_name?.trim() || row.email || null,
+      ]),
+    )
+
     return {
       entries: buildActivityFeed((data ?? []) as unknown as StockMovement[], {
         ingredientName: (id) => nameById.get(id) ?? null,
+        actorName: (id) => actorById.get(id) ?? null,
       }),
       loadFailed: false,
     }

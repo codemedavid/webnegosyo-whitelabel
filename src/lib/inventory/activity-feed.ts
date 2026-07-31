@@ -21,6 +21,13 @@ import type { StockMovement } from '@/types/database'
 export interface ActivityFeedContext {
   /** Null when the ingredient is gone — costs a name, not the entry. */
   ingredientName: (inventoryItemId: string) => string | null
+  /**
+   * Who entered a hand-typed movement. Null when they have left the roster —
+   * a departed staff member costs the entry a name, never the entry itself.
+   *
+   * Optional so every caller that does not deal in people keeps working.
+   */
+  actorName?: (userId: string) => string | null
 }
 
 export interface ActivityFeedEntry {
@@ -34,11 +41,36 @@ export interface ActivityFeedEntry {
   createdAt: string
   /** Written by the order pipeline rather than typed by a person. */
   isAutomatic: boolean
+  /**
+   * Who typed this, when that is knowable. Null for an automatic movement, for
+   * a row written before movements were attributed, and for a person no longer
+   * on the roster.
+   */
+  actorName: string | null
 }
 
 /** Trims the trailing zeros a NUMERIC(16,4) round-trip leaves behind. */
 function formatQuantity(quantity: number): string {
   return Number(quantity.toFixed(4)).toString()
+}
+
+/**
+ * The person behind an entry, or null.
+ *
+ * An order-driven movement is never attributed even if a `created_by` somehow
+ * reached it: a sale is deducted by the pipeline, and naming an actor there
+ * would put a person against a row nobody typed.
+ */
+function resolveActorName(
+  movement: StockMovement,
+  context: ActivityFeedContext,
+): string | null {
+  if (movement.order_id) return null
+
+  const userId = movement.created_by
+  if (!userId || !context.actorName) return null
+
+  return context.actorName(userId)
 }
 
 function signed(delta: number): string {
@@ -82,6 +114,7 @@ function toEntry(group: readonly StockMovement[], context: ActivityFeedContext):
       direction: resolveDirection([first.quantity_delta]),
       createdAt: first.created_at,
       isAutomatic: Boolean(first.order_id),
+      actorName: resolveActorName(first, context),
     }
   }
 
@@ -95,6 +128,7 @@ function toEntry(group: readonly StockMovement[], context: ActivityFeedContext):
     direction: resolveDirection(rows.map((row) => row.quantity_delta)),
     createdAt: first.created_at,
     isAutomatic: Boolean(first.order_id),
+    actorName: resolveActorName(first, context),
   }
 }
 
