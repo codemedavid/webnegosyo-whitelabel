@@ -41,6 +41,8 @@ jest.mock('@/lib/inventory/acting-branch-scope', () => ({
 interface Writes {
   inserts: Array<{ table: string; rows: Record<string, unknown> }>
   updates: Array<{ table: string; patch: Record<string, unknown> }>
+  /** Every `.eq()` asked for, per table — so a dropped filter is visible. */
+  filters: Array<{ table: string; column: string; value: unknown }>
 }
 
 /**
@@ -54,7 +56,7 @@ function stub(options: {
   items?: Array<Record<string, unknown>>
   movements?: Array<Record<string, unknown>>
 } = {}): Writes {
-  const writes: Writes = { inserts: [], updates: [] }
+  const writes: Writes = { inserts: [], updates: [], filters: [] }
 
   const items = options.items ?? [{ id: 'i1' }, { id: 'i2' }, { id: 'i3' }]
   const movements = options.movements ?? []
@@ -69,8 +71,14 @@ function stub(options: {
   from.mockImplementation((table: string) => {
     const chain: Record<string, unknown> = {
       select: () => chain,
-      eq: () => chain,
-      is: () => chain,
+      eq: (column: string, value: unknown) => {
+        writes.filters.push({ table, column, value })
+        return chain
+      },
+      is: (column: string, value: unknown) => {
+        writes.filters.push({ table, column, value })
+        return chain
+      },
       in: () => chain,
       order: () => chain,
       limit: () => chain,
@@ -132,9 +140,14 @@ describe('opening a count', () => {
     await openCount(TENANT, {})
 
     expect(writes.inserts[0].rows.expected_item_count).toBe(2)
-    // Proves the filter is asked for at all rather than the stub just returning
-    // fewer rows.
-    expect(from).toHaveBeenCalledWith('inventory_items')
+    // The count above would pass just as happily with the filter deleted — the
+    // stub decides how many rows come back. This is the assertion that actually
+    // holds the rule.
+    expect(writes.filters).toContainEqual({
+      table: 'inventory_items',
+      column: 'is_active',
+      value: true,
+    })
   })
 
   it('opens with no closing timestamp, so nothing reads it as finished', async () => {
