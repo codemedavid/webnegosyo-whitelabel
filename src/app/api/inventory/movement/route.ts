@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { recordStockMovementWith } from '@/lib/inventory/stock-service'
+import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 
 /**
  * POST /api/inventory/movement
@@ -84,15 +85,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { data: appUser } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, permissions, is_owner')
     .eq('user_id', user.id)
     .single()
 
-  const isAuthorized =
+  // Belonging to the tenant is not enough. Every staff member here is
+  // `role='admin'` — a deliberate choice, since a new role string would have
+  // had to be taught to every existing admin check — so per-feature reach
+  // lives in `permissions`. Without this, a cashier holding only `pos` could
+  // enter a stocktake, rewriting the shelf figure and surfacing in the daily
+  // report as someone else's shrinkage. The sidebar and the app tab already
+  // hide inventory from them, but UI is not a boundary and this route is
+  // reachable with the token the app is holding.
+  //
+  // `menu` is the same key that gates both of those surfaces, so the door and
+  // the UI now agree rather than merely looking like they do.
+  const isTenantMember =
     appUser?.role === 'superadmin' ||
     (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
 
-  if (!isAuthorized) {
+  if (!isTenantMember || !hasPermission(appUser as PermissionHolder, 'menu')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
