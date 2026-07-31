@@ -233,7 +233,7 @@ describe('recordStockMovementWith — a stocktake states the count, not the diff
       inventory_item_id: '33333333-3333-4333-8333-333333333333',
       reason: 'stocktake',
       quantity: 2,
-      unit_id: '22222222-2222-2222-8222-222222222222',
+      unit_id: '22222222-2222-4222-8222-222222222222',
     })
 
     // Assert — the target is the COUNT, converted, never a difference.
