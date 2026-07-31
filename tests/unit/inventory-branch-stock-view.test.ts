@@ -175,3 +175,37 @@ describe('resolveMovementBranch', () => {
     )
   })
 })
+
+describe('branchStockBreakdown — each branch carries its own reorder level', () => {
+  it("reports the branch's own par level so the panel can show it", () => {
+    // C3. The alert path has read inventory_stock.reorder_level since Phase C,
+    // but nothing surfaced it, so a merchant could not tell whether a branch
+    // had its own threshold or was inheriting the store's.
+    const index = indexStockRows([
+      { inventory_item_id: 'i1', outlet_id: 'o-south', current_qty: 8, reorder_level: 5 },
+    ])
+
+    const [south] = branchStockBreakdown(index, 'i1', [{ id: 'o-south', name: 'South' }])
+
+    expect(south.reorderLevel).toBe(5)
+  })
+
+  it('reports zero for a branch that has not chosen one', () => {
+    // Zero is how branchLevelInputs already spells "unset", and it is what the
+    // store-wide fallback keys on. Inventing the store's number here would make
+    // an inherited threshold indistinguishable from a chosen one.
+    const index = indexStockRows([
+      { inventory_item_id: 'i1', outlet_id: 'o-south', current_qty: 8, reorder_level: 0 },
+    ])
+
+    const [south] = branchStockBreakdown(index, 'i1', [{ id: 'o-south', name: 'South' }])
+
+    expect(south.reorderLevel).toBe(0)
+  })
+
+  it('reports zero for a branch with no row at all', () => {
+    const [south] = branchStockBreakdown(new Map(), 'i1', [{ id: 'o-south', name: 'South' }])
+
+    expect(south.reorderLevel).toBe(0)
+  })
+})

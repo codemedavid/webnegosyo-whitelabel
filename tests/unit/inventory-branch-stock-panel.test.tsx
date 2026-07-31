@@ -8,7 +8,8 @@
  * the feature was there, leave, and find it in the sidebar.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { BranchStockPanel } from '@/components/admin/branch-stock-panel'
 import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
 
@@ -67,5 +68,59 @@ describe('BranchStockPanel — acting on the direction it names', () => {
     )
 
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('BranchStockPanel — a branch\'s own reorder level', () => {
+  const withPars = () =>
+    summary({
+      lines: [
+        { outletId: 'o-north', name: 'North', quantity: 700, reorderLevel: 50 },
+        { outletId: 'o-south', name: 'South', quantity: 0, reorderLevel: 0 },
+      ],
+    } as Partial<BranchStockSummary>)
+
+  it("shows a branch's own threshold once it has one", async () => {
+    render(<BranchStockPanel summary={withPars()} unitLabel="g" storeReorderLevel={20} />)
+
+    const north = screen.getByRole('spinbutton', { name: /north.*reorder/i })
+    expect(north).toHaveValue(50)
+  })
+
+  it('shows a branch with no threshold as inheriting the store level', async () => {
+    // The distinction the merchant needs: South is not "warned at 0", it is
+    // warned at the store's 20 until someone says otherwise. Rendering a bare
+    // zero would read as "never warn me".
+    render(<BranchStockPanel summary={withPars()} unitLabel="g" storeReorderLevel={20} />)
+
+    expect(screen.getByText(/store level.*20/i)).toBeInTheDocument()
+  })
+
+  it('saves the branch threshold the merchant typed', async () => {
+    const onSetReorderLevel = jest.fn()
+    const user = userEvent.setup()
+    render(
+      <BranchStockPanel
+        summary={withPars()}
+        unitLabel="g"
+        storeReorderLevel={20}
+        onSetReorderLevel={onSetReorderLevel}
+      />,
+    )
+
+    const south = screen.getByRole('spinbutton', { name: /south.*reorder/i })
+    await user.clear(south)
+    await user.type(south, '5')
+    await user.click(screen.getByRole('button', { name: /save.*south/i }))
+
+    expect(onSetReorderLevel).toHaveBeenCalledWith('o-south', 5)
+  })
+
+  it('offers no editing when the caller cannot save', async () => {
+    // The panel is also rendered read-only. Showing an input that silently
+    // does nothing is worse than showing the number.
+    render(<BranchStockPanel summary={withPars()} unitLabel="g" storeReorderLevel={20} />)
+
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument()
   })
 })
