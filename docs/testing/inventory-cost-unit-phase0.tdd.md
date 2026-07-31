@@ -927,6 +927,82 @@ npx eslint src/lib/inventory/business-day.ts …     → clean
   the render-order check was comparing positions in the import list. Both fixed
   in the test; the implementation was correct.
 
+## Phase 3b SHIPPED 2026-07-31 — every hand-typed movement names who typed it
+
+**The journey.** *As a merchant whose report says ₱500 of beef went missing on
+Tuesday, I want to know who counted that shelf, so that I can ask them rather
+than guess.*
+
+`stock_movements.created_by` has existed since the ledger's first migration
+(`20260726120000:41`) and had **zero writers**. Shrinkage is only actionable
+against a person and a time; without attribution the report can name a loss but
+never begin an investigation.
+
+**Scope note.** The plan called Phase 3b an `inventory_counts` session table.
+Attribution is its prerequisite and needs no migration — the column is already
+there — so it was taken first and shipped whole. The session table (grouping a
+count into one event, so a half-finished count is visible as half-finished) is
+NOT built and remains open.
+
+### RED → GREEN
+
+```
+npx jest --testPathPatterns="inventory-movement-attribution"
+RED:   5 failed — created_by is `undefined` on every insert
+GREEN: 5 passed
+
+npx jest --testPathPatterns="inventory-activity-feed"
+RED:   5 failed, 8 passed        GREEN: 13 passed
+
+npx jest --testPathPatterns="inventory-overview-layout"
+RED:   1 failed, 7 passed        GREEN: 8 passed
+
+npx jest --testPathPatterns="inventory|stock"
+  Test Suites: 1 skipped, 64 passed / 65   Tests: 8 skipped, 666 passed / 674
+npx tsc --noEmit / npx eslint             → clean
+```
+
+Checkpoints: `660f1eb` (RED, write path) → `b5316a4` (GREEN, all three layers),
+with the feed reproducer at the commit between them.
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 158 | A hand-entered movement is stamped with the acting user | `inventory-movement-attribution.test.ts:stamps the acting user` | unit | PASS |
+| 159 | A movement written with no session stays anonymous | `…:leaves the movement anonymous` | unit | PASS |
+| 160 | An identity lookup that errors still records the stock | `…:still records the stock when the identity lookup errors` | unit | PASS |
+| 161 | An identity lookup that throws still records the stock | `…:still records the stock when the identity lookup throws` | unit | PASS |
+| 162 | Deliveries are attributed as readily as counts | `…:attributes a delivery as readily as a count` | unit | PASS |
+| 163 | The feed names the person behind a manual movement | `inventory-activity-feed.test.ts:names the person who entered` | unit | PASS |
+| 164 | An order-driven movement is never attributed | `…:leaves an automatic movement unattributed` | unit | PASS |
+| 165 | A pre-attribution row still renders, unnamed | `…:leaves the entry unattributed when the movement names nobody` | unit | PASS |
+| 166 | A departed staff member costs the entry a name, not the entry | `…:when the person is no longer on the roster` | unit | PASS |
+| 167 | Callers that do not deal in actors keep working (`actorName` optional) | `…:still builds a feed for a caller that does not deal in actors` | unit | PASS |
+| 168 | The merchant sees the name in the activity feed | `inventory-overview-layout.test.tsx:names the person who entered` | unit | PASS |
+| 169 | Unattributed entries show nothing, never "Unknown" | `…:says nothing at all when the movement names nobody` | unit | PASS |
+
+### Decisions worth not re-deriving
+
+- **Attribution is secondary to the count.** `resolveActingUserId` never throws
+  and never blocks the insert. Refusing to record a stocktake because the
+  identity lookup failed would trade a gap in the audit trail for a wrong
+  quantity on the shelf — the worse of the two.
+- **Order-driven movements stay anonymous, checked explicitly.** `sale` and
+  `void` are written by the pipeline; `resolveActorName` returns null whenever
+  `order_id` is set, even if a `created_by` somehow reached the row. Naming an
+  actor there puts a person against a row nobody typed.
+- **Unattributed renders NOTHING, not "Unknown".** Every row written before this
+  phase has a null `created_by`. An "Unknown" label on all of them reads as a
+  system that lost the name rather than one that never recorded it.
+- **`actorName` is an OPTIONAL context function**, so every existing caller of
+  `buildActivityFeed` kept working untouched — the same three-state discipline
+  used for the report's revenue prop.
+- **`display_name || email || null`.** An email is a poor label but a true one;
+  a blank string would render as an entry claiming nobody entered it.
+- **An unreadable roster costs names, not the feed** — the same degradation as
+  the unit catalog in the daily report read.
+
 ## Still not built
 
 **The food-cost percentage on the phone.** The web report shows it; the app
@@ -936,11 +1012,11 @@ The phone claims nothing about revenue — it shows stock figures and a verdict
 that never depended on revenue — so nothing on it is misleading, but a merchant
 who uses both will notice the web has a number the phone does not.
 
-**Phase 3b — `inventory_counts` session table.** NOT built, deliberately: the
-verdict needed no migration, and the count-session UI is better designed against
-a screen that exists. It remains the first intended writer of
-`stock_movements.created_by`, which still has **zero writers**, so "who counted
-this" is unanswerable today.
+**The `inventory_counts` session table.** Still NOT built. Attribution (above)
+answered "who counted this", which was the urgent half. The session table
+answers a different question: which ingredients belonged to ONE count, so a
+half-finished count is visible as half-finished rather than as a shelf where
+most things happened to match.
 
 **Known gap:** `page.tsx` wiring remains un-unit-tested (async server
 component), matching the Phase 1c precedent — the passthrough is covered at the
