@@ -1843,3 +1843,122 @@ inverted. **The revenue side must be branch-scoped first.**
 
 Also outstanding: the merchant app has no count panel, and counts still open
 against the store pool only.
+
+---
+
+# Phase 5 — the phone can run a stock count
+
+**Source plan**: the inline plan of 2026-07-31 ("Remaining Daily Inventory
+Report Work"), Phase 5. Chosen first because it is self-contained and needs no
+Convex deploy, unlike the branch work it sits beside.
+
+## User journey
+
+> As a merchant standing at my shelf, I want to start and finish a stock count
+> from my phone, so that the count is recorded as one act and the report can say
+> honestly how much of the shelf was actually looked at.
+
+Until now the app could **read** that a count was running but not start or
+finish one. That meant walking to a laptop — and the walk is where a count gets
+abandoned, which is the precise failure the session table exists to make visible.
+
+## Task report
+
+### Task 1 — the pure copy, the service, and the payload seam
+
+RED (`ecab7da`) — 3 suites failed:
+
+```
+parity.test.ts        ENOENT lib/daily-report/count-panel.ts        (runtime)
+count-session-service TS2307 cannot find './count-session-service'  (compile)
+inventory-movement    TS2554 expected 2 arguments, but got 3        (compile)
+```
+
+GREEN (`51f4f33`) — `count-session-service` 13/13, the other two 30/30.
+
+**Why the session writes straight to Supabase** while a movement deliberately
+does not (`lib/inventory-movement-service.ts` refuses to): a movement needs the
+server, because the signed delta is resolved against the on-hand quantity read
+in the same request, a delivery blends into the moving average, and crossing the
+reorder line raises alerts and can 86 a dish. A session records the **act** of
+counting, not its effect — `stock_movements` still records that — and
+`inventory_counts` RLS already confines a writer to the branches they may reach.
+A route would have added a hop and no boundary.
+
+**Two defects the tests found rather than confirmed:**
+
+1. *The service rethrew Supabase's error object.* Supabase rejects with a plain
+   object, not an `Error`. Rethrown as-is it reached the screen with no
+   `message` to render — a merchant would get an empty alert for a write that
+   did not happen. Now wrapped by `asError`, keeping the reason: "new row
+   violates row-level security policy" tells them they are on the wrong branch.
+   Found because `rejects.toThrow()` does not match a non-`Error`.
+2. *The test stub keyed results by table alone*, so `findOpenCount` always found
+   a count and `openCount` never reached its insert — three assertions were
+   passing over a code path that never ran. The stub now takes a per-table
+   **queue**.
+
+### Task 2 — the movement route dropped the count
+
+RED (`48a501c`) — 3 failed / 10 passed. GREEN (`c265441`) — 13/13.
+
+The route never forwarded `inventory_count_id`. Without it the phone could open
+and close a count while every entry made during it arrived untagged, so a fully
+counted shelf would report as **completely uncounted** — worse than having no
+session, because the report would then actively assert that nobody looked.
+
+**One reproducer was rewritten rather than made to pass.** It asserted a 400 for
+a delivery naming a count. That refusal lives in `stockMovementInputSchema`,
+which this suite mocks away, so the assertion could only have been satisfied by
+adding a **fourth** copy of the rule at the door. It now pins that the route does
+not silently *drop* the pairing; the refusal stays pinned against the real schema
+in `tests/unit/inventory-count-attach.test.ts` and by the trigger in migration
+`20260812120000`.
+
+### Task 3 — the panel at the shelf
+
+RED (`5f20664`) — suite failed to run, ENOENT `components/StockCountPanel.tsx`.
+GREEN (`e9e68ab`) — 24/24.
+
+The panel is on the **inventory** screen, not the report screen: the count
+happens where the merchant is standing, and putting the control elsewhere would
+mean opening a count somewhere other than where it is run.
+
+## Test specification
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 270 | The running count's coverage is reported, counting a sack recounted twice once | `count-session-service.test.ts` | PASS |
+| 271 | The store pool is asked for with IS NULL, not `= NULL` | `count-session-service.test.ts` | PASS |
+| 272 | A branch manager's count is scoped to their own branch | `count-session-service.test.ts` | PASS |
+| 273 | A failed read yields null, never a phantom count | `count-session-service.test.ts` | PASS |
+| 274 | The denominator is snapshotted at open, excluding retired ingredients | `count-session-service.test.ts` | PASS |
+| 275 | Opening JOINS a running count instead of starting a second | `count-session-service.test.ts` | PASS |
+| 276 | A failed open or close surfaces, with a message worth showing | `count-session-service.test.ts` | PASS |
+| 277 | A stocktake is filed under the running count automatically | `inventory-movement.test.ts` | PASS |
+| 278 | A delivery or waste is never filed under a count | `inventory-movement.test.ts` | PASS |
+| 279 | The movement route forwards the session; a non-string is ignored | `api/inventory-movement-authz.test.ts` | PASS |
+| 280 | The panel's every word comes from the shared copy | `inventory-screen-mount.test.ts` | PASS |
+| 281 | Finishing an incomplete count warns first | `inventory-screen-mount.test.ts` | PASS |
+| 282 | The count is scoped to the branch whose shelf is on screen | `inventory-screen-mount.test.ts` | PASS |
+| 283 | `count-panel.ts` has not drifted from the web original | `daily-report/parity.test.ts` | PASS |
+
+## Validation
+
+```
+npx jest (webnegosyo-app)  → 98 suites, 1649 passed
+npx tsc --noEmit (app)     → clean
+npx jest (web)             → 367 suites, 4553 passed, 1 skipped
+```
+
+`npx tsc --noEmit` on the web reports errors in
+`tests/integration/inventory-live-e2e.test.ts` — a **concurrent session's**
+file (`3bc83c8`), untouched here and unrelated to this unit.
+
+## Known gaps
+
+- The panel offers a count of the branch on screen. Per-branch counts are
+  therefore live on the phone but still store-pool-only on the **web**
+  (`getOpenCount(tenant.id, null)`).
+- The branch report VIEW remains blocked on branch-scoped revenue, unchanged
+  from the previous unit.
