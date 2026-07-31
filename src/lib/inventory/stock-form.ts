@@ -51,11 +51,27 @@ function requiredNumber(value: string): number {
   return parsed
 }
 
+/**
+ * `openCountId` is the count currently running on this shelf, when one is.
+ *
+ * Attached automatically rather than asked for. If it were a thing to remember,
+ * the entries a busy kitchen forgot to tag would leave the count reading as
+ * partial — and a coverage figure that under-reports honest work is how a
+ * merchant learns to ignore it.
+ *
+ * Only a stocktake joins. Stock still ARRIVES during a count, and a delivery
+ * filed under one would raise coverage for an ingredient nobody counted; the
+ * movement schema refuses it outright, so attaching indiscriminately here would
+ * break the delivery form for the whole duration of a count.
+ */
 export function buildStockMovementInput(
   draft: StockMovementDraft,
   inventoryItemId: string,
+  openCountId?: string | null,
 ): StockMovementInput {
   const note = draft.note.trim()
+  const joinsCount = draft.reason === 'stocktake' && Boolean(openCountId)
+
   return stockMovementInputSchema.parse({
     inventory_item_id: inventoryItemId,
     reason: draft.reason,
@@ -63,6 +79,7 @@ export function buildStockMovementInput(
     unit_id: draft.unit_id,
     unit_cost: optionalNumber(draft.unit_cost),
     note: note === '' ? undefined : note,
+    inventory_count_id: joinsCount ? openCountId : undefined,
   })
 }
 
