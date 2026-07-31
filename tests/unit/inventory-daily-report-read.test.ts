@@ -41,6 +41,13 @@ const from = jest.fn((table: string) => {
       return chain
     },
     order: () => chain,
+    limit: () => chain,
+    is: (column: string, value: unknown) => {
+      recorded[table].filters.push([column, value])
+      return chain
+    },
+    maybeSingle: () =>
+      Promise.resolve({ data: (tableData[table] ?? [])[0] ?? null, error: null }),
     then: (resolve: (v: unknown) => void) =>
       resolve({ data: tableData[table] ?? [], error: null }),
   }
@@ -147,5 +154,124 @@ describe('getDailyInventoryReport', () => {
     // Assert
     expect(report.rows).toEqual([])
     expect(report.totals.cogs).toBe(0)
+  })
+})
+
+/**
+ * The half of the report that says how much of it to believe.
+ *
+ * Without the session, an ingredient nobody looked at and an ingredient that
+ * reconciled perfectly produce the identical row — so a count abandoned at the
+ * fourth shelf reads as a spotless store.
+ */
+describe('the count session behind the day', () => {
+  /** A closed count of 4 ingredients that only reached flour. */
+  function stubPartialCount() {
+    tableData.inventory_counts = [
+      {
+        id: 'count-1',
+        tenant_id: TENANT,
+        business_day: '2026-07-29',
+        status: 'closed',
+        expected_item_count: 4,
+        closed_at: '2026-07-29T14:00:00.000Z',
+      },
+    ]
+    tableData.stock_movements = [
+      {
+        inventory_item_id: 'flour',
+        reason: 'stocktake',
+        quantity_delta: -20,
+        balance_after: 780,
+        created_at: '2026-07-29T05:00:00.000Z',
+        inventory_count_id: 'count-1',
+      },
+    ]
+  }
+
+  test('reports how far the day’s count actually got', async () => {
+    // Arrange
+    stubPartialCount()
+
+    // Act
+    const report = await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    // Assert
+    expect(report.countSession?.state).toBe('partial')
+    expect(report.countSession?.countedCount).toBe(1)
+    expect(report.countSession?.expectedCount).toBe(4)
+  })
+
+  test('counts a recounted ingredient once', async () => {
+    // Arrange — the same sack weighed three times because the number looked
+    // wrong. Reading that as three ingredients would let one stubborn sack
+    // report a finished count.
+    stubPartialCount()
+    tableData.stock_movements = [
+      ...(tableData.stock_movements as unknown[]),
+      {
+        inventory_item_id: 'flour',
+        reason: 'stocktake',
+        quantity_delta: -1,
+        balance_after: 779,
+        created_at: '2026-07-29T05:05:00.000Z',
+        inventory_count_id: 'count-1',
+      },
+    ]
+
+    // Act
+    const report = await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    // Assert
+    expect(report.countSession?.countedCount).toBe(1)
+  })
+
+  test('ignores a stocktake that belonged to no session', async () => {
+    // Arrange — a one-off correction during a count is not part of the count,
+    // and crediting it would raise coverage for an ingredient nobody counted.
+    stubPartialCount()
+    tableData.stock_movements = [
+      ...(tableData.stock_movements as unknown[]),
+      {
+        inventory_item_id: 'sugar',
+        reason: 'stocktake',
+        quantity_delta: -5,
+        balance_after: 100,
+        created_at: '2026-07-29T05:10:00.000Z',
+        inventory_count_id: null,
+      },
+    ]
+
+    // Act
+    const report = await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    // Assert
+    expect(report.countSession?.countedCount).toBe(1)
+  })
+
+  test('says nothing about a day nobody counted', async () => {
+    // Arrange — every day before sessions existed, and every tenant who counts
+    // without opening one. Inventing an abandoned count from an absent session
+    // would accuse a merchant of a count they never started.
+    tableData.inventory_counts = []
+
+    // Act
+    const report = await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    // Assert
+    expect(report.countSession).toBeNull()
+  })
+
+  test('scopes the session read to the tenant and the day', async () => {
+    // Arrange
+    stubPartialCount()
+
+    // Act
+    await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    // Assert — a missing tenant filter here names another shop's count as this
+    // shop's evidence.
+    expect(recorded.inventory_counts.filters).toContainEqual(['tenant_id', TENANT])
+    expect(recorded.inventory_counts.filters).toContainEqual(['business_day', '2026-07-29'])
   })
 })
