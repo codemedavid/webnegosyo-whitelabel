@@ -184,6 +184,15 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="daily-report"
+        options={{
+          href: show("daily-report"),
+          title: "Daily Report",
+          tabBarLabel: "Report",
+          tabBarIcon: ({ color }) => <TabIcon symbol="◷" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="payments"
         options={{
           href: show("payments"),

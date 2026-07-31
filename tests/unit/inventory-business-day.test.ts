@@ -16,6 +16,7 @@ import {
   resolveBusinessDayWindow,
   toBusinessDayKey,
   previousBusinessDayKey,
+  nextBusinessDayKey,
   resolveReportDay,
 } from '@/lib/inventory/business-day'
 
@@ -80,6 +81,34 @@ describe('previousBusinessDayKey', () => {
 
   test('steps across a year boundary', () => {
     expect(previousBusinessDayKey('2026-01-01')).toBe('2025-12-31')
+  })
+})
+
+describe('nextBusinessDayKey', () => {
+  // The merchant app walks day by day rather than opening a date picker, so
+  // stepping forward has to be as exact as stepping back. Doing the arithmetic
+  // beside the JSX is how the phone and the web end up disagreeing about which
+  // day a report covers.
+  test('steps forward one day', () => {
+    expect(nextBusinessDayKey('2026-07-28')).toBe('2026-07-29')
+  })
+
+  test('steps across a month boundary', () => {
+    expect(nextBusinessDayKey('2026-07-31')).toBe('2026-08-01')
+  })
+
+  test('steps across a year boundary', () => {
+    expect(nextBusinessDayKey('2025-12-31')).toBe('2026-01-01')
+  })
+
+  test('steps onto a leap day', () => {
+    // 2028 is a leap year; a naive +1 month/day scheme skips 29 February.
+    expect(nextBusinessDayKey('2028-02-28')).toBe('2028-02-29')
+  })
+
+  test('undoes previousBusinessDayKey', () => {
+    // The pair are the two directions of one control, so they must round-trip.
+    expect(nextBusinessDayKey(previousBusinessDayKey('2026-03-01'))).toBe('2026-03-01')
   })
 })
 

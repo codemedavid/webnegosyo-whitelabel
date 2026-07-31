@@ -56,7 +56,17 @@ export const WORKSPACES: readonly Workspace[] = [
     // 86s an item and the merchant who reorders its flour are the same person.
     // How the merchant gets paid sits beside what they sell: both are the
     // storefront's setup, and neither is a view of a shift.
-    tabs: ["product-analytics", "product-management", "inventory", "payments"],
+    // The daily report sits next to the shelf it reconciles rather than in
+    // Insights: it carries no revenue on the phone, and the merchant who
+    // counts the flour and the one asking whether the count matched are the
+    // same person standing in the same place.
+    tabs: [
+      "product-analytics",
+      "product-management",
+      "inventory",
+      "daily-report",
+      "payments",
+    ],
     defaultTab: "product-analytics",
   },
   {

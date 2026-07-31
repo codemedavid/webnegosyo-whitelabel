@@ -105,7 +105,9 @@ describe("allowedWorkspaces", () => {
     const views = allowedWorkspaces(menuOnly);
     const products = views.find((w) => w.key === "products");
     expect(products).toBeDefined();
-    expect(products!.tabs).toEqual(["product-management", "inventory"]);
+    // The daily report rides the same `menu` grant as the shelf it reconciles,
+    // so it survives this filter alongside inventory.
+    expect(products!.tabs).toEqual(["product-management", "inventory", "daily-report"]);
     expect(products!.defaultTab).toBe("product-management");
   });
 });

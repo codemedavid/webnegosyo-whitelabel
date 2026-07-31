@@ -61,7 +61,9 @@ describe("daily report tab registration", () => {
     // An unmapped tab is allowed for everyone — the trap TAB_PERMISSIONS
     // already documents for `branches`. This report names what stock went
     // missing and what it cost, so it must not be the one tab a cashier keeps.
-    const holderOfNothing = { role: "admin", permissions: {} } as never;
+    // `permissions: null` means an owner (full reach), so a staff member with
+    // no grants is an empty LIST, not a null.
+    const holderOfNothing = { role: "admin", permissions: [] } as never;
 
     expect(isTabAllowed(holderOfNothing, TAB)).toBe(false);
   });
@@ -69,7 +71,7 @@ describe("daily report tab registration", () => {
   it("rides the same grant as the inventory tab", () => {
     // The report is the shelf the inventory tab shows, reconciled. Whoever may
     // see the stock may see whether it added up.
-    const holderOfMenu = { role: "admin", permissions: { menu: true } } as never;
+    const holderOfMenu = { role: "admin", permissions: ["menu"] } as never;
 
     expect(isTabAllowed(holderOfMenu, TAB)).toBe(isTabAllowed(holderOfMenu, "inventory"));
     expect(isTabAllowed(holderOfMenu, TAB)).toBe(true);
@@ -138,11 +140,15 @@ describe("daily report screen", () => {
     // Same order as the web panel. A merchant who reads the numbers first has
     // already formed an opinion by the time the caveat explains the numbers
     // cannot support one.
-    const verdictAt = screen.indexOf("DailyReportVerdict");
-    const caveatAt = screen.indexOf("describeReportCaveats");
+    // Compared at the JSX usages, not the imports — an import list is
+    // alphabetised by tooling and says nothing about render order.
+    const verdictAt = screen.indexOf("<DailyReportVerdict");
+    const caveatAt = screen.indexOf("caveats.map");
+    const totalsAt = screen.indexOf("<Total");
 
     expect(verdictAt).toBeGreaterThan(-1);
     expect(verdictAt).toBeLessThan(caveatAt);
+    expect(caveatAt).toBeLessThan(totalsAt);
   });
 });
 

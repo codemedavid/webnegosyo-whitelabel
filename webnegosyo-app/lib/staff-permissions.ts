@@ -72,6 +72,11 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   "product-management": "menu",
   // Reordering an ingredient is a menu decision, so it rides the same key.
   inventory: "menu",
+  // The daily report is that same shelf, reconciled — whoever may see the
+  // stock may see whether it added up. Mapping it at all is the point: an
+  // unmapped tab defaults to ALLOWED, and this one names what went missing
+  // and what it cost.
+  "daily-report": "menu",
   // Where the store's money lands is store setup, not a shift task. An
   // unmapped tab defaults to allowed, which would let any cashier retire the
   // merchant's GCash account mid-service.

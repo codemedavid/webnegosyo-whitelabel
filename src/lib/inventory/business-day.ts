@@ -86,6 +86,26 @@ export function previousBusinessDayKey(dayKey: string): string {
   return new Date(previous).toISOString().slice(0, 10)
 }
 
+/**
+ * The day after.
+ *
+ * The merchant app walks day by day rather than opening a date picker, so
+ * stepping forward has to be exactly as reliable as stepping back — including
+ * across months, years and leap days. Both directions go through the epoch for
+ * that reason; incrementing the date parts by hand is where 29 February gets
+ * skipped.
+ *
+ * Stepping past today is the CALLER's business to prevent, not this function's:
+ * `resolveReportDay` already clamps a future day, and a step function that
+ * silently refused to move would be indistinguishable from a dead button.
+ */
+export function nextBusinessDayKey(dayKey: string): string {
+  assertDayKey(dayKey)
+
+  const next = Date.parse(`${dayKey}T00:00:00.000Z`) + MILLISECONDS_PER_DAY
+  return new Date(next).toISOString().slice(0, 10)
+}
+
 export interface ReportDaySelection {
   /** The day to report on. */
   dayKey: string

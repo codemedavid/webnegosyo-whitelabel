@@ -123,3 +123,66 @@ export async function loadDailyReport(
     return null;
   }
 }
+
+interface RecipeRow {
+  id: string;
+  target_type: string;
+  menu_item_id: string | null;
+}
+
+/**
+ * How many dishes actually take stock off the shelf when they sell.
+ *
+ * The verdict refuses to grade a day when this is zero, and that refusal is
+ * the feature: a tenant with no recipes gets zero usage and zero shrinkage,
+ * which reads as a flawless day forever.
+ *
+ * `undefined` means "could not tell" and withholds the verdict; `0` is the
+ * finding "no dish has a recipe", which the verdict says out loud. Collapsing
+ * the two would let a dropped connection state something untrue about the
+ * merchant's setup.
+ *
+ * A dish counts only if its recipe lists at least one ingredient — the same
+ * rule as `hasRecipe: ingredientCount > 0` in the web's recipe-coverage.ts. An
+ * empty recipe deducts nothing, so it is a recipe nobody finished.
+ */
+export async function countDishesWithRecipe(
+  tenantId: string,
+  db: Db = supabase,
+): Promise<number | undefined> {
+  if (!tenantId) return undefined;
+
+  try {
+    const [recipeResult, componentResult] = await Promise.all([
+      db.from("recipes").select("id, target_type, menu_item_id").eq("tenant_id", tenantId),
+      db.from("recipe_components").select("recipe_id").eq("tenant_id", tenantId),
+    ]);
+
+    if (recipeResult.error) throw recipeResult.error;
+    if (componentResult.error) throw componentResult.error;
+
+    const recipesWithIngredients = new Set(
+      ((componentResult.data ?? []) as unknown as { recipe_id: string }[]).map(
+        (row) => row.recipe_id,
+      ),
+    );
+
+    const dishes = new Set(
+      ((recipeResult.data ?? []) as unknown as RecipeRow[])
+        .filter(
+          (row) =>
+            row.target_type === "menu_item" &&
+            row.menu_item_id !== null &&
+            recipesWithIngredients.has(row.id),
+        )
+        // A dish can hold more than one recipe row; the question is whether it
+        // is covered at all, so it is counted once.
+        .map((row) => row.menu_item_id as string),
+    );
+
+    return dishes.size;
+  } catch (error) {
+    console.warn("[inventory] recipe coverage unavailable", { tenantId, error });
+    return undefined;
+  }
+}

@@ -13,7 +13,7 @@
 // transform. Every test injects its own db, so the module only needs to load.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
-import { loadDailyReport } from "./daily-report-service";
+import { loadDailyReport, countDishesWithRecipe } from "./daily-report-service";
 
 type Result = { data: unknown; error: unknown };
 
@@ -148,5 +148,108 @@ describe("loadDailyReport", () => {
   test("returns null rather than throwing on a nonsense day", async () => {
     // The day can come from a stale deep link; a read must not crash the screen.
     expect(await loadDailyReport("t1", "not-a-day", client() as never)).toBeNull();
+  });
+});
+
+/**
+ * The verdict refuses to grade a day when no dish has a recipe — without that
+ * refusal, a tenant whose orders deduct nothing gets zero usage, zero
+ * shrinkage, and a flawless grade forever. That refusal needs this count.
+ *
+ * `undefined` and `0` are emphatically different answers here: `0` is the
+ * finding "no dish has a recipe", which the verdict states out loud, and
+ * `undefined` is "could not tell", which withholds the verdict entirely.
+ */
+describe("countDishesWithRecipe", () => {
+  const RECIPES = {
+    data: [
+      { id: "r1", target_type: "menu_item", menu_item_id: "m1" },
+      { id: "r2", target_type: "menu_item", menu_item_id: "m2" },
+    ],
+    error: null,
+  };
+  const COMPONENTS = { data: [{ recipe_id: "r1" }], error: null };
+
+  function recipeClient(overrides: Partial<Record<string, Result>> = {}) {
+    return fakeSupabase({
+      recipes: RECIPES,
+      recipe_components: COMPONENTS,
+      ...overrides,
+    } as Record<string, Result>);
+  }
+
+  test("counts only dishes whose recipe actually lists an ingredient", async () => {
+    // r2 is an empty recipe: it deducts nothing, so the dish is not covered.
+    // This mirrors `hasRecipe: ingredientCount > 0` in the web's
+    // recipe-coverage.ts — an empty recipe is a recipe nobody finished.
+    expect(await countDishesWithRecipe("t1", recipeClient() as never)).toBe(1);
+  });
+
+  test("counts a dish once even when its recipe lists many ingredients", async () => {
+    const db = recipeClient({
+      recipe_components: {
+        data: [{ recipe_id: "r1" }, { recipe_id: "r1" }, { recipe_id: "r1" }],
+        error: null,
+      },
+    });
+
+    expect(await countDishesWithRecipe("t1", db as never)).toBe(1);
+  });
+
+  test("ignores recipes attached to something other than a dish", async () => {
+    // Variation and modifier options carry recipes too; the verdict asks how
+    // many DISHES take stock off the shelf.
+    const db = recipeClient({
+      recipes: {
+        data: [{ id: "r1", target_type: "variation_option", menu_item_id: null }],
+        error: null,
+      },
+    });
+
+    expect(await countDishesWithRecipe("t1", db as never)).toBe(0);
+  });
+
+  test("reports zero when the tenant has written no recipes at all", async () => {
+    // Zero is a finding, not a failure — it is exactly what makes the verdict
+    // say "no dish has a recipe yet" instead of grading the day perfect.
+    const db = recipeClient({
+      recipes: { data: [], error: null },
+      recipe_components: { data: [], error: null },
+    });
+
+    expect(await countDishesWithRecipe("t1", db as never)).toBe(0);
+  });
+
+  test("returns undefined when the recipes cannot be read", async () => {
+    // Not zero: a failed read must not masquerade as the finding "no dish has
+    // a recipe", which would make the verdict state something untrue.
+    const db = recipeClient({ recipes: { data: null, error: { message: "offline" } } });
+
+    expect(await countDishesWithRecipe("t1", db as never)).toBeUndefined();
+  });
+
+  test("returns undefined when the components cannot be read", async () => {
+    const db = recipeClient({
+      recipe_components: { data: null, error: { message: "offline" } },
+    });
+
+    expect(await countDishesWithRecipe("t1", db as never)).toBeUndefined();
+  });
+
+  test("returns undefined without querying when there is no tenant yet", async () => {
+    const db = recipeClient();
+
+    expect(await countDishesWithRecipe("", db as never)).toBeUndefined();
+    expect(db.calls).toHaveLength(0);
+  });
+
+  test("scopes both reads to the tenant", async () => {
+    const db = recipeClient();
+
+    await countDishesWithRecipe("t1", db as never);
+
+    for (const table of ["recipes", "recipe_components"]) {
+      expect(argsFor(db, table, "eq")).toEqual(["tenant_id", "t1"]);
+    }
   });
 });
