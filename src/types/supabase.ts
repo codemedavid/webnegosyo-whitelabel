@@ -228,12 +228,16 @@ export type Database = {
           },
         ]
       }
+      // `outlet_id` added by migration 20260802120000. NULL is the unbranched
+      // store pool — a real location, not "unknown" — so a single-shop tenant
+      // never has to invent an outlet to be alerted.
       stock_alerts: {
         Row: {
           created_at: string | null
           id: string
           inventory_item_id: string
           level: string
+          outlet_id: string | null
           quantity: number
           reorder_level: number
           resolved_at: string | null
@@ -244,6 +248,7 @@ export type Database = {
           id?: string
           inventory_item_id: string
           level: string
+          outlet_id?: string | null
           quantity: number
           reorder_level?: number
           resolved_at?: string | null
@@ -254,12 +259,21 @@ export type Database = {
           id?: string
           inventory_item_id?: string
           level?: string
+          outlet_id?: string | null
           quantity?: number
           reorder_level?: number
           resolved_at?: string | null
           tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "stock_alerts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_movements: {
         Row: {

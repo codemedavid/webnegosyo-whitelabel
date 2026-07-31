@@ -238,7 +238,12 @@ async function raiseAlerts(
     }))
   if (rows.length === 0) return 0
 
-  await supabase.from('stock_alerts').insert(rows as never)
+  // Deliberately uncast. Every other write in this file still carries
+  // `as never` because the generated types lag the schema, but these rows are
+  // now fully typed, and letting TypeScript check them is the only thing that
+  // catches a row that forgot the branch — which would raise the alert against
+  // the whole store instead of the one shop that is short.
+  await supabase.from('stock_alerts').insert(rows)
   return rows.length
 }
 
