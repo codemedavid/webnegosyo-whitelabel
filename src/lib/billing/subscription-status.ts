@@ -50,6 +50,16 @@ export interface SubscriptionAccess {
   isBlocked: boolean
   /** Whole Manila days past `paid_through`; 0 while still inside it. */
   daysOverdue: number
+  /**
+   * Whole Manila days remaining before `paid_through` lapses; 0 on the last
+   * paid day itself.
+   *
+   * Null whenever the question does not apply — no due date, already overdue,
+   * or manually paused. Null rather than a negative number so a caller cannot
+   * accidentally read "-40 days left" as a renewal that is still in the future;
+   * `daysOverdue` is the field that carries lateness.
+   */
+  daysUntilDue: number | null
   /** The stored due date, echoed for the paused screen. */
   paidThroughDayKey: string | null
   /** First day access stops, so a merchant in grace can be warned. */
@@ -60,6 +70,7 @@ const OPEN: SubscriptionAccess = {
   state: 'active',
   isBlocked: false,
   daysOverdue: 0,
+  daysUntilDue: null,
   paidThroughDayKey: null,
   blockedFromDayKey: null,
 }
@@ -115,6 +126,9 @@ export function resolveSubscriptionAccess(
       state: 'paused',
       isBlocked: true,
       daysOverdue: 0,
+      // A tenant the platform owner cut off is not "renewing in 20 days",
+      // however much time their stored date still shows.
+      daysUntilDue: null,
       paidThroughDayKey,
       blockedFromDayKey: null,
     }
@@ -134,18 +148,40 @@ export function resolveSubscriptionAccess(
   const graceDays = resolveGraceDays(subscription.grace_days)
   const blockedFromDayKey = addDays(paidThroughDayKey, graceDays + 1)
 
-  // Paid THROUGH that day means the day itself is theirs in full.
+  // Paid THROUGH that day means the day itself is theirs in full, so the last
+  // paid day is 0 days out rather than 1.
   if (today <= paidThroughDayKey) {
-    return { state: 'active', isBlocked: false, daysOverdue: 0, paidThroughDayKey, blockedFromDayKey }
+    return {
+      state: 'active',
+      isBlocked: false,
+      daysOverdue: 0,
+      daysUntilDue: daysBetween(today, paidThroughDayKey),
+      paidThroughDayKey,
+      blockedFromDayKey,
+    }
   }
 
   const daysOverdue = daysBetween(paidThroughDayKey, today)
 
   if (daysOverdue <= graceDays) {
-    return { state: 'grace', isBlocked: false, daysOverdue, paidThroughDayKey, blockedFromDayKey }
+    return {
+      state: 'grace',
+      isBlocked: false,
+      daysOverdue,
+      daysUntilDue: null,
+      paidThroughDayKey,
+      blockedFromDayKey,
+    }
   }
 
-  return { state: 'paused', isBlocked: true, daysOverdue, paidThroughDayKey, blockedFromDayKey }
+  return {
+    state: 'paused',
+    isBlocked: true,
+    daysOverdue,
+    daysUntilDue: null,
+    paidThroughDayKey,
+    blockedFromDayKey,
+  }
 }
 
 /** The subset of a tenant row carrying its allowances. */
