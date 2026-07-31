@@ -29,8 +29,13 @@ import {
   cancelStockTransferAction,
 } from '@/app/actions/inventory-transfers'
 import { canSendTransfer } from '@/lib/inventory/stock-transfer'
+import {
+  ingredientsAvailableAt,
+  overDraftedItemIds,
+} from '@/lib/inventory/transfer-availability'
 import type { TransferListItem } from '@/lib/inventory/transfers-view'
 import type { NamedBranch } from '@/lib/inventory/branch-stock-view'
+import type { BranchStockIndex } from '@/lib/inventory/stock-location'
 import type { BranchScope } from '@/lib/outlets/branch-scope'
 
 /** The unbranched pool is a real place stock sits, so it is a real option. */
@@ -48,6 +53,8 @@ interface TransfersWorkbenchProps {
   transfers: readonly TransferListItem[]
   branches: readonly NamedBranch[]
   ingredients: readonly TransferIngredient[]
+  /** Per-branch on-hand, so the form can answer from the source shelf. */
+  stockIndex: BranchStockIndex
   scope: BranchScope
 }
 
@@ -65,6 +72,7 @@ export function TransfersWorkbench({
   transfers,
   branches,
   ingredients,
+  stockIndex,
   scope,
 }: TransfersWorkbenchProps) {
   const router = useRouter()
@@ -83,9 +91,22 @@ export function TransfersWorkbench({
   const fromOutletId = toOutletId(fromValue)
   const toOutletId_ = toOutletId(toValue)
 
+  // Offered from the source shelf, never from the store's catalogue: a chain
+  // holding 700g of flour across four shops cannot send 700g from one of them.
+  const available = ingredientsAvailableAt(ingredients, stockIndex, fromOutletId)
+
+  // Derived rather than held in state, so switching branch cannot leave the
+  // picker showing an ingredient the new source has none of.
+  const selected = available.find((item) => item.id === itemId) ?? available[0]
+
+  // Re-checked against the CURRENT source, so lines drafted before the branch
+  // was changed are caught too.
+  const overDrafted = overDraftedItemIds(lines, stockIndex, fromOutletId)
+
   const isSameBranch = fromValue === toValue
   const maySend = canSendTransfer(scope, fromOutletId)
-  const canCreate = lines.length > 0 && !isSameBranch && maySend && !isPending
+  const canCreate =
+    lines.length > 0 && !isSameBranch && maySend && overDrafted.length === 0 && !isPending
 
   /** Runs a lifecycle action and reports its answer in the server's own words. */
   const run = (action: () => Promise<{ success: boolean; error?: string }>, done: string) => {
@@ -102,18 +123,19 @@ export function TransfersWorkbench({
 
   const addLine = () => {
     const parsed = Number(quantity)
-    if (!itemId || !Number.isFinite(parsed) || parsed <= 0) return
+    if (!selected || !Number.isFinite(parsed) || parsed <= 0) return
+    const chosen = selected.id
 
     setLines((current) => {
       // One line per ingredient — the transfer schema has a unique index on it,
       // so a second line would be refused after the merchant had typed it.
-      const existing = current.find((line) => line.inventoryItemId === itemId)
+      const existing = current.find((line) => line.inventoryItemId === chosen)
       if (existing) {
         return current.map((line) =>
-          line.inventoryItemId === itemId ? { ...line, quantity: parsed } : line,
+          line.inventoryItemId === chosen ? { ...line, quantity: parsed } : line,
         )
       }
-      return [...current, { inventoryItemId: itemId, quantity: parsed }]
+      return [...current, { inventoryItemId: chosen, quantity: parsed }]
     })
     setQuantity('')
   }
@@ -200,15 +222,21 @@ export function TransfersWorkbench({
             <select
               id="transfer-item"
               className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-              value={itemId}
+              value={selected?.id ?? ''}
+              disabled={available.length === 0}
               onChange={(event) => setItemId(event.target.value)}
             >
-              {ingredients.map((item) => (
+              {available.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
               ))}
             </select>
+            {selected && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                On the shelf: {selected.onHand} {selected.unit}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -254,6 +282,22 @@ export function TransfersWorkbench({
               </li>
             ))}
           </ul>
+        )}
+
+        {available.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            This branch has nothing on the shelf to send.
+          </p>
+        )}
+
+        {overDrafted.length > 0 && (
+          // Names the lines rather than saying the transfer is too big:
+          // "something here is wrong" makes the merchant re-check every row.
+          <p className="text-xs text-destructive">
+            More than this branch is holding of{' '}
+            {overDrafted.map((id) => nameOf(id)).join(', ')}. Lower the quantity, or send it from
+            somewhere that has it.
+          </p>
         )}
 
         <p className="text-xs text-muted-foreground">

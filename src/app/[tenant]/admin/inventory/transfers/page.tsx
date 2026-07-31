@@ -5,6 +5,7 @@ import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { getUnits } from '@/lib/inventory/units-service'
 import { listTransfers } from '@/lib/inventory/transfers-read'
+import { getBranchStockIndex } from '@/lib/inventory/branch-stock-read'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { TransfersWorkbench } from '@/components/admin/transfers-workbench'
 import type { Tenant } from '@/types/database'
@@ -37,11 +38,16 @@ export default async function AdminInventoryTransfersPage({
 
   const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
-  const [transfers, ingredients, units, outlets] = await Promise.all([
+  const [transfers, ingredients, units, outlets, stockIndex] = await Promise.all([
     listTransfers(tenant.id),
     getIngredients(tenant.id),
     getUnits(tenant.id),
     createSupabaseOutletRepository().listByTenant(tenant.id),
+    // Per-branch, so the form offers what the SOURCE shelf holds. A failed read
+    // yields an empty index, which offers nothing rather than offering the
+    // roll-up: refusing a legitimate transfer is recoverable, drafting one the
+    // ledger will reject at send is the thing this is here to prevent.
+    getBranchStockIndex(tenant.id),
   ])
 
   const unitById = new Map(units.map((unit) => [unit.id, unit.abbreviation]))
@@ -77,6 +83,7 @@ export default async function AdminInventoryTransfersPage({
           name: item.name,
           unit: unitById.get(item.stock_unit_id) ?? '',
         }))}
+        stockIndex={stockIndex}
         scope={scope}
       />
     </div>
