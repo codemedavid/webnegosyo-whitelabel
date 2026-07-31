@@ -2053,3 +2053,99 @@ npx jest (web)             → 367 suites, 4553 passed, 1 skipped
 - The WEB report is still store-wide on both halves; `getDailyRevenue` there
   still takes no branch parameter.
 - Web counts still open against the store pool only.
+
+---
+
+# Phase 1b — the WEB report answers for one branch
+
+**Source plan**: the inline plan of 2026-07-31, Phases 2–4, reshaped. The plan
+split these across "branch-scoped revenue", "web branch view" and "per-branch
+counts"; they turned out to be one change, because each was blocked only by the
+others.
+
+## User journey
+
+> As a branch admin on the web, I want the daily report to cover MY branch, so
+> that I am not shown the whole chain's stock as though it were my shelf.
+
+## The bug this closes
+
+The merchant app **withheld** a branch manager's food cost when the two halves
+were incomparable. The web did not withhold anything — it read
+`stock_movements` store-wide and presented the result to a branch admin as their
+day. Same mismatch, worse handling: the app declined to answer, the web answered
+wrongly.
+
+## Task report
+
+RED (`bf9917d`) — 4 failed / 29 passed:
+
+```
+inventory-report-scope     Cannot find module '@/lib/inventory/report-scope'
+daily-report-read          no outlet_id filter on stock_movements or inventory_counts
+daily-revenue-read         no outlet_id filter on either Supabase path
+```
+
+GREEN (`256c571`) — 369 suites / 4574 tests; lint clean; `tsc` clean for every
+file in this unit.
+
+**Why a new module.** `resolveReportScope` exists because the decision it makes
+sat in a server component, which cannot be unit-tested — and it is the decision
+that determines whether the two halves of the food-cost ratio describe the same
+business. An unrecognised or absent `order_backend` counts as **unnarrowable**,
+so a backend added later cannot start publishing incomparable figures merely by
+not being listed.
+
+**Why `undefined` rather than `null` for a withheld figure.** The panel omits
+the card entirely for `undefined`; `null` renders "the takings could not be
+read", which tells a branch admin the figure would otherwise have been theirs to
+see. It would not be — it does not exist for them at all.
+
+**Per-branch counts came free.** `getOpenCount(tenant.id, null)` had a comment
+explaining it was pinned to the store pool *until the report could be scoped to
+one shelf*. That is now true, so it passes the branch.
+
+## Test specification
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 293 | An owner's report covers the whole store | `inventory-report-scope.test.ts` | PASS |
+| 294 | A branch admin's report covers their own branch | `inventory-report-scope.test.ts` | PASS |
+| 295 | A branch admin on Supabase may be shown a food cost | `inventory-report-scope.test.ts` | PASS |
+| 296 | A branch admin on Convex may not | `inventory-report-scope.test.ts` | PASS |
+| 297 | An owner on Convex keeps the food cost they always had | `inventory-report-scope.test.ts` | PASS |
+| 298 | An unknown backend is treated as unnarrowable | `inventory-report-scope.test.ts` | PASS |
+| 299 | The web ledger read narrows to the branch | `inventory-daily-report-read.test.ts` | PASS |
+| 300 | The day's count session narrows to the same branch | `inventory-daily-report-read.test.ts` | PASS |
+| 301 | An owner's ledger read acquires no branch filter | `inventory-daily-report-read.test.ts` | PASS |
+| 302 | The platform order read narrows to the branch | `inventory-daily-revenue-read.test.ts` | PASS |
+| 303 | A per-tenant Supabase order read narrows the same way | `inventory-daily-revenue-read.test.ts` | PASS |
+| 304 | An owner's order read stays unfiltered | `inventory-daily-revenue-read.test.ts` | PASS |
+| 305 | Narrowing filters the query without disturbing the sum | `inventory-daily-revenue-read.test.ts` | PASS |
+
+## Validation
+
+```
+npx jest          → 369 suites, 4574 passed, 1 skipped
+npx eslint <unit> → clean
+npx tsc --noEmit  → clean for every file in this unit
+```
+
+Pre-existing `tsc` errors remain in `tests/integration/inventory-live-e2e.test.ts`
+(concurrent session, `3bc83c8`), `tests/unit/api/inventory-order-stock.test.ts`,
+`tests/product-detail-*.test.*`, and at lines 199/216 of
+`inventory-daily-revenue-read.test.ts` — all outside the lines this unit added
+(verified: additions begin at line 243).
+
+## Known gaps
+
+- **The page wiring itself has no automated guard.** The merchant app has
+  source-text mount tests for this; the web has no such convention, so
+  `resolveReportScope` is tested and its *use* in
+  `src/app/[tenant]/admin/inventory/page.tsx` is covered only by `tsc` and
+  review.
+- **Convex tenants' branch admins still get no food cost**, on either surface.
+  Closing that requires the Convex `getDashboardStatsByPeriod` to accept an
+  `outletId` and a bundle push reaching tenants — deploy-gated, not code.
+- There is still no branch **selector**: the report follows the account's own
+  scope. An owner wanting one branch's report cannot ask for it.
