@@ -205,6 +205,7 @@ export function useSafeQuery<T>(
   args?: Record<string, unknown> | "skip"
 ): SafeQueryResult<T> {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const tenantId = useScopedTenantId();
   const [error, setError] = useState<string | null>(null);
@@ -244,7 +245,7 @@ export function useSafeQuery<T>(
   const queryArgs =
     route !== "convex" || !convexUrl
       ? "skip"
-      : convexOrderQueryArgs(refName, args, accountScope);
+      : convexOrderQueryArgs(refName, args, accountScope, convexSchemaVersion);
 
   let result: T | undefined;
   let hookError: string | null = null;

@@ -7,6 +7,8 @@ interface AuthState {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /** The tenant's deployed Convex bundle, or null when unknown. */
+  convexSchemaVersion: number | null;
   /**
    * Which database serves this tenant's orders. `lib/hooks.ts` dispatches on it
    * to pick the Convex client or the platform-Supabase adapter.
@@ -51,6 +53,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  convexSchemaVersion: null,
   orderBackend: null,
   isLoading: true,
   isAuthenticated: false,
@@ -70,6 +73,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       tenantSlug: null,
       tenantName: null,
       convexUrl: null,
+  convexSchemaVersion: null,
       orderBackend: null,
       isLoading: false,
       isAuthenticated: false,

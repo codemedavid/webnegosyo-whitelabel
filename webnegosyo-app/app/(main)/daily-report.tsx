@@ -21,6 +21,7 @@ import { judgeVariance, type VarianceLevel } from "../../lib/daily-report/varian
 import { resolveFoodCostPercent } from "../../lib/daily-report/food-cost";
 import { resolveReportRevenue } from "../../lib/daily-report-revenue";
 import { resolveBranchScope } from "../../lib/branch-scope";
+import { BRANCH_STATS_SCHEMA_VERSION } from "../../lib/convex-order-scope";
 import { useSafeQuery } from "../../lib/hooks";
 import type { FunctionReference } from "convex/server";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
@@ -114,6 +115,7 @@ export default function DailyReportScreen() {
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const isDemo = useAuthStore((s) => s.isDemo);
   const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
   const isBranchScoped =
     resolveBranchScope({ outletId, isOwner, isSuperadmin, isDemo }).kind === "branch";
 
@@ -121,14 +123,19 @@ export default function DailyReportScreen() {
    * Whether the TAKINGS half was narrowed to the same branch as the stock half.
    *
    * The platform adapter runs `orders:getDashboardStatsByPeriod` through
-   * `scopeToBranch`. The Convex query of that name takes `startDate` and
-   * `endDate` and nothing else, and is deliberately absent from
-   * CONVEX_BRANCH_SCOPED_REFS because an unknown argument blanks the screen on
-   * any deployment below v15. So on Convex a branch manager would get a branch
-   * numerator over store-wide takings — a food cost far too LOW, which is the
-   * direction that gets believed rather than investigated.
+   * `scopeToBranch`. The Convex query of that name learned an optional
+   * `outletId` in schema v18, and deployments below that reject an argument
+   * their validator does not know — so on an older one a branch manager would
+   * get a branch numerator over store-wide takings, a food cost far too LOW,
+   * which is the direction that gets believed rather than investigated.
+   *
+   * The version is read from the same store `useSafeQuery` reads it from, so
+   * what this screen is willing to STATE and what the query actually ASKED
+   * cannot disagree.
    */
-  const isRevenueBranchScoped = orderBackend !== "convex";
+  const isRevenueBranchScoped =
+    orderBackend !== "convex" ||
+    (convexSchemaVersion ?? 0) >= BRANCH_STATS_SCHEMA_VERSION;
 
   /** The branch this account's report covers, or null for the whole store. */
   const reportOutletId = isBranchScoped ? outletId : null;

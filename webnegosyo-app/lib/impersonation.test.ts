@@ -12,6 +12,10 @@ const SUPERADMIN_STATE = {
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  // Cleared on exit like every other tenant field. A version left over from the
+  // tenant just viewed would decide which arguments the next store's
+  // deployment is sent.
+  convexSchemaVersion: null,
   orderBackend: null,
   isSuperadmin: true,
   isOwner: false,

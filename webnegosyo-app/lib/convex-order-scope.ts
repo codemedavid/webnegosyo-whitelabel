@@ -24,15 +24,35 @@
 import type { BranchScope } from "./branch-scope";
 
 /**
- * Order reads whose v15 validator accepts `outletId`.
+ * Order reads whose validator accepts `outletId`, and the schema version in
+ * which each learned it.
  *
  * Adding a ref here without adding the parameter to the Convex template blanks
- * the screen for every tenant not yet on v15, so the set is pinned by a test.
+ * the screen for every tenant below that version, so the set is pinned by a
+ * test.
+ *
+ * **Why the v15 pair is recorded as 0 rather than 15.** The reasoning in the
+ * header holds for them: a branch-scoped account only exists on a tenant that
+ * has branches, and therefore on one deployed to v15. Version-gating them now
+ * would REMOVE narrowing from tenants whose version this app has never had to
+ * know, which is a regression in what crosses the wire.
+ *
+ * That reasoning does not extend to v18. A tenant can have branches and still
+ * be running v15, v16 or v17, so the stats query has to be gated for real.
  */
-export const CONVEX_BRANCH_SCOPED_REFS: ReadonlySet<string> = new Set([
-  "orders:getOrders",
-  "orders:getRealtimeQueue",
+/** The bundle in which `getDashboardStatsByPeriod` learned `outletId`. */
+export const BRANCH_STATS_SCHEMA_VERSION = 18;
+
+const BRANCH_SCOPED_REF_MIN_VERSION: ReadonlyMap<string, number> = new Map([
+  ["orders:getOrders", 0],
+  ["orders:getRealtimeQueue", 0],
+  ["orders:getDashboardStatsByPeriod", BRANCH_STATS_SCHEMA_VERSION],
 ]);
+
+/** Every ref that can be narrowed at all, whatever the version it needs. */
+export const CONVEX_BRANCH_SCOPED_REFS: ReadonlySet<string> = new Set(
+  BRANCH_SCOPED_REF_MIN_VERSION.keys(),
+);
 
 /** Convex's sentinel for a query that must not run. */
 type QueryArgs = Record<string, unknown> | "skip" | undefined;
@@ -47,6 +67,7 @@ export function convexOrderQueryArgs(
   refName: string,
   args: QueryArgs,
   scope: BranchScope,
+  schemaVersion?: number | null,
 ): Record<string, unknown> | "skip" {
   if (args === "skip") return "skip";
 
@@ -57,7 +78,13 @@ export function convexOrderQueryArgs(
   );
 
   if (scope.kind === "all") return rest;
-  if (!CONVEX_BRANCH_SCOPED_REFS.has(refName)) return rest;
+
+  const minVersion = BRANCH_SCOPED_REF_MIN_VERSION.get(refName);
+  if (minVersion === undefined) return rest;
+
+  // An unknown version counts as the oldest: a tenant whose version was never
+  // recorded was most likely deployed before versions were tracked.
+  if ((schemaVersion ?? 0) < minVersion) return rest;
 
   return { ...rest, outletId: scope.outletId };
 }

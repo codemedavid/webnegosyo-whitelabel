@@ -112,7 +112,7 @@ function useAuthInit() {
         if (needsTenantLookup(appUser)) {
           const { data: tenantRow } = await supabase
             .from("tenants")
-            .select("id, slug, name, convex_deployment_url, order_backend")
+            .select("id, slug, name, convex_deployment_url, convex_schema_version, order_backend")
             .eq("id", appUser.tenant_id)
             .single();
           tenant = (tenantRow as TenantRow | null) ?? null;

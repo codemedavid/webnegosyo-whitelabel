@@ -31,8 +31,15 @@ export interface ImpersonationState {
   impersonatedTenantId: string | null;
 }
 
-/** Fields an impersonation transition writes back to the auth store. */
-export type ImpersonationPatch = Pick<
+/**
+ * Fields an impersonation transition writes back to the auth store.
+ *
+ * `convexSchemaVersion` is written but never read here, so it is added to the
+ * patch rather than to the state slice above. It must be WRITTEN on every
+ * transition: a version left over from the previous tenant would decide which
+ * arguments this app sends to a different store's deployment.
+ */
+export type ImpersonationPatch = { convexSchemaVersion: number | null } & Pick<
   ImpersonationState,
   | "userId"
   | "tenantId"
@@ -75,6 +82,7 @@ export function enterTenant(
     tenantSlug: tenant.slug,
     tenantName: tenant.name,
     convexUrl: tenant.convex_deployment_url ?? null,
+    convexSchemaVersion: tenant.convex_schema_version ?? null,
     orderBackend: resolveOrderBackend(tenant),
     impersonatedTenantId: tenant.id,
   };
@@ -95,6 +103,7 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     tenantSlug: null,
     tenantName: null,
     convexUrl: null,
+    convexSchemaVersion: null,
     orderBackend: null,
     impersonatedTenantId: null,
   };

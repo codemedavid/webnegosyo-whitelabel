@@ -39,6 +39,8 @@ export interface TenantRow {
   slug: string;
   name: string;
   convex_deployment_url: string | null;
+  /** The Convex bundle this tenant is running, when it has been recorded. */
+  convex_schema_version?: number | null;
   order_backend?: OrderBackend | null;
 }
 
@@ -51,6 +53,14 @@ export interface SessionAuthPatch {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /**
+   * The tenant's deployed Convex bundle, or `null` when unknown.
+   *
+   * Read so the app can tell which arguments a deployment will accept. Never
+   * defaulted to a number: a validator rejects an argument it does not know,
+   * and an optimistic guess blanks the screen rather than degrading.
+   */
+  convexSchemaVersion: number | null;
   /**
    * Which database serves this tenant's orders. Screens dispatch on it to pick
    * the Convex client or the platform-Supabase adapter. Null for a superadmin,
@@ -140,6 +150,8 @@ export function resolveSession(
         tenantSlug: null,
         tenantName: null,
         convexUrl: null,
+        // No tenant attached, so no deployment to have a version.
+        convexSchemaVersion: null,
         orderBackend: null,
         isLoading: false,
         isAuthenticated: true,
@@ -173,6 +185,7 @@ export function resolveSession(
       tenantSlug: tenant.slug,
       tenantName: tenant.name,
       convexUrl: tenant.convex_deployment_url ?? null,
+      convexSchemaVersion: tenant.convex_schema_version ?? null,
       orderBackend: resolveOrderBackend(tenant),
       isLoading: false,
       isAuthenticated: true,

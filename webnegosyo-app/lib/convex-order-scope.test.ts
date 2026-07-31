@@ -81,9 +81,28 @@ describe("convexOrderQueryArgs", () => {
     // Locked so adding a ref here without adding the arg in the Convex template
     // is a visible change, not a silent screen-blanking for every stale tenant.
     expect([...CONVEX_BRANCH_SCOPED_REFS].sort()).toEqual([
+      "orders:getDashboardStatsByPeriod",
       "orders:getOrders",
       "orders:getRealtimeQueue",
     ]);
+  });
+
+  it("pins the version each ref needs, not merely that it is narrowable", () => {
+    // The list above no longer carries the whole risk: a ref added at the wrong
+    // minimum version blanks the screen for every tenant below it, and the
+    // membership check cannot see that. Asserted through behaviour so the
+    // internal map stays private.
+    const branch = { kind: "branch", outletId: "north" } as const;
+    const narrows = (ref: string, version: number | null) =>
+      "outletId" in (convexOrderQueryArgs(ref, {}, branch, version) as object);
+
+    // The v15 pair is ungated on purpose — see the module header.
+    expect(narrows("orders:getOrders", null)).toBe(true);
+    expect(narrows("orders:getRealtimeQueue", null)).toBe(true);
+
+    // The stats query is not, and 17 is the version that must still be refused.
+    expect(narrows("orders:getDashboardStatsByPeriod", 17)).toBe(false);
+    expect(narrows("orders:getDashboardStatsByPeriod", 18)).toBe(true);
   });
 });
 
