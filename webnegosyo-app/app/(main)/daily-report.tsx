@@ -8,13 +8,21 @@ import {
   resolveReportDay,
   previousBusinessDayKey,
   nextBusinessDayKey,
+  resolveBusinessDayWindow,
 } from "../../lib/daily-report/business-day";
 import {
   formatPeso,
   formatBusinessDayLabel,
+  formatFoodCostPercent,
   describeReportCaveats,
+  describeRevenueCaveat,
 } from "../../lib/daily-report/daily-report-view";
 import { judgeVariance, type VarianceLevel } from "../../lib/daily-report/variance-verdict";
+import { resolveFoodCostPercent } from "../../lib/daily-report/food-cost";
+import { resolveReportRevenue } from "../../lib/daily-report-revenue";
+import { resolveBranchScope } from "../../lib/branch-scope";
+import { useSafeQuery } from "../../lib/hooks";
+import type { FunctionReference } from "convex/server";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
@@ -30,11 +38,16 @@ import { DailyReportRowCard } from "../../components/DailyReportRowCard";
  * cost? It is the same reconciliation the web admin shows, from the same
  * parity-guarded core in lib/daily-report/ — this screen only arranges it.
  *
- * Deliberately carries NO revenue and no food-cost percentage. That figure
- * needs the tenant's order backend, which on the web routes through
- * `resolveOrderBackend` and, for some tenants, a Convex client. The verdict was
- * built to need no revenue at all, so the phone gets an honest subset rather
- * than a half-ported backend router — and the web keeps the percentage.
+ * The food cost percentage answers the question the whole report was asked for:
+ * was the day's revenue enough for the stock it consumed? It needs no ported
+ * backend router — screens address their order backend by string ref, so the
+ * takings arrive from Convex or from the platform adapter without this screen
+ * knowing which. When it may be STATED is a different question, and that lives
+ * in `resolveReportRevenue`; a branch-scoped account is told nothing, because
+ * the ledger read is store-wide and the ratio would be an artefact.
+ *
+ * The verdict above it still needs no revenue at all, so a tenant whose order
+ * backend is unreachable loses one card and keeps the graded day.
  */
 
 /** The banner tint per grade, plus the one for a day that cannot be graded. */
@@ -68,6 +81,21 @@ function DailyReportVerdict({ level, headline, detail }: VerdictProps) {
       <Text style={styles.verdictDetail}>{detail}</Text>
     </View>
   );
+}
+
+/**
+ * Stands in for a figure that could not be established, matching the web panel.
+ * An em dash rather than a zero: the merchant must be able to see the
+ * difference between "nothing" and "we could not tell".
+ */
+const UNKNOWN_FIGURE = "—";
+
+/** The stats query, addressed by string ref like every other screen. */
+const getDashboardStatsByPeriodRef =
+  "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
+
+interface DashboardStats {
+  totalRevenue?: number;
 }
 
 export default function DailyReportScreen() {
@@ -124,7 +152,42 @@ export default function DailyReportScreen() {
     });
   }, [report, dishesWithRecipe]);
 
-  const caveats = useMemo(() => (report ? describeReportCaveats(report) : []), [report]);
+  // The SAME window the ledger was read over. Derived from the one resolver so
+  // the takings and the stock can never describe slightly different days — an
+  // hour of drift would put late-night sales against the wrong day's stock.
+  const revenueWindow = useMemo(() => {
+    const { startIso, endIso } = resolveBusinessDayWindow(dayKey);
+    return { startDate: Date.parse(startIso), endDate: Date.parse(endIso) };
+  }, [dayKey]);
+
+  // The ACCOUNT's branch, not the owner's drill-down — matching what useSafeQuery
+  // itself narrows the query by, which is what makes the mismatch decidable.
+  const outletId = useAuthStore((s) => s.outletId);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const isBranchScoped =
+    resolveBranchScope({ outletId, isOwner, isSuperadmin, isDemo }).kind === "branch";
+
+  const { data: stats, isLoading: statsLoading } = useSafeQuery<DashboardStats>(
+    getDashboardStatsByPeriodRef,
+    // Not asked for at all when it could not be used. A branch-scoped account
+    // should not spend a round trip on a figure this screen must withhold.
+    isBranchScoped ? "skip" : revenueWindow,
+  );
+
+  const revenue = resolveReportRevenue({ isBranchScoped, isLoading: statsLoading, stats });
+
+  const foodCostPercent =
+    report && revenue !== undefined ? resolveFoodCostPercent(report.totals.cogs, revenue) : null;
+
+  const caveats = useMemo(() => {
+    if (!report) return [];
+    // The revenue caveat leads: it explains an absent figure the merchant can
+    // see is absent, which the stock caveats below it do not speak to.
+    const revenueCaveat = revenue === undefined ? null : describeRevenueCaveat(revenue);
+    return [...(revenueCaveat ? [revenueCaveat] : []), ...describeReportCaveats(report)];
+  }, [report, revenue]);
 
   const isLatestDay = dayKey >= selection.latestDayKey;
 
@@ -159,6 +222,28 @@ export default function DailyReportScreen() {
             {caveat}
           </Text>
         ))}
+
+        {/*
+          The takings and the share they gave up to stock, on their own row
+          above the stock figures — this is the question the merchant opened the
+          screen with. Absent entirely when this account cannot be told (a
+          branch), and shown as a dash when it could not be read. A dash is not
+          a nil: the caveat above says which.
+        */}
+        {revenue !== undefined && (
+          <View style={styles.totals}>
+            <Total
+              label="Sales"
+              value={revenue === null ? UNKNOWN_FIGURE : formatPeso(revenue)}
+            />
+            <Total
+              label="Food cost"
+              value={
+                foodCostPercent === null ? UNKNOWN_FIGURE : formatFoodCostPercent(foodCostPercent)
+              }
+            />
+          </View>
+        )}
 
         <View style={styles.totals}>
           <Total label="Stock used" value={formatPeso(report.totals.cogs)} />
