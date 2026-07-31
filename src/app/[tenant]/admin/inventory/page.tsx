@@ -17,6 +17,8 @@ import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
 import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
 import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
+import { getOpenCount, getCountProgress } from '@/lib/inventory/count-session-service'
+import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
 import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
@@ -119,6 +121,26 @@ export default async function AdminInventoryPage({
   // rather than dividing by a zero it invented.
   const dailyRevenue = dailyReport ? await getDailyRevenue(tenant, dayKey) : null
 
+  // The count running on this shelf, if one is. Wrapped because a failure here
+  // must cost the count panel and nothing else: the merchant can still see
+  // their stock, record deliveries, and read the report. The panel then offers
+  // to start a count, which is the honest fallback — it is what a merchant with
+  // no count running sees, and starting a second one joins the first anyway.
+  let openCountId: string | null = null
+  let countProgress: CountSessionProgress | null = null
+  try {
+    // `null` is the unbranched store pool. Per-branch counts arrive with the
+    // branch-aware ledger read; until the report can be scoped to one shelf, a
+    // branch-scoped count would describe a narrower shelf than the report does.
+    const openCount = await getOpenCount(tenant.id, null)
+    if (openCount) {
+      openCountId = openCount.id
+      countProgress = await getCountProgress(tenant.id, openCount.id)
+    }
+  } catch (error) {
+    console.error('[inventory] count session read failed', { tenantId: tenant.id, error })
+  }
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -155,6 +177,8 @@ export default async function AdminInventoryPage({
         defaultTab={tab}
         stockItemId={stock}
         stockReason={reason}
+        openCountId={openCountId}
+        countProgress={countProgress}
       />
     </div>
   )
