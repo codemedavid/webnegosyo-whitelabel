@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { recordStockMovementWith } from '@/lib/inventory/stock-service'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
+import { resolveBranchScope, type BranchScopedUser } from '@/lib/outlets/branch-scope'
 
 /**
  * POST /api/inventory/movement
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { data: appUser } = await supabase
     .from('app_users')
-    .select('role, tenant_id, permissions, is_owner')
+    .select('role, tenant_id, permissions, is_owner, outlet_id')
     .eq('user_id', user.id)
     .single()
 
@@ -158,6 +159,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         inventory_count_id:
           typeof body?.inventory_count_id === 'string' ? body.inventory_count_id : undefined,
         note: typeof body?.note === 'string' ? body.note : undefined,
+      },
+      // Everything the service would otherwise resolve for itself, already
+      // resolved above to authorize this call. Without it the write repeats a
+      // remote `auth.getUser()` twice more and re-reads `app_users` — three
+      // sequential round trips before the first byte is written, which is most
+      // of the wait a merchant watches on the phone.
+      {
+        userId: user.id,
+        scope: resolveBranchScope(appUser as unknown as BranchScopedUser),
       },
     )
 

@@ -137,6 +137,24 @@ export async function recordStockMovement(
  * deducted by the system rather than by a person, so anonymous is the correct
  * answer there rather than a fallback.
  */
+/**
+ * Who is recording a movement, when the caller already knows.
+ *
+ * A route that authorized the call has ALREADY verified the JWT and read the
+ * `app_users` row that decides the branch. Without this the service repeats
+ * both: `auth.getUser()` is a round trip to the auth server rather than a local
+ * token decode, and a stocktake from the phone made three of them in sequence
+ * before writing anything. That was most of the spinner the merchant watched.
+ *
+ * Passing it changes nothing about who may write what. The scope still comes
+ * from `app_users` server-side; it is simply read once instead of twice.
+ */
+export interface MovementActor {
+  /** `null` for a system write with no person behind it. */
+  userId: string | null
+  scope: BranchScope
+}
+
 async function resolveActingUserId(supabase: StockMovementClient): Promise<string | null> {
   try {
     const { data, error } = await supabase.auth.getUser()
@@ -226,14 +244,18 @@ export async function recordStockMovementWith(
   supabase: StockMovementClient,
   tenantId: string,
   input: StockMovementInput,
+  actor?: MovementActor,
 ): Promise<StockMovementResult> {
   const validated = stockMovementInputSchema.parse(input)
 
   // Throws for a manager naming somebody else's shop, before anything is read
   // or written — a refused movement must leave no trace.
+  //
+  // The scope is the SERVER's answer either way: supplied by a route that read
+  // `app_users` itself, or read here. What it must never be is the phone's.
   const outletId = resolveMovementBranch(
     validated.outlet_id,
-    await resolveActingBranchScope(supabase, tenantId),
+    actor?.scope ?? (await resolveActingBranchScope(supabase, tenantId)),
   )
 
   const { data: itemRow, error: itemError } = await supabase
@@ -298,7 +320,7 @@ export async function recordStockMovementWith(
   const { data: movementRow, error: movementError } = await supabase
     .from('stock_movements')
     .insert({
-      created_by: await resolveActingUserId(supabase),
+      created_by: actor ? actor.userId : await resolveActingUserId(supabase),
       tenant_id: tenantId,
       inventory_item_id: validated.inventory_item_id,
       outlet_id: outletId,

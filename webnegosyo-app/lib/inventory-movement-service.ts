@@ -32,6 +32,23 @@ export interface MovementResult {
 }
 
 /**
+ * How long to wait before giving up.
+ *
+ * `fetch` has no timeout of its own, so without this a stalled connection
+ * leaves the sheet spinning indefinitely — no error, no confirmation, and no
+ * way out but killing the app.
+ *
+ * Generous rather than snappy: this write is not cheap on the server, and
+ * cutting off a request that was about to succeed is worse than waiting. It is
+ * a backstop against hanging, not a latency budget.
+ */
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+export interface MovementOptions {
+  timeoutMs?: number;
+}
+
+/**
  * Record one movement. Resolves with the server's figure, throws with a
  * message worth showing the merchant.
  */
@@ -39,6 +56,7 @@ export async function submitStockMovement(
   tenantId: string,
   payload: MovementPayload,
   outletId?: string | null,
+  options: MovementOptions = {},
 ): Promise<MovementResult> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -46,9 +64,28 @@ export async function submitStockMovement(
   // rather than as a rejection of what they typed.
   if (!token) throw new Error("Your session has expired. Sign in and try again.");
 
+  const controller = new AbortController();
+  const timedOutAfter = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // Aborted AND raced. The abort releases the socket, which is the tidy part;
+  // the race is what guarantees this function returns, because React Native's
+  // fetch has not always propagated an abort as a rejection. Relying on the
+  // abort alone is how a spinner outlives the timeout meant to end it.
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new Error("timeout"));
+    }, timedOutAfter);
+  });
+
   let response: Response;
   try {
-    response = await fetch(`${getWebAppUrl()}/api/inventory/movement`, {
+    response = await Promise.race([
+      fetch(`${getWebAppUrl()}/api/inventory/movement`, {
+        signal: controller.signal,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -61,9 +98,21 @@ export async function submitStockMovement(
       // Omitted rather than sent as null when there is no branch, so a
       // single-shop tenant's request is byte-for-byte what it was before.
       body: JSON.stringify(outletId ? { tenantId, ...payload, outletId } : { tenantId, ...payload }),
-    });
+      }),
+      expiry,
+    ]);
   } catch {
+    // A timeout is NOT a failed write. The request may have reached the server
+    // and landed, so telling the merchant to "try again" is the one instruction
+    // that could make this worse — a re-entered count is recorded twice.
+    if (timedOut) {
+      throw new Error(
+        "That took too long to confirm. It may have been saved — check the shelf before recording it again.",
+      );
+    }
     throw new Error("Could not reach the server. Check your connection and try again.");
+  } finally {
+    clearTimeout(timer);
   }
 
   const body = await response.json().catch(() => null);
