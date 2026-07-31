@@ -260,6 +260,11 @@ export interface Tenant {
   supabase_order_service_key?: string | null;
   supabase_order_db_url?: string | null;
   supabase_order_schema_version?: number;
+  // Subscription allowances. Absent/null means the platform default, never
+  // "unlimited" and never "none" — see resolveStaffLimit / resolveOutletLimit
+  // in src/lib/billing/subscription-status.ts.
+  max_outlets?: number | null;
+  max_staff_per_branch?: number | null;
   // Mobile app
   app_enabled?: boolean;
   ios_app_store_id?: string | null;

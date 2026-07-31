@@ -17,6 +17,84 @@ export type Database = {
       // Added by migration 20260806120000_outlet_menu_overrides.sql.
       // Override-only: no row = the branch lists the dish at the store-wide
       // price. Read through src/lib/outlets/outlet-menu-repository.ts.
+      tenant_subscriptions: {
+        Row: {
+          cancelled_at: string | null
+          grace_days: number
+          monthly_price_php: number
+          notes: string | null
+          paid_through: string | null
+          started_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subscription_payments: {
+        Row: {
+          amount_php: number
+          created_at: string
+          id: string
+          method: string | null
+          note: string | null
+          paid_at: string
+          period_end: string
+          period_start: string
+          recorded_by: string | null
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount_php: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end: string
+          period_start: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount_php?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end?: string
+          period_start?: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       outlet_menu_items: {
         Row: {
           created_at: string
@@ -2075,6 +2153,8 @@ export type Database = {
           link_color: string | null
           logo_url: string
           mapbox_enabled: boolean | null
+          max_outlets: number
+          max_staff_per_branch: number
           menu_cart_badge_background_color: string | null
           menu_cart_badge_text_color: string | null
           menu_category_active_color: string | null
@@ -2252,6 +2332,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
@@ -2429,6 +2511,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
