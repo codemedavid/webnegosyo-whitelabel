@@ -201,3 +201,47 @@ describe('POST /api/inventory/movement — who may move stock', () => {
     expect(recordStockMovementWith).not.toHaveBeenCalled()
   })
 })
+
+describe('POST /api/inventory/movement — filing a count under its session', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+
+  test('forwards the count session a stocktake belongs to', async () => {
+    // Without this the phone can open and close a count but every entry made
+    // during it arrives untagged, so a fully counted shelf reports as
+    // completely uncounted — worse than having no session at all, because the
+    // report would then actively assert that nobody looked.
+    await post(OWNER as never, { inventory_count_id: 'count-1' })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ inventory_count_id: 'count-1' }),
+    )
+  })
+
+  test('ignores a session id that is not a string rather than passing it on', async () => {
+    await post(OWNER as never, { inventory_count_id: { id: 'count-1' } })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ inventory_count_id: undefined }),
+    )
+  })
+
+  test('refuses to file a delivery under a count', async () => {
+    // The database refuses this too (trigger, migration 20260812120000) and the
+    // schema refuses it a third time. Deliberately triplicated: a delivery
+    // inside a count raises coverage for an ingredient nobody counted, which is
+    // the exact reassurance the session exists to withhold, and zod can be
+    // bypassed by another writer while a trigger cannot explain itself to a
+    // merchant.
+    const response = await post(OWNER as never, {
+      reason: 'receive',
+      inventory_count_id: 'count-1',
+    })
+
+    expect(response.status).toBe(400)
+    expect(recordStockMovementWith).not.toHaveBeenCalled()
+  })
+})
