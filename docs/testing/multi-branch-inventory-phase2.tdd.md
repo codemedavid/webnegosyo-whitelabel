@@ -288,3 +288,104 @@ npx eslint <changed files> → exit 0
 3. **The page is not proven end-to-end.** No live probe: the only inventory
    tenant has no branches, so there is no fixture where the two paths differ.
 4. Gaps 1, 3, 5, 6 of part 1 and gaps 2, 3 of part 2 still stand.
+
+---
+
+# Phase 2, part 4 — the owner's cross-branch view
+
+**Checkpoints**: RED `8c6268c` (summary) → RED `45d0906` (panel) → GREEN `7598032`
+
+Closes gap 2 of part 3 — the largest remaining gap before Phase 3.
+
+## User journey
+
+6. As a store owner, I want to see what every shop holds of an ingredient, so
+   that I know which one to transfer from. *(carried from part 2, now delivered)*
+
+## Why this exists
+
+The roll-up cannot answer it. 700g of flour across the chain reads as healthy
+whether it is split 350/350 or 700/0 — and the second case is a shop that cannot
+serve, hidden inside a number that looks fine.
+
+## Task report
+
+### `src/lib/inventory/branch-stock-summary.ts` (new)
+
+- **RED**: `npx jest --testPathPatterns="inventory-branch-stock-summary"` →
+  `1 suite failed`, module unresolvable. **GREEN** → `12 of 12 passed`.
+- Names empty branches (including negative ones — a shelf at -20 is at least as
+  empty as one at 0) and a transfer direction.
+- **Suggests no quantity, only a direction.** A made-up figure would be obeyed
+  rather than judged; the merchant knows what they can carry. Pinned by a test.
+- Suggests nothing when every branch has stock, and nothing when every branch is
+  out — that is a purchasing problem, and pointing at an empty source would send
+  someone on an errand that cannot succeed.
+- Branch lines **exclude** the unbranched pool (it is on no shop's shelf); the
+  total **includes** it, so it keeps agreeing with the roll-up on the same screen.
+
+### `src/components/admin/branch-stock-panel.tsx` (new)
+
+- **RED**: `npx jest --testPathPatterns="branch-stock-panel"` → `1 suite failed`,
+  component unresolvable. **GREEN** → `5 of 5 passed`.
+- Renders **nothing** for a single-shop store, so the majority of tenants see no
+  change at all.
+- The direction arrow is a **text character, not an icon**. The RED run caught
+  this: an `aria-hidden` icon between two branch names splits the text node and
+  announces as "North South" — the one reading that could send stock the wrong
+  way.
+
+### Wiring
+
+`getBranchStockSummaries` assembles the summaries server-side; the page passes a
+plain record (not a Map) across the server boundary, matching
+`lastPurchaseByItemId`. The panel renders in the stock dialog — where the
+merchant is already standing when they decide to move something. A failed branch
+read returns `{}` rather than throwing: the panel is an extra on a page that
+already works.
+
+## Test specification (part 4)
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 30 | Each branch's holding and the chain total are reported | `inventory-branch-stock-summary.test.ts:reports what each branch holds…` | unit | PASS |
+| 31 | A branch that has run out is named | `…:names the branch that has run out` | unit | PASS |
+| 32 | A negative branch counts as empty | `…:counts a negative branch as empty` | unit | PASS |
+| 33 | The suggestion runs fullest → emptiest | `…:suggests moving from the fullest branch to the emptiest` | unit | PASS |
+| 34 | The fullest source wins among several | `…:picks the fullest source when several branches have stock` | unit | PASS |
+| 35 | No quantity is invented | `…:suggests no quantity, only a direction` | unit | PASS |
+| 36 | Nothing is suggested when all branches have stock | `…:suggests nothing when every branch has stock` | unit | PASS |
+| 37 | Nothing is suggested when nobody has any to give | `…:suggests nothing when nobody has any to give` | unit | PASS |
+| 38 | A one-shop store gets no cross-branch view | `…:says nothing at all for a store with one shop` | unit | PASS |
+| 39 | The pool is excluded from branch lines | `…:excludes the unbranched pool from the branch lines` | unit | PASS |
+| 40 | The pool is counted in the total | `…:still counts the unbranched pool in the chain total` | unit | PASS |
+| 41 | The panel renders nothing for one shop | `components/branch-stock-panel.test.tsx:renders nothing for a single-shop store` | component | PASS |
+| 42 | Each branch's holding is shown | `…:shows what each branch is holding` | component | PASS |
+| 43 | An out-of-stock branch is called out | `…:calls out a branch that has run out` | component | PASS |
+| 44 | The transfer direction is readable text | `…:names the transfer direction when one is obvious` | component | PASS |
+| 45 | No suggestion appears when all branches have stock | `…:suggests nothing when every branch has stock` | component | PASS |
+
+## Validation (part 4)
+
+```
+npx jest --testPathPatterns="inventory|branch-stock"
+  → Test Suites: 70 passed, 1 skipped, 71 total
+  → Tests: 752 passed, 8 skipped, 760 total
+
+npx tsc --noEmit  → no errors in any file changed by this part
+npx eslint <changed files> → exit 0
+```
+
+## Known gaps (part 4)
+
+1. **Nothing acts on the suggestion yet.** The panel says "North → South"; there
+   is no button that performs the move. That is Phase 3, and it is the whole
+   point of this view.
+2. **The panel appears only in the stock dialog**, not on the table row itself,
+   so an owner scanning the list still sees only roll-ups.
+3. **Never seen rendered with real data.** No tenant has both inventory and
+   branches, so the panel has only ever run against fixtures.
+4. **Par levels are not used in the summary.** A branch at 5g of a 500g par is
+   "not empty" and draws no attention, even though it is about to be.
+5. Earlier gaps still stand: the merchant app and POS read the roll-up, and no
+   part of Phase 2 is proven end-to-end against a database with a real recipe.
