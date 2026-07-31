@@ -349,3 +349,53 @@ describe("loadDailyReport — the day's count session", () => {
     expect(report?.countSession).toBeNull();
   });
 });
+
+describe("loadDailyReport — reading one branch's shelf", () => {
+  /**
+   * `balance_after` has been a PER-BRANCH running total since migration
+   * 20260808120000, and the report's reconciliation already groups by branch.
+   * What it could not do was answer for one branch alone, which is what a branch
+   * manager's whole screen is about — and why their food cost was withheld
+   * entirely rather than shown against the wrong denominator.
+   */
+  it("narrows the ledger to the branch when one is named", () => {
+    const db = fakeSupabase({});
+
+    return loadDailyReport("t1", "2026-08-01", db as never, "north").then(() => {
+      expect(db.calls).toContainEqual({
+        table: "stock_movements",
+        method: "eq",
+        args: ["outlet_id", "north"],
+      });
+    });
+  });
+
+  it("narrows the day's count session to the same branch", () => {
+    // Otherwise a branch manager's coverage would be measured against a count
+    // opened for a different shelf — or against the store pool's, whose
+    // denominator counts ingredients their branch never stocks.
+    const db = fakeSupabase({});
+
+    return loadDailyReport("t1", "2026-08-01", db as never, "north").then(() => {
+      expect(db.calls).toContainEqual({
+        table: "inventory_counts",
+        method: "eq",
+        args: ["outlet_id", "north"],
+      });
+    });
+  });
+
+  it("reads the whole store when no branch is named", () => {
+    // The owner's report is the default and must not acquire a filter by
+    // accident: an owner silently narrowed to one branch would see a fraction
+    // of their own stock and no indication that anything was missing.
+    const db = fakeSupabase({});
+
+    return loadDailyReport("t1", "2026-08-01", db as never).then(() => {
+      const branchFilters = db.calls.filter(
+        (call) => call.method === "eq" && (call.args as string[])[0] === "outlet_id",
+      );
+      expect(branchFilters).toHaveLength(0);
+    });
+  });
+});

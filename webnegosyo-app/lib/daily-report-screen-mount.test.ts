@@ -214,3 +214,19 @@ describe("daily report row card", () => {
     expect(card).toMatch(/wasCounted/);
   });
 });
+
+describe("daily report — the branch the merchant is confined to", () => {
+  const screen = read("app", "(main)", "daily-report.tsx");
+
+  it("reads the ledger for the account's branch, not the whole store", () => {
+    expect(screen).toMatch(/loadDailyReport\([^)]*outletId/s);
+  });
+
+  it("decides the withholding on whether the BACKEND scoped the takings", () => {
+    // Not on whether the account is branch-scoped alone. The platform adapter
+    // narrows getDashboardStatsByPeriod; the Convex query of that name takes
+    // only dates. Treating those as one case publishes a food cost built from a
+    // branch numerator over store-wide takings on every Convex tenant.
+    expect(screen).toMatch(/isRevenueBranchScoped/);
+  });
+});

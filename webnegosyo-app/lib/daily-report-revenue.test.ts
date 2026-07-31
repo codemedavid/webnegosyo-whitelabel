@@ -111,3 +111,74 @@ describe("the day's takings, as the report may state them", () => {
     expect(revenue).toBeNull();
   });
 });
+
+describe("resolveReportRevenue — which backend can actually narrow the takings", () => {
+  /**
+   * The withholding used to be blanket: any branch-scoped account got nothing.
+   * That rested on a premise that is only half true. `useSafeQuery` narrows
+   * orders to the account's branch on the PLATFORM backend — the Supabase
+   * adapter runs `getDashboardStatsByPeriod` through `scopeToBranch`. The CONVEX
+   * query of the same name takes `startDate` and `endDate` and nothing else, and
+   * the ref is deliberately absent from CONVEX_BRANCH_SCOPED_REFS because
+   * sending an unknown argument blanks the screen on any deployment below v15.
+   *
+   * So once the ledger read is branch-aware the two backends part company, and
+   * they part in OPPOSITE directions:
+   *
+   *  - platform: branch stock over branch sales — comparable, and shown.
+   *  - convex:   branch stock over STORE-WIDE sales. The numerator shrinks while
+   *              the denominator does not, so the food cost comes out far too
+   *              LOW. That is the dangerous direction: an inflated figure looks
+   *              like a crisis and gets investigated, a flattering one gets
+   *              believed.
+   */
+  it("gives a branch manager their takings when the backend scoped them", () => {
+    const revenue = resolveReportRevenue({
+      isBranchScoped: true,
+      isRevenueBranchScoped: true,
+      isLoading: false,
+      stats: { totalRevenue: 4000 },
+    });
+
+    expect(revenue).toBe(4000);
+  });
+
+  it("still withholds when the backend could not narrow the takings", () => {
+    const revenue = resolveReportRevenue({
+      isBranchScoped: true,
+      isRevenueBranchScoped: false,
+      isLoading: false,
+      stats: { totalRevenue: 4000 },
+    });
+
+    expect(revenue).toBeUndefined();
+  });
+
+  it("leaves a store-wide account untouched whatever the backend does", () => {
+    // An owner reads the whole store on both halves, so branch narrowing is
+    // irrelevant to them and must not become a way to lose their figure.
+    for (const isRevenueBranchScoped of [true, false]) {
+      expect(
+        resolveReportRevenue({
+          isBranchScoped: false,
+          isRevenueBranchScoped,
+          isLoading: false,
+          stats: { totalRevenue: 4000 },
+        }),
+      ).toBe(4000);
+    }
+  });
+
+  it("keeps withholding when nothing says the takings were narrowed", () => {
+    // Absent means "not established", never "assume yes". A caller that has not
+    // been taught this distinction must not start publishing incomparable
+    // figures merely by not mentioning it.
+    const revenue = resolveReportRevenue({
+      isBranchScoped: true,
+      isLoading: false,
+      stats: { totalRevenue: 4000 },
+    });
+
+    expect(revenue).toBeUndefined();
+  });
+});
