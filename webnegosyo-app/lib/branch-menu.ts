@@ -104,6 +104,41 @@ export function planBranchListingWrite(
   return { kind: "upsert", values: merged };
 }
 
+/** What the owner has narrowed the list to. */
+export interface BranchProductFilter {
+  search: string;
+  /** A category id, or `"all"`. */
+  categoryId: string;
+}
+
+/** The shape the filter reads. Anything else on a product passes through. */
+interface FilterableProduct {
+  name: string;
+  category_id?: string | null;
+}
+
+/**
+ * Narrow the catalogue by name and category.
+ *
+ * Both narrow: a search inside a category means both, never either. Falling
+ * back to the whole list when the pair matches nothing would read as "this
+ * category sells the entire menu", which is the opposite of the answer.
+ */
+export function filterBranchProducts<T extends FilterableProduct>(
+  products: readonly T[],
+  filter: BranchProductFilter,
+): T[] {
+  const query = filter.search.trim().toLowerCase();
+
+  return products.filter((product) => {
+    const matchesName = query === "" || product.name.toLowerCase().includes(query);
+    const matchesCategory =
+      filter.categoryId === "all" || product.category_id === filter.categoryId;
+
+    return matchesName && matchesCategory;
+  });
+}
+
 /** One branch's answer about one dish, as the owner's row renders it. */
 export interface BranchProductCell {
   branchId: string;

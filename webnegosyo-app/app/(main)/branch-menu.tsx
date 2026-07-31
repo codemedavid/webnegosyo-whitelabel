@@ -11,10 +11,13 @@ import {
   Alert,
 } from "react-native";
 
+import { router, useFocusEffect } from "expo-router";
+
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
-import { listProducts, type Product } from "../../lib/products";
+import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
+import { listProducts, listCategories, type Category, type Product } from "../../lib/products";
 import { useOutlets } from "../../lib/use-outlets";
 import {
   listBranchMenuOverrides,
@@ -23,6 +26,7 @@ import {
 import {
   buildBranchProductRows,
   buildOutletMenuIndex,
+  filterBranchProducts,
   type BranchProductRow,
   type OutletMenuOverrideRow,
 } from "../../lib/branch-menu";
@@ -34,6 +38,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const ALL_BRANCHES = "all";
+const ALL_CATEGORIES = "all";
 
 /**
  * Which branches carry which dish — the owner's cross-branch menu.
@@ -56,12 +61,14 @@ export default function BranchMenuScreen() {
   const { outlets, isLoading: outletsLoading, error: outletsError, reload } = useOutlets();
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [overrides, setOverrides] = useState<OutletMenuOverrideRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>(ALL_BRANCHES);
+  const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -69,11 +76,13 @@ export default function BranchMenuScreen() {
     if (!tenantId) return;
     try {
       setError(null);
-      const [productsResult, overridesResult] = await Promise.all([
+      const [productsResult, categoriesResult, overridesResult] = await Promise.all([
         listProducts(tenantId),
+        listCategories(tenantId),
         listBranchMenuOverrides(tenantId),
       ]);
       setProducts(productsResult);
+      setCategories(categoriesResult);
       setOverrides(overridesResult);
     } catch {
       // Never an empty list: "no branch differences" is a claim, and making it
@@ -88,6 +97,15 @@ export default function BranchMenuScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The editor is a separate screen, so a product added or renamed there comes
+  // back to a list that would otherwise still show the old menu — and an owner
+  // who cannot see the dish they just added adds it a second time.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -104,14 +122,10 @@ export default function BranchMenuScreen() {
   );
 
   const rows = useMemo(() => {
-    const index = buildOutletMenuIndex(overrides);
-    const query = search.trim().toLowerCase();
-    const visible = query
-      ? products.filter((product) => product.name.toLowerCase().includes(query))
-      : products;
+    const visible = filterBranchProducts(products, { search, categoryId: categoryFilter });
 
-    return buildBranchProductRows(visible, branches, index);
-  }, [products, branches, overrides, search]);
+    return buildBranchProductRows(visible, branches, buildOutletMenuIndex(overrides));
+  }, [products, branches, overrides, search, categoryFilter]);
 
   const applyOverride = (
     outletId: string,
@@ -172,6 +186,19 @@ export default function BranchMenuScreen() {
     }
   };
 
+  /**
+   * Add and edit both go to the Products tab's editor rather than a second
+   * form here. The two would share one table and drift apart on validation and
+   * the legacy variation columns the customer storefront still reads.
+   */
+  const handleCreate = () => {
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+    router.push(productHref(NEW_PRODUCT_ID));
+  };
+
   if (outletsError) return <ErrorState message={outletsError} onRetry={reload} />;
 
   return (
@@ -182,7 +209,17 @@ export default function BranchMenuScreen() {
             <Text style={styles.title}>Branch products</Text>
             <Text style={styles.subtitle}>Choose what each branch sells</Text>
           </View>
-          <WorkspaceSwitcher />
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={handleCreate}
+              accessibilityRole="button"
+              accessibilityLabel="Add new product"
+            >
+              <Text style={styles.addButtonText}>+ Add</Text>
+            </TouchableOpacity>
+            <WorkspaceSwitcher />
+          </View>
         </View>
         <TextInput
           style={styles.searchInput}
@@ -234,6 +271,55 @@ export default function BranchMenuScreen() {
         ))}
       </ScrollView>
 
+      {categories.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
+        >
+          <TouchableOpacity
+            style={[
+              styles.categoryPill,
+              categoryFilter === ALL_CATEGORIES && styles.categoryPillActive,
+            ]}
+            onPress={() => setCategoryFilter(ALL_CATEGORIES)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: categoryFilter === ALL_CATEGORIES }}
+          >
+            <Text
+              style={[
+                styles.categoryPillText,
+                categoryFilter === ALL_CATEGORIES && styles.categoryPillTextActive,
+              ]}
+            >
+              All items
+            </Text>
+          </TouchableOpacity>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryPill,
+                categoryFilter === category.id && styles.categoryPillActive,
+              ]}
+              onPress={() => setCategoryFilter(category.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: categoryFilter === category.id }}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  categoryFilter === category.id && styles.categoryPillTextActive,
+                ]}
+              >
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+
       <ScrollView
         style={styles.list}
         contentContainerStyle={styles.content}
@@ -254,27 +340,38 @@ export default function BranchMenuScreen() {
             const isExpanded = expandedId === row.product.id;
             return (
               <View key={row.product.id} style={styles.row}>
-                <TouchableOpacity
-                  style={styles.rowHeader}
-                  activeOpacity={0.7}
-                  onPress={() => setExpandedId(isExpanded ? null : row.product.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Branches selling ${row.product.name}`}
-                  accessibilityState={{ expanded: isExpanded }}
-                >
-                  <View style={styles.rowHeaderText}>
+                {/* Two jobs, two targets. Sharing one would send the owner to
+                    the editor every time they meant to open the branches. */}
+                <View style={styles.rowHeader}>
+                  <TouchableOpacity
+                    style={styles.rowHeaderText}
+                    activeOpacity={0.7}
+                    onPress={() => setExpandedId(isExpanded ? null : row.product.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Branches selling ${row.product.name}`}
+                    accessibilityState={{ expanded: isExpanded }}
+                  >
                     <Text style={styles.name} numberOfLines={1}>
                       {row.product.name}
                     </Text>
-                    <Text style={styles.price}>{formatPeso(row.product.price)}</Text>
-                  </View>
-                  <View style={styles.rowHeaderMeta}>
-                    <Text style={styles.branchCount}>
-                      {row.listedCount} of {row.branches.length}
-                    </Text>
-                    <Text style={styles.chevron}>{isExpanded ? "▾" : "▸"}</Text>
-                  </View>
-                </TouchableOpacity>
+                    <View style={styles.rowHeaderMeta}>
+                      <Text style={styles.price}>{formatPeso(row.product.price)}</Text>
+                      <Text style={styles.branchCount}>
+                        · {row.listedCount} of {row.branches.length} branches
+                      </Text>
+                      <Text style={styles.chevron}>{isExpanded ? "▾" : "▸"}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    activeOpacity={0.7}
+                    onPress={() => router.push(productHref(row.product.id))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${row.product.name}`}
+                  >
+                    <Text style={styles.editButtonText}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {row.label ? (
                   <Text
@@ -340,6 +437,14 @@ const styles = StyleSheet.create({
   headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   headerText: { flex: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  addButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  addButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   searchInput: {
@@ -382,9 +487,31 @@ const styles = StyleSheet.create({
   },
   rowHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rowHeaderText: { flex: 1 },
-  rowHeaderMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowHeaderMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: 2,
+  },
   name: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  price: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  price: { ...typography.small, color: colors.textSecondary },
+  editButton: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  editButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
+  categoryPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  categoryPillActive: { backgroundColor: colors.textPrimary },
+  categoryPillText: { ...typography.small, color: colors.textSecondary, fontWeight: "500" },
+  categoryPillTextActive: { color: colors.textOnDark },
   branchCount: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   chevron: { ...typography.caption, color: colors.textTertiary },
   summary: { ...typography.small, color: colors.textSecondary, marginTop: spacing.sm },
