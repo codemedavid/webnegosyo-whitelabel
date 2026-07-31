@@ -145,6 +145,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // their deliveries and their manager's would pile up in two different
         // places for the same physical shelf.
         outlet_id: typeof body?.outletId === 'string' ? body.outletId : undefined,
+        // The count session this entry belongs to. Without forwarding it the
+        // phone can open and close a count while every entry made during it
+        // arrives untagged — a fully counted shelf would report as completely
+        // uncounted, which is worse than having no session at all because the
+        // report would then actively assert that nobody looked.
+        //
+        // Safe to accept from a client for the same reason `outlet_id` is: the
+        // schema refuses a session on anything but a `stocktake`, and the
+        // database refuses both that and a session belonging to another store
+        // (trigger, migration 20260812120000).
+        inventory_count_id:
+          typeof body?.inventory_count_id === 'string' ? body.inventory_count_id : undefined,
         note: typeof body?.note === 'string' ? body.note : undefined,
       },
     )

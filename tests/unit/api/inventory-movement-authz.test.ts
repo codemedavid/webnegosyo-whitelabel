@@ -229,19 +229,24 @@ describe('POST /api/inventory/movement — filing a count under its session', ()
     )
   })
 
-  test('refuses to file a delivery under a count', async () => {
-    // The database refuses this too (trigger, migration 20260812120000) and the
-    // schema refuses it a third time. Deliberately triplicated: a delivery
-    // inside a count raises coverage for an ingredient nobody counted, which is
-    // the exact reassurance the session exists to withhold, and zod can be
-    // bypassed by another writer while a trigger cannot explain itself to a
-    // merchant.
-    const response = await post(OWNER as never, {
-      reason: 'receive',
-      inventory_count_id: 'count-1',
-    })
+  test('hands a delivery that names a count straight to the layer that refuses it', async () => {
+    // NOT asserted as a 400 here, though that is what the merchant gets: the
+    // refusal lives in `stockMovementInputSchema`, which this suite mocks away,
+    // so a 400 could only be produced by adding a fourth copy of the rule at
+    // the door. What this pins is that the route does not quietly DROP the
+    // pairing — silently stripping it would turn a client bug into a movement
+    // that looks accepted and a count that never grew.
+    //
+    // The refusal itself is pinned against the real schema in
+    // tests/unit/inventory-count-attach.test.ts ("refuses a delivery that names
+    // a count session"), and again by the database trigger in migration
+    // 20260812120000.
+    await post(OWNER as never, { reason: 'receive', inventory_count_id: 'count-1' })
 
-    expect(response.status).toBe(400)
-    expect(recordStockMovementWith).not.toHaveBeenCalled()
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ reason: 'receive', inventory_count_id: 'count-1' }),
+    )
   })
 })
