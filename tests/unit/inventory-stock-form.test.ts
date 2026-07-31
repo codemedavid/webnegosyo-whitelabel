@@ -142,3 +142,45 @@ describe('describeDeliveryPriceUnit', () => {
     expect(described.conversionHint).toBeNull()
   })
 })
+
+/**
+ * A count that is running should collect the entries made into it, without the
+ * merchant having to remember to say so.
+ *
+ * If attaching were a thing to remember, the entries a busy kitchen forgets to
+ * tag would leave the count reading as partial — and a coverage figure that
+ * under-reports honest work is how merchants learn to ignore it.
+ */
+describe('buildStockMovementInput — joining the open count', () => {
+  const UUID_COUNT = '33333333-3333-4333-8333-333333333333'
+
+  it('files a stocktake under the count that is running', () => {
+    const input = buildStockMovementInput(
+      draft({ reason: 'stocktake', quantity: '900' }),
+      UUID_ITEM,
+      UUID_COUNT,
+    )
+
+    expect(input.inventory_count_id).toBe(UUID_COUNT)
+  })
+
+  it('leaves a delivery out of the count even while one is running', () => {
+    // Stock still arrives mid-count. A delivery filed under the count would
+    // raise coverage for an ingredient nobody counted — and the schema refuses
+    // it outright, so attaching here would break the merchant's delivery form.
+    const input = buildStockMovementInput(
+      draft({ reason: 'receive', quantity: '10' }),
+      UUID_ITEM,
+      UUID_COUNT,
+    )
+
+    expect(input.inventory_count_id).toBeUndefined()
+  })
+
+  it('records a one-off stocktake when no count is running', () => {
+    // The behaviour every tenant has today, and it must not change.
+    const input = buildStockMovementInput(draft({ reason: 'stocktake', quantity: '900' }), UUID_ITEM)
+
+    expect(input.inventory_count_id).toBeUndefined()
+  })
+})
