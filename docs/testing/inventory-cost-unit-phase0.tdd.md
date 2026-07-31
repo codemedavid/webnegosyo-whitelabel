@@ -1333,3 +1333,118 @@ five screen guarantees were genuinely RED.
 - `resolveReportRevenue` lives OUTSIDE `lib/daily-report/` and is absent from
   `PORTED_MODULES`. It is app-only by nature: it encodes a mismatch that exists
   because of how the app scopes its queries, and has no web original to match.
+
+---
+
+## Phase 3b (second half) SHIPPED 2026-07-31 — a count becomes one act
+
+**Journeys.** As an owner I want a stock count that stopped halfway to *look*
+half-finished, so I do not read a shelf nobody examined as a clean shelf. As a
+merchant I want to be told which ingredients a count never reached, in
+ingredients rather than in percent, so I know where to go and look.
+
+**The gap this closes.** Attribution (Phase 3b, first half) answered "who
+counted this". The ledger still could not say where a count STOPPED, and that
+omission has one specific cost: an ingredient nobody looked at and an ingredient
+that reconciled perfectly produce the identical row — no discrepancy, no
+shrinkage, nothing to answer for. A count abandoned at the fourth shelf
+therefore read as a spotless store.
+
+### RED → GREEN
+
+| Cycle | Stage | Commit | Evidence |
+|---|---|---|---|
+| 1 — the judgement | RED | `972175d` | `Cannot find module '@/lib/inventory/count-session'` (1 suite failed, 0 tests run) |
+| 1 | GREEN | `ebfbbb9` | `15 passed / 1 suite` |
+| 2 — the schema | applied + probed | `9909336` | 8 live probes, all rolled back (below) |
+| 3 — the report says it | RED | `e698d18` | `2 failed, 17 passed (19 total)` |
+| 3 | GREEN | `a1f2e60` | `19 passed`; app suite `97 suites / 1603 passed` |
+
+### Schema probes (live, all rolled back)
+
+| # | Probe | Result |
+|---|---|---|
+| 1 | an open count can be created | OK |
+| 2 | a second open count on the same shelf | REJECTED (unique index) |
+| 3 | `status='closed'` with no `closed_at` | REJECTED (check) |
+| 4 | negative `expected_item_count` | REJECTED (check) |
+| 5 | a count opened against another store's branch | REJECTED (trigger) |
+| 6 | a `receive` filed under a count session | REJECTED — *"Only a stocktake may belong to a count session"* |
+| 7 | a `stocktake` filed under its own session | ACCEPTED |
+| 8 | a `stocktake` naming another store's session | REJECTED (trigger) |
+
+Residue check after the probes: `0` sessions, `0` linked movements.
+
+### Guarantees added (205–223)
+
+`tests/unit/inventory-count-session.test.ts` — 19 unit guarantees:
+
+| # | What is guaranteed |
+|---|---|
+| 205 | A count still running is `open`, not `partial` — nothing is missing until someone claims to be finished |
+| 206 | A closed count that reached every ingredient is `complete`, coverage 100 |
+| 207 | A closed count that stopped halfway is `partial`, and reports 4 of 40 |
+| 208 | A count closed with nothing counted is `abandoned`, not merely small |
+| 209 | Recounting one sack three times is one ingredient, not three |
+| 210 | 0 of 0 yields a `null` coverage figure, never a flattering 100% |
+| 211 | An ingredient added mid-count cannot push coverage past 100% |
+| 212 | Coverage rounds DOWN, so 299 of 300 reads 99% and never "finished" |
+| 213 | An uncounted ingredient's silence counts as evidence only after a complete count |
+| 214 | An open count never counts as accounting for the shelf |
+| 215 | A corrupt negative snapshot costs the coverage figure, not the report |
+| 216 | Partial wording names ingredients ("4 of 40"), not a percentage |
+| 217 | Partial wording says outright that the rest were not counted |
+| 218 | A complete count produces no caveat at all |
+| 219 | A running count is described as running, not warned about |
+| 220 | The count caveat renders ABOVE the ingredients it left unexplained |
+| 221 | A complete count adds nothing to the caveat list |
+| 222 | A day with no session behaves exactly as before — no invented "abandoned count" |
+| 223 | A partial count is named even when nothing else was wrong that day |
+
+### Decisions worth not re-deriving
+
+**`expected_item_count` is a SNAPSHOT, not a live count.** Recomputing the
+denominator at read time rewrites history: an ingredient added next month would
+quietly demote last month's finished count to a partial one. The column is
+written once, when the count opens.
+
+**Coverage rounds down, and `0 of 0` is `null`.** 299 of 300 is 99.67%, and
+rounding that to "100%" on a shelf with an uncounted ingredient is precisely the
+reassurance this whole unit exists to withhold. `0 of 0` is arithmetically 100%
+and factually meaningless — a store with nothing to count has not achieved a
+perfect count.
+
+**`abandoned` is a separate state from `partial`.** Closed-with-nothing-counted
+says something different about the shift than closed-early, and collapsing them
+would lose it.
+
+**Guarantee 222 is the compatibility guarantee.** `countSession` is an optional
+parameter, and omitting it is correct for every day before this table existed
+and every tenant who counts without opening a session. An absent session must
+never be read as an abandoned one — that would accuse a merchant of a count they
+never started.
+
+**Guarantee 223 is why the session caveat cannot be folded into
+`uncountedCount`.** That figure only covers ingredients that MOVED today, so a
+count which skipped the entire dry store would otherwise leave the report with
+nothing at all to say.
+
+**Honest note on the RED for cycle 3.** Only 2 of the 4 new caveat tests failed.
+The other two (221, 222) passed immediately, because an extra argument to
+`describeReportCaveats` was simply ignored at runtime. They are regression
+guards, not evidence of a defect fixed.
+
+**The import in `daily-report-view.ts` is deliberately on one line.** The app's
+parity guard strips whole `import` lines; a wrapped import would leave its
+continuation lines behind and read as drift between two identical files.
+
+### Still not built for this unit
+
+The **write path**. Nothing opens, attaches to, or closes a session yet:
+`inventory_count_id` is written by no code, so in production every session
+reader will find nothing and the report behaves exactly as it did before
+(guarantee 222). The schema, the judgement, and both report surfaces are ready;
+the service and the count screen are not.
+
+The **read wiring**. `daily-report-read.ts` does not yet load the day's session,
+so `describeReportCaveats` is still called with one argument everywhere.
