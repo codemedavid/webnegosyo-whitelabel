@@ -14,6 +14,7 @@ import {
   sortStockAlerts,
   summarizeStockAlerts,
   describeStockAlert,
+  scopeStockAlerts,
   type StockAlertView,
 } from '@/lib/inventory/stock-alerts-view'
 
@@ -146,5 +147,96 @@ describe('describeStockAlert', () => {
     expect(describeStockAlert(alert({ name: 'Flour', level: 'out', quantity: -3 }))).toBe(
       'Flour is out of stock',
     )
+  })
+})
+
+describe('an alert that names a branch', () => {
+  /**
+   * Phase C started stamping alerts with the branch they are about. Two things
+   * follow that the view did not yet do.
+   */
+  const alert = (over: Partial<StockAlertView> = {}): StockAlertView => ({
+    id: 'a1',
+    inventoryItemId: 'flour',
+    name: 'Flour',
+    level: 'out',
+    quantity: 0,
+    reorderLevel: 20,
+    unitAbbreviation: 'g',
+    createdAt: '2026-07-31T00:00:00.000Z',
+    outletId: null,
+    ...over,
+  })
+
+  it('says whose shelf it is about', () => {
+    // "Flour is out of stock" across a two-shop chain leaves the merchant
+    // asking the one question the alert exists to answer.
+    expect(describeStockAlert(alert({ outletId: 'o-south', branchName: 'South' }))).toBe(
+      'Flour is out of stock at South',
+    )
+  })
+
+  it('names the branch on a low alert too', () => {
+    expect(
+      describeStockAlert(
+        alert({ level: 'low', quantity: 5, outletId: 'o-south', branchName: 'South' }),
+      ),
+    ).toBe('Flour is down to 5 g (reorder at 20 g) at South')
+  })
+
+  it('says nothing extra for a store-wide alert', () => {
+    // Every alert raised before branches existed, and every single-shop tenant.
+    expect(describeStockAlert(alert())).toBe('Flour is out of stock')
+  })
+
+  it('does not invent a branch name it was not given', () => {
+    // A deleted outlet, or a read that could not resolve the name. Better to
+    // say less than to print a UUID at a merchant.
+    expect(describeStockAlert(alert({ outletId: 'o-gone' }))).toBe('Flour is out of stock')
+  })
+})
+
+describe('scopeStockAlerts with branch-stamped alerts', () => {
+  const alert = (over: Partial<StockAlertView> = {}): StockAlertView => ({
+    id: 'a1',
+    inventoryItemId: 'flour',
+    name: 'Flour',
+    level: 'out',
+    quantity: 0,
+    reorderLevel: 20,
+    unitAbbreviation: 'g',
+    createdAt: '2026-07-31T00:00:00.000Z',
+    outletId: null,
+    ...over,
+  })
+
+  it('keeps a branch alert even when the chain roll-up looks healthy', () => {
+    // The regression Phase C introduced. South is out; the owner's screen shows
+    // the roll-up, 700g, which is far above the reorder level -- so the re-test
+    // threw away the alert that had just been correctly raised. The branch
+    // figure was the basis for raising it, and the owner's total is the wrong
+    // yardstick to re-judge it by.
+    const kept = scopeStockAlerts(
+      [alert({ outletId: 'o-south', branchName: 'South' })],
+      [{ id: 'flour', current_qty: 700, reorder_level: 20 }],
+    )
+
+    expect(kept).toHaveLength(1)
+  })
+
+  it('still drops a branch alert for an ingredient the viewer cannot see', () => {
+    // Absent from the list means invisible to this account, and an alert about
+    // something invisible is unactionable whatever branch raised it.
+    expect(
+      scopeStockAlerts([alert({ outletId: 'o-south', branchName: 'South' })], []),
+    ).toEqual([])
+  })
+
+  it('still re-tests a store-wide alert against the viewer figures', () => {
+    // Unchanged: an unstamped alert carries no branch, so the viewer's own
+    // quantities remain the only way to tell whether it is their problem.
+    expect(
+      scopeStockAlerts([alert()], [{ id: 'flour', current_qty: 700, reorder_level: 20 }]),
+    ).toEqual([])
   })
 })
