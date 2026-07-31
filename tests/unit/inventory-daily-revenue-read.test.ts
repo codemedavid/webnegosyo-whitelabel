@@ -307,3 +307,36 @@ describe('getDailyRevenue — one branch of the store', () => {
     expect(revenue).toBe(500)
   })
 })
+
+describe('getDailyRevenue — asking Convex for one branch', () => {
+  test('passes the branch to the deployment', async () => {
+    const query = jest.fn().mockResolvedValue({ totalRevenue: 400 })
+
+    await getDailyRevenue(
+      { id: 't1', convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'k' } as never,
+      '2026-08-01',
+      { convexClient: () => ({ query }) as never },
+      'north',
+    )
+
+    expect(query).toHaveBeenCalledWith(
+      'orders:getDashboardStatsByPeriod',
+      expect.objectContaining({ outletId: 'north' }),
+    )
+  })
+
+  test('sends no branch key at all for a store-wide read', async () => {
+    // Not `outletId: undefined` — a Convex validator still sees the key, and an
+    // older deployment rejects it. The caller must be able to keep asking
+    // exactly what it asks today.
+    const query = jest.fn().mockResolvedValue({ totalRevenue: 400 })
+
+    await getDailyRevenue(
+      { id: 't1', convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'k' } as never,
+      '2026-08-01',
+      { convexClient: () => ({ query }) as never },
+    )
+
+    expect(Object.keys(query.mock.calls[0][1])).not.toContain('outletId')
+  })
+})

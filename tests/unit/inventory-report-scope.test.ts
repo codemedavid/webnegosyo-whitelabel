@@ -77,3 +77,60 @@ describe('resolveReportScope — whether a food cost may be stated', () => {
     expect(scope.isRevenueBranchScoped).toBe(false)
   })
 })
+
+describe('resolveReportScope — a Convex deployment that has learned about branches', () => {
+  /**
+   * The Convex half was the last thing withholding a branch admin's food cost.
+   * `getDashboardStatsByPeriod` now accepts an `outletId` — but only on
+   * deployments running the bundle that ships it, and most tenants run several
+   * versions behind head.
+   *
+   * Sending the argument to an older deployment does not degrade quietly: its
+   * validator rejects the unknown argument and the screen shows "needs a backend
+   * update" instead of the figures. So the version is the gate.
+   */
+  const branch = { kind: 'branch', outletId: 'north' } as const
+
+  test('a branch admin gets their food cost once the deployment can narrow', () => {
+    const scope = resolveReportScope({
+      scope: branch,
+      orderBackend: 'convex',
+      convexSchemaVersion: 18,
+    })
+
+    expect(scope.isRevenueBranchScoped).toBe(true)
+  })
+
+  test('a deployment still on the previous bundle keeps the figure withheld', () => {
+    const scope = resolveReportScope({
+      scope: branch,
+      orderBackend: 'convex',
+      convexSchemaVersion: 17,
+    })
+
+    expect(scope.isRevenueBranchScoped).toBe(false)
+  })
+
+  test('a deployment whose version is unknown keeps it withheld', () => {
+    // Never optimistic: an unrecorded version is most likely a tenant deployed
+    // before versions were tracked, which is the oldest bundle of all.
+    const scope = resolveReportScope({
+      scope: branch,
+      orderBackend: 'convex',
+      convexSchemaVersion: null,
+    })
+
+    expect(scope.isRevenueBranchScoped).toBe(false)
+  })
+
+  test('the version is irrelevant to a Supabase tenant', () => {
+    // Their orders are narrowed by a SQL filter this repo controls outright.
+    const scope = resolveReportScope({
+      scope: branch,
+      orderBackend: 'supabase',
+      convexSchemaVersion: null,
+    })
+
+    expect(scope.isRevenueBranchScoped).toBe(true)
+  })
+})
