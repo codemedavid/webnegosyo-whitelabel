@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug } from '@/lib/cache'
-import { getIngredients } from '@/lib/inventory/ingredients-service'
+import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { getScopedIngredients } from '@/lib/inventory/branch-stock-read'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
@@ -22,10 +23,13 @@ export default async function AdminInventoryPage({
   searchParams,
 }: {
   params: Promise<{ tenant: string }>
-  searchParams: Promise<{ tab?: string; day?: string }>
+  searchParams: Promise<{ tab?: string; day?: string; stock?: string; reason?: string }>
 }) {
   const { tenant: tenantSlug } = await params
-  const { tab, day } = await searchParams
+  // `stock` and `reason` carry a merchant across from the daily report: a row
+  // that came up short links here with the count already chosen, so the answer
+  // to "something is missing" is one tap rather than a hunt.
+  const { tab, day, stock, reason } = await searchParams
 
   const tenantData = await getCachedTenantBySlug(tenantSlug)
   if (!tenantData) {
@@ -44,9 +48,14 @@ export default async function AdminInventoryPage({
   // Open alerts need no feature-flag check of their own: when a tenant has
   // low-stock alerts switched off, nothing writes them, so the list is empty
   // and the banner renders nothing.
+  // Quantities are read as whoever is looking: the owner's roll-up across every
+  // branch, or one branch's own shelf. A manager shown the chain total would
+  // count their shelf short against it.
+  const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
+
   const [units, ingredients, alerts, lastPurchaseByItemId] = await Promise.all([
     seedDefaultUnits(tenant.id),
-    getIngredients(tenant.id),
+    getScopedIngredients(tenant.id, scope),
     getOpenStockAlerts(tenant.id),
     getCachedLastPurchaseDates(tenant.id),
   ])
@@ -123,6 +132,8 @@ export default async function AdminInventoryPage({
         dailyRevenue={dailyRevenue}
         latestDayKey={latestDayKey}
         defaultTab={tab}
+        stockItemId={stock}
+        stockReason={reason}
       />
     </div>
   )

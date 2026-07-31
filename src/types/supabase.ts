@@ -272,9 +272,11 @@ export type Database = {
           inventory_item_id: string
           note: string | null
           order_id: string | null
+          outlet_id: string | null
           quantity_delta: number
           reason: string
           tenant_id: string
+          target_qty: number | null
           unit_cost: number | null
         }
         Insert: {
@@ -287,9 +289,11 @@ export type Database = {
           inventory_item_id: string
           note?: string | null
           order_id?: string | null
+          outlet_id?: string | null
           quantity_delta: number
           reason: string
           tenant_id: string
+          target_qty?: number | null
           unit_cost?: number | null
         }
         Update: {
@@ -302,9 +306,11 @@ export type Database = {
           inventory_item_id?: string
           note?: string | null
           order_id?: string | null
+          outlet_id?: string | null
           quantity_delta?: number
           reason?: string
           tenant_id?: string
+          target_qty?: number | null
           unit_cost?: number | null
         }
         Relationships: [
@@ -317,6 +323,61 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_stock: {
+        Row: {
+          created_at: string | null
+          current_qty: number
+          id: string
+          inventory_item_id: string
+          outlet_id: string | null
+          reorder_level: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id?: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_stock_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
