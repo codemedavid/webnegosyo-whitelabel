@@ -74,20 +74,41 @@ interface UnitRow {
 export async function getDailyInventoryReport(
   tenantId: string,
   dayKey: string,
+  outletId?: string | null,
 ): Promise<DailyInventoryReportForDay> {
   const supabase = await createClient()
   const { startIso, endIso } = resolveBusinessDayWindow(dayKey)
 
+  /**
+   * Narrowed to one branch, or left whole.
+   *
+   * An absent branch is the OWNER's report and must acquire no filter by
+   * accident: an owner silently narrowed to one branch would see a fraction of
+   * their own stock with nothing on screen to say so.
+   *
+   * Written out rather than routed through a generic helper — a generic over
+   * the query builder sends `tsc` into "type instantiation is excessively
+   * deep" on these types.
+   */
+  const movementQuery = supabase
+    .from('stock_movements')
+    .select(
+      'inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id',
+    )
+    .eq('tenant_id', tenantId)
+    .gte('created_at', startIso)
+    .lt('created_at', endIso)
+
+  const countQuery = supabase
+    .from('inventory_counts')
+    .select('id, expected_item_count, closed_at')
+    .eq('tenant_id', tenantId)
+    .eq('business_day', dayKey)
+
   const [movementResult, ingredientResult, unitResult, countResult] = await Promise.all([
-    supabase
-      .from('stock_movements')
-      .select(
-        'inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id',
-      )
-      .eq('tenant_id', tenantId)
-      .gte('created_at', startIso)
-      .lt('created_at', endIso)
-      .order('created_at', { ascending: true }),
+    (outletId ? movementQuery.eq('outlet_id', outletId) : movementQuery).order('created_at', {
+      ascending: true,
+    }),
     supabase
       .from('inventory_items')
       .select('id, name, unit_cost, stock_unit_id')
@@ -96,11 +117,10 @@ export async function getDailyInventoryReport(
     // The day's count, if the merchant opened one. Latest first, because a
     // shelf recounted in the evening is the one that describes how the day
     // ended — the morning's abandoned attempt is not the last word on it.
-    supabase
-      .from('inventory_counts')
-      .select('id, expected_item_count, closed_at')
-      .eq('tenant_id', tenantId)
-      .eq('business_day', dayKey)
+    // Scoped to the same branch as the ledger. Otherwise coverage is measured
+    // against a count opened for another shelf — or against the store pool's,
+    // whose denominator counts ingredients this branch never stocks.
+    (outletId ? countQuery.eq('outlet_id', outletId) : countQuery)
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

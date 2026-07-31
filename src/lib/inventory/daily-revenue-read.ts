@@ -14,6 +14,11 @@
  * report renders a reason; `0` means "genuinely took nothing" and the report
  * says so. Collapsing the two is the one bug this module exists to prevent.
  *
+ * BRANCH: the Supabase paths narrow by `outlet_id`; the Convex path CANNOT —
+ * `getDashboardStatsByPeriod` takes a date window and nothing else. Callers must
+ * not ask this for one branch of a Convex tenant and divide branch stock by the
+ * answer; `resolveReportScope` is what decides that, and it withholds instead.
+ *
  * WHICH FIGURE: the order `total`, matching the dashboard, the merchant app's
  * daily stats, and the superadmin analytics. `total` includes delivery fees,
  * which are income the food cost did not produce, so the percentage runs
@@ -88,14 +93,20 @@ async function sumOrderTotals(
   tenantId: string,
   startIso: string,
   endIso: string,
+  outletId?: string | null,
 ): Promise<number> {
-  const { data, error } = await client
+  const query = client
     .from('orders')
     .select('total')
     .eq('tenant_id', tenantId)
     .neq('status', 'cancelled')
     .gte('created_at', startIso)
     .lt('created_at', endIso)
+
+  // Narrowed only when a branch was named. The owner's report is the default
+  // and must not acquire a filter by accident: silently narrowed, they would
+  // see a fraction of their own takings with nothing on screen to say so.
+  const { data, error } = await (outletId ? query.eq('outlet_id', outletId) : query)
 
   if (error) {
     throw new Error(`Failed to read the day's orders: ${error.message}`)
@@ -146,6 +157,7 @@ export async function getDailyRevenue(
   tenant: DailyRevenueTenant,
   dayKey: string,
   deps: DailyRevenueDeps = {},
+  outletId?: string | null,
 ): Promise<number | null> {
   const { startIso, endIso } = resolveBusinessDayWindow(dayKey)
   const backend = resolveOrderBackend(tenant)
@@ -160,7 +172,7 @@ export async function getDailyRevenue(
         ? (deps.tenantClient ?? createTenantOrderWriteClient)(tenant)
         : await (deps.platformClient ?? createClient)()
 
-    return await sumOrderTotals(client, tenant.id, startIso, endIso)
+    return await sumOrderTotals(client, tenant.id, startIso, endIso, outletId)
   } catch (error) {
     console.error('[inventory] daily revenue read failed', {
       tenantId: tenant.id,

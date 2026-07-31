@@ -20,6 +20,7 @@ import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
 import { getOpenCount, getCountProgress } from '@/lib/inventory/count-session-service'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
+import { resolveReportScope } from '@/lib/inventory/report-scope'
 import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { Tenant } from '@/types/database'
@@ -108,9 +109,16 @@ export default async function AdminInventoryPage({
   // it — the tab simply does not appear, which is honest about having no
   // figures rather than showing a day that looks empty.
   const { dayKey, latestDayKey } = resolveReportDay(day, new Date().toISOString())
+  //
+  // Scoped to whoever is looking, matching the quantities above it. A branch
+  // admin was previously shown every branch's movements reconciled into one
+  // day and presented as their own — the same mismatch the merchant app
+  // guarded against by withholding, except the web showed it.
+  const reportScope = resolveReportScope({ scope, orderBackend: tenant.order_backend ?? null })
+
   let dailyReport: DailyInventoryReportForDay | undefined
   try {
-    dailyReport = await getDailyInventoryReport(tenant.id, dayKey)
+    dailyReport = await getDailyInventoryReport(tenant.id, dayKey, reportScope.outletId)
   } catch (error) {
     console.error('[inventory] daily report read failed', { tenantId: tenant.id, dayKey, error })
   }
@@ -119,7 +127,16 @@ export default async function AdminInventoryPage({
   // necessarily this database. `getDailyRevenue` never throws and returns null
   // when it cannot tell — the panel then omits the percentage and says why,
   // rather than dividing by a zero it invented.
-  const dailyRevenue = dailyReport ? await getDailyRevenue(tenant, dayKey) : null
+  //
+  // `undefined` rather than null when the takings cannot be narrowed to the
+  // branch being shown: the panel omits the card entirely, which is honest,
+  // where null would say "could not be read" and imply the figure would
+  // otherwise have been theirs to see. See `resolveReportScope`.
+  const dailyRevenue = !dailyReport
+    ? null
+    : reportScope.isRevenueBranchScoped
+      ? await getDailyRevenue(tenant, dayKey, {}, reportScope.outletId)
+      : undefined
 
   // The count running on this shelf, if one is. Wrapped because a failure here
   // must cost the count panel and nothing else: the merchant can still see
@@ -129,10 +146,11 @@ export default async function AdminInventoryPage({
   let openCountId: string | null = null
   let countProgress: CountSessionProgress | null = null
   try {
-    // `null` is the unbranched store pool. Per-branch counts arrive with the
-    // branch-aware ledger read; until the report can be scoped to one shelf, a
-    // branch-scoped count would describe a narrower shelf than the report does.
-    const openCount = await getOpenCount(tenant.id, null)
+    // The count belongs to the same shelf the report reconciles. Until that
+    // read was branch-aware this had to be the store pool, because a
+    // branch-scoped count would have described a narrower shelf than the
+    // report did and reported coverage against the wrong denominator.
+    const openCount = await getOpenCount(tenant.id, reportScope.outletId)
     if (openCount) {
       openCountId = openCount.id
       countProgress = await getCountProgress(tenant.id, openCount.id)
