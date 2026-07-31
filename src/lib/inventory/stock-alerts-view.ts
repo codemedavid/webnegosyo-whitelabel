@@ -49,6 +49,45 @@ function pluralise(count: number): string {
  *
  * Returns a new array — the caller holds this in React state.
  */
+/** The scoped ingredient fields an alert is re-tested against. */
+export interface AlertScopedItem {
+  id: string
+  current_qty: number
+  reorder_level: number
+}
+
+/**
+ * The alerts that are this viewer's problem.
+ *
+ * `stock_alerts` rows are raised store-wide, from the roll-up across every
+ * branch — they carry no branch of their own. The inventory screen, meanwhile,
+ * shows a branch manager THEIR shelf. Pairing the two unfiltered put the
+ * chain's low-stock banner above one branch's quantities, so a manager whose
+ * own shelf is full was told to reorder, and the numbers underneath the banner
+ * disagreed with it.
+ *
+ * So each alert is re-tested against the quantities the viewer is actually
+ * being shown: it survives only if that ingredient is at or below its reorder
+ * level *for them*. A store-wide account passes its own roll-up figures in and
+ * every alert survives, which is the existing behaviour exactly.
+ *
+ * An alert whose ingredient is absent from the list is dropped. The list is
+ * every ingredient the tenant has, so absent means the viewer cannot see that
+ * ingredient at all, and an alert about something invisible is unactionable.
+ */
+export function scopeStockAlerts(
+  alerts: readonly StockAlertView[],
+  items: readonly AlertScopedItem[],
+): StockAlertView[] {
+  const byId = new Map(items.map((item) => [item.id, item]))
+
+  return alerts.filter((alert) => {
+    const item = byId.get(alert.inventoryItemId)
+    if (!item) return false
+    return item.current_qty <= item.reorder_level
+  })
+}
+
 export function sortStockAlerts(alerts: readonly StockAlertView[]): StockAlertView[] {
   return [...alerts].sort((a, b) => {
     const byLevel = LEVEL_RANK[a.level] - LEVEL_RANK[b.level]

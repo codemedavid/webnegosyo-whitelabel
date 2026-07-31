@@ -10,6 +10,7 @@ import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
+import { scopeStockAlerts } from '@/lib/inventory/stock-alerts-view'
 import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
 import { getRecipeCoverage } from '@/lib/inventory/recipe-coverage-read'
 import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
@@ -57,12 +58,19 @@ export default async function AdminInventoryPage({
   // count their shelf short against it.
   const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
-  const [units, ingredients, alerts, lastPurchaseByItemId] = await Promise.all([
+  const [units, ingredients, openAlerts, lastPurchaseByItemId] = await Promise.all([
     seedDefaultUnits(tenant.id),
     getScopedIngredients(tenant.id, scope),
     getOpenStockAlerts(tenant.id),
     getCachedLastPurchaseDates(tenant.id),
   ])
+
+  // The banner is scoped to match the quantities under it. `stock_alerts` rows
+  // are raised store-wide and carry no branch, so a branch manager was shown
+  // the chain's low-stock warnings sitting directly above their own branch's
+  // figures — two numbers on one screen disagreeing about the same shelf.
+  // A store-wide account passes its own roll-up in and keeps every alert.
+  const alerts = scopeStockAlerts(openAlerts, ingredients)
 
   // Recipe coverage answers "which dishes are actually set up?" — the question
   // that had no surface at all, and the reason a tenant could switch inventory
