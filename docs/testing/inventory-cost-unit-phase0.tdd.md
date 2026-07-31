@@ -1597,3 +1597,124 @@ different shops.
 stock legitimately goes negative when a sale lands before its delivery is
 recorded, which `movingAverageUnitCost` already handles explicitly. If wanted it
 belongs on the alerts surface as a warning, not in the schema.
+
+---
+
+# The count screen — the feature becomes reachable
+
+**SHIPPED 2026-07-31.** Journeys derived during this TDD run, continuing the
+inline plan's Task A (the count screen, explicitly deferred from the previous
+unit).
+
+Everything beneath this was correct and invisible. The schema, the judgement,
+the service and the actions all existed and nothing rendered them, so in
+production `inventory_count_id` was written by nobody. This unit closes that.
+
+## User journeys
+
+- As a merchant, I want to start a stock count from the ingredients screen, so
+  that the entries I am about to make belong to one count.
+- As a merchant mid-count, I want my counts filed under it **without being asked
+  to tag each one**, so that a busy shift does not leave the count reading as
+  half-finished.
+- As a merchant about to finish early, I want to be told what that leaves
+  unaccounted for, so that I decide it deliberately rather than discover it in
+  next week's report.
+
+## RED → GREEN
+
+| Cycle | RED commit | RED evidence | GREEN commit |
+|---|---|---|---|
+| Form seam | `aa51170` | runtime: **1 failed**, 15 passed | `bb9706c` |
+| Panel copy (pure) | `dc77f8e` | compile-time: `Cannot find module '@/lib/inventory/count-panel'` | `4b36c2c` (11 passed) |
+| Panel component | `86cb905` | compile-time: `Cannot find module '@/components/admin/stock-count-panel'` | `7177513` (10 passed) |
+| Screen wiring | `1873fb9` | runtime: **3 failed**, 1 passed | `967c263` (4 passed) |
+| Page read | — | (async server component; see known gaps) | `66879c6` |
+
+## Guarantees
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 249 | A stocktake made while a count runs is filed under it | `inventory-stock-form:files a stocktake under the count that is running` | PASS |
+| 250 | A delivery mid-count is NOT filed under it | `…:leaves a delivery out of the count even while one is running` | PASS |
+| 251 | A stocktake with no count running stays a one-off | `…:records a one-off stocktake when no count is running` | PASS |
+| 252 | With no count running, the panel offers to start one and shows no progress figure | `inventory-count-panel-view:when no count is running` (3 tests) | PASS |
+| 253 | Progress is stated in ingredients, not percent | `…:counts the shelf in ingredients, not percent` | PASS |
+| 254 | The panel names how many are still untouched, so the merchant need not subtract | `…:names how many are still untouched` | PASS |
+| 255 | Finishing early warns what it leaves behind | `…:warns that finishing early leaves the rest unaccounted for` | PASS |
+| 256 | The warning disappears once every ingredient is reached | `…:drops the warning once every ingredient has been reached` | PASS |
+| 257 | The remainder is never negative when more was counted than scoped | `…:never reports a negative remainder` | PASS |
+| 258 | A closed count offers a NEW count, never a reopen | `…:offers to start a new one rather than reopening the old` | PASS |
+| 259 | Starting a count targets the shelf being viewed | `inventory-count-panel:starts the count on the shelf being viewed` | PASS |
+| 260 | Starting refreshes, so the next entry lands in the new count | `…:refreshes so the merchant's next entry lands in the new count` | PASS |
+| 261 | A failure to start or close is SHOWN, never swallowed | `…:says so when the count could not be started/closed` | PASS |
+| 262 | The panel appears on the ingredients screen | `inventory-count-wiring:offers a count when none is running` | PASS |
+| 263 | A running count shows its progress there | `…:shows the running count instead` | PASS |
+| 264 | **Recording mid-count files under it with nothing asked of the merchant** | `…:files the stocktake under the count` | PASS |
+| 265 | With no count running, behaviour is exactly as before | `…:records a one-off when no count is running` | PASS |
+
+## Decisions worth not re-deriving
+
+**Attaching is automatic, not a checkbox.** If joining were a thing to remember,
+the entries a busy kitchen forgot to tag would leave the count reading as
+partial — and a coverage figure that under-reports honest work is how merchants
+learn to ignore it. `buildStockMovementInput` takes the open count id and
+ignores it for every reason but `stocktake`.
+
+**Only a stocktake joins.** Stock still arrives during a count. A delivery filed
+under one would raise coverage for an ingredient nobody counted, and the schema
+refuses it outright — so attaching indiscriminately would have broken the
+delivery form for the whole duration of a count.
+
+**The panel sits ABOVE the table**, because the warning about finishing early
+has to be read before the merchant reaches the finish button.
+
+**The page reads the store pool (`outletId: null`), not a branch.** Per-branch
+counts wait for the branch-aware ledger read: until the report can be scoped to
+one shelf, a branch-scoped count would describe a narrower shelf than the report
+that judges it.
+
+**A failed count-session read costs the panel, not the page.** The merchant can
+still see stock, record deliveries and read the report; the panel falls back to
+offering a count, which is also what starting a second one would resolve to,
+since `openCount` joins rather than duplicates.
+
+## Honest notes on evidence quality
+
+- The screen-wiring cycle was **3 of 4 genuinely RED**. The fourth ("records a
+  one-off when no count is running") passed immediately — it is a regression
+  guard on behaviour that already worked.
+- My first version of that test failed for the **wrong reason**: the reason
+  picker is labelled "Counted" and the submit button "Record count", and my
+  selectors matched neither. A test failing on a bad selector is not a RED gate,
+  so the selectors were corrected and the gate re-run before any production code
+  was touched. Only then were 3 of 4 failing for the intended reason.
+- One copy string was changed to satisfy a regex (`not counted` → `uncounted`).
+  The test was written first and the wording bent to it, not the reverse.
+
+## Validation
+
+```
+npx jest                        → 367 passed, 1 skipped, 4534 tests (web)
+cd webnegosyo-app && npx jest   → 97 suites, 1607 passed
+npx tsc --noEmit                → clean for every file in this unit
+npx eslint <changed files>      → clean
+```
+
+Note: `tests/unit/inventory-stock-alerts-service.test.ts` failed mid-run with 3
+tests red. It is `bd48a92`, a **concurrent session's committed RED reproducer**
+for branch-blind alerts, landed between two of my runs and fixed by them before
+the final validation. Not this unit's, and green by the end.
+
+## Still not built
+
+**The merchant app has no count panel.** `count-panel.ts` is pure and ready to
+port, but the phone can read a count session and cannot start one. The parity
+guard does not yet cover `count-panel.ts` because there is no app copy to
+compare against.
+
+**Per-branch counts.** The page opens counts against the store pool only. This
+is blocked on the branch-aware ledger read, not on the count session.
+
+**Branch-aware ledger read** (plan Task C) and **food cost % on the phone**
+(plan Task D) remain, unchanged.
