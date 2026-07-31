@@ -240,11 +240,23 @@ export function buildSendMovements(input: {
  * whole point of a receive step — a transfer that is assumed to arrive intact
  * is just a swap with extra clicks.
  *
- * A shortfall posts as `waste` against the **sending** branch. The missing
- * stock is not the receiver's loss (it never reached their shelf) and it is not
- * still at the sender either (their `transfer_out` already took it off). This
- * leg is what makes the pair reconcile, and it puts the loss where the
- * investigation has to start: with whoever loaded the van.
+ * A shortfall posts as `waste` against the **sending** branch: the missing
+ * stock is not the receiver's loss, since it never reached their shelf, and the
+ * loss belongs where the investigation has to start — with whoever loaded the
+ * van.
+ *
+ * Writing that waste leg alone would charge the sender twice. The `transfer_out`
+ * at send already took the *whole* load off their shelf, so the shortfall is
+ * returned to them first and then written off, and the two legs together leave
+ * the branch down by exactly what left it. Without the return leg a chain that
+ * lost 20 of a 120-unit load ends up 40 short — the defect a probe against real
+ * branch rows exposed, after every leg had been checked in isolation and none
+ * of them added together.
+ *
+ * The return leg is a `transfer_in` rather than a `void`: reports bucket
+ * transfers signed, so it nets against the `transfer_out` and reads as "sent
+ * 8 net, wasted 2". A `void` would land in sales and claim a sale that never
+ * happened.
  *
  * Arriving stock is valued at the **source** branch's cost. The receiver did
  * not buy it and has no price of its own to apply; using anything else would
@@ -283,6 +295,17 @@ export function buildReceiveMovements(input: {
     // accuse a branch of losing nothing on every clean transfer, forever, and
     // drown the real ones.
     if (shortfall > 0) {
+      // Back onto the sender's book before it is written off, because the send
+      // leg already removed it. Charging the waste against a shelf that no
+      // longer holds the stock is how a 20-unit shortfall costs a chain 40.
+      movements.push({
+        inventoryItemId: line.inventoryItemId,
+        outletId: input.fromOutletId,
+        reason: 'transfer_in',
+        quantityDelta: shortfall,
+        unitCost: line.unitCost,
+        note: 'Undelivered on branch transfer',
+      })
       movements.push({
         inventoryItemId: line.inventoryItemId,
         outletId: input.fromOutletId,

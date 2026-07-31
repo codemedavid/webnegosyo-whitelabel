@@ -268,18 +268,26 @@ describe('buildReceiveMovements', () => {
   })
 
   it('accepts a load that never arrived at all', () => {
-    // Nothing arrived: no transfer_in leg to write, and the whole consignment
-    // posts as shrinkage against the sender. This is how a lost transfer is
-    // closed, which is why cancelling a sent transfer is refused.
+    // Nothing arrived: the receiving branch is credited with nothing, and the
+    // whole consignment posts as shrinkage against the sender. This is how a
+    // lost transfer is closed, which is why cancelling a sent one is refused.
+    //
+    // This assertion used to pin the exact leg list as the waste leg alone,
+    // which is what let the double-charge through: the send leg had already
+    // emptied North's shelf, so wasting the load against it took the stock off
+    // the chain twice. The consignment is returned to the sender's book first
+    // — see the conservation block below.
     const movements = buildReceiveMovements({
       fromOutletId: 'o-north',
       toOutletId: 'o-south',
       lines: [receipt({ sentQuantity: 10, receivedQuantity: 0 })],
     })
 
-    expect(movements).toEqual([
+    expect(movements.some((m) => m.outletId === 'o-south')).toBe(false)
+    expect(movements).toContainEqual(
       expect.objectContaining({ outletId: 'o-north', reason: 'waste', quantityDelta: -10 }),
-    ])
+    )
+    expect(movements.reduce((sum, m) => sum + m.quantityDelta, 0)).toBe(0)
   })
 
   it('values the arriving stock at the source branch cost', () => {
