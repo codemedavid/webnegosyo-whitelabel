@@ -38,6 +38,7 @@ export interface MovementResult {
 export async function submitStockMovement(
   tenantId: string,
   payload: MovementPayload,
+  outletId?: string | null,
 ): Promise<MovementResult> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -53,7 +54,13 @@ export async function submitStockMovement(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ tenantId, ...payload }),
+      // The branch is sent, not assumed. The server vets it — a manager naming
+      // another shop is refused — but it has to be told which shelf the
+      // merchant was looking at, or a delivery recorded against South's empty
+      // shelf lands in the unbranched pool and South still reads zero.
+      // Omitted rather than sent as null when there is no branch, so a
+      // single-shop tenant's request is byte-for-byte what it was before.
+      body: JSON.stringify(outletId ? { tenantId, ...payload, outletId } : { tenantId, ...payload }),
     });
   } catch {
     throw new Error("Could not reach the server. Check your connection and try again.");

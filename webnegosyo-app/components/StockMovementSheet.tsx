@@ -29,6 +29,13 @@ import { colors, typography, spacing, radius } from "../theme/colors";
 interface StockMovementSheetProps {
   tenantId: string;
   item: StockItemView | null;
+  /**
+   * The branch whose shelf is on screen, passed down rather than resolved here
+   * so the write cannot target a different shelf from the one the merchant is
+   * reading. Undefined for a single-shop tenant, or an owner looking at the
+   * whole store.
+   */
+  outletId?: string | null;
   onClose: () => void;
   /** Fired once the ledger has settled, so the shelf reloads from the server. */
   onRecorded: () => void;
@@ -46,6 +53,7 @@ interface StockMovementSheetProps {
 export function StockMovementSheet({
   tenantId,
   item,
+  outletId,
   onClose,
   onRecorded,
 }: StockMovementSheetProps) {
@@ -87,7 +95,7 @@ export function StockMovementSheet({
 
     setIsSaving(true);
     try {
-      await submitStockMovement(tenantId, payload);
+      await submitStockMovement(tenantId, payload, outletId);
       close();
       onRecorded();
     } catch (submitError) {

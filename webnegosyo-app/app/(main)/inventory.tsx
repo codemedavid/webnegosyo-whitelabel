@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useAuthStore } from "../../stores/auth-store";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../lib/inventory-service";
 import {
   filterStockViews,
@@ -50,6 +51,11 @@ const SEGMENTS: readonly { key: Exclude<LevelFilter, "all">; label: string; tint
  */
 export default function InventoryScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
+  const scope = useBranchScope();
+  // Undefined, not null, when the merchant is looking at the whole store: null
+  // is the unbranched pool, a real shelf, and would show an owner only the
+  // stock that predates their branches.
+  const outletId = scope.kind === "branch" ? scope.outletId : undefined;
 
   const [shelf, setShelf] = useState<StockItemView[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +69,7 @@ export default function InventoryScreen() {
     if (!tenantId) return;
     try {
       setError(null);
-      setShelf(await loadInventoryStock(tenantId));
+      setShelf(await loadInventoryStock(tenantId, outletId));
     } catch {
       // An empty list and a failed read look identical, and one of them is a
       // lie — say which one this is.
@@ -72,7 +78,9 @@ export default function InventoryScreen() {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [tenantId]);
+    // Drilling into another branch from the portfolio has to refetch: the
+    // roll-up is a single scalar, so there is nothing on the phone to re-filter.
+  }, [tenantId, outletId]);
 
   useEffect(() => {
     load();
@@ -202,6 +210,7 @@ export default function InventoryScreen() {
       <StockMovementSheet
         tenantId={tenantId ?? ""}
         item={recording}
+        outletId={outletId}
         onClose={() => setRecording(null)}
         onRecorded={load}
       />
