@@ -240,5 +240,10 @@ pre-existing `inventory-alert-scope` suite caught the weaker version.
 - **C3, the per-branch par level UI, is still not built.** The store-wide
   fallback means branched tenants get alerting today; what is missing is giving
   a quiet shop its own threshold.
-- The merchant app renders alerts from the same pure view module, so it gains
-  the branch name for free — but that has not been verified on the app.
+- ~~The merchant app renders alerts from the same pure view module, so it gains
+  the branch name for free.~~ **This was wrong**, and the "not verified" hedge
+  was carrying it. The app reads no `stock_alerts` at all — see
+  `webnegosyo-app/lib/inventory-stock.ts:9` — and derives low/out itself from
+  `inventory_items.current_qty`, the chain roll-up. There was no branch name to
+  gain; there was the same blindness Phase C fixed here, still live there.
+  Closed in `multi-branch-inventory-phase-d1.tdd.md`.
