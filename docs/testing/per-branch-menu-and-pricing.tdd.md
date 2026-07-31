@@ -5,7 +5,9 @@ decisions: mobile/POS parity is in this build, and per-branch *availability*
 ("out of stock here") ships alongside per-branch *listing*.
 
 **Branch**: `feat/platform-supabase-order-parity`
-**Migration**: `supabase/migrations/20260806120000_outlet_menu_overrides.sql` — **NOT YET APPLIED**
+**Migration**: `supabase/migrations/20260806120000_outlet_menu_overrides.sql` —
+**APPLIED and probed 2026-07-31** (ledger version `20260730144450`,
+`outlet_menu_overrides`). See "Live probe" below.
 
 ## User journeys
 
@@ -83,12 +85,37 @@ npx tsc --noEmit                     → no errors in src/ (pre-existing test-fi
 npm run lint                         → no new errors in changed files
 ```
 
-## Known gaps — deliberate
+## Live probe (2026-07-31)
 
-- **The migration is not applied.** Until it is, `outlet_menu_items` does not
-  exist; every read is flag-gated on `multi_branch_enabled`, so a tenant without
-  branches is unaffected either way, but a multi-branch tenant will log the
-  carried "branch menu query failed" warning and block ordering until it lands.
+Applied to the platform database and verified against the live schema. All
+objects present: 11 columns, both RLS policies (`select_public`, `write_admin`),
+RLS enabled, both triggers (`set_updated_at`, `tenant_guard`), the
+`outlet_menu_item_tenant_matches` guard function, 3 indexes including
+`outlet_menu_items_outlet_item_uq`, and all four check/FK constraints.
+
+Behaviour probed inside a transaction that was then rolled back — the table is
+still at **0 rows**, confirmed after:
+
+```
+[1 insert=OK] [2 duplicate=BLOCKED] [3 crosstenant=BLOCKED]
+[4 contradiction=BLOCKED] [5 negative=BLOCKED]
+```
+
+1. A legitimate override for a real tenant/branch/dish inserts.
+2. A second opinion for the same branch+dish is refused (unique index).
+3. An override claiming a tenant its branch does not belong to is refused — the
+   trigger, not the FKs, since the FKs alone cannot see the mismatch.
+4. `discount_cleared` plus an explicit `discounted_price` is refused.
+5. A negative price is refused.
+
+**Version drift, harmless**: the repo file is `20260806120000_*` while the
+applied ledger version is `20260730144450` (the apply timestamp). Every
+statement in the file is idempotent — `CREATE TABLE IF NOT EXISTS`,
+`DROP POLICY IF EXISTS`, `CREATE OR REPLACE FUNCTION` — so a later
+`supabase db push` that re-runs it is a no-op rather than an error. This is the
+same drift recorded in the storefront-select incident, minus the failure mode.
+
+## Known gaps — deliberate
 - **The white-labeled customer app (`mobile/`) is untouched.** It has no outlet
   or `multi_branch` support at all — zero matches across the whole project — so
   there is no branch to price against. Porting the resolver there would be dead
