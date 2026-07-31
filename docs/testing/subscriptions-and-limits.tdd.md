@@ -30,7 +30,7 @@ Three product decisions were confirmed with the user before any code:
 | Payment service | `markPaid` over an injected store; ledger written before access extends | `Cannot find module '@/lib/billing/subscription-service'` (`188e2eb`) | 18/20 → **real bug found** → 20/20 (`5e0979a`) |
 | Allowances | Per-tenant staff seats + branch cap replace the hard-coded `MAX_STAFF_PER_TENANT = 3` | 8 failed / 10 passed (`e4b78f6`) | 18/18 (`5f99ef2`) |
 | Migration | 2 columns + 2 tables + RLS, applied and probed against the live DB | n/a (schema) | probe results below (`4c3e882`) |
-| App pause | `resolveSession` gains a `paused` mode; both entry points read the subscription | `TS2554: Expected 3-4 arguments, but got 5` (`0e117e7`) | 17/17 (`3cc7170`) |
+| App pause | `resolveSession` gains a `paused` mode; both entry points read the subscription | `TS2554: Expected 3-4 arguments, but got 5` (`0e117e7`) | 17/17 (`3cc7170`) — **later removed, see below** |
 | Web pause | Layout redirect (UX) + `assertSubscriptionActive` in actions (boundary) | `Cannot find module '@/lib/billing/subscription-gate'` (`a66df23`) | 11/11 (`b411410`) |
 | Superadmin UI | Collections roster ordered by urgency, Mark Paid dialog, allowance fields | ⚠️ see deviation below | 12/12 (`0b0fbce`) |
 | Seat wiring | The staff action and its labels read the tenant's allowance, not the constant | n/a (wiring; covered by existing tests) | 4176/4176 (`405f12a`) |
@@ -94,8 +94,9 @@ Both assertions passed; the `DO` block raises `SECURITY FAILURE` on any other ou
 | 19 | A paused app session stays authenticated so the screen can explain itself | `session-paused.test.ts` | unit | PASS |
 | 20 | Debtors sort to the top; MRR excludes tenants who aren't paying | `subscription-roster.test.ts` | unit | PASS |
 
-Full suites: **web 338 suites / 4176 tests pass**; **app 95 of 96 suites pass**
-(the one failure is pre-existing — see below).
+Full suites at the time of this run: **web 338 suites / 4176 tests pass**; **app
+95 of 96 suites pass** (the one failure was pre-existing; it has since been
+fixed — see item 1 below, and the app suite is now 96/96).
 
 ## Coverage
 
@@ -127,19 +128,62 @@ modules in this codebase, and the reason the logic was pushed out of it.
   and confirmed blocked in a browser or on a device; the gate is proven by unit
   tests and source guardrails only.
 
+## Amendment (same day) — the merchant app pause was removed
+
+At the user's instruction the app-side half of the gate was taken out again.
+**The pause is now web-admin only.** Removed: the `paused` session mode, the
+`tenant_subscriptions` SELECT on both entry points, `PAUSED_LANDING_HREF`, the
+`subscription-paused` screen, the ported `subscription-access.ts`, and the
+`isSubscriptionPaused` flag on the auth store.
+
+The reasoning that survives the change: the web admin is where an owner deals
+with money, and the app is where their staff run a shift. Locking a register
+mid-service over an unpaid invoice costs the merchant more trade than the
+invoice is worth.
+
+| | RED | GREEN |
+|---|---|---|
+| Remove app gate | 8 of 10 fail — the gate still ships (`cc34e0e`) | 10/10; app suite 96 suites / 1587 tests (`86ecdbc`) |
+
+The new guardrail is `webnegosyo-app/lib/session-no-billing-gate.test.ts`, which
+asserts the *absence* of the gate: no paused route, no subscription projection,
+no `tenant_subscriptions` in either entry point or the store, and no paused
+screen on disk. Rows 15 (app half), 18, and 19 of the specification table above
+no longer apply; `session-paused.test.ts` was deleted with the code it covered.
+
+**Consequence, stated plainly:** an unpaid merchant keeps full use of the
+merchant app — orders, register, inventory, analytics. Only the web admin
+closes. Collection now rests entirely on that one surface.
+
 ## Pre-existing issues found, not fixed (outside this task's scope)
 
-1. **`webnegosyo-app` `lib/daily-report/parity.test.ts` fails on this branch.** A
-   concurrent session committed inventory branch-stock work between my commits; the
-   app's `MOVEMENT_REASONS` was not updated for the web ledger's new reasons
-   (`sale`, `stocktake`, `void`, `waste`). Unrelated to subscriptions.
-2. **Regenerated Supabase types expose 6 real drift bugs.** The live DB has
-   `tenants.convex_schema_version` and `tenants.hero_design` as `text` while the code
-   writes a number and a JSON object, and `checkout_lead_status_history` does not
-   exist at all despite the old types file declaring it. Rather than break three
-   unrelated features, `src/types/supabase.ts` was left as-is and only the two new
-   tables plus two new columns were hand-added. **The drift is still there.**
-3. **Migration timestamp collision.** `20260808120000_subscriptions_and_limits.sql`
-   shares its timestamp with `20260808120000_inventory_branch_stock.sql` from the
-   concurrent session. Both applied cleanly; worth renaming one before it confuses
-   an ordering assumption later.
+1. ~~**`webnegosyo-app` `lib/daily-report/parity.test.ts` fails on this branch.**~~
+   **FIXED** (`f70f280` RED → `0546724` GREEN). Two faults, not one. The guardrail's own
+   regex captured only the first line of `StockMovementReason`, so once that
+   union grew to one member per line it was comparing the app's five reasons
+   against `receive` alone — reporting drift that wasn't there. With the regex
+   corrected, the *real* drift appeared: the web ledger now writes `transfer_out`
+   and `transfer_in`, which the app's `MOVEMENT_REASONS` did not list. Both fixed;
+   the branch is green.
+
+   **Still open, and not mine to decide:** neither report — web or app, they are
+   textually identical — accounts for the transfer reasons in its switch. A branch
+   transfer therefore lands in the day's unexplained variance and is reported as
+   shrinkage. That is a design call for whoever owns the branch-transfer feature.
+2. **Regenerated Supabase types expose 6 real drift bugs.** Now **confirmed
+   against the live DB**, not merely suspected: `tenants.convex_schema_version`
+   and `tenants.hero_design` are both `text` while the code writes a number and a
+   JSON object, and `checkout_lead_status_history` **does not exist**. The last
+   one has a live consequence — `updateCheckoutLeadStatus` inserts into it and
+   swallows the failure with a `console.error`, so every lead status change has
+   been silently unaudited, and `getCheckoutLeadHistory` returns an error for
+   every lead. `src/types/supabase.ts` was left as-is (only the two new tables and
+   two new columns were hand-added) rather than break three unrelated features.
+   **Unfixed, and needs a decision:** create the missing table, or delete the dead
+   history code.
+3. ~~**Migration timestamp collision.**~~ **FIXED** (`894f6cc`). Renamed to
+   `20260808130000_subscriptions_and_limits.sql`, ordered after the branch-stock
+   migration to match the order the live project actually applied them
+   (`20260731051501` before `20260731052414` in its own history). Remote history
+   keys on its own applied version rather than the filename, so nothing needed
+   reapplying.
