@@ -17,6 +17,8 @@ import {
   fetchAppUserScope,
 } from '@/lib/queries/fetch-app-user-scope'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
+import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
+import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { z } from 'zod'
 
 // ============================================
@@ -196,6 +198,25 @@ export async function verifyTenantAdmin(tenantId: string) {
   if (!isAuthorized) {
     throw new Error('Unauthorized: Not admin of this tenant')
   }
+
+  // The subscription boundary, and the reason it lives HERE rather than in each
+  // action: the admin layout's redirect is a rendering decision that does not
+  // stop a POST aimed straight at a server action, and `assertSubscriptionActive`
+  // was written for that job but never called from anywhere — a sign on an
+  // unlocked door. Every admin write in the product passes through this
+  // function, so one call closes all of them and none can be forgotten later.
+  //
+  // A superadmin is exempt inside the assertion: they are the only account that
+  // can clear an unpaid subscription, and a gate that locks out its own remedy
+  // cannot be fixed from inside the product.
+  //
+  // Fails OPEN by construction — `fetchSubscription` returns null on any query
+  // error and null reads as "not blocked", so a database blip leaves merchants
+  // working instead of locking out the whole platform at once.
+  assertSubscriptionActive(
+    await fetchSubscription(supabase, tenantId),
+    { role: userRole.role }
+  )
 
   return { user, userRole }
 }

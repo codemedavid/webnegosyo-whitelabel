@@ -47,11 +47,39 @@ function appUsersTable() {
   return chain
 }
 
+/**
+ * A tenant whose subscription is current, so the gate `verifyTenantAdmin` now
+ * applies lets the toggle through. Null would work too — that reads as "no
+ * subscription configured" and is equally unblocked — but stating an active
+ * one keeps this test about availability rather than about billing.
+ */
+function subscriptionsTable() {
+  const chain: Record<string, unknown> = {
+    maybeSingle: () =>
+      Promise.resolve({
+        data: {
+          tenant_id: 't1',
+          status: 'active',
+          monthly_price_php: 649,
+          paid_through: null,
+          grace_days: 3,
+        },
+        error: null,
+      }),
+  }
+  for (const method of ['select', 'eq']) chain[method] = () => chain
+  return chain
+}
+
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () =>
     Promise.resolve({
       auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u1' } }, error: null }) },
-      from: (name: string) => (name === 'app_users' ? appUsersTable() : menuItemsTable()),
+      from: (name: string) => {
+        if (name === 'app_users') return appUsersTable()
+        if (name === 'tenant_subscriptions') return subscriptionsTable()
+        return menuItemsTable()
+      },
     }),
 }))
 
