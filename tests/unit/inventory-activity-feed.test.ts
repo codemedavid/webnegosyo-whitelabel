@@ -117,3 +117,63 @@ describe('an empty ledger', () => {
     expect(build([])).toEqual([])
   })
 })
+
+/**
+ * Phase 3b — the feed says who.
+ *
+ * `created_by` is written now, so the feed can finally answer the question the
+ * daily report provokes: it names ₱500 of missing beef on Tuesday, and the
+ * merchant's next question is who counted the shelf. A loss without a person
+ * and a time attached cannot be investigated, only regretted.
+ */
+describe('who did it', () => {
+  const ACTORS = new Map([['u1', 'Marites']])
+
+  function buildWithActors(movements: StockMovement[]) {
+    return buildActivityFeed(movements, {
+      ingredientName: (id) => NAMES.get(id) ?? null,
+      actorName: (id) => ACTORS.get(id) ?? null,
+    })
+  }
+
+  it('names the person who entered a manual movement', () => {
+    const feed = buildWithActors([
+      movement({ id: 'm1', reason: 'stocktake', created_by: 'u1' } as never),
+    ])
+
+    expect(feed[0].actorName).toBe('Marites')
+  })
+
+  it('leaves an automatic movement unattributed', () => {
+    // A sale is deducted by the order pipeline. Naming an actor there would
+    // put a person against a row nobody typed.
+    const feed = buildWithActors([movement({ id: 'm1', order_id: 'o1' } as never)])
+
+    expect(feed[0].actorName).toBeNull()
+  })
+
+  it('leaves the entry unattributed when the movement names nobody', () => {
+    // Every row written before this phase has a null created_by, and the feed
+    // has to keep rendering them.
+    const feed = buildWithActors([movement({ id: 'm1', reason: 'waste' } as never)])
+
+    expect(feed[0].actorName).toBeNull()
+  })
+
+  it('leaves the entry unattributed when the person is no longer on the roster', () => {
+    // A departed staff member costs the entry a name, never the entry itself —
+    // the same degradation as a deleted ingredient.
+    const feed = buildWithActors([
+      movement({ id: 'm1', reason: 'stocktake', created_by: 'gone' } as never),
+    ])
+
+    expect(feed[0].actorName).toBeNull()
+  })
+
+  it('still builds a feed for a caller that does not deal in actors', () => {
+    // `actorName` is optional so every existing caller keeps working.
+    const feed = build([movement({ id: 'm1', reason: 'stocktake', created_by: 'u1' } as never)])
+
+    expect(feed[0].actorName).toBeNull()
+  })
+})
