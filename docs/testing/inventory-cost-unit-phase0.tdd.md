@@ -1069,6 +1069,84 @@ Checkpoints: `a7d3655` (RED) → `d143862` (GREEN).
   `order_stock_applications` claim. It needs the caller set established first,
   not a speculative edit.
 
+## Security E SHIPPED 2026-07-31 — a stocktake no longer swallows a sale
+
+**The journey.** *As a merchant, I want the shelf to end up holding what I
+counted, so that the one number I measured by hand is the one the system keeps.*
+
+`resolveMovementDelta` computes a stocktake as `counted − currentQty`, where
+`currentQty` came from a SELECT earlier in the same request. Anything landing in
+that gap is absorbed silently.
+
+This is worse than an ordinary lost update. A stocktake exists to be the
+authority on what is physically there, so the single movement that must never be
+wrong was the one that quietly was — and the merchant is standing in front of
+the shelf that disagrees with the screen.
+
+### RED
+
+A live probe, in a transaction aborted on purpose:
+
+```
+PROBE_RESULT counted=900 shelf_ended_at=850 lost=50 (aborted on purpose)
+```
+
+And at the repo level:
+
+```
+npx jest --testPathPatterns="inventory-stock-cost-unit"
+RED: 1 failed, 7 passed — no target_qty is sent for a stocktake
+```
+
+Checkpoint: `ccc199c`.
+
+### GREEN
+
+`20260807130000_stocktake_resolved_at_insert.sql` adds `target_qty` and moves
+the subtraction inside the row lock the trigger already takes. The original
+migration's own comment claimed movements "serialize on the item row rather than
+racing through a read-modify-write in application code" — true for every reason
+EXCEPT the one computing its delta from a prior read.
+
+Applied, then the identical interleaving re-probed, plus the guard rails:
+
+```
+PROBE_RESULT counted=900 shelf_ended_at=900 lost=0 stored_delta=930
+PROBE_RESULT receive_with_target_rejected=t legacy_stocktake_delta=7
+
+npx jest --testPathPatterns="inventory|stock"
+  Test Suites: 1 skipped, 68 passed / 69   Tests: 8 skipped, 721 passed / 729
+```
+
+Checkpoint: `8d33b09`.
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 177 | A stocktake sends the counted quantity in stock units | `inventory-stock-cost-unit.test.ts:sends the counted quantity in stock units` | unit | PASS |
+| 178 | A delivery carries no target, so it stays relative | `…:leaves a delivery with no target` | unit | PASS |
+| 179 | Waste carries no target | `…:leaves waste with no target` | unit | PASS |
+| 180 | A concurrent sale is no longer swallowed by a stocktake | live probe, GREEN above | db | PASS |
+| 181 | A relative movement carrying a target is rejected | live probe (`check_violation`) | db | PASS |
+| 182 | A stocktake with no target still applies the old way | live probe (`legacy_stocktake_delta=7`) | db | PASS |
+
+### Decisions worth not re-deriving
+
+- **The trigger OVERWRITES `quantity_delta` rather than rejecting it.** A client
+  that has not shipped the `target_qty` change keeps working with the old (racy)
+  behaviour instead of failing outright — which matters because the web and the
+  merchant app deploy separately.
+- **Only `stocktake` may carry a target**, enforced by CHECK. A delivery is a
+  RELATIVE movement; letting it state an absolute would make two deliveries in a
+  row overwrite each other instead of accumulating.
+- **`quantity_delta` keeps its exact meaning** — the signed change actually
+  applied — so `balance_after`, the daily report, and every existing reader are
+  untouched. Only its *provenance* changed.
+- **`FOR UPDATE` on the read inside the trigger** is what makes it atomic; the
+  subsequent UPDATE alone would not have been enough, since the delta has to be
+  computed from the locked value.
+
 ## Still not built
 
 **The food-cost percentage on the phone.** The web report shows it; the app
@@ -1093,11 +1171,22 @@ component), matching the Phase 1c precedent — the passthrough is covered at th
 shelf — while revenue CAN be branch-scoped. Any future per-branch report must fix
 the ledger first, or the two halves of the ratio describe different shops.
 
-**Still open from the review:** `current_qty` has no non-negative CHECK;
-stocktake is still a read-modify-write that a concurrent sale can swallow.
-(The `FOR ALL` RLS hole is closed — Security C. The movement route's
-role-only authorization is closed — Security D. `/api/inventory/order-stock`
-is examined and deliberately unchanged; see Security D's last note.)
+**Still open from the review:** `current_qty` has no non-negative CHECK — and
+deliberately so for now: stock legitimately goes negative when a sale lands
+before its delivery is recorded, which `movingAverageUnitCost` already handles
+explicitly, so a blanket CHECK would reject real movements.
+(The `FOR ALL` RLS hole is closed — Security C. The movement route's role-only
+authorization is closed — Security D. The stocktake race is closed —
+Security E. `/api/inventory/order-stock` is examined and deliberately
+unchanged; see Security D's last note.)
+
+**UNCOMMITTED, needs staging:** the `target_qty` change in
+`src/lib/inventory/stock-service.ts`. Another session's in-flight branch-scope
+work occupies that file, so it could not be staged without carrying their
+unfinished changes into this commit. Until it lands, the database is fixed but
+the app still sends no target, so stocktakes keep the old racy behaviour (which
+the trigger deliberately still supports). Guarantee 177 fails at `HEAD` until
+then; it passes in the working tree.
 
 **Not deployed.** The branch is ~540 commits ahead of `origin/main` with no
 upstream, so none of this — Phase 0's correctness fixes included — is in front
