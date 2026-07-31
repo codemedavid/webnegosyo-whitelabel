@@ -1448,3 +1448,152 @@ the service and the count screen are not.
 
 The **read wiring**. `daily-report-read.ts` does not yet load the day's session,
 so `describeReportCaveats` is still called with one argument everywhere.
+
+---
+
+# Count sessions, part two — the write path and the read wiring
+
+**SHIPPED 2026-07-31.** Source: the inline plan produced by `/ecc:plan` earlier
+this session (Tasks A and B). No `*.plan.md` artefact was written; the plan was
+conversational and is reproduced in the task table below.
+
+The previous unit built the `inventory_counts` schema and the pure judgement,
+and closed with an honest admission: **nothing wrote to it.** `inventory_count_id`
+was written by no code, so in production every reader found nothing and the
+report behaved exactly as before. This unit closes that loop.
+
+## User journeys
+
+- As a merchant, I want to start a stock count and have my entries belong to it,
+  so that the report can tell a finished count from one that stopped at the
+  fourth shelf.
+- As a merchant with two people counting, I want the second person to join the
+  count already running rather than open a rival one, so that one shelf produces
+  one document.
+- As a merchant, I want the day's report to say the count stopped early, so that
+  I do not read a shelf nobody looked at as a shelf that reconciled.
+- As a merchant using both the phone and the web, I want one verdict about one
+  day, so that I never have two accounts of the same shelf and no way to choose.
+
+## The gap this closes
+
+A count with no movements attached reads as `abandoned` however thoroughly it
+was performed — which is a *different* lie from the one sessions were built to
+stop, but a lie all the same. The session table and the ledger had to point at
+each other before either was worth anything.
+
+## RED → GREEN
+
+| Cycle | RED commit | RED evidence | GREEN commit |
+|---|---|---|---|
+| Service (open/join/close) | `85fe05c` | compile-time: `Cannot find module '../../src/lib/inventory/count-session-service'` — 1 suite failed, 0 tests run | `bf45e0c` (32 passed) |
+| Ledger attachment | `76ac0f3` | runtime: **3 failed**, 3 passed | `c6fc66e` (6 passed) |
+| Report read wiring (web) | `f92422b` | runtime: **5 failed**, 6 passed | `e31a301` |
+| Panel caveat (web) | `5ca7510` | runtime: **1 failed**, 15 passed | `e31a301` |
+| Report read wiring (phone) | `138761d` | compile-time: `TS2339: Property 'countSession' does not exist on type 'DailyReportForDay'` ×5 | `e31a301` (20 passed) |
+| Server actions | `6d5634b` | compile-time: `Cannot find module '@/app/actions/inventory-counts'` | `1c07eb0` (45 passed) |
+
+## Guarantees
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 224 | A count captures its denominator when it OPENS, never recomputed | `inventory-count-session-service:captures how many ingredients were in scope` | PASS |
+| 225 | A retired ingredient is outside the denominator, so a complete count is not permanently partial | `…:leaves a retired ingredient out of the denominator` | PASS |
+| 226 | A count opens with no closing timestamp, so nothing reads it as finished | `…:opens with no closing timestamp` | PASS |
+| 227 | A count is filed under a Manila business day, so a 23:40→00:20 count is one count | `…:files the count under a Manila business day` | PASS |
+| 228 | Opening a count on another branch is refused and writes nothing | `…:refuses to open a count on another branch` | PASS |
+| 229 | A second opener JOINS the running count rather than starting a rival, and the original denominator survives | `…:joins the count already running on this shelf` | PASS |
+| 230 | Closing writes status and timestamp together | `…:writes the status and the timestamp together` | PASS |
+| 231 | A closed count cannot be re-closed, so `closed_at` cannot move | `…:refuses to close a count that is already closed` | PASS |
+| 232 | Progress is judged from the movements filed under the session | `…:judges progress from the movements filed under the session` | PASS |
+| 233 | A recounted ingredient counts once | `…:counts a recounted ingredient once` | PASS |
+| 234 | A count belonging to another store reads as nothing | `…:returns nothing for a count this store does not own` | PASS |
+| 235 | A stocktake carries its session id onto the ledger row | `inventory-count-attach:carries the session id onto the ledger row` | PASS |
+| 236 | A movement with no session writes null — every pre-session caller untouched | `…:records no session when the count was a one-off` | PASS |
+| 237 | A delivery or waste naming a session is refused in words, before the database says so | `…:refuses a delivery/waste that names a count session` | PASS |
+| 238 | A movement naming no count is never rejected, for any reason | `…:leaves every movement that names no count alone` | PASS |
+| 239 | The web report reports how far the day's count got | `inventory-daily-report-read:reports how far the day's count actually got` | PASS |
+| 240 | A stocktake belonging to no session is not credited to the count | `…:ignores a stocktake that belonged to no session` | PASS |
+| 241 | A day nobody counted yields `null`, never an invented abandoned count | `…:says nothing about a day nobody counted` | PASS |
+| 242 | The session read is scoped to the tenant AND the day | `…:scopes the session read to the tenant and the day` | PASS |
+| 243 | The web panel names the unfinished count above the ingredients it left uncounted | `inventory-daily-report-panel:names how far the count got` | PASS |
+| 244 | The phone reaches the same verdict as the web | `daily-report-service:the day's count session` (4 tests) | PASS |
+| 245 | A failed session read costs the caveat, not the day's figures | `…:keeps the day's figures when the session read fails` | PASS |
+| 246 | The actions take the tenant from the server argument, never from client input | `inventory-count-actions:takes the tenant from the server argument` | PASS |
+| 247 | A refusal returns as a readable message, not an unhandled throw | `…:hands back a refusal as words`, `…:explains a double close` | PASS |
+| 248 | The store pool (`null` branch) is a real shelf, not a missing one | `…:treats the store pool as a real shelf` | PASS |
+
+## Decisions worth not re-deriving
+
+**Joining, not refusing.** Two people tapping "start count" within a minute are
+counting one shelf. Two open sessions would each report partial coverage of a
+shelf that was actually counted twice over. The partial unique index enforces
+this at the database; `openCount` makes the common case pleasant instead of an
+error.
+
+**The counted ingredients come from the movements already read**, not a second
+query. `daily-report-read` had them in hand; filtering by `inventory_count_id`
+costs one pass over an array instead of a round trip.
+
+**A stocktake with no session is deliberately not credited.** A one-off
+correction made during a count is not part of the count, and crediting it would
+raise coverage for an ingredient nobody counted.
+
+**Validation is duplicated between zod and the trigger on purpose.** The zod
+rule can be bypassed by any other writer; the trigger cannot explain itself to a
+merchant. Neither is redundant.
+
+**A failed session read yields `null` rather than throwing.** The stock figures
+are independently true. Losing the whole report because its caveat could not be
+computed is the worse trade.
+
+## Honest notes on evidence quality
+
+- The ledger-attachment cycle was **3 of 6 genuinely RED**. The other three
+  passed immediately because zod strips unknown keys, so a movement naming no
+  count already behaved correctly. They are recorded as regression guards, not
+  as defects fixed.
+- The panel cycle was **1 of 2 genuinely RED**; the "complete count adds nothing"
+  case passed trivially because that fixture renders no caveats at all.
+- One assertion was **mutation-tested**: deleting `.eq('is_active', true)` from
+  `countIngredientsInScope` makes guarantee 225 fail, and restoring it makes it
+  pass. The row-count assertion alone would NOT have caught the deletion — the
+  stub decides how many rows come back — so the filter assertion was added
+  specifically to hold the rule.
+
+## Validation
+
+```
+npx jest                        → 361 passed, 1 skipped, 4480 tests (web)
+cd webnegosyo-app && npx jest   → 97 suites, 1607 passed (incl. parity guard)
+npx tsc --noEmit                → clean for every file in this unit
+npx eslint <changed files>      → clean
+```
+
+`src/types/supabase.ts` gained the `inventory_counts` table and
+`stock_movements.inventory_count_id` by hand, matching the generated shape. An
+earlier attempt used a regex broad enough to add the column to every table with
+an `inventory_item_id`; it was reverted and redone as three explicit edits, and
+the file now contains exactly three occurrences (Row, Insert, Update).
+
+## Still not built
+
+**The count screen.** The service and the actions exist and are tested; nothing
+renders them. A merchant cannot yet open a count from the UI, so in production
+`inventory_count_id` is still written by nobody and the report still behaves
+exactly as it did before. This is the same honest caveat as the previous unit,
+moved one layer up: the seam is now reachable from a component rather than
+absent entirely.
+
+**Branch-aware ledger read** (plan Task C). `daily-report-read.ts` still reads
+`stock_movements` store-wide despite `outlet_id` existing since `20260808120000`.
+Until that is fixed the branch food-cost % stays withheld, because revenue can
+be branch-scoped and stock cannot — the two halves of the ratio would describe
+different shops.
+
+**Food cost % on the phone** (plan Task D). Unchanged.
+
+**`current_qty` non-negative CHECK.** Recommended AGAINST, and this stands:
+stock legitimately goes negative when a sale lands before its delivery is
+recorded, which `movingAverageUnitCost` already handles explicitly. If wanted it
+belongs on the alerts surface as a warning, not in the schema.
