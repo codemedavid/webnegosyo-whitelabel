@@ -91,3 +91,30 @@ describe("submitting a movement", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("a request that never comes back", () => {
+  /**
+   * `fetch` has no timeout of its own. A stalled connection leaves the sheet
+   * spinning with no error, no confirmation and no way out but killing the app —
+   * and the merchant cannot tell whether their count was recorded, which is the
+   * one thing this screen exists to make certain.
+   */
+  it("gives up rather than spinning forever", async () => {
+    global.fetch = jest.fn(() => new Promise(() => {})) as never;
+
+    await expect(
+      submitStockMovement("t1", payload, null, { timeoutMs: 20 }),
+    ).rejects.toThrow(/too long|timed out/i);
+  });
+
+  it("says the count may still have been recorded", async () => {
+    // The dangerous instruction here is "try again". A timeout is not a
+    // failure: the write may well have landed, and a merchant who re-enters a
+    // count records it twice.
+    global.fetch = jest.fn(() => new Promise(() => {})) as never;
+
+    await expect(
+      submitStockMovement("t1", payload, null, { timeoutMs: 20 }),
+    ).rejects.toThrow(/may have been saved|check the shelf|before recording it again/i);
+  });
+});

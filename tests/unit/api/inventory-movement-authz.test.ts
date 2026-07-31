@@ -98,6 +98,7 @@ describe('POST /api/inventory/movement — which branch the stock moves at', () 
       expect.anything(),
       TENANT,
       expect.objectContaining({ outlet_id: 'outlet-north' }),
+      expect.anything(),
     )
   })
 
@@ -108,6 +109,7 @@ describe('POST /api/inventory/movement — which branch the stock moves at', () 
       expect.anything(),
       TENANT,
       expect.objectContaining({ outlet_id: undefined }),
+      expect.anything(),
     )
   })
 
@@ -118,6 +120,7 @@ describe('POST /api/inventory/movement — which branch the stock moves at', () 
       expect.anything(),
       TENANT,
       expect.objectContaining({ outlet_id: undefined }),
+      expect.anything(),
     )
   })
 })
@@ -216,6 +219,7 @@ describe('POST /api/inventory/movement — filing a count under its session', ()
       expect.anything(),
       TENANT,
       expect.objectContaining({ inventory_count_id: 'count-1' }),
+      expect.anything(),
     )
   })
 
@@ -226,6 +230,7 @@ describe('POST /api/inventory/movement — filing a count under its session', ()
       expect.anything(),
       TENANT,
       expect.objectContaining({ inventory_count_id: undefined }),
+      expect.anything(),
     )
   })
 
@@ -247,6 +252,38 @@ describe('POST /api/inventory/movement — filing a count under its session', ()
       expect.anything(),
       TENANT,
       expect.objectContaining({ reason: 'receive', inventory_count_id: 'count-1' }),
+      expect.anything(),
     )
+  })
+})
+
+describe('POST /api/inventory/movement — the identity it already resolved', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+
+  test('hands the service the user it authorized, so it need not ask again', () => {
+    // `auth.getUser()` verifies the JWT against the auth server — a round trip,
+    // not a local decode. The service made two more of them and re-read
+    // app_users, all before writing, which is most of the spinner on the phone.
+    return post(OWNER as never).then(() => {
+      expect(recordStockMovementWith).toHaveBeenCalledWith(
+        expect.anything(),
+        TENANT,
+        expect.anything(),
+        expect.objectContaining({ userId: 'u1' }),
+      )
+    })
+  })
+
+  test('hands it a scope resolved from app_users, never from the request', () => {
+    // The security property: a phone naming a branch is still bounded by what
+    // the SERVER read about that account.
+    return post({ ...OWNER, is_owner: false, outlet_id: 'outlet-north' } as never).then(() => {
+      expect(recordStockMovementWith).toHaveBeenCalledWith(
+        expect.anything(),
+        TENANT,
+        expect.anything(),
+        expect.objectContaining({ scope: { kind: 'branch', outletId: 'outlet-north' } }),
+      )
+    })
   })
 })
