@@ -111,3 +111,44 @@ describe('isHiddenAdminHref', () => {
     expect(isHiddenAdminHref('/my-resto/admin/outlets', new Set())).toBe(false)
   })
 })
+
+describe('transfers', () => {
+  it('is hidden for a store with inventory but only one branch', () => {
+    // One branch cannot transfer to itself. Offering the entry leads to a
+    // screen that can only explain why it is empty.
+    const hidden = hiddenAdminSidebarPaths({ inventoryEnabled: true, multiBranchEnabled: false })
+
+    expect(isHiddenAdminHref('/demo/admin/inventory/transfers', hidden)).toBe(true)
+  })
+
+  it('leaves inventory itself visible for that store', () => {
+    // The gate is on transfers alone; a single-shop store still runs inventory.
+    const hidden = hiddenAdminSidebarPaths({ inventoryEnabled: true, multiBranchEnabled: false })
+
+    expect(isHiddenAdminHref('/demo/admin/inventory', hidden)).toBe(false)
+  })
+
+  it('is offered to a store with both branches and inventory', () => {
+    const hidden = hiddenAdminSidebarPaths({ inventoryEnabled: true, multiBranchEnabled: true })
+
+    expect(isHiddenAdminHref('/demo/admin/inventory/transfers', hidden)).toBe(false)
+  })
+
+  it('is hidden when inventory is off, branches or not', () => {
+    const hidden = hiddenAdminSidebarPaths({ inventoryEnabled: false, multiBranchEnabled: true })
+
+    expect(isHiddenAdminHref('/demo/admin/inventory/transfers', hidden)).toBe(true)
+  })
+
+  it('stays available to a branch manager, who is the one counting deliveries in', () => {
+    // Unlike /outlets, this is not a store-wide list — it is the manager's own
+    // bench. Hiding it would leave a delivery with nobody able to record it.
+    const hidden = hiddenAdminSidebarPaths({
+      inventoryEnabled: true,
+      multiBranchEnabled: true,
+      isBranchScopedAccount: true,
+    })
+
+    expect(isHiddenAdminHref('/demo/admin/inventory/transfers', hidden)).toBe(false)
+  })
+})
