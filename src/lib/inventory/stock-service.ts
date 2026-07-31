@@ -321,6 +321,11 @@ export async function recordStockMovementWith(
       unit_cost: unitCostInStockUnit ?? null,
       note: validated.note ?? null,
       order_id: validated.order_id ?? null,
+      // Which count this belonged to, when it belonged to one. Without it the
+      // session has no members and reads as abandoned however thoroughly the
+      // shelf was actually counted. The schema has already refused any reason
+      // but `stocktake`.
+      inventory_count_id: validated.inventory_count_id ?? null,
     } as never)
     .select()
     .single()

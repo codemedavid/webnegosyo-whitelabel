@@ -78,6 +78,28 @@ export const stockMovementInputSchema = z.object({
    * against the author's scope before anything is written.
    */
   outlet_id: z.string().uuid().nullable().optional(),
+  /**
+   * The count session this movement was performed under, when it was performed
+   * under one. Absent for every one-off correction, and for everything written
+   * before sessions existed.
+   */
+  inventory_count_id: z.string().uuid().optional(),
+}).superRefine((input, ctx) => {
+  // Only a stocktake may name a session. A delivery filed under a count would
+  // raise that count's coverage for an ingredient nobody counted — the exact
+  // reassurance the session exists to withhold.
+  //
+  // The database enforces this too, in `stock_movement_count_session_is_valid`.
+  // It is repeated here so the merchant gets a sentence instead of a Postgres
+  // exception, not because either layer is redundant: this one can be bypassed
+  // by any other writer, and that one cannot explain itself.
+  if (input.inventory_count_id !== undefined && input.reason !== 'stocktake') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['inventory_count_id'],
+      message: 'Only a stock count entry can belong to a stock count',
+    })
+  }
 })
 
 export type StockMovementInput = z.infer<typeof stockMovementInputSchema>

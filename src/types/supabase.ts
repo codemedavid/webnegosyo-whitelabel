@@ -269,6 +269,7 @@ export type Database = {
           entered_quantity: number | null
           entered_unit_id: string | null
           id: string
+          inventory_count_id: string | null
           inventory_item_id: string
           note: string | null
           order_id: string | null
@@ -287,6 +288,7 @@ export type Database = {
           entered_quantity?: number | null
           entered_unit_id?: string | null
           id?: string
+          inventory_count_id?: string | null
           inventory_item_id: string
           note?: string | null
           order_id?: string | null
@@ -305,6 +307,7 @@ export type Database = {
           entered_quantity?: number | null
           entered_unit_id?: string | null
           id?: string
+          inventory_count_id?: string | null
           inventory_item_id?: string
           note?: string | null
           order_id?: string | null
@@ -326,6 +329,69 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_counts: {
+        Row: {
+          business_day: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          expected_item_count: number
+          id: string
+          note: string | null
+          outlet_id: string | null
+          started_at: string
+          started_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_day: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_day?: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_counts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_counts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
