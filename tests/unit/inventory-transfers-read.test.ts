@@ -34,7 +34,7 @@ const ROW = {
       inventory_item_id: 'item-flour',
       sent_quantity: '500.0000',
       received_quantity: null,
-      inventory_items: { name: 'Flour', stock_unit: 'g' },
+      inventory_items: { name: 'Flour', stock_unit: { abbreviation: 'g' } },
     },
   ],
 }
