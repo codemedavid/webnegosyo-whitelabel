@@ -275,6 +275,7 @@ export type Database = {
           outlet_id: string | null
           quantity_delta: number
           reason: string
+          stock_transfer_id: string | null
           tenant_id: string
           target_qty: number | null
           unit_cost: number | null
@@ -292,6 +293,7 @@ export type Database = {
           outlet_id?: string | null
           quantity_delta: number
           reason: string
+          stock_transfer_id?: string | null
           tenant_id: string
           target_qty?: number | null
           unit_cost?: number | null
@@ -309,6 +311,7 @@ export type Database = {
           outlet_id?: string | null
           quantity_delta?: number
           reason?: string
+          stock_transfer_id?: string | null
           tenant_id?: string
           target_qty?: number | null
           unit_cost?: number | null
@@ -323,6 +326,131 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          from_outlet_id: string | null
+          id: string
+          note: string | null
+          received_at: string | null
+          received_by: string | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          tenant_id: string
+          to_outlet_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id?: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_from_outlet_id_fkey"
+            columns: ["from_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_outlet_id_fkey"
+            columns: ["to_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfer_lines: {
+        Row: {
+          created_at: string
+          id: string
+          inventory_item_id: string
+          received_quantity: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inventory_item_id: string
+          received_quantity?: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inventory_item_id?: string
+          received_quantity?: number | null
+          sent_quantity?: number
+          tenant_id?: string
+          transfer_id?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_lines_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
