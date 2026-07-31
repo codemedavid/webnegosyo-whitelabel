@@ -12,6 +12,9 @@
  */
 
 import type { DailyInventoryReport } from '@/lib/inventory/daily-report'
+// Single line on purpose: the app's parity guard strips whole `import` lines,
+// so a wrapped import would read as drift between two identical files.
+import { describeCountSession, type CountSessionProgress } from '@/lib/inventory/count-session'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
@@ -130,9 +133,27 @@ export function formatBusinessDayLabel(dayKey: string): string {
  *
  * Returns an empty list when everything was counted and priced — a caveat that
  * is always present is a caveat nobody reads.
+ *
+ * `countSession` is optional and omitting it is the correct call for every day
+ * before count sessions existed, and for every tenant who counts without opening
+ * one. Inventing an "abandoned count" caveat from an absent session would accuse
+ * a merchant of a count they never started.
  */
-export function describeReportCaveats(report: DailyInventoryReport): string[] {
+export function describeReportCaveats(
+  report: DailyInventoryReport,
+  countSession?: CountSessionProgress | null,
+): string[] {
   const caveats: string[] = []
+
+  // First, because it is the REASON the ingredients below went unexplained. A
+  // merchant who reads the consequence first has already started blaming the
+  // shelf by the time they learn nobody finished counting it.
+  //
+  // This cannot be folded into `uncountedCount`: that figure only covers
+  // ingredients that MOVED today, so a count which skipped the entire dry store
+  // would otherwise leave the report with nothing to say.
+  const sessionCaveat = countSession ? describeCountSession(countSession) : null
+  if (sessionCaveat) caveats.push(sessionCaveat)
 
   if (report.uncountedCount === 1) {
     caveats.push('1 ingredient moved today but was never counted, so its shrinkage is unknown.')
