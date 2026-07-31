@@ -812,13 +812,129 @@ Checkpoint: `729ece0 fix: make the stock ledger append-only`.
   That leaves the mistake and the fix both on the record, which is the property
   the report needs.
 
+## Phase 4b SHIPPED 2026-07-31 — the report reaches the merchant's phone
+
+**The journey.** *As a merchant standing at my shelf before service, I want to
+ask my phone whether yesterday's stock went where the orders say it went, so
+that I find out what is missing while I can still do something about it.*
+
+Three RED/GREEN cycles.
+
+### Cycle 1 — the wiring guardrail
+
+`webnegosyo-app/lib/daily-report-screen-mount.test.ts`, following
+`inventory-screen-mount.test.ts`: jest here only runs pure-logic roots, so the
+guardrail asserts on the screen SOURCE. It pins what a unit test of the pure
+modules cannot see — tab registration, permission gate, tenant gate, and that
+no judgement is re-derived beside the JSX.
+
+```
+npx jest lib/daily-report-screen-mount
+RED:  ENOENT app/(main)/daily-report.tsx        Tests: 0 total
+GREEN:                                          Tests: 20 passed
+```
+
+Checkpoints: `50007ca` (RED) → `7a56235` (GREEN).
+
+### Cycle 2 — the recipe count the verdict needs
+
+The verdict refuses to grade a day when no dish has a recipe. The app had no
+way to answer that, and passing `undefined` forever would have meant a screen
+that never showed a verdict at all.
+
+```
+npx jest lib/daily-report-service
+RED:  TS2305: Module './daily-report-service' has no exported member
+      'countDishesWithRecipe'                   Tests: 0 total
+GREEN:                                          Tests: 16 passed (was 8)
+```
+
+### Cycle 3 — stepping forward a day
+
+The day control walks day by day. `nextBusinessDayKey` did not exist, and the
+parity guard forbids adding it to the app copy alone, so it went into the WEB
+module and was mirrored.
+
+```
+npx jest --testPathPatterns="inventory-business-day"
+RED:  Tests: 5 failed, 15 passed
+GREEN: Tests: 20 passed
+```
+
+### Validation
+
+```
+webnegosyo-app: npx jest        → Test Suites: 92 passed, Tests: 1518 passed
+web:  npx jest --testPathPatterns="inventory|stock|daily-report"
+                                → 63 passed, 8 skipped, 654 passed / 662
+npx tsc --noEmit -p webnegosyo-app/tsconfig.json   → 0 errors
+npx eslint src/lib/inventory/business-day.ts …     → clean
+```
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 139 | The route is registered as a tab and gated through `show()` | `daily-report-screen-mount.test.ts:registers…` / `:gates the tab…` | unit | PASS |
+| 140 | The tab belongs to exactly one workspace, and it is Products | `…:belongs to exactly one workspace` / `:sits in Products` | unit | PASS |
+| 141 | The tab requires a permission rather than defaulting to allowed | `…:requires a permission rather than defaulting to allowed` | unit | PASS |
+| 142 | It rides the same grant as the inventory tab | `…:rides the same grant as the inventory tab` | unit | PASS |
+| 143 | The screen reads through the shared service, never inline Supabase | `…:loads through the shared read` | unit | PASS |
+| 144 | The screen waits for a tenant before loading | `…:waits for a tenant before loading` | unit | PASS |
+| 145 | The verdict comes from `judgeVariance`, never re-derived beside the JSX | `…:takes its verdict from the shared rules` | unit | PASS |
+| 146 | Wording and money formatting come from the shared view module; no `toLocaleString` | `…:takes its wording and its money formatting…` | unit | PASS |
+| 147 | Verdict renders above caveats, which render above the figures | `…:leads with the verdict` | unit | PASS |
+| 148 | A failed read offers a retry rather than an empty day | `…:offers a retry when the read fails` | unit | PASS |
+| 149 | Only dishes whose recipe lists an ingredient are counted as covered | `daily-report-service.test.ts:counts only dishes whose recipe actually lists an ingredient` | unit | PASS |
+| 150 | A dish with a many-ingredient recipe counts once | `…:counts a dish once even when its recipe lists many ingredients` | unit | PASS |
+| 151 | Recipes attached to variation/modifier options are not dishes | `…:ignores recipes attached to something other than a dish` | unit | PASS |
+| 152 | No recipes at all reports `0` — a finding the verdict states out loud | `…:reports zero when the tenant has written no recipes` | unit | PASS |
+| 153 | An unreadable recipe read reports `undefined`, withholding the verdict | `…:returns undefined when the recipes cannot be read` | unit | PASS |
+| 154 | Both recipe reads are tenant-scoped, and neither runs without a tenant | `…:scopes both reads` / `:returns undefined without querying` | unit | PASS |
+| 155 | `nextBusinessDayKey` steps across months, years and leap days | `inventory-business-day.test.ts:nextBusinessDayKey…` | unit | PASS |
+| 156 | Stepping forward undoes stepping back | `…:undoes previousBusinessDayKey` | unit | PASS |
+| 157 | Each row card formats through the shared module and names an uncounted ingredient | `…:daily report row card` (3 tests) | unit | PASS |
+
+### Decisions worth not re-deriving
+
+- **No revenue on the phone, deliberately.** The food-cost percentage needs the
+  tenant's order backend — `resolveOrderBackend`, and for some tenants a Convex
+  client. The verdict was built in Phase 3a to need no revenue at all, so the
+  phone gets an honest subset and the web keeps the percentage. Porting the
+  backend router is a separate piece of work, not a detail of this screen.
+- **The tab sits in Products, not Insights.** The registry's own rule already
+  puts `inventory` there — "the merchant who 86s an item and the merchant who
+  reorders its flour are the same person". The report is that shelf reconciled,
+  and with no revenue on it, it is not a sales analytic.
+- **`daily-report: "menu"` had to be mapped at all.** `TAB_PERMISSIONS` defaults
+  an unmapped tab to ALLOWED — the trap its own comments already record for
+  `branches`. This report names what went missing and what it cost, so leaving
+  it unmapped would have made it the one tab every cashier keeps.
+- **`countDishesWithRecipe` returns `undefined`, never `0`, on failure.** `0` is
+  the finding "no dish has a recipe", which the verdict says out loud; a dropped
+  connection must not make it say that. Same `null`-≠-`0` discipline as Phase 2.
+- **A dish counts only if its recipe lists an ingredient**, mirroring
+  `hasRecipe: ingredientCount > 0` in the web's `recipe-coverage.ts`. An empty
+  recipe deducts nothing — it is a recipe nobody finished.
+- **`nextBusinessDayKey` went into the WEB module first.** Adding it to the app
+  copy alone would have failed `parity.test.ts`, which is the guard doing its
+  job. Both directions go through the epoch so leap days cannot be skipped.
+- **The day is resolved once per mount**, not per render: a default derived from
+  the clock that rolled over mid-session would silently swap the report the
+  merchant was reading.
+- **Two failing assertions in cycle 1 were the TEST's bugs, not the code's** —
+  `permissions` is an array (a `null` there means owner, not "no grants"), and
+  the render-order check was comparing positions in the import list. Both fixed
+  in the test; the implementation was correct.
+
 ## Still not built
 
-**Phase 4b — the app SCREEN.** The read and the core are in place and tested;
-nothing renders them yet, so no merchant sees a report on their phone. This is
-the same gap Phase 1b left on the web, and it is the next thing worth building.
-Follow `lib/inventory-screen-mount.test.ts` for the wiring guardrail (tab
-registration, tenant gate, no inline Supabase, no re-derived judgements).
+**The food-cost percentage on the phone.** The web report shows it; the app
+report does not. Needs `getDailyRevenue`'s backend routing ported, including a
+Convex client. Until then the two surfaces answer slightly different questions.
+The phone claims nothing about revenue — it shows stock figures and a verdict
+that never depended on revenue — so nothing on it is misleading, but a merchant
+who uses both will notice the web has a number the phone does not.
 
 **Phase 3b — `inventory_counts` session table.** NOT built, deliberately: the
 verdict needed no migration, and the count-session UI is better designed against
