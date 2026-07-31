@@ -103,3 +103,55 @@ export const stockMovementInputSchema = z.object({
 })
 
 export type StockMovementInput = z.infer<typeof stockMovementInputSchema>
+
+/**
+ * A branch id of `null` is the unbranched store pool, which is a real place —
+ * so nullable, not optional. An absent field would be indistinguishable from a
+ * form that failed to send one.
+ */
+const transferOutletId = z.string().min(1).nullable()
+
+/**
+ * A transfer as somebody composes it.
+ *
+ * Lives here rather than beside the server action because TWO boundaries take
+ * this input: the web action, and `/api/inventory/transfers` for the merchant
+ * app. Two copies would drift, and the copy that drifted would be whichever one
+ * nobody was looking at — which is how one door ends up trusting a caller the
+ * other refuses.
+ *
+ * `validateTransferDraft` still checks the semantics underneath (same branch,
+ * duplicate lines). This checks SHAPE, which that cannot: a quantity of `"20"`
+ * is not greater than zero, so it slips past every numeric comparison and lands
+ * in a database insert, where the error stops being about the transfer at all.
+ */
+export const transferDraftSchema = z.object({
+  fromOutletId: transferOutletId,
+  toOutletId: transferOutletId,
+  lines: z
+    .array(
+      z.object({
+        inventoryItemId: z.string().min(1),
+        // Positive, because a zero-quantity line writes a ledger leg that moves
+        // nothing while claiming a transfer happened.
+        quantity: z.number().positive('Every line needs a quantity greater than zero'),
+      }),
+    )
+    .min(1, 'A transfer needs at least one ingredient'),
+  note: z.string().max(500).optional(),
+})
+
+export type StockTransferDraftInput = z.infer<typeof transferDraftSchema>
+
+/**
+ * What the receiving bench counted.
+ *
+ * Non-negative rather than positive: zero is how a load that never turned up is
+ * closed, and it is the ONLY way, since a sent transfer cannot be cancelled.
+ * A schema that demanded a positive count would make a lost consignment
+ * impossible to close.
+ */
+export const receiptCountsSchema = z.record(
+  z.string().min(1),
+  z.number().nonnegative('A counted quantity cannot be negative'),
+)

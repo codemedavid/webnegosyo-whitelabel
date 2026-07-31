@@ -22,6 +22,11 @@ import {
   receiveTransfer,
   cancelTransfer,
 } from '@/lib/inventory/stock-transfers-service'
+import {
+  transferDraftSchema,
+  receiptCountsSchema,
+  type StockTransferDraftInput,
+} from '@/lib/inventory/schemas'
 
 const inventoryPath = (slug: string) => `/${slug}/admin/inventory`
 
@@ -40,40 +45,9 @@ function fail(error: unknown, fallback: string) {
   return { success: false as const, error: error instanceof Error ? error.message : fallback }
 }
 
-/**
- * A branch id of `null` is the unbranched store pool, which is a real place —
- * so nullable, not optional. An absent field would be indistinguishable from a
- * form that failed to send one.
- */
-const outletId = z.string().min(1).nullable()
-
-const transferDraftSchema = z.object({
-  fromOutletId: outletId,
-  toOutletId: outletId,
-  lines: z
-    .array(
-      z.object({
-        inventoryItemId: z.string().min(1),
-        // Positive, because a zero-quantity line writes a ledger leg that moves
-        // nothing while claiming a transfer happened.
-        quantity: z.number().positive('Every line needs a quantity greater than zero'),
-      }),
-    )
-    .min(1, 'A transfer needs at least one ingredient'),
-  note: z.string().max(500).optional(),
-})
-
-export type StockTransferDraftInput = z.infer<typeof transferDraftSchema>
-
-/**
- * Counts are non-negative rather than positive: zero is how a load that never
- * turned up is closed, and it is the only way, since a sent transfer cannot be
- * cancelled.
- */
-const receiptCountsSchema = z.record(
-  z.string().min(1),
-  z.number().nonnegative('A counted quantity cannot be negative'),
-)
+// Shared with `/api/inventory/transfers`, which takes the same document from
+// the merchant app. One definition, so the two doors cannot drift apart.
+export type { StockTransferDraftInput }
 
 export async function createStockTransferAction(
   tenantId: string,

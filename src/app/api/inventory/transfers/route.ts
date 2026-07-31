@@ -7,6 +7,8 @@ import {
   cancelTransferWith,
 } from '@/lib/inventory/stock-transfers-service'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
+import { transferDraftSchema, receiptCountsSchema } from '@/lib/inventory/schemas'
+import { z } from 'zod'
 
 /**
  * POST /api/inventory/transfers
@@ -119,12 +121,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const actor = supabase as never
 
     if (action === 'create') {
-      const { id } = await createTransferWith(actor, tenantId, {
-        fromOutletId: typeof body?.fromOutletId === 'string' ? body.fromOutletId : null,
-        toOutletId: typeof body?.toOutletId === 'string' ? body.toOutletId : null,
-        lines: Array.isArray(body?.lines) ? body.lines : [],
-        note: typeof body?.note === 'string' ? body.note : undefined,
-      })
+      // The same schema the web action parses, so the two doors onto one
+      // document cannot come to disagree about what a valid draft is.
+      const { id } = await createTransferWith(
+        actor,
+        tenantId,
+        transferDraftSchema.parse({
+          fromOutletId: body?.fromOutletId ?? null,
+          toOutletId: body?.toOutletId ?? null,
+          lines: body?.lines,
+          note: body?.note,
+        }),
+      )
       return NextResponse.json({ success: true, id })
     }
 
@@ -132,13 +140,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await sendTransferWith(actor, tenantId, transferId as string)
     } else if (action === 'receive') {
       // What is physically on the bench, not what the paperwork claims. An
-      // absent `counts` is an empty object rather than a default to the sent
-      // quantity: assuming the load arrived intact is the exact assumption the
-      // receive step exists to stop being made.
-      const counts =
-        body?.counts && typeof body.counts === 'object' && !Array.isArray(body.counts)
-          ? (body.counts as Record<string, number>)
-          : {}
+      // absent `counts` parses as an empty object rather than defaulting to the
+      // sent quantities: assuming the load arrived intact is the exact
+      // assumption the receive step exists to stop being made.
+      const counts = receiptCountsSchema.parse(body?.counts ?? {})
       await receiveTransferWith(actor, tenantId, transferId as string, counts)
     } else {
       await cancelTransferWith(actor, tenantId, transferId as string)
@@ -146,8 +151,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    // A schema refusal is about what the merchant typed, so its own message is
+    // the useful one — "every line needs a quantity greater than zero" beats
+    // the field path Zod would otherwise stringify into.
     const message =
-      error instanceof Error ? error.message : 'The transfer could not be updated'
+      error instanceof z.ZodError
+        ? (error.issues[0]?.message ?? 'That transfer is not valid')
+        : error instanceof Error
+          ? error.message
+          : 'The transfer could not be updated'
     console.error('[inventory] Transfer step failed', tenantId, action, error)
     return NextResponse.json({ error: message }, { status: 400 })
   }
