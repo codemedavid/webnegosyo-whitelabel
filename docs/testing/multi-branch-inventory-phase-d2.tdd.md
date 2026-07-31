@@ -130,6 +130,41 @@ moved between shops, which is most stores.
   receipt can cross a reorder line and 86 a dish, which is not knowable from the
   quantity alone.
 
+### D2e. Validating the draft at the app's door
+
+RED `95f0e9c` → GREEN `a4f9885`. **A gap this phase introduced, found and closed
+after the fact.**
+
+```
+npx jest --testPathPatterns="inventory-transfers-route"
+RED:   Tests: 6 failed, 13 passed, 19 total
+GREEN: Tests: 19 passed, 19 total
+```
+
+The route passed `lines`, `note` and `counts` straight through to the service,
+while the web action parsed the same document with Zod first. **One boundary
+trusted its caller and the other did not — for the same document, reached with
+the same credentials.** The rule this breaks is explicit: validate at system
+boundaries, with a schema where one exists.
+
+`validateTransferDraft` does check the semantics underneath — empty lines, same
+branch, duplicates — which is why this was invisible. What it cannot check is
+**shape**: a quantity of `"20"` is not greater than zero, so it slips past every
+numeric comparison and lands in a database insert, where the error stops being
+about the transfer at all and starts being about a uuid cast. A `counts` value
+of `"twelve"` is worse: the shortfall is sent minus counted, so a string makes
+that arithmetic `NaN`, and a `NaN` delta is a ledger row that means nothing.
+
+Both schemas moved to `src/lib/inventory/schemas.ts` — which already exists for
+exactly this, with exactly this rationale — rather than being copied. Two copies
+drift, and the copy that drifts is whichever one nobody is looking at.
+
+Two tests exist to stop the guard overreaching: a well-formed draft still gets
+through, and **a count of zero is still accepted**. Zero is the only way to
+close a consignment that never turned up, since a sent transfer cannot be
+cancelled, so a schema demanding a positive count would make a lost load
+impossible to close.
+
 ### D2d. Permissions
 
 No change. `staff-permissions.ts` already maps `inventory: "menu"`, and
@@ -183,13 +218,21 @@ destination manager can reach a document whose source branch they cannot see.
 | 27 | The screen reads through the service, not inline SQL | same | source guard | PASS |
 | 28 | Transfers are NOT registered as a tab | same | source guard | PASS (lock) |
 | 29 | A manager may reach a transfer at either end | live RLS read | manual | PASS |
+| 30 | A non-numeric quantity is refused at the door | `inventory-transfers-route.test.ts` | integration | PASS |
+| 31 | A line with no ingredient is refused | same | integration | PASS |
+| 32 | An over-long note is refused | same | integration | PASS |
+| 33 | The refusal is worded for the merchant | same | integration | PASS |
+| 34 | A well-formed draft still gets through | same | integration | PASS (lock) |
+| 35 | Non-numeric counts are refused | same | integration | PASS |
+| 36 | A negative count is refused | same | integration | PASS |
+| 37 | A count of zero is still accepted | same | integration | PASS (lock) |
 
 ## Coverage and known gaps
 
 ```
-npx jest --testPathPatterns="inventory|transfer"   (web)
+npx jest --testPathPatterns="inventory"   (web)
 Test Suites: 1 skipped, 93 passed, 93 of 94 total
-Tests:       8 skipped, 1075 passed, 1083 total
+Tests:       8 skipped, 1083 passed, 1091 total
 
 npx jest    (webnegosyo-app)
 Test Suites: 101 passed, 101 total
