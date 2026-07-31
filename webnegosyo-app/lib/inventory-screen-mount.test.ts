@@ -99,3 +99,38 @@ describe("inventory stock card", () => {
     expect(card).toMatch(/reorderMark|REORDER_MARK/);
   });
 });
+
+describe("inventory screen — the branch the merchant is standing in", () => {
+  const screen = read("app", "(main)", "inventory.tsx");
+
+  it("scopes the shelf to the branch through the shared hook", () => {
+    // Without this the screen shows inventory_items.current_qty, which is the
+    // chain roll-up: a manager at South reads the whole store's flour.
+    expect(screen).toMatch(/useBranchScope/);
+  });
+
+  it("passes that branch into the read rather than filtering after it", () => {
+    // Filtering on the phone cannot work: the roll-up is a single scalar, so
+    // there is nothing to filter. The branch has to reach the query.
+    expect(screen).toMatch(/loadInventoryStock\(\s*tenantId,\s*\w+/);
+  });
+
+  it("reloads the shelf when the merchant drills into another branch", () => {
+    // useBranchScope composes the account scope with the portfolio drill-down.
+    // A load that did not depend on it would leave the previous branch's
+    // quantities on screen under the new branch's name.
+    expect(screen).toMatch(/\[tenantId,\s*\w*[Oo]utletId\]/);
+  });
+});
+
+describe("stock movement sheet — writing to the shelf being read", () => {
+  const sheet = read("components", "StockMovementSheet.tsx");
+
+  it("records the movement against the branch whose shelf is on screen", () => {
+    // The API resolves and vets the branch server-side but takes it from the
+    // body. Without this the merchant sees South's zero, records a delivery,
+    // and it lands in the unbranched pool -- so the shelf they are looking at
+    // still reads zero and the stock is somewhere they did not put it.
+    expect(sheet).toMatch(/outletId/);
+  });
+});
