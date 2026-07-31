@@ -26,6 +26,15 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
 import { StockCountPanel } from "../../components/StockCountPanel";
+import { TransferBenchPanel } from "../../components/TransferBenchPanel";
+import { useOutlets } from "../../lib/use-outlets";
+import {
+  loadTransfers,
+  loadTransferLines,
+  submitTransferStep,
+  type TransferLineView,
+} from "../../lib/inventory-transfer-service";
+import type { TransferSummary } from "../../lib/inventory-transfers";
 import {
   loadOpenCount,
   openCount,
@@ -74,6 +83,17 @@ export default function InventoryScreen() {
   const [recording, setRecording] = useState<StockItemView | null>(null);
   const [count, setCount] = useState<OpenCountSession | null>(null);
   const [countBusy, setCountBusy] = useState(false);
+  const [transfers, setTransfers] = useState<TransferSummary[]>([]);
+  const [transferLines, setTransferLines] = useState<Record<string, TransferLineView[]>>({});
+
+  // Names for the two ends of a transfer. Deliberately NOT filtered to the
+  // branch being viewed: a manager receiving from another shop has to be told
+  // which shop it came from, and that is a branch they cannot otherwise reach.
+  const { outlets } = useOutlets();
+  const branchNames = useMemo(
+    () => Object.fromEntries(outlets.map((outlet) => [outlet.id, outlet.name])),
+    [outlets],
+  );
 
   const userId = useAuthStore((s) => s.userId);
 
@@ -147,6 +167,47 @@ export default function InventoryScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * What is on the move, store-wide rather than for the branch being viewed.
+   *
+   * A transfer has two ends and RLS already decides which the account may see —
+   * scoping this to the viewed branch would hide an incoming consignment from
+   * the very manager who has to count it in.
+   */
+  const loadMoving = useCallback(async () => {
+    if (!tenantId) return;
+    const [summaries, lines] = await Promise.all([
+      loadTransfers(tenantId),
+      loadTransferLines(tenantId),
+    ]);
+    setTransfers(summaries);
+    setTransferLines(lines);
+  }, [tenantId]);
+
+  useEffect(() => {
+    loadMoving();
+  }, [loadMoving]);
+
+  /**
+   * Count a delivery in, then reload both.
+   *
+   * The shelf has to be refetched, not patched: a receipt credits the
+   * destination and can post a shortfall against the sender, either of which
+   * can cross a reorder line and 86 a dish. Leaving the old figures on screen
+   * would show the merchant stock they no longer have.
+   *
+   * Deliberately does not catch — the panel is what tells the merchant, and
+   * swallowing here would leave it showing a success it never had.
+   */
+  const onTransferred = useCallback(
+    async (transferId: string, counts: Record<string, number>) => {
+      if (!tenantId) return;
+      await submitTransferStep(tenantId, { action: "receive", transferId, counts });
+      await Promise.all([load(), loadMoving()]);
+    },
+    [tenantId, load, loadMoving],
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -266,6 +327,19 @@ export default function InventoryScreen() {
           isBusy={countBusy}
           onStart={startCount}
           onFinish={finishCount}
+        />
+
+        {/*
+          Above the shelf, because a box waiting to be counted is a job with
+          somebody standing over it, while the shelf below is a reference. It
+          renders nothing at all when no stock has ever moved between shops,
+          which is most stores.
+        */}
+        <TransferBenchPanel
+          transfers={transfers}
+          branchNames={branchNames}
+          linesFor={(transferId) => transferLines[transferId] ?? []}
+          onReceive={onTransferred}
         />
 
         {body()}

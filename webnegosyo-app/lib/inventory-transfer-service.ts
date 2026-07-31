@@ -127,3 +127,66 @@ export async function loadTransfers(tenantId: string): Promise<TransferSummary[]
     createdAt: row.created_at,
   }));
 }
+
+/** One line of a consignment, as the bench has to count it. */
+export interface TransferLineView {
+  inventoryItemId: string;
+  name: string;
+  sentQuantity: number;
+  /** Empty when the unit cannot be resolved — see `loadTransferLines`. */
+  unitAbbreviation: string;
+}
+
+interface TransferLineRow {
+  transfer_id: string;
+  inventory_item_id: string;
+  sent_quantity: number;
+  inventory_items?: {
+    name?: string | null;
+    inventory_units?: { abbreviation?: string | null } | null;
+  } | null;
+}
+
+const LINE_COLUMNS =
+  "transfer_id, inventory_item_id, sent_quantity, inventory_items(name, inventory_units(abbreviation))";
+
+/**
+ * Every line of every transfer this account may see, grouped by transfer.
+ *
+ * Grouped and fetched in one go rather than per consignment, so the bench panel
+ * can look a transfer's lines up synchronously the moment it is expanded.
+ * Fetching on tap would leave an empty box on the screen of somebody standing
+ * in a stockroom with two bars of signal, which is exactly where this is used.
+ *
+ * A line whose unit cannot be resolved keeps its name and loses only the
+ * abbreviation. The name is what the merchant matches against what is in the
+ * box; a nameless row is one they cannot count at all.
+ *
+ * A failed read yields nothing rather than throwing, like `loadTransfers` and
+ * for the same reason: this shares a screen with the shelf.
+ */
+export async function loadTransferLines(
+  tenantId: string,
+): Promise<Record<string, TransferLineView[]>> {
+  if (!tenantId) return {};
+
+  const { data, error } = await supabase
+    .from("stock_transfer_lines")
+    .select(LINE_COLUMNS)
+    .eq("tenant_id", tenantId);
+
+  if (error) return {};
+
+  const byTransfer: Record<string, TransferLineView[]> = {};
+  for (const row of (data ?? []) as unknown as TransferLineRow[]) {
+    const line: TransferLineView = {
+      inventoryItemId: row.inventory_item_id,
+      name: row.inventory_items?.name ?? "",
+      sentQuantity: row.sent_quantity,
+      unitAbbreviation: row.inventory_items?.inventory_units?.abbreviation ?? "",
+    };
+    byTransfer[row.transfer_id] = [...(byTransfer[row.transfer_id] ?? []), line];
+  }
+
+  return byTransfer;
+}

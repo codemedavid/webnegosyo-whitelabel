@@ -19,6 +19,7 @@
 import {
   submitTransferStep,
   loadTransfers,
+  loadTransferLines,
 } from "./inventory-transfer-service";
 
 jest.mock("./supabase", () => ({
@@ -163,5 +164,57 @@ describe("reading the transfers this account may see", () => {
   it("asks for nothing without a tenant", async () => {
     await expect(loadTransfers("")).resolves.toEqual([]);
     expect(supabase.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("reading the lines to be counted", () => {
+  function mockLines(rows: unknown[] | null, error: unknown = null) {
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      eq: async () => ({ data: rows, error }),
+    };
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+  }
+
+  const row = {
+    transfer_id: "tr1",
+    inventory_item_id: "flour",
+    sent_quantity: 20,
+    inventory_items: { name: "Flour", inventory_units: { abbreviation: "kg" } },
+  };
+
+  it("groups lines under the transfer they belong to", async () => {
+    // Grouped rather than returned flat so the bench panel can look a
+    // consignment's lines up synchronously while the merchant expands it —
+    // fetching per tap would leave an empty box on a slow connection.
+    mockLines([row, { ...row, transfer_id: "tr2", inventory_item_id: "sugar" }]);
+
+    const byTransfer = await loadTransferLines("t1");
+
+    expect(Object.keys(byTransfer).sort()).toEqual(["tr1", "tr2"]);
+    expect(byTransfer.tr1).toEqual([
+      { inventoryItemId: "flour", name: "Flour", sentQuantity: 20, unitAbbreviation: "kg" },
+    ]);
+  });
+
+  it("still names a line whose unit cannot be resolved", async () => {
+    // Losing the unit must not lose the ingredient: a nameless row is one the
+    // merchant cannot match to anything in the box.
+    mockLines([{ ...row, inventory_items: { name: "Flour", inventory_units: null } }]);
+
+    const byTransfer = await loadTransferLines("t1");
+
+    expect(byTransfer.tr1[0]).toEqual({
+      inventoryItemId: "flour",
+      name: "Flour",
+      sentQuantity: 20,
+      unitAbbreviation: "",
+    });
+  });
+
+  it("returns nothing rather than throwing when the read fails", async () => {
+    mockLines(null, { message: "denied" });
+
+    await expect(loadTransferLines("t1")).resolves.toEqual({});
   });
 });
