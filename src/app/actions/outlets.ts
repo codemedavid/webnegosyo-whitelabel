@@ -35,17 +35,36 @@ const outletsPath = (slug: string) => `/${slug}/admin/outlets`
 /**
  * How many branches this tenant may hold.
  *
- * A failed read falls back to the platform default rather than to unlimited: a
- * database blip must not become a way to mint branches. It is only ever
- * restrictive, and the merchant sees a message naming the number.
+ * A read that SUCCEEDS and finds nothing set falls back to the platform
+ * default rather than to unlimited: an unconfigured allowance must not become
+ * a way to mint branches.
+ *
+ * A read that FAILS is a different thing entirely and must not be folded into
+ * that same answer. `resolveOutletLimit(null)` returns the default of 1, so a
+ * transient error — or deploying to an environment where `20260808130000` has
+ * not landed and `max_outlets` does not exist at all, a class of drift this
+ * platform has shipped more than once — told every multi-branch tenant "This
+ * plan includes 1 branch. Contact support to add more." A tenant legitimately
+ * running five branches would read that as their plan being downgraded.
+ *
+ * So it throws, and the merchant is told the truth: the allowance could not be
+ * read. Still fails closed — no branch is created — but it stops the product
+ * from stating a limit that is not the merchant's.
  */
 async function fetchOutletLimit(tenantId: string): Promise<number> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('tenants')
     .select('max_outlets')
     .eq('id', tenantId)
     .maybeSingle()
+
+  if (error) {
+    console.error('[outlets] Branch allowance read failed', tenantId, error)
+    throw new Error(
+      'Could not check how many branches your plan includes. Please try again.'
+    )
+  }
 
   return resolveOutletLimit(data as { max_outlets?: number | null } | null)
 }
