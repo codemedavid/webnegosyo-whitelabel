@@ -15,6 +15,8 @@
 import {
   resolveMovementDelta,
   movingAverageUnitCost,
+  MANUAL_MOVEMENT_REASONS,
+  MOVEMENT_REASON_LABELS,
   type StockMovementReason,
 } from '@/lib/inventory/stock-ledger'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
@@ -125,5 +127,42 @@ describe('movingAverageUnitCost', () => {
       currentQty: -50, currentUnitCost: 1, receivedQty: 100, receivedUnitCost: 3,
     })
     expect(cost).toBe(3)
+  })
+})
+
+/**
+ * Phase 1 — a transfer between branches is two ledger movements, not a swap.
+ *
+ * Moving 500g of flour from North to South writes `transfer_out` at North and
+ * `transfer_in` at South. Keeping both in the ledger is what makes stock in
+ * transit visible and what lets a shortfall on arrival be blamed on the leg it
+ * happened on, rather than vanishing into an adjustment nobody can trace.
+ */
+describe('transfer movements', () => {
+  it('removes stock from the branch sending it', () => {
+    expect(delta('transfer_out', 500)).toBe(-500)
+  })
+
+  it('adds stock to the branch receiving it', () => {
+    expect(delta('transfer_in', 500)).toBe(500)
+  })
+
+  it('converts units on both legs, so a kilo out is a kilo in', () => {
+    expect(delta('transfer_out', 1, 0, KILO)).toBe(-1000)
+    expect(delta('transfer_in', 1, 0, KILO)).toBe(1000)
+  })
+
+  it('is not offered as a movement a merchant records by hand', () => {
+    // A hand-written transfer leg would be one-sided: stock would leave North
+    // and arrive nowhere. Transfers are written by the transfer document, which
+    // owns both legs.
+    expect(MANUAL_MOVEMENT_REASONS).not.toContain('transfer_out')
+    expect(MANUAL_MOVEMENT_REASONS).not.toContain('transfer_in')
+  })
+
+  it('names both legs in the history the merchant reads', () => {
+    expect(MOVEMENT_REASON_LABELS.transfer_out).toBeTruthy()
+    expect(MOVEMENT_REASON_LABELS.transfer_in).toBeTruthy()
+    expect(MOVEMENT_REASON_LABELS.transfer_out).not.toBe(MOVEMENT_REASON_LABELS.transfer_in)
   })
 })
