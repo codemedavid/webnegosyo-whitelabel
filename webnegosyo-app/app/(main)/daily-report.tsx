@@ -107,6 +107,32 @@ export default function DailyReportScreen() {
   const [selection] = useState(() => resolveReportDay(undefined, new Date().toISOString()));
   const [dayKey, setDayKey] = useState(selection.dayKey);
 
+  // The ACCOUNT's branch, not the owner's drill-down — matching what useSafeQuery
+  // itself narrows the query by, which is what makes the mismatch decidable.
+  const outletId = useAuthStore((s) => s.outletId);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const isBranchScoped =
+    resolveBranchScope({ outletId, isOwner, isSuperadmin, isDemo }).kind === "branch";
+
+  /**
+   * Whether the TAKINGS half was narrowed to the same branch as the stock half.
+   *
+   * The platform adapter runs `orders:getDashboardStatsByPeriod` through
+   * `scopeToBranch`. The Convex query of that name takes `startDate` and
+   * `endDate` and nothing else, and is deliberately absent from
+   * CONVEX_BRANCH_SCOPED_REFS because an unknown argument blanks the screen on
+   * any deployment below v15. So on Convex a branch manager would get a branch
+   * numerator over store-wide takings — a food cost far too LOW, which is the
+   * direction that gets believed rather than investigated.
+   */
+  const isRevenueBranchScoped = orderBackend !== "convex";
+
+  /** The branch this account's report covers, or null for the whole store. */
+  const reportOutletId = isBranchScoped ? outletId : null;
+
   const [report, setReport] = useState<DailyReportForDay | null>(null);
   const [dishesWithRecipe, setDishesWithRecipe] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
@@ -118,7 +144,7 @@ export default function DailyReportScreen() {
 
     setFailed(false);
     const [loaded, covered] = await Promise.all([
-      loadDailyReport(tenantId, dayKey),
+      loadDailyReport(tenantId, dayKey, undefined, reportOutletId),
       countDishesWithRecipe(tenantId),
     ]);
 
@@ -130,7 +156,7 @@ export default function DailyReportScreen() {
     setDishesWithRecipe(covered);
     setIsLoading(false);
     setRefreshing(false);
-  }, [tenantId, dayKey]);
+  }, [tenantId, dayKey, reportOutletId]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -160,23 +186,23 @@ export default function DailyReportScreen() {
     return { startDate: Date.parse(startIso), endDate: Date.parse(endIso) };
   }, [dayKey]);
 
-  // The ACCOUNT's branch, not the owner's drill-down — matching what useSafeQuery
-  // itself narrows the query by, which is what makes the mismatch decidable.
-  const outletId = useAuthStore((s) => s.outletId);
-  const isOwner = useAuthStore((s) => s.isOwner);
-  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
-  const isDemo = useAuthStore((s) => s.isDemo);
-  const isBranchScoped =
-    resolveBranchScope({ outletId, isOwner, isSuperadmin, isDemo }).kind === "branch";
 
   const { data: stats, isLoading: statsLoading } = useSafeQuery<DashboardStats>(
     getDashboardStatsByPeriodRef,
     // Not asked for at all when it could not be used. A branch-scoped account
     // should not spend a round trip on a figure this screen must withhold.
-    isBranchScoped ? "skip" : revenueWindow,
+    // Asked for whenever it can be USED. Skipped only when the figure would be
+    // withheld regardless, so no round trip is spent on an answer this screen
+    // must refuse to show.
+    isBranchScoped && !isRevenueBranchScoped ? "skip" : revenueWindow,
   );
 
-  const revenue = resolveReportRevenue({ isBranchScoped, isLoading: statsLoading, stats });
+  const revenue = resolveReportRevenue({
+    isBranchScoped,
+    isRevenueBranchScoped,
+    isLoading: statsLoading,
+    stats,
+  });
 
   const foodCostPercent =
     report && revenue !== undefined ? resolveFoodCostPercent(report.totals.cogs, revenue) : null;

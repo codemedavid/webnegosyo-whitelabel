@@ -6,13 +6,22 @@
  * Convex or by the platform Supabase adapter without this module knowing which.
  * What it does know is when the answer must not be USED.
  *
- * THE SCOPE MISMATCH. `loadDailyReport` reads `stock_movements` store-wide,
- * while `useSafeQuery` narrows orders to the branch the ACCOUNT is confined to.
- * For a branch manager those two describe different businesses, and dividing one
- * by the other produces a food cost percentage inflated by roughly the number of
- * branches. It would not look like an error; it would look like a costing
- * emergency, and it would be entirely an artefact. Until the ledger read is
- * branch-aware, the only honest answer for such an account is silence.
+ * THE SCOPE MISMATCH. Both halves must describe the same shop. `loadDailyReport`
+ * now takes a branch, so the ledger half can. The takings half depends ENTIRELY
+ * on the backend:
+ *
+ *  - **Platform Supabase** narrows `orders:getDashboardStatsByPeriod` through
+ *    `scopeToBranch` in lib/backends/supabase-adapter.ts. Comparable.
+ *  - **Convex** does not. That query takes `startDate` and `endDate` and nothing
+ *    else, and the ref is deliberately absent from `CONVEX_BRANCH_SCOPED_REFS`
+ *    because sending an unknown argument blanks the screen on any deployment
+ *    below v15. Store-wide, whoever asks.
+ *
+ * So a branch manager on Convex would get a BRANCH numerator over STORE-WIDE
+ * takings — a food cost far too LOW. That is the dangerous direction: an
+ * inflated figure looks like a crisis and gets investigated, a flattering one
+ * gets believed. Hence `isRevenueBranchScoped`, which the caller must establish
+ * rather than assume: absent means "not established", never "assume yes".
  *
  * THE THREE STATES are the web panel's, deliberately, so both surfaces speak one
  * vocabulary:
@@ -33,6 +42,14 @@ export interface DailyRevenueStats {
 export interface ReportRevenueInput {
   /** Whether the ACCOUNT is confined to one branch — not the owner's drill-down. */
   isBranchScoped: boolean;
+  /**
+   * Whether the backend actually narrowed the takings to that branch.
+   *
+   * Optional, and absent means NO. A caller that has not been taught this
+   * distinction must not start publishing incomparable figures merely by not
+   * mentioning it.
+   */
+  isRevenueBranchScoped?: boolean;
   /** Whether the stats query is still in flight. */
   isLoading: boolean;
   /** The settled stats, or `undefined` when there are none. */
@@ -47,13 +64,14 @@ export interface ReportRevenueInput {
  */
 export function resolveReportRevenue({
   isBranchScoped,
+  isRevenueBranchScoped,
   isLoading,
   stats,
 }: ReportRevenueInput): number | null | undefined {
   // First, and ahead of the failure cases: "not comparable" outranks "not
   // readable". Telling a branch manager the sales could not be read implies the
   // figure would otherwise have been theirs to see.
-  if (isBranchScoped) return undefined;
+  if (isBranchScoped && !isRevenueBranchScoped) return undefined;
 
   // Nothing to say yet. `null` here would flash "sales could not be read" on
   // every cold mount, which is a lie about a query that is merely slow.

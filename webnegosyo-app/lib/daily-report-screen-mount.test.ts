@@ -219,7 +219,10 @@ describe("daily report — the branch the merchant is confined to", () => {
   const screen = read("app", "(main)", "daily-report.tsx");
 
   it("reads the ledger for the account's branch, not the whole store", () => {
-    expect(screen).toMatch(/loadDailyReport\([^)]*outletId/s);
+    // `[Oo]` because the argument is named for what it is at the call site
+    // (`reportOutletId` — the account's branch, or null for an owner) rather
+    // than for the parameter it fills.
+    expect(screen).toMatch(/loadDailyReport\([^)]*[Oo]utletId/s);
   });
 
   it("decides the withholding on whether the BACKEND scoped the takings", () => {
