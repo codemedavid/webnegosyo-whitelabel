@@ -6,6 +6,7 @@ import {
   orderOutletIdFromCustomerData,
   filterOrdersToOutlet,
 } from "./pushRecipients";
+import { summarizeOrderStats } from "./orderStats";
 import {
   assertRevisable,
   priceRevisedItems,
@@ -484,30 +485,10 @@ export const getDashboardStats = query({
 
     // Revenue and order-count metrics exclude cancelled orders so cancellations
     // immediately propagate to the dashboard. Status counts still include them
-    // so the merchant can see the cancellation breakdown.
-    const completedOrders = todayOrders.filter((o) => o.status !== "cancelled");
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
-
-    const statusCounts: Record<string, number> = {
-      pending: 0,
-      confirmed: 0,
-      preparing: 0,
-      ready: 0,
-      delivered: 0,
-      cancelled: 0,
-    };
-
-    for (const order of todayOrders) {
-      statusCounts[order.status]++;
-    }
-
-    return {
-      totalOrders: completedOrders.length,
-      totalRevenue,
-      avgOrderValue,
-      statusCounts,
-    };
+    // so the merchant can see the cancellation breakdown. Both rules now live
+    // in `summarizeOrderStats`, which is unit-tested — these two handlers
+    // carried near-identical copies and neither had any coverage.
+    return summarizeOrderStats(todayOrders);
   },
 });
 
@@ -515,9 +496,25 @@ export const getDashboardStatsByPeriod = query({
   args: {
     startDate: v.number(),
     endDate: v.number(),
+    /**
+     * v18. Optional so every caller that asks exactly what it asks today keeps
+     * working — a validator rejects arguments it does not know, so a new
+     * REQUIRED argument would break every screen on this query at once.
+     *
+     * Why it exists: the daily inventory report divides a day's stock cost by
+     * these takings. The stock half was already narrowable to one branch, so
+     * without this a branch manager's food cost was either withheld or
+     * understated by roughly the number of branches.
+     */
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const filtered = await ctx.db
+    // A branch's orders are scattered through the window, so taking only
+    // QUERY_LIMIT rows and then filtering would silently drop the older half of
+    // a busy day — the same reason getOrders widens its take.
+    const take = args.outletId ? Math.max(QUERY_LIMIT, BRANCH_SCAN_LIMIT) : QUERY_LIMIT;
+
+    const scanned = await ctx.db
       .query("orders")
       .filter((q) =>
         q.and(
@@ -526,30 +523,8 @@ export const getDashboardStatsByPeriod = query({
         )
       )
       .order("desc")
-      .take(QUERY_LIMIT);
+      .take(take);
 
-    const completedOrders = filtered.filter((o) => o.status !== "cancelled");
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
-
-    const statusCounts: Record<string, number> = {
-      pending: 0,
-      confirmed: 0,
-      preparing: 0,
-      ready: 0,
-      delivered: 0,
-      cancelled: 0,
-    };
-
-    for (const order of filtered) {
-      statusCounts[order.status]++;
-    }
-
-    return {
-      totalOrders: completedOrders.length,
-      totalRevenue,
-      avgOrderValue,
-      statusCounts,
-    };
+    return summarizeOrderStats(scanned, args.outletId);
   },
 });

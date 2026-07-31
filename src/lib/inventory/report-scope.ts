@@ -11,14 +11,16 @@
  *
  *  - **Platform / per-tenant Supabase** — `getDailyRevenue` narrows the `orders`
  *    read by `outlet_id`. Comparable.
- *  - **Convex** — `orders:getDashboardStatsByPeriod` takes a date window and
- *    nothing else. Store-wide, whoever asks.
+ *  - **Convex** — `orders:getDashboardStatsByPeriod` learned an optional
+ *    `outletId` in schema v18. Deployments below that take a date window and
+ *    nothing else, and reject an argument their validator does not know, so the
+ *    version is a gate rather than a preference.
  *
- * So a branch admin on Convex would get a BRANCH numerator over STORE-WIDE
- * takings: a food cost understated by roughly the number of branches. That is
- * the dangerous direction — an overstated figure looks like a crisis and gets
- * investigated, an understated one gets believed. Those tenants keep the
- * withheld figure until the Convex query learns a branch.
+ * A branch admin on a pre-v18 deployment would get a BRANCH numerator over
+ * STORE-WIDE takings: a food cost understated by roughly the number of
+ * branches. That is the dangerous direction — an overstated figure looks like a
+ * crisis and gets investigated, an understated one gets believed. Those tenants
+ * keep the withheld figure until their deployment is updated.
  *
  * Mirrors `webnegosyo-app/lib/daily-report-revenue.ts`, deliberately: a merchant
  * who sees a food cost on their phone and a blank on the web has no way to know
@@ -32,6 +34,13 @@ export interface ReportScopeInput {
   scope: BranchScope
   /** Where this tenant's orders live. `null` when it could not be established. */
   orderBackend: string | null
+  /**
+   * The Convex bundle this tenant is running, when it is known.
+   *
+   * `null` is treated as the oldest: an unrecorded version most likely means a
+   * tenant deployed before versions were tracked.
+   */
+  convexSchemaVersion?: number | null
 }
 
 export interface ReportScope {
@@ -47,13 +56,23 @@ export interface ReportScope {
   isRevenueBranchScoped: boolean
 }
 
-/** Backends whose order reads can be filtered by branch. */
+/** Backends whose order reads this repo can filter by branch outright, in SQL. */
 const BRANCH_SCOPABLE_BACKENDS = new Set(['platform', 'supabase'])
 
-export function resolveReportScope({ scope, orderBackend }: ReportScopeInput): ReportScope {
+/** The Convex bundle in which `getDashboardStatsByPeriod` learned `outletId`. */
+export const BRANCH_STATS_SCHEMA_VERSION = 18
+
+export function resolveReportScope({
+  scope,
+  orderBackend,
+  convexSchemaVersion,
+}: ReportScopeInput): ReportScope {
   if (scope.kind !== 'branch') {
     return { outletId: null, isRevenueBranchScoped: true }
   }
+
+  const isConvexReady =
+    orderBackend === 'convex' && (convexSchemaVersion ?? 0) >= BRANCH_STATS_SCHEMA_VERSION
 
   return {
     outletId: scope.outletId,
@@ -61,6 +80,6 @@ export function resolveReportScope({ scope, orderBackend }: ReportScopeInput): R
     // means "not established", never "assume yes" — the same rule the merchant
     // app follows, and the one that stops a new backend publishing
     // incomparable figures merely by not being listed here.
-    isRevenueBranchScoped: BRANCH_SCOPABLE_BACKENDS.has(orderBackend ?? ''),
+    isRevenueBranchScoped: BRANCH_SCOPABLE_BACKENDS.has(orderBackend ?? '') || isConvexReady,
   }
 }

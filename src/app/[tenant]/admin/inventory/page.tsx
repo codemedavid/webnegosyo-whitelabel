@@ -114,7 +114,14 @@ export default async function AdminInventoryPage({
   // admin was previously shown every branch's movements reconciled into one
   // day and presented as their own — the same mismatch the merchant app
   // guarded against by withholding, except the web showed it.
-  const reportScope = resolveReportScope({ scope, orderBackend: tenant.order_backend ?? null })
+  const reportScope = resolveReportScope({
+    scope,
+    orderBackend: tenant.order_backend ?? null,
+    // The deployment's own bundle decides whether it can narrow the takings.
+    // Sending the branch to an older one is not a degraded read — it is
+    // rejected, and the screen says the store needs a backend update.
+    convexSchemaVersion: tenant.convex_schema_version ?? null,
+  })
 
   let dailyReport: DailyInventoryReportForDay | undefined
   try {

@@ -14,10 +14,10 @@
  * report renders a reason; `0` means "genuinely took nothing" and the report
  * says so. Collapsing the two is the one bug this module exists to prevent.
  *
- * BRANCH: the Supabase paths narrow by `outlet_id`; the Convex path CANNOT —
- * `getDashboardStatsByPeriod` takes a date window and nothing else. Callers must
- * not ask this for one branch of a Convex tenant and divide branch stock by the
- * answer; `resolveReportScope` is what decides that, and it withholds instead.
+ * BRANCH: the Supabase paths narrow by `outlet_id`. The Convex path narrows too
+ * from schema v18, and NOT before — an older deployment rejects the unknown
+ * argument outright. `resolveReportScope` owns that decision from the tenant's
+ * recorded version; this module simply forwards what it is given.
  *
  * WHICH FIGURE: the order `total`, matching the dashboard, the merchant app's
  * daily stats, and the superadmin analytics. `total` includes delivery fees,
@@ -123,6 +123,7 @@ async function readConvexRevenue(
   startIso: string,
   endIso: string,
   deps: DailyRevenueDeps,
+  outletId?: string | null,
 ): Promise<number> {
   const factory = deps.convexClient ?? createConvexServerClient
   const client = factory(tenant.convex_deployment_url ?? '', tenant.convex_deploy_key ?? '')
@@ -130,10 +131,16 @@ async function readConvexRevenue(
   // `getDashboardStatsByPeriod` takes arbitrary epoch bounds and already
   // excludes cancelled orders, so the Manila window maps onto it directly and
   // no new Convex function has to be deployed to every tenant.
+  // The branch key is omitted entirely rather than sent as `undefined`: a
+  // Convex validator still sees the key, and a deployment below v18 rejects
+  // one it does not know. Callers that ask store-wide must keep asking exactly
+  // what they ask today. Whether it is SAFE to send at all is
+  // `resolveReportScope`'s decision, from the tenant's recorded version.
   const stats = await withTimeout(
     client.query<{ totalRevenue?: number }>(CONVEX_STATS_PATH, {
       startDate: Date.parse(startIso),
       endDate: Date.parse(endIso),
+      ...(outletId ? { outletId } : {}),
     }),
     deps.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   )
@@ -164,7 +171,7 @@ export async function getDailyRevenue(
 
   try {
     if (backend === 'convex') {
-      return await readConvexRevenue(tenant, startIso, endIso, deps)
+      return await readConvexRevenue(tenant, startIso, endIso, deps, outletId)
     }
 
     const client =

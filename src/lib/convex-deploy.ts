@@ -64,7 +64,15 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // screen gate alone was a UI preference, not a rule: an edit screen opened
 // while an order was still `confirmed` survived the kitchen starting, and its
 // save would otherwise still land.
-const CURRENT_SCHEMA_VERSION = 17;
+// v18 lets `getDashboardStatsByPeriod` take an optional `outletId`, so a branch
+// manager's takings can be narrowed to the shelf their stock report covers.
+// Until this, the inventory report had to withhold their food cost entirely:
+// branch stock over store-wide takings understates it by roughly the number of
+// branches, and an understated food cost gets believed rather than
+// investigated. The argument is OPTIONAL and the client sends it only to
+// deployments recorded at >= 18 — a validator rejects arguments it does not
+// know, which surfaces as "this store needs a backend update".
+const CURRENT_SCHEMA_VERSION = 18;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
