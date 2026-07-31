@@ -777,6 +777,7 @@ function IngredientsTab({
                 <BranchStockPanel
                   summary={branchStockByItemId[stockItem.id]}
                   unitLabel={unitLabel(stockItem.stock_unit_id)}
+                  transfersHref={`/${tenantSlug}/admin/inventory/transfers`}
                 />
               )}
 

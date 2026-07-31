@@ -13,6 +13,7 @@
  * on the majority of screens.
  */
 
+import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
 
@@ -20,6 +21,12 @@ interface BranchStockPanelProps {
   summary: BranchStockSummary
   /** Abbreviation of the ingredient's stock unit, e.g. "g". */
   unitLabel: string
+  /**
+   * Where a transfer is composed. Optional: a caller with no tenant slug to
+   * hand still gets a working panel, it just names the direction without
+   * offering the way to act on it.
+   */
+  transfersHref?: string
 }
 
 /** Matches `inventory-table.ts` — NUMERIC(16,4) without a trailing zero parade. */
@@ -27,7 +34,7 @@ function formatQuantity(quantity: number): string {
   return Number(quantity.toFixed(4)).toString()
 }
 
-export function BranchStockPanel({ summary, unitLabel }: BranchStockPanelProps) {
+export function BranchStockPanel({ summary, unitLabel, transfersHref }: BranchStockPanelProps) {
   if (!summary.isMultiBranch) return null
 
   const { lines, emptyBranches, suggestion } = summary
@@ -75,6 +82,16 @@ export function BranchStockPanel({ summary, unitLabel }: BranchStockPanelProps) 
           <span className="font-medium text-foreground">
             {suggestion.fromName} → {suggestion.toName}
           </span>
+          {/*
+            Only alongside a suggestion. When every branch is out there is
+            nothing to move — that is a purchasing problem — and a link would
+            send the owner to a screen that cannot help them.
+          */}
+          {transfersHref && (
+            <Link href={transfersHref} className="font-medium text-primary underline">
+              Transfer
+            </Link>
+          )}
         </p>
       )}
     </div>
