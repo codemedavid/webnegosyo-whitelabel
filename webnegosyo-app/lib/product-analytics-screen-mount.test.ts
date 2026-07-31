@@ -19,6 +19,7 @@ function read(...segments: string[]): string {
 }
 
 const screen = read("app", "(main)", "product-analytics.tsx");
+const filterSheet = read("components", "ProductFilterSheet.tsx");
 
 describe("daily product analytics data source", () => {
   it("reads orders and line items through the shared backend refs", () => {
@@ -67,14 +68,73 @@ describe("daily product analytics computation", () => {
 
 describe("daily product analytics filters", () => {
   it("renders the filter catalogues from the shared options", () => {
+    // The period stayed inline on the screen; the occasional filters moved into
+    // the sheet. Both still read the tested catalogues rather than re-listing
+    // options next to the JSX, which is what this guardrail is for.
     expect(screen).toMatch(/DATE_RANGE_PRESETS/);
-    expect(screen).toMatch(/METRIC_OPTIONS/);
-    expect(screen).toMatch(/TOP_N_OPTIONS/);
-    expect(screen).toMatch(/SOURCE_OPTIONS/);
+    expect(filterSheet).toMatch(/METRIC_OPTIONS/);
+    expect(filterSheet).toMatch(/TOP_N_OPTIONS/);
+    expect(filterSheet).toMatch(/SOURCE_OPTIONS/);
+  });
+
+  it("keeps the period on the screen rather than behind the sheet", () => {
+    // Mid-service the period is changed every session; burying it behind a tap
+    // is the regression this locks out.
+    expect(screen).toMatch(/<SegmentedControl[\s\S]*?options=\{DATE_RANGE_PRESETS\}/);
+  });
+
+  it("says which filters are narrowing the numbers, and lets each one go", () => {
+    // A filter the merchant cannot see is a filter they stop accounting for.
+    expect(screen).toMatch(/FilterChipsRow/);
+    expect(screen).toMatch(/clearChip/);
+    expect(screen).toMatch(/clearAllFilters/);
+  });
+
+  it("offers a way out of a filter combination that matched nothing", () => {
+    expect(screen).toMatch(/actionLabel/);
+    expect(screen).toMatch(/Clear filters/);
   });
 
   it("lets the merchant search products by name", () => {
     expect(screen).toMatch(/placeholder="Search products"/);
+  });
+
+  /**
+   * Typing must not drag the whole aggregation behind it.
+   *
+   * `buildProductAnalytics` runs twice per recompute (current window plus the
+   * comparison window) over every line item the store has ever sold, so binding
+   * it straight to the raw keystroke value makes the caret stutter. The input
+   * stays on the raw value — it has to, or the text would lag behind the
+   * fingers — while the computation reads a settled copy.
+   */
+  it("keeps the search box on the raw value so typing never lags", () => {
+    expect(screen).toMatch(/value=\{search\}/);
+  });
+
+  it("debounces the search term before it reaches the analytics core", () => {
+    expect(screen).toMatch(/useDebouncedValue/);
+    expect(screen).toMatch(/debouncedSearch/);
+    // The expensive passes must read the settled term, not the raw one.
+    const dailyMemo = screen.slice(
+      screen.indexOf("const daily = useMemo"),
+      screen.indexOf("const windowTotals")
+    );
+    expect(dailyMemo).toMatch(/search: debouncedSearch/);
+    expect(dailyMemo).not.toMatch(/\bsearch,/);
+  });
+});
+
+describe("search debounce helper", () => {
+  const helper = read("lib", "use-debounced-value.ts");
+
+  it("clears its pending timer so a fast typist never queues a backlog", () => {
+    expect(helper).toMatch(/clearTimeout/);
+  });
+
+  it("passes the value straight through once the delay elapses", () => {
+    expect(helper).toMatch(/setTimeout/);
+    expect(helper).toMatch(/export function useDebouncedValue/);
   });
 
   it("keeps a way back to the lifetime BCG view", () => {

@@ -261,6 +261,40 @@ describe("buildProductAnalytics — product filters", () => {
 
     expect(days[0].totalSales).toBe(100);
   });
+
+  /**
+   * The search box recomputes this whole aggregation as the merchant types, so
+   * the cost of normalising the term must not scale with the number of line
+   * items. A counting getter is the honest way to prove that: it observes how
+   * many times the raw term is consulted, which is the work `trim()` +
+   * `toLowerCase()` used to repeat once per item.
+   */
+  it("normalises the search term once per call, not once per line item", () => {
+    const manyOrders = [order({ id: "o1" })];
+    const manyItems = Array.from({ length: 200 }, (_, i) =>
+      item({ orderId: "o1", menuItemId: `item-${i}`, menuItemName: `Latte ${i}` })
+    );
+
+    let reads = 0;
+    const options = {
+      metric: "sales" as const,
+      categoryByItemId: {},
+    };
+    Object.defineProperty(options, "search", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "  LATTE ";
+      },
+    });
+
+    const { totals } = buildProductAnalytics(manyOrders, manyItems, options);
+
+    // Still correct...
+    expect(totals).toHaveLength(200);
+    // ...and the term was read a constant number of times, not 200.
+    expect(reads).toBeLessThanOrEqual(2);
+  });
 });
 
 describe("buildProductAnalytics — ranking and top-N", () => {
