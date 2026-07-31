@@ -47,6 +47,9 @@ function report(
     countedCount: 0,
     uncountedCount: 1,
     uncostedCount: 0,
+    // Null, not an abandoned count: the default fixture is a day nobody opened
+    // a session for, which is what every day before sessions looks like.
+    countSession: null,
     ...overrides,
   }
 }
@@ -203,5 +206,43 @@ describe('DailyReportPanel — branch transfers', () => {
     renderPanel({ rows: [row({ transferred: 0 })] })
 
     expect(screen.queryByTestId('daily-report-transfer-flour')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * A count that stopped early is the reason the rows below it are unexplained,
+ * so the merchant has to be told before they start blaming the shelf.
+ */
+describe('DailyReportPanel — an unfinished count', () => {
+  it('names how far the count got, above the uncounted ingredients', () => {
+    renderPanel({
+      countSession: {
+        state: 'partial',
+        countedCount: 4,
+        expectedCount: 40,
+        coveragePercent: 10,
+        isShelfAccountedFor: false,
+      },
+    })
+
+    const caveats = screen.getByTestId('daily-report-caveats')
+    expect(caveats).toHaveTextContent(/4 of 40/)
+  })
+
+  it('says nothing extra when the count was complete', () => {
+    // A caveat that shows up on a good day is noise, and noise is how the
+    // caveats that matter stop being read.
+    renderPanel({
+      uncountedCount: 0,
+      countSession: {
+        state: 'complete',
+        countedCount: 40,
+        expectedCount: 40,
+        coveragePercent: 100,
+        isShelfAccountedFor: true,
+      },
+    })
+
+    expect(screen.queryByTestId('daily-report-caveats')).not.toBeInTheDocument()
   })
 })
