@@ -1962,3 +1962,94 @@ file (`3bc83c8`), untouched here and unrelated to this unit.
   (`getOpenCount(tenant.id, null)`).
 - The branch report VIEW remains blocked on branch-scoped revenue, unchanged
   from the previous unit.
+
+---
+
+# Phase 1 — the branch manager's own report
+
+**Source plan**: the inline plan of 2026-07-31, Phase 1. Taken next because it
+needs no Convex deploy, unlike the branch work on the web.
+
+## User journey
+
+> As a branch manager, I want the day's report to cover MY branch, so that the
+> food cost I am shown describes the shop I actually run.
+
+Before this, a branch manager's food cost was withheld **entirely**: the ledger
+read was store-wide while the orders read was not, and the module that withheld
+it said so in its own header.
+
+## The finding that changed the shape of this task
+
+The plan assumed a single mismatch to close. There are two, and they run in
+opposite directions depending on the order backend:
+
+| Backend | `orders:getDashboardStatsByPeriod` | Branch stock ÷ these takings |
+|---|---|---|
+| Platform Supabase | narrowed via `scopeToBranch` (`supabase-adapter.ts:537`) | correct |
+| Convex | takes `startDate`/`endDate` only; **absent** from `CONVEX_BRANCH_SCOPED_REFS` | branch numerator over store-wide takings |
+
+So scoping the ledger and lifting the withholding wholesale would have published
+a food cost that is far too **LOW** on every Convex tenant. That is the dangerous
+direction: an inflated figure looks like a crisis and gets investigated, a
+flattering one gets believed.
+
+It also means the premise recorded in `daily-report-revenue.ts` — that the
+figure would come out "inflated by roughly the number of branches" — was only
+ever true of the platform backend. The withholding was right; its stated reason
+was half wrong.
+
+## Task report
+
+RED (`b788f72`) — 3 suites failed, 2 tests failed / 27 passed:
+
+```
+daily-report-revenue      TS2561 'isRevenueBranchScoped' does not exist in ReportRevenueInput
+daily-report-service      TS2554 loadDailyReport expected 2-3 arguments, but got 4
+daily-report-screen-mount 2 assertions failed (no branch argument, no backend split)
+```
+
+GREEN (`7b0ddd5`) — app 98 suites / 1658 tests, `tsc` clean; web 367 / 4553.
+
+**One implementation attempt was reverted mid-GREEN.** A generic
+`forBranch<T>(query)` helper sent `tsc` into `TS2589: type instantiation is
+excessively deep and possibly infinite` on Supabase's builder types. Replaced
+with plain conditional chaining, the same shape `count-session-service.ts` uses.
+
+**One assertion was widened rather than satisfied.** The mount guard looked for
+`/loadDailyReport\([^)]*outletId/`; the call site passes `reportOutletId`, so the
+wiring was present and the regex was merely case-sensitive. Widened to
+`[Oo]utletId` with the reason recorded inline, rather than renaming production
+code to match a test.
+
+## Test specification
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 284 | The ledger narrows to the branch when one is named | `daily-report-service.test.ts` | PASS |
+| 285 | The day's count session narrows to the SAME branch | `daily-report-service.test.ts` | PASS |
+| 286 | An owner's report acquires no branch filter by accident | `daily-report-service.test.ts` | PASS |
+| 287 | A branch manager sees their takings when the backend scoped them | `daily-report-revenue.test.ts` | PASS |
+| 288 | The figure is still withheld when the backend could not narrow it | `daily-report-revenue.test.ts` | PASS |
+| 289 | A store-wide account is unaffected whatever the backend does | `daily-report-revenue.test.ts` | PASS |
+| 290 | Silence about narrowing means NO, never "assume yes" | `daily-report-revenue.test.ts` | PASS |
+| 291 | The screen passes the account's branch to the ledger read | `daily-report-screen-mount.test.ts` | PASS |
+| 292 | The screen decides withholding on the backend, not the account alone | `daily-report-screen-mount.test.ts` | PASS |
+
+## Validation
+
+```
+npx jest (webnegosyo-app)  → 98 suites, 1658 passed
+npx tsc --noEmit (app)     → clean
+npx jest (web)             → 367 suites, 4553 passed, 1 skipped
+```
+
+## Known gaps
+
+- **Convex tenants' branch managers still see no food cost.** Closing that means
+  teaching the Convex `getDashboardStatsByPeriod` an `outletId` and adding the
+  ref to `CONVEX_BRANCH_SCOPED_REFS` — which blanks the screen on any deployment
+  below the version that ships it. That is a deploy-gated change, not a code one.
+- The WEB report is still store-wide on both halves; `getDailyRevenue` there
+  still takes no branch parameter.
+- Web counts still open against the store pool only.
