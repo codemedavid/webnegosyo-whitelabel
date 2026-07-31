@@ -39,6 +39,13 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
 
   if (!flags.bundlesEnabled) paths.add('/bundles')
   if (!flags.inventoryEnabled) paths.add('/inventory')
+  // Transfers needs somewhere to transfer TO. A single-shop store gets the rest
+  // of inventory and not this entry, which could only lead to a screen
+  // explaining why it is empty. Deliberately NOT gated on
+  // `isBranchScopedAccount`, unlike `/outlets`: that section is a store-wide
+  // list and not a manager's to read, whereas this is the manager's own
+  // receiving bench — hiding it would leave a delivery nobody can record.
+  if (!flags.multiBranchEnabled) paths.add('/inventory/transfers')
   // Branches is hidden both when the store has none and when the account runs
   // only one of them: the section lists every branch the store has, which is
   // not a manager's to read. The route is gated too (`isStoreWideAdminPath`);

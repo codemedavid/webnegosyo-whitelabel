@@ -17,7 +17,17 @@ const flags = (overrides: Partial<AdminSidebarFlags> = {}): AdminSidebarFlags =>
 describe('hiddenAdminSidebarPaths — existing behaviour (regression lock)', () => {
   it('hides the opt-in sections for a tenant with no flags set at all', () => {
     expect(hiddenAdminSidebarPaths(flags())).toEqual(
-      new Set(['/boost-sales', '/product-analytics', '/bundles', '/inventory', '/outlets'])
+      // `/inventory/transfers` joined this set when transfers shipped. It is
+      // strictly MORE hiding — no tenant gained a section — so the lock still
+      // guarantees what it was written to guarantee.
+      new Set([
+        '/boost-sales',
+        '/product-analytics',
+        '/bundles',
+        '/inventory',
+        '/inventory/transfers',
+        '/outlets',
+      ])
     )
   })
 
