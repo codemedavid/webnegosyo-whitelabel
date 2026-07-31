@@ -718,6 +718,100 @@ Tests:       8 skipped, 615 passed, 623 total
   `expo-constants`, which this jest setup cannot transform. Established pattern
   from `inventory-service.test.ts`.
 
+## Security C SHIPPED 2026-07-31 — the ledger becomes append-only
+
+The first item taken from the review rather than the phase plan, and taken
+*before* Phase 4b deliberately: this one makes the report lie. Putting the same
+falsifiable number onto a second surface first would have shipped the flaw
+twice.
+
+**The journey.** *As a merchant, I want yesterday's report to still say
+yesterday's numbers tomorrow, so that a figure I acted on cannot be rewritten
+behind me.*
+
+`20260726120000` created both `stock_movements` policies `FOR ALL`, which
+includes DELETE and UPDATE. That matters more than it first looks:
+`apply_stock_movement()` is a **BEFORE INSERT** trigger with no counterpart on
+the way out. Deleting a movement therefore leaves `inventory_items.current_qty`
+exactly where that movement put it while erasing the row that explains it. The
+day no longer reconciles — `opening + received − sold − waste ± count` stops
+reaching `closing` — and the verdict banner grades the new answer with the same
+confidence it gave the old one. An UPDATE is the same wound with better aim.
+
+### RED
+
+`tests/unit/inventory-ledger-append-only.test.ts` replays every migration in
+filename order and asserts on the policies still standing at the end. Replaying
+rather than reading the newest file is the point: a lockdown a later migration
+silently undid would still pass a test that looked at one file.
+
+```
+npx jest --testPathPatterns="inventory-ledger-append-only"
+● every surviving policy grants only SELECT or INSERT
+● someone can still read and write the ledger
+    Expected value: "SELECT"
+    Received set:   Set {"ALL"}
+Tests: 2 failed, 1 passed, 3 total
+```
+
+Backed by a **live probe** as a real tenant admin, inside a transaction aborted
+on purpose via `RAISE EXCEPTION` so nothing was actually written:
+
+```
+PROBE_RESULT rows_deleted=1 (aborted on purpose, nothing was really deleted)
+PROBE_RESULT rows_updated=1 (aborted on purpose)
+```
+
+Checkpoint: `3f8e05c test: add reproducer for the deletable stock ledger`.
+
+### GREEN
+
+`supabase/migrations/20260807120000_stock_ledger_append_only.sql` replaces the
+two `FOR ALL` policies with a `FOR SELECT` and a `FOR INSERT`. Applied to the
+live database, then the identical probes re-run:
+
+```
+PROBE_RESULT rows_deleted=0 rows_readable=1 (aborted on purpose)
+PROBE_RESULT rows_updated=0 rows_inserted=1 (aborted on purpose)
+
+npx jest --testPathPatterns="inventory-ledger-append-only"
+Tests: 3 passed, 3 total
+
+npx jest --testPathPatterns="inventory|stock|daily-report"
+Test Suites: 1 skipped, 63 passed, 63 of 64 total
+Tests: 8 skipped, 649 passed, 657 total
+```
+
+Checkpoint: `729ece0 fix: make the stock ledger append-only`.
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 136 | No surviving policy on `stock_movements` grants ALL, UPDATE or DELETE, across the whole migration corpus | `inventory-ledger-append-only.test.ts:every surviving policy grants only SELECT or INSERT` | unit | PASS |
+| 137 | The lockdown did not simply remove every policy — RLS denies by default, which would make the ledger unusable | `…:the ledger still has policies at all` | unit | PASS |
+| 138 | SELECT and INSERT both survive, so the report can read and the register can write | `…:someone can still read and write the ledger` | unit | PASS |
+
+### Decisions worth not re-deriving
+
+- **Only the verbs changed.** The predicate deciding WHO may act is carried over
+  byte-for-byte from `20260726120000`. A one-axis change is verifiable by
+  reading; bundling a who-change into it would not have been.
+- **Inert on apply, and that was checked before applying, not assumed.** Every
+  call site in `src/`, `webnegosyo-app/`, `supabase/functions/`, `mobile/`,
+  `scripts/` and `convex-template/` is `.insert()` or `.select()` — grep found
+  zero DELETE or UPDATE against this table. Order depletion writes through the
+  service-role client, which bypasses RLS entirely.
+- **The probe is the real evidence; the jest test is the regression guard.** RLS
+  lives in the database, so a repo-only assertion could pass against a database
+  that had drifted. Both were run.
+- **`RAISE EXCEPTION` to force the rollback**, rather than `BEGIN`/`ROLLBACK`.
+  The probe deletes production rows if the rollback does not happen, so the
+  abort had to be structurally guaranteed rather than trusted to the client.
+- **Corrections still work, the accounting way**: write a compensating movement.
+  That leaves the mistake and the fix both on the record, which is the property
+  the report needs.
+
 ## Still not built
 
 **Phase 4b — the app SCREEN.** The read and the core are in place and tested;
@@ -741,12 +835,12 @@ component), matching the Phase 1c precedent — the passthrough is covered at th
 shelf — while revenue CAN be branch-scoped. Any future per-branch report must fix
 the ledger first, or the two halves of the ratio describe different shops.
 
-**Still open from the review, untouched:** `stock_movements` RLS is `FOR ALL` so
-admins can DELETE ledger rows without restoring `current_qty`; both admin
-inventory routes authorize on role alone and skip `verifyTenantPermission`;
-`current_qty` has no non-negative CHECK; stocktake is still a read-modify-write
-that a concurrent sale can swallow.
+**Still open from the review, untouched:** both admin inventory routes authorize
+on role alone and skip `verifyTenantPermission`; `current_qty` has no
+non-negative CHECK; stocktake is still a read-modify-write that a concurrent
+sale can swallow. (The `FOR ALL` RLS hole is now closed — see Security C.)
 
-**Not deployed.** The branch is ~490 commits ahead of `origin/main` with no
+**Not deployed.** The branch is ~540 commits ahead of `origin/main` with no
 upstream, so none of this — Phase 0's correctness fixes included — is in front
-of a merchant.
+of a merchant. The append-only migration is the exception: it is live on the
+database now, because RLS is not shipped by deploying the app.
