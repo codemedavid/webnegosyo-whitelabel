@@ -22,7 +22,9 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { PeriodSelector } from "../../components/PeriodSelector";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
-import { OptionPills } from "../../components/OptionPills";
+import { SegmentedControl } from "../../components/SegmentedControl";
+import { FilterChipsRow } from "../../components/FilterChipsRow";
+import { ProductFilterSheet } from "../../components/ProductFilterSheet";
 import { DailyProductBreakdown } from "../../components/DailyProductBreakdown";
 import {
   buildProductAnalytics,
@@ -31,19 +33,24 @@ import {
   productDateKey,
   type DailyOrderInput,
   type DailyOrderItemInput,
-  type ProductMetric,
 } from "../../lib/product-daily-analytics";
 import {
   DATE_RANGE_PRESETS,
-  METRIC_OPTIONS,
-  SOURCE_OPTIONS,
-  TOP_N_OPTIONS,
   formatDayLabel,
   listAvailableDays,
   resolveDateWindow,
   resolveSingleDayWindow,
   type DateRangePreset,
 } from "../../lib/product-analytics-filters";
+import { useDebouncedValue } from "../../lib/use-debounced-value";
+import {
+  DEFAULT_PRODUCT_FILTERS,
+  buildFilterChips,
+  clearAllFilters,
+  clearChip,
+  countActiveFilters,
+  type ProductFilterState,
+} from "../../lib/product-filter-summary";
 
 const getAllRef = "productAnalytics:getAll" as unknown as FunctionReference<"query">;
 const getPortfolioRef = "productAnalytics:getPortfolioSummary" as unknown as FunctionReference<"query">;
@@ -142,14 +149,32 @@ export default function ProductAnalyticsScreen() {
   const [savingCost, setSavingCost] = useState(false);
 
   // Daily-view filters.
+  //
+  // The period stays inline because it is the one a merchant changes every time
+  // they open the screen; the rest live in a sheet and are held together in one
+  // object so clearing a single chip, or all of them, is one honest replacement
+  // rather than five setters that can drift out of step.
   const [viewMode, setViewMode] = useState<ViewMode>("daily");
   const [preset, setPreset] = useState<DateRangePreset>("7d");
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [metric, setMetric] = useState<ProductMetric>("sales");
-  const [topN, setTopN] = useState<number | undefined>(10);
-  const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [sources, setSources] = useState<string[]>([]);
+  const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS);
+  const [isFilterSheetOpen, setFilterSheetOpen] = useState(false);
+  const { selectedDay, metric, topN, search, categoryId, sources } = filters;
+
+  /**
+   * The text box keeps `search`; the aggregation reads this.
+   *
+   * Every recompute walks every line item twice — once for the window on
+   * screen, once for the window it is compared against — so running that on
+   * the keystroke is what made typing stutter. The caret stays live because
+   * the input is still bound to the raw value.
+   */
+  const debouncedSearch = useDebouncedValue(search);
+
+  const updateFilters = useCallback(
+    (patch: Partial<ProductFilterState>) =>
+      setFilters((current) => ({ ...current, ...patch })),
+    []
+  );
 
   /**
    * "Now" is pinned to mount (and to each pull-to-refresh) rather than read
@@ -260,21 +285,31 @@ export default function ProductAnalyticsScreen() {
       buildProductAnalytics(orderInputs, itemInputs, {
         metric,
         topN,
-        search,
+        search: debouncedSearch,
         categoryId: categoryId ?? undefined,
         categoryByItemId,
         sources,
         startMs: dateWindow.startMs,
         endMs: dateWindow.endMs,
       }),
-    [orderInputs, itemInputs, metric, topN, search, categoryId, categoryByItemId, sources, dateWindow]
+    [
+      orderInputs,
+      itemInputs,
+      metric,
+      topN,
+      debouncedSearch,
+      categoryId,
+      categoryByItemId,
+      sources,
+      dateWindow,
+    ]
   );
 
   const deltas = useMemo(() => {
     const before = previousWindow(dateWindow.startMs, dateWindow.endMs);
     const previous = buildProductAnalytics(orderInputs, itemInputs, {
       metric,
-      search,
+      search: debouncedSearch,
       categoryId: categoryId ?? undefined,
       categoryByItemId,
       sources,
@@ -282,7 +317,17 @@ export default function ProductAnalyticsScreen() {
       endMs: before.endMs,
     });
     return computeProductDeltas(daily.totals, previous.totals);
-  }, [daily, orderInputs, itemInputs, metric, search, categoryId, categoryByItemId, sources, dateWindow]);
+  }, [
+    daily,
+    orderInputs,
+    itemInputs,
+    metric,
+    debouncedSearch,
+    categoryId,
+    categoryByItemId,
+    sources,
+    dateWindow,
+  ]);
 
   const windowTotals = useMemo(
     () =>
@@ -298,10 +343,30 @@ export default function ProductAnalyticsScreen() {
   );
 
   const toggleSource = useCallback((value: string) => {
-    setSources((current) =>
-      current.includes(value) ? current.filter((s) => s !== value) : [...current, value]
-    );
+    setFilters((current) => ({
+      ...current,
+      sources: current.sources.includes(value)
+        ? current.sources.filter((s) => s !== value)
+        : [...current.sources, value],
+    }));
   }, []);
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const category of categories) map[category.id] = category.name;
+    return map;
+  }, [categories]);
+
+  const filterChips = useMemo(
+    () =>
+      buildFilterChips(filters, {
+        categoryNameById,
+        dayLabel: (dateKey) => formatDayLabel(dateKey, todayKey),
+      }),
+    [filters, categoryNameById, todayKey]
+  );
+
+  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
 
   const merged: AnalyticsRow[] = useMemo(() => {
     const byId = new Map<string, AnalyticsRow>();
@@ -413,96 +478,92 @@ export default function ProductAnalyticsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
-        <OptionPills
-          options={VIEW_MODES}
-          isSelected={(value) => viewMode === value}
-          onSelect={setViewMode}
-          accessibilityPrefix="View"
-        />
+        <View style={styles.modeBlock}>
+          <SegmentedControl
+            options={VIEW_MODES}
+            value={viewMode}
+            onChange={setViewMode}
+            accessibilityPrefix="Show"
+          />
+        </View>
 
         {viewMode === "daily" ? (
           <>
-            <View style={styles.filterBlock}>
-              <Text style={styles.filterLabel}>Period</Text>
-              <OptionPills
-                options={DATE_RANGE_PRESETS}
-                isSelected={(value) => selectedDay === null && preset === value}
-                onSelect={(value) => {
-                  setSelectedDay(null);
-                  setPreset(value);
-                }}
-                accessibilityPrefix="Show"
-              />
-            </View>
+            {/*
+              The period is the only filter that stays on the screen: it is the
+              one a merchant changes every session. Everything else opens from
+              the Filters button and reports back as a chip, so the numbers are
+              never more than a segmented control away from the top of the page.
+            */}
+            <SegmentedControl
+              options={DATE_RANGE_PRESETS}
+              value={selectedDay ? null : preset}
+              onChange={(value) => {
+                updateFilters({ selectedDay: null });
+                setPreset(value);
+              }}
+              accessibilityPrefix="Show"
+            />
 
-            {availableDays.length > 0 && (
-              <View style={styles.filterBlock}>
-                <Text style={styles.filterLabel}>Jump to a day</Text>
-                <OptionPills
-                  options={availableDays.map((day) => ({
-                    label: formatDayLabel(day, todayKey),
-                    value: day as string | null,
-                  }))}
-                  isSelected={(value) => selectedDay === value}
-                  onSelect={(value) => setSelectedDay(selectedDay === value ? null : value)}
-                  accessibilityPrefix="Show only"
+            <View style={styles.controlRow}>
+              <View style={styles.searchBox}>
+                <TextInput
+                  style={styles.searchInput}
+                  value={search}
+                  onChangeText={(value) => updateFilters({ search: value })}
+                  placeholder="Search products"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                  // No `clearButtonMode`: it is iOS-only, so it would stack a
+                  // second clear control on top of the one below on iPhone and
+                  // leave Android with none.
+                  accessibilityLabel="Search products by name"
                 />
+                {search.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => updateFilters({ search: "" })}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                  >
+                    <Text style={styles.searchClear}>Clear</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
 
-            <View style={styles.filterBlock}>
-              <Text style={styles.filterLabel}>Rank by</Text>
-              <OptionPills
-                options={METRIC_OPTIONS}
-                isSelected={(value) => metric === value}
-                onSelect={setMetric}
-                accessibilityPrefix="Rank by"
-              />
-            </View>
-
-            <View style={styles.filterBlock}>
-              <Text style={styles.filterLabel}>Show per day</Text>
-              <OptionPills
-                options={TOP_N_OPTIONS}
-                isSelected={(value) => topN === value}
-                onSelect={setTopN}
-                accessibilityPrefix="Show"
-              />
-            </View>
-
-            <View style={styles.filterBlock}>
-              <Text style={styles.filterLabel}>Channel</Text>
-              <OptionPills
-                options={SOURCE_OPTIONS}
-                isSelected={(value) => sources.includes(value)}
-                onSelect={toggleSource}
-                accessibilityPrefix="Toggle channel"
-              />
-            </View>
-
-            {categories.length > 0 && (
-              <View style={styles.filterBlock}>
-                <Text style={styles.filterLabel}>Category</Text>
-                <OptionPills
-                  options={[
-                    { label: "All", value: null as string | null },
-                    ...categories.map((c) => ({ label: c.name, value: c.id as string | null })),
+              <TouchableOpacity
+                style={[styles.filterButton, activeFilterCount > 0 && styles.filterButtonActive]}
+                onPress={() => setFilterSheetOpen(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  activeFilterCount > 0
+                    ? `Filters, ${activeFilterCount} active`
+                    : "Filters, none active"
+                }
+              >
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    activeFilterCount > 0 && styles.filterButtonTextActive,
                   ]}
-                  isSelected={(value) => categoryId === value}
-                  onSelect={setCategoryId}
-                  accessibilityPrefix="Category"
-                />
-              </View>
-            )}
+                >
+                  Filters
+                </Text>
+                {activeFilterCount > 0 && (
+                  <View style={styles.filterCount}>
+                    <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
 
-            <TextInput
-              style={styles.searchInput}
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search products"
-              placeholderTextColor={colors.textTertiary}
-              autoCorrect={false}
-              accessibilityLabel="Search products by name"
+            <FilterChipsRow
+              chips={filterChips}
+              onRemove={(chip) => setFilters((current) => clearChip(current, chip))}
+              onClearAll={() => setFilters((current) => clearAllFilters(current))}
             />
 
             <View style={styles.summaryCard}>
@@ -525,7 +586,21 @@ export default function ProductAnalyticsScreen() {
             ) : ordersLoading && orderInputs.length === 0 ? (
               <LoadingState message="Loading daily sales..." />
             ) : daily.days.length === 0 ? (
-              <EmptyState message="No product sales matched these filters." />
+              <EmptyState
+                message={
+                  activeFilterCount > 0 || search.length > 0
+                    ? "No product sales matched these filters."
+                    : "No product sales in this period yet."
+                }
+                actionLabel={
+                  activeFilterCount > 0 || search.length > 0 ? "Clear filters" : undefined
+                }
+                onAction={
+                  activeFilterCount > 0 || search.length > 0
+                    ? () => setFilters(DEFAULT_PRODUCT_FILTERS)
+                    : undefined
+                }
+              />
             ) : (
               <DailyProductBreakdown
                 days={daily.days}
@@ -599,6 +674,28 @@ export default function ProductAnalyticsScreen() {
         )}
       </ScrollView>
 
+      <ProductFilterSheet
+        visible={isFilterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        days={availableDays.map((day) => ({
+          key: day,
+          label: formatDayLabel(day, todayKey),
+        }))}
+        categories={categories}
+        selectedDay={selectedDay}
+        onSelectDay={(day) => updateFilters({ selectedDay: day })}
+        categoryId={categoryId}
+        onSelectCategory={(value) => updateFilters({ categoryId: value })}
+        sources={sources}
+        onToggleSource={toggleSource}
+        metric={metric}
+        onSelectMetric={(value) => updateFilters({ metric: value })}
+        topN={topN}
+        onSelectTopN={(value) => updateFilters({ topN: value })}
+        activeCount={activeFilterCount}
+        onReset={() => setFilters((current) => clearAllFilters(current))}
+      />
+
       {/* Cost-entry modal */}
       <Modal visible={!!editing} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
         <View style={styles.modalBackdrop}>
@@ -649,31 +746,63 @@ const styles = StyleSheet.create({
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   content: { padding: spacing.xl, paddingTop: spacing.md },
-  filterBlock: { marginBottom: spacing.xs },
-  filterLabel: {
-    ...typography.caption,
-    color: colors.textTertiary,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
-  },
-  searchInput: {
+  modeBlock: { marginBottom: spacing.lg },
+
+  controlRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  searchBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    height: 44,
+    paddingHorizontal: spacing.md,
     borderWidth: 1,
     borderColor: colors.separator,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 15,
-    color: colors.textPrimary,
     backgroundColor: colors.card,
-    marginBottom: spacing.md,
   },
+  searchInput: { flex: 1, ...typography.body, color: colors.textPrimary, padding: 0 },
+  // Ink at 11pt: the secondary grey measures 3.7:1 on the card and this is the
+  // control that undoes a search, not decoration.
+  searchClear: {
+    ...typography.small,
+    color: colors.textPrimary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    height: 44,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+  },
+  // A filtered view is a different view, and the button that caused it says so
+  // even before the chips are read.
+  filterButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "700" },
+  filterButtonTextActive: { color: colors.textOnDark },
+  filterCount: {
+    minWidth: 20,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+  },
+  filterCountText: { fontSize: 11, fontWeight: "800", color: colors.textOnDark },
+
   summaryCard: {
     flexDirection: "row",
     backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.lg,
+    marginTop: spacing.lg,
     marginBottom: spacing.lg,
     ...shadow.sm,
   },

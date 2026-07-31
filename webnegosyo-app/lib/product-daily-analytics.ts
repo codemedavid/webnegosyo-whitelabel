@@ -117,15 +117,37 @@ function matchesOrder(
   return true;
 }
 
-function matchesProduct(
-  item: DailyOrderItemInput,
-  options: ProductAnalyticsOptions
-): boolean {
+/**
+ * The per-item filter inputs, resolved once before the loop.
+ *
+ * `trim()` and `toLowerCase()` on the search term allocate two strings every
+ * time they run. Inside the item loop that is once per line item, twice per
+ * recompute (current window plus comparison window), on every keystroke — work
+ * that scales with sales history to answer a question that cannot change
+ * between two items. Resolving it here makes it constant.
+ */
+interface ProductMatcher {
+  search: string | undefined;
+  categoryId: string | undefined;
+  categoryByItemId: Record<string, string> | undefined;
+}
+
+function resolveMatcher(options: ProductAnalyticsOptions): ProductMatcher {
   const search = options.search?.trim().toLowerCase();
-  if (search && !item.menuItemName.toLowerCase().includes(search)) return false;
-  if (options.categoryId) {
-    const category = options.categoryByItemId?.[item.menuItemId];
-    if (category !== options.categoryId) return false;
+  return {
+    search: search ? search : undefined,
+    categoryId: options.categoryId,
+    categoryByItemId: options.categoryByItemId,
+  };
+}
+
+function matchesProduct(item: DailyOrderItemInput, matcher: ProductMatcher): boolean {
+  if (matcher.search && !item.menuItemName.toLowerCase().includes(matcher.search)) {
+    return false;
+  }
+  if (matcher.categoryId) {
+    const category = matcher.categoryByItemId?.[item.menuItemId];
+    if (category !== matcher.categoryId) return false;
   }
   return true;
 }
@@ -204,10 +226,12 @@ export function buildProductAnalytics(
   const windowTotals = new Map<string, ProductAccumulator>();
   const orderIdsByDay = new Map<string, Set<string>>();
 
+  const matcher = resolveMatcher(options);
+
   for (const item of items) {
     const date = dateByOrderId.get(item.orderId);
     if (date === undefined) continue;
-    if (!matchesProduct(item, options)) continue;
+    if (!matchesProduct(item, matcher)) continue;
 
     const dayBucket = byDay.get(date) ?? new Map<string, ProductAccumulator>();
     accumulate(dayBucket, item, item.orderId);
