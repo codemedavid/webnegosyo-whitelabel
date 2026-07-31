@@ -24,15 +24,30 @@ import {
   type DailyReportMovement,
 } from "./daily-report/daily-report";
 import { resolveBusinessDayWindow } from "./daily-report/business-day";
+import { judgeCountSession, type CountSessionProgress } from "./daily-report/count-session";
 import type { StockMovementReason } from "./daily-report/movement-reason";
 
 const MOVEMENT_COLUMNS =
-  "inventory_item_id, reason, quantity_delta, balance_after, created_at";
+  "inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id";
 const ITEM_COLUMNS = "id, name, unit_cost, stock_unit_id";
 
 export interface DailyReportForDay extends DailyInventoryReport {
   /** The Manila day this covers, `YYYY-MM-DD`. */
   dayKey: string;
+  /**
+   * How far the day's stock count got, or `null` when nobody opened one.
+   *
+   * `null` means "no count session", NOT "an abandoned count" — every day
+   * before sessions existed looks like this, as does every tenant who counts
+   * without opening one.
+   */
+  countSession: CountSessionProgress | null;
+}
+
+interface CountRow {
+  id: string;
+  expected_item_count: number;
+  closed_at: string | null;
 }
 
 interface MovementRow {
@@ -41,6 +56,7 @@ interface MovementRow {
   quantity_delta: number;
   balance_after: number;
   created_at: string;
+  inventory_count_id: string | null;
 }
 
 interface ItemRow {
@@ -76,7 +92,7 @@ export async function loadDailyReport(
   try {
     const { startIso, endIso } = resolveBusinessDayWindow(dayKey);
 
-    const [movementResult, itemResult, unitResult] = await Promise.all([
+    const [movementResult, itemResult, unitResult, countResult] = await Promise.all([
       db
         .from("stock_movements")
         .select(MOVEMENT_COLUMNS)
@@ -86,6 +102,17 @@ export async function loadDailyReport(
         .order("created_at", { ascending: true }),
       db.from("inventory_items").select(ITEM_COLUMNS).eq("tenant_id", tenantId),
       db.from("inventory_units").select("id, abbreviation").eq("tenant_id", tenantId),
+      // The day's count, if one was opened. Latest first, because a shelf
+      // recounted in the evening describes how the day ended — the morning's
+      // abandoned attempt is not the last word on it.
+      db
+        .from("inventory_counts")
+        .select("id, expected_item_count, closed_at")
+        .eq("tenant_id", tenantId)
+        .eq("business_day", dayKey)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (movementResult.error) throw movementResult.error;
@@ -117,11 +144,47 @@ export async function loadDailyReport(
       createdAt: row.created_at,
     }));
 
-    return { dayKey, ...buildDailyInventoryReport({ movements, ingredients }) };
+    return {
+      dayKey,
+      countSession: judgeDaysCount(
+        countResult.error ? null : ((countResult.data as unknown as CountRow) ?? null),
+        (movementResult.data ?? []) as unknown as MovementRow[],
+      ),
+      ...buildDailyInventoryReport({ movements, ingredients }),
+    };
   } catch (error) {
     console.warn("[inventory] daily report unavailable", { tenantId, dayKey, error });
     return null;
   }
+}
+
+/**
+ * How far the day's count got, from the movements filed under it.
+ *
+ * The counted ingredients come from the movements already read for the report
+ * rather than a second query — they are the same rows.
+ *
+ * A stocktake carrying no session is deliberately not credited: a one-off
+ * correction made during a count is not part of the count, and crediting it
+ * would raise coverage for an ingredient nobody counted.
+ *
+ * A failed session read yields `null` rather than throwing. The stock figures
+ * are independently true, and losing the whole report because its caveat could
+ * not be computed would be a worse trade than losing the caveat.
+ */
+function judgeDaysCount(
+  count: CountRow | null,
+  movements: readonly MovementRow[],
+): CountSessionProgress | null {
+  if (!count) return null;
+
+  return judgeCountSession({
+    expectedItemCount: Number(count.expected_item_count),
+    countedItemIds: movements
+      .filter((row) => row.inventory_count_id === count.id)
+      .map((row) => row.inventory_item_id),
+    closedAt: count.closed_at,
+  });
 }
 
 interface RecipeRow {

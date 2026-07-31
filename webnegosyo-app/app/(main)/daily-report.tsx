@@ -186,7 +186,10 @@ export default function DailyReportScreen() {
     // The revenue caveat leads: it explains an absent figure the merchant can
     // see is absent, which the stock caveats below it do not speak to.
     const revenueCaveat = revenue === undefined ? null : describeRevenueCaveat(revenue);
-    return [...(revenueCaveat ? [revenueCaveat] : []), ...describeReportCaveats(report)];
+    return [
+      ...(revenueCaveat ? [revenueCaveat] : []),
+      ...describeReportCaveats(report, report.countSession),
+    ];
   }, [report, revenue]);
 
   const isLatestDay = dayKey >= selection.latestDayKey;
