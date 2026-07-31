@@ -39,8 +39,9 @@ describe('summarizeBranchStock', () => {
     const summary = summarizeBranchStock(FLOUR, index, BRANCHES)
 
     expect(summary.lines).toEqual([
-      { outletId: NORTH, name: 'North', quantity: 500 },
-      { outletId: SOUTH, name: 'South', quantity: 200 },
+      // reorderLevel 0 = inheriting the store's threshold. Added in C3.
+      { outletId: NORTH, name: 'North', quantity: 500, reorderLevel: 0 },
+      { outletId: SOUTH, name: 'South', quantity: 200, reorderLevel: 0 },
     ])
     expect(summary.total).toBe(700)
   })

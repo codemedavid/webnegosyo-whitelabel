@@ -124,8 +124,10 @@ describe('branchStockBreakdown', () => {
     const index = indexStockRows([stock(FLOUR, NORTH, 500), stock(FLOUR, SOUTH, 200)])
 
     expect(branchStockBreakdown(FLOUR, index, BRANCHES)).toEqual([
-      { outletId: NORTH, name: 'North', quantity: 500 },
-      { outletId: SOUTH, name: 'South', quantity: 200 },
+      // reorderLevel 0 = this branch has chosen no threshold of its own and
+      // inherits the store's. Added in C3.
+      { outletId: NORTH, name: 'North', quantity: 500, reorderLevel: 0 },
+      { outletId: SOUTH, name: 'South', quantity: 200, reorderLevel: 0 },
     ])
   })
 
@@ -135,8 +137,8 @@ describe('branchStockBreakdown', () => {
     const index = indexStockRows([stock(FLOUR, NORTH, 500)])
 
     expect(branchStockBreakdown(FLOUR, index, BRANCHES)).toEqual([
-      { outletId: NORTH, name: 'North', quantity: 500 },
-      { outletId: SOUTH, name: 'South', quantity: 0 },
+      { outletId: NORTH, name: 'North', quantity: 500, reorderLevel: 0 },
+      { outletId: SOUTH, name: 'South', quantity: 0, reorderLevel: 0 },
     ])
   })
 
@@ -185,7 +187,7 @@ describe('branchStockBreakdown — each branch carries its own reorder level', (
       { inventory_item_id: 'i1', outlet_id: 'o-south', current_qty: 8, reorder_level: 5 },
     ])
 
-    const [south] = branchStockBreakdown(index, 'i1', [{ id: 'o-south', name: 'South' }])
+    const [south] = branchStockBreakdown('i1', index, [{ id: 'o-south', name: 'South' }])
 
     expect(south.reorderLevel).toBe(5)
   })
@@ -198,13 +200,13 @@ describe('branchStockBreakdown — each branch carries its own reorder level', (
       { inventory_item_id: 'i1', outlet_id: 'o-south', current_qty: 8, reorder_level: 0 },
     ])
 
-    const [south] = branchStockBreakdown(index, 'i1', [{ id: 'o-south', name: 'South' }])
+    const [south] = branchStockBreakdown('i1', index, [{ id: 'o-south', name: 'South' }])
 
     expect(south.reorderLevel).toBe(0)
   })
 
   it('reports zero for a branch with no row at all', () => {
-    const [south] = branchStockBreakdown(new Map(), 'i1', [{ id: 'o-south', name: 'South' }])
+    const [south] = branchStockBreakdown('i1', new Map(), [{ id: 'o-south', name: 'South' }])
 
     expect(south.reorderLevel).toBe(0)
   })

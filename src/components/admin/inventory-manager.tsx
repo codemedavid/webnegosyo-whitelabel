@@ -74,6 +74,7 @@ import {
   updateInventoryUnitAction,
   deleteInventoryUnitAction,
   recordStockMovementAction,
+  setBranchReorderLevelAction,
 } from '@/app/actions/inventory'
 import { BranchStockPanel } from '@/components/admin/branch-stock-panel'
 import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
@@ -811,6 +812,19 @@ function IngredientsTab({
                   summary={branchStockByItemId[stockItem.id]}
                   unitLabel={unitLabel(stockItem.stock_unit_id)}
                   transfersHref={`/${tenantSlug}/admin/inventory/transfers`}
+                  storeReorderLevel={stockItem.reorder_level}
+                  onSetReorderLevel={(outletId, reorderLevel) => {
+                    // Fire-and-forget: the action revalidates the page, and a
+                    // threshold is a setting rather than a quantity — nothing
+                    // downstream is waiting on it the way a movement is.
+                    void setBranchReorderLevelAction(
+                      tenantId,
+                      tenantSlug,
+                      stockItem.id,
+                      outletId,
+                      reorderLevel,
+                    )
+                  }}
                 />
               )}
 

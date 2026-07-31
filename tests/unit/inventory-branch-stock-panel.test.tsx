@@ -81,7 +81,14 @@ describe('BranchStockPanel — a branch\'s own reorder level', () => {
     } as Partial<BranchStockSummary>)
 
   it("shows a branch's own threshold once it has one", async () => {
-    render(<BranchStockPanel summary={withPars()} unitLabel="g" storeReorderLevel={20} />)
+    render(
+      <BranchStockPanel
+        summary={withPars()}
+        unitLabel="g"
+        storeReorderLevel={20}
+        onSetReorderLevel={jest.fn()}
+      />,
+    )
 
     const north = screen.getByRole('spinbutton', { name: /north.*reorder/i })
     expect(north).toHaveValue(50)

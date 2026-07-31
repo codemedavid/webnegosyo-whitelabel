@@ -72,6 +72,16 @@ export interface BranchStockLine {
   outletId: string
   name: string
   quantity: number
+  /**
+   * This branch's OWN reorder level, and zero when it has not chosen one.
+   *
+   * Deliberately not filled in with the store's number. Zero is how
+   * `branchLevelInputs` spells "unset" when it decides which threshold to alert
+   * on, and substituting the store figure here would make an inherited
+   * threshold indistinguishable from a chosen one — leaving a merchant unable
+   * to tell whether this branch has been configured at all.
+   */
+  reorderLevel: number
 }
 
 /**
@@ -90,6 +100,7 @@ export function branchStockBreakdown(
     outletId: branch.id,
     name: branch.name,
     quantity: stockOnHandAt(index, inventoryItemId, branch.id),
+    reorderLevel: index.get(inventoryItemId)?.get(branch.id)?.reorder_level ?? 0,
   }))
 }
 
