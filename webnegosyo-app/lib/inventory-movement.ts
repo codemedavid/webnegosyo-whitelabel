@@ -68,6 +68,13 @@ export interface MovementPayload {
   quantity: number;
   unit_id: string;
   note?: string;
+  /**
+   * The count session this belongs to, when one is running. Only ever set on a
+   * `stocktake` — the database refuses anything else (migration
+   * 20260812120000), and a delivery filed under a count would raise coverage
+   * for an ingredient nobody counted.
+   */
+  inventory_count_id?: string;
 }
 
 /** A typed quantity, or null while it is not yet a usable number. */
@@ -89,6 +96,7 @@ function parseQuantity(value: string): number | null {
 export function buildMovementPayload(
   draft: MovementDraft,
   item: StockItemView,
+  openCountId?: string | null,
 ): MovementPayload {
   const quantity = parseQuantity(draft.quantity);
   if (quantity === null) throw new Error("Enter the amount as a positive number");
@@ -100,12 +108,20 @@ export function buildMovementPayload(
   }
 
   const note = draft.note.trim();
+
+  // Attached automatically, never by the merchant remembering to. A tag that had
+  // to be remembered would be forgotten, and a forgotten tag does not lose a
+  // figure — it leaves an honest count reading as partial. A coverage figure
+  // that under-reports real work is how merchants learn to ignore it.
+  const joinsCount = draft.reason === "stocktake" && Boolean(openCountId);
+
   return {
     inventory_item_id: item.id,
     reason: draft.reason,
     quantity,
     unit_id: item.stockUnitId,
     note: note === "" ? undefined : note,
+    ...(joinsCount ? { inventory_count_id: openCountId as string } : {}),
   };
 }
 

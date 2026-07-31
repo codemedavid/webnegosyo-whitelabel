@@ -15,6 +15,10 @@
  * may reach. A route would add a hop and no boundary.
  */
 
+// The default client is never used — every test injects its own db — but the
+// module still imports it, and the real one reaches expo-constants.
+jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
+
 import {
   loadOpenCount,
   openCount,
@@ -32,17 +36,29 @@ interface Recorded {
 /**
  * A chainable Supabase stub.
  *
- * `results` is keyed by table; the terminal call resolves whatever that table
- * was given. Deliberately hand-rolled rather than shared with
- * inventory-service.test.ts: this one has to record the FILTERS, and a scoping
- * assertion that cannot see them proves nothing.
+ * `results` is keyed by table. A plain value is returned for every call; an
+ * ARRAY is a queue, one entry per call in order, which is what lets a test say
+ * "no count is running, then this is the one that was inserted" — the two reads
+ * hit the same table and must answer differently.
+ *
+ * Deliberately hand-rolled rather than shared with inventory-service.test.ts:
+ * this one records the FILTERS, and a scoping assertion that cannot see them
+ * proves nothing.
  */
 function makeDb(results: Record<string, unknown>) {
   const recorded: Recorded = { filters: [], isFilters: [], inserts: [], updates: [] };
+  const queues: Record<string, unknown[]> = {};
+  for (const [table, value] of Object.entries(results)) {
+    if (Array.isArray(value)) queues[table] = [...value];
+  }
 
   const from = (table: string) => {
     const chain: Record<string, unknown> = {};
-    const settle = () => Promise.resolve(results[table] ?? { data: null, error: null });
+    const settle = () => {
+      const queue = queues[table];
+      if (queue) return Promise.resolve(queue.shift() ?? { data: null, error: null });
+      return Promise.resolve(results[table] ?? { data: null, error: null });
+    };
 
     chain.select = () => chain;
     chain.order = () => chain;
@@ -148,8 +164,13 @@ describe("loadOpenCount", () => {
 describe("openCount", () => {
   it("snapshots how many ingredients were in scope when it opened", async () => {
     const { db, recorded } = makeDb({
-      inventory_counts: { data: { ...OPEN_COUNT, expected_item_count: 3 }, error: null },
+      // Nothing running, then the row the insert returned.
+      inventory_counts: [
+        { data: null, error: null },
+        { data: { ...OPEN_COUNT, expected_item_count: 3 }, error: null },
+      ],
       inventory_items: { data: [{ id: "i1" }, { id: "i2" }, { id: "i3" }], error: null },
+      stock_movements: { data: [], error: null },
     });
 
     await openCount("t1", { outletId: null, startedBy: "u1" }, db);
@@ -163,8 +184,9 @@ describe("openCount", () => {
     // counting it in scope would cap coverage below 100 forever and teach the
     // merchant that a complete count is unachievable.
     const { db, recorded } = makeDb({
-      inventory_counts: { data: OPEN_COUNT, error: null },
+      inventory_counts: [{ data: null, error: null }, { data: OPEN_COUNT, error: null }],
       inventory_items: { data: [], error: null },
+      stock_movements: { data: [], error: null },
     });
 
     await openCount("t1", { outletId: null, startedBy: "u1" }, db);
@@ -193,8 +215,9 @@ describe("openCount", () => {
 
   it("records who started it", async () => {
     const { db, recorded } = makeDb({
-      inventory_counts: { data: OPEN_COUNT, error: null },
+      inventory_counts: [{ data: null, error: null }, { data: OPEN_COUNT, error: null }],
       inventory_items: { data: [], error: null },
+      stock_movements: { data: [], error: null },
     });
 
     await openCount("t1", { outletId: null, startedBy: "u9" }, db);
