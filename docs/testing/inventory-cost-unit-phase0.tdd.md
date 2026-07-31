@@ -1147,6 +1147,78 @@ Checkpoint: `8d33b09`.
   subsequent UPDATE alone would not have been enough, since the delta has to be
   computed from the locked value.
 
+## Fix F SHIPPED 2026-07-31 — branch transfers stop breaking the row's arithmetic
+
+**The journey.** *As a merchant, I want the figures on a row to add up to the
+closing balance, so that I can check the report by eye instead of taking it on
+faith.*
+
+`transfer_out` and `transfer_in` were added to `StockMovementReason` by the
+branch-transfer work AFTER this report was built. They fell through the report's
+reason switch entirely and landed in no bucket — while `opening` and `closing`
+are read from `balance_after`, which the trigger moved for them like any other
+movement. The identity the whole report rests on silently stopped holding, with
+nothing on screen to explain the difference.
+
+**How it surfaced.** Not by review — the Phase 4a parity guard failed on the
+other session's change, which is what drew attention to the new reasons at all.
+That is the drift guard doing its job on a change it did not anticipate.
+
+### RED → GREEN
+
+```
+npx jest --testPathPatterns="inventory-daily-report"
+RED:   3 failed, 58 passed — row.transferred undefined, identity evaluates to NaN
+GREEN: 61 passed
+
+npx jest --testPathPatterns="inventory-daily-report-panel"
+RED:   2 failed, 12 passed — no transfer badge rendered
+GREEN: 14 passed
+
+npx jest lib/daily-report-screen-mount   (merchant app)
+RED:   1 failed, 20 passed        GREEN: 21 passed
+
+web:  npx jest --testPathPatterns="inventory|stock"  → 71 passed / 72, 755 passed
+app:  npx jest                                        → 96 suites, 1588 passed
+npx tsc --noEmit -p webnegosyo-app/tsconfig.json      → 0 errors
+```
+
+Checkpoints: `498bb8b` (RED) → `449e780` (GREEN).
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 183 | A transferred-out day still reconciles to closing | `inventory-daily-report.test.ts:still reconciles when stock is transferred out` | unit | PASS |
+| 184 | A transferred-in day still reconciles to closing | `…:still reconciles when stock is transferred in` | unit | PASS |
+| 185 | Out and in net against each other | `…:nets a transfer out against a transfer in` | unit | PASS |
+| 186 | A transfer is never usage, waste or shrinkage, and never enters COGS | `…:never counts a transfer as usage, waste or shrinkage` | unit | PASS |
+| 187 | A transfer-only day still appears on the report | `…:reports a transfer-only day rather than hiding it` | unit | PASS |
+| 188 | The web panel names stock sent out / received in | `inventory-daily-report-panel.test.tsx:names stock that left / arrived` | unit | PASS |
+| 189 | No transfer badge on a day with none | `…:says nothing on a day with no transfers` | unit | PASS |
+| 190 | The app card names transfers too | `daily-report-screen-mount.test.ts:names stock moved to or from another branch` | unit | PASS |
+
+### Decisions worth not re-deriving
+
+- **Transfers get their OWN bucket.** Folding them into usage would make a
+  branch that supplies the others look like it is haemorrhaging stock; folding
+  them into shrinkage would accuse someone of losing what is sitting on another
+  shelf.
+- **Kept SIGNED, unlike `sold` and `waste`.** Out and in genuinely cancel: a
+  branch that sent 200 and received 50 moved 150 net, and reporting two
+  magnitudes would obscure that.
+- **Displayed only when non-zero**, on both surfaces. A permanent column of
+  zeros would cost every single-branch tenant a column to describe something
+  that never happens to them — but an unexplained gap on a stock report invites
+  exactly the wrong conclusion, so when it does happen it is named.
+- **Named in the app card's accessibility sentence too**, since the closing
+  balance moves either way and a spoken row must still account for itself.
+- **Two testing traps hit and worth avoiding:** `getByText(/moved/i)` collided
+  with the existing caveat "1 ingredient moved today…", so the assertion moved
+  to a `data-testid`; and a python-patched test insert silently no-opped on a
+  quote-style mismatch, producing a "passing" test that had never been added —
+  caught only because a RED that passes immediately is not a RED.
+
 ## Still not built
 
 **The food-cost percentage on the phone.** The web report shows it; the app
