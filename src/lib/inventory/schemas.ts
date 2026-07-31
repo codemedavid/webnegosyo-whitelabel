@@ -71,6 +71,13 @@ export const stockMovementInputSchema = z.object({
   unit_cost: z.number().min(0).optional(),
   note: z.string().trim().optional(),
   order_id: z.string().uuid().optional(),
+  /**
+   * Branch this movement lands in. Absent means "wherever the author's own
+   * scope puts it" — the store pool for an owner, their own branch for a
+   * manager. Never trusted as sent: `resolveMovementBranch` re-checks it
+   * against the author's scope before anything is written.
+   */
+  outlet_id: z.string().uuid().nullable().optional(),
 })
 
 export type StockMovementInput = z.infer<typeof stockMovementInputSchema>
