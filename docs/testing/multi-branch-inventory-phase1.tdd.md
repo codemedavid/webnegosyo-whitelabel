@@ -60,9 +60,51 @@ and deliberate exclusion from `MANUAL_MOVEMENT_REASONS`.
 `inventory_stock` table, `stock_movements.outlet_id`, widened reason CHECK,
 backfill of one store-pool row per existing item, rewritten `apply_stock_movement()`.
 
-- **Status: WRITTEN, NOT APPLIED.** No database validation has been run.
-- Not covered by the Jest suite: this is SQL, and the trigger's behaviour can only
-  be proven against a database. See Known gaps.
+- **Status: APPLIED 2026-07-31** to the production project as `inventory_branch_stock`,
+  then probed. Not covered by the Jest suite — this is SQL, and the trigger can
+  only be proven against a database.
+
+**Baseline before applying**: one inventory item (`Mozzarela`, `current_qty` 20),
+one stock movement, `inventory_stock` absent.
+
+**After the backfill** — the roll-up invariant, asserted per item:
+
+| name | rollup | branch_sum | invariant_holds | stock_rows | store_pool_rows |
+|---|---|---|---|---|---|
+| Mozzarela | 20.0000 | 20.0000 | true | 1 | 1 |
+
+**Trigger probe** — a two-branch scenario built on `gungjeon-unlimited`'s real
+outlets inside a transaction that was rolled back. Receive 500 at North, receive
+200 at South, sell 30 at North, transfer 100 North→South as two legs:
+
+| north | south | rollup | branch_sum | rows_created | balance_after per movement |
+|---|---|---|---|---|---|
+| 370.0000 | 300.0000 | 670.0000 | 670.0000 | 2 | `[500, 200, 470, 370, 300]` |
+
+Four things this proves:
+
+1. **The original defect is fixed.** The sale of 30 at North left South at 200,
+   untouched. Before this migration it would have drawn on the same scalar.
+2. **The roll-up invariant holds under movement**, not just after the backfill:
+   `rollup 670 = branch_sum 670`.
+3. **The trigger creates a branch's first stock row** — `rows_created = 2` from
+   movements alone; nothing pre-seeded them.
+4. **`balance_after` is the branch's balance, not the store's.** The sale at
+   North recorded 470, North's own running total, not the chain's 670.
+
+**Cross-tenant branch guard** — inserting a movement pairing `gungjeon`'s item
+with `cafejuancho`'s outlet:
+
+```
+REJECTED: Stock movement references a branch outside its tenant
+```
+
+**Post-probe state** — every probe artefact rolled back, nothing leaked:
+
+```
+leftover_probe_items: 0   total_items: 1   total_stock_rows: 1
+total_movements: 1        invariant_holds_everywhere: true
+```
 
 ## Test specification
 
@@ -108,12 +150,13 @@ is in `movingAverageUnitCost`, pre-existing and untouched by this phase.
 
 ## Known gaps
 
-1. **The migration is unapplied and unproven.** The roll-up invariant
-   (`sum(inventory_stock.current_qty) = inventory_items.current_qty` per item) has
-   NOT been asserted against a database. It must be probed before and after
-   applying. The plan names this the highest-severity risk of the phase.
-2. **The trigger's race handling is unexercised.** Two concurrent first-movements
-   at the same new branch take the `unique_violation` retry path; no test drives it.
+1. **The trigger's race handling is unexercised.** Two concurrent first-movements
+   at the same new branch take the `unique_violation` retry path; the probe is
+   single-threaded and never drives it. Proving it needs two concurrent sessions.
+2. **`src/types/database.ts` / `src/types/supabase.ts` are stale** — they do not
+   yet know `inventory_stock` or `stock_movements.outlet_id`. Regenerating them is
+   the first Phase 2 task; deliberately deferred here because those files are large
+   and another session shares this working tree.
 3. **Nothing writes a branch yet.** `applyOrderStockMovements` still takes no
    outlet, so every movement lands in the store pool. Per-branch depletion is
    Phase 2 — until it ships, this migration changes no observable behaviour.
