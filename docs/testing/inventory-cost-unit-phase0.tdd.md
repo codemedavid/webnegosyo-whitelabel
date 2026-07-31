@@ -1718,3 +1718,128 @@ is blocked on the branch-aware ledger read, not on the count session.
 
 **Branch-aware ledger read** (plan Task C) and **food cost % on the phone**
 (plan Task D) remain, unchanged.
+
+---
+
+# The branch-blind reconciliation — a live bug, not a missing feature
+
+**SHIPPED 2026-07-31.** This was picked up as plan Task C ("branch-aware ledger
+read"), framed there as an unblock for the branch food-cost %. Reading the
+migration first changed what it was: **the daily report has been producing rows
+that do not add up for every multi-branch tenant.**
+
+## What was actually wrong
+
+Migration `20260808120000` redefined `stock_movements.balance_after` — it is the
+running total **at that movement's branch**, not the store total. Its own
+comment says so:
+
+> `balance_after now means the balance AT THAT BRANCH, not the store total. For
+> a single-location tenant the two are the same number, so nothing changes for
+> them; for a branched one, a branch's history that reported the chain's total
+> would be unreadable.`
+
+`buildDailyInventoryReport` never learned this. It read a day's movements for an
+ingredient as ONE stream:
+
+```ts
+const opening = first.balanceAfter - first.quantityDelta
+const closing = last.balanceAfter
+```
+
+So the opening came from whichever branch moved first and the closing from
+whichever moved last. Two consequences, the second worse than the first:
+
+1. **The row stops adding up.** `opening + received − sold − waste + transferred
+   ± count = closing` is the identity that lets a merchant check this report by
+   eye rather than merely believe it. A row that fails it is worse than no row.
+2. **Offsetting counts hide a real loss.** `countAdjustment` summed across
+   branches, so North being 40 short and South being 40 long netted to zero and
+   the day reported **zero shrinkage** while a shelf was genuinely missing 40.
+   That is precisely the failure the shrinkage figure exists to surface.
+
+Single-shop tenants were unaffected throughout — branch total and store total
+are the same number — which is why this survived.
+
+## User journeys
+
+- As a multi-branch merchant, I want the day's row to add up, so that I can
+  check the report rather than take it on faith.
+- As a multi-branch merchant, I want a shortfall at one branch to be reported
+  even when another branch counted long, so that a real loss is never netted
+  away.
+
+## RED → GREEN
+
+| Cycle | RED commit | RED evidence | GREEN commit |
+|---|---|---|---|
+| Per-branch reconciliation | `dca1def` | runtime: **3 failed**, 22 passed | `88c97e7` (75 passed) |
+| Fixture repair | — | `tsc` TS2322 on a fixture missing `countSession` | `b4f0884` |
+
+## Guarantees
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 266 | Opening and closing sum the branches instead of reading them as one stream | `inventory-daily-report:adds the branches up` | PASS |
+| 267 | Every row satisfies the reconciliation identity across branches | `…:keeps every row checkable by eye` | PASS |
+| 268 | A single-shop day is unchanged — absent `outletId` means "the one shelf" | `…:still reconciles a single-shop day` | PASS |
+| 269 | **A shortfall at one branch is not netted away by a long count at another** | `…:sums shrinkage across branches` | PASS |
+
+## Decisions worth not re-deriving
+
+**Summed, not filtered.** The report could have been fixed by making the
+merchant pick a branch. Summing per-branch openings and closings keeps the
+store-wide report meaningful AND correct, and asks nothing of the merchant.
+
+**Branches that did not move today contribute to neither figure**, so the
+identity still holds — their stock is simply outside the day's story.
+
+**Shrinkage is judged per branch and then summed**, never netted. Only the short
+side of each branch counts, for the same reason only the short side counts
+within one.
+
+**`outletId` is optional on `DailyReportMovement`.** Absent means the store pool,
+which is what every pre-branch row and every single-shop tenant's rows carry.
+`null` and `undefined` deliberately key to the same shelf.
+
+## Honest notes
+
+- 3 of 4 tests genuinely RED; the single-shop case is a regression guard that
+  passed immediately, which is the point of including it.
+- I predicted the opening/closing break. I did **not** predict the shrinkage
+  netting — that test was written on the same suspicion and turned out to expose
+  a second, more expensive failure. Recorded because the value came from testing
+  the branch dimension broadly rather than from foresight.
+- Re-porting `daily-report.ts` to the app with a blind
+  `sed 's#@/lib/inventory/#./#g'` **broke the app copy**: it rewrote
+  `./stock-ledger` over the app's deliberate `./movement-reason` import. The
+  parity guard ignores import lines precisely so those may differ, so the guard
+  could not catch it — `tsc` did. Re-port by hand, or fix the import after.
+
+## Validation
+
+```
+npx jest                        → 366 passed, 1 skipped, 4548 tests (web)
+cd webnegosyo-app && npx jest   → 97 suites, 1607 passed (parity guard green)
+npx tsc --noEmit                → clean for every file in this unit
+```
+
+`tests/unit/inventory-stock-alerts-read.test.ts` failed during this run: it is
+`9ce07a0`, another **concurrent session's committed RED reproducer** for the
+alert read dropping the branch. Not this unit's.
+
+## Still not built — and why the branch VIEW is blocked
+
+The report is now correct store-wide. Showing **one branch's** report is a
+separate thing, and it is blocked on the other half of the ratio:
+`getDailyRevenue` takes no branch parameter and filters by none, and for Convex
+tenants the revenue read is a Convex query that would need its own branch
+filter.
+
+Scoping the stock read to a branch without scoping revenue would produce a
+branch-scoped numerator over store-wide takings — the same scope mismatch the
+report has been deliberately withholding the branch food-cost % to avoid, merely
+inverted. **The revenue side must be branch-scoped first.**
+
+Also outstanding: the merchant app has no count panel, and counts still open
+against the store pool only.
