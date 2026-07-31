@@ -36,6 +36,13 @@ interface StockMovementSheetProps {
    * whole store.
    */
   outletId?: string | null;
+  /**
+   * The count session running on this shelf, if there is one. Passed down so a
+   * count entered here is filed under it AUTOMATICALLY — a tag the merchant had
+   * to remember would be forgotten, and a forgotten tag does not lose a figure,
+   * it leaves an honest count reading as partial.
+   */
+  openCountId?: string | null;
   onClose: () => void;
   /** Fired once the ledger has settled, so the shelf reloads from the server. */
   onRecorded: () => void;
@@ -54,6 +61,7 @@ export function StockMovementSheet({
   tenantId,
   item,
   outletId,
+  openCountId,
   onClose,
   onRecorded,
 }: StockMovementSheetProps) {
@@ -85,7 +93,7 @@ export function StockMovementSheet({
 
     let payload;
     try {
-      payload = buildMovementPayload(draft, item);
+      payload = buildMovementPayload(draft, item, openCountId);
     } catch (validationError) {
       setError(
         validationError instanceof Error ? validationError.message : "Check the amount",

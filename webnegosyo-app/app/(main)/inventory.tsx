@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useAuthStore } from "../../stores/auth-store";
 import { useBranchScope } from "../../lib/use-branch-scope";
@@ -24,6 +25,13 @@ import { ErrorState } from "../../components/ErrorState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
+import { StockCountPanel } from "../../components/StockCountPanel";
+import {
+  loadOpenCount,
+  openCount,
+  closeCount,
+  type OpenCountSession,
+} from "../../lib/count-session-service";
 
 type LevelFilter = StockLevel | "all";
 
@@ -64,6 +72,60 @@ export default function InventoryScreen() {
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [recording, setRecording] = useState<StockItemView | null>(null);
+  const [count, setCount] = useState<OpenCountSession | null>(null);
+  const [countBusy, setCountBusy] = useState(false);
+
+  const userId = useAuthStore((s) => s.userId);
+
+  /**
+   * The count running on the shelf currently on screen.
+   *
+   * Scoped to the same branch the shelf is, never the store pool by default: a
+   * count opened against the pool while a manager counts their own branch would
+   * measure their work against every branch's ingredients and report them as
+   * having barely started.
+   */
+  const loadCount = useCallback(async () => {
+    if (!tenantId) return;
+    setCount(await loadOpenCount(tenantId, outletId ?? null));
+  }, [tenantId, outletId]);
+
+  useEffect(() => {
+    loadCount();
+  }, [loadCount]);
+
+  const startCount = async () => {
+    if (!tenantId) return;
+    setCountBusy(true);
+    try {
+      setCount(await openCount(tenantId, { outletId: outletId ?? null, startedBy: userId }));
+    } catch (error) {
+      // Surfaced, never swallowed: a merchant who believes a count is running
+      // would enter a whole shelf into a session that does not exist.
+      Alert.alert(
+        "Could not start the count",
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setCountBusy(false);
+    }
+  };
+
+  const finishCount = async () => {
+    if (!tenantId || !count) return;
+    setCountBusy(true);
+    try {
+      await closeCount(tenantId, count.id, userId);
+      setCount(null);
+    } catch (error) {
+      Alert.alert(
+        "Could not finish the count",
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setCountBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -199,6 +261,13 @@ export default function InventoryScreen() {
           )}
         </View>
 
+        <StockCountPanel
+          progress={count?.progress ?? null}
+          isBusy={countBusy}
+          onStart={startCount}
+          onFinish={finishCount}
+        />
+
         {body()}
       </ScrollView>
 
@@ -211,8 +280,15 @@ export default function InventoryScreen() {
         tenantId={tenantId ?? ""}
         item={recording}
         outletId={outletId}
+        openCountId={count?.id ?? null}
         onClose={() => setRecording(null)}
-        onRecorded={load}
+        onRecorded={() => {
+          // Both: the entry re-levels the ingredient AND advances the count's
+          // coverage, and a panel still reading "0 of 40" after four counts
+          // teaches the merchant the figure is decorative.
+          load();
+          loadCount();
+        }}
       />
     </View>
   );
