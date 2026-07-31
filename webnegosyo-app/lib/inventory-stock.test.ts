@@ -14,6 +14,7 @@
  */
 
 import {
+  applyBranchStock,
   buildStockViews,
   describeStockView,
   evaluateStockLevel,
@@ -22,6 +23,7 @@ import {
   sortStockViews,
   stockFillRatio,
   summarizeStock,
+  type BranchStockRow,
   type InventoryItemRow,
   type InventoryUnitRow,
   type StockItemView,
@@ -266,5 +268,98 @@ describe("describeStockView", () => {
     expect(describeStockView(view({ name: "Sugar", level: "ok", quantity: 40 }))).toBe(
       "Sugar has 40 kg on hand",
     );
+  });
+});
+
+describe("applyBranchStock", () => {
+  const rows: BranchStockRow[] = [
+    { inventory_item_id: "i1", outlet_id: "o-north", current_qty: 700, reorder_level: 0 },
+    { inventory_item_id: "i1", outlet_id: "o-south", current_qty: 0, reorder_level: 0 },
+    { inventory_item_id: "i1", outlet_id: null, current_qty: 50, reorder_level: 0 },
+  ];
+
+  it("shows the branch what is on ITS shelf, not the chain total", () => {
+    // The whole point. `inventory_items.current_qty` is the roll-up: 750 across
+    // the store. South is holding none of it and must be told so.
+    const [south] = applyBranchStock([item({ current_qty: 750 })], rows, "o-south");
+
+    expect(south.current_qty).toBe(0);
+  });
+
+  it("gives a branch with no row zero rather than the roll-up", () => {
+    // The rule that separates stock from outlet_menu_items: a missing override
+    // inherits, a missing quantity is ZERO. Inheriting would report the same
+    // sack of flour as present at every branch at once.
+    const [west] = applyBranchStock([item({ current_qty: 750 })], rows, "o-west");
+
+    expect(west.current_qty).toBe(0);
+  });
+
+  it("treats the unbranched pool as a real shelf of its own", () => {
+    const [pool] = applyBranchStock([item({ current_qty: 750 })], rows, null);
+
+    expect(pool.current_qty).toBe(50);
+  });
+
+  it("reads a blank branch id as the store pool, not a branch named ''", () => {
+    // Mirrors resolveBranchScope: stock must not land somewhere unlookupable.
+    const [pool] = applyBranchStock([item({ current_qty: 750 })], rows, "  ");
+
+    expect(pool.current_qty).toBe(50);
+  });
+
+  it("hands a caller with no branch its own array straight back", () => {
+    // A single-shop tenant, and every tenant before branches existed. Today's
+    // behaviour has to be preserved exactly, not approximately.
+    const items = [item({ current_qty: 750 })];
+
+    expect(applyBranchStock(items, rows, undefined)).toBe(items);
+  });
+
+  it("uses a branch's own reorder level once it sets one", () => {
+    const quiet: BranchStockRow[] = [
+      { inventory_item_id: "i1", outlet_id: "o-south", current_qty: 8, reorder_level: 5 },
+    ];
+
+    const [south] = applyBranchStock([item({ reorder_level: 20 })], quiet, "o-south");
+
+    expect(south.reorder_level).toBe(5);
+  });
+
+  it("falls back to the store's threshold until a branch sets its own", () => {
+    // Unlike the quantity. The store-wide level is the merchant's standing
+    // answer to "warn me when it gets this low"; dropping it would silently
+    // switch off every low-stock warning on the day branches were turned on.
+    const [south] = applyBranchStock([item({ reorder_level: 20 })], rows, "o-south");
+
+    expect(south.reorder_level).toBe(20);
+  });
+
+  it("lets a branch quantity go negative rather than clamping it", () => {
+    // Stock goes negative when a sale lands before its delivery is recorded.
+    // Clamping hides exactly the discrepancy the ledger exists to surface.
+    const oversold: BranchStockRow[] = [
+      { inventory_item_id: "i1", outlet_id: "o-south", current_qty: -3, reorder_level: 0 },
+    ];
+
+    const [south] = applyBranchStock([item()], oversold, "o-south");
+
+    expect(south.current_qty).toBe(-3);
+  });
+
+  it("leaves the caller's rows untouched", () => {
+    const items = [item({ current_qty: 750 })];
+
+    applyBranchStock(items, rows, "o-south");
+
+    expect(items[0].current_qty).toBe(750);
+  });
+
+  it("still reads as out of stock once the branch figure is applied", () => {
+    // The seam has to reach the level, not just the number: an empty South
+    // inside a healthy chain is the bug this whole change exists to fix.
+    const [south] = applyBranchStock([item({ current_qty: 750 })], rows, "o-south");
+
+    expect(evaluateStockLevel(south)).toBe("out");
   });
 });

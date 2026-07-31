@@ -126,3 +126,61 @@ describe("loadInventoryStock", () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 });
+
+describe("loadInventoryStock — the branch the merchant is standing in", () => {
+  /** Wires the third table the branch path needs. */
+  function mockBranchTables(items: unknown, units: unknown, stock: unknown) {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === "inventory_items") return queryChain("order", items);
+      if (table === "inventory_stock") return queryChain("eq", stock);
+      return queryChain("eq", units);
+    });
+  }
+
+  const unitRows = { data: [{ id: "u1", abbreviation: "kg" }], error: null };
+
+  it("shows a branch manager their own shelf, not the chain total", async () => {
+    // The roll-up says 750; South is holding none of it. Showing 750 to the
+    // person standing at South is the bug this closes.
+    mockBranchTables(
+      { data: [{ ...flourRow, current_qty: 750 }], error: null },
+      unitRows,
+      {
+        data: [
+          { inventory_item_id: "i1", outlet_id: "o-south", current_qty: 0, reorder_level: 0 },
+        ],
+        error: null,
+      },
+    );
+
+    const [flour] = await loadInventoryStock("t1", "o-south");
+
+    expect(flour.quantity).toBe(0);
+    expect(flour.level).toBe("out");
+  });
+
+  it("does not read the branch table at all when no branch is named", async () => {
+    // A single-shop tenant must pay for nothing, and must behave exactly as it
+    // did before branches existed.
+    mockBranchTables({ data: [flourRow], error: null }, unitRows, { data: [], error: null });
+
+    const [flour] = await loadInventoryStock("t1");
+
+    expect(supabase.from).not.toHaveBeenCalledWith("inventory_stock");
+    expect(flour.quantity).toBe(5);
+  });
+
+  it("keeps the shelf when the branch quantities cannot be read", async () => {
+    // Losing the branch read must not blank the screen — but it must not
+    // quietly show the roll-up as if it were the branch's either, so the rows
+    // come back at zero: the same answer a branch with no stock rows gets.
+    mockBranchTables({ data: [{ ...flourRow, current_qty: 750 }], error: null }, unitRows, {
+      data: null,
+      error: { message: "inventory_stock is on fire" },
+    });
+
+    const [flour] = await loadInventoryStock("t1", "o-south");
+
+    expect(flour.quantity).toBe(0);
+  });
+});
