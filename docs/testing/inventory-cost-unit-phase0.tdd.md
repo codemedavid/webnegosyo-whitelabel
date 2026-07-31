@@ -1003,6 +1003,72 @@ with the feed reproducer at the commit between them.
 - **An unreadable roster costs names, not the feed** — the same degradation as
   the unit catalog in the daily report read.
 
+## Security D SHIPPED 2026-07-31 — a staff grant now holds at the API door
+
+**The journey.** *As an owner, I want only the people I gave stock duties to be
+able to change my stock, so that a cashier's account cannot rewrite my shelf.*
+
+`POST /api/inventory/movement` authorized on ROLE alone —
+`role === 'admin' && tenant_id === tenantId`. But every staff member of a tenant
+is `role='admin'` in this codebase (the deliberate choice from the staff work: a
+new role string would have had to be taught to every existing admin check), and
+per-feature reach lives in `app_users.permissions`.
+
+So a cashier holding only `pos` passed. The web sidebar hides inventory from
+them and the merchant app does not register the tab — but **neither is a
+boundary**, and this route is reachable with the token the app already holds. A
+stocktake from that caller rewrites the shelf figure and surfaces in the daily
+report as someone else's shrinkage.
+
+### RED → GREEN
+
+```
+npx jest --testPathPatterns="inventory-movement-authz"
+RED:   1 failed, 6 passed — the cashier got 200 and the movement was recorded
+       (Expected: 403, Received: 200)
+GREEN: 7 passed
+
+npx jest --testPathPatterns="inventory|stock"
+  Test Suites: 1 skipped, 66 passed / 67   Tests: 8 skipped, 693 passed / 701
+npx tsc --noEmit / npx eslint  → clean
+```
+
+The six passing tests at RED matter as much as the failing one: they show the
+pre-existing boundaries (other tenant, no `app_users` row) already worked, so
+exactly one was missing.
+
+Checkpoints: `a7d3655` (RED) → `d143862` (GREEN).
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 170 | A staff member without the `menu` grant is refused, and nothing is written | `api/inventory-movement-authz.test.ts:refuses a staff member who does not hold the menu grant` | integration | PASS |
+| 171 | A staff member holding `menu` is admitted | `…:admits a staff member who holds the menu grant` | integration | PASS |
+| 172 | An owner is admitted regardless of the grants on their row | `…:admits the owner` | integration | PASS |
+| 173 | A legacy admin with `permissions: null` keeps full access | `…:admits a legacy admin whose permissions were never set` | integration | PASS |
+| 174 | A superadmin is admitted | `…:admits a superadmin` | integration | PASS |
+| 175 | An admin of another tenant is still refused | `…:still refuses an admin of another tenant` | integration | PASS |
+| 176 | A caller with no `app_users` row is refused | `…:refuses a caller with no app_users row at all` | integration | PASS |
+
+### Decisions worth not re-deriving
+
+- **`permissions: null` still means full access.** It predates staff management;
+  reading it as "no grants" would lock every pre-existing merchant out of their
+  own inventory. Guarantee 173 exists solely to pin that.
+- **`menu` was chosen because the UI already uses it** — the web sidebar entry
+  and the app's inventory tab both gate on it. The door and the UI now agree
+  rather than merely appearing to.
+- **`/api/inventory/order-stock` was examined and deliberately NOT changed.**
+  The review lists it alongside this one, but it is the register's path: it runs
+  when a cashier rings up or cancels a sale, so `menu` would be the wrong key
+  and requiring it would break the POS mid-service. Guessing at the right grant
+  (`pos`? `orders`? both?) and getting it wrong is a worse outcome than the
+  current state, where the caller must still be an authenticated staff member of
+  that tenant and the effect is bounded to one order's own lines by the
+  `order_stock_applications` claim. It needs the caller set established first,
+  not a speculative edit.
+
 ## Still not built
 
 **The food-cost percentage on the phone.** The web report shows it; the app
@@ -1027,10 +1093,11 @@ component), matching the Phase 1c precedent — the passthrough is covered at th
 shelf — while revenue CAN be branch-scoped. Any future per-branch report must fix
 the ledger first, or the two halves of the ratio describe different shops.
 
-**Still open from the review, untouched:** both admin inventory routes authorize
-on role alone and skip `verifyTenantPermission`; `current_qty` has no
-non-negative CHECK; stocktake is still a read-modify-write that a concurrent
-sale can swallow. (The `FOR ALL` RLS hole is now closed — see Security C.)
+**Still open from the review:** `current_qty` has no non-negative CHECK;
+stocktake is still a read-modify-write that a concurrent sale can swallow.
+(The `FOR ALL` RLS hole is closed — Security C. The movement route's
+role-only authorization is closed — Security D. `/api/inventory/order-stock`
+is examined and deliberately unchanged; see Security D's last note.)
 
 **Not deployed.** The branch is ~540 commits ahead of `origin/main` with no
 upstream, so none of this — Phase 0's correctness fixes included — is in front
