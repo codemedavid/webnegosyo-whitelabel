@@ -57,6 +57,7 @@ interface Tables {
   recipes?: ReturnType<typeof table>
   menu_items?: ReturnType<typeof table>
   inventory_items?: ReturnType<typeof table>
+  inventory_stock?: ReturnType<typeof table>
 }
 
 function wire(tables: Tables): Required<Tables> {
@@ -67,6 +68,7 @@ function wire(tables: Tables): Required<Tables> {
     recipes: tables.recipes ?? table([]),
     menu_items: tables.menu_items ?? table([]),
     inventory_items: tables.inventory_items ?? table([]),
+    inventory_stock: tables.inventory_stock ?? table([]),
   }
   from.mockImplementation((name: keyof Tables) => resolved[name])
   return resolved
@@ -488,5 +490,132 @@ describe('processStockLevelChanges — resilience', () => {
     )
 
     expect(result.alertsRaised).toBe(0)
+  })
+})
+
+describe('processStockLevelChanges — one branch, not the whole chain', () => {
+  /**
+   * The alert path evaluated `inventory_items.current_qty`, the roll-up. North
+   * holding 700g of flour and South holding none reads as 700g, clears every
+   * threshold, and nobody tells South they cannot cook. The panel that makes
+   * that visible has existed since Phase 2; the path that actually interrupts
+   * a merchant was still blind to it.
+   */
+  const NORTH = 'o-north'
+  const SOUTH = 'o-south'
+
+  const branchRows = (rows: Array<Record<string, unknown>>) => table(rows)
+
+  it('alerts on a branch that has run out while the chain looks healthy', async () => {
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      // 700 across the chain; South is holding 10 of it and is about to sell 10.
+      inventory_stock: branchRows([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: NORTH, current_qty: 690, reorder_level: 0 },
+      ]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    expect(result.alertsRaised).toBe(1)
+  })
+
+  it('stamps the alert with the branch it is about', async () => {
+    // Without this the merchant is told "Flour is out" and not which shop's.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      inventory_stock: branchRows([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+      ]),
+    })
+
+    await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    expect(tables.stock_alerts.calls.insert?.[0][0]).toEqual([
+      expect.objectContaining({ inventory_item_id: 'flour', outlet_id: SOUTH }),
+    ])
+  })
+
+  it('does not let one branch open alert silence another branch', async () => {
+    // The dedup guard keyed on the ingredient alone would turn into exactly
+    // the blindness this change removes: North's open alert would suppress
+    // South's.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      // The service must ask only about THIS branch, so the open-alert lookup
+      // returns nothing for South even though North has one.
+      stock_alerts: table([]),
+      inventory_stock: branchRows([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+      ]),
+    })
+
+    await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    // The dedup read is filtered by branch, not just by ingredient.
+    const eqArgs = (tables.stock_alerts.calls.eq ?? []).map(([column]) => column)
+    expect(eqArgs).toContain('outlet_id')
+  })
+
+  it('does NOT take the menu item off when only one branch is out', async () => {
+    // menu_items.is_available is store-wide. 86ing the chain because one shop
+    // ran out would hide a bestseller everywhere -- worse than the bug being
+    // fixed. Auto-86 stays on the roll-up until availability is per-branch.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      inventory_stock: branchRows([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: NORTH, current_qty: 690, reorder_level: 0 },
+      ]),
+      recipe_components: table([
+        { recipe_id: 'r1', inventory_item_id: 'flour', tenant_id: 't1' },
+      ]),
+      recipes: table([{ id: 'r1', menu_item_id: 'm1', tenant_id: 't1', is_base: true }]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    expect(result.menuItemsDisabled).toEqual([])
+    expect(tables.menu_items.calls.update).toBeUndefined()
+  })
+
+  it('leaves store-wide behaviour exactly as it was when no branch is given', async () => {
+    // Regression lock: a single-shop tenant, or any caller that has no branch
+    // to name, must behave byte-for-byte as before and never read the branch
+    // table at all.
+    const tables = wire({ tenants: table(FLAGS_ALL_ON) })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 25, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+    )
+
+    expect(result.alertsRaised).toBe(1)
+    expect(tables.stock_alerts.calls.insert?.[0][0]).toEqual([
+      expect.objectContaining({ inventory_item_id: 'flour', quantity: 15 }),
+    ])
+    expect(tables.inventory_stock.calls.select).toBeUndefined()
   })
 })
