@@ -16,11 +16,27 @@ import { convertQuantity, type InventoryUnit } from '@/lib/inventory/unit-conver
 
 /**
  * Why stock moved. `sale` and `void` are written by order depletion
- * (Phase 4B/4C); the rest are merchant actions.
+ * (Phase 4B/4C), `transfer_out`/`transfer_in` by a branch transfer; the rest
+ * are merchant actions.
  */
-export type StockMovementReason = 'receive' | 'stocktake' | 'waste' | 'sale' | 'void'
+export type StockMovementReason =
+  | 'receive'
+  | 'stocktake'
+  | 'waste'
+  | 'sale'
+  | 'void'
+  | 'transfer_out'
+  | 'transfer_in'
 
-/** Movements a merchant records by hand, in the order they are offered. */
+/**
+ * Movements a merchant records by hand, in the order they are offered.
+ *
+ * Transfers are deliberately absent. A transfer is two movements that must
+ * agree — stock leaving North has to arrive at South — and offering one leg on
+ * the manual form would let a merchant write a half-transfer that loses stock
+ * with a plausible-looking reason attached. Both legs are written by the
+ * transfer document, which owns the pairing.
+ */
 export const MANUAL_MOVEMENT_REASONS: readonly StockMovementReason[] = [
   'receive',
   'stocktake',
@@ -33,6 +49,8 @@ export const MOVEMENT_REASON_LABELS: Record<StockMovementReason, string> = {
   waste: 'Wasted',
   sale: 'Sold',
   void: 'Order voided',
+  transfer_out: 'Sent to branch',
+  transfer_in: 'Received from branch',
 }
 
 export interface MovementDeltaInput {
@@ -66,9 +84,11 @@ export function resolveMovementDelta(input: MovementDeltaInput): number {
   switch (reason) {
     case 'receive':
     case 'void':
+    case 'transfer_in':
       return inStockUnit
     case 'waste':
     case 'sale':
+    case 'transfer_out':
       return -inStockUnit
     case 'stocktake':
       return inStockUnit - currentQty
@@ -98,4 +118,26 @@ export function movingAverageUnitCost(input: MovingAverageInput): number {
   if (totalQty <= 0) return receivedUnitCost
 
   return (currentQty * currentUnitCost + receivedQty * receivedUnitCost) / totalQty
+}
+
+/**
+ * What the confirm button will do, per reason.
+ *
+ * A bare "Record" leaves the merchant's own choice off the one control they
+ * are about to press. Mid-service the default movement is a delivery, and a
+ * delivery ADDS stock and can blend a new cost into the average — so the
+ * button says which movement it is writing, and a distracted tap is a thing
+ * that can be read rather than a thing that is discovered later.
+ *
+ * Lives beside `MOVEMENT_REASON_LABELS` for the same reason it does: the
+ * merchant app writes the same movements and must not invent its own words.
+ */
+export const MOVEMENT_ACTION_LABELS: Record<StockMovementReason, string> = {
+  receive: 'Record delivery',
+  stocktake: 'Record count',
+  waste: 'Record waste',
+  sale: 'Record sale',
+  void: 'Record void',
+  transfer_out: 'Send to branch',
+  transfer_in: 'Receive from branch',
 }
