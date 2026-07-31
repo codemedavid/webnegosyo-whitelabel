@@ -134,3 +134,50 @@ describe("stock movement sheet — writing to the shelf being read", () => {
     expect(sheet).toMatch(/outletId/);
   });
 });
+
+describe("running a stock count from the shelf screen", () => {
+  const screen = read("app", "(main)", "inventory.tsx");
+  const sheet = read("components", "StockMovementSheet.tsx");
+  const panel = read("components", "StockCountPanel.tsx");
+
+  it("reads and writes the count through the shared service, not inline queries", () => {
+    expect(screen).toMatch(/loadOpenCount/);
+    expect(screen).not.toMatch(/from\("inventory_counts"\)/);
+  });
+
+  it("offers the panel on the screen the merchant is standing in front of", () => {
+    // The count happens at the shelf. Putting the control on the report screen
+    // instead would mean opening a count somewhere other than where it is run.
+    expect(screen).toMatch(/<StockCountPanel/);
+  });
+
+  it("takes every word of the panel from the shared copy", () => {
+    // Hand-written strings here would drift from the web panel, and two
+    // surfaces describing one count differently is worse than either being
+    // plain.
+    expect(panel).toMatch(/describeCountPanel/);
+    expect(panel).not.toMatch(/Start stock count["`]/);
+  });
+
+  it("warns before finishing a count that has not reached every ingredient", () => {
+    // Said at the last moment the merchant can still change the outcome.
+    expect(panel).toMatch(/closingWarning/);
+  });
+
+  it("hands the running count to the sheet so entries are filed under it", () => {
+    expect(screen).toMatch(/openCountId=/);
+    expect(sheet).toMatch(/openCountId/);
+  });
+
+  it("attaches the count where the payload is built, not at the call site", () => {
+    // One seam. Attaching it anywhere else would let a second entry path grow
+    // that files nothing, and a count missing entries reads as partial.
+    expect(sheet).toMatch(/buildMovementPayload\([^)]*openCountId/s);
+  });
+
+  it("scopes the count to the branch whose shelf is on screen", () => {
+    // A count opened against the store pool while a manager counts their own
+    // branch would measure their work against every branch's ingredients.
+    expect(screen).toMatch(/loadOpenCount\(\s*tenantId[^)]*outletId/s);
+  });
+});
