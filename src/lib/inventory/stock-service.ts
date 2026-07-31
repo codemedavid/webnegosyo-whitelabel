@@ -23,7 +23,17 @@ import {
   resolveMovementDelta,
   movingAverageUnitCost,
 } from '@/lib/inventory/stock-ledger'
-import { convertUnitCost, type InventoryUnit } from '@/lib/inventory/unit-conversion'
+import {
+  convertQuantity,
+  convertUnitCost,
+  type InventoryUnit,
+} from '@/lib/inventory/unit-conversion'
+import { resolveMovementBranch } from '@/lib/inventory/branch-stock-view'
+import {
+  resolveBranchScope,
+  type BranchScope,
+  type BranchScopedUser,
+} from '@/lib/outlets/branch-scope'
 
 export { stockMovementInputSchema, type StockMovementInput }
 
@@ -136,12 +146,53 @@ async function resolveActingUserId(supabase: StockMovementClient): Promise<strin
   }
 }
 
+/**
+ * The branch scope of whoever is recording this movement.
+ *
+ * Resolved from `app_users` rather than taken from the caller, for the same
+ * reason the POS route resolves it server-side: a client-named branch on a
+ * write path would let one shop move another's stock.
+ *
+ * Falls back to store-wide when no user can be named. That is the order
+ * pipeline's service client — a `sale` is deducted by the system, not by a
+ * person — and it is the behaviour every tenant has today.
+ */
+async function resolveActingBranchScope(
+  supabase: StockMovementClient,
+  tenantId: string,
+): Promise<BranchScope> {
+  try {
+    const { data } = await supabase.auth.getUser()
+    const userId = data.user?.id
+    if (!userId) return { kind: 'all' }
+
+    const { data: appUser } = await supabase
+      .from('app_users')
+      .select('role, is_owner, outlet_id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .single()
+    if (!appUser) return { kind: 'all' }
+
+    return resolveBranchScope(appUser as unknown as BranchScopedUser)
+  } catch {
+    return { kind: 'all' }
+  }
+}
+
 export async function recordStockMovementWith(
   supabase: StockMovementClient,
   tenantId: string,
   input: StockMovementInput,
 ): Promise<StockMovementResult> {
   const validated = stockMovementInputSchema.parse(input)
+
+  // Throws for a manager naming somebody else's shop, before anything is read
+  // or written — a refused movement must leave no trace.
+  const outletId = resolveMovementBranch(
+    validated.outlet_id,
+    await resolveActingBranchScope(supabase, tenantId),
+  )
 
   const { data: itemRow, error: itemError } = await supabase
     .from('inventory_items')
@@ -175,6 +226,14 @@ export async function recordStockMovementWith(
     currentQty: item.current_qty,
   })
 
+  // The count itself, converted to the stock unit — an absolute, so unlike
+  // `quantityDelta` it does not depend on when it was read.
+  const countedInStockUnit = convertQuantity(
+    validated.quantity,
+    toUnit(enteredUnit),
+    toUnit(stockUnit),
+  )
+
   // The merchant prices a delivery in the unit they buy in (P120 per kg) but
   // `unit_cost` is per STOCK unit, because every figure that consumes it — the
   // moving average, recipe cost, and the report's COGS — pairs it with a
@@ -192,8 +251,22 @@ export async function recordStockMovementWith(
       created_by: await resolveActingUserId(supabase),
       tenant_id: tenantId,
       inventory_item_id: validated.inventory_item_id,
+      outlet_id: outletId,
       reason: validated.reason,
       quantity_delta: quantityDelta,
+      // A stocktake states WHAT WAS COUNTED and lets the trigger subtract,
+      // under the row lock, from the figure the update is about to change.
+      // Computing the difference here uses `item.current_qty` read earlier in
+      // this request, so anything landing in that gap is absorbed silently: a
+      // probe counted 900, a sale of 50 arrived mid-flight, and the shelf ended
+      // at 850 — the one movement whose whole purpose is to be authoritative,
+      // quietly wrong. `quantity_delta` above is still sent and is what an
+      // un-migrated database will use; the trigger overwrites it.
+      //
+      // Only a stocktake may carry a target. A delivery is a RELATIVE movement:
+      // letting it state an absolute would make two deliveries in a row
+      // overwrite each other instead of accumulating.
+      target_qty: validated.reason === 'stocktake' ? countedInStockUnit : null,
       entered_quantity: validated.quantity,
       entered_unit_id: validated.unit_id,
       unit_cost: unitCostInStockUnit ?? null,
