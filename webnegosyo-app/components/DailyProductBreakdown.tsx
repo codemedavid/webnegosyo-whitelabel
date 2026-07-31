@@ -61,13 +61,19 @@ function DeltaBadge({ delta }: { delta: ProductDelta | undefined }) {
   );
 }
 
-export function DailyProductBreakdown({
+function DailyProductBreakdownView({
   days,
   deltas,
   metric,
   todayKey,
 }: DailyProductBreakdownProps) {
-  const deltaById = new Map(deltas.map((d) => [d.menuItemId, d]));
+  // Keyed lookup rather than a find() per row: the breakdown can hold hundreds
+  // of rows across a 90-day window, and rebuilding it is wasted work whenever
+  // the parent re-renders for an unrelated reason.
+  const deltaById = React.useMemo(
+    () => new Map(deltas.map((d) => [d.menuItemId, d])),
+    [deltas]
+  );
 
   return (
     <View>
@@ -129,6 +135,16 @@ export function DailyProductBreakdown({
     </View>
   );
 }
+
+/**
+ * Memoised at the boundary.
+ *
+ * The screen re-renders on every keystroke in the search box — it must, the
+ * text field is bound to that state — but the breakdown's inputs are already
+ * debounced and so are unchanged for most of those renders. Without this, each
+ * keystroke re-walked every day and every row to produce identical markup.
+ */
+export const DailyProductBreakdown = React.memo(DailyProductBreakdownView);
 
 const styles = StyleSheet.create({
   daySection: { marginBottom: spacing.lg },
