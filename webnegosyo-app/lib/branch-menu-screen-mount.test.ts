@@ -137,3 +137,42 @@ describe("branch products screen", () => {
     expect(screen()).toMatch(/isOffStoreWide/);
   });
 });
+
+describe("branch products management", () => {
+  it("adds a product through the shared editor in create mode", () => {
+    expect(screen()).toMatch(/NEW_PRODUCT_ID/);
+    expect(screen()).toMatch(/productHref/);
+  });
+
+  it("edits a product through that same editor rather than a second form", () => {
+    // A second product form here would drift from the one on the Products tab
+    // — different validation, different legacy-column handling, same table.
+    expect(screen()).toMatch(/productHref\(row\.product\.id\)/);
+    expect(readCode("app", "(main)", "branch-menu.tsx")).not.toMatch(
+      /createProduct|updateProduct|deleteProduct/,
+    );
+  });
+
+  it("keeps editing and the branch switches on separate targets", () => {
+    // One row does two jobs. If opening the editor and expanding the branches
+    // shared a tap target, every attempt to switch a branch off would leave the
+    // screen instead.
+    expect(screen()).toMatch(/setExpandedId/);
+    expect(screen()).toMatch(/accessibilityLabel=\{`Edit \$\{row\.product\.name\}`\}/);
+  });
+
+  it("blocks the demo session from creating a product", () => {
+    expect(screen()).toMatch(/const handleCreate = [\s\S]{0,120}isDemo/);
+  });
+
+  it("reloads when the screen comes back into focus", () => {
+    // Without this a product added or renamed in the editor returns to a list
+    // that still shows the old menu, and the owner adds it twice.
+    expect(screen()).toMatch(/useFocusEffect/);
+  });
+
+  it("filters through the shared rule rather than beside the JSX", () => {
+    expect(screen()).toMatch(/filterBranchProducts/);
+    expect(screen()).toMatch(/listCategories/);
+  });
+});

@@ -13,6 +13,7 @@ import {
   INHERITED_BRANCH_VALUES,
   planBranchListingWrite,
   buildBranchProductRows,
+  filterBranchProducts,
   type BranchMenuOverrideValues,
 } from "./branch-menu";
 import type { OutletMenuOverrideRow } from "./outlet-menu-overrides";
@@ -107,6 +108,66 @@ describe("planBranchListingWrite", () => {
     // Assert
     expect(plan.kind).toBe("upsert");
     expect(plan.kind === "upsert" && plan.values.price).toBe(0);
+  });
+});
+
+describe("filterBranchProducts", () => {
+  const catalogue = [
+    { id: "adobo", name: "Chicken Adobo", category_id: "mains", price: 180 },
+    { id: "halo", name: "Halo-halo", category_id: "desserts", price: 120 },
+    { id: "leche", name: "Leche Flan", category_id: "desserts", price: 90 },
+  ];
+
+  it("returns everything when nothing is asked of it", () => {
+    // Act
+    const found = filterBranchProducts(catalogue, { search: "", categoryId: "all" });
+
+    // Assert
+    expect(found).toHaveLength(3);
+  });
+
+  it("matches a search anywhere in the name, ignoring case and padding", () => {
+    // Act
+    const found = filterBranchProducts(catalogue, { search: "  ADOBO ", categoryId: "all" });
+
+    // Assert
+    expect(found.map((p) => p.id)).toEqual(["adobo"]);
+  });
+
+  it("narrows to one category", () => {
+    // Act
+    const found = filterBranchProducts(catalogue, { search: "", categoryId: "desserts" });
+
+    // Assert
+    expect(found.map((p) => p.id)).toEqual(["halo", "leche"]);
+  });
+
+  it("applies search and category together", () => {
+    // Act
+    const found = filterBranchProducts(catalogue, { search: "leche", categoryId: "desserts" });
+
+    // Assert
+    expect(found.map((p) => p.id)).toEqual(["leche"]);
+  });
+
+  it("returns nothing rather than everything when the pair matches nothing", () => {
+    // Arrange: falling back to the full list here would read as "this category
+    // sells the whole menu", which is the opposite of the answer.
+    const found = filterBranchProducts(catalogue, { search: "adobo", categoryId: "desserts" });
+
+    // Assert
+    expect(found).toEqual([]);
+  });
+
+  it("never mutates the catalogue it was handed", () => {
+    // Arrange
+    const before = [...catalogue];
+
+    // Act
+    filterBranchProducts(catalogue, { search: "halo", categoryId: "desserts" });
+
+    // Assert
+    expect(catalogue).toEqual(before);
   });
 });
 
