@@ -75,7 +75,11 @@ export const WORKSPACES: readonly Workspace[] = [
     description: "Your branches, how they compare, and who runs them",
     // The roster ("team") joins these when its screen lands; a registered tab
     // with no route file breaks the tab bar for every account.
-    tabs: ["portfolio", "branches"],
+    // The cross-branch menu belongs here rather than beside the store-wide
+    // product list: it is a decision about which branch sells what, which only
+    // exists for an account that runs several, and the Business view is the one
+    // place already gated on exactly that.
+    tabs: ["portfolio", "branches", "branch-menu"],
     defaultTab: "portfolio",
   },
 ] as const;

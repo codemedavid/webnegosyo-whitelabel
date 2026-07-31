@@ -22,7 +22,11 @@ describe("WORKSPACES registry", () => {
     // branches exist, how they compare, and who runs them.
     // The roster ("team") joins this list when its screen lands; a tab
     // registered without a route file breaks the tab bar for everyone.
-    expect(getWorkspace("business").tabs).toEqual(["portfolio", "branches"]);
+    expect(getWorkspace("business").tabs).toEqual([
+      "portfolio",
+      "branches",
+      "branch-menu",
+    ]);
     expect(getWorkspace("business").defaultTab).toBe("portfolio");
   });
 

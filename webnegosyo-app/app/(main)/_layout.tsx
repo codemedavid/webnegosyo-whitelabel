@@ -220,6 +220,15 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon symbol="⇅" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="branch-menu"
+        options={{
+          href: show("branch-menu"),
+          title: "Branch products",
+          tabBarLabel: "Products",
+          tabBarIcon: ({ color }) => <TabIcon symbol="☰" color={color} />,
+        }}
+      />
       {/* Detail/utility screens — never tabs */}
       <Tabs.Screen
         name="product/[productId]"

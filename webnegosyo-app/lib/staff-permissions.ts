@@ -70,6 +70,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // through the grant that lets them run their own branch's people.
   team: "branch_staff",
   "product-management": "menu",
+  // Deciding which branches carry a dish is a menu decision, so it rides the
+  // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with
+  // only the POS grant take a dish off another branch's board.
+  "branch-menu": "menu",
   // Reordering an ingredient is a menu decision, so it rides the same key.
   inventory: "menu",
   // The daily report is that same shelf, reconciled — whoever may see the

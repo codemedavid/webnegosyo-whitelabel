@@ -120,6 +120,27 @@ describe("setBranchListing", () => {
     expect(builder.delete).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["taking a dish off a branch", false, "upsert"],
+    ["putting a dish back on a branch", true, "delete"],
+  ])("reports a failed write when %s", async (_case, isListed, _op) => {
+    // Arrange: the row reads fine, the write does not. Reporting success here
+    // would leave the switch showing a change the branch never got.
+    const stored = { ...EXISTING, is_listed: !isListed, price: null };
+    let reads = 0;
+    from.mockImplementation(() => {
+      reads += 1;
+      return reads === 1
+        ? chain({ data: stored, error: null })
+        : chain({ data: null, error: { message: "write failed" } });
+    });
+
+    // Act + Assert
+    await expect(setBranchListing("t1", "branch-a", "adobo", isListed)).rejects.toThrow(
+      "write failed",
+    );
+  });
+
   it("throws when the branch's current row cannot be read", async () => {
     // Arrange: treating an unreadable row as absent would write a fresh row of
     // defaults over the branch's price.
