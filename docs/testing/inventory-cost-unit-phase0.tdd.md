@@ -2149,3 +2149,118 @@ Pre-existing `tsc` errors remain in `tests/integration/inventory-live-e2e.test.t
   `outletId` and a bundle push reaching tenants — deploy-gated, not code.
 - There is still no branch **selector**: the report follows the account's own
   scope. An owner wanting one branch's report cannot ask for it.
+
+---
+
+# Phase 2 — the Convex half (schema v18)
+
+**Source plan**: the inline plan of 2026-07-31, Phase 2 — the one flagged as
+**high risk** because the hazard is a deployment, not a diff.
+
+## User journey
+
+> As a branch manager on a Convex tenant, I want a food cost for my branch, so
+> that the figure is not withheld from me forever because of where my orders
+> happen to live.
+
+## The hazard, and how it is handled
+
+A Convex validator **rejects** an argument it does not know. `hooks.ts` reads
+that rejection as "this store needs a backend update" and renders a placeholder
+instead of the figures. So switching branch narrowing on for everyone would
+blank the dashboard for every tenant below the new bundle — and most tenants run
+several versions behind head.
+
+Handled three ways:
+
+1. The argument is `v.optional`. A required one would break every caller of that
+   query at once.
+2. The client **omits the key entirely** rather than sending `outletId:
+   undefined` — a validator still sees the key.
+3. Narrowing is **version-gated per ref**. `getDashboardStatsByPeriod` needs
+   >= 18; the two v15 refs stay ungated, because gating them now would *remove*
+   narrowing from tenants whose version this app has never had to know.
+
+An unrecorded version counts as the **oldest**, never as current.
+
+## Task report
+
+### Web + template
+
+RED (`810647d`) — 2 failed / 29 passed, 1 suite unable to run
+(`Cannot find module './orderStats'`). GREEN (`0f9c3ea`) — 370 suites / 4595.
+
+**Two bugs fell out of extracting `summarizeOrderStats`.** Both handlers carried
+near-identical copies with no coverage at all:
+
+- The status tally indexed blind (`statusCounts[order.status]++`). A status
+  added by a later schema turned the count into `NaN` and took the whole
+  dashboard query down with it.
+- A branch read that took only `QUERY_LIMIT` rows *before* filtering would
+  silently drop the older half of a busy day. It now widens to
+  `BRANCH_SCAN_LIMIT`, as `getOrders` already does.
+
+**The bundle guard caught a real omission.** `tests/unit/convex-push-bundle.test.ts`
+failed with `orderStats.ts` missing: the Deploy Schema button ships the
+pre-built `src/lib/convex-push-bundle.json`, so a module present in the source
+tree but absent there is code no tenant runs. Fixed by `npm run convex:prebundle`.
+
+### App
+
+RED (`103462a`) — 2 failed / 21 passed, plus a compile-time failure.
+GREEN (`4f6f5fd`) — 98 suites / 1666 tests, `tsc` clean.
+
+Two pre-existing tests demanded deliberate updates rather than passing quietly,
+which is what they are for:
+
+- The `CONVEX_BRANCH_SCOPED_REFS` lock required the new ref to be added by hand.
+  It was also **strengthened**: membership alone cannot see a ref registered at
+  the wrong minimum version, so the versions are now pinned through behaviour.
+- `exitTenant`'s round-trip test failed until its fixture learned the field —
+  proving the version is cleared on exit, so none survives a tenant switch.
+
+## Test specification
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 306 | The dashboard figures exclude cancelled orders but still tally them | `orderStats.test.ts` | PASS |
+| 307 | An empty day reports zero, never NaN | `orderStats.test.ts` | PASS |
+| 308 | An unknown status no longer corrupts the tally | `orderStats.test.ts` | PASS |
+| 309 | A branch read counts only that branch's takings | `orderStats.test.ts` | PASS |
+| 310 | A branch order predating the `outletId` column is still found | `orderStats.test.ts` | PASS |
+| 311 | An unbranched order is not credited to a branch | `orderStats.test.ts` | PASS |
+| 312 | A store-wide read counts every branch | `orderStats.test.ts` | PASS |
+| 313 | The web states a Convex food cost only at >= v18 | `inventory-report-scope.test.ts` | PASS |
+| 314 | An unknown deployment version keeps it withheld | `inventory-report-scope.test.ts` | PASS |
+| 315 | The web forwards the branch to Convex | `inventory-daily-revenue-read.test.ts` | PASS |
+| 316 | A store-wide Convex read sends no branch KEY at all | `inventory-daily-revenue-read.test.ts` | PASS |
+| 317 | The app narrows the stats query only at >= v18 | `convex-order-scope.test.ts` | PASS |
+| 318 | The v15 refs stay ungated, unchanged from today | `convex-order-scope.test.ts` | PASS |
+| 319 | Each ref's minimum version is pinned, not just its membership | `convex-order-scope.test.ts` | PASS |
+| 320 | The session carries the tenant's deployed bundle version | `session-resolve.test.ts` | PASS |
+| 321 | An absent version reads as unknown, not as zero-and-fine | `session-resolve.test.ts` | PASS |
+| 322 | Leaving a tenant clears the version | `impersonation.test.ts` | PASS |
+
+## Validation
+
+```
+npx jest (web)             → 371 suites, 4598 passed, 1 skipped
+npx jest (webnegosyo-app)  → 98 suites, 1666 passed
+npx tsc --noEmit (app)     → clean
+npx eslint <unit>          → clean
+```
+
+## NOT DONE — this ships nothing to tenants
+
+`CURRENT_SCHEMA_VERSION` is 18 and the bundle is rebuilt, but **no tenant is
+running it**. Every deployment is still on its existing bundle, so today every
+Convex branch manager still sees the withheld figure — exactly as before this
+change, which is the intended safe state.
+
+Reaching them requires the **Deploy Schema** button per tenant. Until a tenant
+is redeployed, `convex_schema_version` stays below 18 and the gate holds. That
+step is deliberately left to the operator: it is an outward-facing action per
+store, not something to fan out unattended.
+
+Also still open: there is no branch **selector** on either surface — the report
+follows the account's own scope, so an owner cannot ask for one branch's report.
