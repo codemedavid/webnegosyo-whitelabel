@@ -1180,13 +1180,13 @@ authorization is closed — Security D. The stocktake race is closed —
 Security E. `/api/inventory/order-stock` is examined and deliberately
 unchanged; see Security D's last note.)
 
-**UNCOMMITTED, needs staging:** the `target_qty` change in
-`src/lib/inventory/stock-service.ts`. Another session's in-flight branch-scope
-work occupies that file, so it could not be staged without carrying their
-unfinished changes into this commit. Until it lands, the database is fixed but
-the app still sends no target, so stocktakes keep the old racy behaviour (which
-the trigger deliberately still supports). Guarantee 177 fails at `HEAD` until
-then; it passes in the working tree.
+**RESOLVED 2026-07-31:** the `target_qty` change in
+`src/lib/inventory/stock-service.ts` was left unstaged because another session's
+in-flight branch-scope work occupied that file. It landed in `b426287`
+("record a manual stock movement against its branch") when that session
+committed, and guarantee 177 now passes at `HEAD` (730 passed / 69 suites).
+Both halves of Security E are therefore live: the trigger resolves the count,
+and the app sends one.
 
 **Not deployed.** The branch is ~540 commits ahead of `origin/main` with no
 upstream, so none of this — Phase 0's correctness fixes included — is in front
