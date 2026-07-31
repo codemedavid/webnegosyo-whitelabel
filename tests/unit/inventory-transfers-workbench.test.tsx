@@ -10,6 +10,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TransfersWorkbench } from '@/components/admin/transfers-workbench'
+import { indexStockRows } from '@/lib/inventory/stock-location'
 import type { BranchScope } from '@/lib/outlets/branch-scope'
 
 const NORTH = 'o-north'
@@ -43,12 +44,20 @@ jest.mock('@/app/actions/inventory-transfers', () => ({
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }))
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
+/** North holds 500 flour and 300 sugar; South holds 200 flour and no sugar. */
+const STOCK = indexStockRows([
+  { inventory_item_id: FLOUR, outlet_id: NORTH, current_qty: 500, reorder_level: 0 },
+  { inventory_item_id: 'item-sugar', outlet_id: NORTH, current_qty: 300, reorder_level: 0 },
+  { inventory_item_id: FLOUR, outlet_id: SOUTH, current_qty: 200, reorder_level: 0 },
+])
+
 const props = (over: Record<string, unknown> = {}) => ({
   tenantId: 'tenant-1',
   tenantSlug: 'demo',
   transfers: [],
   branches: BRANCHES,
   ingredients: INGREDIENTS,
+  stockIndex: STOCK,
   scope: OWNER as BranchScope,
   ...over,
 })
@@ -160,5 +169,96 @@ describe('TransfersWorkbench — the lifecycle', () => {
     expect(toast.error).toHaveBeenCalledWith(
       'You can only move stock in and out of your own branch',
     )
+  })
+})
+
+describe('TransfersWorkbench — what the source branch can actually send', () => {
+  it('offers only the ingredients the source branch is holding', async () => {
+    // South holds flour and no sugar. Offering sugar leads to a draft the
+    // ledger will refuse at send, after the merchant has composed the whole
+    // transfer.
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+
+    const picker = screen.getByLabelText(/ingredient/i)
+    expect(within(picker).getByRole('option', { name: /flour/i })).toBeInTheDocument()
+    expect(within(picker).queryByRole('option', { name: /sugar/i })).not.toBeInTheDocument()
+  })
+
+  it('re-offers the list when the source branch changes', async () => {
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+    expect(
+      within(screen.getByLabelText(/ingredient/i)).queryByRole('option', { name: /sugar/i }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), NORTH)
+    expect(
+      within(screen.getByLabelText(/ingredient/i)).getByRole('option', { name: /sugar/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('says what the source branch is holding of the chosen ingredient', async () => {
+    // The merchant is deciding how much to send. The branch's own figure is
+    // the one that governs, and it is not the number the inventory table shows.
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+    await userEvent.selectOptions(screen.getByLabelText(/ingredient/i), FLOUR)
+
+    expect(screen.getByText(/200 g/i)).toBeInTheDocument()
+  })
+
+  it('refuses a line for more than the branch holds, before the transfer exists', async () => {
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+    await userEvent.selectOptions(screen.getByLabelText(/^to$/i), NORTH)
+    await userEvent.selectOptions(screen.getByLabelText(/ingredient/i), FLOUR)
+    await userEvent.type(screen.getByLabelText(/quantity/i), '900')
+    await userEvent.click(screen.getByRole('button', { name: /add to transfer/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    expect(createAction).not.toHaveBeenCalled()
+  })
+
+  it('names the ingredient it cannot send that much of', async () => {
+    // "Something is too big" makes the merchant re-check every row they typed.
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+    await userEvent.selectOptions(screen.getByLabelText(/^to$/i), NORTH)
+    await userEvent.selectOptions(screen.getByLabelText(/ingredient/i), FLOUR)
+    await userEvent.type(screen.getByLabelText(/quantity/i), '900')
+    await userEvent.click(screen.getByRole('button', { name: /add to transfer/i }))
+
+    expect(screen.getByText(/flour/i, { selector: 'p' })).toBeInTheDocument()
+  })
+
+  it('still creates a transfer that empties the shelf exactly', async () => {
+    // Sending everything is a real thing to do, and an off-by-one here would
+    // block the branch handing its stock to the shop still trading.
+    render(<TransfersWorkbench {...props()} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), SOUTH)
+    await userEvent.selectOptions(screen.getByLabelText(/^to$/i), NORTH)
+    await userEvent.selectOptions(screen.getByLabelText(/ingredient/i), FLOUR)
+    await userEvent.type(screen.getByLabelText(/quantity/i), '200')
+    await userEvent.click(screen.getByRole('button', { name: /add to transfer/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    expect(createAction).toHaveBeenCalled()
+  })
+
+  it('explains an empty picker rather than showing a blank control', async () => {
+    // A branch holding nothing has nothing to send. An empty dropdown reads as
+    // a broken screen.
+    render(<TransfersWorkbench {...props({ branches: [...BRANCHES, { id: 'o-new', name: 'New' }] })} />)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^from$/i), 'o-new')
+
+    expect(screen.getByText(/nothing.*to send|no stock/i)).toBeInTheDocument()
   })
 })
