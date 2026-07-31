@@ -288,3 +288,89 @@ describe('buildDailyInventoryReport — ordering of the ledger', () => {
     expect(row.closing).toBe(1200)
   })
 })
+
+/**
+ * Branch transfers, added to the ledger after this report was built.
+ *
+ * `transfer_out` and `transfer_in` fell through the reason switch entirely, so
+ * they landed in no bucket — while `opening` and `closing` are read from
+ * `balance_after`, which the trigger moved for them like any other movement.
+ *
+ * The result is a row whose own arithmetic stops adding up: the merchant reads
+ * opening, received, sold, waste and closing, and they do not reconcile, with
+ * nothing on the screen to explain the difference. A transfer is not usage and
+ * not a loss — the stock still exists, at another branch — so it needs its own
+ * bucket rather than being folded into one of the others.
+ */
+describe('buildDailyInventoryReport — branch transfers', () => {
+  test('still reconciles when stock is transferred out', () => {
+    // Arrange — opened at 1000, sent 200 to another branch.
+    const movements = [
+      movement({ reason: 'transfer_out', quantityDelta: -200, balanceAfter: 800 }),
+    ]
+
+    // Act
+    const row = buildDailyInventoryReport({ movements, ingredients: [FLOUR] }).rows[0]
+
+    // Assert — the identity holds with the transfer accounted for.
+    expect(row.opening).toBe(1000)
+    expect(row.closing).toBe(800)
+    expect(
+      row.opening + row.received - row.sold - row.waste + row.transferred + row.countAdjustment,
+    ).toBeCloseTo(row.closing, 8)
+  })
+
+  test('still reconciles when stock is transferred in', () => {
+    const movements = [movement({ reason: 'transfer_in', quantityDelta: 300, balanceAfter: 1300 })]
+
+    const row = buildDailyInventoryReport({ movements, ingredients: [FLOUR] }).rows[0]
+
+    expect(row.transferred).toBeCloseTo(300, 8)
+    expect(
+      row.opening + row.received - row.sold - row.waste + row.transferred + row.countAdjustment,
+    ).toBeCloseTo(row.closing, 8)
+  })
+
+  test('nets a transfer out against a transfer in', () => {
+    const movements = [
+      movement({ reason: 'transfer_out', quantityDelta: -200, balanceAfter: 800 }),
+      movement({
+        reason: 'transfer_in',
+        quantityDelta: 50,
+        balanceAfter: 850,
+        createdAt: '2026-07-29T03:00:00.000Z',
+      }),
+    ]
+
+    const row = buildDailyInventoryReport({ movements, ingredients: [FLOUR] }).rows[0]
+
+    expect(row.transferred).toBeCloseTo(-150, 8)
+  })
+
+  test('never counts a transfer as usage, waste or shrinkage', () => {
+    // The stock was not consumed and was not lost — it is on another shelf.
+    // Charging it to COGS would make a branch that supplies the others look
+    // like it is haemorrhaging stock.
+    const movements = [
+      movement({ reason: 'transfer_out', quantityDelta: -200, balanceAfter: 800 }),
+    ]
+
+    const report = buildDailyInventoryReport({ movements, ingredients: [FLOUR] })
+
+    expect(report.rows[0].sold).toBe(0)
+    expect(report.rows[0].waste).toBe(0)
+    expect(report.rows[0].shrinkage).toBe(0)
+    expect(report.totals.cogs).toBe(0)
+    expect(report.totals.shrinkageCost).toBe(0)
+  })
+
+  test('reports a transfer-only day rather than hiding it', () => {
+    // The ingredient moved, so it belongs on the report even though nothing
+    // was used — otherwise a day of transfers reads as a day of no activity.
+    const movements = [
+      movement({ reason: 'transfer_out', quantityDelta: -200, balanceAfter: 800 }),
+    ]
+
+    expect(buildDailyInventoryReport({ movements, ingredients: [FLOUR] }).rows).toHaveLength(1)
+  })
+})
