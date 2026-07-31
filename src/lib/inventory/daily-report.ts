@@ -50,6 +50,14 @@ export interface DailyReportRow {
   waste: number
   /** Signed correction a physical count applied. Negative means stock was short. */
   countAdjustment: number
+  /**
+   * Net moved to or from another branch, signed. Negative means stock left.
+   *
+   * Its own figure because a transfer is neither usage nor a loss — the stock
+   * is on another shelf — but it still moves the closing balance, so without it
+   * the row's arithmetic would not add up.
+   */
+  transferred: number
   /** The short side of `countAdjustment` only — a positive number of units lost. */
   shrinkage: number
   /** On hand after the last movement of the window. */
@@ -97,7 +105,8 @@ function magnitude(signedTotal: number): number {
  * Reconcile a window of the ledger into one row per ingredient that moved.
  *
  * The identity every row satisfies is
- * `opening + received − sold − waste ± countAdjustment = closing`, which is what
+ * `opening + received − sold − waste + transferred ± countAdjustment = closing`,
+ * which is what
  * makes the report checkable by eye rather than merely believable.
  */
 export function buildDailyInventoryReport(
@@ -168,6 +177,7 @@ function buildRow(
   let saleNet = 0
   let waste = 0
   let countAdjustment = 0
+  let transferred = 0
 
   for (const movement of ordered) {
     switch (movement.reason) {
@@ -186,6 +196,18 @@ function buildRow(
         break
       case 'stocktake':
         countAdjustment += movement.quantityDelta
+        break
+      // Transfers get their own bucket rather than joining one of the others.
+      // Stock sent to another branch was not consumed and was not lost — it is
+      // on a different shelf — so charging it to usage would make a branch that
+      // supplies the others look like it is haemorrhaging stock, and charging
+      // it to shrinkage would accuse someone of losing it.
+      //
+      // Kept SIGNED, unlike sold and waste: out and in genuinely cancel, and a
+      // branch that sent 200 and received 50 moved 150 net.
+      case 'transfer_out':
+      case 'transfer_in':
+        transferred += movement.quantityDelta
         break
     }
   }
@@ -209,6 +231,7 @@ function buildRow(
     sold,
     waste: wasteMagnitude,
     countAdjustment,
+    transferred,
     shrinkage,
     closing,
     cogs: sold * ingredient.unitCost,

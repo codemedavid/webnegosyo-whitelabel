@@ -4,7 +4,8 @@
  * The list is ranked worst-first by the money missing, so the card leads with
  * that figure rather than with the quantity — a merchant deciding what to chase
  * before service is deciding in pesos. The flow beneath it is the identity the
- * report reconciles: opening + received − sold − waste ± count = closing.
+ * report reconciles: opening + received − sold − waste + transferred ± count
+ * = closing.
  *
  * Every figure is formatted by the shared view module. Hand-rolling the money
  * here is how the phone and the web start disagreeing about the same day.
@@ -31,6 +32,14 @@ function describeRow(row: DailyReportRow): string {
     `${row.name}.`,
     `Used ${formatQuantity(row.sold, unit)}, costing ${formatPeso(row.cogs)}.`,
     row.waste > 0 ? `Wasted ${formatQuantity(row.waste, unit)}.` : "",
+    // Named for a screen reader too — otherwise the closing balance moves with
+    // nothing in the spoken sentence to account for it.
+    row.transferred !== 0
+      ? `${row.transferred < 0 ? "Sent" : "Received"} ${formatQuantity(
+          Math.abs(row.transferred),
+          unit,
+        )} ${row.transferred < 0 ? "to" : "from"} another branch.`
+      : "",
     row.wasCounted
       ? row.shrinkage > 0
         ? `Counted short by ${formatQuantity(row.shrinkage, unit)}, worth ${formatPeso(
@@ -80,6 +89,18 @@ export function DailyReportRowCard({ row }: Props) {
             Waste {formatQuantity(row.waste, unit)} · {formatPeso(row.wasteCost)}
           </Text>
         )}
+        {/*
+          Only when it happened. A transfer is neither usage nor a loss, so it
+          gets no figure in the flow above — but it moves the closing balance,
+          and an unexplained gap on a stock report invites exactly the wrong
+          conclusion.
+        */}
+        {row.transferred !== 0 && (
+          <Text style={[styles.tag, styles.tagTransfer]}>
+            {row.transferred < 0 ? "Sent out" : "Received in"}{" "}
+            {formatQuantity(Math.abs(row.transferred), unit)}
+          </Text>
+        )}
         {!row.wasCounted && <Text style={[styles.tag, styles.tagUncounted]}>Not counted</Text>}
         {row.wasCounted && !isShort && (
           <Text style={[styles.tag, styles.tagMatched]}>Counted · matched</Text>
@@ -126,6 +147,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   tagWaste: { backgroundColor: colors.warningLight, color: colors.warning },
+  tagTransfer: { backgroundColor: colors.surfaceSubtle, color: colors.textSecondary },
   tagUncounted: { backgroundColor: colors.surfaceSubtle, color: colors.textSecondary },
   tagMatched: { backgroundColor: colors.successLight, color: colors.success },
 });

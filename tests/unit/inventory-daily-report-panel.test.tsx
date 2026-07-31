@@ -32,6 +32,7 @@ function row(overrides: Partial<DailyReportRow> = {}): DailyReportRow {
     wasteCost: 0,
     shrinkageCost: 0,
     wasCounted: false,
+    transferred: 0,
     ...overrides,
   }
 }
@@ -168,5 +169,39 @@ describe('DailyReportPanel', () => {
     )
 
     expect(screen.queryByRole('link', { name: /next day/i })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Branch transfers, on the row.
+ *
+ * Accounting for a transfer in the arithmetic is only half the fix. The table
+ * shows opening, in, used, waste, missing and closing — a day with a transfer
+ * still reads as figures that do not add up unless the transfer is named, and
+ * an unexplained gap on a stock report invites exactly the wrong conclusion.
+ *
+ * Shown only when it happened: a permanent column of zeros would cost every
+ * single-branch tenant a column to describe something that never occurs.
+ */
+describe('DailyReportPanel — branch transfers', () => {
+  it('names stock that left for another branch', () => {
+    renderPanel({ rows: [row({ transferred: -200, closing: 600 })] })
+
+    expect(screen.getByTestId('daily-report-transfer-flour')).toHaveTextContent(/200/)
+    expect(screen.getByTestId('daily-report-transfer-flour')).toHaveTextContent(/out|sent/i)
+  })
+
+  it('names stock that arrived from another branch', () => {
+    renderPanel({ rows: [row({ transferred: 300, closing: 1100 })] })
+
+    expect(screen.getByTestId('daily-report-transfer-flour')).toHaveTextContent(/300/)
+    expect(screen.getByTestId('daily-report-transfer-flour')).toHaveTextContent(/in|received/i)
+  })
+
+  it('says nothing on a day with no transfers', () => {
+    // Which is every day, for every single-branch tenant.
+    renderPanel({ rows: [row({ transferred: 0 })] })
+
+    expect(screen.queryByTestId('daily-report-transfer-flour')).not.toBeInTheDocument()
   })
 })

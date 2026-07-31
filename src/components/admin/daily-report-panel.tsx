@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Info, PackageCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ClipboardCheck, Info, PackageCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { previousBusinessDayKey } from '@/lib/inventory/business-day'
@@ -84,12 +84,45 @@ function Total({ testId, label, amount, hint, tone = 'neutral', display }: Total
  * `sm:grid-cols-${n}` compiles to nothing, silently stacking the cards.
  */
 const TOTALS_GRID = {
-  stock: 'grid gap-3 sm:grid-cols-3',
-  withRevenue: 'grid gap-3 sm:grid-cols-2 lg:grid-cols-5',
+  stock: 'grid grid-cols-2 gap-3 sm:grid-cols-3',
+  withRevenue: 'grid grid-cols-2 gap-3 lg:grid-cols-5',
 } as const
 
 /** Shown instead of a percentage when the day has no answer. Not "0.0%". */
 const UNKNOWN_FIGURE = '—'
+
+/** Stepping a day is a thumb target on a phone, so it holds a 44px line. */
+const DAY_LINK =
+  'inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-sm:h-11 max-sm:flex-1'
+
+/**
+ * A figure cell: a table cell above `md`, a labelled line inside a card below
+ * it. The heading is generated rather than duplicated in markup, so the real
+ * `<th>` stays the single accessible header for assistive technology.
+ */
+const FIGURE_CELL =
+  'p-3 tabular-nums max-md:flex max-md:items-baseline max-md:justify-between max-md:gap-4 max-md:p-0 max-md:pt-2 max-md:before:text-xs max-md:before:font-medium max-md:before:uppercase max-md:before:tracking-wide max-md:before:text-muted-foreground'
+
+/**
+ * Literal class names — Tailwind reads the generated label out of the source
+ * text, so an interpolated `content-['${label}']` compiles to nothing and the
+ * card loses its headings.
+ */
+const LABEL = {
+  opening: "max-md:before:content-['Opening']",
+  received: "max-md:before:content-['In']",
+  sold: "max-md:before:content-['Used']",
+  waste: "max-md:before:content-['Waste']",
+  shrinkage: "max-md:before:content-['Missing']",
+  closing: "max-md:before:content-['Closing']",
+  cogs: "max-md:before:content-['Cost']",
+  recount: '',
+} as const
+
+/** Opens that ingredient's stock dialog with the movement already set to a count. */
+function countHref(tenantSlug: string, inventoryItemId: string): string {
+  return `/${tenantSlug}/admin/inventory?tab=ingredients&stock=${inventoryItemId}&reason=stocktake`
+}
 
 /**
  * A withheld verdict is styled like the caveats, not like a grade — it is the
@@ -151,19 +184,16 @@ export function DailyReportPanel({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-sm:w-full">
           <Link
             href={dayHref(tenantSlug, previousBusinessDayKey(report.dayKey))}
-            className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm hover:bg-muted"
+            className={DAY_LINK}
           >
             <ChevronLeft className="h-4 w-4" />
             Previous day
           </Link>
           {hasNextDay && (
-            <Link
-              href={dayHref(tenantSlug, nextDay)}
-              className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm hover:bg-muted"
-            >
+            <Link href={dayHref(tenantSlug, nextDay)} className={DAY_LINK}>
               Next day
               <ChevronRight className="h-4 w-4" />
             </Link>
@@ -190,6 +220,20 @@ export function DailyReportPanel({
             )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{verdict.detail}</p>
+          {/*
+            The verdict told the merchant to check the ingredients at the top of
+            the list, and then pointed at nothing. An accusation with no way to
+            act on it is a reason to stop opening this page.
+          */}
+          {report.totals.shrinkageCost > 0 && (
+            <a
+              href="#report-lines"
+              className="mt-3 inline-flex items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-sm:h-11"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              See what came up short
+            </a>
+          )}
         </div>
       )}
 
@@ -246,7 +290,7 @@ export function DailyReportPanel({
       {caveats.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
           <div className="flex items-start gap-2">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <ul className="space-y-1 text-sm text-amber-900 dark:text-amber-200">
               {caveats.map((caveat) => (
                 <li key={caveat}>{caveat}</li>
@@ -265,59 +309,138 @@ export function DailyReportPanel({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left">
+        /*
+          Eight columns do not survive a phone. Below `md` each line becomes its
+          own card and every figure keeps its heading as a generated label, so
+          the reconciliation is still readable rather than reduced to whichever
+          columns happened to fit.
+        */
+        <div
+          id="report-lines"
+          className="scroll-mt-4 rounded-xl border md:overflow-x-auto max-md:border-0"
+        >
+          <table className="w-full text-sm max-md:block">
+            <thead className="bg-muted/50 text-left max-md:hidden">
               <tr>
-                <th className="p-3 font-medium">Ingredient</th>
-                <th className="p-3 font-medium">Opening</th>
-                <th className="p-3 font-medium">In</th>
-                <th className="p-3 font-medium">Used</th>
-                <th className="p-3 font-medium">Waste</th>
-                <th className="p-3 font-medium">Missing</th>
-                <th className="p-3 font-medium">Closing</th>
-                <th className="p-3 text-right font-medium">Cost</th>
+                <th scope="col" className="p-3 font-medium">
+                  Ingredient
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  Opening
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  In
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  Used
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  Waste
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  Missing
+                </th>
+                <th scope="col" className="p-3 font-medium">
+                  Closing
+                </th>
+                <th scope="col" className="p-3 text-right font-medium">
+                  Cost
+                </th>
+                <th scope="col" className="p-3 text-right font-medium">
+                  <span className="sr-only">Recount</span>
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-md:block max-md:space-y-3">
               {report.rows.map((line) => (
                 <tr
                   key={line.inventoryItemId}
                   data-testid={`daily-report-row-${line.inventoryItemId}`}
                   data-item-name={line.name}
-                  className="border-t"
+                  className="md:border-t max-md:block max-md:rounded-xl max-md:border max-md:bg-card max-md:p-4"
                 >
-                  <td className="p-3">
+                  <td className="p-3 max-md:block max-md:border-b max-md:p-0 max-md:pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{line.name}</span>
+                      <span className="font-medium max-md:text-base">{line.name}</span>
                       {line.wasCounted && (
                         <Badge variant="secondary" className="text-xs">
                           Counted
                         </Badge>
                       )}
+                      {/*
+                        Only when it happened. A transfer is neither usage nor a
+                        loss, so it has no column of its own — but it does move
+                        the closing balance, and an unexplained gap on a stock
+                        report invites exactly the wrong conclusion. A permanent
+                        column of zeros would cost every single-branch tenant a
+                        column to describe something that never occurs.
+                      */}
+                      {line.transferred !== 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs font-normal"
+                          data-testid={`daily-report-transfer-${line.inventoryItemId}`}
+                        >
+                          {line.transferred < 0 ? 'Sent out' : 'Received in'}{' '}
+                          {formatQuantity(
+                            Math.abs(line.transferred),
+                            line.stockUnitAbbreviation,
+                          )}
+                        </Badge>
+                      )}
                     </div>
                   </td>
-                  <td className="p-3 tabular-nums text-muted-foreground">
+                  <td className={cn(FIGURE_CELL, 'text-muted-foreground', LABEL.opening)}>
                     {formatQuantity(line.opening, line.stockUnitAbbreviation)}
                   </td>
-                  <td className="p-3 tabular-nums text-muted-foreground">
+                  <td className={cn(FIGURE_CELL, 'text-muted-foreground', LABEL.received)}>
                     {formatQuantity(line.received, line.stockUnitAbbreviation)}
                   </td>
-                  <td className="p-3 tabular-nums">
+                  <td className={cn(FIGURE_CELL, LABEL.sold)}>
                     {formatQuantity(line.sold, line.stockUnitAbbreviation)}
                   </td>
-                  <td className="p-3 tabular-nums">
+                  <td className={cn(FIGURE_CELL, LABEL.waste)}>
                     {formatQuantity(line.waste, line.stockUnitAbbreviation)}
                   </td>
                   <td
-                    className={cn('p-3 tabular-nums', line.shrinkage > 0 && 'font-medium text-red-600')}
+                    className={cn(
+                      FIGURE_CELL,
+                      LABEL.shrinkage,
+                      line.shrinkage > 0 && 'font-medium text-red-600',
+                    )}
                   >
                     {formatQuantity(line.shrinkage, line.stockUnitAbbreviation)}
                   </td>
-                  <td className="p-3 tabular-nums text-muted-foreground">
+                  <td className={cn(FIGURE_CELL, 'text-muted-foreground', LABEL.closing)}>
                     {formatQuantity(line.closing, line.stockUnitAbbreviation)}
                   </td>
-                  <td className="p-3 text-right tabular-nums">{formatPeso(line.cogs)}</td>
+                  {/*
+                    The only row that gets an action is the one the report just
+                    made an accusation about. Everything else here is a figure;
+                    this is the way to answer it.
+                  */}
+                  <td className={cn(FIGURE_CELL, LABEL.recount, 'md:text-right')}>
+                    {line.shrinkage > 0 ? (
+                      <Link
+                        href={countHref(tenantSlug, line.inventoryItemId)}
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:h-11 max-md:px-3 max-md:text-sm"
+                      >
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                        Count again
+                      </Link>
+                    ) : (
+                      <span className="sr-only">Nothing missing</span>
+                    )}
+                  </td>
+                  <td
+                    className={cn(
+                      FIGURE_CELL,
+                      LABEL.cogs,
+                      'text-right max-md:font-medium',
+                    )}
+                  >
+                    {formatPeso(line.cogs)}
+                  </td>
                 </tr>
               ))}
             </tbody>

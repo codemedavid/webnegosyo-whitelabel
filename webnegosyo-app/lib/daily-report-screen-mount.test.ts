@@ -164,6 +164,13 @@ describe("daily report row card", () => {
     expect(card).toMatch(/formatQuantity/);
   });
 
+  it("names stock moved to or from another branch", () => {
+    // A transfer is neither usage nor a loss, so it has no figure of its own in
+    // the flow — but it moves the closing balance, and an unexplained gap on a
+    // stock report invites exactly the wrong conclusion.
+    expect(card).toMatch(/transferred/);
+  });
+
   it("says outright when an ingredient was never counted", () => {
     // An uncounted ingredient and a perfectly reconciled one both show zero
     // shrinkage. Without the distinction the card quietly reassures.
