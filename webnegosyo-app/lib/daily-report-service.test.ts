@@ -31,7 +31,18 @@ function fakeSupabase(byTable: Record<string, Result>) {
         then: (resolve: (value: unknown) => unknown) =>
           resolve(byTable[table] ?? { data: [], error: null }),
       };
-      for (const method of ["select", "eq", "gte", "lt", "order"]) {
+      // `maybeSingle` resolves rather than chaining — it is where a single-row
+      // read ends, and the count session is read that way.
+      builder.maybeSingle = (...args: unknown[]) => {
+        calls.push({ table, method: "maybeSingle", args });
+        const result = byTable[table] ?? { data: null, error: null };
+        const rows = result.data as unknown[] | null;
+        return Promise.resolve({
+          data: Array.isArray(rows) ? rows[0] ?? null : rows,
+          error: result.error,
+        });
+      };
+      for (const method of ["select", "eq", "gte", "lt", "order", "limit"]) {
         builder[method] = (...args: unknown[]) => {
           calls.push({ table, method, args });
           return builder;
@@ -251,5 +262,90 @@ describe("countDishesWithRecipe", () => {
     for (const table of ["recipes", "recipe_components"]) {
       expect(argsFor(db, table, "eq")).toEqual(["tenant_id", "t1"]);
     }
+  });
+});
+
+
+/**
+ * The half of the report that says how much of it to believe.
+ *
+ * The phone and the web must reach the SAME verdict about a day. A count that
+ * stopped early is named on one surface and silent on the other is worse than
+ * neither naming it — the merchant then has two accounts of one shelf and no
+ * way to choose between them.
+ */
+describe("loadDailyReport — the day's count session", () => {
+  const PARTIAL_COUNT = {
+    data: [
+      {
+        id: "count-1",
+        expected_item_count: 4,
+        closed_at: "2026-07-29T14:00:00.000Z",
+      },
+    ],
+    error: null,
+  };
+
+  const COUNTED_MOVEMENT = {
+    data: [
+      {
+        inventory_item_id: "i1",
+        reason: "stocktake",
+        quantity_delta: -5,
+        balance_after: 95,
+        created_at: "2026-07-29T02:00:00.000Z",
+        inventory_count_id: "count-1",
+      },
+    ],
+    error: null,
+  };
+
+  test("reports how far the count actually got", async () => {
+    const db = client({ inventory_counts: PARTIAL_COUNT, stock_movements: COUNTED_MOVEMENT });
+
+    const report = await loadDailyReport("t1", "2026-07-29", db as never);
+
+    expect(report?.countSession?.state).toBe("partial");
+    expect(report?.countSession?.countedCount).toBe(1);
+    expect(report?.countSession?.expectedCount).toBe(4);
+  });
+
+  test("says nothing about a day nobody counted", async () => {
+    // Every day before sessions existed. Inventing an abandoned count from an
+    // absent session would accuse a merchant of a count they never started.
+    const db = client({ inventory_counts: { data: [], error: null } });
+
+    const report = await loadDailyReport("t1", "2026-07-29", db as never);
+
+    expect(report?.countSession).toBeNull();
+  });
+
+  test("scopes the session read to the tenant and the day", async () => {
+    const db = client({ inventory_counts: PARTIAL_COUNT });
+
+    await loadDailyReport("t1", "2026-07-29", db as never);
+
+    const filters = db.calls.filter(
+      (call) => call.table === "inventory_counts" && call.method === "eq",
+    );
+    expect(filters).toContainEqual(
+      expect.objectContaining({ args: ["tenant_id", "t1"] }),
+    );
+    expect(filters).toContainEqual(
+      expect.objectContaining({ args: ["business_day", "2026-07-29"] }),
+    );
+  });
+
+  test("keeps the day's figures when the session read fails", async () => {
+    // The stock figures are independently true. Losing the whole report because
+    // its caveat could not be computed is the worse trade.
+    const db = client({
+      inventory_counts: { data: null, error: { message: "nope" } },
+    });
+
+    const report = await loadDailyReport("t1", "2026-07-29", db as never);
+
+    expect(report?.totals.cogs).toBeCloseTo(10, 8);
+    expect(report?.countSession).toBeNull();
   });
 });
