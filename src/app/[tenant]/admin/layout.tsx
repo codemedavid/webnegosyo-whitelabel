@@ -1,6 +1,9 @@
 import { redirect } from 'next/navigation'
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { createClient } from '@/lib/supabase/server'
+import { fetchSubscription } from '@/lib/billing/subscription-repository'
+import { resolveSubscriptionAccess } from '@/lib/billing/subscription-status'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminLayout({ 
@@ -53,6 +56,24 @@ export default async function AdminLayout({
 
   if (!isAuthorized) {
     redirect(`/${tenantSlug}/login?error=unauthorized`)
+  }
+
+  // The subscription gate. A superadmin is exempt — they are the only account
+  // that can clear an unpaid subscription, and a gate that locks out its own
+  // remedy cannot be fixed from inside the product.
+  //
+  // This is the UX half only. The boundary is `assertSubscriptionActive` inside
+  // the server actions: a redirect here is a rendering decision and does not
+  // stop a POST aimed straight at an action.
+  if (role.role !== 'superadmin') {
+    const supabase = await createClient()
+    const subscription = await fetchSubscription(supabase, tenant.id)
+
+    if (resolveSubscriptionAccess(subscription, new Date().toISOString()).isBlocked) {
+      // Deliberately OUTSIDE the admin tree. A paused screen rendered under
+      // this same layout would be redirected to itself, forever.
+      redirect(`/${tenantSlug}/subscription`)
+    }
   }
 
   return (

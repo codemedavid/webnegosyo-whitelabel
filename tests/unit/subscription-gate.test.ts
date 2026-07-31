@@ -75,9 +75,17 @@ describe('web gate wiring', () => {
   })
 
   it('ships the paused screen the layout redirects to', () => {
-    expect(() =>
-      read('src', 'app', '[tenant]', 'admin', 'subscription', 'page.tsx')
-    ).not.toThrow()
+    expect(() => read('src', 'app', '[tenant]', 'subscription', 'page.tsx')).not.toThrow()
+  })
+
+  it('puts the paused screen outside the admin tree it redirects out of', () => {
+    // A paused screen rendered under the admin layout would be caught by the
+    // very redirect that sent the merchant there — a loop the browser gives up
+    // on, showing them an error page instead of an explanation.
+    const layout = read('src', 'app', '[tenant]', 'admin', 'layout.tsx')
+
+    expect(layout).toContain('/subscription`')
+    expect(layout).not.toContain('/admin/subscription`')
   })
 
   it('does not gate the customer storefront', () => {

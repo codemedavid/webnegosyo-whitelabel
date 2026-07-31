@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
+import { assertOutletCapacity } from '@/lib/outlets/outlet-repository'
 import type { OutletPatch, OutletWriteInput } from '@/lib/outlets/outlet-repository'
+import { resolveOutletLimit } from '@/lib/billing/subscription-status'
 import { canManageOutlets } from '@/lib/outlets/branch-scope'
 import {
   asAppUserQueryClient,
@@ -29,6 +31,24 @@ import {
  */
 
 const outletsPath = (slug: string) => `/${slug}/admin/outlets`
+
+/**
+ * How many branches this tenant may hold.
+ *
+ * A failed read falls back to the platform default rather than to unlimited: a
+ * database blip must not become a way to mint branches. It is only ever
+ * restrictive, and the merchant sees a message naming the number.
+ */
+async function fetchOutletLimit(tenantId: string): Promise<number> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('tenants')
+    .select('max_outlets')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  return resolveOutletLimit(data as { max_outlets?: number | null } | null)
+}
 
 function fail(error: unknown, fallback: string) {
   return { success: false as const, error: error instanceof Error ? error.message : fallback }
@@ -77,7 +97,14 @@ export async function createOutletAction(
   if (denied) return { success: false as const, error: denied }
 
   try {
-    const data = await createSupabaseOutletRepository().create(tenantId, input)
+    // The branch allowance, enforced here rather than in the repository because
+    // this is the only path that creates one and the count is a query the
+    // repository would otherwise have to make on every write.
+    const repository = createSupabaseOutletRepository()
+    const existing = await repository.listByTenant(tenantId)
+    assertOutletCapacity(existing.length, await fetchOutletLimit(tenantId))
+
+    const data = await repository.create(tenantId, input)
     revalidatePath(outletsPath(tenantSlug))
     return { success: true as const, data }
   } catch (error) {
