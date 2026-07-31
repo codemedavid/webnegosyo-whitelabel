@@ -88,6 +88,7 @@ function buildClient(item: Record<string, unknown>, units: readonly unknown[]) {
       is: () => chain,
       limit: () => chain,
       single: () => chain,
+      maybeSingle: () => chain,
       insert: (value: unknown) => {
         payload = value
         if (tableName === 'stock_movements') {
@@ -104,6 +105,12 @@ function buildClient(item: Record<string, unknown>, units: readonly unknown[]) {
       },
       then: (resolve: (v: unknown) => void) => {
         if (tableName === 'inventory_units') return resolve({ data: units, error: null })
+        // The branch's own shelf — what a stocktake reconciles against now
+        // that stock has a location. A single-location tenant's store pool
+        // carries the whole quantity, so it matches the item's roll-up.
+        if (tableName === 'inventory_stock') {
+          return resolve({ data: { current_qty: item.current_qty }, error: null })
+        }
         if (tableName === 'stock_movements') {
           return resolve({ data: { id: 'mv1', ...(payload as object) }, error: null })
         }

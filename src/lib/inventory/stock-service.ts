@@ -180,6 +180,47 @@ async function resolveActingBranchScope(
   }
 }
 
+/**
+ * What ONE branch is holding of this ingredient, in stock units.
+ *
+ * A stocktake is a statement about a single shelf, so the figure it is
+ * reconciled against has to be that shelf's. `inventory_items.current_qty` is
+ * the roll-up — the sum of every branch — and resolving against it turns a
+ * North manager counting 10 in a 100-unit chain into a delta of -90.
+ *
+ * Missing row means zero, the rule the whole stock layer shares (see
+ * `stock-location.ts`) and the one the trigger's COALESCE applies: a branch
+ * that has never held an ingredient holds none of it, and counting 10 there is
+ * a gain of 10.
+ *
+ * A failed read throws rather than falling back. Every other read in this
+ * function throws too, and the alternative — reconciling a count against a
+ * guess — writes a wrong quantity to the shelf under the one reason whose
+ * entire purpose is to be authoritative.
+ */
+async function readBranchOnHand(
+  supabase: StockMovementClient,
+  tenantId: string,
+  inventoryItemId: string,
+  outletId: string | null,
+): Promise<number> {
+  const query = supabase
+    .from('inventory_stock')
+    .select('current_qty')
+    .eq('tenant_id', tenantId)
+    .eq('inventory_item_id', inventoryItemId)
+
+  // `.is` rather than `.eq` for the store pool: `outlet_id = NULL` matches
+  // nothing in SQL, so `.eq` would silently report an empty shelf.
+  const { data, error } = await (outletId === null
+    ? query.is('outlet_id', null)
+    : query.eq('outlet_id', outletId)
+  ).maybeSingle()
+
+  if (error) throw error
+  return (data as { current_qty: number } | null)?.current_qty ?? 0
+}
+
 export async function recordStockMovementWith(
   supabase: StockMovementClient,
   tenantId: string,
@@ -217,13 +258,21 @@ export async function recordStockMovementWith(
     throw new Error('The movement unit could not be resolved for this ingredient')
   }
 
+  // Only a stocktake reconciles against a standing quantity, and it reconciles
+  // against ONE SHELF's — `item.current_qty` is the roll-up across every
+  // branch. So only a stocktake pays for the extra read.
+  const reconcileAgainst =
+    validated.reason === 'stocktake'
+      ? await readBranchOnHand(supabase, tenantId, validated.inventory_item_id, outletId)
+      : item.current_qty
+
   // Throws on a cross-dimension unit rather than inventing a conversion.
   const quantityDelta = resolveMovementDelta({
     reason: validated.reason,
     quantity: validated.quantity,
     unit: toUnit(enteredUnit),
     stockUnit: toUnit(stockUnit),
-    currentQty: item.current_qty,
+    currentQty: reconcileAgainst,
   })
 
   // The count itself, converted to the stock unit — an absolute, so unlike

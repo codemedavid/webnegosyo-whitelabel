@@ -81,6 +81,7 @@ function buildClient(getUser: AuthResponse) {
       is: () => chain,
       limit: () => chain,
       single: () => chain,
+      maybeSingle: () => chain,
       insert: (value: unknown) => {
         payload = value
         if (tableName === 'stock_movements') {
@@ -91,6 +92,12 @@ function buildClient(getUser: AuthResponse) {
       update: () => chain,
       then: (resolve: (v: unknown) => void) => {
         if (tableName === 'inventory_units') return resolve({ data: [GRAM], error: null })
+        // The branch's own shelf, which is what a stocktake now reconciles
+        // against. The store pool carries the whole quantity for a
+        // single-location tenant, so it matches the roll-up.
+        if (tableName === 'inventory_stock') {
+          return resolve({ data: { current_qty: BEEF.current_qty }, error: null })
+        }
         if (tableName === 'stock_movements') {
           return resolve({ data: { id: 'mv1', ...(payload as object) }, error: null })
         }
