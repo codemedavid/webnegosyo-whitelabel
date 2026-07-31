@@ -11,6 +11,9 @@
 import { summarizeRoster } from '@/lib/billing/subscription-roster'
 import type { RosterRow } from '@/lib/billing/subscription-roster'
 
+// Spelled out in full, with no cast: a cast here would let the fixture go on
+// compiling while missing a field the summary reads, which is how a total
+// silently starts counting `undefined`.
 const rosterRow = (overrides: Partial<RosterRow> = {}): RosterRow => ({
   tenantId: 't1',
   name: 'Cafe One',
@@ -18,11 +21,13 @@ const rosterRow = (overrides: Partial<RosterRow> = {}): RosterRow => ({
   state: 'active',
   isBlocked: false,
   daysOverdue: 0,
+  daysUntilDue: 21,
+  isDueSoon: false,
+  isManuallyPaused: false,
   monthlyPricePhp: 649,
   paidThroughDayKey: '2026-08-31',
-  status: 'active',
   ...overrides,
-} as RosterRow)
+})
 
 describe('what the collections total counts as owed', () => {
   test('a tenant paused at zero days overdue still owes', () => {
@@ -32,7 +37,13 @@ describe('what the collections total counts as owed', () => {
     // contributed nothing to the one figure that means "money owed right now" —
     // the most delinquent accounts missing from the collections screen.
     const summary = summarizeRoster([
-      rosterRow({ state: 'paused', isBlocked: true, daysOverdue: 0, status: 'paused' }),
+      rosterRow({
+        state: 'paused',
+        isBlocked: true,
+        daysOverdue: 0,
+        daysUntilDue: null,
+        isManuallyPaused: true,
+      }),
     ])
 
     expect(summary.overduePhp).toBe(649)

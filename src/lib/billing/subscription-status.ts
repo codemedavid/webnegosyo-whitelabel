@@ -34,6 +34,16 @@ const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
  */
 const TERMINAL_STATUSES = new Set(['cancelled', 'paused'])
 
+/**
+ * Whether this status was set by a person rather than reached by the calendar.
+ *
+ * Exported so the collections screen can offer "Resume" on exactly these and
+ * not on a tenant whose dates ran out — that one needs paying, not un-pausing.
+ */
+export function isManualBlockStatus(status: string | null | undefined): boolean {
+  return TERMINAL_STATUSES.has((status ?? '').toLowerCase())
+}
+
 export type SubscriptionState = 'active' | 'grace' | 'paused'
 
 /** The subset of a `tenant_subscriptions` row this module needs. */
@@ -121,7 +131,7 @@ export function resolveSubscriptionAccess(
   const paidThrough = subscription.paid_through
   const paidThroughDayKey = isDayKey(paidThrough) ? paidThrough : null
 
-  if (TERMINAL_STATUSES.has((subscription.status ?? '').toLowerCase())) {
+  if (isManualBlockStatus(subscription.status)) {
     return {
       state: 'paused',
       isBlocked: true,

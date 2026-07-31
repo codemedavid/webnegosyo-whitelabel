@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSupabaseSubscriptionStore } from '@/lib/billing/subscription-repository'
 import { markPaid } from '@/lib/billing/subscription-service'
+import { pauseSubscription, resumeSubscription } from '@/lib/billing/subscription-lifecycle'
 import { resolveOutletLimit, resolveStaffLimit } from '@/lib/billing/subscription-status'
 
 const NOT_ALLOWED = 'Only a platform superadmin can manage subscriptions.'
@@ -77,6 +78,39 @@ export async function markTenantPaidAction(input: MarkPaidActionInput) {
     return { success: true as const, data: result }
   } catch (error) {
     return fail(error, 'Failed to record the payment')
+  }
+}
+
+/**
+ * Cuts a tenant off, or lets them back in.
+ *
+ * Takes a boolean rather than a status string so the client can never name a
+ * status of its own — `cancelled`, or a typo the CHECK constraint rejects at
+ * the very moment the owner is trying to stop a store trading.
+ *
+ * Revalidates the tenant's own admin path as well as this screen: the gate is
+ * read on that layout, and leaving it cached would keep a just-paused merchant
+ * working until their page happened to expire.
+ */
+export async function setTenantPausedAction(tenantId: string, isPaused: boolean) {
+  const superadminId = await requireSuperadmin()
+  if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
+
+  try {
+    const store = createSupabaseSubscriptionStore(createAdminClient())
+
+    if (isPaused) {
+      await pauseSubscription(store, { tenantId })
+    } else {
+      await resumeSubscription(store, { tenantId })
+    }
+
+    revalidatePath('/superadmin/subscriptions')
+    revalidatePath(`/superadmin/tenants/${tenantId}`)
+    revalidatePath('/[tenant]/admin', 'layout')
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, isPaused ? 'Failed to pause the tenant' : 'Failed to resume the tenant')
   }
 }
 

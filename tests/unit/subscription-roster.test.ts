@@ -69,6 +69,34 @@ describe('buildSubscriptionRoster', () => {
   })
 })
 
+describe('telling a manual pause apart from a lapsed one', () => {
+  // Both read as `paused`, but only one of them can be undone without being
+  // paid. The collections screen offers "Resume" on the first and must not on
+  // the second, or the owner is one click from giving access away for free.
+
+  it('marks a tenant the platform owner cut off by hand', () => {
+    const rows = buildSubscriptionRoster([{ ...PAID, status: 'paused' }], NOW)
+
+    expect(rows[0]).toMatchObject({ state: 'paused', isManuallyPaused: true })
+  })
+
+  it('marks a cancelled tenant the same way — it is also a deliberate act', () => {
+    const rows = buildSubscriptionRoster([{ ...PAID, status: 'cancelled' }], NOW)
+
+    expect(rows[0].isManuallyPaused).toBe(true)
+  })
+
+  it('does not mark a tenant whom the dates closed', () => {
+    const rows = buildSubscriptionRoster([LONG_LAPSED], NOW)
+
+    expect(rows[0]).toMatchObject({ state: 'paused', isManuallyPaused: false })
+  })
+
+  it('does not mark a tenant who is simply paid up', () => {
+    expect(buildSubscriptionRoster([PAID], NOW)[0].isManuallyPaused).toBe(false)
+  })
+})
+
 describe('summarizeRoster', () => {
   it('counts each state', () => {
     const rows = buildSubscriptionRoster([PAID, GRACE, LAPSED], NOW)
