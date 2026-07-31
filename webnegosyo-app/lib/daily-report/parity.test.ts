@@ -60,9 +60,16 @@ describe("the movement reasons the report understands", () => {
     // `daily-report.ts` branches on these. The app's own
     // `inventory-movement.ts` lists only the three a merchant enters BY HAND;
     // a report blind to `sale` and `void` would show a day of pure deliveries.
+    // Read to the blank line that ends the union, not to the end of the first
+    // line. The union was single-line when this was written and later grew to
+    // one member per line — at which point the old `[^\n]+` capture matched
+    // only `receive` and this guardrail was comparing the app's whole list
+    // against a single reason. A parity test that stops reading halfway is
+    // worse than none: it reports drift that isn't there and hides the drift
+    // that is. `_` is in the character class because `transfer_out` exists.
     const web = readFileSync(join(WEB_DIR, "stock-ledger.ts"), "utf8");
-    const declared = web.match(/export type StockMovementReason\s*=\s*([^\n]+)/)?.[1] ?? "";
-    const webReasons = [...declared.matchAll(/'([a-z]+)'/g)].map((match) => match[1])
+    const declared = web.match(/export type StockMovementReason\s*=([\s\S]*?)\n\s*\n/)?.[1] ?? "";
+    const webReasons = [...declared.matchAll(/'([a-z_]+)'/g)].map((match) => match[1])
 
     expect([...MOVEMENT_REASONS].sort()).toEqual(webReasons.sort());
   });
