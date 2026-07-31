@@ -509,9 +509,11 @@ describe('processStockLevelChanges — one branch, not the whole chain', () => {
   it('alerts on a branch that has run out while the chain looks healthy', async () => {
     const tables = wire({
       tenants: table(FLAGS_ALL_ON),
-      // 700 across the chain; South is holding 10 of it and is about to sell 10.
+      // 700 across the chain. South held 10 and has just sold all of it, so
+      // the shelf now reads 0 -- these rows are what the DB returns AFTER the
+      // movement, which is when the alert path can read them.
       inventory_stock: branchRows([
-        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 0, reorder_level: 0 },
         { inventory_item_id: 'flour', outlet_id: NORTH, current_qty: 690, reorder_level: 0 },
       ]),
     })
@@ -531,7 +533,7 @@ describe('processStockLevelChanges — one branch, not the whole chain', () => {
     const tables = wire({
       tenants: table(FLAGS_ALL_ON),
       inventory_stock: branchRows([
-        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 0, reorder_level: 0 },
       ]),
     })
 
@@ -557,7 +559,7 @@ describe('processStockLevelChanges — one branch, not the whole chain', () => {
       // returns nothing for South even though North has one.
       stock_alerts: table([]),
       inventory_stock: branchRows([
-        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 0, reorder_level: 0 },
       ]),
     })
 
@@ -580,7 +582,7 @@ describe('processStockLevelChanges — one branch, not the whole chain', () => {
     const tables = wire({
       tenants: table(FLAGS_ALL_ON),
       inventory_stock: branchRows([
-        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 10, reorder_level: 0 },
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 0, reorder_level: 0 },
         { inventory_item_id: 'flour', outlet_id: NORTH, current_qty: 690, reorder_level: 0 },
       ]),
       recipe_components: table([
@@ -617,5 +619,64 @@ describe('processStockLevelChanges — one branch, not the whole chain', () => {
       expect.objectContaining({ inventory_item_id: 'flour', quantity: 15 }),
     ])
     expect(tables.inventory_stock.calls.select).toBeUndefined()
+  })
+})
+
+describe('processStockLevelChanges — the branch figure is read after the write', () => {
+  /**
+   * The alert path deliberately takes PRE-movement rows plus the deltas just
+   * applied, because re-reading would race the running-total trigger. The
+   * branch read has no such luxury: `inventory_stock` is only consulted after
+   * the movement is on the ledger, so it comes back already reduced. Applying
+   * the delta to it a second time would invent a crossing that never happened.
+   */
+  const SOUTH = 'o-south'
+
+  it('does not double-count the delta against the branch shelf', async () => {
+    // South held 15 and sold 10, so the shelf now reads 5. It was below the
+    // par level of 20 before the sale and is below it after: low to low, no
+    // crossing, nothing to interrupt anyone about.
+    //
+    // Counting the delta twice reads it as 5 going to -5 -- an out crossing --
+    // and raises an alert for stock that did not run out.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      inventory_stock: table([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 5, reorder_level: 20 },
+      ]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    expect(result.alertsRaised).toBe(0)
+    expect(tables.stock_alerts.calls.insert).toBeUndefined()
+  })
+
+  it('still alerts on the crossing the branch actually made', async () => {
+    // South held 25 and sold 10: the shelf now reads 15, and 25 -> 15 crosses
+    // a par level of 20. The same read, one real crossing.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      inventory_stock: table([
+        { inventory_item_id: 'flour', outlet_id: SOUTH, current_qty: 15, reorder_level: 20 },
+      ]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 700, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+      SOUTH,
+    )
+
+    expect(result.alertsRaised).toBe(1)
+    expect(tables.stock_alerts.calls.insert?.[0][0]).toEqual([
+      expect.objectContaining({ level: 'low', quantity: 15, outlet_id: SOUTH }),
+    ])
   })
 })

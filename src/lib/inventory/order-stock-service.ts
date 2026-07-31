@@ -36,6 +36,26 @@ function toUnit(row: InventoryUnitRow): InventoryUnit {
 }
 
 /**
+ * The one branch a batch of ledger rows belongs to, or `undefined` if they
+ * straddle more than one.
+ *
+ * A reversal reads its branch off the recorded movements, and an order whose
+ * branch was corrected mid-life can have legs on two shelves. Naming one of
+ * them would alert about a shelf half the rows never touched, so an ambiguous
+ * batch falls back to the store-wide behaviour it has always had.
+ */
+function soleOutletId(
+  rows: ReadonlyArray<{ outlet_id?: unknown }>,
+): string | null | undefined {
+  if (rows.length === 0) return undefined
+  const outletOf = (row: { outlet_id?: unknown }) =>
+    typeof row.outlet_id === 'string' ? row.outlet_id : null
+
+  const first = outletOf(rows[0])
+  return rows.every((row) => outletOf(row) === first) ? first : undefined
+}
+
+/**
  * Runs the alert path without letting it affect the movement that triggered it.
  * `processStockLevelChanges` already swallows its own errors; this guards the
  * call itself, so a broken alert module can never unwind a recorded sale.
@@ -44,10 +64,11 @@ async function notifyStockLevelChanges(
   tenantId: string,
   items: readonly InventoryItem[],
   deltas: ReadonlyMap<string, number>,
+  outletId?: string | null,
 ): Promise<void> {
   try {
     const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
-    await processStockLevelChanges(tenantId, items, deltas)
+    await processStockLevelChanges(tenantId, items, deltas, outletId)
   } catch (error) {
     console.error('[inventory] Stock level alerting failed', tenantId, error)
   }
@@ -234,7 +255,7 @@ async function depleteClaimedOrder(
     const itemId = row.inventory_item_id as string
     deltas.set(itemId, (deltas.get(itemId) ?? 0) + (row.quantity_delta as number))
   }
-  await notifyStockLevelChanges(tenantId, inventoryItems, deltas)
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
   return { movementCount: rows.length, skipped }
 }
@@ -371,7 +392,7 @@ export async function reverseOrderStockMovements(
   for (const row of rows) {
     deltas.set(row.inventory_item_id, (deltas.get(row.inventory_item_id) ?? 0) + row.quantity_delta)
   }
-  await notifyStockLevelChanges(tenantId, inventoryItems, deltas)
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
   return { movementCount: rows.length, skipped: [] }
 }

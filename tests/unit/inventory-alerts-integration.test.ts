@@ -78,6 +78,14 @@ function wire(options: {
   openAlerts?: unknown[]
   recordedSales?: unknown[]
   alreadyRestored?: boolean
+  /**
+   * The unbranched store pool's row AFTER the movement. Branch-aware alerting
+   * reads `inventory_stock` once the ledger row exists, so this is the shelf as
+   * the database would return it -- unlike `flourQty`, which is the item as it
+   * stood before. A single-shop tenant's pool row IS its roll-up, so the
+   * default simply applies the one dish's 10 g.
+   */
+  poolQtyAfter?: number
 }) {
   const tables = {
     tenants: table({ low_stock_alerts_enabled: true, auto_86_enabled: true }),
@@ -99,6 +107,14 @@ function wire(options: {
     inventory_units: table([GRAMS]),
     stock_alerts: table(options.openAlerts ?? []),
     menu_items: table([{ id: 'menu-carbonara' }]),
+    inventory_stock: table([
+      {
+        inventory_item_id: 'flour',
+        outlet_id: null,
+        current_qty: options.poolQtyAfter ?? options.flourQty - 10,
+        reorder_level: 0,
+      },
+    ]),
   }
 
   // Idempotency is a claim row now, not a read of the ledger, so
@@ -191,6 +207,7 @@ describe('cancelling that order', () => {
   it('gives the flour back and puts the dish on sale again, alert still open', async () => {
     const tables = wire({
       flourQty: 0, // as the sale left it
+      poolQtyAfter: 10, // the reversal puts the 10 g back
       recordedSales: THE_SALE,
       openAlerts: [{ id: 'alert-1', inventory_item_id: 'flour' }],
     })
@@ -221,6 +238,7 @@ describe('cancelling that order', () => {
   it('does not touch the menu when the order was already restored', async () => {
     const tables = wire({
       flourQty: 0,
+      poolQtyAfter: 0, // nothing moved: the order was already restored
       recordedSales: THE_SALE,
       alreadyRestored: true,
     })

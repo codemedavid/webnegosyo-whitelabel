@@ -52,10 +52,11 @@ async function notifyStockLevelChanges(
   tenantId: string,
   items: readonly InventoryItem[],
   deltas: ReadonlyMap<string, number>,
+  outletId?: string | null,
 ): Promise<void> {
   try {
     const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
-    await processStockLevelChanges(tenantId, items, deltas)
+    await processStockLevelChanges(tenantId, items, deltas, outletId)
   } catch (error) {
     console.error('[inventory] Stock level alerting failed', tenantId, error)
   }
@@ -355,7 +356,9 @@ export async function recordStockMovementWith(
   // A merchant wasting the last of an ingredient crosses the same line an order
   // does, so the alert path hangs off both writers. It reads the item as it
   // stood before the movement, paired with the delta just applied.
-  await notifyStockLevelChanges(tenantId, [item], new Map([[item.id, quantityDelta]]))
+  // The branch the movement was written to, so the alert is about the shelf
+  // that actually changed rather than the chain total.
+  await notifyStockLevelChanges(tenantId, [item], new Map([[item.id, quantityDelta]]), outletId)
 
   const { data: updatedRow, error: refreshError } = await supabase
     .from('inventory_items')
