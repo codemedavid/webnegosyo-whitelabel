@@ -73,14 +73,12 @@ function requireTenantId(input: LifecycleInput): string {
  * exactly the one likely to need cutting off, and requiring a row to exist
  * first would make the lever unusable on them.
  *
- * `nowIso` is accepted for symmetry with the rest of billing — the caller and
- * the tests own the clock — even though the verdict here does not depend on it.
+ * Takes no clock, unlike the rest of billing: a manual pause is true the
+ * instant it is made, and the dates it overrides are read elsewhere.
  */
 export async function pauseSubscription(
   store: SubscriptionStore,
-  input: LifecycleInput,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  nowIso: string
+  input: LifecycleInput
 ): Promise<void> {
   const tenantId = requireTenantId(input)
 
@@ -98,9 +96,7 @@ export async function pauseSubscription(
  */
 export async function resumeSubscription(
   store: SubscriptionStore,
-  input: LifecycleInput,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  nowIso: string
+  input: LifecycleInput
 ): Promise<void> {
   const tenantId = requireTenantId(input)
 

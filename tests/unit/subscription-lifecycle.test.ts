@@ -63,7 +63,7 @@ describe('pauseSubscription', () => {
     const { store, read } = createStore(CURRENT)
 
     // Act
-    await pauseSubscription(store, { tenantId: 't1' }, NOW)
+    await pauseSubscription(store, { tenantId: 't1' })
 
     // Assert
     expect(read('t1')?.status).toBe('paused')
@@ -73,7 +73,7 @@ describe('pauseSubscription', () => {
     // The whole point of a manual pause: it must beat the dates.
     const { store, read } = createStore(CURRENT)
 
-    await pauseSubscription(store, { tenantId: 't1' }, NOW)
+    await pauseSubscription(store, { tenantId: 't1' })
 
     expect(resolveSubscriptionAccess(read('t1'), NOW)).toMatchObject({
       state: 'paused',
@@ -84,7 +84,7 @@ describe('pauseSubscription', () => {
   it('keeps the paid-through date, so a resume gives back the days they bought', async () => {
     const { store, read } = createStore(CURRENT)
 
-    await pauseSubscription(store, { tenantId: 't1' }, NOW)
+    await pauseSubscription(store, { tenantId: 't1' })
 
     expect(read('t1')?.paid_through).toBe('2026-08-31')
   })
@@ -94,7 +94,7 @@ describe('pauseSubscription', () => {
     // off. Requiring a row first would make the lever unusable on them.
     const { store, read } = createStore(null)
 
-    await pauseSubscription(store, { tenantId: 'brand-new' }, NOW)
+    await pauseSubscription(store, { tenantId: 'brand-new' })
 
     expect(read('brand-new')).toMatchObject({ status: 'paused', paid_through: null })
   })
@@ -102,7 +102,7 @@ describe('pauseSubscription', () => {
   it('is idempotent — pausing an already-paused tenant is not an error', async () => {
     const { store, read } = createStore({ ...CURRENT, status: 'paused' })
 
-    await pauseSubscription(store, { tenantId: 't1' }, NOW)
+    await pauseSubscription(store, { tenantId: 't1' })
 
     expect(read('t1')?.status).toBe('paused')
   })
@@ -110,7 +110,7 @@ describe('pauseSubscription', () => {
   it('refuses a blank tenant id rather than writing an orphan row', async () => {
     const { store } = createStore(CURRENT)
 
-    await expect(pauseSubscription(store, { tenantId: '  ' }, NOW)).rejects.toThrow(/tenant/i)
+    await expect(pauseSubscription(store, { tenantId: '  ' })).rejects.toThrow(/tenant/i)
   })
 })
 
@@ -118,7 +118,7 @@ describe('resumeSubscription', () => {
   it('restores the status so the admin opens again', async () => {
     const { store, read } = createStore({ ...CURRENT, status: 'paused' })
 
-    await resumeSubscription(store, { tenantId: 't1' }, NOW)
+    await resumeSubscription(store, { tenantId: 't1' })
 
     expect(read('t1')?.status).toBe('active')
   })
@@ -126,7 +126,7 @@ describe('resumeSubscription', () => {
   it('gives back the unused days of a period they had already paid for', async () => {
     const { store, read } = createStore({ ...CURRENT, status: 'paused' })
 
-    await resumeSubscription(store, { tenantId: 't1' }, NOW)
+    await resumeSubscription(store, { tenantId: 't1' })
 
     expect(resolveSubscriptionAccess(read('t1'), NOW)).toMatchObject({
       state: 'active',
@@ -144,7 +144,7 @@ describe('resumeSubscription', () => {
       paid_through: '2026-05-01',
     })
 
-    await resumeSubscription(store, { tenantId: 't1' }, NOW)
+    await resumeSubscription(store, { tenantId: 't1' })
 
     expect(read('t1')?.paid_through).toBe('2026-05-01')
     expect(resolveSubscriptionAccess(read('t1'), NOW)).toMatchObject({
@@ -156,6 +156,6 @@ describe('resumeSubscription', () => {
   it('refuses a blank tenant id', async () => {
     const { store } = createStore(CURRENT)
 
-    await expect(resumeSubscription(store, { tenantId: '' }, NOW)).rejects.toThrow(/tenant/i)
+    await expect(resumeSubscription(store, { tenantId: '' })).rejects.toThrow(/tenant/i)
   })
 })
