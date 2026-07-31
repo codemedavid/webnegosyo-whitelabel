@@ -7,7 +7,7 @@
  * safe: a merchant may only draft OUT of a branch they may actually send from.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TransfersWorkbench } from '@/components/admin/transfers-workbench'
 import type { BranchScope } from '@/lib/outlets/branch-scope'
@@ -117,7 +117,9 @@ describe('TransfersWorkbench — drafting', () => {
   it('lets an owner send out of the unbranched store pool', () => {
     render(<TransfersWorkbench {...props()} />)
 
-    expect(screen.getByRole('option', { name: /store pool/i })).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText(/^from$/i)).getByRole('option', { name: /store pool/i }),
+    ).toBeInTheDocument()
   })
 })
 
