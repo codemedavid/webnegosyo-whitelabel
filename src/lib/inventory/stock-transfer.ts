@@ -19,6 +19,8 @@
  * the trigger keeps maintaining the per-branch totals.
  */
 
+import type { BranchScope } from '@/lib/outlets/branch-scope'
+
 /**
  * Where a transfer is in its life.
  *
@@ -144,6 +146,71 @@ export function validateTransferDraft(draft: TransferDraft): void {
     }
     seen.add(line.inventoryItemId)
   }
+}
+
+/**
+ * May this account send stock out of `fromOutletId`?
+ *
+ * Sending writes a deduction against the source shelf, so a branch may send
+ * only its own stock — a manager who could name another branch could empty it.
+ *
+ * A branch may not send the unbranched pool. Pool stock belongs to the store
+ * rather than to any one shop, which is exactly what `app_user_may_reach_branch`
+ * already says about reading it, and letting a manager drain it into their own
+ * branch would be the same claim made with a form.
+ */
+export function canSendTransfer(scope: BranchScope, fromOutletId: string | null): boolean {
+  if (scope.kind === 'all') return true
+  return fromOutletId !== null && fromOutletId === scope.outletId
+}
+
+/**
+ * May this account count a delivery in at `toOutletId`?
+ *
+ * Only the destination, or a store-wide account. The receive step exists so
+ * that somebody at the other end counts what physically arrived; a sender who
+ * could declare their own delivery received would make every shortfall
+ * unfindable, which is the one thing this whole document is for.
+ */
+export function canReceiveTransfer(scope: BranchScope, toOutletId: string | null): boolean {
+  if (scope.kind === 'all') return true
+  return toOutletId !== null && toOutletId === scope.outletId
+}
+
+/**
+ * The transfer's lines paired with what the destination actually counted.
+ *
+ * Every line must be counted. Defaulting an uncounted line to the amount sent
+ * would quietly assume the load was intact, which is precisely the assumption
+ * the receive step exists to stop being made; and defaulting it to zero would
+ * accuse the sender of losing stock nobody looked for.
+ *
+ * The unit cost comes off the stored line, never the payload — the price was
+ * fixed when the stock left, and a receiving screen that could restate it could
+ * revalue the chain's stock.
+ */
+export function resolveReceiptLines(
+  lines: readonly TransferLineReceipt[],
+  counts: Readonly<Record<string, number>>,
+): TransferLineReceipt[] {
+  const known = new Set(lines.map((line) => line.inventoryItemId))
+  for (const itemId of Object.keys(counts)) {
+    if (!known.has(itemId)) {
+      throw new Error('A counted ingredient is not on this transfer')
+    }
+  }
+
+  return lines.map((line) => {
+    const counted = counts[line.inventoryItemId]
+    if (counted === undefined) {
+      throw new Error('Every ingredient on the transfer has to be counted')
+    }
+    if (typeof counted !== 'number' || !Number.isFinite(counted)) {
+      throw new Error('A counted quantity must be a number')
+    }
+
+    return { ...line, receivedQuantity: counted }
+  })
 }
 
 /**
