@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import { StaffRoster } from '@/components/admin/staff/staff-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
@@ -16,6 +16,8 @@ interface StaffManagementCardProps {
    * and without a branch column.
    */
   outlets?: readonly StaffOutlet[]
+  /** Seats this tenant's plan includes. Absent = the platform default. */
+  maxStaffPerBranch?: number | null
 }
 
 /**
@@ -36,9 +38,11 @@ export function StaffManagementCard({
   tenantSlug,
   staff,
   outlets = [],
+  maxStaffPerBranch,
 }: StaffManagementCardProps) {
   const members = staff.filter((member) => !member.is_owner)
-  const seatsRemaining = Math.max(0, MAX_STAFF_PER_TENANT - members.length)
+  const seatLimit = resolveStaffLimit({ max_staff_per_branch: maxStaffPerBranch })
+  const seatsRemaining = Math.max(0, seatLimit - members.length)
 
   return (
     <Card>
@@ -58,9 +62,9 @@ export function StaffManagementCard({
           scopeOutlet={null}
           showBranchLabel={outlets.length > 0}
           addLabel="Add staff member"
-          emptyText={`No staff accounts yet. Add up to ${MAX_STAFF_PER_TENANT} team members.`}
+          emptyText={`No staff accounts yet. Add up to ${seatLimit} team members.`}
           seatsRemaining={seatsRemaining}
-          seatsLabel={`${members.length} of ${MAX_STAFF_PER_TENANT} staff`}
+          seatsLabel={`${members.length} of ${seatLimit} staff`}
           seatsTestId="settings-staff-seats"
         />
       </CardContent>

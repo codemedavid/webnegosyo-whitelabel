@@ -2,7 +2,7 @@
 
 import { AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import { StaffRoster } from '@/components/admin/staff/staff-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
@@ -15,6 +15,8 @@ interface StorePeopleCardProps {
   storeWideMembers: readonly RosterStaff[]
   /** Accounts pointing at a branch the store no longer has. */
   orphanedMembers: readonly RosterStaff[]
+  /** Seats this tenant's plan includes. Absent = the platform default. */
+  maxStaffPerBranch?: number | null
 }
 
 /**
@@ -35,8 +37,10 @@ export function StorePeopleCard({
   outlets,
   storeWideMembers,
   orphanedMembers,
+  maxStaffPerBranch,
 }: StorePeopleCardProps) {
-  const seatsRemaining = Math.max(0, MAX_STAFF_PER_TENANT - storeWideMembers.length)
+  const seatLimit = resolveStaffLimit({ max_staff_per_branch: maxStaffPerBranch })
+  const seatsRemaining = Math.max(0, seatLimit - storeWideMembers.length)
 
   return (
     <Card>
@@ -58,7 +62,7 @@ export function StorePeopleCard({
           addLabel="Add store-wide account"
           emptyText="No store-wide accounts. Everyone with access is tied to a single branch."
           seatsRemaining={seatsRemaining}
-          seatsLabel={`${storeWideMembers.length} of ${MAX_STAFF_PER_TENANT} seats used`}
+          seatsLabel={`${storeWideMembers.length} of ${seatLimit} seats used`}
           seatsTestId="store-people-seats"
         />
 

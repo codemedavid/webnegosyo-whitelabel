@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import { StaffRoster } from '@/components/admin/staff/staff-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
@@ -17,6 +17,8 @@ interface BranchTeamPanelProps {
   members: readonly RosterStaff[]
   /** Accounts covering the whole store, which reach this branch too. */
   storeWideMembers: readonly RosterStaff[]
+  /** Seats this tenant's plan includes. Absent = the platform default. */
+  maxStaffPerBranch?: number | null
 }
 
 /**
@@ -36,8 +38,10 @@ export function BranchTeamPanel({
   outlets,
   members,
   storeWideMembers,
+  maxStaffPerBranch,
 }: BranchTeamPanelProps) {
-  const seatsRemaining = Math.max(0, MAX_STAFF_PER_TENANT - members.length)
+  const seatLimit = resolveStaffLimit({ max_staff_per_branch: maxStaffPerBranch })
+  const seatsRemaining = Math.max(0, seatLimit - members.length)
 
   return (
     <div className="space-y-4">
@@ -60,7 +64,7 @@ export function BranchTeamPanel({
             addLabel={`Add to ${outlet.name}`}
             emptyText={`Nobody is posted to ${outlet.name} yet. Add someone to give them access to this branch only.`}
             seatsRemaining={seatsRemaining}
-            seatsLabel={`${members.length} of ${MAX_STAFF_PER_TENANT} seats used`}
+            seatsLabel={`${members.length} of ${seatLimit} seats used`}
             seatsTestId="branch-team-seats"
           />
         </CardContent>

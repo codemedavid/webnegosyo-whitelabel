@@ -97,15 +97,25 @@ function errorMessage(error: unknown, fallback: string): string {
 async function staffManagerContext(tenantId: string): Promise<StaffBranchContext> {
   const { userRole } = await verifyStaffManager(tenantId)
 
-  const { data, error } = await createAdminClient()
-    .from('outlets')
-    .select('id')
-    .eq('tenant_id', tenantId)
+  const admin = createAdminClient()
+
+  // Both reads in one round trip: the branches an account may be assigned to,
+  // and the seat allowance this tenant's plan includes. The allowance has to
+  // come from here rather than a constant — it is the enforcement, and the
+  // seat labels in the UI are only a report of it.
+  const [{ data, error }, { data: tenant }] = await Promise.all([
+    admin.from('outlets').select('id').eq('tenant_id', tenantId),
+    admin.from('tenants').select('max_staff_per_branch').eq('id', tenantId).maybeSingle(),
+  ])
   if (error) throw new Error(error.message)
 
   return {
     outlets: (data ?? []) as { id: string }[],
     actor: userRole,
+    // Absent falls back to the platform default inside `resolveStaffLimit`,
+    // never to unlimited: a failed read must not become a way to mint seats.
+    maxStaffPerBranch: (tenant as { max_staff_per_branch?: number | null } | null)
+      ?.max_staff_per_branch ?? undefined,
   }
 }
 
