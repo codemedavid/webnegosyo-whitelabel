@@ -189,9 +189,28 @@ describe("subscription projection guardrails", () => {
     expect(source).toContain("tenant_subscriptions");
   });
 
-  it("routes both entry points through the shared landing href", () => {
-    for (const file of [join("app", "(auth)", "login.tsx"), join("app", "_layout.tsx")]) {
-      expect(read(file)).toContain("landingHref");
-    }
+  it("carries the pause into the root redirect rather than navigating inline", () => {
+    // Neither entry point may navigate for itself: `useAuthRedirect` owns
+    // post-auth routing, and a second dispatch remounts the tab navigator and
+    // crashes react-navigation with "Cannot read property 'stale' of
+    // undefined". So the pause travels on the auth patch and the redirect acts
+    // on it — one router.replace, from one place.
+    const layout = read("app", "_layout.tsx");
+
+    expect(layout).toContain("isSubscriptionPaused");
+    expect(layout).toContain("PAUSED_LANDING_HREF");
+  });
+
+  it("exempts the superadmin from the redirect as well as the gate", () => {
+    // Two separate checks have to agree. If only `resolveSession` spared the
+    // superadmin, an impersonating session carrying a paused flag would still
+    // be bounced to the paused screen.
+    expect(read("app", "_layout.tsx")).toContain("isSubscriptionPaused && !isSuperadmin");
+  });
+
+  it("ships a screen at the paused landing href to land on", () => {
+    // A redirect to a route that does not exist is a blank screen with no way
+    // back — indistinguishable from a crash.
+    expect(() => read("app", "(main)", "subscription-paused.tsx")).not.toThrow();
   });
 });

@@ -17,7 +17,11 @@ import {
   type OutletRow,
   resolveSession,
   type TenantRow,
+  needsSubscriptionLookup,
+  PAUSED_LANDING_HREF,
+  SUBSCRIPTION_SELECT,
 } from "../lib/session-resolve";
+import type { SubscriptionRow } from "../lib/subscription-access";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
@@ -130,7 +134,22 @@ function useAuthInit() {
           outlet = (outletRow as OutletRow | null) ?? null;
         }
 
-        const session = resolveSession(data.session.user.id, appUser, tenant, outlet);
+
+        // The subscription gate. Read here rather than inside a screen so a
+        // lapsed merchant is caught at the door, not three taps in.
+        let subscription: SubscriptionRow | null = null;
+        if (appUser && needsSubscriptionLookup(appUser)) {
+          const { data: subscriptionRow } = await supabase
+            .from("tenant_subscriptions")
+            .select(SUBSCRIPTION_SELECT)
+            .eq("tenant_id", appUser.tenant_id)
+            .maybeSingle();
+          subscription = (subscriptionRow as SubscriptionRow | null) ?? null;
+        }
+
+        const session = resolveSession(data.session.user.id, appUser, tenant, outlet, {
+          subscription,
+        });
 
         if (session.mode === "denied" || !session.auth) {
           setAuth({ isLoading: false });
@@ -150,6 +169,7 @@ function useAuthRedirect() {
   const isLoading = useAuthStore((s) => s.isLoading);
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
+  const isSubscriptionPaused = useAuthStore((s) => s.isSubscriptionPaused);
 
   const rootNavigationState = useRootNavigationState();
   const navigatorReady = rootNavigationState?.key != null;
@@ -169,6 +189,15 @@ function useAuthRedirect() {
       // A superadmin belongs on the platform surface — unless they have opened
       // a tenant, in which case the merchant tree is exactly where they want
       // to be and this must not yank them back out.
+      // A lapsed store gets the paused screen instead of the dashboard. The
+      // session stays authenticated so the screen can name the store and say
+      // what is owed; signing them out would leave them retyping a password
+      // they know is right.
+      if (isSubscriptionPaused && !isSuperadmin) {
+        if (group !== "(main)") router.replace(PAUSED_LANDING_HREF);
+        return;
+      }
+
       const wantsPlatform = isSuperadmin && impersonatedTenantId === null;
       const wantedGroup = wantsPlatform ? "(superadmin)" : "(main)";
       if (group !== wantedGroup) {
@@ -186,6 +215,7 @@ function useAuthRedirect() {
     group,
     isSuperadmin,
     impersonatedTenantId,
+    isSubscriptionPaused,
   ]);
 }
 
