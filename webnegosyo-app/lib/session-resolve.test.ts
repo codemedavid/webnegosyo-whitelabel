@@ -219,3 +219,33 @@ describe("resolveSession — immutability", () => {
     expect(tenant).toEqual(TENANT_ROW);
   });
 });
+
+describe("the Convex bundle a tenant is running", () => {
+  const ADMIN_ROW = { tenant_id: "t1", role: "admin", is_owner: true } as never;
+
+  it("carries the deployment's schema version into the session", () => {
+    // Without it the app cannot tell whether this deployment understands a
+    // branch-narrowed stats query, and must withhold a branch manager's food
+    // cost forever.
+    const result = resolveSession("u1", ADMIN_ROW, {
+      id: "t1",
+      slug: "acme",
+      name: "Acme",
+      convex_deployment_url: "https://x.convex.cloud",
+      convex_schema_version: 18,
+    } as never);
+
+    expect(result.auth).toMatchObject({ convexSchemaVersion: 18 });
+  });
+
+  it("reads an absent version as unknown rather than as zero-and-fine", () => {
+    const result = resolveSession("u1", ADMIN_ROW, {
+      id: "t1",
+      slug: "acme",
+      name: "Acme",
+      convex_deployment_url: null,
+    } as never);
+
+    expect(result.auth).toMatchObject({ convexSchemaVersion: null });
+  });
+});

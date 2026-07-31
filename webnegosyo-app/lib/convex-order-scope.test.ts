@@ -86,3 +86,49 @@ describe("convexOrderQueryArgs", () => {
     ]);
   });
 });
+
+describe("a ref that only newer deployments understand", () => {
+  /**
+   * `orders:getDashboardStatsByPeriod` learned `outletId` in schema v18. The
+   * two v15 refs above are deliberately NOT version-gated — a branch-scoped
+   * account only exists on a tenant that has branches, which is a tenant on
+   * v15. That reasoning does not extend to v18: a tenant can have branches and
+   * still be running v15, v16 or v17, and sending the argument there blanks the
+   * screen rather than degrading.
+   */
+  const branch = { kind: "branch", outletId: "north" } as const;
+  const STATS = "orders:getDashboardStatsByPeriod";
+
+  it("narrows the takings once the deployment is new enough", () => {
+    const args = convexOrderQueryArgs(STATS, { startDate: 1, endDate: 2 }, branch, 18);
+
+    expect(args).toEqual({ startDate: 1, endDate: 2, outletId: "north" });
+  });
+
+  it("sends no branch key to a deployment that would reject it", () => {
+    // Not `outletId: undefined` — the validator still sees the key.
+    const args = convexOrderQueryArgs(STATS, { startDate: 1, endDate: 2 }, branch, 17);
+
+    expect(args).toEqual({ startDate: 1, endDate: 2 });
+  });
+
+  it("treats an unknown version as the oldest", () => {
+    const args = convexOrderQueryArgs(STATS, { startDate: 1, endDate: 2 }, branch);
+
+    expect(args).toEqual({ startDate: 1, endDate: 2 });
+  });
+
+  it("leaves the v15 refs ungated, exactly as they are today", () => {
+    // Their narrowing must not regress for tenants whose version this app has
+    // never had to know.
+    const args = convexOrderQueryArgs("orders:getOrders", {}, branch);
+
+    expect(args).toEqual({ outletId: "north" });
+  });
+
+  it("adds nothing for a store-wide account whatever the version", () => {
+    const args = convexOrderQueryArgs(STATS, { startDate: 1 }, { kind: "all" }, 18);
+
+    expect(args).toEqual({ startDate: 1 });
+  });
+});
