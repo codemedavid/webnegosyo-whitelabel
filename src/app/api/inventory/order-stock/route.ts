@@ -142,15 +142,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, skipped: 'inventory_disabled' })
   }
 
-  // The branch is the ACCOUNT's, never the request body's — the same rule push
-  // registration follows. A register belongs to the shop it stands in, and a
+  // The branch is the ORDER's, and the account's only as a fallback.
+  //
+  // Never the request body's — the same rule push registration follows, and a
   // client-named branch on a write path would let one shop spend another's
-  // stock. A store-wide account (the owner) resolves to the unbranched pool,
-  // which is exactly today's behaviour for every single-location tenant.
-  const actorOutletId =
+  // stock. But the acting account is not the answer either: an owner or any
+  // store-wide account (`outlet_id` NULL) ringing a sale at North would spend
+  // the unbranched pool and leave North's shelf untouched. The stock a sale
+  // consumed came off the shelf the sale was made at, which is what the order
+  // records — the reasoning the public sibling route already spells out.
+  //
+  // The account is the fallback because a POS tenant's orders live in Convex,
+  // not in this table: there is no row to read, and the register standing in
+  // one shop is then the best evidence of where the stock went. A branch
+  // manager who cannot see another branch's order row falls back to their own
+  // branch, which for them is the same answer.
+  const accountOutletId =
     typeof appUser?.outlet_id === 'string' && appUser.outlet_id.trim() !== ''
       ? appUser.outlet_id
       : null
+
+  const { data: orderRow } = await supabase
+    .from('orders')
+    .select('outlet_id')
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  const orderOutletId =
+    typeof orderRow?.outlet_id === 'string' && orderRow.outlet_id.trim() !== ''
+      ? orderRow.outlet_id
+      : null
+
+  const actorOutletId = orderOutletId ?? accountOutletId
 
   if (action === 'restore') {
     const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')

@@ -137,6 +137,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         reason,
         quantity,
         unit_id: unitId,
+        // Forwarded, not dropped. `resolveMovementBranch` is what makes this
+        // safe to accept from a client: a branch manager naming somebody
+        // else's shop is refused, and a store-wide owner choosing a branch is
+        // an ordinary thing to do — receiving a delivery into North. Without
+        // it an owner could only ever record into the unbranched pool, so
+        // their deliveries and their manager's would pile up in two different
+        // places for the same physical shelf.
+        outlet_id: typeof body?.outletId === 'string' ? body.outletId : undefined,
         note: typeof body?.note === 'string' ? body.note : undefined,
       },
     )

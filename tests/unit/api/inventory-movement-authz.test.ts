@@ -60,7 +60,7 @@ jest.mock('@supabase/supabase-js', () => ({
   }),
 }))
 
-function movementRequest(): NextRequest {
+function movementRequest(extra: Record<string, unknown> = {}): NextRequest {
   return new NextRequest('http://localhost/api/inventory/movement', {
     method: 'POST',
     headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
@@ -70,15 +70,57 @@ function movementRequest(): NextRequest {
       reason: 'stocktake',
       quantity: 900,
       unit_id: 'unit-1',
+      ...extra,
     }),
   })
 }
 
-async function post(user: AppUserRow | null) {
+async function post(user: AppUserRow | null, extra: Record<string, unknown> = {}) {
   appUser = user
   recordStockMovementWith.mockClear()
-  return POST(movementRequest())
+  return POST(movementRequest(extra))
 }
+
+describe('POST /api/inventory/movement — which branch the stock moves at', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+
+  test('forwards the branch the caller chose', async () => {
+    // The route built its input object without `outlet_id` at all, so the
+    // choice was silently dropped. `resolveMovementBranch` is what makes
+    // accepting it safe — a manager naming somebody else-s shop is refused —
+    // and a store-wide owner receiving a delivery into North is an ordinary
+    // thing to do. Without this an owner could only ever record into the
+    // unbranched pool, so their deliveries and their manager-s piled up in two
+    // different places for the same physical shelf.
+    await post(OWNER as never, { outletId: 'outlet-north' })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ outlet_id: 'outlet-north' }),
+    )
+  })
+
+  test('sends nothing when no branch was named, leaving the service to decide', async () => {
+    await post(OWNER as never)
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ outlet_id: undefined }),
+    )
+  })
+
+  test('ignores a branch that is not a string rather than passing it on', async () => {
+    await post(OWNER as never, { outletId: { id: 'outlet-north' } })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ outlet_id: undefined }),
+    )
+  })
+})
 
 describe('POST /api/inventory/movement — who may move stock', () => {
   test('refuses a staff member who does not hold the menu grant', async () => {

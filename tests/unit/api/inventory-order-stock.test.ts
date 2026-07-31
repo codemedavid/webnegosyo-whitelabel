@@ -45,6 +45,7 @@ describe('POST /api/inventory/order-stock', () => {
   let getUserMock: jest.Mock
   let appUserSingleMock: jest.Mock
   let tenantSingleMock: jest.Mock
+  let orderMaybeSingleMock: jest.Mock
   let applyMock: jest.Mock
   let reverseMock: jest.Mock
 
@@ -60,6 +61,7 @@ describe('POST /api/inventory/order-stock', () => {
     getUserMock = jest.fn()
     appUserSingleMock = jest.fn()
     tenantSingleMock = jest.fn()
+    orderMaybeSingleMock = jest.fn()
 
     // Default: a legitimate admin of t1, whose tenant has inventory enabled.
     getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
@@ -71,16 +73,24 @@ describe('POST /api/inventory/order-stock', () => {
       data: { inventory_enabled: true },
       error: null,
     })
+    // Default: the order is not in the platform table. That is the POS tenant
+    // whose orders live in Convex, so the route falls back to the register's
+    // own account — the behaviour every existing case here was written against.
+    orderMaybeSingleMock.mockResolvedValue({ data: null, error: null })
 
+    // `eq` chains (the orders read filters on both id and tenant_id), so the
+    // builder returns itself and the terminal method decides the answer.
     mockCreateClient.mockReturnValue({
       auth: { getUser: getUserMock },
-      from: jest.fn((table: string) => ({
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            single: table === 'tenants' ? tenantSingleMock : appUserSingleMock,
-          })),
-        })),
-      })),
+      from: jest.fn((table: string) => {
+        const builder: Record<string, unknown> = {
+          single: table === 'tenants' ? tenantSingleMock : appUserSingleMock,
+          maybeSingle: orderMaybeSingleMock,
+        }
+        builder.select = jest.fn(() => builder)
+        builder.eq = jest.fn(() => builder)
+        return builder
+      }),
     })
 
     const service = await import('@/lib/inventory/order-stock-service')
@@ -235,6 +245,79 @@ describe('POST /api/inventory/order-stock', () => {
         data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-north' },
         error: null,
       })
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        'outlet-north',
+      )
+    })
+
+    test('spends the ORDER-s branch, not the branch of whoever rang it up', async () => {
+      // The defect: an owner (or any store-wide account, `outlet_id` NULL)
+      // ringing a sale at North spent the unbranched pool and left North-s
+      // shelf untouched. The stock a sale consumed came off the shelf the sale
+      // was made at, which is what the order records — the reasoning the
+      // public sibling route already followed.
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: null },
+        error: null,
+      })
+      orderMaybeSingleMock.mockResolvedValue({
+        data: { outlet_id: 'outlet-north' },
+        error: null,
+      })
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        'outlet-north',
+      )
+    })
+
+    test('the order-s branch outranks the account-s when they disagree', async () => {
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-south' },
+        error: null,
+      })
+      orderMaybeSingleMock.mockResolvedValue({
+        data: { outlet_id: 'outlet-north' },
+        error: null,
+      })
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        'outlet-north',
+      )
+    })
+
+    test('falls back to the account when the order is not in the platform table', async () => {
+      // A POS tenant-s orders live in Convex, so there is no row to read. The
+      // register standing in one shop is then the best evidence available.
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-north' },
+        error: null,
+      })
+      orderMaybeSingleMock.mockResolvedValue({ data: null, error: null })
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
