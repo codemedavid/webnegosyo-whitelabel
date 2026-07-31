@@ -175,6 +175,102 @@ describe('POST /api/inventory/transfers — who may reach it', () => {
   })
 })
 
+describe('POST /api/inventory/transfers — the draft is validated at the door', () => {
+  /**
+   * The web action parses this same input with Zod before the service ever
+   * sees it. This route did not, so one boundary trusted its caller and the
+   * other did not — for the same document, reached with the same credentials.
+   *
+   * `validateTransferDraft` catches the semantic errors underneath (empty
+   * lines, same-branch, duplicates), so this is about SHAPE: values that are
+   * the wrong type slip past a `> 0` comparison and land in a database insert,
+   * where the message stops being about the transfer at all.
+   */
+  test('refuses a quantity that is not a number', async () => {
+    const response = await post(OWNER, {
+      ...DRAFT,
+      lines: [{ inventoryItemId: 'flour', quantity: '20' }],
+    })
+
+    expect(response.status).toBe(400)
+    expect(createTransferWith).not.toHaveBeenCalled()
+  })
+
+  test('refuses a line with no ingredient', async () => {
+    // A non-string id reaches the insert and comes back as a uuid cast error,
+    // which tells the merchant nothing about what they did wrong.
+    const response = await post(OWNER, {
+      ...DRAFT,
+      lines: [{ inventoryItemId: null, quantity: 20 }],
+    })
+
+    expect(response.status).toBe(400)
+    expect(createTransferWith).not.toHaveBeenCalled()
+  })
+
+  test('refuses a note longer than the column holds', async () => {
+    const response = await post(OWNER, { ...DRAFT, note: 'x'.repeat(501) })
+
+    expect(response.status).toBe(400)
+    expect(createTransferWith).not.toHaveBeenCalled()
+  })
+
+  test('says which line is wrong, in words meant for the merchant', async () => {
+    const response = await post(OWNER, {
+      ...DRAFT,
+      lines: [{ inventoryItemId: 'flour', quantity: 0 }],
+    })
+
+    expect((await response.json()).error).toMatch(/quantity greater than zero/i)
+  })
+
+  test('still lets a well-formed draft through', async () => {
+    // The guard must not become the thing that stops transfers working.
+    const response = await post(OWNER, DRAFT)
+
+    expect(response.status).toBe(200)
+    expect(createTransferWith).toHaveBeenCalledTimes(1)
+  })
+
+  test('refuses counts that are not numbers when receiving', async () => {
+    // A shortfall is computed as sent minus counted. A string here makes that
+    // arithmetic NaN, and a NaN delta is a ledger row that means nothing.
+    const response = await post(OWNER, {
+      action: 'receive',
+      transferId: 'tr1',
+      counts: { flour: 'twelve' },
+    })
+
+    expect(response.status).toBe(400)
+    expect(receiveTransferWith).not.toHaveBeenCalled()
+  })
+
+  test('refuses a negative count', async () => {
+    const response = await post(OWNER, {
+      action: 'receive',
+      transferId: 'tr1',
+      counts: { flour: -5 },
+    })
+
+    expect(response.status).toBe(400)
+    expect(receiveTransferWith).not.toHaveBeenCalled()
+  })
+
+  test('accepts a count of zero, which is how a lost load is closed', async () => {
+    // Zero is the ONLY way to close a consignment that never turned up, since
+    // a sent transfer cannot be cancelled. A guard that rejected it would make
+    // the load uncloseable.
+    const response = await post(OWNER, {
+      action: 'receive',
+      transferId: 'tr1',
+      counts: { flour: 0 },
+    })
+
+    expect(response.status).toBe(200)
+    expect(receiveTransferWith).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('POST /api/inventory/transfers — bad input', () => {
   test('refuses an action it does not know', async () => {
     const response = await post(OWNER, { action: 'destroy', transferId: 'tr1' })
