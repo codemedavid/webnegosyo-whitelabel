@@ -23,6 +23,9 @@ function report(overrides: Partial<DailyInventoryReportForDay> = {}): DailyInven
     countedCount: 0,
     uncountedCount: 0,
     uncostedCount: 0,
+    // Null, not an abandoned count: this fixture is a day nobody opened a
+    // session for, which is what every day before sessions looks like.
+    countSession: null,
     ...overrides,
   }
 }
