@@ -309,6 +309,80 @@ describe('buildReceiveMovements', () => {
   })
 })
 
+describe('a transfer conserves stock, send and receive taken together', () => {
+  /**
+   * Every test above this block checks one leg's shape in isolation, which is
+   * how the defect below survived: each leg was individually defensible and the
+   * pair of them was never added up.
+   *
+   * Found by probing the real branch rows on a live tenant. Opening 400 at
+   * Central and 100 at Valenzuela, sending 120 and receiving 100, the chain
+   * ended on 460 — it lost 40 for a shortfall of 20. The `transfer_out` leg
+   * takes the whole load off the sender's shelf at send time, so a later
+   * `waste` leg for the missing part removes it a second time.
+   *
+   * The physical truth these tests pin: the sender's shelf loses exactly what
+   * left it, the receiver's gains exactly what arrived, and the chain is down
+   * by the shortfall — once.
+   */
+  const legsFor = (sentQuantity: number, receivedQuantity: number) => [
+    ...buildSendMovements({
+      fromOutletId: 'o-north',
+      lines: [receipt({ sentQuantity, receivedQuantity })],
+    }),
+    ...buildReceiveMovements({
+      fromOutletId: 'o-north',
+      toOutletId: 'o-south',
+      lines: [receipt({ sentQuantity, receivedQuantity })],
+    }),
+  ]
+
+  const netAt = (legs: ReturnType<typeof legsFor>, outletId: string | null) =>
+    legs.filter((leg) => leg.outletId === outletId).reduce((sum, leg) => sum + leg.quantityDelta, 0)
+
+  const chainNet = (legs: ReturnType<typeof legsFor>) =>
+    legs.reduce((sum, leg) => sum + leg.quantityDelta, 0)
+
+  it('moves no stock at all when the whole load arrives', () => {
+    expect(chainNet(legsFor(10, 10))).toBe(0)
+  })
+
+  it('costs the chain the shortfall exactly once', () => {
+    // 10 left North and 8 arrived. Two units are gone — not four.
+    expect(chainNet(legsFor(10, 8))).toBe(-2)
+  })
+
+  it('takes off the sending branch exactly what left it', () => {
+    // The whole load left North's shelf. What happened to it afterwards is not
+    // North's shelf's problem a second time.
+    expect(netAt(legsFor(10, 8), 'o-north')).toBe(-10)
+  })
+
+  it('puts on the receiving branch exactly what arrived', () => {
+    expect(netAt(legsFor(10, 8), 'o-south')).toBe(8)
+  })
+
+  it('still books the loss as waste against the sender', () => {
+    // The conservation fix must not cost us the shrinkage record — this leg is
+    // what a variance report reads, and where the investigation starts.
+    const waste = legsFor(10, 8).filter((leg) => leg.reason === 'waste')
+
+    expect(waste).toEqual([
+      expect.objectContaining({ outletId: 'o-north', quantityDelta: -2 }),
+    ])
+  })
+
+  it('costs the chain the whole load when nothing arrives', () => {
+    // A van that never turned up: the chain is down 10, and North's shelf --
+    // which the send already emptied -- is not charged twice for it.
+    const legs = legsFor(10, 0)
+
+    expect(chainNet(legs)).toBe(-10)
+    expect(netAt(legs, 'o-north')).toBe(-10)
+    expect(netAt(legs, 'o-south')).toBe(0)
+  })
+})
+
 describe('who may act on a transfer', () => {
   it('lets a store-wide account send from any branch', () => {
     expect(canSendTransfer(ALL, 'o-north')).toBe(true)
