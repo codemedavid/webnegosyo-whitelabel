@@ -1264,3 +1264,72 @@ and the app sends one.
 upstream, so none of this — Phase 0's correctness fixes included — is in front
 of a merchant. The append-only migration is the exception: it is live on the
 database now, because RLS is not shipped by deploying the app.
+
+---
+
+## Phase 4c — the food cost percentage on the phone (2026-07-31)
+
+**Journeys.** As an owner I want the day's food cost percentage on my phone, so
+I know whether the takings covered the stock they consumed — the question the
+whole report was originally asked for. As a branch manager I want that figure
+*withheld* rather than computed from mismatched scopes.
+
+**What made this tractable.** Not a ported backend router. The merchant app
+addresses its order backend by STRING REF, so `orders:getDashboardStatsByPeriod`
+is served by Convex or by the platform Supabase adapter with the screen knowing
+neither. The web's `daily-revenue-read.ts` — `resolveOrderBackend`, a Convex
+server client, a timeout — has no counterpart here and needed none.
+
+**The scope mismatch, now mitigated.** The note above ("any future per-branch
+report must fix the ledger first, or the two halves of the ratio describe
+different shops") is exactly what this unit had to handle. `loadDailyReport`
+reads `stock_movements` store-wide; `useSafeQuery` narrows orders to the branch
+the ACCOUNT is confined to. Dividing one by the other yields a food cost
+percentage inflated by roughly the branch count — which reads as a costing
+emergency and is purely an artefact of two scopes. A branch-scoped account is
+therefore shown NOTHING, and the query is skipped rather than merely ignored.
+This is a mitigation, not a fix: the ledger is still store-wide. Making
+`stock_movements.outlet_id` (added by `20260808120000`) part of the report read
+is what would actually let a branch manager see this figure.
+
+| Stage | Commit | Evidence |
+|---|---|---|
+| RED | `2fb3dce` | `TS2307: Cannot find module './daily-report-revenue'` — 1 suite failed, 96 passed |
+| GREEN | `cb52ac4` | 97 suites, 1596 passed |
+| RED | (folded) | screen guardrails: 5 failed, 22 passed |
+| GREEN | `71660a7` | 97 suites, 1602 passed; `tsc` exit 0; eslint exit 0 |
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 191 | The takings are reported when the account sees the whole store | `daily-report-revenue.test.ts` | unit | PASS |
+| 192 | A genuinely empty day passes through as `0`, not as unknown | `daily-report-revenue.test.ts` | unit | PASS |
+| 193 | Nothing is stated while the query is still in flight | `daily-report-revenue.test.ts` | unit | PASS |
+| 194 | A settled query with no figure reports unknown | `daily-report-revenue.test.ts` | unit | PASS |
+| 195 | A backend answering without `totalRevenue` reports unknown | `daily-report-revenue.test.ts` | unit | PASS |
+| 196 | A branch-scoped account is told nothing at all | `daily-report-revenue.test.ts` | unit | PASS |
+| 197 | "Not comparable" outranks "not readable" for a branch account | `daily-report-revenue.test.ts` | unit | PASS |
+| 198 | A negative total is rejected rather than rendered | `daily-report-revenue.test.ts` | unit | PASS |
+| 199 | The screen reads takings through the shared string ref | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+| 200 | Takings use the SAME Manila window as the ledger | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+| 201 | The screen defers the decision instead of dividing inline | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+| 202 | The percentage comes from the parity-guarded core | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+| 203 | A withheld figure is explained, not left blank | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+| 204 | No `revenue ?? 0` can turn an unreadable day into a perfect one | `daily-report-screen-mount.test.ts` | guardrail | PASS |
+
+**Honest note on 204.** It passed the moment it was written — there was no `?? 0`
+to remove. It is a regression guard, not evidence of a bug fixed. The other
+five screen guarantees were genuinely RED.
+
+**Decisions worth not re-deriving.**
+- The three-state contract (`undefined` = this caller does not deal in revenue /
+  `null` = unknown / number = the takings) is the web panel's vocabulary,
+  reused verbatim so the two surfaces cannot drift in what they mean by a
+  missing figure.
+- Loading returns `undefined`, not `null`. `null` renders "sales could not be
+  read", which would flash on every cold mount and be a lie about a slow query.
+- The branch check runs FIRST, ahead of the failure cases, so a branch manager
+  is never told the sales "could not be read" — which would imply the figure
+  would otherwise have been theirs.
+- `resolveReportRevenue` lives OUTSIDE `lib/daily-report/` and is absent from
+  `PORTED_MODULES`. It is app-only by nature: it encodes a mismatch that exists
+  because of how the app scopes its queries, and has no web original to match.
