@@ -223,3 +223,68 @@ npx eslint <changed files> → exit 0
    batched or cached.
 4. Gaps 1, 3, 4, 5 and 6 from part 1 still stand — notably that no part of
    Phase 2 has been proven end-to-end against a database with a real recipe.
+
+---
+
+# Phase 2, part 3 — the screen
+
+**Checkpoints**: RED `50e64cd` → GREEN `39ec123`
+
+Closes gap 1 of part 2 ("not called by any screen") and gap 4 of part 1 (stale types).
+
+## Task report
+
+### `src/lib/inventory/branch-stock-read.ts` (new) + admin page wiring
+
+- **RED**: `npx jest --testPathPatterns="inventory-branch-stock-read"` →
+  `1 suite failed`, module unresolvable.
+- **GREEN**: same command → `9 of 9 passed`.
+- The admin inventory page resolves the account's scope with
+  `resolveBranchScope(getCachedCurrentUserRole())` — the pattern
+  `admin/orders/page.tsx` already uses — and reads via `getScopedIngredients`.
+- The read goes through the **RLS-enforcing server client**, so a branch
+  manager's query returns only their branch's rows before `applyBranchStock`
+  narrows anything. Two independent layers, not one.
+
+### Types
+
+`src/types/supabase.ts` gains `inventory_stock` and `stock_movements.outlet_id`
+(plus `target_qty`, whose column exists in production). Hand-edited rather than
+regenerated, to keep the diff reviewable and avoid churn against a concurrent
+session working in the same tree.
+
+## Test specification (part 3)
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 21 | Stock rows are indexed by item and branch | `inventory-branch-stock-read.test.ts:indexes a tenant-s stock rows…` | unit | PASS |
+| 22 | The stock query is scoped to the tenant | `…:scopes the query to the tenant` | unit | PASS |
+| 23 | A failed stock read returns an empty index, not a throw | `…:returns an empty index rather than throwing…` | unit | PASS |
+| 24 | An owner still sees the roll-up | `…:gives a store-wide account the roll-up untouched` | unit | PASS |
+| 25 | A branch sees its own quantities | `…:gives a branch account its own branch-s quantities` | unit | PASS |
+| 26 | A branch sees its own par levels | `…:gives a branch account its own par levels` | unit | PASS |
+| 27 | An unstocked ingredient stays listed and receivable | `…:still lists an ingredient the branch has never stocked` | unit | PASS |
+| 28 | A failed read costs an owner nothing | `…:falls back to the roll-up when the stock read fails for an owner` | unit | PASS |
+| 29 | A failed read shows a branch zero, never the chain total | `…:shows a branch zero rather than the roll-up when the stock read fails` | unit | PASS |
+
+## Validation (part 3)
+
+```
+npx jest --testPathPatterns="inventory"
+  → Test Suites: 68 passed, 1 skipped, 69 total
+  → Tests: 727 passed, 8 skipped, 735 total
+
+npx tsc --noEmit  → no errors in any file changed by this part
+npx eslint <changed files> → exit 0
+```
+
+## Known gaps (part 3)
+
+1. **Only the web admin inventory page is wired.** The merchant app
+   (`webnegosyo-app/lib/inventory-*.ts`) and the POS still read the roll-up.
+2. **`branchStockBreakdown` has no UI at all.** The owner's "what does each shop
+   hold?" view — journey 6, and the thing that makes a transfer decidable — is
+   proven but unrendered. This is the single largest remaining gap before Phase 3.
+3. **The page is not proven end-to-end.** No live probe: the only inventory
+   tenant has no branches, so there is no fixture where the two paths differ.
+4. Gaps 1, 3, 5, 6 of part 1 and gaps 2, 3 of part 2 still stand.
