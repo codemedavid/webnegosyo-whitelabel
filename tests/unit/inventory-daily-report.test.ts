@@ -374,3 +374,105 @@ describe('buildDailyInventoryReport — branch transfers', () => {
     expect(buildDailyInventoryReport({ movements, ingredients: [FLOUR] }).rows).toHaveLength(1)
   })
 })
+
+/**
+ * Two branches, one ingredient.
+ *
+ * `balance_after` has meant "the balance AT THAT BRANCH" since migration
+ * 20260808120000 — for a single-shop tenant the branch total and the store
+ * total are the same number, which is why this went unnoticed. For a branched
+ * one, reading a day's movements as a single stream takes the opening from
+ * whichever branch moved first and the closing from whichever moved last, and
+ * the row stops adding up.
+ *
+ * The identity `opening + received − sold − waste + transferred ± count =
+ * closing` is the whole reason a merchant can check this report by eye instead
+ * of merely believing it. A row that fails it is worse than no row.
+ */
+describe('buildDailyInventoryReport — a day across two branches', () => {
+  const NORTH = 'o-north'
+  const SOUTH = 'o-south'
+
+  it('adds the branches up instead of reading them as one stream', () => {
+    // North opens at 500 and sells 100. South opens at 300 and sells 50.
+    // Store-wide that is 800 on hand at open and 650 at close.
+    const report = buildDailyInventoryReport({
+      ingredients: [FLOUR],
+      movements: [
+        movement({
+          outletId: NORTH, reason: 'sale', quantityDelta: -100,
+          balanceAfter: 400, createdAt: '2026-07-29T02:00:00.000Z',
+        }),
+        movement({
+          outletId: SOUTH, reason: 'sale', quantityDelta: -50,
+          balanceAfter: 250, createdAt: '2026-07-29T03:00:00.000Z',
+        }),
+      ],
+    })
+
+    const row = report.rows[0]
+    expect(row.opening).toBe(800)
+    expect(row.closing).toBe(650)
+  })
+
+  it('keeps every row checkable by eye', () => {
+    // The identity, asserted directly. Without per-branch reconciliation the
+    // opening reads 500 and the closing 250, and the row claims 150 sold from a
+    // shelf that fell by 250.
+    const report = buildDailyInventoryReport({
+      ingredients: [FLOUR],
+      movements: [
+        movement({
+          outletId: NORTH, reason: 'receive', quantityDelta: 200,
+          balanceAfter: 700, createdAt: '2026-07-29T01:00:00.000Z',
+        }),
+        movement({
+          outletId: SOUTH, reason: 'sale', quantityDelta: -50,
+          balanceAfter: 250, createdAt: '2026-07-29T03:00:00.000Z',
+        }),
+      ],
+    })
+
+    const row = report.rows[0]
+    expect(row.opening + row.received - row.sold - row.waste + row.transferred + row.countAdjustment)
+      .toBe(row.closing)
+  })
+
+  it('still reconciles a single-shop day, where branch and store are one shelf', () => {
+    // The behaviour every existing tenant has. `outletId` is absent on every
+    // movement written before branches existed, and absent must mean "the one
+    // shelf", not "a branch called undefined".
+    const report = buildDailyInventoryReport({
+      ingredients: [FLOUR],
+      movements: [
+        movement({ reason: 'receive', quantityDelta: 200, balanceAfter: 1200, createdAt: '2026-07-29T01:00:00.000Z' }),
+        movement({ reason: 'sale', quantityDelta: -200, balanceAfter: 1000, createdAt: '2026-07-29T02:00:00.000Z' }),
+      ],
+    })
+
+    const row = report.rows[0]
+    expect(row.opening).toBe(1000)
+    expect(row.closing).toBe(1000)
+  })
+
+  it('sums shrinkage across branches rather than netting one against the other', () => {
+    // North is 40 short, South is 40 long. Netting them reports a spotless day
+    // while a shelf is genuinely missing 40 — the exact failure the shrinkage
+    // figure exists to surface.
+    const report = buildDailyInventoryReport({
+      ingredients: [FLOUR],
+      movements: [
+        movement({
+          outletId: NORTH, reason: 'stocktake', quantityDelta: -40,
+          balanceAfter: 460, createdAt: '2026-07-29T04:00:00.000Z',
+        }),
+        movement({
+          outletId: SOUTH, reason: 'stocktake', quantityDelta: 40,
+          balanceAfter: 340, createdAt: '2026-07-29T05:00:00.000Z',
+        }),
+      ],
+    })
+
+    expect(report.rows[0].shrinkage).toBe(40)
+  })
+})
