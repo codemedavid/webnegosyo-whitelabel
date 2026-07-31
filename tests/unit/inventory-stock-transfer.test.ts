@@ -18,10 +18,18 @@ import {
   validateTransferDraft,
   buildSendMovements,
   buildReceiveMovements,
+  canSendTransfer,
+  canReceiveTransfer,
+  resolveReceiptLines,
   TRANSFER_STATUS_LABELS,
   type TransferLineDraft,
   type TransferLineReceipt,
 } from '@/lib/inventory/stock-transfer'
+import type { BranchScope } from '@/lib/outlets/branch-scope'
+
+const ALL: BranchScope = { kind: 'all' }
+const AT_NORTH: BranchScope = { kind: 'branch', outletId: 'o-north' }
+const AT_SOUTH: BranchScope = { kind: 'branch', outletId: 'o-south' }
 
 const line = (overrides: Partial<TransferLineDraft> = {}): TransferLineDraft => ({
   inventoryItemId: 'item-flour',
@@ -298,5 +306,73 @@ describe('buildReceiveMovements', () => {
     expect(movements).toContainEqual(
       expect.objectContaining({ outletId: null, reason: 'waste', quantityDelta: -1 }),
     )
+  })
+})
+
+describe('who may act on a transfer', () => {
+  it('lets a store-wide account send from any branch', () => {
+    expect(canSendTransfer(ALL, 'o-north')).toBe(true)
+    expect(canSendTransfer(ALL, null)).toBe(true)
+  })
+
+  it('lets a branch send only its own stock', () => {
+    // Sending writes a deduction against the source shelf. A manager who could
+    // name someone else's branch could empty it.
+    expect(canSendTransfer(AT_NORTH, 'o-north')).toBe(true)
+    expect(canSendTransfer(AT_NORTH, 'o-south')).toBe(false)
+  })
+
+  it('does not let a branch send the unbranched store pool', () => {
+    // Pool stock is the store's, not any one shop's — the same rule the RLS
+    // predicate already applies to reads.
+    expect(canSendTransfer(AT_NORTH, null)).toBe(false)
+  })
+
+  it('lets only the destination count a delivery in', () => {
+    // Receiving credits a shelf. The sender declaring their own delivery
+    // received is what makes a shortfall unfindable.
+    expect(canReceiveTransfer(AT_SOUTH, 'o-south')).toBe(true)
+    expect(canReceiveTransfer(AT_NORTH, 'o-south')).toBe(false)
+    expect(canReceiveTransfer(ALL, 'o-south')).toBe(true)
+  })
+})
+
+describe('resolveReceiptLines', () => {
+  const sent: readonly TransferLineReceipt[] = [
+    { inventoryItemId: 'item-flour', sentQuantity: 10, receivedQuantity: 0, unitCost: 25 },
+    { inventoryItemId: 'item-sugar', sentQuantity: 4, receivedQuantity: 0, unitCost: 60 },
+  ]
+
+  it('pairs each sent line with what was counted', () => {
+    const lines = resolveReceiptLines(sent, { 'item-flour': 8, 'item-sugar': 4 })
+
+    expect(lines).toEqual([
+      expect.objectContaining({ inventoryItemId: 'item-flour', sentQuantity: 10, receivedQuantity: 8 }),
+      expect.objectContaining({ inventoryItemId: 'item-sugar', sentQuantity: 4, receivedQuantity: 4 }),
+    ])
+  })
+
+  it('keeps the source unit cost rather than taking one from the payload', () => {
+    const lines = resolveReceiptLines(sent, { 'item-flour': 8, 'item-sugar': 4 })
+
+    expect(lines[0].unitCost).toBe(25)
+  })
+
+  it('refuses a line nobody counted', () => {
+    // Assuming an uncounted line arrived intact is the whole failure mode the
+    // receive step exists to prevent.
+    expect(() => resolveReceiptLines(sent, { 'item-flour': 8 })).toThrow(/counted/i)
+  })
+
+  it('refuses a count for something that was never on the transfer', () => {
+    expect(() =>
+      resolveReceiptLines(sent, { 'item-flour': 8, 'item-sugar': 4, 'item-salt': 1 }),
+    ).toThrow(/not on this transfer/i)
+  })
+
+  it('refuses a count that is not a finite number', () => {
+    expect(() =>
+      resolveReceiptLines(sent, { 'item-flour': Number.NaN, 'item-sugar': 4 }),
+    ).toThrow(/number/i)
   })
 })
