@@ -11,6 +11,17 @@
  * `src/lib/inventory/stock-ledger.ts`, so it cannot silently fall behind the
  * web ledger.
  */
-export const MOVEMENT_REASONS = ["receive", "stocktake", "waste", "sale", "void"] as const;
+export const MOVEMENT_REASONS = [
+  "receive",
+  "stocktake",
+  "waste",
+  "sale",
+  "void",
+  // Written by a branch transfer, one leg each. Listed because the ledger can
+  // write them and this type describes what the report may READ — not because
+  // the report does anything with them yet. See the note in `daily-report.ts`.
+  "transfer_out",
+  "transfer_in",
+] as const;
 
 export type StockMovementReason = (typeof MOVEMENT_REASONS)[number];
