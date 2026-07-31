@@ -45,6 +45,85 @@ export interface InventoryUnitRow {
   abbreviation: string;
 }
 
+/**
+ * The `inventory_stock` columns a per-branch answer depends on.
+ *
+ * Mirrors `BranchStockRow` in `src/lib/inventory/stock-location.ts`. The two
+ * apps are separate packages with no shared build, so the shape is restated
+ * rather than imported — the arrangement `branch-scope.ts` already uses.
+ */
+export interface BranchStockRow {
+  inventory_item_id: string;
+  /** NULL = the unbranched store pool. */
+  outlet_id: string | null;
+  current_qty: number;
+  reorder_level: number;
+}
+
+/**
+ * The index key for a branch, or the store pool when there isn't one.
+ *
+ * A blank id reads as the store pool rather than as a branch literally named
+ * "", matching `resolveBranchScope`. Stock must not land in a branch that
+ * cannot be looked up again.
+ */
+function locationKey(outletId: string | null | undefined): string {
+  const trimmed = typeof outletId === "string" ? outletId.trim() : "";
+  return trimmed === "" ? "__store__" : trimmed;
+}
+
+/**
+ * The store's ingredient rows, restated as one branch's.
+ *
+ * `inventory_items.current_qty` is the chain roll-up — the sum of every
+ * branch's shelf. A manager standing at South reading 750 g of flour when
+ * South is holding none of it is the failure this closes.
+ *
+ * **A branch with no row holds ZERO, never the roll-up.** This is the rule that
+ * separates stock from `outlet_menu_items`: a missing override inherits the
+ * store-wide value, because a price is a setting; a missing quantity is zero,
+ * because a quantity is a physical fact about one shelf, and inheriting it
+ * would report the same sack of flour as present at every branch at once.
+ *
+ * **The reorder level goes the other way and falls back to the store's.** That
+ * level is the merchant's standing answer to "warn me when it gets this low";
+ * dropping it would silently switch off every low-stock warning a tenant
+ * already relies on, on the day they turned branches on — and they would find
+ * out by running out. A branch that sets its own overrides it in both
+ * directions, so a quiet shop is not nagged with a busy one's threshold.
+ *
+ * `undefined` means no branch was named — a single-shop tenant, and every
+ * tenant before branches existed — and returns the caller's own array, so
+ * today's behaviour is preserved exactly rather than approximately. `null` is
+ * different: it is the unbranched pool, a real shelf.
+ */
+export function applyBranchStock(
+  items: readonly InventoryItemRow[],
+  rows: readonly BranchStockRow[],
+  outletId: string | null | undefined,
+): readonly InventoryItemRow[] {
+  if (outletId === undefined) return items;
+
+  const wanted = locationKey(outletId);
+  const byItem = new Map<string, BranchStockRow>();
+  for (const row of rows) {
+    if (locationKey(row.outlet_id) === wanted) byItem.set(row.inventory_item_id, row);
+  }
+
+  return items.map((item) => {
+    const row = byItem.get(item.id);
+    return {
+      ...item,
+      // Absent means zero. Negatives pass through: stock goes negative when a
+      // sale lands before its delivery is recorded, and clamping would hide
+      // exactly the discrepancy the ledger exists to surface.
+      current_qty: row?.current_qty ?? 0,
+      reorder_level:
+        row && row.reorder_level > 0 ? row.reorder_level : item.reorder_level,
+    };
+  });
+}
+
 export interface StockItemView {
   id: string;
   name: string;
