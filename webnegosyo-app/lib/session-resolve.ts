@@ -9,29 +9,10 @@
 // entirely. Here it resolves to its own session mode instead.
 
 import { resolveOrderBackend, type OrderBackend } from "./order-backend";
-import {
-  resolveSubscriptionAccess,
-  type SubscriptionAccess,
-  type SubscriptionRow,
-} from "./subscription-access";
 
 /** Where each session mode lands after sign-in. */
 export const MERCHANT_LANDING_HREF = "/(main)/dashboard";
 export const SUPERADMIN_LANDING_HREF = "/(superadmin)/tenants";
-/** Where a merchant lands when their subscription has lapsed. */
-export const PAUSED_LANDING_HREF = "/(main)/subscription-paused";
-
-/**
- * Columns the subscription gate reads.
- *
- * Both entry points import this rather than spelling the list out, because a
- * column the code reads and the SELECT never asks for arrives as `undefined` —
- * and an undefined `paid_through` reads as "no due date", which opens the gate
- * for everyone. This platform has shipped that exact bug twice (the branding
- * mobile overrides and the storefront tenant read), and a billing gate that
- * fails open is one nobody ever notices.
- */
-export const SUBSCRIPTION_SELECT = "status, paid_through, grace_days";
 
 const DENIED_NOT_ADMIN = "You do not have admin access";
 const DENIED_NO_TENANT = "Tenant not found";
@@ -61,7 +42,7 @@ export interface TenantRow {
   order_backend?: OrderBackend | null;
 }
 
-export type SessionMode = "superadmin" | "merchant" | "paused" | "denied";
+export type SessionMode = "superadmin" | "merchant" | "denied";
 
 /** Fields handed straight to `useAuthStore.setAuth`. */
 export interface SessionAuthPatch {
@@ -92,20 +73,6 @@ export interface SessionAuthPatch {
    * renaming a branch does not rewrite the tickets it already took.
    */
   outletName: string | null;
-  /**
-   * Whether this session's store has lapsed. Carried on the auth patch so the
-   * root redirect can route to the paused screen: the cold-start path
-   * deliberately never navigates itself — `useAuthRedirect` owns routing, and a
-   * second dispatch from here crashes react-navigation.
-   */
-  isSubscriptionPaused: boolean;
-}
-
-/** The subscription half of the sign-in decision. */
-export interface SessionSubscriptionContext {
-  subscription?: SubscriptionRow | null;
-  /** The clock, injected so both callers and the tests agree on "today". */
-  nowIso?: string;
 }
 
 export interface SessionResult {
@@ -116,11 +83,6 @@ export interface SessionResult {
   auth?: SessionAuthPatch;
   /** Only set when the session is granted. */
   landingHref?: string;
-  /**
-   * The billing verdict, carried through so the paused screen can say exactly
-   * what is owed and since when. Present whenever a subscription was supplied.
-   */
-  subscription?: SubscriptionAccess;
 }
 
 function isSuperadminRow(appUser: AppUserRow): boolean {
@@ -133,17 +95,6 @@ function isSuperadminRow(appUser: AppUserRow): boolean {
  * miss that would otherwise read as a denial.
  */
 export function needsTenantLookup(appUser: AppUserRow): boolean {
-  return !isSuperadminRow(appUser);
-}
-
-/**
- * Whether the caller still needs to fetch the subscription row.
- *
- * A superadmin holds no tenant, so there is nothing to bill and nothing to
- * look up — and pausing the only account that can COLLECT would be
- * self-defeating.
- */
-export function needsSubscriptionLookup(appUser: AppUserRow): boolean {
   return !isSuperadminRow(appUser);
 }
 
@@ -173,8 +124,7 @@ export function resolveSession(
   userId: string,
   appUser: AppUserRow | null,
   tenant: TenantRow | null,
-  outlet?: OutletRow | null,
-  billing?: SessionSubscriptionContext
+  outlet?: OutletRow | null
 ): SessionResult {
   if (!appUser) return { mode: "denied", reason: DENIED_NOT_ADMIN };
 
@@ -200,9 +150,6 @@ export function resolveSession(
         // A superadmin is never confined to a branch, impersonating or not.
         outletId: null,
         outletName: null,
-        // A superadmin is never paused — they are the only account that can
-        // clear an unpaid one.
-        isSubscriptionPaused: false,
       },
     };
   }
@@ -213,23 +160,13 @@ export function resolveSession(
 
   if (!tenant) return { mode: "denied", reason: DENIED_NO_TENANT };
 
-  // Computed only when a subscription was actually supplied. A caller that has
-  // not been taught about billing gets exactly today's behaviour, and a lookup
-  // that returned nothing — a network blip, a tenant predating billing, an RLS
-  // change — leaves the merchant working.
-  const access = billing?.subscription
-    ? resolveSubscriptionAccess(billing.subscription, billing.nowIso ?? new Date().toISOString())
-    : undefined;
-
-  // Paused keeps the session AUTHENTICATED. Denying it outright would drop the
-  // merchant back at the login form with no explanation, and they would simply
-  // retype the password they know is correct.
-  const mode: SessionMode = access?.isBlocked ? "paused" : "merchant";
-
+  // No billing check here, deliberately. The subscription pause is enforced on
+  // the web admin only: an owner deals with money there, while this app is what
+  // their staff run a shift on. Locking a register mid-service over an unpaid
+  // invoice costs the merchant trade the invoice was never worth.
   return {
-    mode,
-    landingHref: access?.isBlocked ? PAUSED_LANDING_HREF : MERCHANT_LANDING_HREF,
-    subscription: access,
+    mode: "merchant",
+    landingHref: MERCHANT_LANDING_HREF,
     auth: {
       userId,
       tenantId: tenant.id,
@@ -251,7 +188,6 @@ export function resolveSession(
       // A missing branch row now costs the *name*, never the confinement.
       outletId: confinedOutletId(appUser),
       outletName: outlet?.name ?? null,
-      isSubscriptionPaused: access?.isBlocked ?? false,
     },
   };
 }

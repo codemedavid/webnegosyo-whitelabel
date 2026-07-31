@@ -27,8 +27,6 @@ interface AuthState {
    * true while impersonating a tenant — see lib/impersonation.ts.
    */
   isSuperadmin: boolean
-  /** Store has lapsed; every merchant surface is closed until it is paid. */
-  isSubscriptionPaused: boolean
   /** Tenant a superadmin is currently viewing; null on the platform surface. */
   impersonatedTenantId: string | null;
   /** Tenant owner — full access. Staff accounts are false. */
@@ -58,7 +56,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isDemo: false,
   isSuperadmin: false,
-  isSubscriptionPaused: false,
   impersonatedTenantId: null,
   isOwner: false,
   permissions: null,
@@ -78,7 +75,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       isAuthenticated: false,
       isDemo: false,
       isSuperadmin: false,
-  isSubscriptionPaused: false,
       impersonatedTenantId: null,
       isOwner: false,
       permissions: null,

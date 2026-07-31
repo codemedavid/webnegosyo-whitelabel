@@ -20,10 +20,7 @@ import {
   type OutletRow,
   resolveSession,
   type TenantRow,
-  needsSubscriptionLookup,
-  SUBSCRIPTION_SELECT,
 } from "../../lib/session-resolve";
-import type { SubscriptionRow } from "../../lib/subscription-access";
 import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
 
 export default function LoginScreen() {
@@ -95,23 +92,7 @@ export default function LoginScreen() {
           .single();
         outlet = (outletRow as OutletRow | null) ?? null;
       }
-
-
-      // The subscription gate. Read here rather than inside a screen so a
-      // lapsed merchant is caught at the door, not three taps in.
-      let subscription: SubscriptionRow | null = null;
-      if (appUser && needsSubscriptionLookup(appUser)) {
-        const { data: subscriptionRow } = await supabase
-          .from("tenant_subscriptions")
-          .select(SUBSCRIPTION_SELECT)
-          .eq("tenant_id", appUser.tenant_id)
-          .maybeSingle();
-        subscription = (subscriptionRow as SubscriptionRow | null) ?? null;
-      }
-
-      const session = resolveSession(authData.user.id, appUser ?? null, tenant, outlet, {
-        subscription,
-      });
+      const session = resolveSession(authData.user.id, appUser ?? null, tenant, outlet);
 
       if (session.mode === "denied" || !session.auth || !session.landingHref) {
         await supabase.auth.signOut();
