@@ -136,6 +136,43 @@ describe("daily report screen", () => {
     expect(screen).toMatch(/WorkspaceSwitcher/);
   });
 
+  it("reads the day's takings through the same string ref every other screen uses", () => {
+    // The app needs no backend router ported from the web: the ref is served by
+    // Convex or by the platform adapter without the screen knowing which.
+    expect(screen).toMatch(/getDashboardStatsByPeriod/);
+  });
+
+  it("asks for the takings over the SAME Manila window as the ledger", () => {
+    // A revenue window that disagreed with the stock window by even an hour
+    // would put late-night sales against the previous day's stock. Both come
+    // from resolveBusinessDayWindow so they cannot drift apart.
+    expect(screen).toMatch(/resolveBusinessDayWindow/);
+  });
+
+  it("decides whether it may state a food cost rather than dividing inline", () => {
+    // The scope mismatch is the reason this decision is a tested module and not
+    // a `?:` beside the JSX.
+    expect(screen).toMatch(/resolveReportRevenue/);
+    expect(screen).not.toMatch(/totalRevenue\s*\)\s*\*\s*100/);
+  });
+
+  it("takes the percentage itself from the parity-guarded core", () => {
+    expect(screen).toMatch(/resolveFoodCostPercent/);
+    expect(screen).toMatch(/formatFoodCostPercent/);
+  });
+
+  it("explains a withheld figure instead of leaving a blank tile", () => {
+    // describeRevenueCaveat words "could not be read" and "nothing was sold"
+    // differently. Both render above the figures, like every other caveat.
+    expect(screen).toMatch(/describeRevenueCaveat/);
+  });
+
+  it("never lets an unreadable day render as zero takings", () => {
+    // The single most dangerous line this screen could contain. A `?? 0` on the
+    // revenue would turn a dropped connection into a flawless-looking day.
+    expect(screen).not.toMatch(/revenue\s*\?\?\s*0/);
+  });
+
   it("leads with the verdict, above the caveats and the figures", () => {
     // Same order as the web panel. A merchant who reads the numbers first has
     // already formed an opinion by the time the caveat explains the numbers
