@@ -275,3 +275,35 @@ describe('the count session behind the day', () => {
     expect(recorded.inventory_counts.filters).toContainEqual(['business_day', '2026-07-29'])
   })
 })
+
+describe('getDailyInventoryReport — one branch of the store', () => {
+  test('narrows the ledger to the branch', async () => {
+    // `balance_after` has been per-branch since 20260808120000 and the
+    // reconciliation already groups by branch; what it could not do was answer
+    // for one branch alone, which is a branch admin's entire screen.
+    await getDailyInventoryReport(TENANT, '2026-08-01', 'north')
+
+    expect(recorded.stock_movements.filters).toContainEqual(['outlet_id', 'north'])
+  })
+
+  test("narrows the day's count session to the same branch", async () => {
+    // Otherwise coverage is measured against a count opened for another shelf,
+    // or against the store pool's, whose denominator counts ingredients this
+    // branch never stocks.
+    await getDailyInventoryReport(TENANT, '2026-08-01', 'north')
+
+    expect(recorded.inventory_counts.filters).toContainEqual(['outlet_id', 'north'])
+  })
+
+  test('reads the whole store when no branch is named', async () => {
+    // The owner's report is the default and must not acquire a branch filter by
+    // accident: silently narrowed, they would see a fraction of their own stock
+    // with nothing on screen to say so.
+    await getDailyInventoryReport(TENANT, '2026-08-01')
+
+    const branchFilters = recorded.stock_movements.filters.filter(
+      ([column]) => column === 'outlet_id',
+    )
+    expect(branchFilters).toHaveLength(0)
+  })
+})

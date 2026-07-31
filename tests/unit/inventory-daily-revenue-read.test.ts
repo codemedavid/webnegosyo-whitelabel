@@ -243,3 +243,67 @@ describe('getDailyRevenue — Convex backend', () => {
     expect(revenue).toBeNull()
   })
 })
+
+describe('getDailyRevenue — one branch of the store', () => {
+  test('narrows the platform read to the branch', async () => {
+    // Without this the web report divides one branch's stock cost by the whole
+    // chain's takings, which understates the food cost by roughly the number of
+    // branches. Understating is the dangerous direction: it gets believed.
+    const client = fakeSupabase({ data: [{ total: 500 }], error: null })
+
+    await getDailyRevenue(
+      { id: 't1', order_backend: 'platform' } as never,
+      '2026-08-01',
+      { platformClient: async () => client as never },
+      'north',
+    )
+
+    expect(client.calls).toContainEqual({ method: 'eq', args: ['outlet_id', 'north'] })
+  })
+
+  test('narrows a per-tenant Supabase read the same way', async () => {
+    // Same schema, different client — the branch column is there either way.
+    const client = fakeSupabase({ data: [{ total: 500 }], error: null })
+
+    await getDailyRevenue(
+      { id: 't1', order_backend: 'supabase' } as never,
+      '2026-08-01',
+      { tenantClient: () => client as never },
+      'north',
+    )
+
+    expect(client.calls).toContainEqual({ method: 'eq', args: ['outlet_id', 'north'] })
+  })
+
+  test('leaves a store-wide read unfiltered', async () => {
+    // The owner's report is the default and must not acquire a branch filter by
+    // accident: silently narrowed, they would see a fraction of their takings
+    // with nothing on screen to say so.
+    const client = fakeSupabase({ data: [{ total: 500 }], error: null })
+
+    await getDailyRevenue(
+      { id: 't1', order_backend: 'platform' } as never,
+      '2026-08-01',
+      { platformClient: async () => client as never },
+    )
+
+    const branchFilters = client.calls.filter(
+      (call) => call.method === 'eq' && (call.args as string[])[0] === 'outlet_id',
+    )
+    expect(branchFilters).toHaveLength(0)
+  })
+
+  test('still sums the day when a branch is named', async () => {
+    // The filter must narrow the query, not replace the arithmetic.
+    const client = fakeSupabase({ data: [{ total: 300 }, { total: 200 }], error: null })
+
+    const revenue = await getDailyRevenue(
+      { id: 't1', order_backend: 'platform' } as never,
+      '2026-08-01',
+      { platformClient: async () => client as never },
+      'north',
+    )
+
+    expect(revenue).toBe(500)
+  })
+})
