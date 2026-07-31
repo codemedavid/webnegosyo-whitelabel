@@ -133,3 +133,93 @@ not code added by this phase.
    rather than gaining branch-aware stock.
 6. Two new `never`-typed mock assertions in `tests/unit/api/inventory-order-stock.test.ts`
    follow a pre-existing typing quirk in that file rather than fixing it.
+
+---
+
+# Phase 2, part 2 — reads and RLS
+
+**Checkpoints**: RED `b99928d` → GREEN `7e1825c` → wiring `b426287` → RLS `ec16342`
+
+## User journeys
+
+4. As a branch manager, I want the stock screen to show what MY shop holds, so
+   that I do not count my shelf against the whole chain's total.
+5. As a branch manager, I want a delivery I record to land in my own shop.
+6. As a store owner, I want to see what every shop holds of an ingredient, so
+   that I know which one to transfer from.
+7. As a store owner, I want a branch manager to be unable to touch another
+   shop's stock even if they bypass the app.
+
+## Task report
+
+### Task 4 — `src/lib/inventory/branch-stock-view.ts` (new)
+
+- **RED**: `npx jest --testPathPatterns="inventory-branch-stock-view"` →
+  `1 suite failed`, module unresolvable.
+- **GREEN**: same command → `14 of 14 passed`.
+- `applyBranchStock` writes the branch's quantity back onto the item's own
+  `current_qty` / `reorder_level`, mirroring `applyOutletMenuOverrides`. The
+  table, low-stock evaluation and the CSV export become branch-aware at one seam.
+- A branch holding none reads **zero**, never the roll-up.
+
+### Task 5 — manual movements carry a branch
+
+`recordStockMovementWith` resolves the author's scope from `app_users` (never the
+request) and runs it through `resolveMovementBranch` before any read or write.
+
+### Task 6 — RLS confinement (`20260809120000_inventory_branch_rls.sql`, APPLIED)
+
+One `app_user_may_reach_branch(tenant, outlet)` predicate shared by
+`inventory_stock` and `stock_movements`. Probed against **real production
+accounts**:
+
+| tenant | account | branch A | branch B | store pool |
+|---|---|---|---|---|
+| cafejuancho | store-wide owner | reach | reach | reach |
+| cafejuancho | store-wide admin | reach | reach | reach |
+| gungjeon-unlimited | manager @ Central Cignal | reach | **refused** | **refused** |
+
+`stock_movements` keeps SELECT+INSERT policies only, so the ledger stays
+append-only.
+
+## Test specification (part 2)
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 12 | A store-wide account still sees the roll-up | `inventory-branch-stock-view.test.ts:leaves the roll-up alone…` | unit | PASS |
+| 13 | A branch account sees only its own branch's quantity | `…:shows a branch account only what its own branch holds` | unit | PASS |
+| 14 | A branch holding none reads zero, not the chain total | `…:shows zero rather than the chain total…` | unit | PASS |
+| 15 | The branch's own par level applies | `…:applies the branch-s own reorder level` | unit | PASS |
+| 16 | An ingredient the branch never stocked stays listed | `…:keeps every ingredient listed…` | unit | PASS |
+| 17 | The owner's breakdown lists an empty branch as zero | `…:lists a branch holding nothing rather than omitting it` | unit | PASS |
+| 18 | The owner may receive into any branch or the pool | `…:lets the owner receive into whichever shop they picked` | unit | PASS |
+| 19 | A manager naming no branch still lands in their own | `…:pins a branch manager to their own branch when they name none` | unit | PASS |
+| 20 | A manager naming another shop is refused, not redirected | `…:refuses a branch manager naming another shop` | unit | PASS |
+
+## Validation (part 2)
+
+```
+npx jest --testPathPatterns="inventory"
+  → Test Suites: 67 passed, 1 skipped, 68 total
+  → Tests: 718 passed, 8 skipped, 726 total
+
+npx eslint <changed files> → exit 0
+```
+
+## Known gaps (part 2)
+
+1. **`applyBranchStock` and `branchStockBreakdown` are not called by any screen
+   yet.** The modules and their rules are proven; the admin inventory page, the
+   merchant app and the owner's cross-branch view still read the roll-up. Wiring
+   the UI is the next step and is where journeys 4 and 6 actually become visible
+   to a user.
+2. **A branch manager can no longer see store-pool stock.** Deliberate —
+   unbranched stock is the store's — but it means a tenant that switches on
+   branches with existing unbranched stock leaves its managers seeing nothing
+   until that stock is branched or transferred. No live tenant is in this state
+   (the only inventory tenant has no branches), but there is no migration path
+   for one that gets there.
+3. **`recordStockMovementWith` adds an `app_users` read per movement.** Not
+   batched or cached.
+4. Gaps 1, 3, 4, 5 and 6 from part 1 still stand — notably that no part of
+   Phase 2 has been proven end-to-end against a database with a real recipe.
