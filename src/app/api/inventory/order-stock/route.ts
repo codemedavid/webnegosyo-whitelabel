@@ -118,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { data: appUser } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, outlet_id')
     .eq('user_id', user.id)
     .single()
 
@@ -141,6 +141,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (tenant?.inventory_enabled !== true) {
     return NextResponse.json({ success: true, skipped: 'inventory_disabled' })
   }
+
+  // The branch is the ACCOUNT's, never the request body's — the same rule push
+  // registration follows. A register belongs to the shop it stands in, and a
+  // client-named branch on a write path would let one shop spend another's
+  // stock. A store-wide account (the owner) resolves to the unbranched pool,
+  // which is exactly today's behaviour for every single-location tenant.
+  const actorOutletId =
+    typeof appUser?.outlet_id === 'string' && appUser.outlet_id.trim() !== ''
+      ? appUser.outlet_id
+      : null
 
   if (action === 'restore') {
     const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
@@ -173,6 +183,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       revision,
       toDepletionItems(body?.deplete),
       toDepletionItems(body?.restore),
+      actorOutletId,
     )
     return NextResponse.json({ success: true })
   }
@@ -180,7 +191,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const items = toDepletionItems(rawItems)
 
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await applyOrderStockBestEffort(tenantId, orderId, items)
+  await applyOrderStockBestEffort(tenantId, orderId, items, 'sale', 0, actorOutletId)
 
   return NextResponse.json({ success: true })
 }

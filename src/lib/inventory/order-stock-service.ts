@@ -18,6 +18,7 @@ import {
   type DepletionOrderItem,
 } from '@/lib/inventory/order-depletion'
 import { resolveMovementDelta } from '@/lib/inventory/stock-ledger'
+import { resolveMovementOutletId } from '@/lib/inventory/stock-location'
 import {
   claimOrderStockApplication,
   releaseOrderStockApplication,
@@ -80,6 +81,12 @@ export async function applyOrderStockMovements(
    * already claimed both directions. See migration 20260806130000.
    */
   revision: number = 0,
+  /**
+   * Branch that took the order, whose stock this spends. Null/blank means the
+   * unbranched store pool — which is every single-location tenant, and every
+   * order taken before branches existed.
+   */
+  outletId: string | null = null,
 ): Promise<OrderStockResult> {
   if (items.length === 0) return EMPTY_RESULT
   const supabase = createAdminClient()
@@ -97,7 +104,14 @@ export async function applyOrderStockMovements(
   // order permanently done with its stock still on the shelf — the failure mode
   // is silent, and worse than the double-deduction the claim exists to stop.
   try {
-    const result = await depleteClaimedOrder(supabase, tenantId, orderId, items, direction)
+    const result = await depleteClaimedOrder(
+      supabase,
+      tenantId,
+      orderId,
+      items,
+      direction,
+      resolveMovementOutletId(outletId),
+    )
     if (result.movementCount === 0) {
       await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
     }
@@ -120,6 +134,7 @@ async function depleteClaimedOrder(
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void',
+  outletId: string | null,
 ): Promise<OrderStockResult> {
 
   const menuItemIds = [...new Set(items.map((i) => i.menuItemId))]
@@ -197,6 +212,7 @@ async function depleteClaimedOrder(
     rows.push({
       tenant_id: tenantId,
       inventory_item_id: depletion.inventoryItemId,
+      outlet_id: outletId,
       reason: direction,
       quantity_delta: quantityDelta,
       entered_quantity: depletion.quantity,
@@ -248,13 +264,14 @@ export async function reverseOrderStockMovements(
   // was already given back — inventing inventory that never existed.
   const { data: movementRows, error: movementError } = await supabase
     .from('stock_movements')
-    .select('inventory_item_id, quantity_delta, entered_quantity, entered_unit_id')
+    .select('inventory_item_id, outlet_id, quantity_delta, entered_quantity, entered_unit_id')
     .eq('tenant_id', tenantId)
     .eq('order_id', orderId)
   if (movementError) throw movementError
 
   const movements = (movementRows ?? []) as unknown as Array<{
     inventory_item_id: string
+    outlet_id: string | null
     quantity_delta: number
     entered_quantity: number | null
     entered_unit_id: string | null
@@ -279,17 +296,31 @@ export async function reverseOrderStockMovements(
     .in('id', [...new Set(movements.map((m) => m.inventory_item_id))])
   const inventoryItems = (itemRows ?? []) as unknown as InventoryItem[]
 
-  // Netted per ingredient AND entered unit. Grouping on the unit too keeps the
-  // audit value coherent: the same ingredient can be recorded in grams by a
-  // base recipe and kilograms by an addon, and summing those into one
-  // `entered_quantity` would print a number that means nothing.
+  // Netted per ingredient AND entered unit AND branch.
+  //
+  // The unit keeps the audit value coherent: the same ingredient can be
+  // recorded in grams by a base recipe and kilograms by an addon, and summing
+  // those into one `entered_quantity` would print a number that means nothing.
+  //
+  // The BRANCH keeps the stock in the right shop. An order that spent flour at
+  // two branches — or whose branch was corrected mid-life — nets to one row
+  // without it, and that row would take stock out of one pool and give it back
+  // to another, leaving the branch that actually spent it permanently short.
+  // The branch is read off the recorded movement rather than re-resolved from
+  // the order, so a sale and its reversal cannot disagree by construction.
   const netted = new Map<
     string,
-    { inventoryItemId: string; enteredUnitId: string | null; delta: number; entered: number }
+    {
+      inventoryItemId: string
+      outletId: string | null
+      enteredUnitId: string | null
+      delta: number
+      entered: number
+    }
   >()
 
   for (const movement of movements) {
-    const key = `${movement.inventory_item_id}|${movement.entered_unit_id ?? ''}`
+    const key = `${movement.inventory_item_id}|${movement.entered_unit_id ?? ''}|${movement.outlet_id ?? ''}`
     const existing = netted.get(key)
     // `entered_quantity` is stored unsigned — the reason carries the direction —
     // so it has to be signed by its own movement before it can be netted.
@@ -299,6 +330,7 @@ export async function reverseOrderStockMovements(
 
     netted.set(key, {
       inventoryItemId: movement.inventory_item_id,
+      outletId: movement.outlet_id ?? null,
       enteredUnitId: movement.entered_unit_id,
       delta: (existing?.delta ?? 0) + movement.quantity_delta,
       entered: (existing?.entered ?? 0) + enteredSigned,
@@ -312,6 +344,7 @@ export async function reverseOrderStockMovements(
     .map((entry) => ({
       tenant_id: tenantId,
       inventory_item_id: entry.inventoryItemId,
+      outlet_id: entry.outletId,
       reason: 'void' as const,
       quantity_delta: -entry.delta,
       // Carried across so the reversal reads "0.6 kg returned", matching the
@@ -368,9 +401,17 @@ export async function applyOrderStockBestEffort(
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void' = 'sale',
   revision: number = 0,
+  outletId: string | null = null,
 ): Promise<void> {
   try {
-    const result = await applyOrderStockMovements(tenantId, orderId, items, direction, revision)
+    const result = await applyOrderStockMovements(
+      tenantId,
+      orderId,
+      items,
+      direction,
+      revision,
+      outletId,
+    )
     if (result.skipped.length > 0) {
       console.warn('[inventory] Skipped stock movements for order', {
         orderId,
@@ -401,15 +442,16 @@ export async function applyOrderRevisionStockBestEffort(
   revision: number,
   deplete: readonly DepletionOrderItem[],
   restore: readonly DepletionOrderItem[],
+  outletId: string | null = null,
 ): Promise<void> {
   // Returns first. If the two directions touch the same ingredient — which a
   // swap between two dishes sharing one — putting stock back before taking it
   // out keeps the running total from dipping through a floor it never really
   // crossed, and so from auto-86ing a dish for the width of one transaction.
   if (restore.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision)
+    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId)
   }
   if (deplete.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision)
+    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId)
   }
 }

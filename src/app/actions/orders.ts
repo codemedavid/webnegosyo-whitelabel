@@ -90,6 +90,13 @@ async function depleteStockForOrder(
     option_ids?: string[]
     addon_ids?: string[]
   }>,
+  /**
+   * Branch that took the order — the already-validated `resolvedOutlet`, never
+   * the id the browser sent. Stock is spent from the shop that served it, and a
+   * client-chosen branch would let a customer deplete someone else's shelf.
+   * Null for a single-location tenant, whose stock is the unbranched pool.
+   */
+  outletId: string | null,
 ) {
   if (tenantConfig.inventory_enabled !== true) return
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
@@ -106,6 +113,9 @@ async function depleteStockForOrder(
       modifierOptionIds: item.option_ids ?? [],
       addonIds: item.addon_ids ?? [],
     })),
+    'sale',
+    0,
+    outletId,
   )
 }
 
@@ -487,7 +497,7 @@ export async function createOrderAction(
         })),
       })
 
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -518,7 +528,7 @@ export async function createOrderAction(
         serviceChargeAmount,
         validatedScheduledISO
       )
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -546,7 +556,7 @@ export async function createOrderAction(
       resolvedOutlet?.id ?? null
     )
     // Return both order and token for secure public API access
-    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
     await firePostHogNotification(result.order.id, items)
     let trackingToken: string | undefined
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }

@@ -64,7 +64,7 @@ describe('POST /api/inventory/order-stock', () => {
     // Default: a legitimate admin of t1, whose tenant has inventory enabled.
     getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
     appUserSingleMock.mockResolvedValue({
-      data: { role: 'admin', tenant_id: 't1' },
+      data: { role: 'admin', tenant_id: 't1', outlet_id: null },
       error: null,
     })
     tenantSingleMock.mockResolvedValue({
@@ -140,6 +140,9 @@ describe('POST /api/inventory/order-stock', () => {
           addonIds: [],
         },
       ],
+      'sale',
+      0,
+      null,
     )
   })
 
@@ -225,6 +228,67 @@ describe('POST /api/inventory/order-stock', () => {
     })
   })
 
+  describe('the branch a register spends from', () => {
+    test('spends the branch the register-s own account belongs to', async () => {
+      // A branch-locked account is a register standing in one shop.
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-north' },
+        error: null,
+      })
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        'outlet-north',
+      )
+    })
+
+    test('ignores a branch named in the request body', async () => {
+      // The security rule: a register must not be able to spend another shop-s
+      // stock by naming it. The account decides, the same way push token
+      // registration does.
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-north' },
+        error: null,
+      })
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(
+        makeRequest({ ...VALID_BODY, outletId: 'outlet-south' }, 'Bearer token-1'),
+      )
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        'outlet-north',
+      )
+    })
+
+    test('resolves a store-wide account to the unbranched pool', async () => {
+      // An owner-s account, and every single-location tenant: unchanged today.
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1',
+        VALID_BODY.orderId,
+        expect.anything(),
+        'sale',
+        0,
+        null,
+      )
+    })
+  })
+
   test('ignores an item with no option ids rather than failing the sale', async () => {
     const { POST } = await import('@/app/api/inventory/order-stock/route')
     const res = await POST(
@@ -235,8 +299,13 @@ describe('POST /api/inventory/order-stock', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(applyMock).toHaveBeenCalledWith('t1', VALID_BODY.orderId, [
-      { menuItemId: 'm-croissant', quantity: 1, optionIds: [], modifierOptionIds: [], addonIds: [] },
-    ])
+    expect(applyMock).toHaveBeenCalledWith(
+      't1',
+      VALID_BODY.orderId,
+      [{ menuItemId: 'm-croissant', quantity: 1, optionIds: [], modifierOptionIds: [], addonIds: [] }],
+      'sale',
+      0,
+      null,
+    )
   })
 })

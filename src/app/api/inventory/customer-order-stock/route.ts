@@ -60,9 +60,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // The order is what makes this payload trustworthy, so it is checked before
     // anything is spent. A missing order and one belonging to another tenant
     // answer the same way — neither is this caller's to act on.
+    // The branch comes off the stored order, never off the request body: this
+    // route is public, and a caller who could name the branch could deplete a
+    // shop they have nothing to do with.
     const { data: order } = await supabase
       .from('orders')
-      .select('tenant_id')
+      .select('tenant_id, outlet_id')
       .eq('id', orderId)
       .single()
 
@@ -77,7 +80,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const items = buildDepletionItemsFromOrderRows(lines ?? [])
     if (items.length > 0) {
-      await applyOrderStockBestEffort(tenantId, orderId, items)
+      await applyOrderStockBestEffort(
+        tenantId,
+        orderId,
+        items,
+        'sale',
+        0,
+        (order as { outlet_id?: string | null }).outlet_id ?? null,
+      )
     }
 
     return NextResponse.json({ success: true })

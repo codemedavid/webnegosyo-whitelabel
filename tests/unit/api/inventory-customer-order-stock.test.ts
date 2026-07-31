@@ -37,7 +37,7 @@ function post(body: unknown): NextRequest {
 /** The tenant row lookup, then the order lookup, then its lines. */
 function stubTables(options: {
   inventoryEnabled?: boolean
-  order?: { tenant_id: string } | null
+  order?: { tenant_id: string; outlet_id?: string | null } | null
   lines?: Array<{ menu_item_id: string | null; quantity: number }>
 }) {
   from.mockImplementation((table: string) => {
@@ -57,7 +57,8 @@ function stubTables(options: {
     if (table === 'orders') {
       // `order: null` means "no such order" and must not fall through to the
       // default the way `??` would.
-      const order = 'order' in options ? options.order : { tenant_id: TENANT }
+      const order =
+        'order' in options ? options.order : { tenant_id: TENANT, outlet_id: null }
       return {
         select: () => ({
           eq: () => ({ single: () => Promise.resolve({ data: order, error: null }) }),
@@ -90,9 +91,14 @@ describe('customer order stock route', () => {
     const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
 
     expect(response.status).toBe(200)
-    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(TENANT, ORDER, [
-      { menuItemId: 'dish-1', quantity: 2 },
-    ])
+    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(
+      TENANT,
+      ORDER,
+      [{ menuItemId: 'dish-1', quantity: 2 }],
+      'sale',
+      0,
+      null,
+    )
   })
 
   it('ignores any lines the caller tries to send', async () => {
@@ -108,9 +114,34 @@ describe('customer order stock route', () => {
       }),
     )
 
-    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(TENANT, ORDER, [
-      { menuItemId: 'dish-1', quantity: 1 },
-    ])
+    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(
+      TENANT,
+      ORDER,
+      [{ menuItemId: 'dish-1', quantity: 1 }],
+      'sale',
+      0,
+      null,
+    )
+  })
+
+  it('spends the branch recorded on the order', async () => {
+    // The branch is as unsteerable as the lines: it comes off the stored order,
+    // so a forged call cannot deplete a shop the order never visited.
+    stubTables({
+      order: { tenant_id: TENANT, outlet_id: 'outlet-north' },
+      lines: [{ menu_item_id: 'dish-1', quantity: 1 }],
+    })
+
+    await POST(post({ tenantId: TENANT, orderId: ORDER, outletId: 'outlet-south' }))
+
+    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(
+      TENANT,
+      ORDER,
+      [{ menuItemId: 'dish-1', quantity: 1 }],
+      'sale',
+      0,
+      'outlet-north',
+    )
   })
 
   it('refuses an order belonging to another tenant', async () => {

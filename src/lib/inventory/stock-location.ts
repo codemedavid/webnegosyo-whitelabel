@@ -52,6 +52,19 @@ export function stockLocationKey(outletId: string | null | undefined): string {
   return trimmed === '' ? STORE_POOL_KEY : trimmed
 }
 
+/**
+ * The value to write to a movement's `outlet_id` column.
+ *
+ * The mirror of `stockLocationKey` for the write side: blank and absent both
+ * become NULL, so a movement never lands in a branch that cannot be looked up
+ * again. NULL is the column's own word for the store pool, so no sentinel
+ * crosses into the database.
+ */
+export function resolveMovementOutletId(outletId: string | null | undefined): string | null {
+  const trimmed = typeof outletId === 'string' ? outletId.trim() : ''
+  return trimmed === '' ? null : trimmed
+}
+
 /** Index stock rows for repeated per-item, per-branch lookup. */
 export function indexStockRows(rows: readonly BranchStockRow[]): BranchStockIndex {
   const index = new Map<string, Map<string, BranchStockRow>>()
