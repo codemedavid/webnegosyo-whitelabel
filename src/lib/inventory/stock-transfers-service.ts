@@ -167,7 +167,25 @@ export async function createTransfer(
   tenantId: string,
   input: CreateTransferInput,
 ): Promise<{ id: string }> {
-  const supabase = await createClient()
+  return createTransferWith(await createClient(), tenantId, input)
+}
+
+/**
+ * The same step, performed with a client the caller already holds.
+ *
+ * This exists for the merchant app, which authenticates with a Bearer token
+ * rather than the cookies `@/lib/supabase/server` reads. Handed a cookie client
+ * the app's request would resolve no session at all, and
+ * `resolveActingBranchScope` would then be deciding branch authority for
+ * nobody — which is precisely the check that stops one shop emptying another's
+ * shelf. Injecting the caller's own client keeps that check pointed at the real
+ * caller. Same split, same reason, as `recordStockMovementWith`.
+ */
+export async function createTransferWith(
+  supabase: StockActorClient,
+  tenantId: string,
+  input: CreateTransferInput,
+): Promise<{ id: string }> {
   const scope = await resolveActingBranchScope(supabase, tenantId)
 
   // Authority and shape both settled before anything is written, so a refused
@@ -223,7 +241,15 @@ export async function createTransfer(
  * somebody counts it in.
  */
 export async function sendTransfer(tenantId: string, transferId: string): Promise<void> {
-  const supabase = await createClient()
+  return sendTransferWith(await createClient(), tenantId, transferId)
+}
+
+/** As `sendTransfer`, with the caller's own client. See `createTransferWith`. */
+export async function sendTransferWith(
+  supabase: StockActorClient,
+  tenantId: string,
+  transferId: string,
+): Promise<void> {
   const transfer = await loadTransfer(supabase, tenantId, transferId)
 
   // The transition check is what stops a stale tab deducting the stock twice.
@@ -264,7 +290,16 @@ export async function receiveTransfer(
   transferId: string,
   counts: Readonly<Record<string, number>>,
 ): Promise<void> {
-  const supabase = await createClient()
+  return receiveTransferWith(await createClient(), tenantId, transferId, counts)
+}
+
+/** As `receiveTransfer`, with the caller's own client. See `createTransferWith`. */
+export async function receiveTransferWith(
+  supabase: StockActorClient,
+  tenantId: string,
+  transferId: string,
+  counts: Readonly<Record<string, number>>,
+): Promise<void> {
   const transfer = await loadTransfer(supabase, tenantId, transferId)
 
   assertTransferTransition(transfer.status, 'received')
@@ -317,7 +352,15 @@ export async function receiveTransfer(
  * would not put it back. `assertTransferTransition` is what says so.
  */
 export async function cancelTransfer(tenantId: string, transferId: string): Promise<void> {
-  const supabase = await createClient()
+  return cancelTransferWith(await createClient(), tenantId, transferId)
+}
+
+/** As `cancelTransfer`, with the caller's own client. See `createTransferWith`. */
+export async function cancelTransferWith(
+  supabase: StockActorClient,
+  tenantId: string,
+  transferId: string,
+): Promise<void> {
   const transfer = await loadTransfer(supabase, tenantId, transferId)
 
   assertTransferTransition(transfer.status, 'cancelled')
