@@ -14,6 +14,21 @@ import {
   judgeCountSession,
   describeCountSession,
 } from '@/lib/inventory/count-session'
+import { describeReportCaveats } from '@/lib/inventory/daily-report-view'
+import type { DailyInventoryReport } from '@/lib/inventory/daily-report'
+
+function reportWith(
+  overrides: Partial<DailyInventoryReport> = {},
+): DailyInventoryReport {
+  return {
+    rows: [],
+    totals: { cogs: 0, wasteCost: 0, shrinkageCost: 0 },
+    countedCount: 0,
+    uncountedCount: 0,
+    uncostedCount: 0,
+    ...overrides,
+  }
+}
 
 describe('judging a count session', () => {
   it('calls a count still in progress open rather than partial', () => {
@@ -218,5 +233,65 @@ describe('wording a count session for the merchant', () => {
     )
 
     expect(sentence).toMatch(/still|in progress/i)
+  })
+})
+
+describe('the report telling the merchant its count stopped early', () => {
+  it('says the count stopped early, above the ingredients it left uncounted', () => {
+    // Order matters the same way the verdict leads the panel: the partial count
+    // is the REASON those ingredients are unexplained, and a merchant who reads
+    // the consequence first has already started blaming the shelf.
+    const caveats = describeReportCaveats(
+      reportWith({ uncountedCount: 36 }),
+      judgeCountSession({
+        expectedItemCount: 40,
+        countedItemIds: ['a', 'b', 'c', 'd'],
+        closedAt: '2026-07-31T14:00:00+08:00',
+      }),
+    )
+
+    expect(caveats[0]).toMatch(/4 of 40/)
+    expect(caveats[1]).toMatch(/36 ingredients/)
+  })
+
+  it('adds nothing when the count was complete', () => {
+    const caveats = describeReportCaveats(
+      reportWith(),
+      judgeCountSession({
+        expectedItemCount: 2,
+        countedItemIds: ['a', 'b'],
+        closedAt: '2026-07-31T14:00:00+08:00',
+      }),
+    )
+
+    expect(caveats).toHaveLength(0)
+  })
+
+  it('behaves exactly as before when the day had no count session at all', () => {
+    // Every day before this table existed, and every tenant who counts without
+    // opening a session. Silence about the session is correct there — inventing
+    // an "abandoned count" caveat would accuse a merchant of a count they never
+    // started.
+    const caveats = describeReportCaveats(reportWith({ uncountedCount: 2 }))
+
+    expect(caveats).toHaveLength(1)
+    expect(caveats[0]).toMatch(/2 ingredients/)
+  })
+
+  it('still names an unfinished count on a day where nothing else was wrong', () => {
+    // The uncounted-movers caveat cannot substitute: an ingredient that did not
+    // MOVE today is not in `uncountedCount`, so a count that skipped the entire
+    // dry store would otherwise produce a report with no caveats at all.
+    const caveats = describeReportCaveats(
+      reportWith(),
+      judgeCountSession({
+        expectedItemCount: 40,
+        countedItemIds: ['a'],
+        closedAt: '2026-07-31T14:00:00+08:00',
+      }),
+    )
+
+    expect(caveats).toHaveLength(1)
+    expect(caveats[0]).toMatch(/1 of 40/)
   })
 })
