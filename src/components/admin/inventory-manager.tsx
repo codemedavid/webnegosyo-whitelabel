@@ -1,13 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Ruler, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -26,7 +25,7 @@ import {
 } from '@/components/ui/select'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { RecipeWorkbench } from '@/components/admin/recipe-workbench'
-import { InventoryOverview } from '@/components/admin/inventory-overview'
+import { InventoryHealthStrip, InventoryLogs } from '@/components/admin/inventory-overview'
 import { DailyReportPanel } from '@/components/admin/daily-report-panel'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
@@ -51,6 +50,7 @@ import {
 } from '@/lib/inventory/stock-form'
 import {
   MANUAL_MOVEMENT_REASONS,
+  MOVEMENT_ACTION_LABELS,
   MOVEMENT_REASON_LABELS,
   type StockMovementReason,
 } from '@/lib/inventory/stock-ledger'
@@ -73,10 +73,52 @@ import {
   deleteInventoryUnitAction,
   recordStockMovementAction,
 } from '@/app/actions/inventory'
+import { BranchStockPanel } from '@/components/admin/branch-stock-panel'
+import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
 
 /** Trims the trailing zeros a NUMERIC(16,4) round-trip leaves behind. */
 function formatQuantity(quantity: number): string {
   return Number(quantity.toFixed(4)).toString()
+}
+
+/**
+ * How long a stock movement may hang before we call it failed.
+ *
+ * The merchant is on mobile data in a kitchen. Without this the button reads
+ * "Recording…" for as long as the network cares to stall, and the one thing
+ * they cannot tell is whether the movement was saved.
+ */
+const RECORD_TIMEOUT_MS = 15_000
+
+class TimeoutError extends Error {
+  constructor() {
+    super('timed out')
+    this.name = 'TimeoutError'
+  }
+}
+
+/**
+ * Rejects when `promise` outruns `ms`.
+ *
+ * The request itself is not cancelled — a server action cannot be aborted from
+ * here — so this reports a timeout without ever claiming the write was undone.
+ * The copy says "nothing was saved" only for the cases where that is true, and
+ * the refresh on reopen shows the merchant the authoritative figure either way.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new TimeoutError()), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }
 
 interface InventoryManagerProps {
@@ -89,6 +131,13 @@ interface InventoryManagerProps {
    * to survive the server-to-client boundary for no gain.
    */
   lastPurchaseByItemId?: Record<string, string>
+  /**
+   * The cross-branch view per ingredient — which shop holds what, and which has
+   * run out. A plain record for the same reason as `lastPurchaseByItemId`: it
+   * crosses the server boundary and a Map would be rebuilt here for no gain.
+   * Absent or empty for a single-shop store, whose panel renders nothing.
+   */
+  branchStockByItemId?: Record<string, BranchStockSummary>
   /**
    * Recipe coverage is computed on the server, where the menu items and recipes
    * are already being read. Passing the finished rows keeps this component from
@@ -124,15 +173,28 @@ interface InventoryManagerProps {
   latestDayKey?: string
   /** Which tab the URL asked for; an unknown value falls back to the default. */
   defaultTab?: string
+  /**
+   * An ingredient the URL asked to open the stock dialog for, with the movement
+   * already chosen. The daily report links here when a row came up short, so a
+   * merchant told "something is missing" lands on the control that answers it.
+   */
+  stockItemId?: string
+  stockReason?: string
 }
 
 const DIMENSIONS: InventoryUnitDimension[] = ['weight', 'volume', 'count']
 
-/** Literal class names, because Tailwind cannot see an interpolated one. */
+/**
+ * Literal class names, because Tailwind cannot see an interpolated one.
+ *
+ * Two or three tabs now: what do I have, what is a dish made of, and what did
+ * yesterday cost. Overview folded into the first because its figures describe
+ * the list underneath them, and Units moved behind a button because it is
+ * configured once and then never again.
+ */
 const TAB_GRID_COLUMNS: Record<number, string> = {
-  3: 'grid-cols-3',
-  4: 'grid-cols-4',
-  5: 'grid-cols-5',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
 }
 
 export function InventoryManager({
@@ -141,6 +203,7 @@ export function InventoryManager({
   initialIngredients,
   initialUnits,
   lastPurchaseByItemId = {},
+  branchStockByItemId = {},
   coverageRows = [],
   recipeComponents = [],
   coverageLoadFailed = false,
@@ -152,6 +215,8 @@ export function InventoryManager({
   dailyRevenue,
   latestDayKey,
   defaultTab,
+  stockItemId,
+  stockReason,
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
@@ -164,23 +229,15 @@ export function InventoryManager({
   const dishesWithRecipe =
     coverageRows.length > 0 ? coverageRows.filter((row) => row.hasRecipe).length : undefined
 
-  // Overview leads by default: "what is happening?" is the question a merchant
-  // arrives with. The URL can override it, because the report's day links carry
-  // their tab — without that, stepping a day would land back here and read as a
-  // broken link. An unknown tab falls back rather than opening nothing.
-  const availableTabs = [
-    ...(health ? ['overview'] : []),
-    'ingredients',
-    'recipes',
-    'units',
-    ...(canShowReport ? ['reports'] : []),
-  ]
+  // Ingredients leads: "what do I have?" is the question a merchant arrives
+  // with, and it is the surface they touch many times a day. The URL can
+  // override it, because the report's day links carry their tab — without that,
+  // stepping a day would land back here and read as a broken link. An unknown
+  // tab (including the retired `overview` and `units`) falls back rather than
+  // opening nothing.
+  const availableTabs = ['ingredients', 'recipes', ...(canShowReport ? ['reports'] : [])]
   const initialTab =
-    defaultTab && availableTabs.includes(defaultTab)
-      ? defaultTab
-      : health
-        ? 'overview'
-        : 'ingredients'
+    defaultTab && availableTabs.includes(defaultTab) ? defaultTab : 'ingredients'
 
   return (
     <Tabs defaultValue={initialTab}>
@@ -189,24 +246,28 @@ export function InventoryManager({
         literal class names, so a `grid-cols-${n}` template compiles to nothing
         and the tabs stack.
       */}
-      <TabsList className={cn('grid w-full max-w-xl', TAB_GRID_COLUMNS[availableTabs.length])}>
-        {health && <TabsTrigger value="overview">Overview</TabsTrigger>}
-        <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
-        <TabsTrigger value="recipes">Recipes</TabsTrigger>
-        <TabsTrigger value="units">Units</TabsTrigger>
-        {canShowReport && <TabsTrigger value="reports">Reports</TabsTrigger>}
-      </TabsList>
-
-      {health && (
-        <TabsContent value="overview" className="pt-4">
-          <InventoryOverview
-            health={health}
-            autoHidden={autoHidden}
-            activity={activity}
-            activityLoadFailed={activityLoadFailed}
-          />
-        </TabsContent>
-      )}
+      {/* The negative margin lets the strip scroll edge to edge on a phone
+          while the page keeps its gutter. */}
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+        <TabsList
+          className={cn(
+            'max-sm:h-12 max-sm:w-max sm:grid sm:w-full sm:max-w-xl',
+            TAB_GRID_COLUMNS[availableTabs.length],
+          )}
+        >
+          <TabsTrigger className="max-sm:px-4" value="ingredients">
+            Ingredients
+          </TabsTrigger>
+          <TabsTrigger className="max-sm:px-4" value="recipes">
+            Recipes
+          </TabsTrigger>
+          {canShowReport && (
+            <TabsTrigger className="max-sm:px-4" value="reports">
+              Reports
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </div>
 
       <TabsContent value="ingredients" className="pt-4">
         <IngredientsTab
@@ -215,7 +276,15 @@ export function InventoryManager({
           ingredients={ingredients}
           units={units}
           lastPurchaseByItemId={lastPurchaseByItemId}
+          branchStockByItemId={branchStockByItemId}
           onChange={setIngredients}
+          onUnitsChange={setUnits}
+          health={health}
+          autoHidden={autoHidden}
+          activity={activity}
+          activityLoadFailed={activityLoadFailed}
+          stockItemId={stockItemId}
+          stockReason={stockReason}
         />
       </TabsContent>
 
@@ -227,15 +296,6 @@ export function InventoryManager({
           ingredients={ingredients}
           components={recipeComponents}
           loadFailed={coverageLoadFailed}
-        />
-      </TabsContent>
-
-      <TabsContent value="units" className="pt-4">
-        <UnitsTab
-          tenantId={tenantId}
-          tenantSlug={tenantSlug}
-          units={units}
-          onChange={setUnits}
         />
       </TabsContent>
 
@@ -262,7 +322,17 @@ interface IngredientsTabProps {
   ingredients: InventoryItem[]
   units: InventoryUnitRow[]
   lastPurchaseByItemId: Record<string, string>
+  /** Cross-branch view per ingredient. Empty for a single-shop store. */
+  branchStockByItemId?: Record<string, BranchStockSummary>
   onChange: (next: InventoryItem[]) => void
+  onUnitsChange: (next: InventoryUnitRow[]) => void
+  /** Absent when the caller cannot summarise; the strip is then omitted. */
+  health?: InventoryHealth
+  autoHidden: AutoHiddenDish[]
+  activity: ActivityFeedEntry[]
+  activityLoadFailed: boolean
+  stockItemId?: string
+  stockReason?: string
 }
 
 function IngredientsTab({
@@ -271,9 +341,18 @@ function IngredientsTab({
   ingredients,
   units,
   lastPurchaseByItemId,
+  branchStockByItemId,
   onChange,
+  onUnitsChange,
+  health,
+  autoHidden,
+  activity,
+  activityLoadFailed,
+  stockItemId,
+  stockReason,
 }: IngredientsTabProps) {
   const router = useRouter()
+  const [isUnitsOpen, setIsUnitsOpen] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<IngredientDraft>(EMPTY_INGREDIENT_DRAFT)
@@ -283,13 +362,45 @@ function IngredientsTab({
   const [stockItem, setStockItem] = useState<InventoryItem | null>(null)
   const [stockDraft, setStockDraft] = useState<StockMovementDraft>(EMPTY_STOCK_DRAFT)
   const [isRecording, setIsRecording] = useState(false)
+  /**
+   * Held in the dialog rather than thrown at a toast. A toast dismisses itself
+   * while the merchant is looking at the pass, and the failure they never read
+   * is the one that makes them record the delivery twice.
+   */
+  const [stockError, setStockError] = useState<string | null>(null)
 
-  const openStock = (item: InventoryItem) => {
-    setStockItem(item)
-    // Default to the unit the ingredient is stocked in — the common case, and
-    // the only one that needs no conversion.
-    setStockDraft({ ...EMPTY_STOCK_DRAFT, unit_id: item.stock_unit_id })
-  }
+  const openStock = useCallback(
+    (item: InventoryItem, reason?: StockMovementReason) => {
+      setStockItem(item)
+      setStockError(null)
+      // Default to the unit the ingredient is stocked in — the common case, and
+      // the only one that needs no conversion.
+      setStockDraft({
+        ...EMPTY_STOCK_DRAFT,
+        unit_id: item.stock_unit_id,
+        ...(reason ? { reason } : {}),
+      })
+    },
+    [],
+  )
+
+  /*
+    Arriving from the daily report. A merchant who was just told an ingredient
+    came up short lands with that ingredient's dialog open and the movement set
+    to a count — the accusation and the way to answer it are one step apart,
+    not a name to memorise and a list to search.
+
+    Runs once for the id the URL carried: reopening it on every render would
+    make the dialog impossible to close.
+  */
+  const [handledDeepLink, setHandledDeepLink] = useState<string | null>(null)
+  useEffect(() => {
+    if (!stockItemId || handledDeepLink === stockItemId) return
+    const item = ingredients.find((i) => i.id === stockItemId)
+    if (!item) return
+    setHandledDeepLink(stockItemId)
+    openStock(item, isManualMovementReason(stockReason) ? stockReason : undefined)
+  }, [stockItemId, stockReason, ingredients, handledDeepLink, openStock])
 
   const handleRecordStock = async () => {
     if (!stockItem) return
@@ -297,24 +408,41 @@ function IngredientsTab({
     try {
       input = buildStockMovementInput(stockDraft, stockItem.id)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Please check the form')
+      setStockError(error instanceof Error ? error.message : 'Please check the form')
       return
     }
 
+    setStockError(null)
     setIsRecording(true)
     try {
-      const result = await recordStockMovementAction(tenantId, tenantSlug, input)
+      const result = await withTimeout(
+        recordStockMovementAction(tenantId, tenantSlug, input),
+        RECORD_TIMEOUT_MS,
+      )
       if (!result.success) {
-        toast.error(result.error ?? 'Failed to record stock movement')
+        setStockError(result.error ?? 'Failed to record stock movement')
         return
       }
       // The server's figure replaces ours: a stale local total is exactly the
       // bug the ledger exists to prevent.
       const saved = result.data.item
       onChange(ingredients.map((i) => (i.id === saved.id ? saved : i)))
-      toast.success('Stock updated')
+      // The merchant's question is "is the shelf figure right now?", and the
+      // server's authoritative answer is already in hand. "Stock updated"
+      // confirmed an event; this confirms the outcome.
+      toast.success(
+        `${saved.name} — ${formatQuantity(saved.current_qty)} ${unitLabel(saved.stock_unit_id)} on hand`,
+      )
       setStockItem(null)
       router.refresh()
+    } catch (error) {
+      // A timeout or a dropped connection. The dialog stays open with what the
+      // merchant typed still in it, so Record is a retry and not a re-entry.
+      setStockError(
+        error instanceof TimeoutError
+          ? 'That took too long, so we stopped waiting. We cannot tell whether it saved — close this and check the on-hand figure before recording it again.'
+          : 'We could not reach the server, so nothing was saved. Check your connection and try again.',
+      )
     } finally {
       setIsRecording(false)
     }
@@ -356,7 +484,7 @@ function IngredientsTab({
         : await createIngredientAction(tenantId, tenantSlug, input)
 
       if (!result.success) {
-        toast.error(result.error ?? 'Failed to save ingredient')
+        toast.error(result.error ?? 'We could not save this ingredient. Check the form and try again.')
         return
       }
 
@@ -375,10 +503,16 @@ function IngredientsTab({
   }
 
   const handleDelete = async (item: InventoryItem) => {
-    if (!confirm(`Delete "${item.name}"? Recipes using it will lose this line.`)) return
+    // Names the object and the consequence, and says what survives — the
+    // history is what a merchant is most afraid of losing here.
+    const confirmed = confirm(
+      `Delete ${item.name}?\n\nAny recipe using it loses that line, and its cost changes. Past stock movements are kept.`,
+    )
+    if (!confirmed) return
+
     const result = await deleteIngredientAction(item.id, tenantId, tenantSlug)
     if (!result.success) {
-      toast.error(result.error ?? 'Failed to delete ingredient')
+      toast.error(result.error ?? `We could not delete ${item.name}. Try again in a moment.`)
       return
     }
     onChange(ingredients.filter((i) => i.id !== item.id))
@@ -405,11 +539,27 @@ function IngredientsTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {health && <InventoryHealthStrip health={health} />}
+
+      {/* The warning names the control that fixes it. It used to imply a tab
+          that no longer exists, which would have left the merchant hunting. */}
       {noUnits && (
-        <p className="text-sm text-amber-600">
-          Add at least one unit of measure first — ingredients are priced per unit.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+          <p className="flex-1 text-sm">
+            Ingredients are priced per unit, so add a unit of measure before your first
+            ingredient.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="max-sm:h-11 max-sm:w-full"
+            onClick={() => setIsUnitsOpen(true)}
+          >
+            <Ruler className="mr-2 h-4 w-4" />
+            Add a unit
+          </Button>
+        </div>
       )}
 
       <InventoryTable
@@ -420,13 +570,38 @@ function IngredientsTab({
         onStock={withItem(openStock)}
         onRecipe={(id) => toggleRecipe(id)}
         onDelete={withItem(handleDelete)}
+        onManageUnits={() => setIsUnitsOpen(true)}
       />
+
+      <InventoryLogs
+        autoHidden={autoHidden}
+        activity={activity}
+        activityLoadFailed={activityLoadFailed}
+      />
+
+      {/* Units are set up once and then never again, so they are reached from
+          the list they serve rather than holding a tab beside the daily work. */}
+      <Dialog open={isUnitsOpen} onOpenChange={setIsUnitsOpen}>
+        <DialogContent className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)]">
+          <DialogHeader>
+            <DialogTitle>Units of measure</DialogTitle>
+          </DialogHeader>
+          <div className="-mx-6 overflow-y-auto px-6">
+            <UnitsTab
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              units={units}
+              onChange={onUnitsChange}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Loaded only once asked for: each editor reads the tenant's ingredients
           and its own recipe, so opening every prep at once would fan out a
           request per row. */}
       <Dialog open={recipeItem !== null} onOpenChange={(open) => !open && setOpenRecipeId(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{recipeItem ? `Recipe — ${recipeItem.name}` : 'Recipe'}</DialogTitle>
           </DialogHeader>
@@ -443,12 +618,12 @@ function IngredientsTab({
       </Dialog>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Ingredient' : 'New Ingredient'}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="-mx-6 space-y-3 overflow-y-auto px-6">
             <div className="space-y-1">
               <Label htmlFor="ing-name">Name</Label>
               <Input
@@ -524,59 +699,96 @@ function IngredientsTab({
               />
             </div>
 
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2">
+            {/* The whole label is the target, so the tappable area is the row
+                rather than the 16px box inside it. */}
+            <div className="flex flex-wrap items-center gap-x-6 max-sm:gap-y-1">
+              <label className="flex items-center gap-2 max-sm:min-h-11 max-sm:w-full">
                 <input
                   type="checkbox"
                   checked={draft.is_prep}
                   onChange={(e) => setDraft((d) => ({ ...d, is_prep: e.target.checked }))}
-                  className="h-4 w-4"
+                  className="h-4 w-4 max-sm:h-5 max-sm:w-5"
                 />
-                <span className="text-sm">Prep item (made in-house)</span>
+                <span className="text-sm">
+                  Prep item (made in-house)
+                  <span className="block text-xs text-muted-foreground">
+                    Gets its own recipe, so its cost comes from what goes into it.
+                  </span>
+                </span>
               </label>
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 max-sm:min-h-11 max-sm:w-full">
                 <input
                   type="checkbox"
                   checked={draft.is_active}
                   onChange={(e) => setDraft((d) => ({ ...d, is_active: e.target.checked }))}
-                  className="h-4 w-4"
+                  className="h-4 w-4 max-sm:h-5 max-sm:w-5"
                 />
-                <span className="text-sm">Active</span>
+                <span className="text-sm">
+                  In use
+                  <span className="block text-xs text-muted-foreground">
+                    Turn off to retire it without deleting its history.
+                  </span>
+                </span>
               </label>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+            <Button
+              variant="outline"
+              className="max-sm:h-11"
+              onClick={() => setIsOpen(false)}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button className="max-sm:h-11" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Ingredient'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/*
+        Bounded to the viewport with the body as the only scrolling part, so
+        Record stays pinned in view. It used to sit under five inputs and a
+        scrolling history list — on a phone the merchant had to scroll past
+        their own entry to submit it.
+      */}
       <Dialog open={stockItem !== null} onOpenChange={(open) => !open && setStockItem(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle>{stockItem ? `Stock — ${stockItem.name}` : 'Stock'}</DialogTitle>
           </DialogHeader>
 
           {stockItem && (
-            <div className="space-y-3">
+            <div className="-mx-6 space-y-3 overflow-y-auto px-6">
               <p className="text-sm text-muted-foreground">
                 {formatQuantity(stockItem.current_qty)} {unitLabel(stockItem.stock_unit_id)} on hand
               </p>
 
+              {/*
+                The figure above is the chain roll-up, which reads the same
+                whether the stock is spread evenly or piled in one shop. This is
+                where that difference becomes visible — and where the merchant is
+                standing when they decide to move some.
+              */}
+              {branchStockByItemId?.[stockItem.id] && (
+                <BranchStockPanel
+                  summary={branchStockByItemId[stockItem.id]}
+                  unitLabel={unitLabel(stockItem.stock_unit_id)}
+                />
+              )}
+
               <div className="space-y-1">
                 <Label className="text-xs">What happened</Label>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {MANUAL_MOVEMENT_REASONS.map((reason) => (
                     <Button
                       key={reason}
                       type="button"
                       size="sm"
+                      className="max-sm:h-11 max-sm:flex-1"
                       variant={stockDraft.reason === reason ? 'default' : 'outline'}
                       aria-pressed={stockDraft.reason === reason}
                       onClick={() => setStockDraft((d) => ({ ...d, reason }))}
@@ -672,12 +884,25 @@ function IngredientsTab({
             </div>
           )}
 
+          {stockError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+            >
+              {stockError}
+            </p>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStockItem(null)}>
+            <Button
+              variant="outline"
+              className="max-sm:h-11"
+              onClick={() => setStockItem(null)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleRecordStock} disabled={isRecording}>
-              {isRecording ? 'Recording...' : 'Record'}
+            <Button className="max-sm:h-11" onClick={handleRecordStock} disabled={isRecording}>
+              {isRecording ? 'Recording…' : MOVEMENT_ACTION_LABELS[stockDraft.reason]}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -686,11 +911,24 @@ function IngredientsTab({
   )
 }
 
-/** Explains what the quantity field means for the chosen reason. */
+/** Narrows an untrusted URL value to a reason the merchant may actually pick. */
+function isManualMovementReason(value: string | undefined): value is StockMovementReason {
+  return (
+    value !== undefined && (MANUAL_MOVEMENT_REASONS as readonly string[]).includes(value)
+  )
+}
+
+/**
+ * Explains what the quantity means, and what it will do to the shelf figure.
+ *
+ * The three movements do three different things to the total — one adds, one
+ * subtracts, one replaces — and that is the part a merchant cannot see from
+ * the field itself.
+ */
 function reasonHint(reason: StockMovementReason): string {
-  if (reason === 'stocktake') return 'Enter the amount you actually counted.'
-  if (reason === 'waste') return 'Enter how much was thrown away.'
-  return 'Enter how much arrived.'
+  if (reason === 'stocktake') return 'What you actually counted. This replaces the figure on hand.'
+  if (reason === 'waste') return 'How much was thrown away. This comes off the figure on hand.'
+  return 'How much arrived. This is added to the figure on hand.'
 }
 
 // ── Units ────────────────────────────────────────────────────────────────────
@@ -737,7 +975,7 @@ function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProps) {
         : await createInventoryUnitAction(tenantId, tenantSlug, input)
 
       if (!result.success) {
-        toast.error(result.error ?? 'Failed to save unit')
+        toast.error(result.error ?? 'We could not save this unit. Check the form and try again.')
         return
       }
 
@@ -756,10 +994,15 @@ function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProps) {
   }
 
   const handleDelete = async (unit: InventoryUnitRow) => {
-    if (!confirm(`Delete "${unit.name}"? Ingredients using it must be reassigned.`)) return
+    if (
+      !confirm(
+        `Delete ${unit.name}?\n\nAny ingredient measured in it needs a new unit before you can record stock against it.`,
+      )
+    )
+      return
     const result = await deleteInventoryUnitAction(unit.id, tenantId, tenantSlug)
     if (!result.success) {
-      toast.error(result.error ?? 'Failed to delete unit')
+      toast.error(result.error ?? `We could not delete ${unit.name}. Try again in a moment.`)
       return
     }
     onChange(units.filter((u) => u.id !== unit.id))
@@ -770,59 +1013,74 @@ function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate}>
+        <Button className="max-sm:h-11 max-sm:w-full" onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
           New Unit
         </Button>
       </div>
 
       {units.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No units yet. Units of measure (grams, ml, pieces) let recipes convert ingredient
-            quantities to cost.
-          </CardContent>
-        </Card>
+        <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          No units yet. Grams, millilitres, pieces — recipes use them to turn a quantity into a
+          cost.
+        </p>
       ) : (
-        <div className="space-y-2">
+        /*
+          The same row grammar as an ingredient: name leads, a meta line sits
+          under it, actions cluster right. A plain bordered row rather than a
+          Card, because this list now lives inside a dialog and a card inside a
+          card is never the answer.
+        */
+        <ul className="divide-y rounded-xl border">
           {units.map((unit) => (
-            <Card key={unit.id}>
-              <CardContent className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">
-                      {unit.name} ({unit.abbreviation})
-                    </span>
-                    <Badge variant="outline" className="capitalize">
-                      {unit.dimension}
-                    </Badge>
-                    {unit.is_base && <Badge variant="secondary">Base</Badge>}
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    1 {unit.abbreviation} = {unit.to_base_factor} base
+            <li key={unit.id} className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate font-medium">
+                    {unit.name} ({unit.abbreviation})
                   </span>
+                  <Badge variant="outline" className="capitalize">
+                    {unit.dimension}
+                  </Badge>
+                  {unit.is_base && <Badge variant="secondary">Base</Badge>}
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(unit)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => handleDelete(unit)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                <span className="text-sm text-muted-foreground">
+                  1 {unit.abbreviation} = {unit.to_base_factor} base
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="max-sm:h-11"
+                  onClick={() => openEdit(unit)}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive max-sm:size-11"
+                  aria-label={`Delete ${unit.name}`}
+                  onClick={() => handleDelete(unit)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Unit' : 'New Unit'}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="-mx-6 space-y-3 overflow-y-auto px-6">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="unit-name">Name</Label>
@@ -879,22 +1137,27 @@ function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProps) {
               </div>
             </div>
 
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 max-sm:min-h-11">
               <input
                 type="checkbox"
                 checked={draft.is_base}
                 onChange={(e) => setDraft((d) => ({ ...d, is_base: e.target.checked }))}
-                className="h-4 w-4"
+                className="h-4 w-4 max-sm:h-5 max-sm:w-5"
               />
               <span className="text-sm">Base unit for its dimension</span>
             </label>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+            <Button
+              variant="outline"
+              className="max-sm:h-11"
+              onClick={() => setIsOpen(false)}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button className="max-sm:h-11" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Unit'}
             </Button>
           </DialogFooter>

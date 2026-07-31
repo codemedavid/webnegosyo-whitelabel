@@ -1,7 +1,10 @@
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
-import { getScopedIngredients } from '@/lib/inventory/branch-stock-read'
+import {
+  getScopedIngredients,
+  getBranchStockSummaries,
+} from '@/lib/inventory/branch-stock-read'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
@@ -48,6 +51,7 @@ export default async function AdminInventoryPage({
   // Open alerts need no feature-flag check of their own: when a tenant has
   // low-stock alerts switched off, nothing writes them, so the list is empty
   // and the banner renders nothing.
+  //
   // Quantities are read as whoever is looking: the owner's roll-up across every
   // branch, or one branch's own shelf. A manager shown the chain total would
   // count their shelf short against it.
@@ -70,6 +74,14 @@ export default async function AdminInventoryPage({
   // questions that had no surface at all, and the reason a tenant could switch
   // inventory on, have it deduct nothing, and see a working system's quiet day.
   const activity = await getInventoryActivity(tenant.id, ingredients)
+
+  // The owner's cross-branch view: which shop holds what, and which has run out.
+  // Empty for a single-shop store, so the panel never appears for the majority
+  // of tenants.
+  const branchStockByItemId = await getBranchStockSummaries(
+    tenant.id,
+    ingredients.map((item) => item.id),
+  )
   const autoHidden = explainAutoHiddenDishes(menuItems, recipes, recipeComponents, ingredients)
   const health = summarizeInventoryHealth({
     ingredients,
@@ -121,6 +133,7 @@ export default async function AdminInventoryPage({
         initialIngredients={ingredients}
         initialUnits={units}
         lastPurchaseByItemId={lastPurchaseByItemId}
+        branchStockByItemId={branchStockByItemId}
         coverageRows={coverageRows}
         recipeComponents={recipeComponents}
         coverageLoadFailed={loadFailed}

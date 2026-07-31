@@ -20,7 +20,15 @@ import {
   type BranchStockRow,
 } from '@/lib/inventory/stock-location'
 import type { BranchScope } from '@/lib/outlets/branch-scope'
+import type { NamedBranch } from '@/lib/inventory/branch-stock-view'
+import {
+  summarizeBranchStock,
+  type BranchStockSummary,
+} from '@/lib/inventory/branch-stock-summary'
+import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import type { InventoryItem } from '@/types/database'
+
+export type { BranchStockSummary }
 
 const EMPTY_INDEX: BranchStockIndex = new Map()
 
@@ -65,6 +73,42 @@ export async function getBranchStockIndex(tenantId: string): Promise<BranchStock
  * have, while zero shows an empty shelf — visibly wrong rather than invisibly
  * wrong, and recoverable by reloading.
  */
+/**
+ * The cross-branch view for every ingredient, keyed by ingredient id.
+ *
+ * A plain record rather than a Map because this crosses the server-to-client
+ * boundary into `InventoryManager`, and a Map would have to be rebuilt there
+ * for no gain — the same reasoning `lastPurchaseByItemId` already follows.
+ *
+ * Empty for a single-shop store: `summarizeBranchStock` reports
+ * `isMultiBranch: false` and the panel renders nothing, so there is no point
+ * shipping a record of empties to the majority of tenants.
+ */
+export async function getBranchStockSummaries(
+  tenantId: string,
+  inventoryItemIds: readonly string[],
+): Promise<Record<string, BranchStockSummary>> {
+  let branches: NamedBranch[]
+  try {
+    const outlets = await createSupabaseOutletRepository().listByTenant(tenantId)
+    branches = outlets
+      .filter((outlet) => outlet.is_active)
+      .map((outlet) => ({ id: outlet.id, name: outlet.name }))
+  } catch (error) {
+    // The panel is an extra on a page that already works. A failed branch read
+    // must not take the inventory screen down with it.
+    console.error('[inventory] Branch list read failed', tenantId, error)
+    return {}
+  }
+
+  if (branches.length === 0) return {}
+
+  const index = await getBranchStockIndex(tenantId)
+  return Object.fromEntries(
+    inventoryItemIds.map((id) => [id, summarizeBranchStock(id, index, branches)]),
+  )
+}
+
 export async function getScopedIngredients(
   tenantId: string,
   scope: BranchScope,
