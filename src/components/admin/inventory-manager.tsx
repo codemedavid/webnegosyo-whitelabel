@@ -35,6 +35,8 @@ import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import { cn } from '@/lib/utils'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
 import { InventoryTable } from '@/components/admin/inventory-table'
+import { StockCountPanel } from '@/components/admin/stock-count-panel'
+import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { buildInventoryRows } from '@/lib/inventory/inventory-table'
 import type {
   InventoryItem,
@@ -171,6 +173,13 @@ interface InventoryManagerProps {
   dailyRevenue?: number | null
   /** Today, in Manila. Passed in so the render stays deterministic. */
   latestDayKey?: string
+  /**
+   * The stock count running on this shelf, if one is. Both are needed: the id
+   * is what a stocktake is filed under, and the progress is what the panel
+   * shows. Absent means no count is running, NOT an abandoned one.
+   */
+  openCountId?: string | null
+  countProgress?: CountSessionProgress | null
   /** Which tab the URL asked for; an unknown value falls back to the default. */
   defaultTab?: string
   /**
@@ -214,6 +223,8 @@ export function InventoryManager({
   dailyReport,
   dailyRevenue,
   latestDayKey,
+  openCountId = null,
+  countProgress = null,
   defaultTab,
   stockItemId,
   stockReason,
@@ -285,6 +296,8 @@ export function InventoryManager({
           activityLoadFailed={activityLoadFailed}
           stockItemId={stockItemId}
           stockReason={stockReason}
+          openCountId={openCountId}
+          countProgress={countProgress}
         />
       </TabsContent>
 
@@ -333,6 +346,8 @@ interface IngredientsTabProps {
   activityLoadFailed: boolean
   stockItemId?: string
   stockReason?: string
+  openCountId: string | null
+  countProgress: CountSessionProgress | null
 }
 
 function IngredientsTab({
@@ -350,6 +365,8 @@ function IngredientsTab({
   activityLoadFailed,
   stockItemId,
   stockReason,
+  openCountId,
+  countProgress,
 }: IngredientsTabProps) {
   const router = useRouter()
   const [isUnitsOpen, setIsUnitsOpen] = useState(false)
@@ -406,7 +423,10 @@ function IngredientsTab({
     if (!stockItem) return
     let input
     try {
-      input = buildStockMovementInput(stockDraft, stockItem.id)
+      // The open count is passed here rather than asked for on the form: a
+      // merchant mid-count should not have to remember to tag each entry, and
+      // `buildStockMovementInput` ignores it for every reason but `stocktake`.
+      input = buildStockMovementInput(stockDraft, stockItem.id, openCountId)
     } catch (error) {
       setStockError(error instanceof Error ? error.message : 'Please check the form')
       return
@@ -561,6 +581,19 @@ function IngredientsTab({
           </Button>
         </div>
       )}
+
+      {/*
+        Above the table, because a count is a thing you do TO the shelf below —
+        and because the warning about finishing early has to be read before the
+        merchant reaches for the finish button, not after.
+      */}
+      <StockCountPanel
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        outletId={null}
+        countId={openCountId}
+        progress={countProgress}
+      />
 
       <InventoryTable
         rows={rows}
