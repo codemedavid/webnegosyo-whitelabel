@@ -3,8 +3,8 @@
 // pattern as customers-service). The Supabase-backed store lives in the
 // server action layer, which is the only place with service-role access.
 
+import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import {
-  MAX_STAFF_PER_TENANT,
   validatePermissionKeys,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
@@ -44,6 +44,13 @@ export interface StaffBranchContext {
   outlets?: readonly StaffOutletCandidate[]
   /** The signed-in account performing the change. */
   actor?: BranchStaffActor
+  /**
+   * Seats this tenant may fill per branch, from their subscription.
+   *
+   * Absent means the platform default, NOT unlimited: a caller that has not
+   * been taught about allowances yet must behave exactly as it did before.
+   */
+  maxStaffPerBranch?: number
 }
 
 export interface StaffStore {
@@ -126,14 +133,17 @@ function countStaffInBranch(
 function assertBranchHasRoom(
   staff: readonly StaffRecord[],
   outletId: string | null,
+  context: StaffBranchContext,
   excludeUserId?: string
 ): void {
-  if (countStaffInBranch(staff, outletId, excludeUserId) < MAX_STAFF_PER_TENANT) return
+  const limit = resolveStaffLimit({ max_staff_per_branch: context.maxStaffPerBranch ?? null })
+
+  if (countStaffInBranch(staff, outletId, excludeUserId) < limit) return
 
   throw new Error(
     outletId
-      ? `This branch already has the maximum of ${MAX_STAFF_PER_TENANT} staff accounts`
-      : `This store already has the maximum of ${MAX_STAFF_PER_TENANT} staff accounts`
+      ? `This branch already has the maximum of ${limit} staff accounts`
+      : `This store already has the maximum of ${limit} staff accounts`
   )
 }
 
@@ -179,7 +189,7 @@ export async function createStaff(
   const outletId = resolveTargetBranch(input.outletId, context)
 
   const existing = await store.listStaff(tenantId)
-  assertBranchHasRoom(existing, outletId)
+  assertBranchHasRoom(existing, outletId, context)
 
   const { userId } = await store.createAuthUser({ email, password: input.password })
   const row: StaffRecord = {
@@ -237,7 +247,7 @@ export async function updateStaffBranch(
   if (target === (record.outlet_id ?? null)) return
 
   const existing = await store.listStaff(tenantId)
-  assertBranchHasRoom(existing, target, userId)
+  assertBranchHasRoom(existing, target, context, userId)
 
   await store.updateStaffRow(userId, { outlet_id: target })
 }

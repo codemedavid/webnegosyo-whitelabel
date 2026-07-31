@@ -79,6 +79,27 @@ export class OutletValidationError extends Error {
   }
 }
 
+/**
+ * Refuses a new branch once the tenant's allowance is used up.
+ *
+ * Enforced on CREATE only, and never on update or read. A tenant sitting above
+ * a newly-lowered allowance keeps every branch it has: retroactively hiding
+ * live branches would take a working storefront down and lose the orders
+ * already routed to them. They simply cannot add another until the allowance
+ * catches up.
+ *
+ * The message quotes the number, because the merchant reads it verbatim and
+ * "you have reached your limit" tells them nothing they can act on.
+ */
+export function assertOutletCapacity(currentOutletCount: number, limit: number): void {
+  if (currentOutletCount < limit) return
+
+  throw new OutletValidationError(
+    `This plan includes ${limit} ${limit === 1 ? 'branch' : 'branches'}. ` +
+      `Contact support to add more.`
+  )
+}
+
 /** Raised when an outlet does not exist for this tenant. */
 export class OutletNotFoundError extends Error {
   constructor(message = 'Branch not found.') {
