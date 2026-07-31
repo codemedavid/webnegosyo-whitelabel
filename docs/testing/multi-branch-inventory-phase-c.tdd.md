@@ -176,3 +176,69 @@ Gaps, stated plainly:
 - **Auto-86 remains store-wide**, by decision. See C4.
 - **`src/types/supabase.ts` still does not know `stock_alerts.outlet_id`**,
   along with the rest of its staleness.
+
+---
+
+## Follow-up — naming the branch, and a regression it exposed
+
+RED `0ca2019` → GREEN `d6c0faa` (view), RED `9ce07a0` → same GREEN (read).
+
+```
+npx jest --testPathPatterns="inventory-stock-alerts-view"
+RED:   Tests: 3 failed, 19 passed, 22 total
+npx jest --testPathPatterns="inventory-stock-alerts-read"
+RED:   Tests: 2 failed, 9 passed, 11 total
+GREEN: view+scope 27 passed, read 11 passed
+       npx jest (full) — 8 skipped, 4550 passed, 4558 total
+```
+
+### The alert now says whose shelf
+
+`describeStockAlert` appends *"at South"*, named **last** so the sentence still
+leads with the ingredient and the problem — a merchant scanning a list is
+looking for what has gone wrong before they are looking for where. A store-wide
+alert says nothing extra, and an unresolvable outlet costs the suffix rather
+than the alert, the same trade the unit lookup already makes.
+
+The `outlets` lookup is skipped entirely when nothing is branch-stamped, so a
+single-shop tenant pays for no extra query.
+
+`stock-alerts-banner.tsx` needed no edit — it calls `describeStockAlert` — which
+also left a concurrent session's uncommitted work in that file untouched.
+
+### The regression Phase C introduced
+
+`scopeStockAlerts` re-tests every alert against the quantities the viewer is
+being shown. That was right while alerts were raised from the roll-up. Once
+Phase C started raising them per branch it became a filter that **discarded the
+alerts it had just correctly raised**: an owner sees the roll-up, so a
+South-only outage inside a healthy 700g chain total failed the re-test and never
+reached the banner.
+
+A branch-stamped alert is now exempt — the branch's own shelf was the basis for
+raising it, and the viewer's total is the wrong yardstick to re-judge it by.
+Which branch's alerts reach a viewer at all is settled earlier, by RLS.
+
+The guard is "a real branch id", not "not null", so a row read without the
+column falls through to the re-test rather than silently bypassing it. The
+pre-existing `inventory-alert-scope` suite caught the weaker version.
+
+### Additional guarantees
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 17 | An alert names the branch it is about | `inventory-stock-alerts-view.test.ts` | unit | PASS |
+| 18 | A store-wide alert reads exactly as before | same | unit | PASS |
+| 19 | An unresolvable branch prints no UUID | same | unit | PASS |
+| 20 | A branch alert survives an owner's healthy roll-up | same | unit | PASS |
+| 21 | A store-wide alert is still re-tested against viewer figures | same | unit | PASS |
+| 22 | The branch and its name reach the view layer | `inventory-stock-alerts-read.test.ts` | unit | PASS |
+| 23 | A deleted outlet costs the suffix, not the alert | same | unit | PASS |
+
+### Remaining after this
+
+- **C3, the per-branch par level UI, is still not built.** The store-wide
+  fallback means branched tenants get alerting today; what is missing is giving
+  a quiet shop its own threshold.
+- The merchant app renders alerts from the same pure view module, so it gains
+  the branch name for free — but that has not been verified on the app.
