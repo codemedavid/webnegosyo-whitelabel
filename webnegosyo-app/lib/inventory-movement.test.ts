@@ -133,3 +133,46 @@ describe("wasting more than the shelf holds", () => {
     expect(isOvercountedWaste("stocktake", "500", flour)).toBe(false);
   });
 });
+
+describe("attaching a count to its session", () => {
+  it("files a stocktake under the count that is running", () => {
+    const payload = buildMovementPayload(
+      { reason: "stocktake", quantity: "4", note: "" },
+      flour,
+      "c1",
+    );
+
+    expect(payload.inventory_count_id).toBe("c1");
+  });
+
+  it("attaches automatically, without the merchant having to remember", () => {
+    // Tagging that had to be remembered would be forgotten, and a forgotten tag
+    // does not lose a figure — it leaves an honest count reading as partial.
+    // A coverage figure that under-reports real work is how merchants learn to
+    // ignore it.
+    const payload = buildMovementPayload(
+      { reason: "stocktake", quantity: "0", note: "" },
+      flour,
+      "c1",
+    );
+
+    expect(payload.inventory_count_id).toBe("c1");
+  });
+
+  it("never files a delivery or a waste under a count", () => {
+    // A delivery inside a count would raise coverage for an ingredient nobody
+    // counted — the exact reassurance the session exists to withhold. The
+    // database refuses it too; this stops the phone ever asking.
+    for (const reason of ["receive", "waste"] as const) {
+      expect(
+        buildMovementPayload({ reason, quantity: "4", note: "" }, flour, "c1"),
+      ).not.toHaveProperty("inventory_count_id");
+    }
+  });
+
+  it("leaves a count with no session running unattached", () => {
+    expect(
+      buildMovementPayload({ reason: "stocktake", quantity: "4", note: "" }, flour),
+    ).not.toHaveProperty("inventory_count_id");
+  });
+})

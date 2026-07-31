@@ -40,6 +40,7 @@ function logicOf(source: string): string {
 
 const PORTED_MODULES = [
   "business-day",
+  "count-panel",
   "count-session",
   "daily-report",
   "daily-report-view",
