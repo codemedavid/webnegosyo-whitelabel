@@ -27,6 +27,8 @@ interface StockAlertRow {
   quantity: number
   reorder_level: number
   created_at: string
+  /** NULL = store-wide. See `stock_alerts.outlet_id`. */
+  outlet_id: string | null
 }
 
 /**
@@ -42,7 +44,7 @@ export async function getOpenStockAlerts(tenantId: string): Promise<StockAlertVi
 
     const { data: alertRows, error } = await supabase
       .from('stock_alerts')
-      .select('id, inventory_item_id, level, quantity, reorder_level, created_at')
+      .select('id, inventory_item_id, level, quantity, reorder_level, created_at, outlet_id')
       .eq('tenant_id', tenantId)
       .is('resolved_at', null)
     if (error) throw error
@@ -79,6 +81,22 @@ export async function getOpenStockAlerts(tenantId: string): Promise<StockAlertVi
       ]),
     )
 
+    // Only when something is actually branch-stamped: a single-shop tenant
+    // should not pay for a query whose every answer would be discarded.
+    const branchIds = [...new Set(alerts.map((a) => a.outlet_id).filter(Boolean))] as string[]
+    const branchNameById = new Map<string, string>()
+    if (branchIds.length > 0) {
+      const { data: outletRows } = await supabase
+        .from('outlets')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .in('id', branchIds)
+
+      for (const outlet of (outletRows ?? []) as unknown as Array<{ id: string; name: string }>) {
+        branchNameById.set(outlet.id, outlet.name)
+      }
+    }
+
     const views: StockAlertView[] = []
     for (const alert of alerts) {
       const item = itemById.get(alert.inventory_item_id)
@@ -96,6 +114,10 @@ export async function getOpenStockAlerts(tenantId: string): Promise<StockAlertVi
         // Losing the unit costs a suffix, not the whole alert.
         unitAbbreviation: unitById.get(item.stock_unit_id) ?? '',
         createdAt: alert.created_at,
+        outletId: alert.outlet_id ?? null,
+        // A deleted outlet costs the suffix, not the alert — the same trade the
+        // unit lookup above already makes.
+        branchName: alert.outlet_id ? branchNameById.get(alert.outlet_id) : undefined,
       })
     }
 

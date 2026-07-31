@@ -20,6 +20,17 @@ export interface StockAlertView {
   /** Empty for a countable ingredient that has no meaningful unit to show. */
   unitAbbreviation: string
   createdAt: string
+  /**
+   * The branch this alert is about. `null` means store-wide — every alert
+   * raised before branches existed, and every single-shop tenant.
+   */
+  outletId: string | null
+  /**
+   * That branch as the merchant names it. Absent when the outlet has since been
+   * deleted, or when a read could not resolve it: the alert then says less
+   * rather than printing a UUID at somebody.
+   */
+  branchName?: string
 }
 
 export interface StockAlertSummary {
@@ -59,21 +70,24 @@ export interface AlertScopedItem {
 /**
  * The alerts that are this viewer's problem.
  *
- * `stock_alerts` rows are raised store-wide, from the roll-up across every
- * branch — they carry no branch of their own. The inventory screen, meanwhile,
- * shows a branch manager THEIR shelf. Pairing the two unfiltered put the
- * chain's low-stock banner above one branch's quantities, so a manager whose
- * own shelf is full was told to reorder, and the numbers underneath the banner
- * disagreed with it.
+ * An unstamped alert carries no branch — it was raised from the roll-up, which
+ * is every alert predating branch-aware alerting. The inventory screen,
+ * meanwhile, shows a branch manager THEIR shelf. Pairing the two unfiltered put
+ * the chain's low-stock banner above one branch's quantities, so a manager
+ * whose own shelf was full got told to reorder and the numbers underneath the
+ * banner disagreed with the words above them. Those alerts are therefore
+ * re-tested against the quantities the viewer is actually being shown.
  *
- * So each alert is re-tested against the quantities the viewer is actually
- * being shown: it survives only if that ingredient is at or below its reorder
- * level *for them*. A store-wide account passes its own roll-up figures in and
- * every alert survives, which is the existing behaviour exactly.
+ * **An alert that names a branch is not re-tested.** The branch's own shelf was
+ * the basis for raising it, and the viewer's figures are the wrong yardstick to
+ * re-judge it by: an owner sees the roll-up, so a South-only outage inside a
+ * healthy 700g chain total would be thrown away — the alert raised correctly
+ * and then filtered out of the only place it would have been read. Which
+ * branch's alerts reach a viewer at all is settled before this, by RLS.
  *
- * An alert whose ingredient is absent from the list is dropped. The list is
- * every ingredient the tenant has, so absent means the viewer cannot see that
- * ingredient at all, and an alert about something invisible is unactionable.
+ * An alert whose ingredient is absent from the list is still dropped, branch or
+ * not. The list is every ingredient the viewer can see, so absent means they
+ * cannot see it, and an alert about something invisible is unactionable.
  */
 export function scopeStockAlerts(
   alerts: readonly StockAlertView[],
@@ -84,6 +98,9 @@ export function scopeStockAlerts(
   return alerts.filter((alert) => {
     const item = byId.get(alert.inventoryItemId)
     if (!item) return false
+    // A real branch id, not merely "not null": a row read without the column
+    // must fall through to the re-test rather than silently bypassing it.
+    if (typeof alert.outletId === 'string' && alert.outletId !== '') return true
     return item.current_qty <= item.reorder_level
   })
 }
@@ -125,11 +142,16 @@ export function summarizeStockAlerts(alerts: readonly StockAlertView[]): StockAl
  * negative, which happens when a sale lands before its delivery is recorded.
  */
 export function describeStockAlert(alert: StockAlertView): string {
-  if (alert.level === 'out') return `${alert.name} is out of stock`
+  // Named last, so the sentence still leads with the ingredient and the
+  // problem. A merchant scanning a list is looking for what has gone wrong
+  // before they are looking for where.
+  const where = alert.branchName ? ` at ${alert.branchName}` : ''
+
+  if (alert.level === 'out') return `${alert.name} is out of stock${where}`
 
   const unit = alert.unitAbbreviation ? ` ${alert.unitAbbreviation}` : ''
   return (
     `${alert.name} is down to ${formatQuantity(alert.quantity)}${unit}` +
-    ` (reorder at ${formatQuantity(alert.reorderLevel)}${unit})`
+    ` (reorder at ${formatQuantity(alert.reorderLevel)}${unit})${where}`
   )
 }

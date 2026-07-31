@@ -80,6 +80,9 @@ describe('getOpenStockAlerts', () => {
         quantity: 5,
         reorderLevel: 20,
         unitAbbreviation: 'kg',
+        // Store-wide: the fixture row carries no branch. Alerts gained an
+        // outlet in migration 20260813120000.
+        outletId: null,
         createdAt: '2026-07-27T10:00:00.000Z',
       },
     ])
