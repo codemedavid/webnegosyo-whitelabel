@@ -44,6 +44,7 @@ interface MovementRow {
   balance_after: number
   created_at: string
   inventory_count_id: string | null
+  outlet_id: string | null
 }
 
 interface CountRow {
@@ -81,7 +82,7 @@ export async function getDailyInventoryReport(
     supabase
       .from('stock_movements')
       .select(
-        'inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id',
+        'inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id',
       )
       .eq('tenant_id', tenantId)
       .gte('created_at', startIso)
@@ -132,6 +133,9 @@ export async function getDailyInventoryReport(
     quantityDelta: row.quantity_delta,
     balanceAfter: row.balance_after,
     createdAt: row.created_at,
+    // `balance_after` is a per-branch running total, so the reconciliation
+    // needs to know which shelf each row belongs to.
+    outletId: row.outlet_id,
   }))
 
   return {

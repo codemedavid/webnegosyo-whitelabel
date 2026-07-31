@@ -23,9 +23,21 @@ export interface DailyReportMovement {
   reason: StockMovementReason
   /** Signed, already in the ingredient's stock unit. */
   quantityDelta: number
-  /** Running total the trigger wrote. Never recomputed here. */
+  /**
+   * Running total the trigger wrote. Never recomputed here.
+   *
+   * Since migration 20260808120000 this is the balance AT THIS MOVEMENT'S
+   * BRANCH, not the store total — which is why the reconciliation below groups
+   * by branch before it reads an opening or a closing.
+   */
   balanceAfter: number
   createdAt: string
+  /**
+   * The branch this movement happened at. Absent on every row written before
+   * branches existed, and on every single-shop tenant's rows — which must be
+   * read as "the one shelf", not as a branch of its own.
+   */
+  outletId?: string | null
 }
 
 export interface DailyReportIngredient {
@@ -158,6 +170,76 @@ export function buildDailyInventoryReport(
   }
 }
 
+/** One shelf's key. `null` and `undefined` are the same shelf: the store pool. */
+function branchKeyOf(movement: DailyReportMovement): string {
+  return movement.outletId ?? ''
+}
+
+/**
+ * Opening and closing, summed across the branches that moved today.
+ *
+ * `balanceAfter` is a running total for ONE branch, so a day's movements read
+ * as a single stream take the opening from whichever branch moved first and the
+ * closing from whichever moved last. For a single-shop tenant those are the
+ * same shelf and nothing changes; for a branched one the row stops satisfying
+ * `opening + received − sold − waste + transferred ± count = closing`, and a
+ * row a merchant cannot check by eye is worse than no row.
+ *
+ * Branches that did not move today contribute nothing to EITHER figure, so the
+ * identity still holds — their stock is simply outside the day's story.
+ */
+function balancesAcrossBranches(ordered: readonly DailyReportMovement[]): {
+  opening: number
+  closing: number
+} {
+  const firstByBranch = new Map<string, DailyReportMovement>()
+  const lastByBranch = new Map<string, DailyReportMovement>()
+
+  for (const movement of ordered) {
+    const key = branchKeyOf(movement)
+    if (!firstByBranch.has(key)) firstByBranch.set(key, movement)
+    lastByBranch.set(key, movement)
+  }
+
+  let opening = 0
+  let closing = 0
+  // Derived from the rows themselves — `balance_after` minus the delta that
+  // produced it — so the opening costs no extra query and cannot disagree with
+  // the ledger.
+  for (const movement of firstByBranch.values()) {
+    opening += movement.balanceAfter - movement.quantityDelta
+  }
+  for (const movement of lastByBranch.values()) {
+    closing += movement.balanceAfter
+  }
+
+  return { opening, closing }
+}
+
+/**
+ * Shrinkage, per branch and then summed.
+ *
+ * Netting the branches first would let North being 40 short cancel South being
+ * 40 long and report a spotless day while a shelf is genuinely missing 40 —
+ * the exact failure the shrinkage figure exists to surface. Only the SHORT side
+ * of each branch counts, for the same reason it does within one.
+ */
+function shrinkageAcrossBranches(ordered: readonly DailyReportMovement[]): number {
+  const adjustmentByBranch = new Map<string, number>()
+
+  for (const movement of ordered) {
+    if (movement.reason !== 'stocktake') continue
+    const key = branchKeyOf(movement)
+    adjustmentByBranch.set(key, (adjustmentByBranch.get(key) ?? 0) + movement.quantityDelta)
+  }
+
+  let shrinkage = 0
+  for (const adjustment of adjustmentByBranch.values()) {
+    if (adjustment < 0) shrinkage += -adjustment
+  }
+  return shrinkage
+}
+
 function buildRow(
   ingredient: DailyReportIngredient,
   movements: readonly DailyReportMovement[],
@@ -165,13 +247,8 @@ function buildRow(
   // Time order, not array order: the ledger is usually read newest-first, and
   // taking the array's first row as the opening would invert the whole day.
   const ordered = [...movements].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  const first = ordered[0]
-  const last = ordered[ordered.length - 1]
 
-  // Derived from the row itself — `balance_after` minus the delta that produced
-  // it — so the opening costs no extra query and cannot disagree with the ledger.
-  const opening = first.balanceAfter - first.quantityDelta
-  const closing = last.balanceAfter
+  const { opening, closing } = balancesAcrossBranches(ordered)
 
   let received = 0
   let saleNet = 0
@@ -220,7 +297,8 @@ function buildRow(
   // Only the SHORT side is shrinkage. A long count is a real fault — a
   // miscount, a mis-keyed delivery — but it is not a loss, and letting it
   // subtract would net out genuine losses elsewhere and report a clean day.
-  const shrinkage = countAdjustment < 0 ? -countAdjustment : 0
+  // Judged per branch for exactly that reason: see `shrinkageAcrossBranches`.
+  const shrinkage = shrinkageAcrossBranches(ordered)
 
   return {
     inventoryItemId: ingredient.id,
