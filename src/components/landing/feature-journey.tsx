@@ -1,14 +1,9 @@
-'use client'
-
-import { motion } from 'framer-motion'
-import { Check } from 'lucide-react'
-import { AccentText, SectionHeading } from './cta-button'
+import { CheckMark, ChalkRule, Lit, SectionTitle } from './court'
 import { FeatureMock } from './feature-mockups'
-import { JOURNEY_FEATURES, LANDING_COLORS, type JourneyFeature } from './landing-theme'
+import { SegmentDisplay } from './segment-display'
+import { COURT, JOURNEY_FEATURES, type JourneyFeature } from './landing-theme'
 
-const VIEWPORT = { once: true, amount: 0.3 } as const
-
-function FeatureRow({ feature, index }: { feature: JourneyFeature; index: number }) {
+function Play({ feature, index }: { feature: JourneyFeature; index: number }) {
   const isReversed = index % 2 === 1
 
   return (
@@ -17,79 +12,80 @@ function FeatureRow({ feature, index }: { feature: JourneyFeature; index: number
         isReversed ? 'md:flex-row-reverse' : 'md:flex-row'
       }`}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 40, x: isReversed ? 24 : -24 }}
-        whileInView={{ opacity: 1, y: 0, x: 0 }}
-        viewport={VIEWPORT}
-        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full min-w-0 md:flex-1"
-      >
-        <div className="flex items-center gap-3">
-          <span
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-black text-white"
-            style={{
-              background: `linear-gradient(140deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.brandDeep})`,
-            }}
-          >
-            {feature.tag}
-          </span>
-          <span className="text-[11px] font-black uppercase tracking-[0.22em] text-orange-500">
-            {feature.eyebrow}
-          </span>
-        </div>
-
-        <h3 className="mt-5 text-[clamp(1.65rem,4vw,2.5rem)] font-black leading-[1.06] tracking-[-0.03em] text-white">
+      <div className="w-full min-w-0 md:flex-1">
+        <h3
+          className="font-display t-play uppercase leading-[1.02] tracking-[-0.025em]"
+          style={{ color: COURT.lane, textWrap: 'balance' }}
+        >
           {feature.title}
         </h3>
-        <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-white/50">{feature.body}</p>
+        <p
+          className="mt-4 max-w-[54ch] text-[15px] leading-relaxed"
+          style={{ color: COURT.laneDim }}
+        >
+          {feature.body}
+        </p>
 
         <ul className="mt-6 space-y-3">
           {feature.points.map((point) => (
-            <li key={point} className="flex items-start gap-3 text-sm font-semibold text-white/70">
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-600/15">
-                <Check className="h-3 w-3 text-orange-500" />
-              </span>
+            <li
+              key={point}
+              className="flex items-start gap-3 text-sm leading-snug"
+              style={{ color: '#C6CCC5' }}
+            >
+              <CheckMark size={15} className="mt-0.5 shrink-0" />
               {point}
             </li>
           ))}
         </ul>
-      </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 40, scale: 0.96 }}
-        whileInView={{ opacity: 1, y: 0, scale: 1 }}
-        viewport={VIEWPORT}
-        transition={{ duration: 0.75, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-        className="flex w-full justify-center md:flex-1"
-      >
+        {/* The payoff, read after the argument: where this play runs and what
+            it puts on the board. */}
+        <div className="mt-7 flex items-center gap-3.5 border-t pt-5" style={{ borderColor: 'rgba(237,232,218,0.14)' }}>
+          <SegmentDisplay
+            value={`+${feature.adds}`}
+            color={COURT.ledAmber}
+            height="1.9rem"
+            label={`Nagdadagdag ng ${feature.adds} piso sa order`}
+          />
+          <span
+            className="text-[11px] font-bold uppercase leading-tight tracking-[0.14em]"
+            style={{ color: COURT.laneDim }}
+          >
+            {feature.when}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex w-full justify-center md:flex-1">
         <FeatureMock variant={feature.mock} />
-      </motion.div>
+      </div>
     </div>
   )
 }
 
+/**
+ * The three plays that run inside every order. Each one names what it adds, so
+ * the section reads back against the figure the board opened with.
+ */
 export function FeatureJourney() {
   return (
     <section
       id="upsells"
-      aria-label="Paano nag-a-upsell ang Smart Menu"
-      className="relative z-10 scroll-mt-20 overflow-hidden py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.inkSoft }}
+      className="relative z-10 scroll-mt-16 overflow-hidden px-5 py-24 md:px-8 md:py-32"
+      style={{ backgroundColor: COURT.groundLit }}
     >
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <SectionHeading
-          tag="Ang upsell engine"
-          title={
-            <>
-              Tatlong paraan para <AccentText>lumaki ang bawat order</AccentText>
-            </>
-          }
-          body="Ito ang pinagkaiba ng Smart Menu sa ordinaryong online menu — may nagbebenta kahit walang tao."
-        />
+      <div className="mx-auto max-w-6xl">
+        <SectionTitle body="Ito ang pinagkaiba ng Smart Menu sa ordinaryong online menu — may nagbebenta kahit walang tao.">
+          Tatlong paraan para <Lit>lumaki ang bawat order</Lit>
+        </SectionTitle>
 
-        <div className="mt-16 space-y-20 md:mt-24 md:space-y-32">
+        <div className="mt-16 md:mt-24">
           {JOURNEY_FEATURES.map((feature, i) => (
-            <FeatureRow key={feature.tag} feature={feature} index={i} />
+            <div key={feature.title}>
+              {i > 0 && <ChalkRule className="my-16 md:my-24" />}
+              <Play feature={feature} index={i} />
+            </div>
           ))}
         </div>
       </div>

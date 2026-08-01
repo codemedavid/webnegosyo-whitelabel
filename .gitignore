@@ -67,3 +67,6 @@ public/downloads/*.dmg
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Design-tooling scratch (screenshots + critiques), regenerated on demand
+/.impeccable/
