@@ -84,11 +84,38 @@ export function isAwaitingCount(transfer: Pick<TransferSummary, "status">): bool
 }
 
 /**
+ * Is this a load nobody has put on a van yet?
+ *
+ * Only `draft`. Composing on the phone is create-then-send — two calls — so a
+ * send that fails leaves one of these behind, and it is real work somebody has
+ * to finish. It is also the only state that can still be cancelled: once stock
+ * is in transit the only way to close it is to receive what turned up.
+ */
+export function isAwaitingDispatch(transfer: Pick<TransferSummary, "status">): boolean {
+  return transfer.status === "draft";
+}
+
+/**
+ * How much attention one consignment deserves, highest first.
+ *
+ * Three tiers rather than two. A box on its way has somebody standing over it
+ * and outranks everything. A draft is unfinished work — it must not sink under
+ * a week of received history, which is where a two-tier sort would put it — but
+ * nobody is waiting on it, so it stays below the box.
+ */
+function benchRank(transfer: Pick<TransferSummary, "status">): number {
+  if (isAwaitingCount(transfer)) return 2;
+  if (isAwaitingDispatch(transfer)) return 1;
+  return 0;
+}
+
+/**
  * The order a receiving bench wants.
  *
- * Anything awaiting a count first, then oldest first within each group: a
- * consignment sitting since morning is the one everybody has stopped chasing,
- * and it is also the one most likely to have gone missing.
+ * Anything awaiting a count first, then unfinished drafts, then history —
+ * oldest first within each group: a consignment sitting since morning is the
+ * one everybody has stopped chasing, and it is also the one most likely to
+ * have gone missing.
  *
  * Returns a new array. Sorting the caller's own list in place would reorder
  * whatever React state it came from behind the screen's back.
@@ -97,7 +124,7 @@ export function sortTransfersForBench(
   transfers: readonly TransferSummary[],
 ): TransferSummary[] {
   return [...transfers].sort((left, right) => {
-    const byUrgency = Number(isAwaitingCount(right)) - Number(isAwaitingCount(left));
+    const byUrgency = benchRank(right) - benchRank(left);
     if (byUrgency !== 0) return byUrgency;
 
     return left.createdAt.localeCompare(right.createdAt);

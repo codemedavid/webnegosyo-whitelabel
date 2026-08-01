@@ -10,7 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { useAuthStore } from "../../stores/auth-store";
-import { useBranchScope } from "../../lib/use-branch-scope";
+import { useBranchScope, useAccountBranchScope } from "../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../lib/inventory-service";
 import {
   filterStockViews,
@@ -27,6 +27,7 @@ import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
 import { StockCountPanel } from "../../components/StockCountPanel";
 import { TransferBenchPanel } from "../../components/TransferBenchPanel";
+import { TransferComposeSheet } from "../../components/TransferComposeSheet";
 import { useOutlets } from "../../lib/use-outlets";
 import {
   loadTransfers,
@@ -69,6 +70,10 @@ const SEGMENTS: readonly { key: Exclude<LevelFilter, "all">; label: string; tint
 export default function InventoryScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const scope = useBranchScope();
+  // Composing asks what the ACCOUNT may do, never what it is currently
+  // looking at: drilling into a branch is a narrowing of the view, not a
+  // demotion of the owner.
+  const accountScope = useAccountBranchScope();
   // Undefined, not null, when the merchant is looking at the whole store: null
   // is the unbranched pool, a real shelf, and would show an owner only the
   // stock that predates their branches.
@@ -85,6 +90,7 @@ export default function InventoryScreen() {
   const [countBusy, setCountBusy] = useState(false);
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
   const [transferLines, setTransferLines] = useState<Record<string, TransferLineView[]>>({});
+  const [isComposing, setIsComposing] = useState(false);
 
   // Names for the two ends of a transfer. Deliberately NOT filtered to the
   // branch being viewed: a manager receiving from another shop has to be told
@@ -207,6 +213,56 @@ export default function InventoryScreen() {
       await Promise.all([load(), loadMoving()]);
     },
     [tenantId, load, loadMoving],
+  );
+
+  /**
+   * Draft a transfer and put it on the van, in one tap.
+   *
+   * Two calls, because the platform route takes them separately. If `send`
+   * fails the draft survives and shows up in the bench panel with its own Send
+   * and Cancel — nothing is stranded, and the merchant is told what went wrong
+   * by the sheet, which is why this does not catch.
+   */
+  const onComposed = useCallback(
+    async (draft: {
+      fromOutletId: string | null;
+      toOutletId: string | null;
+      lines: { inventoryItemId: string; quantity: number }[];
+      note?: string;
+    }) => {
+      if (!tenantId) return;
+      const { id } = await submitTransferStep(tenantId, { action: "create", ...draft });
+      if (!id) throw new Error("The transfer was not created. Try again.");
+
+      try {
+        await submitTransferStep(tenantId, { action: "send", transferId: id });
+      } finally {
+        // Even a failed send has changed what the list shows — the draft is
+        // real and has to appear, or the merchant composes it again.
+        await Promise.all([load(), loadMoving()]);
+      }
+    },
+    [tenantId, load, loadMoving],
+  );
+
+  /** Finish or abandon a draft that a failed send left behind. */
+  const onDispatched = useCallback(
+    async (transferId: string) => {
+      if (!tenantId) return;
+      await submitTransferStep(tenantId, { action: "send", transferId });
+      await Promise.all([load(), loadMoving()]);
+    },
+    [tenantId, load, loadMoving],
+  );
+
+  const onAbandoned = useCallback(
+    async (transferId: string) => {
+      if (!tenantId) return;
+      await submitTransferStep(tenantId, { action: "cancel", transferId });
+      // Nothing moved, so only the list changes.
+      await loadMoving();
+    },
+    [tenantId, loadMoving],
   );
 
   const onRefresh = () => {
@@ -340,7 +396,25 @@ export default function InventoryScreen() {
           branchNames={branchNames}
           linesFor={(transferId) => transferLines[transferId] ?? []}
           onReceive={onTransferred}
+          onSend={onDispatched}
+          onCancel={onAbandoned}
         />
+
+        {/*
+          Outside the bench panel on purpose. That panel renders nothing until
+          stock has moved, so a compose entry inside it would leave a store that
+          has never transferred permanently unable to start one. Shown only to a
+          store with somewhere to send to.
+        */}
+        {outlets.length > 1 && (
+          <TouchableOpacity
+            style={styles.compose}
+            accessibilityRole="button"
+            onPress={() => setIsComposing(true)}
+          >
+            <Text style={styles.composeLabel}>Move stock to another branch</Text>
+          </TouchableOpacity>
+        )}
 
         {body()}
       </ScrollView>
@@ -350,6 +424,18 @@ export default function InventoryScreen() {
         can cross a reorder line, which re-levels the ingredient and can 86 a
         dish, and none of that is knowable from the quantity alone.
       */}
+      <TransferComposeSheet
+        tenantId={tenantId ?? ""}
+        visible={isComposing}
+        branches={outlets}
+        // The ACCOUNT's scope, not the branch being viewed: an owner drilled
+        // into North is still an owner and may still send from anywhere. The
+        // service re-checks this against `app_users` either way.
+        scope={accountScope}
+        onClose={() => setIsComposing(false)}
+        onSend={onComposed}
+      />
+
       <StockMovementSheet
         tenantId={tenantId ?? ""}
         item={recording}
@@ -422,6 +508,17 @@ const styles = StyleSheet.create({
   searchIcon: { fontSize: 18, color: colors.textTertiary },
   searchInput: { flex: 1, ...typography.body, color: colors.textPrimary },
   searchClear: { ...typography.caption, color: colors.accent, fontWeight: "600" },
+
+  compose: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composeLabel: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
 
   list: { gap: spacing.md },
 });
