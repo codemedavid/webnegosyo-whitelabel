@@ -76,10 +76,14 @@ function renderManager(item: InventoryItem = FLOUR) {
   )
 }
 
-/** Stock now lives behind the row's actions menu, not a button per card. */
+/**
+ * Recording is the row's primary action — a named button on the row itself, not
+ * a second stop inside the overflow menu. Edit is what moved into the menu.
+ */
 function openStock(name = 'Flour') {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(`more actions for ${name}`, 'i') }))
-  fireEvent.click(screen.getByRole('menuitem', { name: /record stock/i }))
+  fireEvent.click(
+    screen.getByRole('button', { name: new RegExp(`record stock for ${name}`, 'i') }),
+  )
 }
 
 describe('InventoryManager stock', () => {
@@ -96,7 +100,7 @@ describe('InventoryManager stock', () => {
 
     // Act
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
-    fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
 
     // Assert — the form sends a magnitude; the server signs it and applies it
     // to the quantity it reads itself, never the one this page happens to hold.
@@ -113,18 +117,110 @@ describe('InventoryManager stock', () => {
     renderManager()
     openStock()
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
-    fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
 
     // The server's figure wins — a stale local total is exactly the bug the
     // ledger exists to prevent.
     expect(await screen.findByText('1300 g')).toBeInTheDocument()
   })
 
+  /*
+    A merchant on mobile data in a kitchen. The failure has to survive being
+    looked away from: a toast dismisses itself while they are at the pass, and
+    the failure they never read is the one that makes them record it twice.
+  */
+  it('keeps a failed movement on screen with what was typed still in it', async () => {
+    recordStockMovementAction.mockResolvedValueOnce({
+      success: false,
+      error: 'Stock movement rejected',
+    })
+    renderManager()
+    openStock()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/stock movement rejected/i)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByLabelText(/quantity/i)).toHaveValue(500)
+  })
+
+  it('says it cannot tell what happened when the server never answers', async () => {
+    recordStockMovementAction.mockRejectedValueOnce(new Error('network down'))
+    renderManager()
+    openStock()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+
+    // Never a claim it saved, and never a silent close.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was saved/i)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('clears a stale failure when the dialog is opened again', async () => {
+    recordStockMovementAction.mockResolvedValueOnce({ success: false, error: 'Nope' })
+    renderManager()
+    openStock()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+    await screen.findByRole('alert')
+
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    openStock()
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  /*
+    The button carries the merchant's own choice. A bare "Record" left the
+    movement off the one control they press, and a delivery ADDS stock and can
+    blend a new cost into the average — the mistake a distracted tap makes is
+    now a thing that can be read before it happens.
+  */
+  it('names the movement the button will write', () => {
+    renderManager()
+    openStock()
+
+    expect(screen.getByRole('button', { name: /^record delivery$/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^wasted$/i }))
+    expect(screen.getByRole('button', { name: /^record waste$/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^counted$/i }))
+    expect(screen.getByRole('button', { name: /^record count$/i })).toBeInTheDocument()
+  })
+
+  it('says what the movement will do to the figure on hand', () => {
+    renderManager()
+    openStock()
+
+    expect(screen.getByText(/added to the figure on hand/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^counted$/i }))
+    expect(screen.getByText(/replaces the figure on hand/i)).toBeInTheDocument()
+  })
+
+  it('confirms the resulting figure, not merely that something happened', async () => {
+    const { toast } = jest.requireMock('sonner')
+    renderManager()
+    openStock()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+
+    // "Stock updated" confirmed an event; the merchant asked for an outcome.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/1300 g on hand/i)),
+    )
+  })
+
   it('refuses to record a movement with no quantity', async () => {
     renderManager()
     openStock()
 
-    fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
 
     await waitFor(() => expect(recordStockMovementAction).not.toHaveBeenCalled())
   })
@@ -199,7 +295,7 @@ describe('InventoryManager stock history', () => {
     openStock()
 
     expect(await screen.findByText(/couldn.t load the history/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^record$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^record delivery$/i })).toBeEnabled()
   })
 
   it('re-reads the ledger every time the dialog opens', async () => {
@@ -211,8 +307,11 @@ describe('InventoryManager stock history', () => {
     await screen.findByText('Sold')
 
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '500' } })
-    fireEvent.click(screen.getByRole('button', { name: /^record$/i }))
-    await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+
+    // Wait for the dialog to actually close rather than for the action to have
+    // been called — the row button is inert behind the modal until it does.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     openStock()
 

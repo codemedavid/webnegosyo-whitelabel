@@ -1,5 +1,6 @@
 import {
   EMPTY_RECIPE_LINE,
+  createEmptyRecipeLine,
   buildRecipeInput,
   recipeFormFromData,
   estimateRecipeCost,
@@ -69,7 +70,10 @@ describe('recipeFormFromData', () => {
   it('returns a single blank line when there is no recipe yet', () => {
     const form = recipeFormFromData(null)
     expect(form.notes).toBe('')
-    expect(form.lines).toEqual([EMPTY_RECIPE_LINE])
+    // `uid` is the editor's own list identity and never reaches the server, so
+    // the shape is asserted without it.
+    expect(form.lines).toEqual([expect.objectContaining(EMPTY_RECIPE_LINE)])
+    expect(form.lines[0].uid).toEqual(expect.any(String))
   })
 
   it('round-trips an existing recipe into editable string lines', () => {
@@ -82,7 +86,9 @@ describe('recipeFormFromData', () => {
     ]
     const form = recipeFormFromData({ recipe, components })
     expect(form.notes).toBe('keep cold')
-    expect(form.lines).toEqual([{ inventory_item_id: 'flour', quantity: '250', unit_id: 'g' }])
+    expect(form.lines).toEqual([
+      expect.objectContaining({ inventory_item_id: 'flour', quantity: '250', unit_id: 'g' }),
+    ])
   })
 })
 
@@ -162,5 +168,44 @@ describe('recipe form yields', () => {
 
     expect(form.yieldQuantity).toBe('')
     expect(form.yieldUnitId).toBe('')
+  })
+})
+
+describe('line identity', () => {
+  it('gives every new blank line an identity of its own', () => {
+    // Keyed by index, removing the second of four lines re-keys every line
+    // below it and carries typed values up into the wrong rows.
+    const a = createEmptyRecipeLine()
+    const b = createEmptyRecipeLine()
+
+    expect(a.uid).not.toEqual(b.uid)
+  })
+
+  it('keeps identities distinct across a loaded recipe', () => {
+    const recipe = { id: 'r1', notes: null } as Recipe
+    const components: RecipeComponent[] = [0, 1, 2].map((i) => ({
+      id: `c${i}`, tenant_id: 't', recipe_id: 'r1', inventory_item_id: 'flour',
+      quantity: 1, unit_id: 'g', sort_order: i, created_at: '', updated_at: '',
+    }))
+
+    const uids = recipeFormFromData({ recipe, components }).lines.map((l) => l.uid)
+
+    expect(new Set(uids).size).toBe(3)
+  })
+
+  it('never sends the identity to the server', () => {
+    const input = buildRecipeInput({
+      notes: '',
+      lines: [
+        {
+          ...createEmptyRecipeLine(),
+          inventory_item_id: '11111111-1111-4111-8111-111111111111',
+          quantity: '2',
+          unit_id: '22222222-2222-4222-8222-222222222222',
+        },
+      ],
+    })
+
+    expect(input.components[0]).not.toHaveProperty('uid')
   })
 })

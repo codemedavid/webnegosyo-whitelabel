@@ -91,7 +91,7 @@ describe('InventoryManager table', () => {
   it('opens the create form from the table toolbar', () => {
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
 
     expect(screen.getByRole('dialog')).toHaveTextContent(/new ingredient/i)
   })
@@ -101,15 +101,26 @@ describe('InventoryManager table', () => {
       <InventoryManager tenantId="t1" tenantSlug="demo" initialIngredients={[]} initialUnits={[]} />,
     )
 
-    expect(screen.getByRole('button', { name: /add item/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /add ingredient/i })).toBeDisabled()
   })
 
-  it('opens the edit form prefilled from the row', () => {
+  it('opens the edit form prefilled from the row menu', () => {
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /edit broccoli/i }))
+    // Editing an ingredient is a monthly job, so it sits in the menu behind
+    // Record — the action the same row gets many times a day.
+    fireEvent.click(screen.getByRole('button', { name: /more actions for broccoli/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
 
     expect(screen.getByLabelText(/^name$/i)).toHaveValue('Broccoli')
+  })
+
+  it('records stock straight from the row, without opening a menu', () => {
+    renderManager()
+
+    fireEvent.click(screen.getByRole('button', { name: /record stock for broccoli/i }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(/stock — broccoli/i)
   })
 
   it('opens the recipe editor for a prep item from the row menu', () => {
@@ -143,9 +154,27 @@ describe('InventoryManager table', () => {
     await waitFor(() => expect(screen.queryAllByTestId('inventory-row')).toHaveLength(0))
   })
 
-  it('keeps the units tab reachable', () => {
+  /*
+    Units are configured once and then never again, so they moved off the tab
+    bar and behind a button on the list they serve. Reachable, not resident.
+  */
+  it('reaches the units list from the ingredients toolbar', () => {
     renderManager()
 
-    expect(screen.getByRole('tab', { name: /units/i })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /units/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^units$/i }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(/units of measure/i)
+  })
+
+  it('opens on the ingredients tab, not on a dashboard', () => {
+    renderManager()
+
+    expect(screen.queryByRole('tab', { name: /overview/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /ingredients/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
   })
 })

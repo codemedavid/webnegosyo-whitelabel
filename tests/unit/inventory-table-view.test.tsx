@@ -58,7 +58,7 @@ describe('columns', () => {
   it('renders the table headers a merchant scans by', () => {
     renderTable()
 
-    for (const header of ['Item Code', 'Photo', 'Item Name', 'Item Group', 'Last Purchase', 'On Hand', 'Actions']) {
+    for (const header of ['SKU', 'Photo', 'Name', 'Category', 'Last Purchase', 'On Hand']) {
       expect(screen.getByRole('columnheader', { name: new RegExp(header, 'i') })).toBeInTheDocument()
     }
   })
@@ -121,14 +121,14 @@ describe('sorting', () => {
   it('sorts by name ascending on the first click of the column header', () => {
     renderTable()
 
-    fireEvent.click(screen.getByRole('button', { name: /sort by item name/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sort by name/i }))
 
     expect(bodyRowNames()).toEqual(['Aubergine', 'Broccoli', 'Chicken'])
   })
 
   it('reverses the order on a second click of the same header', () => {
     renderTable()
-    const header = screen.getByRole('button', { name: /sort by item name/i })
+    const header = screen.getByRole('button', { name: /sort by name/i })
 
     fireEvent.click(header)
     fireEvent.click(header)
@@ -139,7 +139,7 @@ describe('sorting', () => {
   it('sorts by item code', () => {
     renderTable()
 
-    fireEvent.click(screen.getByRole('button', { name: /sort by item code/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sort by sku/i }))
 
     expect(bodyRowNames()).toEqual(['Chicken', 'Broccoli', 'Aubergine'])
   })
@@ -147,7 +147,7 @@ describe('sorting', () => {
   it('sorts by item group', () => {
     renderTable()
 
-    fireEvent.click(screen.getByRole('button', { name: /sort by item group/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sort by category/i }))
 
     expect(bodyRowNames()[0]).toBe('Chicken')
   })
@@ -206,7 +206,7 @@ describe('selection', () => {
 
     fireEvent.click(screen.getByLabelText(/select all/i))
 
-    expect(screen.getByText(/3 selected/i)).toBeInTheDocument()
+    expect(screen.getByText(/3 ingredients selected/i)).toBeInTheDocument()
   })
 
   it('clears one row without clearing the rest', () => {
@@ -215,7 +215,7 @@ describe('selection', () => {
 
     fireEvent.click(screen.getByLabelText('Select Chicken'))
 
-    expect(screen.getByText(/2 selected/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 ingredients selected/i)).toBeInTheDocument()
   })
 })
 
@@ -224,7 +224,7 @@ describe('actions', () => {
     const onCreate = jest.fn()
     renderTable({ onCreate })
 
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
 
     expect(onCreate).toHaveBeenCalled()
   })
@@ -232,26 +232,26 @@ describe('actions', () => {
   it('disables adding while the tenant has no unit to price against', () => {
     renderTable({ isCreateDisabled: true })
 
-    expect(screen.getByRole('button', { name: /add item/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /add ingredient/i })).toBeDisabled()
   })
 
-  it('edits the ingredient of the row the pencil belongs to', () => {
-    const onEdit = jest.fn()
-    renderTable({ onEdit })
-
-    fireEvent.click(screen.getByRole('button', { name: /edit chicken/i }))
-
-    expect(onEdit).toHaveBeenCalledWith('i2')
-  })
-
-  it('offers stock and delete behind the row menu', () => {
+  it('records stock for the row its button belongs to', () => {
     const onStock = jest.fn()
     renderTable({ onStock })
 
-    fireEvent.click(screen.getByRole('button', { name: /more actions for chicken/i }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /record stock/i }))
+    fireEvent.click(screen.getByRole('button', { name: /record stock for chicken/i }))
 
     expect(onStock).toHaveBeenCalledWith('i2')
+  })
+
+  it('offers edit and delete behind the row menu', () => {
+    const onEdit = jest.fn()
+    renderTable({ onEdit })
+
+    fireEvent.click(screen.getByRole('button', { name: /more actions for chicken/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
+
+    expect(onEdit).toHaveBeenCalledWith('i2')
   })
 
   it('offers the recipe editor only for prep items', () => {
@@ -283,5 +283,87 @@ describe('export', () => {
 
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:csv')
+  })
+})
+
+/**
+ * The menu declares `role="menu"`, so it owes the keyboard what that role
+ * promises. Declaring the role and implementing none of it is worse than not
+ * declaring it: a screen reader announces a menu the user cannot drive.
+ */
+describe('row menu keyboard contract', () => {
+  function openMenu() {
+    fireEvent.click(screen.getByRole('button', { name: /more actions for chicken/i }))
+  }
+
+  it('moves focus into the menu when it opens', () => {
+    renderTable()
+
+    openMenu()
+
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
+  })
+
+  it('moves between items with the arrow keys', () => {
+    renderTable()
+    openMenu()
+    const items = screen.getAllByRole('menuitem')
+
+    fireEvent.keyDown(items[0], { key: 'ArrowDown' })
+    expect(items[1]).toHaveFocus()
+
+    fireEvent.keyDown(items[1], { key: 'ArrowUp' })
+    expect(items[0]).toHaveFocus()
+  })
+
+  it('wraps from the last item back to the first', () => {
+    renderTable()
+    openMenu()
+    const items = screen.getAllByRole('menuitem')
+
+    fireEvent.keyDown(items[0], { key: 'End' })
+    expect(items[items.length - 1]).toHaveFocus()
+
+    fireEvent.keyDown(items[items.length - 1], { key: 'ArrowDown' })
+    expect(items[0]).toHaveFocus()
+  })
+
+  it('closes on Escape and hands focus back to the trigger', () => {
+    renderTable()
+    openMenu()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /more actions for chicken/i })).toHaveFocus()
+  })
+
+  it('closes when a pointer lands outside it', () => {
+    renderTable()
+    openMenu()
+
+    fireEvent.pointerDown(document.body)
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+describe('selection payoff', () => {
+  it('offers an export of exactly what is selected', () => {
+    renderTable()
+
+    fireEvent.click(screen.getByLabelText('Select Chicken'))
+
+    // The checkboxes used to end in a counter and nothing else.
+    expect(screen.getByRole('button', { name: /export selected/i })).toBeInTheDocument()
+  })
+
+  it('lets the merchant drop the selection without unticking each row', () => {
+    renderTable()
+    fireEvent.click(screen.getByLabelText(/select all/i))
+
+    fireEvent.click(screen.getByRole('button', { name: /^clear$/i }))
+
+    expect(screen.queryByText(/ingredients selected/i)).not.toBeInTheDocument()
   })
 })

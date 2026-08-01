@@ -283,7 +283,7 @@ describe('buildInventoryCsv', () => {
     const csv = buildInventoryCsv(rows)
 
     expect(csv.split('\n')).toEqual([
-      'Item Code,Item Name,Item Group,Last Purchase,On Hand',
+      'SKU,Name,Category,Last Purchase,On Hand',
       'V01456,Broccoli,Vegetable,2026-05-03,10 kg',
     ])
   })

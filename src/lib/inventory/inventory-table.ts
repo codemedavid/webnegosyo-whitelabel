@@ -198,7 +198,7 @@ export function toggleAllSelected(
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
-const CSV_HEADER = ['Item Code', 'Item Name', 'Item Group', 'Last Purchase', 'On Hand']
+const CSV_HEADER = ['SKU', 'Name', 'Category', 'Last Purchase', 'On Hand']
 
 /** RFC 4180 quoting — a stray comma in an item name must not shift a column. */
 function csvCell(value: string): string {

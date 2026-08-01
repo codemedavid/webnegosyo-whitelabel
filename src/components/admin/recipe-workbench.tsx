@@ -110,7 +110,7 @@ export function RecipeWorkbench({
       {unused.length > 0 && (
         <div className="rounded-xl border bg-amber-50/60 p-4 dark:bg-amber-950/20">
           <p className="flex items-center gap-2 text-sm font-medium">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
             Not used by any recipe
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -148,6 +148,8 @@ export function RecipeWorkbench({
                   onClick={() => setStatus(filter.value)}
                   className={cn(
                     'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    'max-sm:min-h-11 max-sm:flex-1 max-sm:px-4 max-sm:text-sm',
                     status === filter.value
                       ? 'bg-foreground text-background'
                       : 'bg-muted text-muted-foreground hover:bg-muted/70',
@@ -186,6 +188,8 @@ export function RecipeWorkbench({
                         onClick={() => setSelectedId(row.menuItemId)}
                         className={cn(
                           'w-full rounded-lg border px-3 py-2 text-left transition-colors',
+                          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                          'max-sm:min-h-11',
                           isSelected
                             ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/30'
                             : 'border-transparent hover:bg-muted/60',

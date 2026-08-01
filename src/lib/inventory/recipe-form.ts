@@ -22,12 +22,29 @@ export interface RecipeLineDraft {
   inventory_item_id: string
   quantity: string
   unit_id: string
+  /**
+   * Identity for the editor's list, never sent to the server.
+   *
+   * A recipe line is a row of controls holding typed text, and React needs a
+   * key that belongs to the line rather than to its position. Keyed by index,
+   * removing the second of four lines re-keys every line below it and carries
+   * the typed values up into the wrong rows.
+   */
+  uid?: string
 }
 
 export const EMPTY_RECIPE_LINE: RecipeLineDraft = {
   inventory_item_id: '',
   quantity: '',
   unit_id: '',
+}
+
+let lineCounter = 0
+
+/** A blank line with an identity of its own. */
+export function createEmptyRecipeLine(): RecipeLineDraft {
+  lineCounter += 1
+  return { ...EMPTY_RECIPE_LINE, uid: `line-${lineCounter}` }
 }
 
 export interface RecipeFormState {
@@ -89,14 +106,20 @@ export function recipeFormFromData(data: RecipeWithComponents | null): RecipeFor
   const yieldUnitId = data?.recipe.yield_unit_id ?? ''
 
   if (!data || data.components.length === 0) {
-    return { notes: data?.recipe.notes ?? '', lines: [EMPTY_RECIPE_LINE], yieldQuantity, yieldUnitId }
+    return {
+      notes: data?.recipe.notes ?? '',
+      lines: [createEmptyRecipeLine()],
+      yieldQuantity,
+      yieldUnitId,
+    }
   }
   return {
     notes: data.recipe.notes ?? '',
-    lines: data.components.map((component) => ({
+    lines: data.components.map((component, index) => ({
       inventory_item_id: component.inventory_item_id,
       quantity: String(component.quantity),
       unit_id: component.unit_id,
+      uid: `component-${index}`,
     })),
     yieldQuantity,
     yieldUnitId,
