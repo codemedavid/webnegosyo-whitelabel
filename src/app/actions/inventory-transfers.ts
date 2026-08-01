@@ -45,10 +45,11 @@ function fail(error: unknown, fallback: string) {
   return { success: false as const, error: error instanceof Error ? error.message : fallback }
 }
 
-// Shared with `/api/inventory/transfers`, which takes the same document from
-// the merchant app. One definition, so the two doors cannot drift apart.
-export type { StockTransferDraftInput }
-
+// The draft's type lives in `@/lib/inventory/schemas` and is imported from
+// there by both doors — here and `/api/inventory/transfers` — so the two cannot
+// drift apart. It is deliberately not re-exported: a `'use server'` module may
+// only export async functions, and a re-exported binding survives the server
+// action transform as a value reference, which throws at import time.
 export async function createStockTransferAction(
   tenantId: string,
   tenantSlug: string,
