@@ -95,10 +95,32 @@ Tests:       1328 passed, 1328 total
 | 2 | Every surviving RLS policy on `order_revisions` honours the account's branch | `branch-scoped-order-children.test.ts:every surviving policy on order_revisions honours the account branch` | unit | PASS |
 | 3 | Neither table is left with zero policies (RLS denies by default, so a narrowing that dropped them all would look like a pass) | `branch-scoped-order-children.test.ts:%s is still governed by policies at all` | unit | PASS |
 
-## Coverage and known gaps
+### 4. Apply
 
-- **The migration is written but NOT applied.** Until it runs, the live database
-  still leaks; the test asserts on the corpus, not the connection.
+**APPLIED 2026-08-01** via Supabase MCP (`apply_migration`,
+`name=branch_scoped_order_children`, one ledger row recorded).
+
+Verified after apply, against the live database rather than the success flag:
+
+- All four policies on the two tables now test `app_user_may_see_order`
+  (`pg_policies`, 4/4).
+- Sweeping every table carrying an `outlet_id` for a SELECT/ALL policy that
+  ignores it now returns only legitimate cases: five superadmin-only policies
+  (`au.role = 'superadmin'`, no branch to honour) and
+  `outlet_menu_items_select_public` (`qual = true`, the storefront menu read,
+  public by design). No branch-blind admin policy remains.
+- Data intact: 38 payment rows before and after, 0 revisions, 2 new indexes.
+- The backfill was a no-op, as predicted before applying: all 38 payments had a
+  NULL `outlet_id` and so did all their parent orders, so there was nothing to
+  inherit.
+
+Behaviour change measured on the one live branch-scoped account: it could see 0
+of these payment rows before the fix and 0 after (its tenant has none yet), while
+a store-wide account still sees all 38. So the fix is preventative — it closes
+the hole before that tenant starts taking payments, and changes nothing for
+anyone today.
+
+## Coverage and known gaps
 - The audit covered tables carrying an `outlet_id` column. Tables that reach a
   branch only through a join were not swept, and `order_items` is covered by
   `20260804120000` through its parent.
