@@ -46,6 +46,13 @@ const MANUALLY_PAUSED = {
   status: 'paused',
   paidThrough: '2026-12-31',
 }
+const CANCELLED = {
+  tenantId: 't-gone',
+  name: 'Hotel Hawker',
+  slug: 'hotel',
+  status: 'cancelled',
+  paidThrough: '2026-12-31',
+}
 
 function renderScreen(inputs: Parameters<typeof buildSubscriptionRoster>[0]) {
   const rows = buildSubscriptionRoster(inputs, NOW)
@@ -152,6 +159,33 @@ describe('pausing and resuming a tenant', () => {
     expect(
       within(rowFor('Delta Deli')).queryByRole('button', { name: /^resume$/i })
     ).not.toBeInTheDocument()
+  })
+
+  it('does not offer to resume a cancelled tenant', () => {
+    // Cancelling ended the relationship. "Resume" on this row writes
+    // `status = 'active'`, so a single click would resurrect a closed account
+    // and destroy the record that it was ever cancelled.
+    renderScreen([CANCELLED])
+
+    expect(
+      within(rowFor('Hotel Hawker')).queryByRole('button', { name: /^resume$/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers no lifecycle lever at all on a cancelled tenant', () => {
+    // Nor "Pause" — pausing a cancelled account is meaningless, and the button
+    // would still be one click from writing a status the owner did not choose.
+    renderScreen([CANCELLED])
+
+    expect(
+      within(rowFor('Hotel Hawker')).queryByRole('button', { name: /^pause$/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('says plainly that a cancelled tenant is cancelled, not merely paused', () => {
+    renderScreen([CANCELLED])
+
+    expect(within(rowFor('Hotel Hawker')).getByText(/cancelled/i)).toBeInTheDocument()
   })
 
   it('surfaces a refused pause instead of appearing to have worked', async () => {

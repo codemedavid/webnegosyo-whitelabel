@@ -69,31 +69,38 @@ describe('buildSubscriptionRoster', () => {
   })
 })
 
-describe('telling a manual pause apart from a lapsed one', () => {
-  // Both read as `paused`, but only one of them can be undone without being
-  // paid. The collections screen offers "Resume" on the first and must not on
-  // the second, or the owner is one click from giving access away for free.
+describe('telling the three kinds of closed apart', () => {
+  // All three read as `state: 'paused'`, and only ONE of them may be undone
+  // with a click. A hand-paused tenant resumes; a lapsed one has to pay; a
+  // cancelled one ended the relationship, and quietly flipping them back to
+  // `active` would resurrect an account nobody agreed to reopen.
 
-  it('marks a tenant the platform owner cut off by hand', () => {
+  it('marks a tenant the platform owner paused by hand as resumable', () => {
     const rows = buildSubscriptionRoster([{ ...PAID, status: 'paused' }], NOW)
 
-    expect(rows[0]).toMatchObject({ state: 'paused', isManuallyPaused: true })
+    expect(rows[0]).toMatchObject({ state: 'paused', manualBlock: 'paused' })
   })
 
-  it('marks a cancelled tenant the same way — it is also a deliberate act', () => {
+  it('keeps a cancelled tenant distinct — cancelling is not pausing', () => {
     const rows = buildSubscriptionRoster([{ ...PAID, status: 'cancelled' }], NOW)
 
-    expect(rows[0].isManuallyPaused).toBe(true)
+    expect(rows[0].manualBlock).toBe('cancelled')
   })
 
   it('does not mark a tenant whom the dates closed', () => {
     const rows = buildSubscriptionRoster([LONG_LAPSED], NOW)
 
-    expect(rows[0]).toMatchObject({ state: 'paused', isManuallyPaused: false })
+    expect(rows[0]).toMatchObject({ state: 'paused', manualBlock: null })
   })
 
   it('does not mark a tenant who is simply paid up', () => {
-    expect(buildSubscriptionRoster([PAID], NOW)[0].isManuallyPaused).toBe(false)
+    expect(buildSubscriptionRoster([PAID], NOW)[0].manualBlock).toBe(null)
+  })
+
+  it('reads a status whatever its casing — the column is free text', () => {
+    const rows = buildSubscriptionRoster([{ ...PAID, status: 'Cancelled' }], NOW)
+
+    expect(rows[0].manualBlock).toBe('cancelled')
   })
 })
 
