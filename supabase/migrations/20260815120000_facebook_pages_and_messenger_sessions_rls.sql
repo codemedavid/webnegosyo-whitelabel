@@ -27,9 +27,20 @@ REVOKE SELECT ON public.facebook_pages FROM anon;
 GRANT SELECT (id, tenant_id, page_id, page_name, is_active, created_at, updated_at)
   ON public.facebook_pages TO anon;
 
+-- Scoped to `anon` on purpose. A permissive policy is OR'd with the admin one
+-- below, so leaving this open to every role would let any signed-in merchant
+-- read any active page — and `authenticated` keeps column access to the tokens,
+-- which it needs to read back its own row after connecting a page. Restricting
+-- the public read to `anon` is what stops that becoming a cross-tenant leak.
+--
+-- The cost is narrow and accepted: a merchant who is signed in to their own
+-- admin and then visits a *different* tenant's storefront falls back to
+-- `tenants.messenger_*` for the redirect instead of this lookup. Customers,
+-- who are anonymous, are unaffected.
 DROP POLICY IF EXISTS facebook_pages_read_active ON public.facebook_pages;
 CREATE POLICY facebook_pages_read_active ON public.facebook_pages
   FOR SELECT
+  TO anon
   USING (
     is_active = true
     AND EXISTS (
