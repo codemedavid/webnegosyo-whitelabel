@@ -46,11 +46,67 @@ describe("the transfer bench panel", () => {
   });
 });
 
+describe("acting on a draft from the phone", () => {
+  const panel = read("components", "TransferBenchPanel.tsx");
+
+  it("offers a draft its own actions", () => {
+    // Composing on a phone is create-then-send, two calls. If the send half
+    // fails, a draft is left behind — and a panel that could only receive
+    // would strand it somewhere only the web admin could finish it.
+    expect(panel).toMatch(/isAwaitingDispatch/);
+    expect(panel).toMatch(/onSend/);
+    expect(panel).toMatch(/onCancel/);
+  });
+});
+
+describe("composing a transfer on the phone", () => {
+  it("exists as its own component", () => {
+    expect(existsSync(join(ROOT, "components", "TransferComposeSheet.tsx"))).toBe(true);
+  });
+
+  const sheet = read("components", "TransferComposeSheet.tsx");
+
+  it("offers only what the source branch is holding", () => {
+    // Never the catalogue and never the roll-up: a chain holding 700g of flour
+    // across four shops cannot send 700g out of one of them.
+    expect(sheet).toMatch(/ingredientsAvailableAt/);
+    expect(sheet).toMatch(/overDraftedItemIds/);
+  });
+
+  it("judges the draft through the shared rules rather than beside the JSX", () => {
+    expect(sheet).toMatch(/describeDraftProblem/);
+    expect(sheet).toMatch(/parseTransferQuantity/);
+    expect(sheet).toMatch(/canSendFrom/);
+  });
+
+  it("reads the source branch's own shelf rather than reusing the one on screen", () => {
+    // The visible shelf is the roll-up whenever an owner is looking at the
+    // whole store, so composing from it would offer the chain's stock.
+    expect(sheet).toMatch(/loadInventoryStock/);
+  });
+});
+
 describe("the inventory screen", () => {
   const screen = read("app", "(main)", "inventory.tsx");
 
   it("shows the bench panel", () => {
     expect(screen).toMatch(/TransferBenchPanel/);
+  });
+
+  it("can start a transfer even when none has ever been made", () => {
+    // The bench panel renders nothing until something has moved, so a compose
+    // entry inside it would leave a store that has never transferred unable to
+    // ever start one.
+    expect(screen).toMatch(/TransferComposeSheet/);
+    const panelAt = screen.indexOf("<TransferBenchPanel");
+    const composeAt = screen.indexOf("<TransferComposeSheet");
+    expect(composeAt).toBeGreaterThan(-1);
+    expect(composeAt).not.toBe(panelAt);
+  });
+
+  it("offers composing only to a store with more than one branch", () => {
+    // A single-shop tenant has nowhere to send anything.
+    expect(screen).toMatch(/outlets\.length > 1/);
   });
 
   it("reads transfers through the shared service rather than querying inline", () => {

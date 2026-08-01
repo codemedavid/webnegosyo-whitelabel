@@ -15,6 +15,7 @@ import {
   TRANSFER_STATUS_LABELS,
   describeTransferDirection,
   isAwaitingCount,
+  isAwaitingDispatch,
   sortTransfersForBench,
   type TransferSummary,
 } from "./inventory-transfers";
@@ -98,6 +99,39 @@ describe("the order the bench wants", () => {
     sortTransfersForBench(input);
 
     expect(input.map((item) => item.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("a draft nobody has loaded yet", () => {
+  it("is awaiting dispatch", () => {
+    expect(isAwaitingDispatch(transfer({ status: "draft" }))).toBe(true);
+  });
+
+  it("is not a consignment on its way", () => {
+    // The two states drive different buttons on the same row, and offering
+    // "Send" for something already on a van would double-deplete the sender.
+    expect(isAwaitingDispatch(transfer({ status: "sent" }))).toBe(false);
+    expect(isAwaitingCount(transfer({ status: "draft" }))).toBe(false);
+  });
+
+  it("is not history", () => {
+    expect(isAwaitingDispatch(transfer({ status: "received" }))).toBe(false);
+    expect(isAwaitingDispatch(transfer({ status: "cancelled" }))).toBe(false);
+  });
+});
+
+describe("the order a bench wants", () => {
+  it("puts a draft above finished work but below a box waiting to be counted", () => {
+    // A stranded draft — composed on a phone whose send failed — is real work
+    // somebody has to finish, so it must not sink under a week of history. It
+    // still ranks below an actual box: nobody is standing over a draft.
+    const ordered = sortTransfersForBench([
+      transfer({ id: "done", status: "received", createdAt: "2026-08-01T08:00:00.000Z" }),
+      transfer({ id: "stranded", status: "draft", createdAt: "2026-08-01T09:00:00.000Z" }),
+      transfer({ id: "arriving", status: "sent", createdAt: "2026-08-01T10:00:00.000Z" }),
+    ]);
+
+    expect(ordered.map((item) => item.id)).toEqual(["arriving", "stranded", "done"]);
   });
 });
 
