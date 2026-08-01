@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyWebhookSignature, sendMessage, sendMenuCard } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import {
+  getActivePageByPageId,
+  getActivePageById,
+} from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 
 // Keywords related to order status/tracking - these BLOCK menu auto-reply
@@ -228,18 +232,7 @@ export async function POST(request: NextRequest) {
               console.log(`[Webhook] Looking up Facebook page with page_id: ${pageId}`)
 
               // Find tenant by page ID
-              const { data: pageData, error: pageError } = await supabase
-                .from('facebook_pages')
-                .select('tenant_id, page_access_token')
-                .eq('page_id', pageId)
-                .eq('is_active', true)
-                .single()
-
-              if (pageError) {
-                console.error(`[Webhook] Database error looking up Facebook page:`, pageError)
-              }
-
-              const page = pageData as { tenant_id: string; page_access_token: string } | null
+              const page = await getActivePageByPageId(pageId)
 
               if (page) {
                 console.log(`[Webhook] Found Facebook page, tenant_id: ${page.tenant_id}`)
@@ -394,12 +387,7 @@ export async function POST(request: NextRequest) {
               let facebookPage: { page_id: string; page_access_token: string } | null = null
 
               if (tenant.facebook_page_id) {
-                const { data: pageData } = await supabase
-                  .from('facebook_pages')
-                  .select('page_id, page_access_token')
-                  .eq('id', tenant.facebook_page_id)
-                  .eq('is_active', true)
-                  .single()
+                const pageData = await getActivePageById(tenant.facebook_page_id)
 
                 if (pageData) {
                   const page = pageData as { page_id: string; page_access_token: string }
@@ -534,12 +522,7 @@ export async function POST(request: NextRequest) {
                 const pageId = entry.id
 
                 // Find tenant by page ID
-                const { data: pageData } = await supabase
-                  .from('facebook_pages')
-                  .select('tenant_id, page_access_token')
-                  .eq('page_id', pageId)
-                  .eq('is_active', true)
-                  .single()
+                const pageData = await getActivePageByPageId(pageId)
 
                 const page = pageData as { tenant_id: string; page_access_token: string } | null
 
@@ -591,12 +574,7 @@ export async function POST(request: NextRequest) {
               const pageId = entry.id
 
               // Find tenant by page ID
-              const { data: pageData } = await supabase
-                .from('facebook_pages')
-                .select('tenant_id, page_access_token')
-                .eq('page_id', pageId)
-                .eq('is_active', true)
-                .single()
+              const pageData = await getActivePageByPageId(pageId)
 
               const page = pageData as { tenant_id: string; page_access_token: string } | null
               if (page) {

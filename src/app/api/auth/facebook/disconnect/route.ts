@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unsubscribePageFromWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import { getTenantPageByPageId } from '@/lib/facebook/page-tokens'
 import type { Database } from '@/types/database'
 
 type AppUser = Database['public']['Tables']['app_users']['Row']
@@ -45,12 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get page record
-    const { data: pageRecordData } = await supabase
-      .from('facebook_pages')
-      .select('page_access_token')
-      .eq('tenant_id', tenant_id)
-      .eq('page_id', page_id)
-      .single()
+    const pageRecordData = await getTenantPageByPageId(tenant_id, page_id)
 
     const pageRecord = pageRecordData as { page_access_token: string } | null
     if (!pageRecord) {

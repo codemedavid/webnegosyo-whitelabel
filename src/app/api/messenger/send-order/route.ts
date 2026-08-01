@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 
@@ -120,12 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Facebook page access token
-    const { data: pageData } = await supabase
-      .from('facebook_pages')
-      .select('page_access_token')
-      .eq('id', tenant.facebook_page_id)
-      .eq('is_active', true)
-      .single()
+    const pageData = await getActivePageById(tenant.facebook_page_id)
 
     if (!pageData) {
       return NextResponse.json(

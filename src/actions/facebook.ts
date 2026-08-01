@@ -1,6 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import {
+  getTenantPageByPageId,
+  getTenantUserAccessToken,
+  getTenantActivePageById,
+} from '@/lib/facebook/page-tokens'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import type { Database } from '@/types/database'
 
@@ -165,12 +170,7 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
     const supabase = await createClient()
 
     // Get page record
-    const { data: pageData } = await supabase
-      .from('facebook_pages')
-      .select('id, page_access_token')
-      .eq('tenant_id', tenantId)
-      .eq('page_id', pageId)
-      .single()
+    const pageData = await getTenantPageByPageId(tenantId, pageId)
 
     const page = pageData as { id: string; page_access_token: string } | null
     if (!page) {
@@ -221,13 +221,7 @@ export async function getTempUserTokenAction(tenantId: string, tempId: string) {
   try {
     await verifyTenantAdmin(tenantId)
 
-    const supabase = await createClient()
-    const { data: tempRecordData } = await supabase
-      .from('facebook_pages')
-      .select('user_access_token')
-      .eq('id', tempId)
-      .eq('tenant_id', tenantId)
-      .single()
+    const tempRecordData = { user_access_token: await getTenantUserAccessToken(tenantId, tempId) }
 
     const tempRecord = tempRecordData as { user_access_token: string | null } | null
     if (!tempRecord || !tempRecord.user_access_token) {
@@ -253,14 +247,7 @@ export async function subscribePageToWebhookAction(
   try {
     await verifyTenantAdmin(tenantId)
 
-    const supabase = await createClient()
-    const { data: pageData } = await supabase
-      .from('facebook_pages')
-      .select('page_id, page_access_token')
-      .eq('tenant_id', tenantId)
-      .eq('id', pageId)
-      .eq('is_active', true)
-      .single()
+    const pageData = await getTenantActivePageById(tenantId, pageId)
 
     const page = pageData as { page_id: string; page_access_token: string } | null
     if (!page) {
@@ -296,14 +283,7 @@ export async function verifyWebhookSubscriptionAction(
   try {
     await verifyTenantAdmin(tenantId)
 
-    const supabase = await createClient()
-    const { data: pageData } = await supabase
-      .from('facebook_pages')
-      .select('page_id, page_access_token')
-      .eq('tenant_id', tenantId)
-      .eq('id', pageId)
-      .eq('is_active', true)
-      .single()
+    const pageData = await getTenantActivePageById(tenantId, pageId)
 
     const page = pageData as { page_id: string; page_access_token: string } | null
     if (!page) {
