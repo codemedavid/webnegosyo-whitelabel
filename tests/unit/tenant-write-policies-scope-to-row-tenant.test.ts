@@ -36,8 +36,16 @@ const AFFECTED_TABLES = [
   'payment_methods',
 ] as const
 
+/**
+ * The executable statements only. Comments are stripped because the migration
+ * quotes the broken predicate in order to explain it, and a scan for the
+ * anti-pattern must not trip over the description of the anti-pattern.
+ */
 function migrationSql(): string {
   return readFileSync(MIGRATION, 'utf8')
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('--'))
+    .join('\n')
 }
 
 describe('tenant write policies', () => {
@@ -62,10 +70,23 @@ describe('tenant write policies', () => {
     },
   )
 
+  it.each(AFFECTED_TABLES)(
+    'judges an inserted %s row on the row being written, not only on reads',
+    (table) => {
+      // WITH CHECK governs INSERT. Without it the policy would default to
+      // USING, which reads correctly here but leaves the intent implicit.
+      const clause = new RegExp(
+        `CREATE POLICY ${table}_write_admin[\\s\\S]*?WITH CHECK[\\s\\S]*?au\\.tenant_id = ${table}\\.tenant_id`,
+      )
+      expect(migrationSql()).toMatch(clause)
+    },
+  )
+
   it('keeps superadmin able to write across tenants', () => {
     // Platform admins legitimately act on any tenant; narrowing to the row's
-    // tenant must not lock them out of the superadmin console.
+    // tenant must not lock them out of the superadmin console. Twice per table,
+    // once in USING and once in WITH CHECK.
     const superadminChecks = migrationSql().match(/au\.role = 'superadmin'/g) ?? []
-    expect(superadminChecks).toHaveLength(AFFECTED_TABLES.length)
+    expect(superadminChecks).toHaveLength(AFFECTED_TABLES.length * 2)
   })
 })
