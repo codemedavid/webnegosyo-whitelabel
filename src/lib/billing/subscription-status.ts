@@ -35,13 +35,26 @@ const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TERMINAL_STATUSES = new Set(['cancelled', 'paused'])
 
 /**
- * Whether this status was set by a person rather than reached by the calendar.
+ * Which deliberate act closed this tenant, if any.
  *
- * Exported so the collections screen can offer "Resume" on exactly these and
- * not on a tenant whose dates ran out — that one needs paying, not un-pausing.
+ * The two are NOT interchangeable even though the gate treats them alike. A
+ * pause is a lever the platform owner expects to pull back; a cancellation
+ * ended the relationship. Any caller offering to undo one of these must know
+ * which it is looking at, so this returns the kind rather than a boolean —
+ * a boolean is what let the collections screen offer to "Resume" a cancelled
+ * account straight back into `active`.
  */
+export function resolveManualBlock(
+  status: string | null | undefined
+): 'paused' | 'cancelled' | null {
+  const normalized = (status ?? '').toLowerCase()
+  if (!TERMINAL_STATUSES.has(normalized)) return null
+  return normalized === 'cancelled' ? 'cancelled' : 'paused'
+}
+
+/** Whether this status was set by a person rather than reached by the calendar. */
 export function isManualBlockStatus(status: string | null | undefined): boolean {
-  return TERMINAL_STATUSES.has((status ?? '').toLowerCase())
+  return resolveManualBlock(status) !== null
 }
 
 export type SubscriptionState = 'active' | 'grace' | 'paused'

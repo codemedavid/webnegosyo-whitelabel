@@ -32,6 +32,19 @@ const STATE_LABELS: Record<RosterRow['state'], string> = {
   paused: 'Paused',
 }
 
+/**
+ * What closed this tenant, in the owner's words.
+ *
+ * `state` collapses three situations into `paused`, which is right for deciding
+ * access and wrong for a human reading the row: a cancelled client and one who
+ * simply forgot to pay call for different conversations.
+ */
+function statusLabel(row: RosterRow): string {
+  if (row.manualBlock === 'cancelled') return 'Cancelled'
+  if (row.state === 'paused' && row.manualBlock === null) return 'Lapsed'
+  return STATE_LABELS[row.state]
+}
+
 const peso = (value: number) => `₱${value.toLocaleString('en-PH')}`
 
 /** Anyone the owner has a reason to contact about money. */
@@ -155,7 +168,7 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-semibold ${STATE_STYLES[row.state]}`}
                     >
-                      {STATE_LABELS[row.state]}
+                      {statusLabel(row)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-neutral-600">{row.paidThroughDayKey ?? '—'}</td>
@@ -185,18 +198,24 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
                         Mark paid
                       </button>
 
-                      {/* Resume is offered ONLY where the owner did the
-                          pausing. A tenant the dates closed needs paying, and
-                          a Resume button on that row would be a one-click way
-                          to hand back access for nothing. */}
-                      <button
-                        type="button"
-                        onClick={() => handlePausedChange(row, !row.isManuallyPaused)}
-                        disabled={isPending && pendingTenantId === row.tenantId}
-                        className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                      >
-                        {row.isManuallyPaused ? 'Resume' : 'Pause'}
-                      </button>
+                      {/* Exactly one row in three gets a lever.
+                          - hand-paused: Resume, because the owner pulled it.
+                          - cancelled:   nothing. Resume would write `active`
+                            and resurrect a closed account; Pause would write a
+                            status nobody chose. Reopening is a decision, not a
+                            click on a collections table.
+                          - everyone else: Pause. A tenant the dates closed
+                            needs paying, so they get no way back in here. */}
+                      {row.manualBlock !== 'cancelled' && (
+                        <button
+                          type="button"
+                          onClick={() => handlePausedChange(row, row.manualBlock !== 'paused')}
+                          disabled={isPending && pendingTenantId === row.tenantId}
+                          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                        >
+                          {row.manualBlock === 'paused' ? 'Resume' : 'Pause'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

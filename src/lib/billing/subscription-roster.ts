@@ -10,7 +10,7 @@
  */
 
 import {
-  isManualBlockStatus,
+  resolveManualBlock,
   resolveSubscriptionAccess,
   type SubscriptionState,
 } from '@/lib/billing/subscription-status'
@@ -38,12 +38,13 @@ export interface RosterRow {
   /** Current, but lapsing inside `DUE_SOON_WINDOW_DAYS`. Never true when late. */
   isDueSoon: boolean
   /**
-   * Closed by the platform owner rather than by the calendar.
+   * Which deliberate act closed this tenant, or null if the calendar did it.
    *
-   * Both read as `paused`, but only this one can be undone without being paid,
-   * so the screen must be able to tell them apart before offering "Resume".
+   * All three land on `state: 'paused'`, but only `'paused'` may be lifted
+   * with a click: a lapsed tenant has to pay, and a cancelled one ended the
+   * relationship. The screen needs the kind, not merely the fact.
    */
-  isManuallyPaused: boolean
+  manualBlock: 'paused' | 'cancelled' | null
   paidThroughDayKey: string | null
   monthlyPricePhp: number
 }
@@ -111,7 +112,7 @@ function toRow(input: RosterInput, nowIso: string): RosterRow {
     // unbilled, the late and the manually paused alike — so this cannot
     // mistake an unconfigured account for a renewal falling due today.
     isDueSoon: access.daysUntilDue !== null && access.daysUntilDue <= DUE_SOON_WINDOW_DAYS,
-    isManuallyPaused: isManualBlockStatus(input.status),
+    manualBlock: resolveManualBlock(input.status),
     paidThroughDayKey: access.paidThroughDayKey,
     monthlyPricePhp: input.monthlyPricePhp ?? MONTHLY_PRICE_PHP,
   }

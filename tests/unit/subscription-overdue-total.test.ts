@@ -23,7 +23,7 @@ const rosterRow = (overrides: Partial<RosterRow> = {}): RosterRow => ({
   daysOverdue: 0,
   daysUntilDue: 21,
   isDueSoon: false,
-  isManuallyPaused: false,
+  manualBlock: null,
   monthlyPricePhp: 649,
   paidThroughDayKey: '2026-08-31',
   ...overrides,
@@ -42,7 +42,7 @@ describe('what the collections total counts as owed', () => {
         isBlocked: true,
         daysOverdue: 0,
         daysUntilDue: null,
-        isManuallyPaused: true,
+        manualBlock: 'paused',
       }),
     ])
 
