@@ -74,14 +74,31 @@ both operations; resuming a tenant who lapsed in May leaves them overdue rather
 than granting a free month; a tenant with no subscription row can still be
 paused.
 
-### 4. `isManuallyPaused` on the roster
+### 4. `manualBlock` on the roster
 
-A tenant the owner cut off and a tenant the calendar closed both read as
-`paused`. Only the first can be undone without being paid.
+Three situations collapse into `state: 'paused'` — the owner paused them, the
+calendar closed them, or they cancelled — and only the first may be undone with
+a click.
 
 - RED: `npx jest --testPathPatterns="subscription-roster"` →
   `Tests: 4 failed, 12 passed, 16 total`
 - GREEN: `Tests: 116 passed, 116 total`
+
+**Corrected after code review.** This first shipped as a boolean,
+`isManuallyPaused`, borrowed straight from the access gate's
+`isManualBlockStatus` — and that set holds `cancelled` as well as `paused`. The
+screen turned it into a Resume button, so every cancelled tenant carried a
+one-click path back to `status = 'active'`: a closed account resurrected and the
+record that it was ever cancelled destroyed. Worse, a test asserted the
+behaviour (*"marks a cancelled tenant the same way"*), so the suite defended the
+bug.
+
+The field is now `manualBlock: 'paused' | 'cancelled' | null`. The kind travels
+with the row, and no caller can collapse the two by accident.
+
+- RED: `npx jest --testPathPatterns="subscription-(roster|collections-screen)"` →
+  `Tests: 7 failed, 24 passed, 31 total`
+- GREEN: `Tests: 120 passed, 120 total`
 
 ### 5. The screen: filter, due-in column, pause lever
 
@@ -119,7 +136,12 @@ gate is read there.
 | 15 | Resuming returns unused paid days | `subscription-lifecycle.test.ts:gives back the unused days` | unit | PASS |
 | 16 | Resuming a long-lapsed tenant grants no free month | `subscription-lifecycle.test.ts:does NOT hand a free month` | unit | PASS |
 | 17 | A blank tenant id is refused rather than writing an orphan row | `subscription-lifecycle.test.ts:refuses a blank tenant id` | unit | PASS |
-| 18 | A hand-paused tenant is distinguishable from a date-closed one | `subscription-roster.test.ts:telling a manual pause apart` | unit | PASS |
+| 18 | A hand-paused tenant is distinguishable from a date-closed one | `subscription-roster.test.ts:marks a tenant the platform owner paused by hand` | unit | PASS |
+| 18a | A cancelled tenant is not treated as merely paused | `subscription-roster.test.ts:keeps a cancelled tenant distinct` | unit | PASS |
+| 18b | The status column is read case-insensitively | `subscription-roster.test.ts:reads a status whatever its casing` | unit | PASS |
+| 18c | A cancelled tenant is never offered Resume | `subscription-collections-screen.test.tsx:does not offer to resume a cancelled tenant` | component | PASS |
+| 18d | A cancelled tenant gets no lifecycle lever at all | `subscription-collections-screen.test.tsx:offers no lifecycle lever at all` | component | PASS |
+| 18e | A cancelled tenant reads as Cancelled, not Paused | `subscription-collections-screen.test.tsx:says plainly that a cancelled tenant is cancelled` | component | PASS |
 | 19 | The screen headlines how many tenants come due this week | `subscription-collections-screen.test.tsx:headlines how many tenants` | component | PASS |
 | 20 | Each about-to-lapse row shows its days remaining | `subscription-collections-screen.test.tsx:shows how many days each` | component | PASS |
 | 21 | The filter narrows to only those who owe or are about to | `subscription-collections-screen.test.tsx:narrows the table` | component | PASS |
@@ -133,16 +155,17 @@ gate is read there.
 `npx jest --testPathPatterns="subscription" --coverage --collectCoverageFrom="src/lib/billing/**/*.ts"`
 
 ```
-All files                    |   96.49 |    98.05 |   82.92 |   96.49
+All files                    |   96.59 |    98.19 |   83.72 |   96.59
   subscription-lifecycle.ts  |     100 |      100 |     100 |     100
   subscription-roster.ts     |     100 |      100 |     100 |     100
   subscription-service.ts    |     100 |      100 |     100 |     100
-  subscription-status.ts     |   95.43 |    97.05 |   66.66 |   95.43
+  subscription-gate.ts       |     100 |      100 |     100 |     100
+  subscription-status.ts     |   95.68 |     97.5 |      70 |   95.68
   subscription-repository.ts |   67.39 |      100 |      50 |   67.39
-  subscription-manager.tsx   |     100 |    93.93 |      75 |     100
+  subscription-manager.tsx   |     100 |    94.87 |   76.92 |     100
 ```
 
-Full suite: `npx jest` → `358 passed, 1 skipped; 4425 tests passed`.
+Full suite: `npx jest` → `375 passed, 1 skipped; 4647 tests passed`.
 Lint: `npx eslint` on the changed source files → clean.
 
 ## Known gaps
@@ -174,3 +197,5 @@ RED → GREEN → refactor checkpoints on `feat/platform-supabase-order-parity`:
 - `7f4f8cf` refactor: drop the unused clock from the pause and resume levers (still 101 passed)
 - `b69f496` test: add reproducer for the due-soon filter and the pause lever (RED, 10 failed)
 - `3588a24` feat: chase list and pause lever on the superadmin subscriptions screen (GREEN, 116 passed)
+- `5b256fe` test: add reproducer for the resume button on a cancelled tenant (RED, 7 failed)
+- `9b7e8f8` fix: stop offering to resume a cancelled tenant (GREEN, 120 passed)
