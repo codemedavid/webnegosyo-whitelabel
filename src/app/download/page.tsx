@@ -116,7 +116,9 @@ export default function DownloadPage() {
                       className="h-8 w-8 text-white"
                       aria-hidden
                     >
-                      <path d="M3.609 1.814 13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893 2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198 2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626-2.491-2.49 2.492-2.492zM5.864 2.658 16.802 8.99l-2.303 2.303-8.635-8.635z" />
+                      {/* Android robot, not the Google Play mark — this build
+                          is a sideloaded APK, not a Play Store listing. */}
+                      <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3435-4.1021-2.6892-7.5743-6.1185-9.4396" />
                     </svg>
                   )}
                   <div>
@@ -125,7 +127,14 @@ export default function DownloadPage() {
                   </div>
                 </div>
 
-                <div className="mt-8">
+                {app.kind === "apk" && app.version && (
+                  <p className="mt-4 text-xs text-white/40">
+                    v{app.version}
+                    {app.size ? ` · ${app.size}` : ""} · APK
+                  </p>
+                )}
+
+                <div className="mt-8 flex flex-1 flex-col justify-end">
                   {app.available && app.href ? (
                     <a
                       href={app.href}
@@ -133,12 +142,21 @@ export default function DownloadPage() {
                       rel="noopener noreferrer"
                       className="inline-flex w-full items-center justify-center rounded-xl bg-white px-6 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-white/90"
                     >
-                      Get it on {app.store}
+                      {app.kind === "apk"
+                        ? "Download APK"
+                        : `Get it on ${app.store}`}
                     </a>
                   ) : (
                     <span className="inline-flex w-full cursor-default items-center justify-center rounded-xl border border-white/15 px-6 py-3.5 text-sm font-semibold text-white/45">
                       Coming soon
                     </span>
+                  )}
+
+                  {app.kind === "apk" && app.available && (
+                    <p className="mt-3 text-center text-xs text-white/35">
+                      Not on Google Play yet. Your phone will ask you to allow
+                      installs from this source.
+                    </p>
                   )}
                 </div>
               </div>

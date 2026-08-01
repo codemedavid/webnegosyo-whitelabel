@@ -45,24 +45,45 @@ export const desktopDownloads: DesktopDownload[] = [
 export interface MobileDownload {
   platform: "ios" | "android";
   label: string;
+  /** Source of the build — a storefront name, or "Direct download" for a raw APK. */
   store: string;
+  /** A storefront listing links out; an APK downloads a file the user must sideload. */
+  kind: "store" | "apk";
   href: string | null;
   available: boolean;
+  /** Shown for `kind: "apk"` only — a store listing surfaces its own version. */
+  version?: string;
+  size?: string;
 }
 
+/**
+ * Android is not on Google Play yet, so it ships as a sideloaded APK.
+ *
+ * The APK is served straight from its EAS build artifact rather than from
+ * `public/downloads/`: at 107 MB it exceeds GitHub's 100 MB file limit, so it
+ * cannot be committed. Note the tradeoff — EAS build artifacts expire (30 days
+ * on the free tier), and when this URL dies the button 404s silently, exactly
+ * as `public/downloads/*.dmg` does today after being gitignored for size.
+ * Re-point `href` at the new artifact on every Android release, or move both
+ * binaries to durable hosting (GitHub Release asset / object storage).
+ */
 export const mobileDownloads: MobileDownload[] = [
   {
     platform: "ios",
     label: "WebNegosyo for iPhone & iPad",
     store: "App Store",
-    href: null,
-    available: false,
+    kind: "store",
+    href: "https://apps.apple.com/ph/app/webnegosyo/id6761642956",
+    available: true,
   },
   {
     platform: "android",
     label: "WebNegosyo for Android",
-    store: "Google Play",
-    href: null,
-    available: false,
+    store: "Direct download",
+    kind: "apk",
+    href: "https://expo.dev/artifacts/eas/aQ-igs_PAByk5K4yQfnLUnBK5dxcZlYKRWgBKB_YdFo.apk",
+    available: true,
+    version: "1.0.2",
+    size: "107 MB",
   },
 ];
