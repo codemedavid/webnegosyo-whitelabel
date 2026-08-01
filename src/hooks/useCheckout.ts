@@ -17,7 +17,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty } from '@/lib/cart-utils'
+import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
@@ -39,6 +39,7 @@ import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
+import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
@@ -85,6 +86,10 @@ export function useCheckout(tenantSlug: string) {
   // saved tenant when the checkout page renders inside the preview iframe.
   const tenant = useBrandingPreviewTenant(fetchedTenant)
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
+  // Distinguishes "not fetched yet" from "this tenant has none", which the
+  // array alone cannot. The branch picker needs the difference — see
+  // `areOrderTypesReady` in useCheckoutOutlet.
+  const [areOrderTypesReady, setAreOrderTypesReady] = useState(false)
   const [formFields, setFormFields] = useState<CustomerFormField[]>([])
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -151,6 +156,15 @@ export function useCheckout(tenantSlug: string) {
 
   // Compute service charge from selected order type
   const selectedOrderTypeData = orderTypes.find(ot => ot.id === orderType)
+
+  // Which branch takes this order. No-ops entirely for single-location tenants.
+  const outlet = useCheckoutOutlet({
+    tenant,
+    tenantSlug,
+    orderTypes,
+    orderTypeId: orderType,
+    areOrderTypesReady,
+  })
   const serviceChargeAmount = (() => {
     if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
     if (selectedOrderTypeData.service_charge_type === 'percentage') {
@@ -242,6 +256,7 @@ export function useCheckout(tenantSlug: string) {
         const enabledOrderTypes = await getEnabledOrderTypesByTenantClient(data.id)
         if (isCancelled) return
         setOrderTypes(enabledOrderTypes)
+        setAreOrderTypesReady(true)
 
         // Determine the active order type for form fields fetch
         let activeOrderType = orderType
@@ -627,7 +642,7 @@ export function useCheckout(tenantSlug: string) {
         // subtotal = price × quantity, so an add-on missing here is deleted
         // from the customer's total.
         const itemPrice = calculateCartItemUnitPrice(
-          item.menu_item.price,
+          getEffectiveItemPrice(item.menu_item),
           item.selected_variations ?? item.selected_variation,
           item.selected_addons
         )
@@ -781,6 +796,12 @@ export function useCheckout(tenantSlug: string) {
 
     if (fieldErrors.length > 0) {
       toast.error(fieldErrors.map(error => error.message).join('\n'))
+      return
+    }
+
+    // Multi-branch, "at checkout" timing: an order has to belong to a branch.
+    if (outlet.isMissingRequiredSelection) {
+      toast.error('Please choose a branch for this order')
       return
     }
 
@@ -1014,7 +1035,7 @@ export function useCheckout(tenantSlug: string) {
           // Includes add-ons — see the QR path above; the server clamps
           // subtotal to price × quantity.
           const itemPrice = calculateCartItemUnitPrice(
-            item.menu_item.price,
+            getEffectiveItemPrice(item.menu_item),
             item.selected_variations ?? item.selected_variation,
             item.selected_addons
           )
@@ -1088,6 +1109,12 @@ export function useCheckout(tenantSlug: string) {
           contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
         }
 
+        // Which branch is taking this order, under either timing: the splash
+        // chooser's stored answer, or the one picked on this very page. Resolved
+        // by useCheckoutOutlet, which returns null for the tenants who never
+        // turned branches on. The server re-validates it regardless.
+        const selectedOutletId = outlet.selectedOutletId ?? undefined
+
         // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
         // is captured from the un-normalized customerData.delivery_address), so a
         // whitespace-only normalization difference never drops a valid fee.
@@ -1115,7 +1142,8 @@ export function useCheckout(tenantSlug: string) {
                 publicId: paymentProofPublicId || null,
                 reference: paymentProofReference || null,
               }
-            : undefined
+            : undefined,
+          selectedOutletId
         ).then(result => {
           if (result.success) {
             // Track upsell conversions
@@ -1131,6 +1159,10 @@ export function useCheckout(tenantSlug: string) {
               trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
                 orderId: result.data?.id, upsellItemCount: upsellItems.length,
                 upsellRevenue, sources: sourceBreakdown,
+                // Additive metadata only — the event name and every existing
+                // key are untouched, and the key is absent (not null) for the
+                // tenants who have no branches.
+                ...(selectedOutletId ? { outletId: selectedOutletId } : {}),
               })
             }
 
@@ -1196,6 +1228,8 @@ export function useCheckout(tenantSlug: string) {
     // kiosk mode (counter tablet): no Messenger, auto-return to the menu
     isKiosk,
     kioskCountdown,
+    // branch (multi-branch tenants only)
+    outlet,
     // customer form
     formFields,
     customerData,

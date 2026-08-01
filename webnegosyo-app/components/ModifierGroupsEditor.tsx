@@ -4,6 +4,7 @@ import { colors, typography, spacing, radius } from "../theme/colors";
 import type { ModifierGroup } from "../lib/modifier-groups";
 import {
   addGroup,
+  addAddonGroup,
   removeGroup,
   updateGroup,
   addOption,
@@ -37,8 +38,9 @@ export function ModifierGroupsEditor({
   return (
     <View>
       <Text style={styles.sectionHint}>
-        Variations (Size, Spice) and add-ons (Extra Cheese) are all option groups.
-        A single-select group is a variation; allow multiple for add-ons.
+        A variation is a choice the customer picks one of (Size, Spice). An add-on
+        is an extra they can stack on (Extra Cheese, Extra Shot). Both are option
+        groups — the “Allow multiple” switch is what tells them apart.
       </Text>
 
       {groups.map((group) => {
@@ -52,7 +54,7 @@ export function ModifierGroupsEditor({
                 style={styles.groupNameInput}
                 value={group.name}
                 onChangeText={(v) => onChange(updateGroup(groups, group.id, { name: v }))}
-                placeholder="Group name (e.g. Size)"
+                placeholder={isMulti ? "Group name (e.g. Add-ons)" : "Group name (e.g. Size)"}
                 placeholderTextColor={colors.textTertiary}
                 editable={!disabled}
               />
@@ -64,6 +66,12 @@ export function ModifierGroupsEditor({
               >
                 <Text style={styles.removeGroupText}>Remove</Text>
               </TouchableOpacity>
+            </View>
+
+            <View style={styles.typeBadge}>
+              <Text style={[styles.typeBadgeText, isMulti && styles.typeBadgeTextAddon]}>
+                {isMulti ? "Add-on · pick any" : "Variation · pick one"}
+              </Text>
             </View>
 
             <View style={styles.ruleRow}>
@@ -207,15 +215,26 @@ export function ModifierGroupsEditor({
         );
       })}
 
-      <TouchableOpacity
-        style={styles.addGroupButton}
-        onPress={() => onChange(addGroup(groups))}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel="Add option group"
-      >
-        <Text style={styles.addGroupText}>+ Add option group</Text>
-      </TouchableOpacity>
+      <View style={styles.addGroupRow}>
+        <TouchableOpacity
+          style={styles.addGroupButton}
+          onPress={() => onChange(addGroup(groups))}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel="Add variation group"
+        >
+          <Text style={styles.addGroupText}>+ Add variation</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.addGroupButton, styles.addAddonButton]}
+          onPress={() => onChange(addAddonGroup(groups))}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel="Add add-on group"
+        >
+          <Text style={[styles.addGroupText, styles.addAddonText]}>+ Add add-on</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -295,14 +314,27 @@ const styles = StyleSheet.create({
   addOptionButton: { marginTop: spacing.sm, paddingVertical: spacing.sm },
   addOptionText: { ...typography.caption, color: colors.primary, fontWeight: "600" },
   errorText: { ...typography.small, color: colors.danger, marginTop: spacing.xs },
+  addGroupRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs },
   addGroupButton: {
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.primary,
     borderStyle: "dashed",
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: "center",
-    marginTop: spacing.xs,
   },
   addGroupText: { ...typography.body, color: colors.primary, fontWeight: "700" },
+  addAddonButton: { borderColor: colors.success },
+  addAddonText: { color: colors.success },
+  typeBadge: {
+    alignSelf: "flex-start",
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    marginTop: spacing.sm,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  typeBadgeText: { ...typography.small, color: colors.primary, fontWeight: "600" },
+  typeBadgeTextAddon: { color: colors.success },
 });

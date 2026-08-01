@@ -16,6 +16,7 @@
 
 import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import { computeChange } from "./pos-cash";
+import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
 
 /** Shown on the order card when the cashier did not take a name. */
 export const POS_WALK_IN_NAME = "Walk-in";
@@ -56,6 +57,11 @@ export interface PosOrderContext {
   customerName?: string;
   customerContact?: string;
   cashierId?: string;
+  /**
+   * The branch this register belongs to — the signed-in account's branch.
+   * Null/absent for a single-location store, which stamps nothing.
+   */
+  outlet?: OrderOutletContext | null;
   /** Any non-POS customerData the caller already assembled. */
   customerData?: Record<string, unknown>;
 }
@@ -152,7 +158,9 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     customerName: context.customerName?.trim() || POS_WALK_IN_NAME,
     customerContact: context.customerContact ?? "",
     customerData: {
-      ...(context.customerData ?? {}),
+      // The branch is stamped by the register, not accepted from the caller,
+      // so a counter sale is always attributable to the till that rang it.
+      ...withOrderOutlet(context.customerData, context.outlet),
       pos: paymentPayload(tender, context.cashierId),
     },
     total,

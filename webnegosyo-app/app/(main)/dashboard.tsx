@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { filterQueueToScope, deriveStatsForScope, type StatOrderLike } from "../../lib/branch-dashboard";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
 import { router } from "expo-router";
@@ -15,9 +17,21 @@ import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { goTo } from "../../lib/tab-navigation";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
+
+/**
+ * How many recent orders a branch account pulls to re-derive its own stat
+ * tiles. Matches the window the product-analytics screen already accepts: past
+ * this many orders in the period the branch totals under-report, which is why
+ * the indexed `outletId` server-side filter is the real fix.
+ */
+const BRANCH_STATS_ORDER_WINDOW = 2000;
+
+type BranchStatOrder = StatOrderLike;
 // TODO: Replace double type assertion with proper Convex-generated function reference type
 // when the codegen pipeline is set up. This pattern is used throughout the app as a workaround
 // for the template architecture where generated types aren't available in the mobile app.
@@ -106,6 +120,7 @@ function HeaderActions({ isConnected }: { isConnected: boolean }) {
 
 export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
+  const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const isDemo = useAuthStore((s) => s.isDemo);
   const { isConnected, loadSaved } = usePrinterStore();
@@ -127,10 +142,35 @@ export default function DashboardScreen() {
     getDashboardStatsByPeriodRef,
     period !== "today" ? dateRange : "skip"
   );
-  const { data: queue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const { data: rawQueue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
 
-  const displayStats = period === "today" ? stats : periodStats;
-  const isStatsLoading = period === "today" ? isLoading : periodLoading;
+  const scope = useBranchScope();
+  const isBranchScoped = scope.kind === "branch";
+
+  // The stat tiles are aggregated inside Convex over the whole tenant, so a
+  // branch account cannot use them — it would read store-wide revenue above its
+  // own order list. Pull the raw orders instead and re-derive the tiles here so
+  // the two always describe the same set. Store-wide accounts skip this query
+  // entirely and keep using the cheaper server-side aggregate.
+  const { data: scopedOrders, isLoading: scopedOrdersLoading } = useSafeQuery<BranchStatOrder[]>(
+    getOrdersRef,
+    isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
+  );
+
+  const queue = useMemo(() => filterQueueToScope(scope, rawQueue), [scope, rawQueue]);
+
+  const todayRange = useMemo(() => getDateRange("today"), []);
+  const branchStats = useMemo(() => {
+    if (!isBranchScoped) return null;
+    return deriveStatsForScope(scope, scopedOrders, period === "today" ? todayRange : dateRange);
+  }, [isBranchScoped, scope, scopedOrders, period, todayRange, dateRange]);
+
+  const displayStats = branchStats ?? (period === "today" ? stats : periodStats);
+  const isStatsLoading = isBranchScoped
+    ? scopedOrdersLoading
+    : period === "today"
+      ? isLoading
+      : periodLoading;
   const periodLabel = DASHBOARD_PERIODS.find((p) => p.value === period)?.label ?? "Today";
 
   useEffect(() => {
@@ -151,7 +191,7 @@ export default function DashboardScreen() {
         </View>
         <ErrorState
           message={error ?? "Convex is not configured for this tenant. Please contact support."}
-          onRetry={() => router.replace("/(main)/dashboard")}
+          onRetry={() => goTo(router, "/(main)/dashboard")}
         />
       </View>
     );
@@ -181,6 +221,11 @@ export default function DashboardScreen() {
         <View style={styles.headerText}>
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.tenantName} numberOfLines={1}>{tenantName ?? "Dashboard"}</Text>
+          {outletName ? (
+            // Names the branch whose queue this is. A staffer moving between
+            // outlets must never mistake one branch's numbers for another's.
+            <Text style={styles.branchName} numberOfLines={1}>{outletName}</Text>
+          ) : null}
         </View>
         <HeaderActions isConnected={isConnected} />
       </View>
@@ -270,6 +315,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, marginRight: spacing.sm },
   greeting: { ...typography.eyebrow, color: colors.textSecondary },
   tenantName: { ...typography.title, color: colors.textPrimary, marginTop: spacing.xs },
+  branchName: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
   accountText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
   demoBanner: {

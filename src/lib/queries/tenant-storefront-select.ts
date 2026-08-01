@@ -22,7 +22,7 @@ export const TENANT_STOREFRONT_SELECT = `
   button_primary_color, button_primary_text_color, button_secondary_color, button_secondary_text_color,
   link_color, shadow_color, success_color, warning_color, error_color,
   is_active, menu_engineering_enabled, pairing_rules_enabled, hide_currency_symbol, bundles_enabled,
-  modifier_groups_enabled,
+  modifier_groups_enabled, multi_branch_enabled, outlet_selection_timing,
   checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
   checkout_modal_background_color, checkout_modal_title_color, checkout_modal_description_color,
   checkout_modal_price_color, checkout_modal_button_color, checkout_modal_button_text_color, checkout_modal_border_color,

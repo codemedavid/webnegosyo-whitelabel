@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock } from "lucide-react";
+import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useConvexOrders } from "@/hooks/use-convex-orders";
+import { scopeOrderRows } from "@/lib/outlets/branch-scope-query";
+import type { BranchScope } from "@/lib/outlets/branch-scope";
 import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
 import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
+import { getOrderOutletLabel } from "@/lib/outlets/order-outlet-display";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS = [
@@ -41,13 +44,30 @@ function formatTimeAgo(timestamp: number): string {
   return `${diffDays}d ago`;
 }
 
-export function ConvexOrdersTab() {
+interface ConvexOrdersTabProps {
+  /** Passed down so cancelling an order can restore its stock. */
+  tenantId?: string;
+  /**
+   * The branch this admin may see. Convex has no index on the branch — it
+   * lives in the `customerData` blob — so the rows are narrowed here after the
+   * query rather than inside it. That inherits the query's existing row
+   * ceiling: a branch on a very busy store can fall off the end of the window.
+   */
+  scope?: BranchScope;
+}
+
+export function ConvexOrdersTab({ tenantId, scope }: ConvexOrdersTabProps) {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const statusArg = activeFilter === "all" ? undefined : activeFilter;
-  const orders = useConvexOrders(statusArg);
+  const allOrders = useConvexOrders(statusArg);
+
+  // `undefined` means the query has not resolved; keep it distinct from an
+  // empty result so the loading state below still fires.
+  const orders =
+    allOrders === undefined || !scope ? allOrders : scopeOrderRows(allOrders, scope);
 
   const isLoading = orders === undefined;
 
@@ -116,6 +136,9 @@ export function ConvexOrdersTab() {
               scheduled_for: (order.scheduledFor ?? null) as string | null,
               customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
             });
+            const outletLabel = getOrderOutletLabel({
+              customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
+            });
 
             return (
               <button
@@ -164,6 +187,15 @@ export function ConvexOrdersTab() {
                       Scheduled · {scheduledLabel}
                     </Badge>
                   )}
+                  {outletLabel && (
+                    <Badge
+                      variant="outline"
+                      className="mt-1 w-fit gap-1 bg-violet-100 text-violet-800 border-violet-300 text-[10px] font-medium"
+                    >
+                      <Store className="size-3" />
+                      {outletLabel}
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Right Side: Total, Count, Status */}
@@ -195,6 +227,7 @@ export function ConvexOrdersTab() {
         orderId={selectedOrderId}
         open={sheetOpen}
         onOpenChange={handleSheetOpenChange}
+        tenantId={tenantId}
       />
     </div>
   );

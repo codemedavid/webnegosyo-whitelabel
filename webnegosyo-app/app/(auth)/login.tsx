@@ -14,6 +14,13 @@ import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
+import {
+  needsTenantLookup,
+  needsOutletLookup,
+  type OutletRow,
+  resolveSession,
+  type TenantRow,
+} from "../../lib/session-resolve";
 import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
 
 export default function LoginScreen() {
@@ -56,43 +63,50 @@ export default function LoginScreen() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("No user returned");
 
-      const { data: appUser, error: appUserError } = await supabase
+      const { data: appUser } = await supabase
         .from("app_users")
-        .select("tenant_id, role, is_owner, permissions")
+        .select("tenant_id, role, is_owner, permissions, outlet_id")
         .eq("user_id", authData.user.id)
         .in("role", ["admin", "superadmin"])
         .single();
 
-      if (appUserError || !appUser) {
-        await supabase.auth.signOut();
-        throw new Error("You do not have admin access");
+      // A superadmin owns no tenant, so skip a lookup that would always miss.
+      let tenant: TenantRow | null = null;
+      if (appUser && needsTenantLookup(appUser)) {
+        const { data: tenantRow } = await supabase
+          .from("tenants")
+          .select("id, slug, name, convex_deployment_url, order_backend")
+          .eq("id", appUser.tenant_id)
+          .single();
+        tenant = (tenantRow as TenantRow | null) ?? null;
       }
 
-      const { data: tenant, error: tenantError } = await supabase
-        .from("tenants")
-        .select("id, slug, name, convex_deployment_url")
-        .eq("id", appUser.tenant_id)
-        .single();
+      // Branch-confined accounts carry their branch onto the session; the
+      // name is snapshotted onto counter sales, so it is read here once.
+      let outlet: OutletRow | null = null;
+      if (appUser && needsOutletLookup(appUser)) {
+        const { data: outletRow } = await supabase
+          .from("outlets")
+          .select("id, name")
+          .eq("id", appUser.outlet_id)
+          .single();
+        outlet = (outletRow as OutletRow | null) ?? null;
+      }
+      const session = resolveSession(authData.user.id, appUser ?? null, tenant, outlet);
 
-      if (tenantError || !tenant) {
+      if (session.mode === "denied" || !session.auth || !session.landingHref) {
         await supabase.auth.signOut();
-        throw new Error("Tenant not found");
+        throw new Error(session.reason ?? "You do not have admin access");
       }
 
-      setAuth({
-        userId: authData.user.id,
-        tenantId: tenant.id,
-        tenantSlug: tenant.slug,
-        tenantName: tenant.name,
-        convexUrl: tenant.convex_deployment_url ?? null,
-        isLoading: false,
-        isAuthenticated: true,
-        isOwner: appUser.is_owner ?? false,
-        permissions: appUser.permissions ?? null,
-        role: appUser.role ?? null,
-      });
-
-      router.replace("/(main)/dashboard");
+      // Navigation is deliberately NOT dispatched here. Setting the store is
+      // enough: useAuthRedirect in the root layout owns post-auth routing and
+      // sends the session to its landing surface. Replacing from here as well
+      // races that hook — it re-fires against stale segments and replaces a
+      // second time, remounting the target tab navigator while its nested
+      // params are already consumed, which crashes react-navigation with
+      // "Cannot read property 'stale' of undefined".
+      setAuth(session.auth);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Login failed";

@@ -12,6 +12,13 @@ import {
   hasPermission,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
+import {
+  asAppUserQueryClient,
+  fetchAppUserScope,
+} from '@/lib/queries/fetch-app-user-scope'
+import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
+import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
+import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { z } from 'zod'
 
 // ============================================
@@ -164,14 +171,15 @@ export async function verifyTenantAdmin(tenantId: string) {
     throw new Error('Unauthorized: Not authenticated')
   }
 
-  // Check if user is admin of this tenant or superadmin
-  const { data: userRoleData, error: roleError } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, is_owner, permissions')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  // Check if user is admin of this tenant or superadmin. Read through the
+  // resilient helper: naming the branch column here before its migration is
+  // applied would 400 every admin action, not just the branch feature.
+  const { appUser, error: roleError } = await fetchAppUserScope(
+    asAppUserQueryClient(supabase),
+    user.id
+  )
 
-  if (roleError || !userRoleData) {
+  if (roleError || !appUser) {
     throw new Error('Unauthorized: User role not found')
   }
 
@@ -180,7 +188,8 @@ export async function verifyTenantAdmin(tenantId: string) {
     tenant_id: string | null
     is_owner?: boolean | null
     permissions?: string[] | null
-  } = userRoleData
+    outlet_id?: string | null
+  } = appUser
 
   const isAuthorized =
     userRole.role === 'superadmin' ||
@@ -189,6 +198,25 @@ export async function verifyTenantAdmin(tenantId: string) {
   if (!isAuthorized) {
     throw new Error('Unauthorized: Not admin of this tenant')
   }
+
+  // The subscription boundary, and the reason it lives HERE rather than in each
+  // action: the admin layout's redirect is a rendering decision that does not
+  // stop a POST aimed straight at a server action, and `assertSubscriptionActive`
+  // was written for that job but never called from anywhere — a sign on an
+  // unlocked door. Every admin write in the product passes through this
+  // function, so one call closes all of them and none can be forgotten later.
+  //
+  // A superadmin is exempt inside the assertion: they are the only account that
+  // can clear an unpaid subscription, and a gate that locks out its own remedy
+  // cannot be fixed from inside the product.
+  //
+  // Fails OPEN by construction — `fetchSubscription` returns null on any query
+  // error and null reads as "not blocked", so a database blip leaves merchants
+  // working instead of locking out the whole platform at once.
+  assertSubscriptionActive(
+    await fetchSubscription(supabase, tenantId),
+    { role: userRole.role }
+  )
 
   return { user, userRole }
 }
@@ -217,6 +245,30 @@ export async function verifyTenantOwner(tenantId: string) {
   if (!canManageStaff(result.userRole)) {
     throw new Error('Unauthorized: Only the store owner can manage this')
   }
+  return result
+}
+
+/**
+ * Verify the caller may manage staff accounts: the tenant owner, a superadmin,
+ * or a branch admin — an account confined to one branch that holds
+ * `branch_staff`, and may manage only that branch's people.
+ *
+ * The service layer re-checks the specific branch on every write
+ * (`staff-service.ts`); this only establishes that the caller manages staff at
+ * all.
+ */
+export async function verifyStaffManager(tenantId: string) {
+  const result = await verifyTenantAdmin(tenantId)
+  const isOwner = canManageStaff(result.userRole)
+  const isBranchAdmin = canManageBranchStaff(
+    result.userRole,
+    result.userRole.outlet_id ?? null
+  )
+
+  if (!isOwner && !isBranchAdmin) {
+    throw new Error('Unauthorized: Only the store owner can manage this')
+  }
+
   return result
 }
 
@@ -696,8 +748,12 @@ export async function toggleMenuItemAvailability(itemId: string, tenantId: strin
 
   const query = supabase
     .from('menu_items')
+    // Clearing `auto_disabled_at` hands ownership of this item's availability
+    // back to the merchant. Auto-86 recovery only ever re-enables items still
+    // carrying the marker, so leaving it set on a dish the merchant has just
+    // decided about would let the next delivery overrule them.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .update({ is_available: isAvailable } as any)
+    .update({ is_available: isAvailable, auto_disabled_at: null } as any)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
     .select()
@@ -750,3 +806,28 @@ export const getTenantBySlug = cache(async (slug: string) => {
   return data
 })
 
+
+/**
+ * Menu items offerable as linked add-on options, newest name order.
+ *
+ * Only the three fields the editor's picker needs — the storefront resolves the
+ * live name/price/image itself at render time, so this is purely for choosing.
+ */
+export async function getLinkableMenuItems(
+  tenantId: string
+): Promise<{ id: string; name: string; price: number }[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('id, name, price')
+    .eq('tenant_id', tenantId)
+    .order('name')
+
+  if (error) {
+    console.error('Error fetching linkable menu items:', error.message)
+    return []
+  }
+
+  return (data ?? []) as { id: string; name: string; price: number }[]
+}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SafeConvexProvider } from "@/components/shared/safe-convex-provider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConvexOrdersTab } from "@/components/admin/convex-orders-tab";
+import type { BranchScope } from "@/lib/outlets/branch-scope";
 import { ConvexDashboardTab } from "@/components/admin/convex-dashboard-tab";
 import { ConvexAnalyticsTab } from "@/components/admin/convex-analytics-tab";
 import { ConvexTrendsTab } from "@/components/admin/convex-trends-tab";
@@ -17,9 +18,13 @@ import {
 
 interface ConvexOrdersWrapperProps {
   convexUrl: string;
+  /** Passed down so cancelling an order can restore its stock. */
+  tenantId?: string;
+  /** The branch this admin may see, resolved on the server. */
+  scope?: BranchScope;
 }
 
-function ConvexOrdersContent() {
+function ConvexOrdersContent({ tenantId, scope }: { tenantId?: string; scope?: BranchScope }) {
   const [sheetOrderId, setSheetOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -51,7 +56,7 @@ function ConvexOrdersContent() {
         </TabsList>
 
         <TabsContent value="orders" className="mt-4">
-          <ConvexOrdersTab />
+          <ConvexOrdersTab tenantId={tenantId} scope={scope} />
         </TabsContent>
 
         <TabsContent value="dashboard" className="mt-4">
@@ -72,12 +77,13 @@ function ConvexOrdersContent() {
         orderId={sheetOrderId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        tenantId={tenantId}
       />
     </>
   );
 }
 
-export function ConvexOrdersWrapper({ convexUrl }: ConvexOrdersWrapperProps) {
+export function ConvexOrdersWrapper({ convexUrl, tenantId, scope }: ConvexOrdersWrapperProps) {
   return (
     <SafeConvexProvider
       url={convexUrl}
@@ -87,7 +93,7 @@ export function ConvexOrdersWrapper({ convexUrl }: ConvexOrdersWrapperProps) {
         </div>
       }
     >
-      <ConvexOrdersContent />
+      <ConvexOrdersContent tenantId={tenantId} scope={scope} />
     </SafeConvexProvider>
   );
 }

@@ -36,6 +36,30 @@ export function addGroup(groups: readonly ModifierGroup[]): ModifierGroup[] {
   return [...groups, createEmptyGroup()];
 }
 
+/** Name a new add-on group starts with, so merchants recognise it at a glance. */
+export const DEFAULT_ADDON_GROUP_NAME = "Add-ons";
+
+/**
+ * A fresh add-on group: optional and unlimited multi-select, pre-named and
+ * seeded with one blank option.
+ *
+ * Add-ons and variations share one model — an add-on is just a multi-select
+ * group. Merchants do not think in those terms, so this factory pre-applies the
+ * rules and gives the "Add add-on" button something to create in one tap.
+ */
+export function createAddonGroup(): ModifierGroup {
+  return {
+    ...createEmptyGroup(),
+    name: DEFAULT_ADDON_GROUP_NAME,
+    min_select: 0,
+    max_select: null,
+  };
+}
+
+export function addAddonGroup(groups: readonly ModifierGroup[]): ModifierGroup[] {
+  return [...groups, createAddonGroup()];
+}
+
 export function removeGroup(
   groups: readonly ModifierGroup[],
   groupId: string

@@ -1,6 +1,9 @@
 import { redirect } from 'next/navigation'
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
+import { createClient } from '@/lib/supabase/server'
+import { fetchSubscription } from '@/lib/billing/subscription-repository'
+import { resolveSubscriptionAccess } from '@/lib/billing/subscription-status'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminLayout({ 
@@ -43,6 +46,8 @@ export default async function AdminLayout({
     tenant_id: string | null
     is_owner?: boolean | null
     permissions?: string[] | null
+    /** Absent when the row came through the pre-branch fallback projection. */
+    outlet_id?: string | null
   }
   const role = userRole as UserRoleType
   const isAuthorized =
@@ -53,6 +58,24 @@ export default async function AdminLayout({
     redirect(`/${tenantSlug}/login?error=unauthorized`)
   }
 
+  // The subscription gate. A superadmin is exempt — they are the only account
+  // that can clear an unpaid subscription, and a gate that locks out its own
+  // remedy cannot be fixed from inside the product.
+  //
+  // This is the UX half only. The boundary is `assertSubscriptionActive` inside
+  // the server actions: a redirect here is a rendering decision and does not
+  // stop a POST aimed straight at an action.
+  if (role.role !== 'superadmin') {
+    const supabase = await createClient()
+    const subscription = await fetchSubscription(supabase, tenant.id)
+
+    if (resolveSubscriptionAccess(subscription, new Date().toISOString()).isBlocked) {
+      // Deliberately OUTSIDE the admin tree. A paused screen rendered under
+      // this same layout would be redirected to itself, forever.
+      redirect(`/${tenantSlug}/subscription`)
+    }
+  }
+
   return (
     <AdminLayoutClient
       tenantSlug={tenantSlug}
@@ -61,6 +84,10 @@ export default async function AdminLayout({
         role: role.role,
         is_owner: role.is_owner ?? false,
         permissions: role.permissions ?? null,
+        // The branch this account is confined to, if any. Dropping it here is
+        // what let the Branches entry render for a manager: the read already
+        // returns the column, nothing downstream was given it.
+        outlet_id: role.outlet_id ?? null,
       }}
     >
       {children}

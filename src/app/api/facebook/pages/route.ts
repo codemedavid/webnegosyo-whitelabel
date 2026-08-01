@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserPages } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import { getTenantUserAccessToken } from '@/lib/facebook/page-tokens'
 import type { Database } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
@@ -48,12 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get temporary record with user token
-    const { data: tempRecord } = await supabase
-      .from('facebook_pages')
-      .select('user_access_token')
-      .eq('id', tempId)
-      .eq('tenant_id', tenantId)
-      .single()
+    const tempRecord = { user_access_token: await getTenantUserAccessToken(tenantId, tempId) }
 
     const typedTempRecord = tempRecord as Pick<FacebookPage, 'user_access_token'> | null
     if (!typedTempRecord || !typedTempRecord.user_access_token) {

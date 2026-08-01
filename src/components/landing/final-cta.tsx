@@ -1,48 +1,45 @@
-'use client'
+import { CourtButton, Grommets, VINYL_SHEEN } from './court'
+import { PRICE_LABEL, TARP } from './landing-theme'
 
-import { motion } from 'framer-motion'
-import { AccentText, CTAButton, SectionTag } from './cta-button'
-import { LANDING_COLORS, PRICE_LABEL } from './landing-theme'
-
-const VIEWPORT = { once: true, amount: 0.4 } as const
-
+/**
+ * The buzzer. The page ends on printed vinyl rather than fading out on the
+ * court — the loudest, most physical surface in the world, hung last.
+ */
 export function FinalCTASection() {
   return (
     <section
-      className="relative z-10 overflow-hidden py-28 text-center md:py-40"
-      style={{ background: `linear-gradient(180deg, ${LANDING_COLORS.ink}, #170d05)` }}
+      className="relative overflow-hidden px-5 py-24 text-center md:px-8 md:py-32"
+      style={{ backgroundImage: VINYL_SHEEN, backgroundColor: TARP.red, color: TARP.vinyl }}
     >
-      <div
-        className="pointer-events-none absolute bottom-[-160px] left-1/2 h-[400px] w-[800px] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ backgroundColor: `${LANDING_COLORS.brand}30` }}
-      />
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={VIEWPORT}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="relative mx-auto max-w-3xl px-5"
-      >
-        <SectionTag>Simulan mo na</SectionTag>
-        <h2 className="text-[clamp(2.2rem,7vw,4.2rem)] font-black uppercase leading-[0.97] tracking-[-0.05em] text-white">
-          Stop leaving money
-          <br />
-          <AccentText>on every order</AccentText>
+      <Grommets inset="wide" />
+
+      <div className="mx-auto max-w-3xl">
+        <h2
+          className="font-display t-close uppercase leading-[0.9] tracking-[-0.03em]"
+          style={{ textShadow: '3px 3px 0 rgba(0,0,0,0.22)', textWrap: 'balance' }}
+        >
+          Tapusin mo na ang pagpapatulo ng benta.
         </h2>
-        <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-white/55">
-          Ang menu mo, kaya niyang magbenta ng mas malaki. Kailangan lang ng tamang system — at
-          48 hours para ma-live ito.
+        <p className="mx-auto mt-6 max-w-[48ch] text-[15px] leading-relaxed md:text-base" style={{ opacity: 0.9 }}>
+          Ang menu mo, kaya niyang magbenta ng mas malaki. Kailangan lang ng tamang system — at 48
+          hours para ma-live ito.
         </p>
-        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <CTAButton size="large">Get Smart Menu — {PRICE_LABEL}</CTAButton>
-          <CTAButton size="large" variant="ghost" href="#faq">
+
+        {/* Scoring red vanishes on red vinyl, so the plate here is printed
+            stock: cream board, dark ink, the way a tarp sets its own panel. */}
+        <div className="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+          <CourtButton size="large" tone="vinyl">
+            Kunin — {PRICE_LABEL}
+          </CourtButton>
+          <CourtButton size="large" tone="tarpGhost" ghostFill={TARP.red} href="#faq">
             May tanong pa ako
-          </CTAButton>
+          </CourtButton>
         </div>
-        <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-white/30">
+
+        <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ opacity: 0.75 }}>
           One-time payment • No monthly fees • 48-hour setup
         </p>
-      </motion.div>
+      </div>
     </section>
   )
 }

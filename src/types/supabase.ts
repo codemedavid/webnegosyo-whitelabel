@@ -14,6 +14,267 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Added by migration 20260806120000_outlet_menu_overrides.sql.
+      // Override-only: no row = the branch lists the dish at the store-wide
+      // price. Read through src/lib/outlets/outlet-menu-repository.ts.
+      tenant_subscriptions: {
+        Row: {
+          cancelled_at: string | null
+          grace_days: number
+          monthly_price_php: number
+          notes: string | null
+          paid_through: string | null
+          started_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subscription_payments: {
+        Row: {
+          amount_php: number
+          created_at: string
+          id: string
+          method: string | null
+          note: string | null
+          paid_at: string
+          period_end: string
+          period_start: string
+          recorded_by: string | null
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount_php: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end: string
+          period_start: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount_php?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end?: string
+          period_start?: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      outlet_menu_items: {
+        Row: {
+          created_at: string
+          discount_cleared: boolean
+          discounted_price: number | null
+          id: string
+          is_available: boolean
+          is_listed: boolean
+          menu_item_id: string
+          outlet_id: string
+          price: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id: string
+          outlet_id: string
+          price?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id?: string
+          outlet_id?: string
+          price?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlet_menu_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // Added by migration 20260728120000_inventory_low_stock_alerts.sql.
+      outlets: {
+        Row: {
+          address: string | null
+          created_at: string
+          delivery_radius_km: number | null
+          id: string
+          is_active: boolean
+          latitude: number | null
+          longitude: number | null
+          name: string
+          operating_hours: Json | null
+          phone: string | null
+          slug: string
+          sort_order: number
+          supports_delivery: boolean
+          supports_pickup: boolean
+          tenant_id: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_pickup?: boolean
+          tenant_id: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug?: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_pickup?: boolean
+          tenant_id?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // `outlet_id` added by migration 20260802120000. NULL is the unbranched
+      // store pool — a real location, not "unknown" — so a single-shop tenant
+      // never has to invent an outlet to be alerted.
+      stock_alerts: {
+        Row: {
+          created_at: string | null
+          id: string
+          inventory_item_id: string
+          level: string
+          outlet_id: string | null
+          quantity: number
+          reorder_level: number
+          resolved_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id: string
+          level: string
+          outlet_id?: string | null
+          quantity: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id?: string
+          level?: string
+          outlet_id?: string | null
+          quantity?: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_alerts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_movements: {
         Row: {
           balance_after: number
@@ -22,12 +283,16 @@ export type Database = {
           entered_quantity: number | null
           entered_unit_id: string | null
           id: string
+          inventory_count_id: string | null
           inventory_item_id: string
           note: string | null
           order_id: string | null
+          outlet_id: string | null
           quantity_delta: number
           reason: string
+          stock_transfer_id: string | null
           tenant_id: string
+          target_qty: number | null
           unit_cost: number | null
         }
         Insert: {
@@ -37,12 +302,16 @@ export type Database = {
           entered_quantity?: number | null
           entered_unit_id?: string | null
           id?: string
+          inventory_count_id?: string | null
           inventory_item_id: string
           note?: string | null
           order_id?: string | null
+          outlet_id?: string | null
           quantity_delta: number
           reason: string
+          stock_transfer_id?: string | null
           tenant_id: string
+          target_qty?: number | null
           unit_cost?: number | null
         }
         Update: {
@@ -52,12 +321,16 @@ export type Database = {
           entered_quantity?: number | null
           entered_unit_id?: string | null
           id?: string
+          inventory_count_id?: string | null
           inventory_item_id?: string
           note?: string | null
           order_id?: string | null
+          outlet_id?: string | null
           quantity_delta?: number
           reason?: string
+          stock_transfer_id?: string | null
           tenant_id?: string
+          target_qty?: number | null
           unit_cost?: number | null
         }
         Relationships: [
@@ -70,6 +343,249 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_counts: {
+        Row: {
+          business_day: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          expected_item_count: number
+          id: string
+          note: string | null
+          outlet_id: string | null
+          started_at: string
+          started_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_day: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_day?: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_counts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_counts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          from_outlet_id: string | null
+          id: string
+          note: string | null
+          received_at: string | null
+          received_by: string | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          tenant_id: string
+          to_outlet_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id?: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_from_outlet_id_fkey"
+            columns: ["from_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_outlet_id_fkey"
+            columns: ["to_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfer_lines: {
+        Row: {
+          created_at: string
+          id: string
+          inventory_item_id: string
+          received_quantity: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inventory_item_id: string
+          received_quantity?: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inventory_item_id?: string
+          received_quantity?: number | null
+          sent_quantity?: number
+          tenant_id?: string
+          transfer_id?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_lines_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_stock: {
+        Row: {
+          created_at: string | null
+          current_qty: number
+          id: string
+          inventory_item_id: string
+          outlet_id: string | null
+          reorder_level: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id?: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_stock_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -338,6 +854,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           is_owner: boolean
+          outlet_id: string | null
           permissions: string[] | null
           role: string
           tenant_id: string | null
@@ -349,6 +866,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
+          outlet_id?: string | null
           permissions?: string[] | null
           role: string
           tenant_id?: string | null
@@ -360,6 +878,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
+          outlet_id?: string | null
           permissions?: string[] | null
           role?: string
           tenant_id?: string | null
@@ -367,6 +886,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "app_users_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "app_users_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1231,6 +1757,7 @@ export type Database = {
           order_token_expires_at: string | null
           order_token_hash: string | null
           order_type: string | null
+          outlet_id: string | null
           order_type_id: string | null
           payment_method_details: string | null
           payment_method_id: string | null
@@ -1261,6 +1788,7 @@ export type Database = {
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
+          outlet_id?: string | null
           order_type_id?: string | null
           payment_method_details?: string | null
           payment_method_id?: string | null
@@ -1291,6 +1819,7 @@ export type Database = {
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
+          outlet_id?: string | null
           order_type_id?: string | null
           payment_method_details?: string | null
           payment_method_id?: string | null
@@ -1316,6 +1845,13 @@ export type Database = {
             columns: ["order_type_id"]
             isOneToOne: false
             referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
             referencedColumns: ["id"]
           },
           {
@@ -1870,6 +2406,8 @@ export type Database = {
           id: string
           ios_app_store_id: string | null
           inventory_enabled: boolean
+          low_stock_alerts_enabled: boolean
+          auto_86_enabled: boolean
           modifier_groups_enabled: boolean
           is_active: boolean
           is_announcement_visible: boolean | null
@@ -1884,6 +2422,8 @@ export type Database = {
           link_color: string | null
           logo_url: string
           mapbox_enabled: boolean | null
+          max_outlets: number
+          max_staff_per_branch: number
           menu_cart_badge_background_color: string | null
           menu_cart_badge_text_color: string | null
           menu_category_active_color: string | null
@@ -1909,6 +2449,7 @@ export type Database = {
           name: string
           page_layout: string | null
           pairing_rules_enabled: boolean
+          multi_branch_enabled: boolean
           qr_handoff_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -2044,6 +2585,8 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          low_stock_alerts_enabled?: boolean
+          auto_86_enabled?: boolean
           modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
@@ -2058,6 +2601,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
@@ -2083,6 +2628,7 @@ export type Database = {
           name: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          multi_branch_enabled?: boolean
           qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -2218,6 +2764,8 @@ export type Database = {
           id?: string
           ios_app_store_id?: string | null
           inventory_enabled?: boolean
+          low_stock_alerts_enabled?: boolean
+          auto_86_enabled?: boolean
           modifier_groups_enabled?: boolean
           is_active?: boolean
           is_announcement_visible?: boolean | null
@@ -2232,6 +2780,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
@@ -2257,6 +2807,7 @@ export type Database = {
           name?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean
+          multi_branch_enabled?: boolean
           qr_handoff_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null

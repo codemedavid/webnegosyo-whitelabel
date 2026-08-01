@@ -9,6 +9,12 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { buildLalamoveDeliveryArgs } from '@/lib/lalamove-order-details'
 import { resolveOrderContact } from '@/lib/customer-identity'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+import {
+  assertOrderInScope,
+  scopeOrdersQuery,
+} from '@/lib/outlets/branch-scope-query'
+import type { OutletOrderLike } from '@/lib/outlets/order-outlet-display'
 import {
   summarizeOrderStats,
   startOfTodayISO,
@@ -55,20 +61,27 @@ export async function getOrdersByTenant(
   tenantId: string,
   params?: OrdersPaginationParams
 ): Promise<OrderWithItems[] | PaginatedOrdersResult> {
-  await verifyTenantPermission(tenantId, 'orders')
+  const { userRole } = await verifyTenantPermission(tenantId, 'orders')
+
+  // A branch-scoped account reads only its own branch. Applied to the query
+  // rather than the result so the row never leaves the database, and so the
+  // paginated count below describes the store this account can actually see.
+  const scope = resolveBranchScope(userRole)
 
   const supabase = await createClient()
 
   // If no pagination params provided, return all orders (legacy behavior)
   if (!params) {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        order_items(*)
-      `)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
+    const { data, error } = await scopeOrdersQuery(
+      supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items(*)
+        `)
+        .eq('tenant_id', tenantId),
+      scope
+    ).order('created_at', { ascending: false })
 
     if (error) throw error
     return data as unknown as OrderWithItems[]
@@ -80,13 +93,16 @@ export async function getOrdersByTenant(
   const offset = (page - 1) * limit
 
   // Build query with filters
-  let query = supabase
-    .from('orders')
-    .select(`
-      *,
-      order_items(*)
-    `, { count: 'exact' })
-    .eq('tenant_id', tenantId)
+  let query = scopeOrdersQuery(
+    supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items(*)
+      `, { count: 'exact' })
+      .eq('tenant_id', tenantId),
+    scope
+  )
 
   // Apply filters
   if (params.status && params.status !== 'all') {
@@ -128,7 +144,7 @@ export async function getOrdersByTenant(
 }
 
 export async function getOrderById(orderId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'orders')
+  const { userRole } = await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
@@ -143,6 +159,12 @@ export async function getOrderById(orderId: string, tenantId: string) {
     .single()
 
   if (error) throw error
+
+  // Checked after the fetch rather than filtered in the query so a branch
+  // account gets the same "not found" for another branch's order as for one
+  // that does not exist — the refusal must not confirm the id.
+  assertOrderInScope(data as unknown as OutletOrderLike, resolveBranchScope(userRole))
+
   return data as unknown as OrderWithItems
 }
 
@@ -338,7 +360,13 @@ export async function createOrder(
     url?: string | null
     publicId?: string | null
     reference?: string | null
-  }
+  },
+  /**
+   * The branch fulfilling this order, already validated against the tenant's
+   * own outlets by the caller. Null/undefined for every single-location tenant,
+   * which is every tenant that has not opted into multi-branch.
+   */
+  outletId?: string | null
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -527,6 +555,9 @@ export async function createOrder(
       payment_proof_public_id: paymentProof?.publicId || null,
       payment_proof_reference: (paymentProof?.reference || '').trim().slice(0, MAX_FIELD_LENGTH) || null,
       payment_proof_uploaded_at: (paymentProof?.url || paymentProof?.reference) ? new Date().toISOString() : null,
+      // Spread rather than `outlet_id: outletId ?? null` so a single-location
+      // tenant's INSERT is character-for-character the statement it is today.
+      ...(outletId ? { outlet_id: outletId } : {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()

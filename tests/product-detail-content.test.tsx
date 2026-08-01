@@ -15,7 +15,8 @@ jest.mock('next/navigation', () => ({
     useRouter: () => ({
         back: jest.fn(),
         push: jest.fn()
-    })
+    }),
+    useSearchParams: () => new URLSearchParams()
 }))
 
 // Mock cart hook

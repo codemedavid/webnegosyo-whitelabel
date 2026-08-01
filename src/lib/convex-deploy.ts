@@ -37,7 +37,42 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // then email, from customerContact OR customerData. Recovers legacy orders whose
 // identity lived only in customerData and merges cross-channel phone formats
 // (09... vs +639...), fixing the "1 customer" undercount without a data backfill.
-const CURRENT_SCHEMA_VERSION = 13;
+// v14: order editing. Adds the orderPayments ledger and orderRevisions audit
+// tables, plus amountPaid/revisionNumber/editedAt/editedBy on orders, and the
+// reviseOrder / recordPayment mutations behind them. Convex has no triggers,
+// so recordPayment maintains the amountPaid cache inside its own transaction —
+// the platform backend gets the same guarantee from a database trigger.
+// v15: branch-targeted push. pushTokens.outletId binds a device to a branch, and
+// sendOrderNotification now rings only the devices matching the order's branch
+// (read from customerData.outlet_id) instead of every registered device — a
+// two-branch store woke both branches for every sale. Absent on either side
+// means store-wide, so an owner's phone, a token from an older app build, and a
+// single-location store all keep hearing everything. Rule in pushRecipients.ts.
+// v15 also adds orders.outletId + a by_outlet index, promoted out of
+// customerData.outlet_id on create, and an optional outletId argument on
+// getOrders/getRealtimeQueue so a branch-scoped device stops receiving other
+// branches' rows. Filtering resolves column-then-blob and over-fetches, because
+// orders written before v15 carry the branch only in customerData — an indexed
+// lookup on the column alone would hide every one of them.
+// v16 moves the order-edit rules out of the reviseOrder/recordPayment handlers
+// and into orderRevise.ts, which is Convex-import-free and therefore unit
+// tested — those handlers previously had no automated coverage at all. Behaviour
+// is unchanged except for one fix: a line's subtotal is now computed from the
+// price actually stored (round2(price) x quantity) rather than from the raw
+// submitted price, so an edited receipt always adds up.
+// v17 refuses an edit once the kitchen has started (`preparing` onward). The
+// screen gate alone was a UI preference, not a rule: an edit screen opened
+// while an order was still `confirmed` survived the kitchen starting, and its
+// save would otherwise still land.
+// v18 lets `getDashboardStatsByPeriod` take an optional `outletId`, so a branch
+// manager's takings can be narrowed to the shelf their stock report covers.
+// Until this, the inventory report had to withhold their food cost entirely:
+// branch stock over store-wide takings understates it by roughly the number of
+// branches, and an understated food cost gets believed rather than
+// investigated. The argument is OPTIONAL and the client sends it only to
+// deployments recorded at >= 18 — a validator rejects arguments it does not
+// know, which surfaces as "this store needs a backend update".
+const CURRENT_SCHEMA_VERSION = 18;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

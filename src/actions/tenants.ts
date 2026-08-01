@@ -19,6 +19,10 @@ type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
 // The `order_backend` column post-dates the generated Supabase types, so widen
 // the payloads locally (same approach as the delivery-fee columns below).
 type OrderBackendColumn = { order_backend?: OrderBackendPreference }
+// `src/types/supabase.ts` is regenerated from the database and still lags the
+// outlet-selection-timing migration, so the column is declared alongside the
+// other lagging ones rather than blocking the write on a codegen run.
+type OutletTimingColumn = { outlet_selection_timing?: string }
 
 // Distance-based delivery columns. Generated Supabase types lag the migration, so we widen
 // the insert/update payloads locally (same approach as src/lib/tenants-service.ts).
@@ -87,7 +91,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: 'Slug is already taken' }
     }
 
-    const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn = {
+    const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn = {
       name: parsed.name,
       slug: parsed.slug,
       domain: parsed.domain || undefined,
@@ -137,6 +141,13 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       checkout_upsell_enabled: parsed.checkout_upsell_enabled,
       bundles_enabled: parsed.bundles_enabled,
       pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
       qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
       // Flash screen
       flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -254,7 +265,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
 
   const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
 
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain || undefined,
@@ -304,6 +315,13 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     checkout_upsell_enabled: parsed.checkout_upsell_enabled,
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
+    modifier_groups_enabled: parsed.modifier_groups_enabled,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

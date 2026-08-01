@@ -18,6 +18,10 @@ import { useSafeQuery } from "../../lib/hooks";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
 import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
 import {
+  describeMenuAvailability,
+  MENU_AVAILABILITY_LABEL,
+} from "../../lib/menu-availability";
+import {
   listProducts,
   listCategories,
   toggleProductAvailability,
@@ -212,6 +216,18 @@ export default function ProductManagementScreen() {
                 </View>
                 <View style={styles.metaRow}>
                   <Text style={styles.price}>{formatPeso(product.price)}</Text>
+                  {/*
+                    Only when the system pulled the dish, never when the
+                    merchant switched it off — telling those two apart is the
+                    entire reason `auto_disabled_at` exists.
+                  */}
+                  {describeMenuAvailability(product) === 'auto-hidden' ? (
+                    <View style={[styles.marginBadge, { backgroundColor: colors.dangerLight }]}>
+                      <Text style={[styles.marginBadgeText, { color: colors.danger }]}>
+                        {MENU_AVAILABILITY_LABEL['auto-hidden']}
+                      </Text>
+                    </View>
+                  ) : null}
                   {margin ? (
                     <View
                       style={[

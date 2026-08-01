@@ -9,13 +9,17 @@ import {
   filterSidebarEntriesByPermission,
   type PermissionHolder,
 } from '@/lib/staff-permissions'
+import { canViewBranchDirectory } from '@/lib/outlets/branch-scope'
 import { useMemo } from 'react'
+
+/** The signed-in admin: what they may do, and which branch they run. */
+type AdminCaller = PermissionHolder & { outlet_id?: string | null }
 
 interface AdminLayoutClientProps {
   children: React.ReactNode
   tenantSlug: string
   tenant: Tenant
-  caller?: PermissionHolder
+  caller?: AdminCaller
 }
 
 export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: AdminLayoutClientProps) {
@@ -76,6 +80,11 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     bundlesEnabled: tenant.bundles_enabled,
     convexConfigured: !!tenant.convex_deployment_url,
     inventoryEnabled: tenant.inventory_enabled,
+    multiBranchEnabled: tenant.multi_branch_enabled,
+    // A branch manager runs one branch; the section that lists every branch is
+    // not theirs to open, so it is not offered. With no caller (the pre-auth
+    // render) this reads as store-wide, matching the permission filter above.
+    isBranchScopedAccount: caller ? !canViewBranchDirectory(caller) : false,
   }
 
   if (isFullBleedRoute) {

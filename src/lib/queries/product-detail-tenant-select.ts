@@ -19,6 +19,7 @@ export const PRODUCT_DETAIL_TENANT_SELECT = `
   is_active, menu_engineering_enabled, hide_currency_symbol, modifier_groups_enabled,
   checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
   bundles_enabled, pairing_rules_enabled,
+  multi_branch_enabled,
   convex_deployment_url, convex_schema_version,
   operating_hours, timezone, enforce_operating_hours,
   search_bar_enabled, search_bar_background, search_bar_text, search_bar_placeholder,

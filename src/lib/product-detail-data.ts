@@ -8,6 +8,7 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { MENU_ITEM_DETAIL_SELECT } from '@/lib/queries/menu-item-select'
+import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 import { getComplementaryItems } from '@/lib/complementary-pairs-service'
 import type { MenuItem, Category, Variation, VariationType, Addon, ModifierGroup, UpgradeUpsell } from '@/types/database'
@@ -19,6 +20,8 @@ import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 export interface SelectedTenant {
     id: string
     slug: string
+    /** Opt-in flag for branches; when true the page prices per branch. */
+    multi_branch_enabled?: boolean | null
     name: string
     logo_url: string | null
     primary_color: string | null
@@ -341,5 +344,42 @@ export const getCachedProductDetailSettings = cache(async (tenantId: string): Pr
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedProductDetailSettings:', errMsg)
         return null
+    }
+})
+
+/**
+ * Fetch the menu items referenced by linked add-on options (cached per request).
+ *
+ * Only the fields a linked option renders are selected. Items that no longer
+ * exist simply do not come back; `resolveLinkedOptions` then renders that option
+ * as unavailable rather than blank.
+ */
+export const getCachedLinkedModifierItems = cache(async (
+    itemIds: readonly string[],
+    tenantId: string
+): Promise<Map<string, LinkedItemSnapshot>> => {
+    if (itemIds.length === 0) {
+        return new Map()
+    }
+
+    try {
+        const supabase = await createClient()
+        const { data, error } = await supabase
+            .from('menu_items')
+            .select('id, name, price, discounted_price, image_url, is_available')
+            .eq('tenant_id', tenantId)
+            .in('id', itemIds as string[])
+
+        if (error) {
+            console.error('Error fetching linked modifier items:', error.message)
+            return new Map()
+        }
+
+        const rows = (data ?? []) as unknown as LinkedItemSnapshot[]
+        return new Map(rows.map((row) => [row.id, row]))
+    } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error)
+        console.error('Error in getCachedLinkedModifierItems:', errMsg)
+        return new Map()
     }
 })

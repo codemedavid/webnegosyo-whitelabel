@@ -1,74 +1,96 @@
 'use client'
 
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { Check, ChevronDown, XCircle } from 'lucide-react'
-import { AccentText, CTAButton, SectionHeading } from './cta-button'
-import { FAQ_ITEMS, LANDING_COLORS, PRICE_LABEL, PRICING_FEATURES } from './landing-theme'
+import { ChalkRule, CheckMark, CourtButton, CrossMark, Lit, SectionTitle } from './court'
+import { SegmentDisplay } from './segment-display'
+import { COURT, EXCLUSIONS, FAQ_ITEMS, PRICE_DIGITS, PRICE_LABEL, PRICING_FEATURES } from './landing-theme'
 
-const VIEWPORT = { once: true, amount: 0.2 } as const
-
-const EXCLUSIONS = ['Monthly subscription', 'Commission kada order', 'Setup fee', 'Lock-in contract'] as const
-
-function PricingCard() {
+/** The final score: one figure, in segments, at the size the board runs it. */
+function FinalScore() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 40, scale: 0.97 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto mt-14 max-w-lg rounded-[2rem] p-[1.5px]"
+    <div
+      className="mx-auto mt-14 max-w-xl"
       style={{
-        background: `linear-gradient(160deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.gold}40, transparent 70%)`,
+        backgroundColor: COURT.steel,
+        border: '1px solid rgba(237,232,218,0.14)',
+        boxShadow: '0 34px 76px rgba(0,0,0,0.62), inset 0 1px 0 rgba(237,232,218,0.12)',
       }}
     >
       <div
-        className="rounded-[calc(2rem-1.5px)] p-8 md:p-10"
-        style={{ background: `linear-gradient(180deg, #16100a, ${LANDING_COLORS.ink})` }}
+        className="flex items-center justify-between px-5 py-3"
+        style={{ backgroundColor: '#070A08', borderBottom: '1px solid rgba(237,232,218,0.1)' }}
       >
-        <div
-          className="text-[12px] font-black uppercase tracking-[0.18em]"
-          style={{ color: LANDING_COLORS.brand }}
+        <span
+          className="font-display text-xs uppercase leading-none tracking-[0.12em]"
+          style={{ color: COURT.lane }}
         >
           Smart Menu System
-        </div>
+        </span>
+        <span
+          className="text-[10px] font-bold uppercase tracking-[0.18em]"
+          style={{ color: COURT.laneDim }}
+        >
+          Final
+        </span>
+      </div>
 
-        <div className="mt-4 flex items-end justify-center gap-2">
-          <span className="text-[3.4rem] font-black leading-none tracking-[-0.04em] text-white">
-            {PRICE_LABEL}
-          </span>
-          <span className="pb-2 text-sm font-bold text-white/35">one-time</span>
+      <div
+        className="px-5 py-9 text-center"
+        style={{ background: 'linear-gradient(180deg, #0C110E, #070A08)' }}
+      >
+        <div className="flex items-end justify-center">
+          <SegmentDisplay
+            value={`₱${PRICE_DIGITS}`}
+            color={COURT.ledAmber}
+            height="clamp(2.9rem, 9.5vw, 5rem)"
+            label={PRICE_LABEL}
+          />
         </div>
-        <p className="mt-2 text-sm text-white/40">Lifetime access • Walang renewal</p>
+        <p
+          className="mt-5 font-display text-sm uppercase tracking-[0.1em]"
+          style={{ color: COURT.lane }}
+        >
+          One-time
+        </p>
+        <p className="mt-1.5 text-[13px]" style={{ color: COURT.laneDim }}>
+          Lifetime access • Walang renewal
+        </p>
+      </div>
 
-        <ul className="mt-8 space-y-0 text-left">
-          {PRICING_FEATURES.map((feat) => (
+      <div className="px-6 pb-8 pt-2 md:px-8">
+        <ul className="text-left">
+          {PRICING_FEATURES.map((feature) => (
             <li
-              key={feat}
-              className="flex items-start gap-3 border-b border-white/5 py-2.5 text-[13.5px] text-white/75 last:border-0"
+              key={feature}
+              className="flex items-start gap-3 py-2.5 text-[13.5px] leading-snug"
+              style={{ color: '#C6CCC5', borderBottom: '1px solid rgba(237,232,218,0.08)' }}
             >
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-              {feat}
+              <CheckMark size={14} className="mt-0.5 shrink-0" />
+              {feature}
             </li>
           ))}
         </ul>
 
-        <div className="mt-7">
-          <CTAButton fullWidth size="large">
-            Get Smart Menu Now
-          </CTAButton>
+        <div className="mt-8">
+          <CourtButton fullWidth size="large">
+            Kunin ang Smart Menu
+          </CourtButton>
         </div>
 
-        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
           {EXCLUSIONS.map((item) => (
-            <li key={item} className="flex items-center gap-1.5 text-[11px] font-bold text-white/30">
-              <XCircle className="h-3.5 w-3.5 text-white/20" />
+            <li
+              key={item}
+              className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: COURT.laneDim }}
+            >
+              <CrossMark size={12} className="shrink-0" />
               {item}
             </li>
           ))}
         </ul>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -76,25 +98,14 @@ export function PricingSection() {
   return (
     <section
       id="pricing"
-      className="relative z-10 scroll-mt-20 overflow-hidden py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.inkSoft }}
+      className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32"
+      style={{ backgroundColor: COURT.groundLit }}
     >
-      <div
-        className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ backgroundColor: `${LANDING_COLORS.brand}17` }}
-      />
-
-      <div className="relative mx-auto max-w-4xl px-5">
-        <SectionHeading
-          tag="Simple pricing"
-          title={
-            <>
-              Isang bayad. <AccentText>Buo ang system.</AccentText>
-            </>
-          }
-          body="Walang monthly fees, walang hidden charges, walang commission kada order. Isang bayad lang — lifetime access sa buong Smart Menu system."
-        />
-        <PricingCard />
+      <div className="mx-auto max-w-4xl">
+        <SectionTitle body="Walang monthly fees, walang hidden charges, walang commission kada order. Isang bayad lang — lifetime access sa buong Smart Menu system.">
+          Isang bayad. <Lit>Buo ang system.</Lit>
+        </SectionTitle>
+        <FinalScore />
       </div>
     </section>
   )
@@ -104,53 +115,63 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div className="border-b border-white/8">
-      <button
-        type="button"
-        onClick={() => setIsOpen((open) => !open)}
-        aria-expanded={isOpen}
-        className="flex w-full items-center justify-between gap-4 py-5 text-left"
-      >
-        <span className="text-[15px] font-bold text-white md:text-base">{q}</span>
-        <ChevronDown
-          className={`h-5 w-5 shrink-0 text-orange-500/70 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
+    <div>
+      <ChalkRule />
+      <h3>
+        <button
+          type="button"
+          onClick={() => setIsOpen((open) => !open)}
+          aria-expanded={isOpen}
+          className="flex w-full items-center justify-between gap-5 py-5 text-left"
+        >
+          <span
+            className="font-display text-[15px] uppercase leading-snug tracking-[-0.005em] md:text-[17px]"
+            style={{ color: COURT.lane }}
           >
-            <p className="pb-5 pr-8 text-sm leading-relaxed text-white/50">{a}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {q}
+          </span>
+          <span
+            aria-hidden
+            className="flex h-7 w-7 shrink-0 items-center justify-center"
+            style={{
+              border: `2px solid ${isOpen ? COURT.ledAmber : 'rgba(237,232,218,0.28)'}`,
+              color: isOpen ? COURT.ledAmber : COURT.laneDim,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <path d="M4 12h16" strokeLinecap="square" />
+              {!isOpen && <path d="M12 4v16" strokeLinecap="square" />}
+            </svg>
+          </span>
+        </button>
+      </h3>
+      {isOpen && (
+        <p
+          className="max-w-[68ch] pb-6 pr-10 text-[14.5px] leading-relaxed"
+          style={{ color: COURT.laneDim }}
+        >
+          {a}
+        </p>
+      )}
     </div>
   )
 }
 
 export function FAQSection() {
   return (
-    <section
-      id="faq"
-      className="relative z-10 scroll-mt-20 py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.ink }}
-    >
-      <div className="mx-auto max-w-2xl px-5">
-        <SectionHeading tag="FAQ" title="Mga madalas itanong" />
+    <section id="faq" className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-3xl">
+        <SectionTitle align="left">Mga madalas itanong</SectionTitle>
 
         <div className="mt-12">
           {FAQ_ITEMS.map((item) => (
             <FAQItem key={item.q} q={item.q} a={item.a} />
           ))}
+          <ChalkRule />
         </div>
 
-        <div className="mt-12 text-center">
-          <CTAButton>Get Started — {PRICE_LABEL}</CTAButton>
+        <div className="mt-12">
+          <CourtButton>Kunin — {PRICE_LABEL}</CourtButton>
         </div>
       </div>
     </section>

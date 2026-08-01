@@ -54,6 +54,18 @@ interface ModifierGroupsEditorProps {
   headerAction?: ReactNode
   /** When provided, each group card gets a "Save to library" control. */
   onSaveGroupToLibrary?: (group: ModifierGroup) => void
+  /**
+   * Menu items an option may link to. Linking makes the option a live reference:
+   * its name, price and image come from that item at render time.
+   */
+  linkableItems?: LinkableMenuItem[]
+}
+
+/** A menu item that can be offered as an add-on option. */
+export interface LinkableMenuItem {
+  id: string
+  name: string
+  price: number
 }
 
 /**
@@ -63,7 +75,7 @@ interface ModifierGroupsEditorProps {
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
-export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary }: ModifierGroupsEditorProps) {
+export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary, linkableItems }: ModifierGroupsEditorProps) {
   const addGroup = () => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
   }
@@ -154,6 +166,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 basePrice={basePrice}
                 recipeContext={recipeContext}
                 optionRecipeCosts={optionRecipeCosts}
+                linkableItems={linkableItems}
                 onSaveToLibrary={onSaveGroupToLibrary ? () => onSaveGroupToLibrary(group) : undefined}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
@@ -181,6 +194,7 @@ interface ModifierGroupCardProps {
   basePrice: number
   recipeContext?: ModifierRecipeContext
   optionRecipeCosts?: Record<string, number>
+  linkableItems?: LinkableMenuItem[]
   onSaveToLibrary?: () => void
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
@@ -203,6 +217,7 @@ function ModifierGroupCard({
   basePrice,
   recipeContext,
   optionRecipeCosts,
+  linkableItems,
   onSaveToLibrary,
   onRemoveGroup,
   onUpdateName,
@@ -333,6 +348,7 @@ function ModifierGroupCard({
                 basePrice={basePrice}
                 recipeContext={recipeContext}
                 recipeCost={optionRecipeCosts?.[option.id]}
+                linkableItems={linkableItems}
                 onRemove={() => onRemoveOption(optionIndex)}
                 onUpdate={(field, value) => onUpdateOption(optionIndex, field, value)}
                 onReplace={(next) => onReplaceOption(optionIndex, next)}
@@ -354,9 +370,14 @@ interface ModifierOptionRowProps {
   onRemove: () => void
   onUpdate: <K extends keyof ModifierOption>(field: K, value: ModifierOption[K]) => void
   onReplace: (next: ModifierOption) => void
+  linkableItems?: LinkableMenuItem[]
 }
 
-function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRemove, onUpdate, onReplace }: ModifierOptionRowProps) {
+function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRemove, onUpdate, onReplace, linkableItems }: ModifierOptionRowProps) {
+  const linkedItem = option.menu_item_id
+    ? linkableItems?.find((i) => i.id === option.menu_item_id)
+    : undefined
+  const isLinked = Boolean(option.menu_item_id)
   const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
   const isComposite = option.cost_mode === 'composite'
   // Live margin honoring the option's cost source. Options with no mode keep the
@@ -374,23 +395,55 @@ function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRem
       <div className="flex gap-2">
         <Input
           placeholder="Option name (e.g., Small)"
-          value={option.name}
+          value={isLinked ? (linkedItem?.name ?? option.name) : option.name}
           onChange={(e) => onUpdate('name', e.target.value)}
+          disabled={isLinked}
           className="flex-1"
         />
         <Input
           type="number"
           step="0.01"
           placeholder="Price +/-"
-          value={option.price_modifier}
+          value={isLinked ? (linkedItem?.price ?? option.price_modifier) : option.price_modifier}
           onChange={(e) => onUpdate('price_modifier', parseFloat(e.target.value) || 0)}
+          disabled={isLinked}
           className="w-28"
-          title="Price modifier"
+          title={isLinked ? 'Taken from the linked item' : 'Price modifier'}
         />
         <Button type="button" variant="ghost" size="icon" onClick={onRemove} className="text-red-500">
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
+
+      {linkableItems && linkableItems.length > 0 && (
+        <div className="space-y-1">
+          <Label className="text-xs">Link to a menu item (optional)</Label>
+          <Select
+            value={option.menu_item_id ?? 'none'}
+            onValueChange={(value) =>
+              onReplace({ ...option, menu_item_id: value === 'none' ? null : value })
+            }
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Not linked - type a name and price above" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Not linked</SelectItem>
+              {linkableItems.map((menuItem) => (
+                <SelectItem key={menuItem.id} value={menuItem.id}>
+                  {menuItem.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isLinked && (
+            <p className="text-[11px] text-muted-foreground">
+              Name, price and image follow this item automatically. It shows as sold out when the
+              item is unavailable.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">

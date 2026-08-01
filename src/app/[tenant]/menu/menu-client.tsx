@@ -9,13 +9,17 @@ import { AnnouncementBar } from '@/components/customer/announcement-bar'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
+import { resolveOutletAvailability } from '@/lib/outlets/outlet-availability'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { useOutletSelection } from '@/hooks/use-outlet-selection'
+import { useBranchMenu } from '@/hooks/use-branch-menu'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
 import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
 import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import { toast } from 'sonner'
-import type { Category, MenuItem, Tenant } from '@/types/database'
+import type { Category, MenuItem, Tenant, Outlet, OutletMenuOverride } from '@/types/database'
 import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
@@ -31,12 +35,20 @@ import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
+import { OutletGate } from '@/components/customer/outlet-gate'
 
 interface MenuClientProps {
   tenant: Tenant | null
   categories: Category[]
   allMenuItems: MenuItem[]
   bundles: BundleWithSlots[]
+  outlets: Outlet[]
+  /** True when the branch query failed — ordering is blocked, the menu is not. */
+  outletsFailed?: boolean
+  /** Every per-branch listing/price override the tenant has. */
+  menuOverrides?: OutletMenuOverride[]
+  /** True when the override query failed — same treatment as `outletsFailed`. */
+  overridesFailed?: boolean
   tenantSlug: string
   isBrandAdmin: boolean
   error: string | null
@@ -53,7 +65,7 @@ const ProductDetailSheet = dynamic(
 )
 
 
-export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundles, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
+export function MenuClient({ tenant: tenantProp, categories, allMenuItems: storeWideMenuItems, bundles, outlets, outletsFailed, menuOverrides, overridesFailed, tenantSlug, isBrandAdmin, error }: MenuClientProps) {
   // Branding Studio live preview: when this page runs inside the editor's
   // iframe (?brandingPreview=1) the unsaved draft merges over the tenant so
   // every branding consumer below re-renders in real time.
@@ -96,6 +108,23 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       setTenantContext(tenant.id, tenant.slug)
     }
   }, [tenant, setTenantContext])
+
+  // The branch the customer is shopping. Read here as well as inside the gate
+  // because the gate decides whether to ASK; this decides what to SHOW, and the
+  // two have to agree on the answer.
+  const branchSelection = useOutletSelection({
+    isEnabled: isMultiBranchEnabled(tenant),
+    tenantSlug,
+    outlets,
+  })
+
+  // The menu as this branch sells it. With no branch chosen — a single-location
+  // tenant, or one that asks at checkout — this is the store-wide menu itself.
+  const { items: allMenuItems } = useBranchMenu({
+    items: storeWideMenuItems,
+    overrides: menuOverrides,
+    selectedOutletId: branchSelection.outlet?.id ?? null,
+  })
 
   // Virtual "Bundles" category + adapted bundle items
   const { categoriesWithBundles, allItemsWithBundles } = useMemo(() => {
@@ -163,8 +192,24 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   // the server's answer would be stale) and re-checks every minute.
   const openStatus = useStoreOpenStatus(tenant)
 
+  // A multi-branch storefront that could not load its branches must not quietly
+  // serve the single-location flow — that is how an order reaches the wrong
+  // kitchen (Phase 1, Decision E). The menu still renders; ordering is what stops.
+  const outletAvailability = resolveOutletAvailability({
+    isEnabled: isMultiBranchEnabled(tenant),
+    // An override failure is the same class of problem as a branch failure: the
+    // menu on screen may not be the menu this branch sells, so it must not be
+    // ordered from.
+    didLoadFail: Boolean(outletsFailed) || Boolean(overridesFailed),
+    outletCount: outlets.length,
+  })
+
   // Stable callback: prevents entire card grid from re-rendering on unrelated state changes
   const handleItemSelect = useCallback((item: MenuItem) => {
+    if (!outletAvailability.canOrder) {
+      toast.error(outletAvailability.message ?? '')
+      return
+    }
     if (openStatus.isOrderingBlocked) {
       toast.error(
         openStatus.nextOpenLabel
@@ -199,7 +244,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
       // Customers get the instant bottom sheet instead of a route navigation.
       setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel])
+  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, outletAvailability.canOrder, outletAvailability.message])
 
   // Device resolution: the Branding Studio's per-device choice wins over any
   // legacy mobile_* column, which in turn wins over the desktop column.
@@ -320,6 +365,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
   }
 
   return (
+    <>
+    <OutletGate tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} />
     <div
       ref={rootRef}
       data-branding-scope="global/palette"
@@ -568,5 +615,6 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems, bundl
         primaryTextColor={branding.buttonPrimaryText}
       />
     </div>
+    </>
   )
 }

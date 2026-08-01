@@ -7,13 +7,33 @@ import {
 } from "./workspaces";
 
 describe("WORKSPACES registry", () => {
-  it("defines the four merchant views", () => {
+  it("defines the five merchant views", () => {
     expect(WORKSPACES.map((w) => w.key)).toEqual([
       "operations",
       "register",
       "insights",
       "products",
+      "business",
     ]);
+  });
+
+  it("owns the branch portfolio, the roster and the branch list in Business", () => {
+    // Business is the owner's view of the company rather than of a shift: which
+    // branches exist, how they compare, and who runs them.
+    // The roster ("team") joins this list when its screen lands; a tab
+    // registered without a route file breaks the tab bar for everyone.
+    expect(getWorkspace("business").tabs).toEqual([
+      "portfolio",
+      "branches",
+      "branch-menu",
+    ]);
+    expect(getWorkspace("business").defaultTab).toBe("portfolio");
+  });
+
+  it("moved the branch comparison out of Insights", () => {
+    // It reads as a branch screen, not a chart, and the disjointness rule below
+    // means it cannot live in both.
+    expect(isTabInWorkspace("branches", "insights")).toBe(false);
   });
 
   it("keeps operations first so getWorkspace's fallback stays the order queue", () => {
@@ -63,6 +83,16 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("analytics", "operations")).toBe(false);
   });
 
+  it("puts branch comparison in the business view", () => {
+    // It used to sit in Insights, on the reading that comparing branches is an
+    // insight. It moved when Business arrived: an owner who wants branch
+    // figures wants the branch screens beside them — the portfolio they drill
+    // from and the roster running each one — not the charts.
+    expect(isTabInWorkspace("branches", "business")).toBe(true);
+    expect(isTabInWorkspace("branches", "insights")).toBe(false);
+    expect(isTabInWorkspace("branches", "operations")).toBe(false);
+  });
+
   it("shows counter-sale tabs only in the register view", () => {
     expect(isTabInWorkspace("pos", "register")).toBe(true);
     expect(isTabInWorkspace("pos-sales", "register")).toBe(true);
@@ -75,6 +105,13 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("product-management", "products")).toBe(true);
     expect(isTabInWorkspace("product-analytics", "operations")).toBe(false);
   });
+
+  it("keeps inventory beside the products it is spent on", () => {
+    // Stock is a property of the menu, not of the order queue: a merchant who
+    // 86s an item and a merchant who reorders its flour are the same person.
+    expect(isTabInWorkspace("inventory", "products")).toBe(true);
+    expect(isTabInWorkspace("inventory", "operations")).toBe(false);
+  });
 });
 
 describe("workspaceForTab", () => {
@@ -83,6 +120,7 @@ describe("workspaceForTab", () => {
     expect(workspaceForTab("pos")).toBe("register");
     expect(workspaceForTab("growth")).toBe("insights");
     expect(workspaceForTab("product-management")).toBe("products");
+    expect(workspaceForTab("inventory")).toBe("products");
   });
 
   it("returns undefined for detail/utility screens outside any workspace", () => {

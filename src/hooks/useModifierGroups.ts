@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MenuItem, ModifierGroup } from '@/types/database'
 import { MAX_CART_ITEM_QUANTITY } from '@/lib/cart-utils'
 import { computeModifierSubtotal, normalizeModifierGroups } from '@/lib/modifier-groups'
+import { resolveLinkedOptions, type LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import {
   getDefaultSelection,
   getSelectedOptions,
@@ -15,6 +16,12 @@ import type { SelectionValidationResult } from '@/lib/modifier-groups'
 
 interface UseModifierGroupsOptions {
   item: MenuItem
+  /**
+   * Menu items referenced by linked add-on options, keyed by id. Supplied by the
+   * page that fetched them; omitted (or missing an id) makes those options
+   * render as unavailable rather than blank.
+   */
+  linkedItems?: ReadonlyMap<string, LinkedItemSnapshot>
 }
 
 interface UseModifierGroupsResult {
@@ -42,13 +49,16 @@ interface UseModifierGroupsResult {
  * `active` is false for items without an explicit `modifier_groups` payload, so
  * callers keep their existing legacy variation/add-on path untouched.
  */
-export function useModifierGroups({ item }: UseModifierGroupsOptions): UseModifierGroupsResult {
+export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOptions): UseModifierGroupsResult {
   const active = Boolean(item.modifier_groups && item.modifier_groups.length > 0)
 
-  const groups = useMemo(
-    () => (active ? normalizeModifierGroups({ modifier_groups: item.modifier_groups }) : []),
-    [active, item.modifier_groups],
-  )
+  const groups = useMemo(() => {
+    if (!active) return []
+    const normalized = normalizeModifierGroups({ modifier_groups: item.modifier_groups })
+    // Linked options resolve to an ordinary ModifierOption, so everything
+    // downstream (pricing, validation, cart projection) is unchanged.
+    return linkedItems ? resolveLinkedOptions(normalized, linkedItems) : normalized
+  }, [active, item.modifier_groups, linkedItems])
 
   const [selection, setSelection] = useState<ModifierSelection>(() => getDefaultSelection(groups))
   const [quantity, setQuantity] = useState(1)

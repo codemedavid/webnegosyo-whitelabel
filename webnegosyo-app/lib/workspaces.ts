@@ -1,9 +1,20 @@
-// Workspace (view) registry for the merchant app. The app is split into four
-// focused views — Operations, Register, Insights, Products — and the tab bar
-// only shows the tabs owned by the active view. Pure data + lookups; the active
-// view lives in stores/workspace-store.ts and the tab bar reads both.
+// Workspace (view) registry for the merchant app. The app is split into five
+// focused views — Operations, Register, Insights, Products, Business — and the
+// tab bar only shows the tabs owned by the active view. Pure data + lookups;
+// the active view lives in stores/workspace-store.ts and the tab bar reads both.
+//
+// Business is the odd one out: the other four are views of a shift, and every
+// account has them. Business is the view of the company — which branches exist,
+// how they compare, who runs them — so it is shown only to an account that
+// actually runs several branches. That rule needs the branch count, which the
+// registry has no way to know, so it lives in portfolio-landing.ts.
 
-export type WorkspaceKey = "operations" | "register" | "insights" | "products";
+export type WorkspaceKey =
+  | "operations"
+  | "register"
+  | "insights"
+  | "products"
+  | "business";
 
 export interface Workspace {
   key: WorkspaceKey;
@@ -40,9 +51,36 @@ export const WORKSPACES: readonly Workspace[] = [
   {
     key: "products",
     label: "Products",
-    description: "Menu performance and product management",
-    tabs: ["product-analytics", "product-management"],
+    description: "Menu performance, product management, and stock",
+    // Inventory belongs beside the products it is spent on: the merchant who
+    // 86s an item and the merchant who reorders its flour are the same person.
+    // How the merchant gets paid sits beside what they sell: both are the
+    // storefront's setup, and neither is a view of a shift.
+    // The daily report sits next to the shelf it reconciles rather than in
+    // Insights: it carries no revenue on the phone, and the merchant who
+    // counts the flour and the one asking whether the count matched are the
+    // same person standing in the same place.
+    tabs: [
+      "product-analytics",
+      "product-management",
+      "inventory",
+      "daily-report",
+      "payments",
+    ],
     defaultTab: "product-analytics",
+  },
+  {
+    key: "business",
+    label: "Business",
+    description: "Your branches, how they compare, and who runs them",
+    // The roster ("team") joins these when its screen lands; a registered tab
+    // with no route file breaks the tab bar for every account.
+    // The cross-branch menu belongs here rather than beside the store-wide
+    // product list: it is a decision about which branch sells what, which only
+    // exists for an account that runs several, and the Business view is the one
+    // place already gated on exactly that.
+    tabs: ["portfolio", "branches", "branch-menu"],
+    defaultTab: "portfolio",
   },
 ] as const;
 

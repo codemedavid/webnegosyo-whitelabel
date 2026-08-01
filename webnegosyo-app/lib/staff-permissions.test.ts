@@ -58,6 +58,9 @@ describe("isTabAllowed", () => {
     expect(isTabAllowed(ordersOnly, "trends")).toBe(false);
     expect(isTabAllowed(ordersOnly, "product-management")).toBe(false);
     expect(isTabAllowed(menuOnly, "product-management")).toBe(true);
+    // Reordering an ingredient is a menu decision, so it rides the same key.
+    expect(isTabAllowed(menuOnly, "inventory")).toBe(true);
+    expect(isTabAllowed(ordersOnly, "inventory")).toBe(false);
     expect(isTabAllowed(menuOnly, "orders")).toBe(false);
   });
 
@@ -70,12 +73,16 @@ describe("isTabAllowed", () => {
 });
 
 describe("allowedWorkspaces", () => {
-  it("returns all four views for the owner", () => {
+  it("returns every view for the owner", () => {
+    // Business is listed here because permissions do not exclude it. Whether it
+    // is actually offered also depends on the store having branches, which is
+    // isPortfolioAvailable's job, not this registry's.
     expect(allowedWorkspaces(owner).map((w) => w.key)).toEqual([
       "operations",
       "register",
       "insights",
       "products",
+      "business",
     ]);
   });
 
@@ -98,7 +105,9 @@ describe("allowedWorkspaces", () => {
     const views = allowedWorkspaces(menuOnly);
     const products = views.find((w) => w.key === "products");
     expect(products).toBeDefined();
-    expect(products!.tabs).toEqual(["product-management"]);
+    // The daily report rides the same `menu` grant as the shelf it reconciles,
+    // so it survives this filter alongside inventory.
+    expect(products!.tabs).toEqual(["product-management", "inventory", "daily-report"]);
     expect(products!.defaultTab).toBe("product-management");
   });
 });

@@ -1,7 +1,9 @@
-// The app's view switcher. The merchant app is split into three focused
-// views (Operations / Insights / Products); this compact control names the
-// active one and opens a sheet to change it. Switching lands on the view's
-// default tab, and the tab bar re-filters to that view's tabs only.
+// The app's view switcher. The merchant app is split into focused views
+// (Operations / Register / Insights / Products, plus Business for an account
+// that runs several branches); this compact control names the active one and
+// opens a sheet to change it. Switching lands on the view's default tab, and
+// the tab bar re-filters to that view's tabs only. The sheet lists only the
+// views this account may see — see lib/portfolio-landing.ts.
 import React, { useState } from "react";
 import {
   View,
@@ -14,28 +16,48 @@ import {
 import { router } from "expo-router";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { getWorkspace } from "../lib/workspaces";
-import { allowedWorkspaces } from "../lib/staff-permissions";
+import { activeWorkspace, visibleWorkspaces } from "../lib/portfolio-landing";
+import { usePortfolioAudience } from "../lib/use-portfolio-audience";
 import { useWorkspaceStore } from "../stores/workspace-store";
 import { useAuthStore } from "../stores/auth-store";
+import { goTo, type TabAwareRouter } from "../lib/tab-navigation";
 
 export function WorkspaceSwitcher() {
-  const workspace = useWorkspaceStore((s) => s.workspace);
+  const storedWorkspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const [isOpen, setIsOpen] = useState(false);
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
-  // Restricted staff only see views holding at least one permitted tab.
-  const visibleWorkspaces = allowedWorkspaces({ role, isOwner, permissions });
+  const audience = usePortfolioAudience();
+  const caller = { role, isOwner, permissions };
+  // Restricted staff only see views holding at least one permitted tab, and a
+  // branch manager never sees Business — the view of the whole company.
+  const views = visibleWorkspaces(caller, audience);
+  // The stored view can outlive the right to see it (a persisted selection, a
+  // handed-over device), so the label names what the tab bar is showing.
+  const workspace = activeWorkspace(storedWorkspace, caller, audience);
   const active = getWorkspace(workspace);
 
   const handleSelect = (key: typeof workspace) => {
     setIsOpen(false);
     if (key === workspace) return;
     setWorkspace(key);
-    const target = visibleWorkspaces.find((w) => w.key === key);
+    const target = views.find((w) => w.key === key);
     const landingTab = target?.defaultTab ?? getWorkspace(key).defaultTab;
-    router.replace(`/(main)/${landingTab}` as never);
+    // navigate, not replace: replacing into a sibling tab renames the tab
+    // navigator's state key and remounts it mid-switch, which crashes with
+    // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+    //
+    // The cast is expo-router's typed-routes limitation, not a soundness hole:
+    // its generated Href union lists every tab literally, so a computed
+    // `/(main)/${tab}` template never matches. (The previous router.replace()
+    // here needed `as never` for exactly the same reason.) Every landingTab
+    // comes from the workspace registry, so the route always exists.
+    goTo(
+      router as TabAwareRouter<`/(main)/${string}`>,
+      `/(main)/${landingTab}`,
+    );
   };
 
   return (
@@ -55,7 +77,7 @@ export function WorkspaceSwitcher() {
         <Pressable style={styles.backdrop} onPress={() => setIsOpen(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.sheetTitle}>Views</Text>
-            {visibleWorkspaces.map((w) => {
+            {views.map((w) => {
               const isActive = w.key === workspace;
               return (
                 <TouchableOpacity

@@ -26,9 +26,11 @@ import {
 import {
   recordStockMovement,
   getStockMovements,
+  restoreOrderStock,
   type StockMovementInput,
 } from '@/lib/inventory/stock-service'
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
+import { setBranchReorderLevel } from '@/lib/inventory/branch-par-service'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
 
 function zodErrorMessage(error: z.ZodError): string {
@@ -233,10 +235,49 @@ export async function recordStockMovementAction(
   }
 }
 
+/**
+ * Put a cancelled order's ingredients back on the shelf.
+ *
+ * For orders the web admin cancels outside `updateOrderStatus` — a Convex-held
+ * order cancelled from the order sheet. Best-effort underneath, so this reports
+ * success even when there is nothing to reverse: the cancellation itself has
+ * already happened and must not be reported as failed.
+ */
+export async function restoreOrderStockAction(tenantId: string, orderId: string) {
+  try {
+    await restoreOrderStock(tenantId, orderId)
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, 'Failed to restore stock for the cancelled order')
+  }
+}
+
 export async function getStockMovementsAction(tenantId: string, inventoryItemId: string) {
   try {
     return { success: true as const, data: await getStockMovements(tenantId, inventoryItemId) }
   } catch (error) {
     return fail(error, 'Failed to fetch stock history')
+  }
+}
+
+/**
+ * Set one branch's own reorder level for one ingredient.
+ *
+ * Zero clears the branch override and returns the branch to the store-wide
+ * threshold, which is how `branchLevelInputs` already reads an unset branch.
+ */
+export async function setBranchReorderLevelAction(
+  tenantId: string,
+  tenantSlug: string,
+  inventoryItemId: string,
+  outletId: string | null,
+  reorderLevel: number,
+) {
+  try {
+    await setBranchReorderLevel(tenantId, inventoryItemId, outletId, reorderLevel)
+    revalidatePath(inventoryPath(tenantSlug))
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, 'Failed to set the branch reorder level')
   }
 }

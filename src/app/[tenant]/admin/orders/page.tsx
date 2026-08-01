@@ -4,6 +4,8 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrdersByTenant } from '@/lib/orders-service'
 import { RealtimeOrdersWrapper } from '@/components/admin/realtime-orders-wrapper'
+import { getCachedCurrentUserRole } from '@/lib/cache'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { ConvexOrdersWrapper } from '@/components/admin/convex-orders-wrapper'
 import { OrdersSkeleton } from '@/components/admin/orders-skeleton'
 import { getTenantSupabaseOrdersPage } from '@/lib/tenant-order-queue'
@@ -58,11 +60,18 @@ async function TenantSupabaseOrdersContent({
     orderType,
   }).catch(() => EMPTY_PAGE)
 
+  // Resolved on the server from the request-cached admin row, so the browser is
+  // never trusted to say which branch it is allowed to hear about. A null row
+  // cannot reach here with orders to show — the fetch above authorizes first —
+  // so it keeps the store-wide behaviour that predates branches.
+  const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
+
   return (
     <RealtimeOrdersWrapper
       initialOrders={result.orders as unknown as OrderWithItems[]}
       tenantSlug={tenantSlug}
       tenantId={tenant.id}
+      scope={scope}
       realtimeUrl={tenant.supabase_order_url ?? undefined}
       realtimeAnonKey={tenant.supabase_order_anon_key ?? undefined}
       pagination={{
@@ -97,12 +106,14 @@ async function OrdersContent({
   }).catch(() => ({ orders: [], totalCount: 0, currentPage: 1, totalPages: 0, hasNextPage: false, hasPreviousPage: false }))
 
   const paginatedResult = result as PaginatedOrdersResult
+  const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
   return (
     <RealtimeOrdersWrapper
       initialOrders={paginatedResult.orders}
       tenantSlug={tenantSlug}
       tenantId={tenantId}
+      scope={scope}
       pagination={{
         currentPage: paginatedResult.currentPage,
         totalPages: paginatedResult.totalPages,
@@ -135,6 +146,9 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
   const showTenantSupabase = backend === 'supabase'
   const isTenantSupabaseConfigured =
     showTenantSupabase && hasTenantSupabaseOrderCredentials(tenant)
+  // Resolved server-side; the Convex tab is a client component and must not be
+  // trusted to decide which branch it may read.
+  const convexScope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
   return (
     <div className="space-y-6">
@@ -150,7 +164,13 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
         <p className="text-muted-foreground">Manage customer orders</p>
       </div>
 
-      {showConvex && <ConvexOrdersWrapper convexUrl={tenant.convex_deployment_url!} />}
+      {showConvex && (
+        <ConvexOrdersWrapper
+          convexUrl={tenant.convex_deployment_url!}
+          tenantId={tenant.id}
+          scope={convexScope}
+        />
+      )}
 
       {isTenantSupabaseConfigured && (
         <Suspense fallback={<OrdersSkeleton />}>

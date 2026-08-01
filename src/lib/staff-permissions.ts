@@ -11,6 +11,9 @@ export const STAFF_PERMISSION_KEYS = [
   'customers',
   'settings',
   'pos',
+  'branch_staff',
+  'order_edit',
+  'order_refund',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -46,6 +49,18 @@ export const STAFF_PERMISSION_LABELS: Record<
   pos: {
     label: 'POS',
     description: 'Take orders at the counter with the desktop POS',
+  },
+  branch_staff: {
+    label: 'Branch Staff',
+    description: 'Add and manage staff accounts for their own branch only',
+  },
+  order_edit: {
+    label: 'Edit Orders',
+    description: 'Change the items on a placed order and settle the difference',
+  },
+  order_refund: {
+    label: 'Issue Refunds',
+    description: 'Return money on an edited order — grant sparingly',
   },
 }
 
@@ -115,6 +130,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
   'order-types': 'store_setup',
+  outlets: 'store_setup',
   'payment-methods': 'store_setup',
   branding: 'store_setup',
   'hero-designer': 'store_setup',
@@ -126,12 +142,24 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
  * prefix), or null when the route is open to all staff.
  */
 export function permissionForAdminPath(pathname: string): StaffPermissionKey | null {
+  const section = adminSectionForPath(pathname)
+  if (section === null) return null
+  return ADMIN_SECTION_PERMISSIONS[section] ?? null
+}
+
+/**
+ * The admin section a pathname names (with or without a tenant prefix), or
+ * null when the path is not an admin section — the dashboard itself included.
+ *
+ * Exported because more than permissions are decided per section: the branch
+ * rules gate `outlets` the same way, and two copies of this parse could drift
+ * into gating different paths.
+ */
+export function adminSectionForPath(pathname: string): string | null {
   const segments = pathname.split('/').filter(Boolean)
   const adminIndex = segments.indexOf('admin')
   if (adminIndex === -1) return null
-  const section = segments[adminIndex + 1]
-  if (!section) return null
-  return ADMIN_SECTION_PERMISSIONS[section] ?? null
+  return segments[adminIndex + 1] ?? null
 }
 
 // Merchant mobile app tab routes (webnegosyo-app app/(main)/*) mapped to

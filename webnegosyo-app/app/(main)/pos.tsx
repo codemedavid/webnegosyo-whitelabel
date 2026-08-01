@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,18 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { FunctionReference } from "convex/server";
+import { useSafeQuery } from "../../lib/hooks";
+import { filterQueueToScope } from "../../lib/branch-dashboard";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
+import {
+  selectIncomingOrders,
+  countUnseenIncoming,
+  type RealtimeQueue,
+  type IncomingOrder,
+} from "../../lib/pos-incoming";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import {
   listCategories,
@@ -28,9 +39,12 @@ import {
   type ModifierSource,
 } from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
+import { editModeTotals } from "../../lib/pos-edit-mode";
+import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
+import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
@@ -50,6 +64,10 @@ const TOP_INSET = 60;
 /** Rows rendered before the first scroll — roughly two screens' worth. */
 const INITIAL_ROWS = 6;
 
+// TODO: Replace double assertion with a generated Convex function reference once
+// codegen is wired into the mobile app (same workaround used across the screens).
+const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
     if (index % size === 0) return [...rows, [item]];
@@ -60,6 +78,8 @@ function toRows<T>(items: T[], size: number): T[][] {
 export default function PosScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
 
   const lines = usePosCartStore((s) => s.lines);
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
@@ -68,6 +88,9 @@ export default function PosScreen() {
   const setQty = usePosCartStore((s) => s.setQty);
   const reset = usePosCartStore((s) => s.reset);
   const setOrderType = usePosCartStore((s) => s.setOrderType);
+  const editContext = usePosCartStore((s) => s.editContext);
+  const editWarnings = usePosCartStore((s) => s.editWarnings);
+  const endEdit = usePosCartStore((s) => s.endEdit);
 
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -78,6 +101,25 @@ export default function PosScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<RegisterItem | null>(null);
   const [isCartExpanded, setIsCartExpanded] = useState(false);
+  const [isIncomingExpanded, setIsIncomingExpanded] = useState(false);
+
+  // Ids the cashier has already been shown. `null` until the first snapshot
+  // lands, so a store that is simply busy does not greet them with a badge.
+  const seenIncomingRef = useRef<Set<string> | null>(null);
+  const [unseenCount, setUnseenCount] = useState(0);
+
+  // The same live queue the dashboard and the ringtone watch, so the backend
+  // de-dupes the subscription. Orders from the web land here without a refresh.
+  const { data: queue } = useSafeQuery<RealtimeQueue>(getRealtimeQueueRef);
+  const scope = useBranchScope();
+  // The register only accepts its own branch's incoming orders.
+  const incomingOrders = useMemo(
+    () =>
+      selectIncomingOrders(
+        filterQueueToScope(scope, queue as Record<string, IncomingOrder[]> | undefined),
+      ),
+    [scope, queue],
+  );
 
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),
@@ -88,6 +130,19 @@ export default function PosScreen() {
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
 
+  // Every judgement about the edit — what it now costs, what is owed, whether
+  // it may be saved — comes from `pos-edit-mode.ts`, which is unit tested.
+  // Nothing about the money is decided in this file.
+  const edit = useMemo(
+    () => (editContext ? editModeTotals(lines, editContext) : null),
+    [lines, editContext],
+  );
+
+  // The register rings up the branch it belongs to. A store-wide account (the
+  // owner, a single-location merchant) gets the store-wide menu, exactly as
+  // before per-branch pricing existed.
+  const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
+
   useEffect(() => {
     if (!tenantId) return;
     let cancelled = false;
@@ -97,7 +152,7 @@ export default function PosScreen() {
       setLoadError(null);
       try {
         const [products, cats, types] = await Promise.all([
-          listProducts(id),
+          listProducts(id, registerOutletId),
           listCategories(id),
           listOrderTypes(id),
         ]);
@@ -131,15 +186,53 @@ export default function PosScreen() {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, setOrderType]);
+  }, [tenantId, setOrderType, registerOutletId]);
 
   // Returning from a completed sale must never show the previous cart's state.
   useFocusEffect(
     useCallback(() => {
       setSheetFor(null);
       setIsCartExpanded(false);
+      setIsIncomingExpanded(false);
     }, []),
   );
+
+  useEffect(() => {
+    const ids = new Set(incomingOrders.map((order) => order._id));
+
+    // First snapshot: everything already open is old news to the cashier.
+    if (seenIncomingRef.current === null) {
+      seenIncomingRef.current = ids;
+      return;
+    }
+
+    // While the drawer is open the cashier is looking straight at the list, so
+    // arrivals are acknowledged on sight instead of piling into a badge.
+    if (isIncomingExpanded) {
+      seenIncomingRef.current = ids;
+      setUnseenCount(0);
+      return;
+    }
+
+    setUnseenCount(countUnseenIncoming(seenIncomingRef.current, incomingOrders));
+  }, [incomingOrders, isIncomingExpanded]);
+
+  // Only one bottom sheet may be open: expanded together they would bury the
+  // product grid, and the cashier would lose the thing they came here to tap.
+  const toggleIncoming = () => {
+    setIsCartExpanded(false);
+    setIsIncomingExpanded((open) => !open);
+  };
+
+  const toggleCart = () => {
+    setIsIncomingExpanded(false);
+    setIsCartExpanded((open) => !open);
+  };
+
+  const openIncomingOrder = (orderId: string) => {
+    setIsIncomingExpanded(false);
+    router.push(`/(main)/order/${orderId}`);
+  };
 
   const visibleItems = useMemo(() => {
     const term = sanitizeSearchQuery(search).toLowerCase();
@@ -172,7 +265,7 @@ export default function PosScreen() {
     setSheetFor(item);
   };
 
-  if (!convexUrl) {
+  if (!hasOrderBackend) {
     return (
       <View style={styles.center}>
         <EmptyState message="POS is not available yet — counter sales are written to this store's real-time order backend, which is not configured. Ask your platform admin to connect it." />
@@ -198,7 +291,40 @@ export default function PosScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      {edit && editContext && (
+        <View style={styles.editBanner}>
+          <View style={styles.editBannerMain}>
+            <Text style={styles.editBannerTitle}>Editing a placed order</Text>
+            <Text style={styles.editBannerTotals}>
+              {formatPeso(editContext.originalTotal)} → {formatPeso(edit.newTotal)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              endEdit();
+              router.back();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel the edit"
+          >
+            <Text style={styles.editBannerCancel}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {editWarnings.length > 0 && (
+        <View style={styles.editWarnings}>
+          {editWarnings.map((warning) => (
+            <Text key={warning} style={styles.editWarningText}>
+              {warning}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {/* The banner already clears the notch, so the header must not re-pad it. */}
+      <View style={[styles.header, edit && styles.headerUnderBanner]}>
         <View style={styles.titleRow}>
           <WorkspaceSwitcher />
           <Text style={styles.count}>
@@ -311,21 +437,41 @@ export default function PosScreen() {
         }
       />
 
-      {isCartExpanded && (
+      {(isCartExpanded || isIncomingExpanded) && (
         <Pressable
           style={styles.backdrop}
-          onPress={() => setIsCartExpanded(false)}
+          onPress={() => {
+            setIsCartExpanded(false);
+            setIsIncomingExpanded(false);
+          }}
           accessibilityLabel="Collapse the sale"
+        />
+      )}
+
+      {/*
+        Hidden while editing: accepting a new order would push it into the cart
+        that is currently holding someone else's bill.
+      */}
+      {!edit && (
+        <IncomingOrdersSheet
+          orders={incomingOrders}
+          unseenCount={unseenCount}
+          isExpanded={isIncomingExpanded}
+          onToggle={toggleIncoming}
+          onSelect={openIncomingOrder}
         />
       )}
 
       <CartSheet
         lines={lines}
         totals={totals}
-        orderTypes={orderTypes}
+        // The order type is fixed for the life of a placed order: switching it
+        // mid-edit would swap the service charge and invalidate the basis the
+        // delivery fee was quoted under. Passing none renders no chips.
+        orderTypes={edit ? [] : orderTypes}
         orderTypeId={orderTypeId}
         isExpanded={isCartExpanded}
-        onToggle={() => setIsCartExpanded((open) => !open)}
+        onToggle={toggleCart}
         onSelectOrderType={(type) => setOrderType(type.id, type.name, type.serviceCharge)}
         onChangeQty={setQty}
         onClear={() => {
@@ -333,6 +479,22 @@ export default function PosScreen() {
           setIsCartExpanded(false);
         }}
         onCharge={() => router.push("/(main)/pos-tender")}
+        chargeLabel={
+          !edit
+            ? undefined
+            : edit.intent === "collect"
+              ? "Save · collect"
+              : edit.intent === "refund"
+                ? "Save · refund"
+                : "Save changes"
+        }
+        // The difference to settle, not the order's total — the rest is paid.
+        chargeTotal={edit ? Math.abs(edit.balance) : undefined}
+        blockedReason={
+          edit && !edit.canSave
+            ? (edit.blockedReason ?? "Change something to save this order.")
+            : undefined
+        }
       />
 
       {sheetFor && (
@@ -362,6 +524,27 @@ const styles = StyleSheet.create({
     paddingTop: TOP_INSET,
     paddingBottom: spacing.sm,
   },
+  headerUnderBanner: { paddingTop: spacing.sm },
+  editBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingTop: TOP_INSET,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.accentLight,
+  },
+  editBannerMain: { flex: 1 },
+  editBannerTitle: { ...typography.caption, fontWeight: "700", color: colors.accent },
+  editBannerTotals: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
+  editBannerCancel: { ...typography.body, color: colors.accent, fontWeight: "600" },
+  editWarnings: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.warningLight,
+  },
+  editWarningText: { ...typography.small, color: colors.textPrimary },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",

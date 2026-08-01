@@ -2,7 +2,10 @@ import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
 import { OrderAlerts } from "../hooks/useOrderAlerts";
-import type { AlertableOrder } from "../lib/order-alerts-utils";
+import { shouldAlertOnNewOrders, type AlertableOrder } from "../lib/order-alerts-utils";
+import { selectIncomingOrders, type RealtimeQueue } from "../lib/pos-incoming";
+import { filterOrdersToScope } from "../lib/branch-scope";
+import { useBranchScope } from "../lib/use-branch-scope";
 
 // TODO: Replace double assertion with a generated Convex function reference once
 // codegen is wired into the mobile app (same workaround used across the screens).
@@ -22,11 +25,23 @@ const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionRefe
  */
 export function GlobalOrderAlerts() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
   const isDemo = useAuthStore((s) => s.isDemo);
 
   const { data: queue } = useSafeQuery<Record<string, AlertableOrder[]>>(getRealtimeQueueRef);
+  // Called before the early return below so the hook order stays stable.
+  const scope = useBranchScope();
 
-  if (!convexUrl || isDemo) return null;
+  if (!shouldAlertOnNewOrders({ convexUrl, orderBackend, isDemo })) return null;
 
-  return <OrderAlerts orders={queue?.pending} />;
+  // Still pending-only — an order the kitchen has already confirmed is not news.
+  // Routed through the shared selector so a sale rung up at the register can
+  // never ring the register that rang it.
+  // A branch account is only on the hook for its own branch: another branch
+  // taking an order must not ring this device.
+  const pending = selectIncomingOrders({
+    pending: [...filterOrdersToScope(scope, queue?.pending)],
+  } as RealtimeQueue);
+
+  return <OrderAlerts orders={pending} />;
 }

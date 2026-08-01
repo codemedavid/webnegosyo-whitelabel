@@ -5,6 +5,8 @@ import {
   type OrderStats,
   type OrderStatsRow,
 } from "@/lib/order-stats";
+import { scopeOrdersQuery } from "@/lib/outlets/branch-scope-query";
+import type { BranchScope } from "@/lib/outlets/branch-scope";
 
 /**
  * Order reads against a tenant's OWN Supabase project (`order_backend = 'supabase'`).
@@ -93,16 +95,23 @@ function isActiveFilter(value: string | undefined): value is string {
 export async function fetchTenantOrdersPage(
   client: SupabaseClient,
   tenantId: string,
-  params: TenantOrdersPageParams = {}
+  params: TenantOrdersPageParams = {},
+  scope: BranchScope = { kind: "all" }
 ): Promise<TenantOrdersPage> {
   const page = params.page || 1;
   const limit = params.limit || DEFAULT_PAGE_SIZE;
   const offset = (page - 1) * limit;
 
-  let query = client
-    .from("orders")
-    .select(ORDER_WITH_ITEMS_SELECT, { count: "exact" })
-    .eq("tenant_id", tenantId);
+  // The branch narrows the SQL, not the returned rows. `count: "exact"` is on
+  // this same query, so filtering afterwards would report a total for a store
+  // this account cannot see, above a page with most of its rows removed.
+  let query = scopeOrdersQuery(
+    client
+      .from("orders")
+      .select(ORDER_WITH_ITEMS_SELECT, { count: "exact" })
+      .eq("tenant_id", tenantId),
+    scope
+  );
 
   if (isActiveFilter(params.status)) {
     query = query.eq("status", params.status);
@@ -132,13 +141,19 @@ export async function fetchTenantOrdersPage(
 export async function fetchTenantOrderStats(
   client: SupabaseClient,
   tenantId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  scope: BranchScope = { kind: "all" }
 ): Promise<OrderStats> {
-  const { data, error } = await client
-    .from("orders")
-    .select("status, total, created_at")
-    .eq("tenant_id", tenantId)
-    .gte("created_at", startOfTodayISO(now));
+  // Scoped for the same reason as the page above: a branch reading its own
+  // order list under store-wide takings is a figure it cannot reconcile.
+  const { data, error } = await scopeOrdersQuery(
+    client
+      .from("orders")
+      .select("status, total, created_at")
+      .eq("tenant_id", tenantId)
+      .gte("created_at", startOfTodayISO(now)),
+    scope
+  );
 
   if (error) {
     throw new Error(

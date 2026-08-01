@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRealtimeOrders } from '@/hooks/use-realtime-orders'
+import type { BranchScope } from '@/lib/outlets/branch-scope'
 import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
 import {
   playNotificationSound,
@@ -25,6 +26,11 @@ interface RealtimeOrdersWrapperProps {
    */
   realtimeUrl?: string
   realtimeAnonKey?: string
+  /**
+   * The branch this admin may see, resolved on the server. Without it a branch
+   * account is chimed and notified for orders taken at branches it cannot open.
+   */
+  scope?: BranchScope
   pagination?: {
     currentPage: number
     totalPages: number
@@ -40,6 +46,7 @@ export function RealtimeOrdersWrapper({
   tenantId,
   realtimeUrl,
   realtimeAnonKey,
+  scope,
   pagination,
 }: RealtimeOrdersWrapperProps) {
   const router = useRouter()
@@ -104,6 +111,7 @@ export function RealtimeOrdersWrapper({
     client: tenantClient,
     onNewOrder: handleNewOrder,
     onOrderUpdate: handleOrderUpdate,
+    scope,
   })
 
   return (

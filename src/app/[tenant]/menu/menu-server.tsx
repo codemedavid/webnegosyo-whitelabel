@@ -3,6 +3,10 @@ import type { Tenant, Category, MenuItem, BundleWithSlots } from '@/types/databa
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 import { fetchActiveTenantBySlug, asTenantQueryClient } from '@/lib/queries/fetch-tenant-by-slug'
 import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
+import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
+import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import type { Outlet, OutletMenuOverride } from '@/types/database'
 
 export async function getMenuData(tenantSlug: string) {
   const supabase = await createClient()
@@ -14,7 +18,7 @@ export async function getMenuData(tenantSlug: string) {
   )
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin: false, error: 'Restaurant not found' }
+    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, menuOverrides: [] as OutletMenuOverride[], overridesFailed: false, isBrandAdmin: false, error: 'Restaurant not found' }
   }
 
   const tenant = tenantData as unknown as Tenant
@@ -37,7 +41,28 @@ export async function getMenuData(tenantSlug: string) {
         .order('display_order', { ascending: true })
     : Promise.resolve({ data: null, error: null })
 
-  const [catsResult, itemsResult, bundleResult] = await Promise.all([
+  // Branches are only read for a tenant that opted in; every other tenant runs
+  // exactly the queries it ran before this feature existed.
+  const outletsQuery = isMultiBranchEnabled(tenant)
+    ? supabase
+        .from('outlets')
+        .select(OUTLET_SELECT)
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+    : Promise.resolve({ data: null, error: null })
+
+  // Per-branch listings and prices. Fetched for the whole tenant in one query
+  // and indexed in the browser, because the branch is chosen client-side and
+  // this page is ISR-cached for every branch at once — see `useBranchMenu`.
+  const overridesQuery = isMultiBranchEnabled(tenant)
+    ? supabase
+        .from('outlet_menu_items')
+        .select(OUTLET_MENU_OVERRIDE_SELECT)
+        .eq('tenant_id', tenant.id)
+    : Promise.resolve({ data: null, error: null })
+
+  const [catsResult, itemsResult, bundleResult, outletsResult, overridesResult] = await Promise.all([
     supabase.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
     // Deliberately unfiltered on `is_available`: an out-of-stock dish stays on
     // the menu, marked unavailable by the card template, rather than vanishing.
@@ -45,7 +70,33 @@ export async function getMenuData(tenantSlug: string) {
     // rather than listing it. See src/lib/menu-item-availability.ts.
     supabase.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).order('order'),
     bundlesQuery,
+    outletsQuery,
+    overridesQuery,
   ])
+
+  // A branch query failure must not blank the menu — throwing here is the
+  // regression 38b4ede fixed for the dish query. But it must not silently fall
+  // back to single-location behaviour either: that renders the one-outlet flow
+  // for a multi-branch merchant and sends the order to the wrong kitchen, which
+  // is what Phase 1's Decision E exists to prevent.
+  //
+  // So the failure is carried rather than swallowed. The menu still renders;
+  // `resolveOutletAvailability` turns this flag into a block on *ordering*.
+  const outletsFailed = Boolean(outletsResult?.error)
+  if (outletsFailed) {
+    console.warn('[menu-server] Outlet query failed:', outletsResult?.error?.message)
+  }
+  const outlets = (outletsResult?.data as unknown as Outlet[] | null) ?? []
+
+  // Carried for the same reason, one step further in. An empty override set is
+  // not "no data" — it is the claim that every branch sells at the store-wide
+  // price, which after a failed query would quote one branch's customers
+  // another branch's prices. The menu still renders; ordering is what stops.
+  const overridesFailed = Boolean(overridesResult?.error)
+  if (overridesFailed) {
+    console.warn('[menu-server] Branch menu query failed:', overridesResult?.error?.message)
+  }
+  const menuOverrides = (overridesResult?.data as unknown as OutletMenuOverride[] | null) ?? []
 
   // Check if the current user is an admin for this tenant (server-side)
   let isBrandAdmin = false
@@ -72,7 +123,7 @@ export async function getMenuData(tenantSlug: string) {
       catsResult.error?.message && `categories: ${catsResult.error.message}`,
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], isBrandAdmin, error: `Failed to load menu data (${details})` }
+    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, menuOverrides: [] as OutletMenuOverride[], overridesFailed: false, isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
   // Bundle query errors are non-fatal — menu items should still show
@@ -110,6 +161,10 @@ export async function getMenuData(tenantSlug: string) {
     categories: (catsResult.data as unknown as Category[]) || [],
     menuItems: (itemsResult.data as unknown as MenuItem[]) || [],
     bundles,
+    outlets,
+    outletsFailed,
+    menuOverrides,
+    overridesFailed,
     isBrandAdmin,
     error: null
   }

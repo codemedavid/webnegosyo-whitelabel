@@ -21,8 +21,14 @@ import {
   Box,
   Users,
   Menu,
+  MapPin,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  hiddenAdminSidebarPaths,
+  isHiddenAdminHref,
+  type AdminSidebarFlags,
+} from '@/lib/admin-sidebar-visibility'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -59,31 +65,41 @@ function isGroup(entry: SidebarEntry): entry is SidebarGroup {
 
 // ─── Shared filtering logic ───────────────────────────────────────────────────
 
-function useFilteredItems(
-  items: SidebarEntry[],
-  enableOrderManagement?: boolean,
-  menuEngineeringEnabled?: boolean,
-  bundlesEnabled?: boolean,
-  convexConfigured?: boolean,
-  inventoryEnabled?: boolean,
-) {
-  const hiddenPaths = useMemo(() => {
-    const paths = new Set<string>()
-    if (enableOrderManagement === false) paths.add('/orders')
-    if (!menuEngineeringEnabled) {
-      paths.add('/boost-sales')
-      // Product Analytics shows basic per-product sales whenever Convex is
-      // configured (advanced BCG/cost features are gated inside the page), so
-      // only hide it when there is no Convex backend at all.
-      if (!convexConfigured) paths.add('/product-analytics')
-    }
-    if (!bundlesEnabled) paths.add('/bundles')
-    if (!inventoryEnabled) paths.add('/inventory')
-    return paths
-  }, [enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled])
+function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags) {
+  const {
+    enableOrderManagement,
+    menuEngineeringEnabled,
+    bundlesEnabled,
+    convexConfigured,
+    inventoryEnabled,
+    multiBranchEnabled,
+    isBranchScopedAccount,
+  } = flags
+
+  const hiddenPaths = useMemo(
+    () =>
+      hiddenAdminSidebarPaths({
+        enableOrderManagement,
+        menuEngineeringEnabled,
+        bundlesEnabled,
+        convexConfigured,
+        inventoryEnabled,
+        multiBranchEnabled,
+        isBranchScopedAccount,
+      }),
+    [
+      enableOrderManagement,
+      menuEngineeringEnabled,
+      bundlesEnabled,
+      convexConfigured,
+      inventoryEnabled,
+      multiBranchEnabled,
+      isBranchScopedAccount,
+    ]
+  )
 
   const shouldHide = useCallback(
-    (href: string) => Array.from(hiddenPaths).some((p) => href.includes(p)),
+    (href: string) => isHiddenAdminHref(href, hiddenPaths),
     [hiddenPaths]
   )
 
@@ -145,26 +161,21 @@ function useActivePageTitle(filteredItems: SidebarEntry[]) {
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-interface SidebarProps {
+interface SidebarProps extends AdminSidebarFlags {
   items: SidebarEntry[]
   basePath: string
   onLogout?: () => void
   tenantName?: string
-  enableOrderManagement?: boolean
-  menuEngineeringEnabled?: boolean
-  bundlesEnabled?: boolean
-  convexConfigured?: boolean
-  inventoryEnabled?: boolean
 }
 
 // ─── Desktop Sidebar ──────────────────────────────────────────────────────────
 
-export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled }: SidebarProps) {
+export function Sidebar({ items, onLogout, tenantName, ...flags }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled)
+  const filteredItems = useFilteredItems(items, flags)
 
   // Auto-expand group containing active route
   useEffect(() => {
@@ -418,12 +429,12 @@ export function Sidebar({ items, onLogout, tenantName, enableOrderManagement, me
 
 // ─── Mobile Header + Sheet ────────────────────────────────────────────────────
 
-export function MobileSidebar({ items, onLogout, tenantName, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled }: SidebarProps) {
+export function MobileSidebar({ items, onLogout, tenantName, ...flags }: SidebarProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const filteredItems = useFilteredItems(items, enableOrderManagement, menuEngineeringEnabled, bundlesEnabled, convexConfigured, inventoryEnabled)
+  const filteredItems = useFilteredItems(items, flags)
   const pageTitle = useActivePageTitle(filteredItems)
 
   // Auto-expand active group on open
@@ -637,6 +648,7 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Categories', href: '/admin/categories', icon: FolderTree },
       { label: 'Add-ons', href: '/admin/addons', icon: Box },
       { label: 'Inventory', href: '/admin/inventory', icon: Box },
+      { label: 'Transfers', href: '/admin/inventory/transfers', icon: Box },
       { label: 'Bundles', href: '/admin/bundles', icon: Box },
     ],
   },
@@ -653,6 +665,7 @@ export const adminSidebarItems: SidebarEntry[] = [
     icon: Cog,
     children: [
       { label: 'Order Types', href: '/admin/order-types', icon: Store },
+      { label: 'Branches', href: '/admin/outlets', icon: MapPin },
       { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard },
       { label: 'Branding Studio', href: '/admin/branding', icon: Paintbrush },
       { label: 'Hero Designer', href: '/admin/hero-designer', icon: Paintbrush },

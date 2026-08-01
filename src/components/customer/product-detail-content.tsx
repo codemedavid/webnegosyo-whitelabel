@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
 import { useModifierGroups } from '@/hooks/useModifierGroups'
+import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
@@ -21,6 +22,7 @@ import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
+import { useBranchPricing } from '@/hooks/use-branch-pricing'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -70,6 +72,8 @@ interface ProductDetailContentProps {
     upsellBundles?: BundleWithSlots[]
     bundlesEnabled?: boolean
     modifierGroupsEnabled?: boolean
+    /** Menu items referenced by linked add-on options, keyed by id. */
+    linkedModifierItems?: ReadonlyMap<string, LinkedItemSnapshot>
     isBrandAdmin?: boolean
     /**
      * 'page' (default) renders as the full-page route. 'sheet' adapts navigation
@@ -284,12 +288,12 @@ const AddonButton = memo(function AddonButton({
 
 export const ProductDetailContent = memo(function ProductDetailContent({
     tenant: tenantProp,
-    item,
+    item: storeWideItem,
     branding: brandingProp,
     category,
-    relatedItems = [],
+    relatedItems: storeWideRelatedItems = [],
     customization = null,
-    complementaryUpsells = [],
+    complementaryUpsells: storeWideComplementaryUpsells = [],
     upgradeUpsells = [],
     menuEngineeringEnabled = false,
     pairingRulesEnabled = false,
@@ -297,6 +301,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     upsellBundles = [],
     bundlesEnabled = false,
     modifierGroupsEnabled = false,
+    linkedModifierItems,
     isBrandAdmin = false,
     mode = 'page',
     onClose,
@@ -310,6 +315,19 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // server, so when a preview draft is streaming we merge it over the tenant
     // and recompute branding client-side for real-time accuracy.
     const tenant = useBrandingPreviewTenant(tenantProp)
+    // This page is server-rendered and cached for every branch at once, so the
+    // branch is applied here — to the dish, and to everything else on the page
+    // that carries a price. A tenant without branches gets identity back.
+    const branchPricing = useBranchPricing({ tenant: tenantProp, tenantSlug: tenantProp.slug })
+    const item = useMemo(() => branchPricing.resolve(storeWideItem), [branchPricing, storeWideItem])
+    const relatedItems = useMemo(
+        () => branchPricing.resolveAll(storeWideRelatedItems),
+        [branchPricing, storeWideRelatedItems]
+    )
+    const complementaryUpsells = useMemo(
+        () => branchPricing.resolveAll(storeWideComplementaryUpsells),
+        [branchPricing, storeWideComplementaryUpsells]
+    )
     // Operating-hours enforcement: resolves after mount (this page is cached), so
     // the closed notice and the disabled actions appear a frame after hydration.
     const openStatus = useStoreOpenStatus(tenant)
@@ -386,7 +404,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     // Unified modifier groups (Phase 2). Active only for items authored with the
     // new editor AND when the tenant flag is on; legacy items keep the path above.
-    const mg = useModifierGroups({ item })
+    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems })
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice

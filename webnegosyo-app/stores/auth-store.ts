@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { OrderBackend } from "../lib/order-backend";
 
 interface AuthState {
   userId: string | null;
@@ -6,6 +7,13 @@ interface AuthState {
   tenantSlug: string | null;
   tenantName: string | null;
   convexUrl: string | null;
+  /** The tenant's deployed Convex bundle, or null when unknown. */
+  convexSchemaVersion: number | null;
+  /**
+   * Which database serves this tenant's orders. `lib/hooks.ts` dispatches on it
+   * to pick the Convex client or the platform-Supabase adapter.
+   */
+  orderBackend: OrderBackend | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -15,11 +23,26 @@ interface AuthState {
    * without an account and without altering real merchant data.
    */
   isDemo: boolean;
+  /**
+   * Platform superadmin. Their app_users row carries no tenant_id, so they sign
+   * in without a tenant attached and land on the (superadmin) surface. Stays
+   * true while impersonating a tenant — see lib/impersonation.ts.
+   */
+  isSuperadmin: boolean
+  /** Tenant a superadmin is currently viewing; null on the platform surface. */
+  impersonatedTenantId: string | null;
   /** Tenant owner — full access. Staff accounts are false. */
   isOwner: boolean;
   /** Per-feature permission keys; null = full access (owner/legacy admins). */
   permissions: string[] | null;
   role: string | null;
+  /**
+   * Branch this session is confined to; null = the whole store. Order screens
+   * filter on it and the register stamps it onto a counter sale.
+   */
+  outletId: string | null;
+  /** The branch's name at sign-in, snapshotted onto counter sales. */
+  outletName: string | null;
   setAuth: (data: Partial<AuthState>) => void;
   clear: () => void;
 }
@@ -30,12 +53,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   tenantSlug: null,
   tenantName: null,
   convexUrl: null,
+  convexSchemaVersion: null,
+  orderBackend: null,
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
+  isSuperadmin: false,
+  impersonatedTenantId: null,
   isOwner: false,
   permissions: null,
   role: null,
+  outletId: null,
+  outletName: null,
   setAuth: (data) => set(data),
   clear: () =>
     set({
@@ -44,11 +73,17 @@ export const useAuthStore = create<AuthState>((set) => ({
       tenantSlug: null,
       tenantName: null,
       convexUrl: null,
+  convexSchemaVersion: null,
+      orderBackend: null,
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,
+      isSuperadmin: false,
+      impersonatedTenantId: null,
       isOwner: false,
       permissions: null,
       role: null,
+      outletId: null,
+      outletName: null,
     }),
 }));

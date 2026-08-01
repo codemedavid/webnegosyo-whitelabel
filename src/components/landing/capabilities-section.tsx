@@ -1,105 +1,56 @@
-'use client'
+import { CourtButton, SectionTitle, StencilMark, TarpPanel } from './court'
+import { CAPABILITIES, PRICE_LABEL, TARP } from './landing-theme'
 
-import { motion } from 'framer-motion'
-import {
-  Gauge,
-  Layers,
-  Palette,
-  Smartphone,
-  Sparkles,
-  Store,
-  Truck,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react'
-import { CTAButton, SectionHeading } from './cta-button'
-import {
-  CAPABILITIES,
-  LANDING_COLORS,
-  PRICE_LABEL,
-  type Capability,
-  type CapabilityIcon,
-} from './landing-theme'
-
-const VIEWPORT = { once: true, amount: 0.2 } as const
-
-const ICONS: Record<CapabilityIcon, LucideIcon> = {
-  store: Store,
-  sparkles: Sparkles,
-  layers: Layers,
-  truck: Truck,
-  gauge: Gauge,
-  palette: Palette,
-  wallet: Wallet,
-  phone: Smartphone,
-}
-
-function CapabilityCard({ capability, index }: { capability: Capability; index: number }) {
-  const Icon = ICONS[capability.icon]
-
-  return (
-    <motion.li
-      initial={{ opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.55, delay: (index % 4) * 0.07, ease: [0.16, 1, 0.3, 1] }}
-      className="group relative overflow-hidden rounded-2xl border border-white/8 p-6 transition-colors duration-300 hover:border-orange-600/35 md:p-7"
-      style={{ backgroundColor: LANDING_COLORS.inkLift }}
-    >
-      <span
-        className="flex h-11 w-11 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
-        style={{
-          background: `linear-gradient(140deg, ${LANDING_COLORS.brand}2e, ${LANDING_COLORS.gold}14)`,
-          border: `1px solid ${LANDING_COLORS.brand}33`,
-        }}
-      >
-        <Icon className="h-5 w-5" style={{ color: LANDING_COLORS.gold }} />
-      </span>
-      <h3 className="mt-5 text-[15px] font-black leading-snug tracking-[-0.01em] text-white md:text-base">
-        {capability.title}
-      </h3>
-      <p className="mt-2.5 text-[13.5px] leading-relaxed text-white/45">{capability.body}</p>
-    </motion.li>
-  )
-}
-
+/**
+ * The sponsor wall. Eight printed tarpaulins hung on the court fence at the
+ * sizes a real wall has — never eight identical cards. This is the page's
+ * bright register, and it is where the offer is spelled out in full.
+ */
 export function CapabilitiesSection() {
   return (
     <section
       id="what-you-get"
-      className="relative z-10 scroll-mt-20 overflow-hidden py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.inkSoft }}
+      className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32"
+      style={{ backgroundColor: TARP.vinyl }}
     >
-      <div
-        className="pointer-events-none absolute left-1/2 top-0 h-[380px] w-[900px] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ backgroundColor: `${LANDING_COLORS.brand}12` }}
-      />
-
-      <div className="relative mx-auto max-w-6xl px-5 md:px-8">
-        <SectionHeading
-          tag="What you get"
-          title="Lahat ng ito, isang bayad lang."
+      <div className="mx-auto max-w-6xl">
+        <SectionTitle
+          tone="vinyl"
           body="Hindi lang ito website builder. Ito ang buong sistema ng pag-order ng food business mo — mula sa unang tingin ng customer hanggang sa order na dumating sa kusina mo."
-        />
+        >
+          Lahat ng ito, isang bayad lang.
+        </SectionTitle>
 
-        <ul className="mt-14 grid gap-4 sm:grid-cols-2 md:mt-16 lg:grid-cols-4">
-          {CAPABILITIES.map((capability, i) => (
-            <CapabilityCard key={capability.title} capability={capability} index={i} />
+        <ul className="landing-tarp-wall mt-14 grid gap-3.5 sm:grid-cols-2 md:mt-16 lg:grid-cols-3">
+          {CAPABILITIES.map((capability) => (
+            <li key={capability.title} data-span={capability.span}>
+              <TarpPanel ink={capability.ink} className="flex h-full flex-col">
+                <StencilMark icon={capability.icon} size={30} className="opacity-90" />
+                <h3
+                  className="mt-5 font-display t-tarp uppercase leading-[1.05] tracking-[-0.015em]"
+                  style={{
+                    textShadow:
+                      capability.ink === 'vinyl' || capability.ink === 'yellow'
+                        ? '2px 2px 0 rgba(0,0,0,0.14)'
+                        : '2px 2px 0 rgba(0,0,0,0.28)',
+                  }}
+                >
+                  {capability.title}
+                </h3>
+                <p className="mt-3 max-w-[46ch] text-[13.5px] leading-relaxed">
+                  {capability.body}
+                </p>
+              </TarpPanel>
+            </li>
           ))}
         </ul>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.6 }}
-          className="mt-12 text-center"
-        >
-          <CTAButton>Kunin lahat — {PRICE_LABEL}</CTAButton>
-          <p className="mt-3 text-xs text-white/30">
+        <div className="mt-14 text-center">
+          <CourtButton size="large">Kunin lahat — {PRICE_LABEL}</CourtButton>
+          <p className="mt-4 text-[13px]" style={{ color: '#5A5A50' }}>
             Walang add-on, walang tier. Buo agad ang system pagka-live mo.
           </p>
-        </motion.div>
+        </div>
       </div>
     </section>
   )

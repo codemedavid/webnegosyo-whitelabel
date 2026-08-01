@@ -15,13 +15,13 @@ import { render, screen } from '@testing-library/react'
 import { FeatureJourney } from '@/components/landing/feature-journey'
 import { FeatureMock } from '@/components/landing/feature-mockups'
 import { FinalCTASection } from '@/components/landing/final-cta'
-import { FeatureMarquee, LandingFooter, LandingNav } from '@/components/landing/landing-chrome'
+import { LandingFooter, LandingNav, SponsorStrip } from '@/components/landing/landing-chrome'
 import { ProblemSection } from '@/components/landing/problem-section'
 import { SocialProofSection, StatsBand } from '@/components/landing/social-proof'
 import {
   CHECKOUT_URL,
   JOURNEY_FEATURES,
-  MARQUEE_ITEMS,
+  SPONSOR_STRIP,
   NAV_LINKS,
   PROBLEMS,
   STATS,
@@ -49,7 +49,7 @@ describe('J6 — upsell features are shown, not just described', () => {
     render(<FeatureJourney />)
 
     JOURNEY_FEATURES.forEach((feature) => {
-      expect(screen.getByText(feature.eyebrow)).toBeInTheDocument()
+      expect(screen.getByText(feature.when)).toBeInTheDocument()
       expect(screen.getByText(feature.title)).toBeInTheDocument()
       feature.points.forEach((point) => {
         expect(screen.getByText(point)).toBeInTheDocument()
@@ -116,7 +116,7 @@ describe('J7 — the visitor can always buy or reach policy pages', () => {
   it('sends the final call to action to checkout', () => {
     render(<FinalCTASection />)
 
-    const buyLink = screen.getByRole('link', { name: /get smart menu/i })
+    const buyLink = screen.getByRole('link', { name: /kunin/i })
 
     expect(buyLink).toHaveAttribute('href', CHECKOUT_URL)
   })
@@ -127,11 +127,11 @@ describe('J7 — the visitor can always buy or reach policy pages', () => {
     expect(screen.getByRole('link', { name: /may tanong/i })).toHaveAttribute('href', '#faq')
   })
 
-  it('renders the capability marquee', () => {
-    render(<FeatureMarquee />)
+  it('renders the sponsor strip', () => {
+    render(<SponsorStrip />)
 
-    // Each item is duplicated so the marquee can loop seamlessly.
-    expect(screen.getAllByText(MARQUEE_ITEMS[0]).length).toBeGreaterThanOrEqual(2)
+    // Each item is duplicated so the strip can loop seamlessly.
+    expect(screen.getAllByText(SPONSOR_STRIP[0]).length).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -140,7 +140,8 @@ describe('J8 — proof is on the page', () => {
     render(<StatsBand />)
 
     STATS.forEach((stat) => {
-      expect(screen.getByText(stat.value)).toBeInTheDocument()
+      // The figure is drawn as seven-segment SVG; its accessible text is the value.
+      expect(screen.getAllByText(stat.value).length).toBeGreaterThan(0)
       expect(screen.getByText(stat.label)).toBeInTheDocument()
     })
   })

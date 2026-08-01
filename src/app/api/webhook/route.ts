@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyWebhookSignature, sendMessage, sendMenuCard } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  getActivePageByPageId,
+  getActivePageById,
+} from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 
 // Keywords related to order status/tracking - these BLOCK menu auto-reply
@@ -23,12 +28,14 @@ const MENU_KEYWORDS = [
  * This enables PSID validation for subsequent API calls (e.g., cart sync).
  */
 async function ensureMessengerSession(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   psid: string,
   tenantId: string
 ): Promise<void> {
   try {
-    const { error } = await supabase
+    // Service role: the webhook is called by Facebook with no session, so
+    // there is no signed-in client to write the session row with. Scoped to
+    // the one psid being recorded.
+    const { error } = await createAdminClient()
       .from('messenger_sessions')
       .upsert({
         psid,
@@ -228,18 +235,7 @@ export async function POST(request: NextRequest) {
               console.log(`[Webhook] Looking up Facebook page with page_id: ${pageId}`)
 
               // Find tenant by page ID
-              const { data: pageData, error: pageError } = await supabase
-                .from('facebook_pages')
-                .select('tenant_id, page_access_token')
-                .eq('page_id', pageId)
-                .eq('is_active', true)
-                .single()
-
-              if (pageError) {
-                console.error(`[Webhook] Database error looking up Facebook page:`, pageError)
-              }
-
-              const page = pageData as { tenant_id: string; page_access_token: string } | null
+              const page = await getActivePageByPageId(pageId)
 
               if (page) {
                 console.log(`[Webhook] Found Facebook page, tenant_id: ${page.tenant_id}`)
@@ -394,12 +390,7 @@ export async function POST(request: NextRequest) {
               let facebookPage: { page_id: string; page_access_token: string } | null = null
 
               if (tenant.facebook_page_id) {
-                const { data: pageData } = await supabase
-                  .from('facebook_pages')
-                  .select('page_id, page_access_token')
-                  .eq('id', tenant.facebook_page_id)
-                  .eq('is_active', true)
-                  .single()
+                const pageData = await getActivePageById(tenant.facebook_page_id)
 
                 if (pageData) {
                   const page = pageData as { page_id: string; page_access_token: string }
@@ -450,7 +441,7 @@ export async function POST(request: NextRequest) {
                 console.log(`[Webhook] ✅ Order message sent successfully for order: ${orderId} to sender: ${senderId}`)
 
                 // Ensure messenger session exists for PSID-tenant validation
-                await ensureMessengerSession(supabase, senderId, tenant.id)
+                await ensureMessengerSession(senderId, tenant.id)
 
                 // Store PSID for future proactive messaging
                 // This allows us to send messages proactively for returning customers (within 24-hour window)
@@ -534,12 +525,7 @@ export async function POST(request: NextRequest) {
                 const pageId = entry.id
 
                 // Find tenant by page ID
-                const { data: pageData } = await supabase
-                  .from('facebook_pages')
-                  .select('tenant_id, page_access_token')
-                  .eq('page_id', pageId)
-                  .eq('is_active', true)
-                  .single()
+                const pageData = await getActivePageByPageId(pageId)
 
                 const page = pageData as { tenant_id: string; page_access_token: string } | null
 
@@ -560,7 +546,7 @@ export async function POST(request: NextRequest) {
                     if (sent) {
                       console.log(`[Webhook] ✅ Menu card sent successfully to ${senderId}`)
                       // Ensure messenger session exists for PSID-tenant validation
-                      await ensureMessengerSession(supabase, senderId, tenant.id)
+                      await ensureMessengerSession(senderId, tenant.id)
                       // Don't continue to fallback order matching since we handled the message
                       continue
                     } else {
@@ -591,12 +577,7 @@ export async function POST(request: NextRequest) {
               const pageId = entry.id
 
               // Find tenant by page ID
-              const { data: pageData } = await supabase
-                .from('facebook_pages')
-                .select('tenant_id, page_access_token')
-                .eq('page_id', pageId)
-                .eq('is_active', true)
-                .single()
+              const pageData = await getActivePageByPageId(pageId)
 
               const page = pageData as { tenant_id: string; page_access_token: string } | null
               if (page) {
@@ -720,7 +701,7 @@ export async function POST(request: NextRequest) {
                         console.log(`[Webhook] Fallback: ✅ Order message sent successfully for order: ${order.id} to sender: ${senderId}`)
 
                         // Ensure messenger session exists for PSID-tenant validation
-                        await ensureMessengerSession(supabase, senderId, page.tenant_id)
+                        await ensureMessengerSession(senderId, page.tenant_id)
 
                         // Mark as sent to prevent duplicate sends
                         try {

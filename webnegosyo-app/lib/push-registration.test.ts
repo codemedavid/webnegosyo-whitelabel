@@ -1,6 +1,7 @@
 import {
   shouldRegisterPushToken,
   pushTokenCleanup,
+  pushRegistrationOutletId,
 } from "./push-registration";
 
 /**
@@ -87,5 +88,33 @@ describe("pushTokenCleanup", () => {
   it("has nothing to clear without a deployment or user", () => {
     expect(pushTokenCleanup({ ...SUPERADMIN_IN_TENANT, convexUrl: null })).toBeNull();
     expect(pushTokenCleanup({ ...SUPERADMIN_IN_TENANT, userId: null })).toBeNull();
+  });
+});
+
+/**
+ * Which branch a device registers under.
+ *
+ * The backend rings only the devices bound to an order's branch, so this value
+ * decides what a phone hears. It must come from the *account* — the branch the
+ * signed-in user is confined to — and never from an owner's drill-down
+ * selection: a token outlives the screen that wrote it, so registering under a
+ * viewed branch would leave an owner permanently deaf to every other branch
+ * after they backed out of it.
+ */
+describe("pushRegistrationOutletId", () => {
+  it("binds a branch manager's device to their branch", () => {
+    expect(
+      pushRegistrationOutletId({ ...MERCHANT, outletId: "outlet-north" })
+    ).toBe("outlet-north");
+  });
+
+  it("leaves an owner's device store-wide, so it hears every branch", () => {
+    // An owner has no branch on their account. Undefined is the wire value for
+    // "no branch", which the backend reads as every branch.
+    expect(pushRegistrationOutletId({ ...MERCHANT, outletId: null })).toBeUndefined();
+  });
+
+  it("treats a blank branch as store-wide", () => {
+    expect(pushRegistrationOutletId({ ...MERCHANT, outletId: "   " })).toBeUndefined();
   });
 });

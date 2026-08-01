@@ -8,6 +8,7 @@ import {
 } from "@/lib/tenant-supabase-orders-read";
 import type { OrderStats } from "@/lib/order-stats";
 import type { OrderBackendTenantFields } from "@/lib/order-backend";
+import { resolveBranchScope } from "@/lib/outlets/branch-scope";
 
 /**
  * Server-only entry points for reading a tenant's order queue out of their own
@@ -31,17 +32,19 @@ export async function getTenantSupabaseOrdersPage(
   tenant: TenantOrderSource,
   params?: TenantOrdersPageParams
 ): Promise<TenantOrdersPage> {
-  await verifyTenantPermission(tenant.id, "orders");
+  // The verified row carries the caller's branch, so the scope is resolved from
+  // the same gate that authorized the read — a screen cannot pass its own.
+  const { userRole } = await verifyTenantPermission(tenant.id, "orders");
 
   const client = createTenantOrderWriteClient(tenant);
-  return fetchTenantOrdersPage(client, tenant.id, params);
+  return fetchTenantOrdersPage(client, tenant.id, params, resolveBranchScope(userRole));
 }
 
 export async function getTenantSupabaseOrderStats(
   tenant: TenantOrderSource
 ): Promise<OrderStats> {
-  await verifyTenantPermission(tenant.id, "orders");
+  const { userRole } = await verifyTenantPermission(tenant.id, "orders");
 
   const client = createTenantOrderWriteClient(tenant);
-  return fetchTenantOrderStats(client, tenant.id);
+  return fetchTenantOrderStats(client, tenant.id, new Date(), resolveBranchScope(userRole));
 }

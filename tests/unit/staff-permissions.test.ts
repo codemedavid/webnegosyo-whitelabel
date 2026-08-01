@@ -27,6 +27,12 @@ describe('staff permission registry', () => {
       'customers',
       'settings',
       'pos',
+      // Multi-branch: lets a branch admin manage staff at its own branch only.
+      'branch_staff',
+      // Order editing: rewriting a placed bill, and returning money on it.
+      // Separate from 'orders', which only advances status.
+      'order_edit',
+      'order_refund',
     ])
   })
 
@@ -121,6 +127,12 @@ describe('permissionForAdminPath', () => {
     expect(permissionForAdminPath('/my-resto/admin/payment-methods')).toBe('store_setup')
     expect(permissionForAdminPath('/my-resto/admin/branding')).toBe('store_setup')
     expect(permissionForAdminPath('/my-resto/admin/hero-designer')).toBe('store_setup')
+  })
+
+  it('maps branches to store setup', () => {
+    // Branches are store configuration, so they ride the same permission as
+    // order types and payment methods rather than introducing a new key.
+    expect(permissionForAdminPath('/my-resto/admin/outlets')).toBe('store_setup')
   })
 
   it('maps customers routes', () => {

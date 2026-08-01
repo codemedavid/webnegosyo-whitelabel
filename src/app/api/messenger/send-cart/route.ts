@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatPrice } from '@/lib/cart-utils'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
@@ -68,12 +70,14 @@ interface CartItemForSync {
  * @returns true if the PSID has an existing session with the tenant, false otherwise
  */
 async function verifyPSIDForTenant(
-    supabase: Awaited<ReturnType<typeof createClient>>,
     psid: string,
     tenantId: string
 ): Promise<boolean> {
     try {
-        const { data, error } = await supabase
+        // Service role: this route is public, so there is no session to read
+        // the session table with. Scoped to the one psid/tenant pair being
+        // verified, which is the whole question being asked.
+        const { data, error } = await createAdminClient()
             .from('messenger_sessions')
             .select('id')
             .eq('psid', psid)
@@ -220,12 +224,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get Facebook page access token
-        const { data: pageData } = await supabase
-            .from('facebook_pages')
-            .select('page_access_token')
-            .eq('id', tenant.facebook_page_id)
-            .eq('is_active', true)
-            .single()
+        const pageData = await getActivePageById(tenant.facebook_page_id)
 
         if (!pageData) {
             return corsJson(request,
@@ -237,7 +236,7 @@ export async function POST(request: NextRequest) {
         const page = pageData as { page_access_token: string }
 
         // Verify PSID is associated with this tenant before sending message
-        const isPSIDValid = await verifyPSIDForTenant(supabase, psid, tenantId)
+        const isPSIDValid = await verifyPSIDForTenant(psid, tenantId)
         if (!isPSIDValid) {
             const maskedPsid = psid.length >= 4 ? `**** ${ psid.slice(-4) }` : '****'
             console.warn(`[Send Cart] ⚠️ PSID ${ maskedPsid } not associated with tenant ${ tenantId } `)

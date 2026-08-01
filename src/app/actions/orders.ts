@@ -16,6 +16,19 @@ import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backen
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
+import {
+  resolveOrderLinePrice,
+  type StoreMenuItemPricing,
+} from '@/lib/order-line-price-floor'
+import {
+  buildOutletMenuIndex,
+  findOutletMenuOverride,
+  type OutletMenuIndex,
+  type OutletMenuOverrideRow,
+} from '@/lib/outlets/outlet-menu-overrides'
+import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -77,6 +90,13 @@ async function depleteStockForOrder(
     option_ids?: string[]
     addon_ids?: string[]
   }>,
+  /**
+   * Branch that took the order — the already-validated `resolvedOutlet`, never
+   * the id the browser sent. Stock is spent from the shop that served it, and a
+   * client-chosen branch would let a customer deplete someone else's shelf.
+   * Null for a single-location tenant, whose stock is the unbranched pool.
+   */
+  outletId: string | null,
 ) {
   if (tenantConfig.inventory_enabled !== true) return
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
@@ -93,6 +113,9 @@ async function depleteStockForOrder(
       modifierOptionIds: item.option_ids ?? [],
       addonIds: item.addon_ids ?? [],
     })),
+    'sale',
+    0,
+    outletId,
   )
 }
 
@@ -136,7 +159,13 @@ export async function createOrderAction(
     url?: string | null
     publicId?: string | null
     reference?: string | null
-  }
+  },
+  /**
+   * The branch the customer chose, as claimed by their browser. Re-validated
+   * here against the tenant's own outlets — never trusted as sent. Ignored
+   * entirely unless the tenant enabled multi-branch.
+   */
+  outletId?: string
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -153,7 +182,7 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -216,6 +245,29 @@ export async function createOrderAction(
         }
       }
     }
+
+    // ── Which branch is fulfilling this order (authoritative) ──
+    // The browser tells us what the customer picked; we only believe it if the
+    // tenant opted in AND the id names one of their own branches. Both
+    // conditions are checked before the query runs, so a tenant without the
+    // feature issues exactly the queries they issue today.
+    let resolvedOutlet: { id: string; name: string } | null = null
+    if (isMultiBranchEnabled(tenantConfig) && typeof outletId === 'string' && outletId.trim() !== '') {
+      const { data: outletRows } = await supabaseAdmin
+        .from('outlets')
+        .select('id, name, is_active')
+        .eq('tenant_id', tenantId)
+      resolvedOutlet = resolveOrderOutlet({
+        isEnabled: true,
+        requestedOutletId: outletId,
+        outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+      })
+    }
+
+    // Convex and tenant-owned Supabase projects have no outlet column, so the
+    // branch rides in customer_data for every backend. Returns the very same
+    // object when no branch resolved — see withOrderOutlet.
+    effectiveCustomerData = withOrderOutlet(effectiveCustomerData, resolvedOutlet)
 
     // ── Server-side distance-based delivery fee (authoritative) ──
     // For tenants on the non-Lalamove distance path, recompute the fee from the
@@ -313,10 +365,16 @@ export async function createOrderAction(
     }
 
     // SERVER-SIDE PRICE VALIDATION (runs before BOTH Supabase and Convex paths)
+    //
+    // The floor each line is held to is decided in `resolveOrderLinePrice`, from
+    // the price the customer was actually shown: the store-wide dish, its sale
+    // price if it has one, and then the chosen branch's override on top. A floor
+    // built from the bare list price overcharges every discounted line and undoes
+    // per-branch pricing in the direction merchants use it most — cheaper here.
     const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
     const { data: dbItems, error: priceCheckError } = await supabaseAdmin
       .from('menu_items')
-      .select('id, price, name')
+      .select('id, price, discounted_price, is_available, name')
       .eq('tenant_id', tenantId)
       .in('id', menuItemIds)
 
@@ -324,32 +382,49 @@ export async function createOrderAction(
       return { success: false, error: 'Failed to verify item prices' }
     }
 
-    const priceMap = new Map((dbItems || []).map((i: { id: string; price: number }) => [i.id, i.price]))
-    const MAX_QUANTITY = 99
-    const MAX_PRICE = 1_000_000
+    const storeItems = new Map(
+      ((dbItems ?? []) as unknown as StoreMenuItemPricing[]).map(i => [i.id, i])
+    )
 
-    for (const item of items) {
-      const dbPrice = priceMap.get(item.menu_item_id)
-      if (dbPrice === undefined) {
-        return { success: false, error: `Menu item not found: ${item.menu_item_name}` }
+    // Only a branch-carrying order needs overrides, and only for the dishes in
+    // it. A tenant without the feature issues exactly the queries it does today.
+    let branchOverrides: OutletMenuIndex = buildOutletMenuIndex([])
+    if (resolvedOutlet) {
+      const { data: overrideRows, error: overrideError } = await supabaseAdmin
+        .from('outlet_menu_items')
+        .select(OUTLET_MENU_OVERRIDE_SELECT)
+        .eq('tenant_id', tenantId)
+        .eq('outlet_id', resolvedOutlet.id)
+        .in('menu_item_id', menuItemIds)
+
+      // Not swallowed. An empty override set is the specific claim "this branch
+      // sells at the store-wide price", which on a failed query would charge one
+      // branch's customers another branch's prices.
+      if (overrideError) {
+        return { success: false, error: 'Failed to verify branch prices' }
       }
-      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_QUANTITY) {
-        return { success: false, error: `Invalid quantity for ${item.menu_item_name}` }
-      }
-      // Ensure price is at least the DB base price (variations can add to it)
-      if (item.price < dbPrice - 0.01) {
-        item.price = dbPrice
-      }
-      if (item.price > MAX_PRICE) {
-        return { success: false, error: `Price exceeds maximum for ${item.menu_item_name}` }
-      }
-      // Enforce subtotal = price × quantity
-      const expectedSubtotal = Math.round(item.price * item.quantity * 100) / 100
-      const submittedSubtotal = Math.round(item.subtotal * 100) / 100
-      if (Math.abs(submittedSubtotal - expectedSubtotal) > 0.02) {
-        item.subtotal = expectedSubtotal
-      }
+      branchOverrides = buildOutletMenuIndex(
+        (overrideRows ?? []) as unknown as OutletMenuOverrideRow[]
+      )
     }
+
+    // Rebuilt rather than mutated in place: the caller's array is not ours to
+    // rewrite, and a re-priced copy is what every downstream path should use.
+    const pricedItems: typeof items = []
+    for (const item of items) {
+      const result = resolveOrderLinePrice(
+        item,
+        storeItems.get(item.menu_item_id),
+        findOutletMenuOverride(branchOverrides, resolvedOutlet?.id ?? null, item.menu_item_id)
+      )
+
+      if (!result.ok) {
+        return { success: false, error: result.error }
+      }
+
+      pricedItems.push({ ...item, price: result.price, subtotal: result.subtotal })
+    }
+    items = pricedItems
 
     // Convex has no payment-proof columns, so proof rides in customerData (same
     // pattern as advance-order schedule) to stay cross-tenant compatible.
@@ -422,7 +497,7 @@ export async function createOrderAction(
         })),
       })
 
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -453,7 +528,7 @@ export async function createOrderAction(
         serviceChargeAmount,
         validatedScheduledISO
       )
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -475,10 +550,13 @@ export async function createOrderAction(
       paymentMethodQrCodeUrl,
       serviceChargeAmount,
       validatedScheduledISO,
-      paymentProof
+      paymentProof,
+      // Only the platform database has an outlet_id column; the other two
+      // backends carry the branch in customer_data (stamped above).
+      resolvedOutlet?.id ?? null
     )
     // Return both order and token for secure public API access
-    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items)
+    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
     await firePostHogNotification(result.order.id, items)
     let trackingToken: string | undefined
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }

@@ -1,6 +1,12 @@
 import { supabase } from "./supabase";
 import {
+  buildOutletMenuIndex,
+  resolveMenuForOutlet,
+  type OutletMenuOverrideRow,
+} from "./outlet-menu-overrides";
+import {
   normalizeModifierGroups,
+  splitGroupsToLegacyColumns,
   type ModifierGroup,
   type ModifierSource,
 } from "./modifier-groups";
@@ -17,6 +23,8 @@ export interface Product {
   is_available: boolean;
   is_featured: boolean;
   order: number;
+  /** Set when auto-86 hid this item; NULL means the merchant chose to. */
+  auto_disabled_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -173,7 +181,40 @@ function assertValid(input: ProductInput): void {
   }
 }
 
-export async function listProducts(tenantId: string): Promise<Product[]> {
+/**
+ * Expand a product payload into the row actually written to `menu_items`.
+ *
+ * When the caller edited the options, `modifier_groups` is canonical and the
+ * legacy `variation_types` / `variations` / `addons` columns are derived from it
+ * — the customer storefront, white-labeled customer app and desktop POS still
+ * read those columns, so an add-on saved without them would be invisible to
+ * customers. An empty group list clears the legacy columns rather than leaving
+ * stale data behind.
+ *
+ * Callers that never touch the options (the availability toggle) omit
+ * `modifier_groups` entirely; their row is passed through untouched so a partial
+ * update can never wipe a product's options.
+ */
+function toMenuItemRow(input: ProductInput): Record<string, unknown> {
+  if (!input.modifier_groups) return { ...input };
+
+  return { ...input, ...splitGroupsToLegacyColumns(input.modifier_groups) };
+}
+
+/**
+ * The store's products, priced for one branch when the register belongs to one.
+ *
+ * Without `outletId` this is the store-wide menu, which is what a
+ * single-location merchant has always seen. With it, the list is exactly what
+ * that branch sells: dishes it does not carry are gone, its prices are its own,
+ * and anything it has run out of comes back marked unavailable rather than
+ * missing — so the cashier sees a greyed-out tile instead of wondering where a
+ * dish went.
+ */
+export async function listProducts(
+  tenantId: string,
+  outletId?: string | null,
+): Promise<Product[]> {
   const { data, error } = await supabase
     .from("menu_items")
     .select("*, category:categories(*)")
@@ -181,7 +222,25 @@ export async function listProducts(tenantId: string): Promise<Product[]> {
     .order("order", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as unknown as Product[];
+  const products = (data ?? []) as unknown as Product[];
+
+  if (!outletId) return products;
+
+  const { data: overrideRows, error: overrideError } = await supabase
+    .from("outlet_menu_items")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("outlet_id", outletId);
+
+  // Not swallowed: an empty override set is the claim "this branch sells at the
+  // store-wide price", which after a failed query rings up the wrong money.
+  if (overrideError) throw overrideError;
+
+  const index = buildOutletMenuIndex(
+    (overrideRows ?? []) as unknown as OutletMenuOverrideRow[],
+  );
+
+  return resolveMenuForOutlet(products, index, outletId) as Product[];
 }
 
 export async function createProduct(
@@ -192,7 +251,7 @@ export async function createProduct(
 
   const { data, error } = await supabase
     .from("menu_items")
-    .insert({ tenant_id: tenantId, ...input })
+    .insert({ tenant_id: tenantId, ...toMenuItemRow(input) })
     .select()
     .single();
 
@@ -209,7 +268,7 @@ export async function updateProduct(
 
   const { data, error } = await supabase
     .from("menu_items")
-    .update(input)
+    .update(toMenuItemRow(input))
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select()
@@ -239,7 +298,10 @@ export async function toggleProductAvailability(
 ): Promise<Product> {
   const { data, error } = await supabase
     .from("menu_items")
-    .update({ is_available: isAvailable })
+    // Clearing `auto_disabled_at` hands ownership back to the merchant: stock
+    // recovery re-enables only items still carrying the marker, so a dish the
+    // merchant has just decided about must no longer carry it.
+    .update({ is_available: isAvailable, auto_disabled_at: null })
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select()

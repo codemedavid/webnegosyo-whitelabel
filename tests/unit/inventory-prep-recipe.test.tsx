@@ -54,7 +54,8 @@ describe('InventoryManager prep recipes', () => {
     renderManager([DOUGH])
 
     // Act
-    fireEvent.click(screen.getByRole('button', { name: /recipe/i }))
+    fireEvent.click(screen.getByRole('button', { name: /more actions for pizza dough/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /recipe/i }))
 
     // Assert
     const editor = screen.getByTestId('recipe-editor')
@@ -66,8 +67,9 @@ describe('InventoryManager prep recipes', () => {
 
   it('offers no recipe for a raw material, which is bought rather than made', () => {
     renderManager([FLOUR])
+    fireEvent.click(screen.getByRole('button', { name: /more actions for flour/i }))
 
-    expect(screen.queryByRole('button', { name: /recipe/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /recipe/i })).not.toBeInTheDocument()
   })
 
   it('keeps the recipe closed until asked, so the list stays scannable', () => {

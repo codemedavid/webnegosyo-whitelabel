@@ -16,7 +16,7 @@ import {
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
 import {
-  EMPTY_RECIPE_LINE,
+  createEmptyRecipeLine,
   buildRecipeInput,
   recipeFormFromData,
   estimateRecipeCost,
@@ -57,7 +57,7 @@ const DEFAULT_LABEL = 'Recipe (ingredients used per sale)'
 export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: RecipeEditorProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>([])
   const [units, setUnits] = useState<InventoryUnitRow[]>([])
-  const [form, setForm] = useState<RecipeFormState>({ notes: '', lines: [EMPTY_RECIPE_LINE] })
+  const [form, setForm] = useState<RecipeFormState>({ notes: '', lines: [createEmptyRecipeLine()] })
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -107,12 +107,13 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
     }))
   }
 
-  const addLine = () => setForm((f) => ({ ...f, lines: [...f.lines, EMPTY_RECIPE_LINE] }))
+  const addLine = () =>
+    setForm((f) => ({ ...f, lines: [...f.lines, createEmptyRecipeLine()] }))
 
   const removeLine = (index: number) =>
     setForm((f) => {
       const next = f.lines.filter((_, i) => i !== index)
-      return { ...f, lines: next.length > 0 ? next : [EMPTY_RECIPE_LINE] }
+      return { ...f, lines: next.length > 0 ? next : [createEmptyRecipeLine()] }
     })
 
   const handleSave = async () => {
@@ -181,14 +182,19 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
         )}
       </div>
 
+      {/*
+        A recipe line is four controls on one rail. Below `sm` the four do not
+        fit a phone at any honest size, so the ingredient takes the first line
+        and quantity, unit and remove share the second.
+      */}
       <div className="space-y-2">
         {form.lines.map((line, index) => (
-          <div key={index} className="flex gap-2">
+          <div key={line.uid ?? index} className="flex gap-2 max-sm:flex-wrap">
             <Select
               value={line.inventory_item_id || undefined}
               onValueChange={(value) => updateLine(index, { inventory_item_id: value })}
             >
-              <SelectTrigger className="flex-1">
+              <SelectTrigger className="flex-1 max-sm:h-11 max-sm:w-full max-sm:flex-none">
                 <SelectValue placeholder="Ingredient" />
               </SelectTrigger>
               <SelectContent>
@@ -206,13 +212,13 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
               placeholder="Qty"
               value={line.quantity}
               onChange={(e) => updateLine(index, { quantity: e.target.value })}
-              className="w-20"
+              className="w-20 max-sm:h-11 max-sm:flex-1"
             />
             <Select
               value={line.unit_id || undefined}
               onValueChange={(value) => updateLine(index, { unit_id: value })}
             >
-              <SelectTrigger className="w-24">
+              <SelectTrigger className="w-24 max-sm:h-11">
                 <SelectValue placeholder="Unit" />
               </SelectTrigger>
               <SelectContent>
@@ -229,7 +235,7 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
               size="icon"
               aria-label="Remove ingredient"
               onClick={() => removeLine(index)}
-              className="text-red-500 shrink-0"
+              className="shrink-0 text-red-500 max-sm:size-11"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -238,8 +244,8 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
       </div>
 
       {isPrep && (
-        <div className="flex items-center gap-2 border-t pt-2">
-          <Label htmlFor={yieldFieldId} className="text-xs shrink-0">
+        <div className="flex items-center gap-2 border-t pt-2 max-sm:flex-wrap">
+          <Label htmlFor={yieldFieldId} className="shrink-0 text-xs">
             Yields
           </Label>
           <Input
@@ -250,13 +256,13 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
             placeholder="Qty"
             value={form.yieldQuantity ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, yieldQuantity: e.target.value }))}
-            className="w-24"
+            className="w-24 max-sm:h-11 max-sm:flex-1"
           />
           <Select
             value={form.yieldUnitId || undefined}
             onValueChange={(value) => setForm((f) => ({ ...f, yieldUnitId: value }))}
           >
-            <SelectTrigger className="w-24">
+            <SelectTrigger className="w-24 max-sm:h-11">
               <SelectValue placeholder="Unit" />
             </SelectTrigger>
             <SelectContent>
@@ -267,18 +273,30 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground max-sm:w-full">
             The batch cost is divided by this to price one unit.
           </p>
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <Button type="button" variant="outline" size="sm" onClick={addLine}>
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="max-sm:h-11 max-sm:flex-1"
+          onClick={addLine}
+        >
           <Plus className="mr-1 h-3 w-3" />
           Add ingredient
         </Button>
-        <Button type="button" size="sm" onClick={handleSave} disabled={isSaving}>
+        <Button
+          type="button"
+          size="sm"
+          className="max-sm:h-11 max-sm:flex-1"
+          onClick={handleSave}
+          disabled={isSaving}
+        >
           {isSaving ? 'Saving…' : 'Save recipe'}
         </Button>
       </div>

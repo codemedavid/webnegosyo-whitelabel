@@ -9,9 +9,12 @@ import {
     getCachedCategoryById,
     getCachedRelatedItems,
     getCachedProductDetailSettings,
-    getCachedUpsellsForItem
+    getCachedUpsellsForItem,
+    getCachedLinkedModifierItems
 } from '@/lib/product-detail-data'
 import { getUpsellBundles } from '@/lib/bundles-service'
+import { collectLinkedItemIds } from '@/lib/modifier-linked-options'
+import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
 import { createClient } from '@/lib/supabase/server'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
@@ -92,6 +95,16 @@ export default async function ProductDetailPage({ params }: Props) {
         }
 
         const branding = getTenantBranding(tenant)
+
+        // Menu items referenced by linked add-on options ("Add a Coke"). Resolved
+        // live at render, so the add-on always shows the item's current name,
+        // price, image and availability. Empty map when nothing is linked.
+        const linkedModifierItems = tenant.modifier_groups_enabled
+            ? await getCachedLinkedModifierItems(
+                collectLinkedItemIds(normalizeModifierGroups({ modifier_groups: item.modifier_groups })),
+                tenant.id
+            )
+            : new Map()
 
         // Fetch NON-CRITICAL data in parallel (doesn't block - uses defaults if fails)
         let category: Category | null = null
@@ -207,6 +220,7 @@ export default async function ProductDetailPage({ params }: Props) {
                     upsellBundles={upsellBundles}
                     bundlesEnabled={!!tenant.bundles_enabled}
                     modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
+                    linkedModifierItems={linkedModifierItems}
                     isBrandAdmin={isBrandAdmin}
                 />
                 {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}

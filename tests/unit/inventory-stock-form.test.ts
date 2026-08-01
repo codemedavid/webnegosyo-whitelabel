@@ -11,6 +11,7 @@ import { stockMovementInputSchema } from '@/lib/inventory/schemas'
 import {
   EMPTY_STOCK_DRAFT,
   buildStockMovementInput,
+  describeDeliveryPriceUnit,
   type StockMovementDraft,
 } from '@/lib/inventory/stock-form'
 
@@ -95,5 +96,91 @@ describe('stockMovementInputSchema', () => {
         }),
       ).not.toThrow()
     }
+  })
+})
+
+/**
+ * Phase 0 — the delivery price is per the unit the merchant entered in, and the
+ * server converts it to the ingredient's stock unit before storing it. The
+ * dialog therefore has to name both units, because "Unit cost" beside a unit
+ * dropdown reads as either one and guessing wrong is a silent 1000x error.
+ *
+ * The wording lives here rather than in the component because the unit
+ * dropdown is a Radix `Select` that cannot be driven under jsdom — testing the
+ * rule through the widget would prove less and break more.
+ */
+describe('describeDeliveryPriceUnit', () => {
+  const perUnit = (abbrev: string) => abbrev
+
+  test('names the entered unit in the label', () => {
+    // Arrange / Act
+    const described = describeDeliveryPriceUnit('kg', 'g', perUnit)
+
+    // Assert
+    expect(described.label).toMatch(/cost per kg/i)
+  })
+
+  test('says the price will be converted when the units differ', () => {
+    const described = describeDeliveryPriceUnit('kg', 'g', perUnit)
+
+    expect(described.conversionHint).toMatch(/converted to g/i)
+  })
+
+  test('says nothing about conversion when the units already match', () => {
+    // Arrange — no conversion happens, so mentioning one is noise.
+    const described = describeDeliveryPriceUnit('g', 'g', perUnit)
+
+    expect(described.label).toMatch(/cost per g/i)
+    expect(described.conversionHint).toBeNull()
+  })
+
+  test('falls back to the stock unit before the merchant picks one', () => {
+    // Arrange — the dialog opens with no unit selected.
+    const described = describeDeliveryPriceUnit('', 'g', perUnit)
+
+    expect(described.label).toMatch(/cost per g/i)
+    expect(described.conversionHint).toBeNull()
+  })
+})
+
+/**
+ * A count that is running should collect the entries made into it, without the
+ * merchant having to remember to say so.
+ *
+ * If attaching were a thing to remember, the entries a busy kitchen forgets to
+ * tag would leave the count reading as partial — and a coverage figure that
+ * under-reports honest work is how merchants learn to ignore it.
+ */
+describe('buildStockMovementInput — joining the open count', () => {
+  const UUID_COUNT = '33333333-3333-4333-8333-333333333333'
+
+  it('files a stocktake under the count that is running', () => {
+    const input = buildStockMovementInput(
+      draft({ reason: 'stocktake', quantity: '900' }),
+      UUID_ITEM,
+      UUID_COUNT,
+    )
+
+    expect(input.inventory_count_id).toBe(UUID_COUNT)
+  })
+
+  it('leaves a delivery out of the count even while one is running', () => {
+    // Stock still arrives mid-count. A delivery filed under the count would
+    // raise coverage for an ingredient nobody counted — and the schema refuses
+    // it outright, so attaching here would break the merchant's delivery form.
+    const input = buildStockMovementInput(
+      draft({ reason: 'receive', quantity: '10' }),
+      UUID_ITEM,
+      UUID_COUNT,
+    )
+
+    expect(input.inventory_count_id).toBeUndefined()
+  })
+
+  it('records a one-off stocktake when no count is running', () => {
+    // The behaviour every tenant has today, and it must not change.
+    const input = buildStockMovementInput(draft({ reason: 'stocktake', quantity: '900' }), UUID_ITEM)
+
+    expect(input.inventory_count_id).toBeUndefined()
   })
 })

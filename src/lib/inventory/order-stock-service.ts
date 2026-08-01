@@ -18,6 +18,11 @@ import {
   type DepletionOrderItem,
 } from '@/lib/inventory/order-depletion'
 import { resolveMovementDelta } from '@/lib/inventory/stock-ledger'
+import { resolveMovementOutletId } from '@/lib/inventory/stock-location'
+import {
+  claimOrderStockApplication,
+  releaseOrderStockApplication,
+} from '@/lib/inventory/order-stock-claim'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 function toUnit(row: InventoryUnitRow): InventoryUnit {
@@ -27,6 +32,45 @@ function toUnit(row: InventoryUnitRow): InventoryUnit {
     abbreviation: row.abbreviation,
     dimension: row.dimension,
     to_base_factor: row.to_base_factor,
+  }
+}
+
+/**
+ * The one branch a batch of ledger rows belongs to, or `undefined` if they
+ * straddle more than one.
+ *
+ * A reversal reads its branch off the recorded movements, and an order whose
+ * branch was corrected mid-life can have legs on two shelves. Naming one of
+ * them would alert about a shelf half the rows never touched, so an ambiguous
+ * batch falls back to the store-wide behaviour it has always had.
+ */
+function soleOutletId(
+  rows: ReadonlyArray<{ outlet_id?: unknown }>,
+): string | null | undefined {
+  if (rows.length === 0) return undefined
+  const outletOf = (row: { outlet_id?: unknown }) =>
+    typeof row.outlet_id === 'string' ? row.outlet_id : null
+
+  const first = outletOf(rows[0])
+  return rows.every((row) => outletOf(row) === first) ? first : undefined
+}
+
+/**
+ * Runs the alert path without letting it affect the movement that triggered it.
+ * `processStockLevelChanges` already swallows its own errors; this guards the
+ * call itself, so a broken alert module can never unwind a recorded sale.
+ */
+async function notifyStockLevelChanges(
+  tenantId: string,
+  items: readonly InventoryItem[],
+  deltas: ReadonlyMap<string, number>,
+  outletId?: string | null,
+): Promise<void> {
+  try {
+    const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
+    await processStockLevelChanges(tenantId, items, deltas, outletId)
+  } catch (error) {
+    console.error('[inventory] Stock level alerting failed', tenantId, error)
   }
 }
 
@@ -52,26 +96,67 @@ export async function applyOrderStockMovements(
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void',
+  /**
+   * Which revision of the order this movement belongs to. 0 is the original
+   * sale; a saved edit passes its own, so it can move stock on an order that
+   * already claimed both directions. See migration 20260806130000.
+   */
+  revision: number = 0,
+  /**
+   * Branch that took the order, whose stock this spends. Null/blank means the
+   * unbranched store pool — which is every single-location tenant, and every
+   * order taken before branches existed.
+   */
+  outletId: string | null = null,
 ): Promise<OrderStockResult> {
   if (items.length === 0) return EMPTY_RESULT
   const supabase = createAdminClient()
 
   // Idempotency. The order-creation path is retryable, and depleting twice
   // would take stock down twice for one sale with two ledger rows each claiming
-  // to be the truth. Keyed on direction as well as order, so an order that was
-  // sold and then voided stays independently correct in both directions.
-  const { data: existing, error: existingError } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-    .eq('reason', direction)
-    .limit(1)
-  if (existingError) throw existingError
-  if (existing && existing.length > 0) {
-    console.warn('[inventory] Stock movements already recorded for order', { orderId, direction })
+  // to be the truth. The claim is a unique-indexed row, so the database refuses
+  // the second caller — a SELECT-then-INSERT here let every racing call through.
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction, revision))) {
     return EMPTY_RESULT
   }
+
+  // Every exit between the claim and the ledger write has to hand the claim
+  // back. A claim that outlives a depletion which never happened marks the
+  // order permanently done with its stock still on the shelf — the failure mode
+  // is silent, and worse than the double-deduction the claim exists to stop.
+  try {
+    const result = await depleteClaimedOrder(
+      supabase,
+      tenantId,
+      orderId,
+      items,
+      direction,
+      resolveMovementOutletId(outletId),
+    )
+    if (result.movementCount === 0) {
+      await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
+    }
+    return result
+  } catch (error) {
+    await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
+    throw error
+  }
+}
+
+/**
+ * The depletion itself, once this caller owns the claim.
+ *
+ * Split out so the claim's release has exactly one place to live: this body has
+ * five exits and a caller that forgot one of them would leak a claim.
+ */
+async function depleteClaimedOrder(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  orderId: string,
+  items: readonly DepletionOrderItem[],
+  direction: 'sale' | 'void',
+  outletId: string | null,
+): Promise<OrderStockResult> {
 
   const menuItemIds = [...new Set(items.map((i) => i.menuItemId))]
   const { data: recipeRows, error: recipeError } = await supabase
@@ -148,6 +233,7 @@ export async function applyOrderStockMovements(
     rows.push({
       tenant_id: tenantId,
       inventory_item_id: depletion.inventoryItemId,
+      outlet_id: outletId,
       reason: direction,
       quantity_delta: quantityDelta,
       entered_quantity: depletion.quantity,
@@ -160,6 +246,16 @@ export async function applyOrderStockMovements(
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
   if (insertError) throw insertError
+
+  // Alerts read the PRE-movement rows plus the deltas just applied. Re-reading
+  // the items instead would race the running-total trigger and could compare a
+  // quantity against itself, detecting no crossing at all.
+  const deltas = new Map<string, number>()
+  for (const row of rows) {
+    const itemId = row.inventory_item_id as string
+    deltas.set(itemId, (deltas.get(itemId) ?? 0) + (row.quantity_delta as number))
+  }
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
   return { movementCount: rows.length, skipped }
 }
@@ -180,49 +276,123 @@ export async function reverseOrderStockMovements(
 ): Promise<OrderStockResult> {
   const supabase = createAdminClient()
 
-  const { data: saleRows, error: saleError } = await supabase
+  // EVERY movement this order recorded, not just its sale.
+  //
+  // Filtering to `sale` was correct exactly as long as a sale was the only
+  // thing an order could record. Order editing broke that: an edit that removes
+  // an item writes a `void` correction putting those ingredients back while the
+  // order is still live, so reversing the sale rows alone gives back stock that
+  // was already given back — inventing inventory that never existed.
+  const { data: movementRows, error: movementError } = await supabase
     .from('stock_movements')
-    .select('inventory_item_id, quantity_delta, entered_quantity, entered_unit_id')
+    .select('inventory_item_id, outlet_id, quantity_delta, entered_quantity, entered_unit_id')
     .eq('tenant_id', tenantId)
     .eq('order_id', orderId)
-    .eq('reason', 'sale')
-  if (saleError) throw saleError
+  if (movementError) throw movementError
 
-  const sales = (saleRows ?? []) as unknown as Array<{
+  const movements = (movementRows ?? []) as unknown as Array<{
     inventory_item_id: string
+    outlet_id: string | null
     quantity_delta: number
     entered_quantity: number | null
     entered_unit_id: string | null
   }>
-  if (sales.length === 0) return EMPTY_RESULT
+  if (movements.length === 0) return EMPTY_RESULT
 
-  const { data: existing, error: existingError } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-    .eq('reason', 'void')
-    .limit(1)
-  if (existingError) throw existingError
-  if (existing && existing.length > 0) {
-    console.warn('[inventory] Order already restored', { orderId })
+  // Same claim, opposite direction: cancelling twice would put the stock back
+  // twice. The database refuses the second caller; the SELECT this replaces let
+  // every racing cancellation through.
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void'))) {
     return EMPTY_RESULT
   }
 
-  const rows = sales.map((sale) => ({
-    tenant_id: tenantId,
-    inventory_item_id: sale.inventory_item_id,
-    reason: 'void' as const,
-    quantity_delta: -sale.quantity_delta,
-    // Carried across so the reversal reads "0.6 kg returned", matching the
-    // sale's audit trail rather than showing a bare converted number.
-    entered_quantity: sale.entered_quantity,
-    entered_unit_id: sale.entered_unit_id,
-    order_id: orderId,
-  }))
+  // Read before writing, for the same reason depletion does: the alert path
+  // compares these rows against the deltas about to be applied, and re-reading
+  // afterwards would race the running-total trigger. A failure here must not
+  // stop the reversal — putting the stock back matters more than alerting on it.
+  const { data: itemRows } = await supabase
+    .from('inventory_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('id', [...new Set(movements.map((m) => m.inventory_item_id))])
+  const inventoryItems = (itemRows ?? []) as unknown as InventoryItem[]
+
+  // Netted per ingredient AND entered unit AND branch.
+  //
+  // The unit keeps the audit value coherent: the same ingredient can be
+  // recorded in grams by a base recipe and kilograms by an addon, and summing
+  // those into one `entered_quantity` would print a number that means nothing.
+  //
+  // The BRANCH keeps the stock in the right shop. An order that spent flour at
+  // two branches — or whose branch was corrected mid-life — nets to one row
+  // without it, and that row would take stock out of one pool and give it back
+  // to another, leaving the branch that actually spent it permanently short.
+  // The branch is read off the recorded movement rather than re-resolved from
+  // the order, so a sale and its reversal cannot disagree by construction.
+  const netted = new Map<
+    string,
+    {
+      inventoryItemId: string
+      outletId: string | null
+      enteredUnitId: string | null
+      delta: number
+      entered: number
+    }
+  >()
+
+  for (const movement of movements) {
+    const key = `${movement.inventory_item_id}|${movement.entered_unit_id ?? ''}|${movement.outlet_id ?? ''}`
+    const existing = netted.get(key)
+    // `entered_quantity` is stored unsigned — the reason carries the direction —
+    // so it has to be signed by its own movement before it can be netted.
+    // Summing the raw magnitudes would report 800 g entered for a 400 g net.
+    const enteredSigned =
+      (movement.entered_quantity ?? 0) * Math.sign(movement.quantity_delta)
+
+    netted.set(key, {
+      inventoryItemId: movement.inventory_item_id,
+      outletId: movement.outlet_id ?? null,
+      enteredUnitId: movement.entered_unit_id,
+      delta: (existing?.delta ?? 0) + movement.quantity_delta,
+      entered: (existing?.entered ?? 0) + enteredSigned,
+    })
+  }
+
+  const rows = [...netted.values()]
+    // An ingredient an edit already returned in full has nothing left to give
+    // back, and a zero-delta ledger row reads as a real event that never was.
+    .filter((entry) => entry.delta !== 0)
+    .map((entry) => ({
+      tenant_id: tenantId,
+      inventory_item_id: entry.inventoryItemId,
+      outlet_id: entry.outletId,
+      reason: 'void' as const,
+      quantity_delta: -entry.delta,
+      // Carried across so the reversal reads "0.6 kg returned", matching the
+      // sale's audit trail rather than showing a bare converted number.
+      entered_quantity: entry.entered === 0 ? null : Math.abs(entry.entered),
+      entered_unit_id: entry.enteredUnitId,
+      order_id: orderId,
+    }))
+
+  if (rows.length === 0) return EMPTY_RESULT
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
-  if (insertError) throw insertError
+  if (insertError) {
+    // The claim outliving a reversal that never wrote would leave the order
+    // permanently un-restorable, its ingredients still counted as sold.
+    await releaseOrderStockApplication(supabase, tenantId, orderId, 'void')
+    throw insertError
+  }
+
+  // A cancellation is a restock. Without this the ingredient came back but the
+  // alert stayed open and the dish auto-86'd by the original sale stayed off
+  // the menu, with the one screen that would explain why now showing nothing.
+  const deltas = new Map<string, number>()
+  for (const row of rows) {
+    deltas.set(row.inventory_item_id, (deltas.get(row.inventory_item_id) ?? 0) + row.quantity_delta)
+  }
+  await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
   return { movementCount: rows.length, skipped: [] }
 }
@@ -251,9 +421,18 @@ export async function applyOrderStockBestEffort(
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void' = 'sale',
+  revision: number = 0,
+  outletId: string | null = null,
 ): Promise<void> {
   try {
-    const result = await applyOrderStockMovements(tenantId, orderId, items, direction)
+    const result = await applyOrderStockMovements(
+      tenantId,
+      orderId,
+      items,
+      direction,
+      revision,
+      outletId,
+    )
     if (result.skipped.length > 0) {
       console.warn('[inventory] Skipped stock movements for order', {
         orderId,
@@ -262,5 +441,38 @@ export async function applyOrderStockBestEffort(
     }
   } catch (error) {
     console.error('[inventory] Stock depletion failed for order', orderId, error)
+  }
+}
+
+/**
+ * Move the stock a saved order edit is responsible for.
+ *
+ * An edit moves only the DIFFERENCE — the order's original sale already spent
+ * its ingredients. Both directions can appear in one edit (a customer swaps a
+ * bun for a latte), so this writes up to two ledger entries and claims each
+ * against the revision being saved.
+ *
+ * Best-effort, like every other order-driven stock write: by the time this runs
+ * the bill has been rewritten and the money settled. A drifting ledger is
+ * reconcilable by stocktake; a save that refuses to complete because of a stock
+ * write leaves the customer holding a receipt that disagrees with the kitchen.
+ */
+export async function applyOrderRevisionStockBestEffort(
+  tenantId: string,
+  orderId: string,
+  revision: number,
+  deplete: readonly DepletionOrderItem[],
+  restore: readonly DepletionOrderItem[],
+  outletId: string | null = null,
+): Promise<void> {
+  // Returns first. If the two directions touch the same ingredient — which a
+  // swap between two dishes sharing one — putting stock back before taking it
+  // out keeps the running total from dipping through a floor it never really
+  // crossed, and so from auto-86ing a dish for the width of one transaction.
+  if (restore.length > 0) {
+    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId)
+  }
+  if (deplete.length > 0) {
+    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId)
   }
 }

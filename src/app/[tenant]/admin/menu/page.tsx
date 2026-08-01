@@ -6,13 +6,30 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { MenuItemsList } from '@/components/admin/menu-items-list'
+import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
+import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
+import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { MenuSkeleton } from '@/components/admin/menu-skeleton'
 import type { Tenant } from '@/types/database'
 
-async function MenuContent({ tenantSlug, tenantId }: { tenantSlug: string; tenantId: string }) {
-  const [menuItems, categories] = await Promise.all([
+async function MenuContent({
+  tenantSlug,
+  tenantId,
+  isMultiBranch,
+}: {
+  tenantSlug: string
+  tenantId: string
+  isMultiBranch: boolean
+}) {
+  // Branch data is only read for a store that has branches; every other store
+  // runs exactly the queries it ran before per-branch menus existed.
+  const [menuItems, categories, outlets, menuOverrides] = await Promise.all([
     getMenuItemsByTenant(tenantId),
     getCachedCategoriesByTenant(tenantId),
+    isMultiBranch ? createSupabaseOutletRepository().listByTenant(tenantId) : Promise.resolve([]),
+    isMultiBranch
+      ? createSupabaseOutletMenuRepository().listByTenant(tenantId)
+      : Promise.resolve([]),
   ])
 
   return (
@@ -21,6 +38,8 @@ async function MenuContent({ tenantSlug, tenantId }: { tenantSlug: string; tenan
       categories={categories}
       tenantSlug={tenantSlug}
       tenantId={tenantId}
+      outlets={outlets.filter((outlet) => outlet.is_active).map((o) => ({ id: o.id, name: o.name }))}
+      menuOverrides={menuOverrides}
     />
   )
 }
@@ -63,7 +82,11 @@ export default async function AdminMenuPage({
       </div>
 
       <Suspense fallback={<MenuSkeleton />}>
-        <MenuContent tenantSlug={tenantSlug} tenantId={tenant.id} />
+        <MenuContent
+          tenantSlug={tenantSlug}
+          tenantId={tenant.id}
+          isMultiBranch={isMultiBranchEnabled(tenant)}
+        />
       </Suspense>
     </div>
   )

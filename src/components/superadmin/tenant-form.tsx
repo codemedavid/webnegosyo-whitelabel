@@ -72,6 +72,20 @@ export function TenantForm({ tenant }: TenantFormProps) {
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     bundles_enabled: tenant?.bundles_enabled ?? false,
     modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
+    // Inventory flags are not editable on this form; pass the tenant's own
+    // values through so saving here cannot silently switch them off.
+    inventory_enabled: tenant?.inventory_enabled ?? false,
+    // Allowances. Null/absent means the platform default, so an existing tenant
+    // edited before these were ever set keeps exactly what it had.
+    max_outlets: tenant?.max_outlets ?? 1,
+    max_staff_per_branch: tenant?.max_staff_per_branch ?? 3,
+    multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
+    // Not editable on this form either; pass the tenant's own choice through so
+    // saving here cannot silently move the branch question back to the splash.
+    outlet_selection_timing:
+      tenant?.outlet_selection_timing === 'after' ? ('after' as const) : ('before' as const),
+    low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
+    auto_86_enabled: tenant?.auto_86_enabled ?? false,
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // Email notifications
     admin_email: tenant?.admin_email || '',
@@ -136,6 +150,13 @@ export function TenantForm({ tenant }: TenantFormProps) {
       hide_currency_symbol: formData.hide_currency_symbol,
       bundles_enabled: formData.bundles_enabled,
       modifier_groups_enabled: formData.modifier_groups_enabled,
+      inventory_enabled: formData.inventory_enabled,
+      max_outlets: formData.max_outlets,
+      max_staff_per_branch: formData.max_staff_per_branch,
+      multi_branch_enabled: formData.multi_branch_enabled,
+      outlet_selection_timing: formData.outlet_selection_timing,
+      low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
+      auto_86_enabled: formData.auto_86_enabled,
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // Email notifications
       admin_email: formData.admin_email || null,
@@ -267,6 +288,40 @@ export function TenantForm({ tenant }: TenantFormProps) {
               className="h-4 w-4 accent-white"
             />
             <span className="text-sm font-medium text-white">Active</span>
+          </label>
+        </div>
+
+        {/* Plan allowances. Lowering either takes nothing away — the caps are
+            enforced when something new is created, so a tenant moved onto a
+            smaller plan keeps the branches and staff they already have. */}
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-medium text-white/80">Branches allowed</span>
+            <input
+              type="number"
+              min={1}
+              value={formData.max_outlets}
+              onChange={(e) =>
+                setFormData({ ...formData, max_outlets: Number(e.target.value) })
+              }
+              className="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-white/80">Staff per branch</span>
+            <input
+              type="number"
+              min={0}
+              value={formData.max_staff_per_branch}
+              onChange={(e) =>
+                setFormData({ ...formData, max_staff_per_branch: Number(e.target.value) })
+              }
+              className="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-white"
+            />
+            <span className="mt-1 block text-xs text-white/40">
+              Excludes the owner account.
+            </span>
           </label>
         </div>
       </section>

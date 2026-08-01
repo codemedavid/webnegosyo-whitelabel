@@ -2,44 +2,55 @@
 
 import { useRef, useState } from 'react'
 import Image from 'next/image'
-import { motion } from 'framer-motion'
-import { Play } from 'lucide-react'
-import { AccentText, CTAButton, SectionHeading } from './cta-button'
-import { LANDING_COLORS, PRICE_LABEL, STATS } from './landing-theme'
+import { CourtButton, Lit, SectionTitle } from './court'
+import { SegmentDisplay } from './segment-display'
+import { COURT, PRICE_LABEL, STATS, TARP } from './landing-theme'
 
-const VIEWPORT = { once: true, amount: 0.3 } as const
-
+/**
+ * The board itself — the four standing figures, in seven-segment, in the steel
+ * housing. Every other number on the page reads back to this.
+ */
 export function StatsBand() {
   return (
-    <div className="relative z-10" style={{ backgroundColor: LANDING_COLORS.ink }}>
-      <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-20">
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-white/8 bg-white/8 md:grid-cols-4">
-          {STATS.map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={VIEWPORT}
-              transition={{ duration: 0.55, delay: i * 0.08 }}
-              className="flex flex-col items-center gap-1 px-5 py-8 text-center"
-              style={{ backgroundColor: LANDING_COLORS.inkSoft }}
+    <div className="relative z-10 px-5 py-16 md:px-8 md:py-20">
+      <div
+        className="mx-auto grid max-w-6xl grid-cols-2 gap-px md:grid-cols-4"
+        style={{
+          backgroundColor: 'rgba(237,232,218,0.1)',
+          border: '1px solid rgba(237,232,218,0.12)',
+          boxShadow: '0 26px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(237,232,218,0.1)',
+        }}
+      >
+        {STATS.map((stat) => (
+          <div
+            key={stat.label}
+            className="flex flex-col items-center gap-3 px-4 py-8 text-center md:py-10"
+            style={{ backgroundColor: '#070A08' }}
+          >
+            <span className="flex items-end gap-1.5">
+              <SegmentDisplay
+                value={stat.value}
+                color={COURT.ledAmber}
+                height="clamp(2.1rem, 6vw, 2.75rem)"
+                label={stat.value}
+              />
+              {'unit' in stat && stat.unit && (
+                <span
+                  className="pb-1 font-display text-xs uppercase leading-none tracking-[0.08em]"
+                  style={{ color: COURT.ledAmber }}
+                >
+                  {stat.unit}
+                </span>
+              )}
+            </span>
+            <span
+              className="text-[11px] font-bold uppercase leading-tight tracking-[0.13em]"
+              style={{ color: COURT.laneDim }}
             >
-              <span
-                className="text-[clamp(1.8rem,4vw,2.6rem)] font-black tracking-[-0.03em]"
-                style={{
-                  background: `linear-gradient(120deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.gold})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                {stat.value}
-              </span>
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">
-                {stat.label}
-              </span>
-            </motion.div>
-          ))}
-        </div>
+              {stat.label}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -47,22 +58,23 @@ export function StatsBand() {
 
 function DemoVideo() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 40, scale: 0.96 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      className="relative mx-auto mt-14 w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10"
-      style={{ aspectRatio: '16/9', boxShadow: `0 40px 120px ${LANDING_COLORS.brand}1f` }}
+    <div
+      className="relative mx-auto mt-12 w-full max-w-3xl overflow-hidden"
+      style={{
+        aspectRatio: '16/9',
+        border: '1px solid rgba(237,232,218,0.14)',
+        boxShadow: '0 34px 80px rgba(0,0,0,0.6)',
+      }}
     >
       <iframe
         src="https://www.youtube.com/embed/q1GZEDwFLv8?rel=0"
         title="Smart Menu System demo"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
+        loading="lazy"
         className="absolute inset-0 h-full w-full"
       />
-    </motion.div>
+    </div>
   )
 }
 
@@ -70,136 +82,161 @@ function TestimonialVideo() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
 
-  function handlePlayClick() {
+  function togglePlay() {
     const video = videoRef.current
     if (!video) return
     if (isPlaying) {
       video.pause()
       setIsPlaying(false)
-    } else {
-      video.play()
-      setIsPlaying(true)
+      return
     }
+    void video.play()
+    setIsPlaying(true)
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.6 }}
-      className="relative mx-auto w-full max-w-[460px] cursor-pointer overflow-hidden rounded-3xl border border-white/10"
-      onClick={handlePlayClick}
-    >
+    <div className="relative mx-auto w-full max-w-[440px]">
       <video
         ref={videoRef}
-        src="/testimonial.mp4"
+        /* 720p re-encode: 22.5 MB of source is not a thing to send over
+           Philippine mobile data for a 440px-wide square. */
+        src="/testimonial-720.mp4"
         className="block w-full"
-        style={{ aspectRatio: '1/1', objectFit: 'cover' }}
+        style={{
+          aspectRatio: '1/1',
+          objectFit: 'cover',
+          border: '1px solid rgba(237,232,218,0.14)',
+        }}
         playsInline
+        preload="metadata"
+        poster="/testimonial-poster.jpg"
         onEnded={() => setIsPlaying(false)}
       />
-      {!isPlaying && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-colors hover:bg-black/25">
-          <div
-            className="flex h-18 w-18 items-center justify-center rounded-full p-5 transition-transform duration-200 hover:scale-110"
-            style={{
-              backgroundColor: `${LANDING_COLORS.brand}e6`,
-              boxShadow: `0 0 60px ${LANDING_COLORS.brand}80`,
-            }}
-          >
-            <Play className="ml-0.5 h-8 w-8 fill-white text-white" />
-          </div>
-        </div>
-      )}
-    </motion.div>
+      {/* The control stays mounted while playing, so the video can always be
+          paused by pointer or keyboard. */}
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={isPlaying ? 'I-pause ang testimonial video' : 'I-play ang testimonial video'}
+        className="group absolute inset-0 flex items-center justify-center transition-colors"
+        style={{ backgroundColor: isPlaying ? 'transparent' : 'rgba(7,10,8,0.45)' }}
+      >
+        <span
+          className={`flex h-16 w-16 items-center justify-center transition-all duration-200 group-hover:scale-105 ${
+            isPlaying ? 'opacity-45 group-hover:opacity-100 group-focus-visible:opacity-100' : ''
+          }`}
+          style={{
+            backgroundColor: COURT.plateRed,
+            clipPath: 'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)',
+          }}
+        >
+          {isPlaying ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFF6F3" aria-hidden>
+              <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#FFF6F3" aria-hidden>
+              <path d="M7 4l14 8-14 8z" />
+            </svg>
+          )}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Merchant reviews, pinned up the way they arrive — as screenshots. They are
+ * wildly different shapes, so each gets the same notice frame and sits inside
+ * it rather than setting the row's height itself.
+ */
+function ReviewNotice({
+  src,
+  alt,
+  width,
+  height,
+  tilt,
+}: {
+  src: string
+  alt: string
+  width: number
+  height: number
+  tilt: string
+}) {
+  return (
+    <div
+      className="flex w-full max-w-[340px] items-center justify-center p-3"
+      style={{
+        height: 300,
+        backgroundColor: TARP.vinyl,
+        transform: tilt,
+        boxShadow: '0 20px 46px rgba(0,0,0,0.5)',
+      }}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        sizes="340px"
+        className="h-full w-full object-contain"
+      />
+    </div>
   )
 }
 
 function TestimonialCards() {
   return (
-    <div className="relative mx-auto mt-8 flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-center md:gap-10">
-      <motion.div
-        initial={{ opacity: 0, y: 40, rotate: -6 }}
-        whileInView={{ opacity: 1, y: 0, rotate: -3 }}
-        viewport={VIEWPORT}
-        transition={{ duration: 0.55, delay: 0.05 }}
-        className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-white shadow-2xl"
-      >
-        <Image
-          src="/testimonial1.jpg"
-          alt="Client testimonial — praising the hero banner feature"
-          width={320}
-          height={400}
-          className="h-auto w-full"
-          style={{ width: '100%', height: 'auto' }}
-        />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 40, rotate: 5 }}
-        whileInView={{ opacity: 1, y: 0, rotate: 2 }}
-        viewport={VIEWPORT}
-        transition={{ duration: 0.55, delay: 0.15 }}
-        className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-white shadow-2xl md:mt-10"
-      >
-        <Image
-          src="/testimonial2.png"
-          alt="Facebook review from Kenya Mendoza recommending WebNegosyo"
-          width={320}
-          height={120}
-          className="h-auto w-full"
-          style={{ width: '100%', height: 'auto' }}
-        />
-      </motion.div>
+    <div className="mx-auto mt-10 flex flex-col items-center justify-center gap-8 md:flex-row md:items-center md:gap-12">
+      <ReviewNotice
+        src="/testimonial1.jpg"
+        alt="Client testimonial praising the hero banner feature"
+        width={1080}
+        height={1120}
+        tilt="rotate(-2deg)"
+      />
+      <ReviewNotice
+        src="/testimonial2.png"
+        alt="Facebook review from Kenya Mendoza recommending WebNegosyo"
+        width={1350}
+        height={220}
+        tilt="rotate(1.5deg)"
+      />
     </div>
   )
 }
 
 export function SocialProofSection() {
   return (
-    <section
-      id="proof"
-      className="relative z-10 scroll-mt-20 py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.ink }}
-    >
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <SectionHeading
-          tag="See it in action"
-          title={
-            <>
-              Panoorin ang Smart Menu <AccentText>habang nagbebenta</AccentText>
-            </>
-          }
-          body="Ito ang eksaktong karanasan ng customer mo — mula sa pagbukas ng link hanggang sa checkout."
-        />
+    <section id="proof" className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-6xl">
+        <SectionTitle body="Ito ang eksaktong karanasan ng customer mo — mula sa pagbukas ng link hanggang sa checkout.">
+          Panoorin ang Smart Menu <Lit>habang nagbebenta</Lit>
+        </SectionTitle>
         <DemoVideo />
 
         <div className="mt-24 md:mt-32">
-          <SectionHeading
-            tag="Real results"
-            title="Ano ang sinasabi ng mga merchant"
-            body="Mga totoong negosyanteng gumagamit na ng Smart Menu ngayon."
-          />
+          <SectionTitle body="Mga totoong negosyanteng gumagamit na ng Smart Menu ngayon.">
+            Ano ang sinasabi ng mga merchant
+          </SectionTitle>
           <div className="mt-12">
             <TestimonialVideo />
             <TestimonialCards />
           </div>
-          <p className="mx-auto mt-10 max-w-xl text-center text-[11px] leading-relaxed text-white/25">
+          <p
+            className="mx-auto mt-10 max-w-[62ch] text-center text-[11.5px] leading-relaxed"
+            style={{ color: COURT.laneDim }}
+          >
             Individual experiences presented here may not be typical. Their background, education,
             effort, and application affected their experience.
           </p>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.7 }}
-          className="mt-24 overflow-hidden rounded-3xl border border-orange-600/15 text-center md:mt-32"
+        <div
+          className="mt-24 overflow-hidden text-center md:mt-32"
           style={{
-            background: `linear-gradient(160deg, ${LANDING_COLORS.brand}12, transparent 55%)`,
-            backgroundColor: LANDING_COLORS.inkSoft,
+            backgroundColor: COURT.groundLit,
+            border: '1px solid rgba(237,232,218,0.12)',
           }}
         >
           <div className="px-6 pt-12">
@@ -208,15 +245,17 @@ export function SocialProofSection() {
               alt="Smart Menu product preview"
               width={720}
               height={520}
-              className="mx-auto h-auto w-full max-w-[680px] rounded-2xl"
+              className="mx-auto h-auto w-full max-w-[680px]"
               style={{ width: '100%', height: 'auto' }}
             />
           </div>
           <div className="px-6 pb-12 pt-10">
-            <CTAButton>Sumali sa 100+ restaurants — {PRICE_LABEL}</CTAButton>
-            <p className="mt-3 text-xs text-white/30">One-time investment. Lifetime returns.</p>
+            <CourtButton size="large">Sumali sa 100+ restaurants — {PRICE_LABEL}</CourtButton>
+            <p className="mt-4 text-[13px]" style={{ color: COURT.laneDim }}>
+              One-time investment. Lifetime returns.
+            </p>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   )

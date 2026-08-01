@@ -189,10 +189,20 @@ export interface Tenant {
   checkout_upsell_max_items?: number;
   // Bundles
   bundles_enabled?: boolean;
+  // Inventory alerts (migration 20260728120000)
+  low_stock_alerts_enabled?: boolean;
+  auto_86_enabled?: boolean;
   // Pairing rules
   pairing_rules_enabled?: boolean;
   // QR-handoff ordering
   qr_handoff_enabled?: boolean;
+  // Multi-branch (multi-outlet) storefront. Missing/null = off; see
+  // src/lib/outlets/multi-branch-flag.ts (single source of truth).
+  multi_branch_enabled?: boolean;
+  // When the customer picks a branch: 'before' the menu (splash chooser) or
+  // 'after' (at checkout). Missing/null/unknown = 'before'; see
+  // src/lib/outlets/selection-timing.ts (single source of truth).
+  outlet_selection_timing?: string | null;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen
@@ -250,6 +260,11 @@ export interface Tenant {
   supabase_order_service_key?: string | null;
   supabase_order_db_url?: string | null;
   supabase_order_schema_version?: number;
+  // Subscription allowances. Absent/null means the platform default, never
+  // "unlimited" and never "none" — see resolveStaffLimit / resolveOutletLimit
+  // in src/lib/billing/subscription-status.ts.
+  max_outlets?: number | null;
+  max_staff_per_branch?: number | null;
   // Mobile app
   app_enabled?: boolean;
   ios_app_store_id?: string | null;
@@ -484,6 +499,10 @@ export interface ModifierOption {
   // legacy <-> modifier-groups round-trip so enabling the unified editor does
   // not silently drop the "Upgrade for +X" nudge on an existing item.
   is_upgrade_target?: boolean;
+  // Live reference to a menu item offered as this option (e.g. "Add a Coke").
+  // When set, the name, price and image are read from that item at render time
+  // rather than from the fields above. See src/lib/modifier-linked-options.ts.
+  menu_item_id?: string | null;
   display_order: number;
   // Cost / margin. `cost_mode` decides which cost is authoritative:
   //   'simple'    → manual_cost
@@ -528,6 +547,8 @@ export interface MenuItem {
   variations: Variation[];
   addons: Addon[];
   is_available: boolean;
+  /** Set when auto-86 hid this item; NULL means availability is the merchant's own choice. */
+  auto_disabled_at?: string | null;
   is_featured?: boolean;
   bcg_classification?: BcgClassification;
   badge_text?: string;
@@ -797,6 +818,88 @@ export interface Order {
   payment_proof_uploaded_at?: string | null;
   /** Link to the derived customer profile this order rolled up into (nullable). */
   customer_id?: string | null;
+  /**
+   * Which branch fulfills this order. Null for every order placed by a
+   * single-location tenant — i.e. all existing orders — so every query that
+   * predates multi-branch keeps working untouched.
+   */
+  outlet_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Per-weekday opening hours, keyed "0" = Sunday .. "6" = Saturday.
+ * Same shape as `Tenant.operating_hours` so `src/lib/store-open-status.ts`
+ * evaluates a branch and a single-location tenant with the same code.
+ */
+export type OutletOperatingHours = Record<
+  string,
+  { closed: boolean; open: string; close: string }
+>;
+
+/**
+ * A physical branch of a multi-branch tenant.
+ *
+ * Only meaningful when `Tenant.multi_branch_enabled` is true. In Phase 1 all
+ * branches of a tenant share one menu, one price list, and one stock pool;
+ * `outlets` deliberately carries no menu columns so per-branch menus can be
+ * added later as a separate table rather than a migration of this one.
+ */
+export interface Outlet {
+  id: string;
+  tenant_id: string;
+  name: string;
+  /** URL-safe, unique per tenant. Powers `?outlet=` and `/b/{slug}`. */
+  slug: string;
+  address: string | null;
+  /** Storefront photo for the branch chooser card. Null renders a placeholder. */
+  image_url: string | null;
+  /** Required for nearest-branch detection; both set or both null. */
+  latitude: number | null;
+  longitude: number | null;
+  phone: string | null;
+  operating_hours: OutletOperatingHours | null;
+  timezone: string | null;
+  supports_pickup: boolean;
+  supports_delivery: boolean;
+  /** Branch seats customers. Independent of pickup/delivery. */
+  supports_dine_in: boolean;
+  /** Null/zero = unrestricted. Used for branch matching, not fee pricing. */
+  delivery_radius_km: number | null;
+  /** Soft on/off: deactivated branches keep their orders and their link. */
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One branch's opinion about one menu item.
+ *
+ * Override-only: a row exists solely because a branch differs from the
+ * store-wide menu. NO ROW means listed, available, and priced exactly as
+ * `menu_items` says — the behaviour every branch had before per-branch menus
+ * existed. Resolution is in `src/lib/outlets/outlet-menu-overrides.ts`; nothing
+ * should read these fields directly.
+ *
+ * Mirrors `outlet_menu_items` from `20260806120000_outlet_menu_overrides.sql`.
+ */
+export interface OutletMenuOverride {
+  id: string;
+  tenant_id: string;
+  outlet_id: string;
+  menu_item_id: string;
+  /** false = this branch does not carry the dish at all. */
+  is_listed: boolean;
+  /** false = listed but currently unorderable here (86'd at this branch). */
+  is_available: boolean;
+  /** Null = inherit `menu_items.price`. Zero is a real free item, not "unset". */
+  price: number | null;
+  /** Null = inherit `menu_items.discounted_price` — see `discount_cleared`. */
+  discounted_price: number | null;
+  /** true = this branch opts OUT of the store-wide discount and sells at full price. */
+  discount_cleared: boolean;
   created_at: string;
   updated_at: string;
 }

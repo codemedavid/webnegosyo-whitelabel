@@ -41,14 +41,14 @@ export interface ModifierGroup {
 }
 
 /** Legacy shapes an item may still carry instead of `modifier_groups`. */
-interface LegacyVariation {
+export interface LegacyVariation {
   id: string;
   name: string;
   price_modifier: number;
   is_default?: boolean;
 }
 
-interface LegacyVariationType {
+export interface LegacyVariationType {
   id: string;
   name: string;
   is_required: boolean;
@@ -63,7 +63,7 @@ interface LegacyVariationType {
   }[];
 }
 
-interface LegacyAddon {
+export interface LegacyAddon {
   id: string;
   name: string;
   price: number;
@@ -231,4 +231,71 @@ export function serializeModifierGroups(
       display_order: optionIndex,
     })),
   }));
+}
+
+/** The legacy shape of the columns the storefront, customer app and POS read. */
+export interface LegacyColumns {
+  variation_types: LegacyVariationType[];
+  variations: LegacyVariation[];
+  addons: LegacyAddon[];
+}
+
+/** A group is single-select (variation-style) when its cap is exactly 1. */
+export function isSingleSelectGroup(group: ModifierGroup): boolean {
+  return group.max_select === 1;
+}
+
+/**
+ * Mirror unified groups back into the legacy columns.
+ *
+ * This is the backward-compatibility contract: surfaces that do not yet read
+ * `modifier_groups` (the customer storefront, the white-labeled customer app,
+ * the desktop POS) render from `variation_types` / `addons`. Writing only
+ * `modifier_groups` would make anything authored here invisible to customers.
+ *
+ * Single-select groups become `variation_types`; every multi-select group's
+ * options are flattened into the shared `addons` list. `variations` — the oldest
+ * flat format — is always emitted empty because grouped `variation_types` fully
+ * supersedes it. An empty input yields empty columns, so removing every group in
+ * the editor also clears the legacy data instead of leaving it stale.
+ *
+ * Mirrors the web admin's `src/lib/modifier-groups-form.ts` so both editors
+ * produce byte-identical rows for the same groups. Pure — never mutates input.
+ */
+export function splitGroupsToLegacyColumns(
+  groups: readonly ModifierGroup[]
+): LegacyColumns {
+  const variation_types: LegacyVariationType[] = [];
+  const addons: LegacyAddon[] = [];
+
+  groups.forEach((group, groupIndex) => {
+    if (isSingleSelectGroup(group)) {
+      variation_types.push({
+        id: group.id,
+        name: group.name,
+        is_required: group.min_select >= 1,
+        display_order: group.display_order ?? groupIndex,
+        options: group.options.map((option, optionIndex) => ({
+          id: option.id,
+          name: option.name,
+          price_modifier: option.price_modifier,
+          image_url: option.image_url,
+          is_default: option.is_default,
+          display_order: option.display_order ?? optionIndex,
+        })),
+      });
+      return;
+    }
+
+    group.options.forEach((option) => {
+      addons.push({
+        id: option.id,
+        name: option.name,
+        price: option.price_modifier,
+        is_default: option.is_default,
+      });
+    });
+  });
+
+  return { variation_types, variations: [], addons };
 }

@@ -1,74 +1,60 @@
-'use client'
+import { ChalkRule, Lit, SectionTitle } from './court'
+import { COURT, PROBLEMS } from './landing-theme'
 
-import { motion } from 'framer-motion'
-import { AccentText, SectionHeading } from './cta-button'
-import { LANDING_COLORS, PROBLEMS, type ProblemCard } from './landing-theme'
-
-const VIEWPORT = { once: true, amount: 0.3 } as const
-
-function ProblemTile({ problem, index }: { problem: ProblemCard; index: number }) {
-  return (
-    <motion.li
-      initial={{ opacity: 0, y: 32 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.6, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
-      className="relative overflow-hidden rounded-2xl border border-white/8 p-7 md:p-8"
-      style={{ backgroundColor: LANDING_COLORS.inkLift }}
-    >
-      <span className="text-[11px] font-black uppercase tracking-[0.24em] text-white/25">
-        {problem.stat}
-      </span>
-      <h3 className="mt-3 text-lg font-black leading-snug tracking-[-0.02em] text-white md:text-xl">
-        {problem.title}
-      </h3>
-      <p className="mt-3 text-sm leading-relaxed text-white/45">{problem.body}</p>
-      <span
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
-        style={{
-          background: `linear-gradient(90deg, transparent, ${LANDING_COLORS.brand}66, transparent)`,
-        }}
-      />
-    </motion.li>
-  )
-}
-
+/**
+ * The away side's scoring run. Not a card grid — a ledger of three leaks, each
+ * one a full-width row with its loss named in scoring red.
+ */
 export function ProblemSection() {
   return (
-    <section
-      id="problem"
-      className="relative z-10 py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.ink }}
-    >
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <SectionHeading
-          tag="Ang totoong problema"
-          title={
-            <>
-              Hindi kulang ang customers mo.
-              <br />
-              <AccentText>Kulang ang system mo.</AccentText>
-            </>
-          }
+    <section id="problem" className="relative z-10 px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-5xl">
+        <SectionTitle
+          align="left"
           body="Karamihan ng food business, may masarap na produkto pero tumutulo ang benta sa tatlong lugar na ito araw-araw."
-        />
+        >
+          Hindi kulang ang customers mo. <Lit color={COURT.ledRed}>Kulang ang system mo.</Lit>
+        </SectionTitle>
 
-        <ul className="mt-14 grid gap-4 md:mt-16 md:grid-cols-3 md:gap-5">
-          {PROBLEMS.map((problem, i) => (
-            <ProblemTile key={problem.stat} problem={problem} index={i} />
+        <ul className="mt-14 md:mt-16">
+          {PROBLEMS.map((problem) => (
+            <li key={problem.label}>
+              <ChalkRule />
+              <div className="landing-leak-row grid gap-4 py-8 md:gap-10 md:py-11">
+                <p
+                  className="font-display t-leak uppercase leading-none tracking-[-0.02em]"
+                  style={{ color: COURT.ledRed }}
+                >
+                  {problem.label}
+                </p>
+                <div>
+                  <h3
+                    className="font-display t-leaktitle uppercase leading-tight tracking-[-0.015em]"
+                    style={{ color: COURT.lane }}
+                  >
+                    {problem.title}
+                  </h3>
+                  <p
+                    className="mt-3 max-w-[62ch] text-[15px] leading-relaxed"
+                    style={{ color: COURT.laneDim }}
+                  >
+                    {problem.body}
+                  </p>
+                </div>
+              </div>
+            </li>
           ))}
         </ul>
 
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={VIEWPORT}
-          transition={{ duration: 0.6, delay: 0.25 }}
-          className="mx-auto mt-12 max-w-xl text-center text-base font-bold leading-relaxed text-white/70 md:text-lg"
+        <ChalkRule />
+
+        <p
+          className="mt-12 max-w-[54ch] font-display t-verdict uppercase leading-[1.15] tracking-[-0.02em]"
+          style={{ color: COURT.lane }}
         >
-          Ang Smart Menu ang sumasagot sa tatlo — isang link na tumatanggap ng order, nag-a-upsell
-          mag-isa, at walang kinukuhang commission.
-        </motion.p>
+          Ang Smart Menu ang sumasagot sa tatlo — isang link na tumatanggap ng order,{' '}
+          <Lit>nag-a-upsell mag-isa</Lit>, at walang kinukuhang commission.
+        </p>
       </div>
     </section>
   )

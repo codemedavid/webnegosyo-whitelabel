@@ -23,6 +23,11 @@ type DeliveryFeeColumns = {
   delivery_radius_km?: number | null
 }
 
+// Same lag for the multi-branch selection-timing migration.
+type OutletTimingColumns = {
+  outlet_selection_timing?: string
+}
+
 // Domain validation: must be a valid domain format (not necessarily a URL)
 const domainSchema = z
   .union([
@@ -95,7 +100,23 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
+  // Unified modifier groups: multi-select options with min/max picks
   modifier_groups_enabled: z.boolean().default(false),
+  // Inventory. All three default false: `inventory_enabled` is the master flag
+  // the admin route and sidebar hang off, and auto-86 takes items off a live
+  // menu — neither may switch itself on for a tenant that never asked.
+  inventory_enabled: z.boolean().default(false),
+  low_stock_alerts_enabled: z.boolean().default(false),
+  auto_86_enabled: z.boolean().default(false),
+  // Multi-branch outlets. Defaults false like every other flag: turning it on
+  // makes the storefront ask the customer to choose a branch, which no tenant
+  // may get without asking. Omitting this key made `parse` strip it, so the
+  // superadmin toggle saved nothing at all.
+  multi_branch_enabled: z.boolean().default(false),
+  // WHEN the branch is chosen. Defaults to the shipped behaviour, and an
+  // unrecognised value is rejected rather than coerced: landing a tenant
+  // between the two flows means no gate and no checkout picker.
+  outlet_selection_timing: z.enum(['before', 'after']).default('before'),
   // QR-handoff ordering
   qr_handoff_enabled: z.boolean().optional(),
   // Flash screen
@@ -216,7 +237,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
   if (parsed.domain && (await isDomainTaken(parsed.domain, undefined, ctx))) {
     throw new Error('Domain is already taken')
   }
-  const insertPayload: TenantsInsert & DeliveryFeeColumns = {
+  const insertPayload: TenantsInsert & DeliveryFeeColumns & OutletTimingColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -268,6 +289,12 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
     modifier_groups_enabled: parsed.modifier_groups_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? false,
@@ -344,7 +371,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   if (oldTenant?.domain) {
     clearDomainCache(oldTenant.domain)
   }
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OutletTimingColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -396,6 +423,12 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
     modifier_groups_enabled: parsed.modifier_groups_enabled,
+    // Inventory
+    inventory_enabled: parsed.inventory_enabled,
+    low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
+    auto_86_enabled: parsed.auto_86_enabled,
+    multi_branch_enabled: parsed.multi_branch_enabled,
+    outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
     // Flash screen
     flash_screen_feature_enabled: parsed.flash_screen_feature_enabled ?? undefined,

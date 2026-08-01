@@ -10,6 +10,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImageUpload } from '@/components/shared/image-upload'
@@ -89,6 +96,14 @@ interface TenantFormData {
   flash_screen_feature_enabled: boolean
   // Bundles
   bundles_enabled: boolean
+  inventory_enabled: boolean
+  // Multi-branch
+  multi_branch_enabled: boolean
+  // When the branch is asked for: before the menu (splash) or at checkout.
+  outlet_selection_timing: 'before' | 'after'
+  // Inventory alerts
+  low_stock_alerts_enabled: boolean
+  auto_86_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
   // Unified modifier groups (multi-select with min/max picks)
@@ -767,6 +782,161 @@ function FlashScreenFeatureSection({
             <p className="text-sm text-white/70">
               <strong className="text-sky-400">Disabled:</strong> Tenant admins will not see flash screen controls in their settings.
             </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Inventory Feature Toggle Section
+function InventoryFeatureSection({
+  formData,
+  setFormData,
+  isPending,
+}: {
+  formData: TenantFormData
+  setFormData: React.Dispatch<React.SetStateAction<TenantFormData>>
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Inventory</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Ingredient stock tracking, recipes and costing — plus optional low-stock warnings and
+          automatic 86ing
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="inventory_enabled">Enable Inventory</Label>
+            <p className="text-sm text-muted-foreground">
+              Master switch. Shows the Inventory section in the tenant admin and the Stock tab in
+              the merchant app, and lets orders deplete ingredient stock. Everything below depends
+              on it.
+            </p>
+          </div>
+          <Switch
+            id="inventory_enabled"
+            checked={formData.inventory_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, inventory_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {!formData.inventory_enabled && (
+          <p className="text-sm text-muted-foreground">
+            Inventory is off — the two settings below have no effect until it is switched on.
+          </p>
+        )}
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="low_stock_alerts_enabled">Enable Low-Stock Alerts</Label>
+            <p className="text-sm text-muted-foreground">
+              Raises an alert the moment an ingredient falls to or below its reorder level. Alerts
+              are raised once per crossing, not once per sale, and close when stock recovers.
+            </p>
+          </div>
+          <Switch
+            id="low_stock_alerts_enabled"
+            checked={formData.low_stock_alerts_enabled}
+            onCheckedChange={(checked) =>
+              setFormData({ ...formData, low_stock_alerts_enabled: checked })
+            }
+            disabled={isPending}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="auto_86_enabled">Enable Auto-86</Label>
+            <p className="text-sm text-muted-foreground">
+              Marks a menu item unavailable when an ingredient its base recipe needs hits zero.
+              Items whose optional extras run out are left on the menu. Re-enabling stays manual.
+            </p>
+          </div>
+          <Switch
+            id="auto_86_enabled"
+            checked={formData.auto_86_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, auto_86_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+        {formData.auto_86_enabled && (
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm text-white/70">
+              <strong className="text-amber-400">Careful:</strong> this hides dishes from customers
+              without asking. Only switch it on for a tenant whose base recipes are complete and
+              whose stock counts are kept up to date.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Multi-Branch (Multi-Outlet) Feature Toggle Section
+function MultiBranchFeatureSection({
+  formData,
+  setFormData,
+  isPending
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Branches</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          For merchants with more than one physical outlet. Customers pick a branch — before they
+          browse or at checkout, the merchant&apos;s choice — and each order records which branch
+          fulfills it.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="multi_branch_enabled">Enable Branches</Label>
+            <p className="text-sm text-muted-foreground">
+              Shows the Branches section in the tenant admin. The storefront only changes once the
+              merchant has two or more active branches — with zero or one, customers see exactly
+              what they see today.
+            </p>
+          </div>
+          <Switch
+            id="multi_branch_enabled"
+            checked={formData.multi_branch_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, multi_branch_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+
+        {formData.multi_branch_enabled && (
+          <div className="space-y-2 rounded-lg border p-4">
+            <Label htmlFor="outlet_selection_timing">When customers pick a branch</Label>
+            <p className="text-sm text-muted-foreground">
+              &quot;Before the menu&quot; scopes the whole visit to one branch. &quot;At
+              checkout&quot; suits merchants whose menu is identical everywhere and who want
+              nothing between the customer and the food.
+            </p>
+            <Select
+              value={formData.outlet_selection_timing}
+              onValueChange={(value) =>
+                setFormData({ ...formData, outlet_selection_timing: value as 'before' | 'after' })
+              }
+              disabled={isPending}
+            >
+              <SelectTrigger id="outlet_selection_timing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="before">Before the menu (branch chooser)</SelectItem>
+                <SelectItem value="after">At checkout (beside the order type)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         )}
       </CardContent>
@@ -1492,6 +1662,14 @@ export function TenantFormWrapper({
     // Bundles
     bundles_enabled: tenant?.bundles_enabled ?? false,
     modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
+    // Inventory
+    inventory_enabled: tenant?.inventory_enabled ?? false,
+    // Multi-branch — missing/null on every existing row reads as off.
+    multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
+    // Missing/null/unknown reads as 'before' — the behaviour that shipped first.
+    outlet_selection_timing: tenant?.outlet_selection_timing === 'after' ? 'after' : 'before',
+    low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
+    auto_86_enabled: tenant?.auto_86_enabled ?? false,
     // Pairing rules
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // QR-handoff ordering
@@ -1567,6 +1745,12 @@ export function TenantFormWrapper({
       // Bundles
       bundles_enabled: formData.bundles_enabled,
       modifier_groups_enabled: formData.modifier_groups_enabled,
+      // Inventory
+      inventory_enabled: formData.inventory_enabled,
+      multi_branch_enabled: formData.multi_branch_enabled,
+      outlet_selection_timing: formData.outlet_selection_timing,
+      low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
+      auto_86_enabled: formData.auto_86_enabled,
       // Pairing rules
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // QR-handoff ordering
@@ -1751,6 +1935,16 @@ export function TenantFormWrapper({
             isPending={isPending}
           />
           <BundlesFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <InventoryFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <MultiBranchFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}

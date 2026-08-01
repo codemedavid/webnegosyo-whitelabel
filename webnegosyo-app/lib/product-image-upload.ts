@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { TENANT_LOGO_FOLDER } from "./tenant-logo";
 
 const IMAGEKIT_UPLOAD_ENDPOINT = "https://upload.imagekit.io/api/v1/files/upload";
 
@@ -62,6 +63,14 @@ export const PRODUCT_IMAGE_FOLDER = "menu-items";
 export const PAYMENT_PROOF_FOLDER = "payment-proofs";
 
 /**
+ * ImageKit folder for the QR images shown at checkout.
+ *
+ * Same folder name the web admin uploads to, so a merchant's QR codes stay in
+ * one place whichever surface they set them up from.
+ */
+export const PAYMENT_QR_FOLDER = "payment-qr-codes";
+
+/**
  * Upload an image to ImageKit via the web app's signed-auth endpoint and
  * return its delivery url + fileId + filePath.
  */
@@ -105,4 +114,14 @@ export async function uploadImage(
 /** Upload a menu item photo. Thin wrapper so existing call sites are unchanged. */
 export function uploadProductImage(image: PickedImage): Promise<ImageKitUploadResult> {
   return uploadImage(image, PRODUCT_IMAGE_FOLDER);
+}
+
+/** Upload a payment method's QR code into its own folder. */
+export function uploadPaymentQr(image: PickedImage): Promise<ImageKitUploadResult> {
+  return uploadImage(image, PAYMENT_QR_FOLDER);
+}
+
+/** Upload a restaurant logo into its own folder. */
+export function uploadTenantLogo(image: PickedImage): Promise<ImageKitUploadResult> {
+  return uploadImage(image, TENANT_LOGO_FOLDER);
 }

@@ -2,6 +2,19 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { localDayStartMs } from "./time";
+import {
+  orderOutletIdFromCustomerData,
+  filterOrdersToOutlet,
+} from "./pushRecipients";
+import { summarizeOrderStats } from "./orderStats";
+import {
+  assertRevisable,
+  priceRevisedItems,
+  computeRevisedTotal,
+  countRevisedItems,
+  normalizePaymentAmount,
+  netAmountPaid,
+} from "./orderRevise";
 
 // --- MUTATIONS ---
 
@@ -90,10 +103,17 @@ export const createOrder = mutation({
     // pickups, audibly notifies the merchant.
     const skipPending = args.source === "qr_handoff" || args.source === "pos";
 
+    // The branch arrives inside `customerData` (the only carrier that works
+    // across every tenant schema). Promote it to a column so it can be indexed
+    // and queried — undefined for a single-location store, which stamps none.
+    const outletId =
+      orderOutletIdFromCustomerData(args.customerData) ?? undefined;
+
     const orderId = await ctx.db.insert("orders", {
       ...orderData,
       status: skipPending ? "confirmed" : "pending",
       paymentStatus: "pending",
+      outletId,
     });
 
     for (const item of items) {
@@ -105,11 +125,14 @@ export const createOrder = mutation({
 
     // Send push notification to admin devices for every new order — pickup,
     // delivery, online, or counter — so nothing slips through silently.
+    // Scoped to the order's branch when it has one: a multi-branch store used
+    // to wake every branch for every sale.
     await ctx.scheduler.runAfter(0, internal.notifications.sendOrderNotification, {
       customerName: args.customerName,
       total: args.total,
       itemCount: args.itemCount,
       orderId: orderId,
+      outletId,
     });
 
     return orderId;
@@ -141,6 +164,142 @@ export const updatePaymentStatus = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.orderId, { paymentStatus: args.paymentStatus });
+  },
+});
+
+/**
+ * Rewrite a placed order's items and record what changed.
+ *
+ * Convex gives this the atomicity the platform backend cannot get through
+ * PostgREST: the whole handler is one transaction, so a failure part-way
+ * leaves the order exactly as it was.
+ *
+ * The total is recomputed from the items rather than taken from the caller,
+ * matching `lib/backends/order-revise.ts` on the platform side — an edit
+ * rewrites a bill that may already be paid, so client arithmetic is not
+ * trusted.
+ */
+export const reviseOrder = mutation({
+  args: {
+    orderId: v.id("orders"),
+    expectedRevisionNumber: v.number(),
+    items: v.array(v.any()),
+    deliveryFee: v.optional(v.number()),
+    serviceChargeAmount: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    revisedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+    editedAt: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("That order no longer exists.");
+
+    // Every rule below lives in `orderRevise.ts` so it can be unit-tested, and
+    // so it cannot drift from the platform backend's identical guard rails.
+    assertRevisable(order, args.expectedRevisionNumber, args.items);
+    const priced = priceRevisedItems(args.items);
+
+    const existing = await ctx.db
+      .query("orderItems")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+
+    const total = computeRevisedTotal(
+      priced,
+      args.deliveryFee,
+      args.serviceChargeAmount
+    );
+    const revisionNumber = (order.revisionNumber ?? 0) + 1;
+
+    await ctx.db.insert("orderRevisions", {
+      orderId: args.orderId,
+      revisionNumber,
+      itemsBefore: existing,
+      itemsAfter: priced,
+      totalBefore: order.total,
+      totalAfter: total,
+      reason: args.reason,
+      revisedBy: args.revisedBy,
+      outletId: args.outletId,
+    });
+
+    for (const item of existing) {
+      await ctx.db.delete(item._id);
+    }
+    for (const item of priced) {
+      await ctx.db.insert("orderItems", { ...item, orderId: args.orderId });
+    }
+
+    await ctx.db.patch(args.orderId, {
+      total,
+      itemCount: countRevisedItems(priced),
+      revisionNumber,
+      editedAt: args.editedAt,
+      editedBy: args.revisedBy,
+    });
+
+    return args.orderId;
+  },
+});
+
+/**
+ * Append one settlement row and refresh the order's cached amountPaid.
+ *
+ * The platform backend gets this from a database trigger; Convex has no
+ * triggers, so the mutation maintains the cache itself — inside the same
+ * transaction, so the ledger and the cache cannot disagree.
+ */
+export const recordPayment = mutation({
+  args: {
+    orderId: v.id("orders"),
+    kind: v.union(v.literal("charge"), v.literal("refund")),
+    amount: v.number(),
+    paymentMethodId: v.optional(v.string()),
+    paymentMethodName: v.optional(v.string()),
+    reference: v.optional(v.string()),
+    proofUrl: v.optional(v.string()),
+    proofPublicId: v.optional(v.string()),
+    recordedBy: v.optional(v.string()),
+    outletId: v.optional(v.string()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("orderPayments", {
+      ...args,
+      amount: normalizePaymentAmount(args.amount),
+    });
+
+    const ledger = await ctx.db
+      .query("orderPayments")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+
+    await ctx.db.patch(args.orderId, { amountPaid: netAmountPaid(ledger) });
+
+    return args.orderId;
+  },
+});
+
+/** Every settlement against an order, oldest first. */
+export const getOrderPayments = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("orderPayments")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect(),
+});
+
+/** Edit history for an order, newest first. */
+export const getOrderRevisions = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("orderRevisions")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .collect();
+    return rows.sort((a, b) => b.revisionNumber - a.revisionNumber);
   },
 });
 
@@ -190,6 +349,16 @@ export const updateLalamoveDetailsInternal = internalMutation({
 // Safety cap for queries that load orders — prevents OOM on large datasets
 const QUERY_LIMIT = 10000;
 
+/**
+ * How deep to scan when filtering to a branch.
+ *
+ * Orders predating v15 carry the branch only in `customerData`, so the
+ * `by_outlet` index cannot be trusted to find them and the filter runs in
+ * memory. A page of 50 could otherwise return nothing for a quiet branch whose
+ * orders sit below the cut. Sized to match the platform adapter's own ceiling.
+ */
+const BRANCH_SCAN_LIMIT = 500;
+
 export const getOrders = query({
   args: {
     status: v.optional(
@@ -203,22 +372,31 @@ export const getOrders = query({
       )
     ),
     limit: v.optional(v.number()),
+    // Narrow to one branch. Optional so a store-wide account, and every caller
+    // on an older app build, keeps today's behaviour exactly.
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+
+    // Branch filtering cannot use `by_outlet` here: orders written before v15
+    // carry the branch only in `customerData`, so an indexed lookup on the
+    // column would silently drop them. Over-fetch and filter on the resolved
+    // branch instead — correctness over the index until a backfill lands.
+    const take = args.outletId ? Math.max(limit, BRANCH_SCAN_LIMIT) : limit;
+
     let orders;
     if (args.status) {
       orders = await ctx.db
         .query("orders")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
         .order("desc")
-        .take(args.limit ?? 50);
+        .take(take);
     } else {
-      orders = await ctx.db
-        .query("orders")
-        .order("desc")
-        .take(args.limit ?? 50);
+      orders = await ctx.db.query("orders").order("desc").take(take);
     }
-    return orders;
+
+    return filterOrdersToOutlet(orders, args.outletId).slice(0, limit);
   },
 });
 
@@ -266,17 +444,27 @@ export const getOrderByClientId = query({
 });
 
 export const getRealtimeQueue = query({
-  handler: async (ctx) => {
+  args: {
+    // Narrow to one branch. Optional so every existing caller is unaffected.
+    outletId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const statuses = ["pending", "confirmed", "preparing", "ready"] as const;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: Record<string, any[]> = {};
 
+    // Same over-fetch as getOrders, and for the same reason: the branch may live
+    // only in `customerData`, so the filter runs after the read.
+    const take = args.outletId ? BRANCH_SCAN_LIMIT : 50;
+
     for (const status of statuses) {
-      result[status] = await ctx.db
+      const rows = await ctx.db
         .query("orders")
         .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
-        .take(50);
+        .take(take);
+
+      result[status] = filterOrdersToOutlet(rows, args.outletId).slice(0, 50);
     }
 
     return result;
@@ -297,30 +485,10 @@ export const getDashboardStats = query({
 
     // Revenue and order-count metrics exclude cancelled orders so cancellations
     // immediately propagate to the dashboard. Status counts still include them
-    // so the merchant can see the cancellation breakdown.
-    const completedOrders = todayOrders.filter((o) => o.status !== "cancelled");
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
-
-    const statusCounts: Record<string, number> = {
-      pending: 0,
-      confirmed: 0,
-      preparing: 0,
-      ready: 0,
-      delivered: 0,
-      cancelled: 0,
-    };
-
-    for (const order of todayOrders) {
-      statusCounts[order.status]++;
-    }
-
-    return {
-      totalOrders: completedOrders.length,
-      totalRevenue,
-      avgOrderValue,
-      statusCounts,
-    };
+    // so the merchant can see the cancellation breakdown. Both rules now live
+    // in `summarizeOrderStats`, which is unit-tested — these two handlers
+    // carried near-identical copies and neither had any coverage.
+    return summarizeOrderStats(todayOrders);
   },
 });
 
@@ -328,9 +496,25 @@ export const getDashboardStatsByPeriod = query({
   args: {
     startDate: v.number(),
     endDate: v.number(),
+    /**
+     * v18. Optional so every caller that asks exactly what it asks today keeps
+     * working — a validator rejects arguments it does not know, so a new
+     * REQUIRED argument would break every screen on this query at once.
+     *
+     * Why it exists: the daily inventory report divides a day's stock cost by
+     * these takings. The stock half was already narrowable to one branch, so
+     * without this a branch manager's food cost was either withheld or
+     * understated by roughly the number of branches.
+     */
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const filtered = await ctx.db
+    // A branch's orders are scattered through the window, so taking only
+    // QUERY_LIMIT rows and then filtering would silently drop the older half of
+    // a busy day — the same reason getOrders widens its take.
+    const take = args.outletId ? Math.max(QUERY_LIMIT, BRANCH_SCAN_LIMIT) : QUERY_LIMIT;
+
+    const scanned = await ctx.db
       .query("orders")
       .filter((q) =>
         q.and(
@@ -339,30 +523,8 @@ export const getDashboardStatsByPeriod = query({
         )
       )
       .order("desc")
-      .take(QUERY_LIMIT);
+      .take(take);
 
-    const completedOrders = filtered.filter((o) => o.status !== "cancelled");
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
-    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
-
-    const statusCounts: Record<string, number> = {
-      pending: 0,
-      confirmed: 0,
-      preparing: 0,
-      ready: 0,
-      delivered: 0,
-      cancelled: 0,
-    };
-
-    for (const order of filtered) {
-      statusCounts[order.status]++;
-    }
-
-    return {
-      totalOrders: completedOrders.length,
-      totalRevenue,
-      avgOrderValue,
-      statusCounts,
-    };
+    return summarizeOrderStats(scanned, args.outletId);
   },
 });

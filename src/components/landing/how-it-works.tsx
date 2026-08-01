@@ -1,73 +1,56 @@
-'use client'
+import { Lit, SectionTitle } from './court'
+import { COURT, STEPS } from './landing-theme'
 
-import { motion } from 'framer-motion'
-import { AccentText, SectionHeading } from './cta-button'
-import { LANDING_COLORS, STEPS, type Step } from './landing-theme'
-
-const VIEWPORT = { once: true, amount: 0.3 } as const
-
-function StepCard({ step, index }: { step: Step; index: number }) {
-  return (
-    <motion.li
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.6, delay: index * 0.12, ease: [0.16, 1, 0.3, 1] }}
-      className="relative rounded-2xl border border-white/8 p-7 md:p-8"
-      style={{ backgroundColor: LANDING_COLORS.inkLift }}
-    >
-      <span
-        className="text-[2.6rem] font-black leading-none tracking-[-0.05em]"
-        style={{
-          background: `linear-gradient(140deg, ${LANDING_COLORS.brand}, ${LANDING_COLORS.gold})`,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}
-      >
-        {step.n}
-      </span>
-      <h3 className="mt-4 text-lg font-black leading-snug tracking-[-0.02em] text-white">
-        {step.title}
-      </h3>
-      <p className="mt-3 text-sm leading-relaxed text-white/45">{step.body}</p>
-    </motion.li>
-  )
-}
-
+/**
+ * Three quarters of setup. The sequence carries real information — what you
+ * send, what we do, when you go live — so the markers are the game clock, and
+ * a painted line runs the whole play from left to right.
+ */
 export function HowItWorksSection() {
   return (
-    <section
-      id="how-it-works"
-      className="relative z-10 scroll-mt-20 py-24 md:py-32"
-      style={{ backgroundColor: LANDING_COLORS.ink }}
-    >
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <SectionHeading
-          tag="How it works"
-          title={
-            <>
-              Done-for-you setup.
-              <br />
-              <AccentText>Live in 48 hours.</AccentText>
-            </>
-          }
-          body="Walang i-install, walang aaralin. Ipapadala mo lang ang menu mo — kami na ang bahala sa lahat."
-        />
+    <section id="how-it-works" className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-6xl">
+        <SectionTitle body="Walang i-install, walang aaralin. Ipapadala mo lang ang menu mo — kami na ang bahala sa lahat.">
+          Done-for-you setup. <Lit>Live in 48 hours.</Lit>
+        </SectionTitle>
 
-        <div className="relative mt-14 md:mt-16">
-          {/* Connector line between the three steps on desktop */}
+        <ol className="relative mt-16 grid gap-10 md:mt-20 md:grid-cols-3 md:gap-8">
+          {/* The painted line the play runs along. */}
           <div
-            className="pointer-events-none absolute left-0 right-0 top-[86px] hidden h-px md:block"
+            aria-hidden
+            className="pointer-events-none absolute left-0 right-0 top-[34px] hidden h-[3px] md:block"
             style={{
-              background: `linear-gradient(90deg, transparent, ${LANDING_COLORS.brand}40, transparent)`,
+              background: `repeating-linear-gradient(90deg, ${COURT.lane}26 0 24px, transparent 24px 38px)`,
             }}
           />
-          <ol className="relative grid gap-4 md:grid-cols-3 md:gap-5">
-            {STEPS.map((step, i) => (
-              <StepCard key={step.n} step={step} index={i} />
-            ))}
-          </ol>
-        </div>
+
+          {STEPS.map((step) => (
+            <li key={step.n} className="relative">
+              <span
+                className="relative inline-flex items-center justify-center px-4 py-2.5 font-display text-2xl uppercase leading-none tracking-[0.02em] md:text-[1.75rem]"
+                style={{
+                  color: COURT.ground,
+                  backgroundColor: COURT.ledAmber,
+                  clipPath: 'polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%)',
+                }}
+              >
+                {step.n}
+              </span>
+              <h3
+                className="mt-6 font-display t-step uppercase leading-[1.06] tracking-[-0.02em]"
+                style={{ color: COURT.lane }}
+              >
+                {step.title}
+              </h3>
+              <p
+                className="mt-3.5 max-w-[46ch] text-[15px] leading-relaxed"
+                style={{ color: COURT.laneDim }}
+              >
+                {step.body}
+              </p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   )

@@ -4,14 +4,34 @@
 
 import { WORKSPACES, type Workspace } from "./workspaces";
 
-export type StaffPermissionKey =
-  | "orders"
-  | "menu"
-  | "analytics"
-  | "store_setup"
-  | "customers"
-  | "settings"
-  | "pos";
+/**
+ * The permission keys, as a runtime list so `staff-permissions-parity.test.ts`
+ * on the web side can compare the two copies key by key. A union type alone
+ * cannot be checked at runtime, and this registry drifting silently is exactly
+ * the failure that test exists to catch.
+ *
+ * Order matches `src/lib/staff-permissions.ts` so the two files read the same.
+ */
+export const STAFF_PERMISSION_KEYS = [
+  "orders",
+  "menu",
+  "analytics",
+  "store_setup",
+  "customers",
+  "settings",
+  "pos",
+  // Managing staff for one's own branch only — held by a branch admin, who
+  // must not be able to reach into another branch's roster.
+  "branch_staff",
+  // Rewriting a placed customer's bill, and moving money back out of the
+  // drawer. Granted separately from "orders" (which only advances status) and
+  // from each other, because a refund is the one action here that editing
+  // again cannot undo.
+  "order_edit",
+  "order_refund",
+] as const;
+
+export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
 
 export interface StaffPermissionHolder {
   role: string | null;
@@ -39,7 +59,32 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   growth: "analytics",
   trends: "analytics",
   "product-analytics": "analytics",
+  // Branch-versus-branch takings are store-wide revenue, so they ride the
+  // analytics key. An unmapped tab defaults to allowed, which would have shown
+  // every branch's revenue to a cashier with only the POS grant.
+  branches: "analytics",
+  // The portfolio is branch revenue side by side, so it rides the same key for
+  // the same reason.
+  portfolio: "analytics",
+  // The roster is staff management: an owner holds it outright, a branch admin
+  // through the grant that lets them run their own branch's people.
+  team: "branch_staff",
   "product-management": "menu",
+  // Deciding which branches carry a dish is a menu decision, so it rides the
+  // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with
+  // only the POS grant take a dish off another branch's board.
+  "branch-menu": "menu",
+  // Reordering an ingredient is a menu decision, so it rides the same key.
+  inventory: "menu",
+  // The daily report is that same shelf, reconciled — whoever may see the
+  // stock may see whether it added up. Mapping it at all is the point: an
+  // unmapped tab defaults to ALLOWED, and this one names what went missing
+  // and what it cost.
+  "daily-report": "menu",
+  // Where the store's money lands is store setup, not a shift task. An
+  // unmapped tab defaults to allowed, which would let any cashier retire the
+  // merchant's GCash account mid-service.
+  payments: "store_setup",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

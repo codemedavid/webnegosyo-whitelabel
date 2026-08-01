@@ -72,3 +72,27 @@ export async function listPaymentMethods(
   if (error) throw error;
   return (data ?? []) as unknown as PosPaymentMethod[];
 }
+
+/**
+ * Every active payment method for the tenant, with no order-type filter.
+ *
+ * Settling an edited order is deliberately NOT narrowed the way ringing up a
+ * new sale is: a customer who paid a delivery order by GCash may hand over cash
+ * for the ₱120 difference, and refusing that would leave the cashier unable to
+ * close the bill at all. The order-type restriction exists to stop the
+ * storefront offering a method for the wrong channel, which is a different
+ * question from how a shortfall is squared at the counter.
+ */
+export async function listAllPaymentMethods(
+  tenantId: string,
+): Promise<PosPaymentMethod[]> {
+  const { data, error } = await supabase
+    .from("payment_methods")
+    .select("id, name, details, qr_code_url, require_payment_proof, order_index")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("order_index", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as unknown as PosPaymentMethod[];
+}

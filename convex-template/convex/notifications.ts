@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { recipientsForOutlet } from "./pushRecipients";
 
 // Register a push token for a user (replaces any existing tokens for that user)
 export const registerPushToken = mutation({
@@ -8,6 +9,9 @@ export const registerPushToken = mutation({
     userId: v.string(),
     token: v.string(),
     platform: v.union(v.literal("ios"), v.literal("android")),
+    // Optional so an older app build, which does not send it, still registers.
+    // Such a device is treated as store-wide — see `pushRecipients.ts`.
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Remove existing tokens for this user
@@ -25,6 +29,7 @@ export const registerPushToken = mutation({
       userId: args.userId,
       token: args.token,
       platform: args.platform,
+      outletId: args.outletId,
     });
 
     return id;
@@ -63,9 +68,17 @@ export const sendOrderNotification = internalAction({
     total: v.number(),
     itemCount: v.number(),
     orderId: v.string(),
+    // The branch the order was placed at, when it has one. Absent rings every
+    // device, which is what a single-location store needs.
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const tokens = await ctx.runQuery(internal.notifications.getAllTokens, {});
+    const allTokens = await ctx.runQuery(internal.notifications.getAllTokens, {});
+
+    // Ring only the branch that has to act on this order. A device cannot undo
+    // a notification it already received, so this is the only place the
+    // narrowing can happen.
+    const tokens = recipientsForOutlet(allTokens, args.outletId);
 
     if (tokens.length === 0) {
       return;

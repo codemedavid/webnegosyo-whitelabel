@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
@@ -13,10 +13,25 @@ import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
+import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
+import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
+import { canEnterEditMode, enterEditMode } from "../../../lib/pos-edit-mode";
+import { usePosCartStore } from "../../../stores/pos-cart-store";
+import { listProducts } from "../../../lib/products";
+import {
+  normalizeModifierGroups,
+  type ModifierSource,
+} from "../../../lib/modifier-groups";
+import type { ModifierCatalog } from "../../../lib/order-edit-cart";
+import { goTo } from "../../../lib/tab-navigation";
+import { useBranchScope } from "../../../lib/use-branch-scope";
+import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
+const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
 
@@ -74,6 +89,8 @@ interface OrderDetail {
   paymentStatus?: string;
   hasUpsellItems?: boolean;
   hasBundleItems?: boolean;
+  /** Bumped by every saved edit; the register checks its optimistic lock on it. */
+  revisionNumber?: number;
   items?: OrderItem[];
 }
 
@@ -332,6 +349,103 @@ export default function OrderDetailScreen() {
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { printOrder, autoPrint, hasPrinter } = useOrderPrint();
 
+  // The settlement ledger. A backend that cannot serve these refs reports an
+  // error rather than an empty list — which is the point: an empty ledger and
+  // an unavailable one must not look alike, because one of them means "already
+  // paid". On error the cards are hidden entirely rather than shown as unpaid.
+  const { data: payments, error: paymentsError } = useSafeQuery<OrderPaymentLike[]>(
+    getOrderPaymentsRef,
+    orderId ? { orderId } : "skip",
+  );
+  const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(
+    getOrderRevisionsRef,
+    orderId ? { orderId } : "skip",
+  );
+
+  const scope = useBranchScope();
+  const { isOwner, permissions, role, orderBackend, isDemo, tenantId } = useAuthStore();
+
+  // Editing happens on the register now, so the gate includes the register's
+  // own rule: a placed order may not be loaded over an open counter sale.
+  const registerCart = usePosCartStore((s) => s.lines);
+  const beginEdit = usePosCartStore((s) => s.beginEdit);
+  const [isOpeningEdit, setIsOpeningEdit] = useState(false);
+
+  const editGate = order
+    ? canEnterEditMode({
+        cart: registerCart,
+        status: order.status,
+        backend: orderBackend ?? "convex",
+        user: { role, isOwner, permissions },
+        scope,
+        order,
+      })
+    : { allowed: false as const };
+
+  /**
+   * Load the order into the register and switch to it.
+   *
+   * The live menu is fetched here rather than held on this screen, because it
+   * is only needed to recover the order's modifiers back to option ids and
+   * most visits to this screen never edit anything.
+   */
+  async function handleOpenInRegister() {
+    if (!order || !tenantId || isOpeningEdit) return;
+
+    if (isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+
+    // An order opened without its ledger looks unpaid, and the register would
+    // offer to collect a bill that was already settled.
+    if (paymentsError) {
+      Alert.alert(
+        "Cannot edit this order",
+        "Its payment history could not be loaded, so its bill cannot be edited safely.",
+      );
+      return;
+    }
+
+    setIsOpeningEdit(true);
+    try {
+      const products = await listProducts(tenantId);
+      const catalog: ModifierCatalog = products.reduce<ModifierCatalog>(
+        (acc, product) => ({
+          ...acc,
+          [product.id]: normalizeModifierGroups(product as unknown as ModifierSource),
+        }),
+        {},
+      );
+
+      beginEdit(
+        enterEditMode(
+          {
+            _id: order._id,
+            total: order.total,
+            revisionNumber: order.revisionNumber,
+            deliveryFee: order.deliveryFee,
+            items: order.items ?? [],
+          },
+          payments ?? [],
+          catalog,
+        ),
+      );
+
+      // `goTo`, not `replace`: replacing into a sibling tab renames the tab
+      // navigator's state key and remounts it mid-transition. See
+      // lib/tab-navigation.ts.
+      goTo(router, "/(main)/pos");
+    } catch (err) {
+      Alert.alert(
+        "Could not open the register",
+        err instanceof Error ? err.message : "The menu could not be loaded.",
+      );
+    } finally {
+      setIsOpeningEdit(false);
+    }
+  }
+
   const itemImageIds = (order?.items ?? [])
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
@@ -353,6 +467,16 @@ export default function OrderDetailScreen() {
       }
 
       await updateStatus({ orderId: order._id, status: newStatus });
+
+      // Put the ingredients back. This order lives in Convex, so cancelling it
+      // never reaches the web app's updateOrderStatus where stock is restored.
+      // Never throws — a stock write must not make an order un-cancellable.
+      if (newStatus === "cancelled") {
+        const tenantId = useAuthStore.getState().tenantId;
+        if (tenantId) {
+          await notifyOrderStockRestore(tenantId, String(order._id));
+        }
+      }
     } catch {
       Alert.alert("Error", "Failed to update status");
     }
@@ -516,8 +640,36 @@ export default function OrderDetailScreen() {
         );
       })()}
 
+      <SettlementCard
+        total={order.total}
+        payments={payments ?? []}
+        isLedgerAvailable={!paymentsError}
+      />
+
+      <RevisionHistoryCard revisions={revisions ?? []} />
+
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
         <View style={styles.actions}>
+          {/*
+            The gate's refusal is rendered verbatim rather than hiding the
+            button: a cashier who cannot see why editing is unavailable calls
+            support, and the reasons are written to be acted on ("ask a manager",
+            "this order belongs to another branch").
+          */}
+          {editGate.allowed ? (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={handleOpenInRegister}
+              disabled={isOpeningEdit}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.editButtonText}>
+                {isOpeningEdit ? "Opening register..." : "Edit in register"}
+              </Text>
+            </TouchableOpacity>
+          ) : editGate.reason ? (
+            <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+          ) : null}
           {nextStatus && (
             <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
               <Text style={styles.primaryActionText}>
@@ -582,6 +734,20 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  editButton: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  editButtonText: { color: colors.textPrimary, ...typography.body, fontWeight: "700" },
+  editBlockedText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: spacing.md,
+  },
   reprintButton: {
     borderWidth: 1,
     borderColor: colors.primary,

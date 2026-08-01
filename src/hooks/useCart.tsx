@@ -8,10 +8,12 @@ import {
   getFullCartItemCount,
   makeCartItem,
   replaceCartItem,
+  getEffectiveItemPrice,
   MAX_CART_ITEM_QUANTITY,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
+import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 
 interface CartContextType extends Cart {
   orderType: string | null
@@ -320,7 +322,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const itemIds = [...new Set(currentItems.map((item) => item.menu_item.id))]
     try {
-      const freshData = await fetchFreshCartItemData(itemIds, currentTenantId)
+      // The branch the cart belongs to, read straight from the stored
+      // selection: the re-check must price against the same branch the customer
+      // shopped, or it undoes per-branch pricing right before checkout.
+      const currentSlug = tenantSlugRef.current
+      const storedBranch =
+        currentSlug && typeof window !== 'undefined'
+          ? readOutletSelection(window.localStorage, currentSlug, Date.now())
+          : null
+
+      const freshData = await fetchFreshCartItemData(
+        itemIds,
+        currentTenantId,
+        storedBranch?.outletId ?? null
+      )
       setItems((prevItems): CartItem[] => {
         let hasChanges = false
 
@@ -349,7 +364,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
 
           const newSubtotal = calculateCartItemSubtotal(
-            fresh.price,
+            getEffectiveItemPrice(updatedMenuItem),
             item.selected_variations || item.selected_variation,
             item.selected_addons,
             item.quantity
@@ -602,7 +617,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const existingItem = updatedItems[existingItemIndex]
           const newQuantity = Math.min(existingItem.quantity + quantity, MAX_QUANTITY)
           const newSubtotal = calculateCartItemSubtotal(
-            menuItem.price,
+            getEffectiveItemPrice(menuItem),
             variationOrVariations,
             addons,
             newQuantity
@@ -664,7 +679,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           // Use appropriate variation format for calculation
           const variations = item.selected_variations || item.selected_variation
           const newSubtotal = calculateCartItemSubtotal(
-            item.menu_item.price,
+            getEffectiveItemPrice(item.menu_item),
             variations,
             item.selected_addons,
             clampedQuantity

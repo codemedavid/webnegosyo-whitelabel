@@ -9,11 +9,21 @@ import {
 } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
 import { useAuthStore } from "../stores/auth-store";
+import {
+  MERCHANT_LANDING_HREF,
+  SUPERADMIN_LANDING_HREF,
+  needsTenantLookup,
+  needsOutletLookup,
+  type OutletRow,
+  resolveSession,
+  type TenantRow,
+} from "../lib/session-resolve";
 import { usePrinterStore } from "../stores/printer-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
 import {
   shouldRegisterPushToken,
+  pushRegistrationOutletId,
   pushTokenCleanup,
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
@@ -86,7 +96,7 @@ function useAuthInit() {
       try {
         const { data: appUser } = await supabase
           .from("app_users")
-          .select("tenant_id, role, is_owner, permissions")
+          .select("tenant_id, role, is_owner, permissions, outlet_id")
           .eq("user_id", data.session.user.id)
           .in("role", ["admin", "superadmin"])
           .single();
@@ -96,29 +106,37 @@ function useAuthInit() {
           return;
         }
 
-        const { data: tenant } = await supabase
-          .from("tenants")
-          .select("id, slug, name, convex_deployment_url")
-          .eq("id", appUser.tenant_id)
-          .single();
+        // A superadmin owns no tenant (tenant_id is NULL), so skip the lookup —
+        // querying by a null id would miss and read as a failed sign-in.
+        let tenant: TenantRow | null = null;
+        if (needsTenantLookup(appUser)) {
+          const { data: tenantRow } = await supabase
+            .from("tenants")
+            .select("id, slug, name, convex_deployment_url, convex_schema_version, order_backend")
+            .eq("id", appUser.tenant_id)
+            .single();
+          tenant = (tenantRow as TenantRow | null) ?? null;
+        }
 
-        if (!tenant) {
+        // Branch-confined accounts carry their branch onto the session; the
+        // name is snapshotted onto counter sales, so it is read here once.
+        let outlet: OutletRow | null = null;
+        if (appUser && needsOutletLookup(appUser)) {
+          const { data: outletRow } = await supabase
+            .from("outlets")
+            .select("id, name")
+            .eq("id", appUser.outlet_id)
+            .single();
+          outlet = (outletRow as OutletRow | null) ?? null;
+        }
+        const session = resolveSession(data.session.user.id, appUser, tenant, outlet);
+
+        if (session.mode === "denied" || !session.auth) {
           setAuth({ isLoading: false });
           return;
         }
 
-        setAuth({
-          userId: data.session.user.id,
-          tenantId: tenant.id,
-          tenantSlug: tenant.slug,
-          tenantName: tenant.name,
-          convexUrl: tenant.convex_deployment_url ?? null,
-          isLoading: false,
-          isAuthenticated: true,
-          isOwner: appUser.is_owner ?? false,
-          permissions: appUser.permissions ?? null,
-          role: appUser.role ?? null,
-        });
+        setAuth(session.auth);
       } catch {
         setAuth({ isLoading: false });
       }
@@ -129,6 +147,8 @@ function useAuthInit() {
 function useAuthRedirect() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
 
   const rootNavigationState = useRootNavigationState();
   const navigatorReady = rootNavigationState?.key != null;
@@ -145,11 +165,27 @@ function useAuthRedirect() {
     if (isLoading || !navigatorReady) return;
 
     if (isAuthenticated) {
-      if (group !== "(main)") router.replace("/(main)/dashboard");
+      // A superadmin belongs on the platform surface — unless they have opened
+      // a tenant, in which case the merchant tree is exactly where they want
+      // to be and this must not yank them back out.
+      const wantsPlatform = isSuperadmin && impersonatedTenantId === null;
+      const wantedGroup = wantsPlatform ? "(superadmin)" : "(main)";
+      if (group !== wantedGroup) {
+        router.replace(
+          wantsPlatform ? SUPERADMIN_LANDING_HREF : MERCHANT_LANDING_HREF
+        );
+      }
       return;
     }
     if (group !== "(auth)") router.replace("/(auth)/login");
-  }, [isLoading, isAuthenticated, navigatorReady, group]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    navigatorReady,
+    group,
+    isSuperadmin,
+    impersonatedTenantId,
+  ]);
 }
 
 function usePushNotifications() {
@@ -172,6 +208,9 @@ function usePushNotifications() {
       convexUrl,
       isSuperadmin,
       impersonatedTenantId,
+      // The account's branch, read fresh rather than subscribed: this effect
+      // only re-runs on the deps below, and the branch is fixed for a session.
+      outletId: useAuthStore.getState().outletId,
     };
 
     // A superadmin viewing someone else's store is a spectator: never subscribe
@@ -214,6 +253,9 @@ function usePushNotifications() {
                 userId,
                 token,
                 platform: Platform.OS === "ios" ? "ios" : "android",
+                // Binds this device to its branch so it is only rung for that
+                // branch's orders. Omitted for an owner, who hears every one.
+                outletId: pushRegistrationOutletId(session),
               },
               format: "json",
             }),
@@ -247,6 +289,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(main)" />
+        <Stack.Screen name="(superadmin)" />
       </Stack>
     </ConvexAuthProvider>
   );

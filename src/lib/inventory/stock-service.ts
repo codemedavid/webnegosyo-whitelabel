@@ -23,7 +23,17 @@ import {
   resolveMovementDelta,
   movingAverageUnitCost,
 } from '@/lib/inventory/stock-ledger'
-import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
+import {
+  convertQuantity,
+  convertUnitCost,
+  type InventoryUnit,
+} from '@/lib/inventory/unit-conversion'
+import { resolveMovementBranch } from '@/lib/inventory/branch-stock-view'
+import {
+  resolveBranchScope,
+  type BranchScope,
+  type BranchScopedUser,
+} from '@/lib/outlets/branch-scope'
 
 export { stockMovementInputSchema, type StockMovementInput }
 
@@ -36,6 +46,27 @@ function toUnit(row: InventoryUnitRow): InventoryUnit {
     to_base_factor: row.to_base_factor,
   }
 }
+
+/** Alerting must never unwind a movement the merchant already recorded. */
+async function notifyStockLevelChanges(
+  tenantId: string,
+  items: readonly InventoryItem[],
+  deltas: ReadonlyMap<string, number>,
+  outletId?: string | null,
+): Promise<void> {
+  try {
+    const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
+    await processStockLevelChanges(tenantId, items, deltas, outletId)
+  } catch (error) {
+    console.error('[inventory] Stock level alerting failed', tenantId, error)
+  }
+}
+
+/**
+ * Any Supabase client already scoped to the caller — the cookie-bound server
+ * client on the web, a Bearer-token client for the merchant app.
+ */
+type StockMovementClient = Awaited<ReturnType<typeof createClient>>
 
 export interface StockMovementResult {
   movement: StockMovement
@@ -73,8 +104,159 @@ export async function recordStockMovement(
   input: StockMovementInput,
 ): Promise<StockMovementResult> {
   await verifyTenantPermission(tenantId, 'menu')
-  const validated = stockMovementInputSchema.parse(input)
   const supabase = await createClient()
+  return recordStockMovementWith(supabase, tenantId, input)
+}
+
+/**
+ * The movement itself, against a caller-supplied client.
+ *
+ * Split out for the merchant app, which arrives with a Bearer token and no
+ * cookies, so it can neither use the cookie-bound server client nor
+ * `verifyTenantPermission` — it authorizes itself at the route and hands the
+ * resulting client in here.
+ *
+ * Sharing this body is the point. RLS would let the app insert into
+ * `stock_movements` directly, but the signed delta, the moving-average cost and
+ * the alert/auto-86 pass all live here; a direct insert would skip two of them
+ * and resolve the third from a figure the phone happened to be holding.
+ *
+ * Authorization is the caller's responsibility and must already have happened.
+ */
+/**
+ * Who is entering this movement, or `null` if nobody can be named.
+ *
+ * The daily report can say ₱500 of beef went missing on Tuesday; without this
+ * nothing says who counted the shelf that day, and shrinkage is only
+ * actionable against a person and a time.
+ *
+ * Never throws. Attribution is secondary to the count itself: refusing to
+ * record a stocktake because the identity lookup failed would leave a wrong
+ * quantity on the shelf, which is worse than an unattributed row. A service
+ * client — the order pipeline's — legitimately has no user, and a `sale` is
+ * deducted by the system rather than by a person, so anonymous is the correct
+ * answer there rather than a fallback.
+ */
+/**
+ * Who is recording a movement, when the caller already knows.
+ *
+ * A route that authorized the call has ALREADY verified the JWT and read the
+ * `app_users` row that decides the branch. Without this the service repeats
+ * both: `auth.getUser()` is a round trip to the auth server rather than a local
+ * token decode, and a stocktake from the phone made three of them in sequence
+ * before writing anything. That was most of the spinner the merchant watched.
+ *
+ * Passing it changes nothing about who may write what. The scope still comes
+ * from `app_users` server-side; it is simply read once instead of twice.
+ */
+export interface MovementActor {
+  /** `null` for a system write with no person behind it. */
+  userId: string | null
+  scope: BranchScope
+}
+
+async function resolveActingUserId(supabase: StockMovementClient): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error) return null
+    return data.user?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The branch scope of whoever is recording this movement.
+ *
+ * Resolved from `app_users` rather than taken from the caller, for the same
+ * reason the POS route resolves it server-side: a client-named branch on a
+ * write path would let one shop move another's stock.
+ *
+ * Falls back to store-wide when no user can be named. That is the order
+ * pipeline's service client — a `sale` is deducted by the system, not by a
+ * person — and it is the behaviour every tenant has today.
+ */
+async function resolveActingBranchScope(
+  supabase: StockMovementClient,
+  tenantId: string,
+): Promise<BranchScope> {
+  try {
+    const { data } = await supabase.auth.getUser()
+    const userId = data.user?.id
+    if (!userId) return { kind: 'all' }
+
+    const { data: appUser } = await supabase
+      .from('app_users')
+      .select('role, is_owner, outlet_id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .single()
+    if (!appUser) return { kind: 'all' }
+
+    return resolveBranchScope(appUser as unknown as BranchScopedUser)
+  } catch {
+    return { kind: 'all' }
+  }
+}
+
+/**
+ * What ONE branch is holding of this ingredient, in stock units.
+ *
+ * A stocktake is a statement about a single shelf, so the figure it is
+ * reconciled against has to be that shelf's. `inventory_items.current_qty` is
+ * the roll-up — the sum of every branch — and resolving against it turns a
+ * North manager counting 10 in a 100-unit chain into a delta of -90.
+ *
+ * Missing row means zero, the rule the whole stock layer shares (see
+ * `stock-location.ts`) and the one the trigger's COALESCE applies: a branch
+ * that has never held an ingredient holds none of it, and counting 10 there is
+ * a gain of 10.
+ *
+ * A failed read throws rather than falling back. Every other read in this
+ * function throws too, and the alternative — reconciling a count against a
+ * guess — writes a wrong quantity to the shelf under the one reason whose
+ * entire purpose is to be authoritative.
+ */
+async function readBranchOnHand(
+  supabase: StockMovementClient,
+  tenantId: string,
+  inventoryItemId: string,
+  outletId: string | null,
+): Promise<number> {
+  const query = supabase
+    .from('inventory_stock')
+    .select('current_qty')
+    .eq('tenant_id', tenantId)
+    .eq('inventory_item_id', inventoryItemId)
+
+  // `.is` rather than `.eq` for the store pool: `outlet_id = NULL` matches
+  // nothing in SQL, so `.eq` would silently report an empty shelf.
+  const { data, error } = await (outletId === null
+    ? query.is('outlet_id', null)
+    : query.eq('outlet_id', outletId)
+  ).maybeSingle()
+
+  if (error) throw error
+  return (data as { current_qty: number } | null)?.current_qty ?? 0
+}
+
+export async function recordStockMovementWith(
+  supabase: StockMovementClient,
+  tenantId: string,
+  input: StockMovementInput,
+  actor?: MovementActor,
+): Promise<StockMovementResult> {
+  const validated = stockMovementInputSchema.parse(input)
+
+  // Throws for a manager naming somebody else's shop, before anything is read
+  // or written — a refused movement must leave no trace.
+  //
+  // The scope is the SERVER's answer either way: supplied by a route that read
+  // `app_users` itself, or read here. What it must never be is the phone's.
+  const outletId = resolveMovementBranch(
+    validated.outlet_id,
+    actor?.scope ?? (await resolveActingBranchScope(supabase, tenantId)),
+  )
 
   const { data: itemRow, error: itemError } = await supabase
     .from('inventory_items')
@@ -99,27 +281,74 @@ export async function recordStockMovement(
     throw new Error('The movement unit could not be resolved for this ingredient')
   }
 
+  // Only a stocktake reconciles against a standing quantity, and it reconciles
+  // against ONE SHELF's — `item.current_qty` is the roll-up across every
+  // branch. So only a stocktake pays for the extra read.
+  const reconcileAgainst =
+    validated.reason === 'stocktake'
+      ? await readBranchOnHand(supabase, tenantId, validated.inventory_item_id, outletId)
+      : item.current_qty
+
   // Throws on a cross-dimension unit rather than inventing a conversion.
   const quantityDelta = resolveMovementDelta({
     reason: validated.reason,
     quantity: validated.quantity,
     unit: toUnit(enteredUnit),
     stockUnit: toUnit(stockUnit),
-    currentQty: item.current_qty,
+    currentQty: reconcileAgainst,
   })
+
+  // The count itself, converted to the stock unit — an absolute, so unlike
+  // `quantityDelta` it does not depend on when it was read.
+  const countedInStockUnit = convertQuantity(
+    validated.quantity,
+    toUnit(enteredUnit),
+    toUnit(stockUnit),
+  )
+
+  // The merchant prices a delivery in the unit they buy in (P120 per kg) but
+  // `unit_cost` is per STOCK unit, because every figure that consumes it — the
+  // moving average, recipe cost, and the report's COGS — pairs it with a
+  // quantity already converted to stock units. Storing the typed price verbatim
+  // was the 1000x defect: it looks correct on the receiving screen and only
+  // surfaces three screens away as an impossible food cost.
+  const unitCostInStockUnit =
+    validated.unit_cost === undefined
+      ? undefined
+      : convertUnitCost(validated.unit_cost, toUnit(enteredUnit), toUnit(stockUnit))
 
   const { data: movementRow, error: movementError } = await supabase
     .from('stock_movements')
     .insert({
+      created_by: actor ? actor.userId : await resolveActingUserId(supabase),
       tenant_id: tenantId,
       inventory_item_id: validated.inventory_item_id,
+      outlet_id: outletId,
       reason: validated.reason,
       quantity_delta: quantityDelta,
+      // A stocktake states WHAT WAS COUNTED and lets the trigger subtract,
+      // under the row lock, from the figure the update is about to change.
+      // Computing the difference here uses `item.current_qty` read earlier in
+      // this request, so anything landing in that gap is absorbed silently: a
+      // probe counted 900, a sale of 50 arrived mid-flight, and the shelf ended
+      // at 850 — the one movement whose whole purpose is to be authoritative,
+      // quietly wrong. `quantity_delta` above is still sent and is what an
+      // un-migrated database will use; the trigger overwrites it.
+      //
+      // Only a stocktake may carry a target. A delivery is a RELATIVE movement:
+      // letting it state an absolute would make two deliveries in a row
+      // overwrite each other instead of accumulating.
+      target_qty: validated.reason === 'stocktake' ? countedInStockUnit : null,
       entered_quantity: validated.quantity,
       entered_unit_id: validated.unit_id,
-      unit_cost: validated.unit_cost ?? null,
+      unit_cost: unitCostInStockUnit ?? null,
       note: validated.note ?? null,
       order_id: validated.order_id ?? null,
+      // Which count this belonged to, when it belonged to one. Without it the
+      // session has no members and reads as abandoned however thoroughly the
+      // shelf was actually counted. The schema has already refused any reason
+      // but `stocktake`.
+      inventory_count_id: validated.inventory_count_id ?? null,
     } as never)
     .select()
     .single()
@@ -128,12 +357,15 @@ export async function recordStockMovement(
 
   // A delivery at a new price blends into the cost of stock already on hand.
   // Only when a price was actually supplied — see `stockMovementInputSchema`.
-  if (validated.reason === 'receive' && validated.unit_cost !== undefined) {
+  if (validated.reason === 'receive' && unitCostInStockUnit !== undefined) {
+    // Every term here is per stock unit: the shelf's existing cost, the
+    // delivery's converted price, and both quantities. Mixing units in a
+    // weighted average silently biases the blend rather than failing.
     const blended = movingAverageUnitCost({
       currentQty: item.current_qty,
       currentUnitCost: item.unit_cost,
       receivedQty: quantityDelta,
-      receivedUnitCost: validated.unit_cost,
+      receivedUnitCost: unitCostInStockUnit,
     })
     const { error: costError } = await supabase
       .from('inventory_items')
@@ -142,6 +374,13 @@ export async function recordStockMovement(
       .eq('tenant_id', tenantId)
     if (costError) throw costError
   }
+
+  // A merchant wasting the last of an ingredient crosses the same line an order
+  // does, so the alert path hangs off both writers. It reads the item as it
+  // stood before the movement, paired with the delta just applied.
+  // The branch the movement was written to, so the alert is about the shelf
+  // that actually changed rather than the chain total.
+  await notifyStockLevelChanges(tenantId, [item], new Map([[item.id, quantityDelta]]), outletId)
 
   const { data: updatedRow, error: refreshError } = await supabase
     .from('inventory_items')
@@ -152,4 +391,29 @@ export async function recordStockMovement(
   if (refreshError) throw refreshError
 
   return { movement, item: updatedRow as unknown as InventoryItem }
+}
+
+/**
+ * Put a cancelled order's ingredients back on the shelf, for callers that
+ * cancel an order outside `updateOrderStatus`.
+ *
+ * The web admin cancels a Convex-held order straight through the Convex
+ * mutation (see `convex-order-sheet.tsx`), so it never reaches the platform
+ * order path where stock is restored. Without this, the same cancellation
+ * returned stock from the merchant app but not from the web console.
+ *
+ * Authorization is checked here and deliberately BEFORE the reversal: the
+ * reversal writes to a tenant's ledger, so a check that ran afterwards would
+ * already have leaked. The reversal itself is best-effort — a stock write must
+ * never make an order un-cancellable.
+ */
+export async function restoreOrderStock(
+  tenantId: string,
+  orderId: string,
+): Promise<void> {
+  await verifyTenantPermission(tenantId, 'orders')
+  const { reverseOrderStockBestEffort } = await import(
+    '@/lib/inventory/order-stock-service'
+  )
+  await reverseOrderStockBestEffort(tenantId, orderId)
 }

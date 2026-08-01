@@ -321,6 +321,111 @@ describe("createProduct with modifier groups", () => {
   });
 });
 
+/**
+ * The storefront, customer app and desktop POS still read the legacy
+ * `variation_types` / `addons` columns. Writing only `modifier_groups` makes
+ * add-ons authored in this app invisible everywhere else, so every write must
+ * mirror the unified groups into the legacy columns.
+ */
+describe("legacy column mirroring on save", () => {
+  const addonGroup = {
+    id: "g-addons",
+    name: "Add-ons",
+    display_order: 1,
+    min_select: 0,
+    max_select: null,
+    options: [
+      { id: "o-cheese", name: "Extra Cheese", price_modifier: 20, display_order: 0 },
+    ],
+  };
+  const sizeGroup = {
+    id: "g-size",
+    name: "Size",
+    display_order: 0,
+    min_select: 1,
+    max_select: 1,
+    options: [{ id: "o-l", name: "Large", price_modifier: 20, display_order: 0 }],
+  };
+
+  function mockInsertChain() {
+    const chain: any = {};
+    ["insert", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "new-1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  function mockUpdateChain() {
+    const chain: any = {};
+    ["update", "eq", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  it("writes multi-select options to the addons column on insert", async () => {
+    const chain = mockInsertChain();
+
+    await createProduct("tenant-1", {
+      ...validInput,
+      modifier_groups: [sizeGroup, addonGroup] as any,
+    });
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addons: [
+          { id: "o-cheese", name: "Extra Cheese", price: 20, is_default: undefined },
+        ],
+        variation_types: [expect.objectContaining({ name: "Size" })],
+        variations: [],
+      })
+    );
+  });
+
+  it("writes multi-select options to the addons column on update", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", {
+      ...validInput,
+      modifier_groups: [addonGroup] as any,
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addons: [
+          { id: "o-cheese", name: "Extra Cheese", price: 20, is_default: undefined },
+        ],
+        variation_types: [],
+      })
+    );
+  });
+
+  it("clears the legacy columns when every group is removed", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", { ...validInput, modifier_groups: [] });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ addons: [], variation_types: [], variations: [] })
+    );
+  });
+
+  it("leaves the legacy columns untouched when the caller omits modifier_groups", async () => {
+    const chain = mockUpdateChain();
+
+    await updateProduct("1", "tenant-1", validInput);
+
+    const payload = chain.update.mock.calls[0][0];
+    expect(payload).not.toHaveProperty("addons");
+    expect(payload).not.toHaveProperty("variation_types");
+    expect(payload).not.toHaveProperty("modifier_groups");
+  });
+});
+
 describe("updateProduct", () => {
   it("updates only the given product for the given tenant", async () => {
     const chain: any = {};
@@ -360,7 +465,14 @@ describe("deleteProduct", () => {
 });
 
 describe("toggleProductAvailability", () => {
-  it("updates only is_available for the given product", async () => {
+  /**
+   * This used to assert `{ is_available: false }` and nothing else. That was
+   * the spec until `menu_items.auto_disabled_at` arrived: the marker records
+   * that auto-86 hid an item, and stock recovery re-enables only items still
+   * carrying it. A merchant hiding a dish by hand has to release the marker,
+   * or the next delivery puts it back on sale against their decision.
+   */
+  function stubUpdate() {
     const chain: any = {};
     ["update", "eq", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
@@ -369,10 +481,29 @@ describe("toggleProductAvailability", () => {
       Promise.resolve({ data: { id: "1", is_available: false }, error: null })
     );
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  it("releases the auto-86 marker when hiding a product", async () => {
+    const chain = stubUpdate();
 
     await toggleProductAvailability("1", "tenant-1", false);
 
-    expect(chain.update).toHaveBeenCalledWith({ is_available: false });
+    expect(chain.update).toHaveBeenCalledWith({
+      is_available: false,
+      auto_disabled_at: null,
+    });
+  });
+
+  it("releases the auto-86 marker when putting a product back on sale", async () => {
+    const chain = stubUpdate();
+
+    await toggleProductAvailability("1", "tenant-1", true);
+
+    expect(chain.update).toHaveBeenCalledWith({
+      is_available: true,
+      auto_disabled_at: null,
+    });
   });
 });
 

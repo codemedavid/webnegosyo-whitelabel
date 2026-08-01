@@ -63,6 +63,7 @@ describe("summarizeCounterSales", () => {
       cashTotal: 0,
       nonCashTotal: 0,
       changeGiven: 0,
+      refundsPaid: 0,
     });
   });
 
@@ -76,6 +77,71 @@ describe("summarizeCounterSales", () => {
     const summary = summarizeCounterSales([sale({ paymentMethod: undefined, total: 80 })]);
     expect(summary.cashTotal).toBe(0);
     expect(summary.nonCashTotal).toBe(80);
+  });
+
+  // --- order editing --------------------------------------------------
+  // Once a placed order can be edited, `sale.total` alone stops describing
+  // what physically moved through the drawer.
+
+  it("splits the drawer by how each settlement was actually taken", () => {
+    // Paid ₱450 by GCash, then an edit added ₱120 collected in CASH. The
+    // order's payment method still says GCash, so charging the whole ₱570 to
+    // non-cash would hide ₱120 sitting in the till.
+    const summary = summarizeCounterSales(
+      [sale({ _id: "o1", total: 570, paymentMethod: "GCash", customerData: {} })],
+      [
+        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "GCash" },
+        { orderId: "o1", kind: "charge", amount: 120, paymentMethodName: "Cash" },
+      ],
+    );
+
+    expect(summary.cashTotal).toBe(120);
+    expect(summary.nonCashTotal).toBe(450);
+    expect(summary.grossTotal).toBe(570);
+  });
+
+  it("subtracts a cash refund from the drawer", () => {
+    // Paid ₱450 cash, edit dropped the bill, ₱120 handed back from the till.
+    const summary = summarizeCounterSales(
+      [sale({ _id: "o1", total: 330, paymentMethod: "Cash", customerData: {} })],
+      [
+        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "Cash" },
+        { orderId: "o1", kind: "refund", amount: 120, paymentMethodName: "Cash" },
+      ],
+    );
+
+    expect(summary.cashTotal).toBe(330);
+    expect(summary.refundsPaid).toBe(120);
+  });
+
+  it("reports refunds separately so they can be accounted for", () => {
+    const summary = summarizeCounterSales(
+      [sale({ _id: "o1", total: 330, paymentMethod: "GCash", customerData: {} })],
+      [
+        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "GCash" },
+        { orderId: "o1", kind: "refund", amount: 120, paymentMethodName: "GCash" },
+      ],
+    );
+
+    expect(summary.refundsPaid).toBe(120);
+    expect(summary.nonCashTotal).toBe(330);
+  });
+
+  it("ignores ledger rows belonging to another day's order", () => {
+    const summary = summarizeCounterSales(
+      [sale({ _id: "o1", total: 100, customerData: {} })],
+      [{ orderId: "o-other", kind: "charge", amount: 999, paymentMethodName: "Cash" }],
+    );
+
+    expect(summary.cashTotal).toBe(100);
+  });
+
+  it("falls back to the order's own method for sales with no ledger rows", () => {
+    // Every counter sale rung up before the ledger existed.
+    const summary = summarizeCounterSales([sale({ _id: "o1", total: 100 })], []);
+
+    expect(summary.cashTotal).toBe(100);
+    expect(summary.refundsPaid).toBe(0);
   });
 
   it("rounds money totals to centavos", () => {
