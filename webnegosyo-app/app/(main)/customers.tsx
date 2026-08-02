@@ -10,7 +10,18 @@ import {
   Platform,
   Alert,
 } from "react-native";
+import { router } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
+import { NEW_CAMPAIGN_ID, campaignHref } from "../../lib/navigation";
+import {
+  computeCampaignDueStates,
+  type CampaignDueState,
+} from "../../lib/sms/due-runs";
+import {
+  lastRunAtByCampaign,
+  listCampaignRows,
+  toScheduledCampaign,
+} from "../../lib/sms/campaigns-repo";
 import {
   buildCustomerList,
   type CustomerListFilter,
@@ -63,17 +74,27 @@ export default function CustomersScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [section, setSection] = useState<"guests" | "campaigns">("guests");
+  const [campaignStates, setCampaignStates] = useState<CampaignDueState[]>([]);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
     try {
       setError(null);
-      const [people, blocked] = await Promise.all([
+      const [people, blocked, rows, lastRuns] = await Promise.all([
         listCustomers(tenantId),
         listSuppressedPhones(tenantId),
+        listCampaignRows(tenantId),
+        lastRunAtByCampaign(tenantId),
       ]);
       setCustomers(people);
       setSuppressedPhones(blocked);
+      setCampaignStates(
+        computeCampaignDueStates(
+          rows.map((row) => toScheduledCampaign(row, lastRuns[row.id] ?? null)),
+          new Date()
+        )
+      );
     } catch {
       // A failed read must not render as "no customers yet" — that made a
       // broken query indistinguishable from a genuinely empty database.
@@ -155,6 +176,25 @@ export default function CustomersScreen() {
       )}
 
       <View style={styles.controls}>
+        <View style={styles.filterRow}>
+          <FilterChip
+            label={`Guests (${list.stats.total})`}
+            isActive={section === "guests"}
+            onPress={() => setSection("guests")}
+          />
+          <FilterChip
+            label={`Campaigns (${campaignStates.length})`}
+            isActive={section === "campaigns"}
+            onPress={() => setSection("campaigns")}
+          />
+        </View>
+      </View>
+
+      {section === "campaigns" ? (
+        <CampaignsSection states={campaignStates} />
+      ) : (
+        <>
+      <View style={styles.controls}>
         <TextInput
           style={styles.search}
           placeholder="Search name or number"
@@ -206,7 +246,78 @@ export default function CustomersScreen() {
           <CustomerCard row={item} onToggleOptOut={() => toggleOptOut(item.customer)} />
         )}
       />
+        </>
+      )}
     </View>
+  );
+}
+
+/**
+ * The campaign list. Due state comes from `due-runs.ts` rather than being
+ * recomputed here, so what the merchant reads as "Ready to send" is the same
+ * judgement the send path will make.
+ */
+function CampaignsSection({ states }: { states: CampaignDueState[] }) {
+  return (
+    <FlatList
+      data={states}
+      keyExtractor={(state) => state.campaignId}
+      contentContainerStyle={styles.listContent}
+      ListHeaderComponent={
+        <TouchableOpacity
+          style={styles.newCampaignButton}
+          onPress={() => router.push(campaignHref(NEW_CAMPAIGN_ID))}
+          accessibilityRole="button"
+        >
+          <Text style={styles.newCampaignText}>+ New campaign</Text>
+        </TouchableOpacity>
+      }
+      ListEmptyComponent={
+        <EmptyState message="No campaigns yet. Create one to start following up with guests." />
+      }
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => router.push(campaignHref(item.campaignId))}
+          accessibilityRole="button"
+        >
+          <View style={styles.cardTop}>
+            <View style={styles.cardIdentity}>
+              <Text style={styles.cardName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.cardPhone}>
+                {item.isDue
+                  ? "Ready to send"
+                  : item.dueAt
+                    ? `Next ${item.dueAt.toLocaleDateString("en-PH", {
+                        month: "short",
+                        day: "numeric",
+                      })}`
+                    : "Not scheduled"}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.badge,
+                {
+                  backgroundColor: item.isDue ? colors.successLight : colors.primaryLight,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  { color: item.isDue ? colors.success : colors.textSecondary },
+                ]}
+              >
+                {item.isDue ? "Due" : item.status}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+    />
   );
 }
 
@@ -368,4 +479,12 @@ const styles = StyleSheet.create({
   metricDot: { ...typography.caption, color: colors.textTertiary },
   optOutButton: { marginTop: spacing.sm, alignSelf: "flex-start" },
   optOutText: { ...typography.caption, color: colors.accent, fontWeight: "600" },
+  newCampaignButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  newCampaignText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
 });

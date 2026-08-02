@@ -247,6 +247,11 @@ export default function MainLayout() {
         name="payment/[methodId]"
         options={{ href: null, title: "Payment Method" }}
       />
+      {/* Routable detail screen, never a tab — href: null keeps it off the bar. */}
+      <Tabs.Screen
+        name="campaign/[campaignId]"
+        options={{ href: null, title: "Campaign" }}
+      />
       <Tabs.Screen
         name="scan"
         options={{ href: null, title: "Scan QR" }}
