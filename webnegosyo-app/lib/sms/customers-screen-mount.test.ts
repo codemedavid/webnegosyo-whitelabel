@@ -105,3 +105,26 @@ describe("customers screen wiring", () => {
     expect(source).not.toMatch(/sms_consent\s*&&/);
   });
 });
+
+describe("due campaign reminders", () => {
+  it("has an adapter that turns the plan into real Android notifications", () => {
+    // The pure planner is useless on its own — something has to hand it to
+    // expo-notifications, or a campaign still comes due silently.
+    expect(existsSync(join(ROOT, "lib", "sms", "due-alerts.ts"))).toBe(true);
+  });
+
+  it("syncs reminders from the screen that already computes due states", () => {
+    const source = readCode("app", "(main)", "customers.tsx");
+
+    expect(source).toMatch(/syncDueCampaignAlerts/);
+  });
+
+  it("does not ring campaign reminders on the new-order channel", () => {
+    // The orders channel is MAX importance with a ringtone. A campaign
+    // reminder that sounds like a live order is how the ringtone stops
+    // meaning "a customer is waiting".
+    const source = readCode("lib", "sms", "due-alerts.ts");
+
+    expect(source).not.toMatch(/"orders"/);
+  });
+});

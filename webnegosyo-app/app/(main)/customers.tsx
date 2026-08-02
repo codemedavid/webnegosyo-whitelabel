@@ -17,6 +17,7 @@ import {
   computeCampaignDueStates,
   type CampaignDueState,
 } from "../../lib/sms/due-runs";
+import { syncDueCampaignAlerts } from "../../lib/sms/due-alerts";
 import {
   lastRunAtByCampaign,
   listCampaignRows,
@@ -95,12 +96,15 @@ export default function CustomersScreen() {
       ]);
       setCustomers(people);
       setSuppressedPhones(blocked);
-      setCampaignStates(
-        computeCampaignDueStates(
-          rows.map((row) => toScheduledCampaign(row, lastRuns[row.id] ?? null)),
-          new Date()
-        )
+      const states = computeCampaignDueStates(
+        rows.map((row) => toScheduledCampaign(row, lastRuns[row.id] ?? null)),
+        new Date()
       );
+      setCampaignStates(states);
+      // Fire-and-forget: a campaign that becomes due while the app is closed
+      // is announced by Android itself. This never throws and never blocks the
+      // list — see `due-alerts.ts`.
+      void syncDueCampaignAlerts(states);
     } catch {
       // A failed read must not render as "no customers yet" — that made a
       // broken query indistinguishable from a genuinely empty database.
