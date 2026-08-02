@@ -2,7 +2,7 @@
 
 **Branch**: `feat/android-sms-followups`
 **Source plan**: written inline during the `/ecc:plan` run that preceded this work (7 phases). No `*.plan.md` artifact was produced.
-**Scope of this report**: Phases 0–2 only. Phases 3–7 are not started; see *Known gaps*.
+**Scope of this report**: Phases 0–5. Phases 6–7 are not started; see *Known gaps*.
 
 Reference implementation studied: `sms/` (standalone Expo app) — its native module, config plugin, permission wrapper, and `runFollowUps` loop.
 
@@ -26,7 +26,8 @@ Reference implementation studied: `sms/` (standalone Expo app) — its native mo
 | 2 | Five pure domain modules under `lib/sms/` | `npx jest lib/sms` | PASS 85/85 |
 | 3 | `lib/sms/transport.ts` — the SmsTransport port | `npx jest lib/sms/transport` | PASS |
 | 4 | Customers tab: `lib/sms/customer-list.ts`, `customers-repo.ts`, `app/(main)/customers.tsx`, tab + permission registration | `npx jest lib/sms` | PASS 122/122 |
-| — | Whole-package regression | `npx jest` | PASS 108 suites / 1822 tests |
+| 5 | Campaigns: `campaign-form.ts`, `due-runs.ts`, `run-orchestrator.ts`, `campaigns-repo.ts`, `device-id.ts`, `hooks/use-sms-run.ts`, `app/(main)/campaign/[campaignId].tsx`, Guests/Campaigns switch | `npx jest lib/sms` | PASS 225/225 |
+| — | Whole-package regression | `npx jest` | PASS 116 suites / 1965 tests |
 | — | Types | `npx tsc --noEmit` | clean |
 
 ### RED evidence
@@ -107,19 +108,51 @@ here rather than quietly amended:
 | 30 | The chosen SIM is passed through; absent means device default | `transport.test.ts:SIM selection` group | unit | PASS |
 | 31 | The customers tab is closed to a cashier holding only the POS grant | `customers-screen-mount.test.ts:is closed to a cashier…` | unit | PASS |
 | 32 | The tab has a route file and is registered in the layout | `customers-screen-mount.test.ts:customers tab registration` | unit | PASS |
+| 33 | A one-off campaign can never become due again after it has run | `due-runs.test.ts:never becomes due again after it has run` | unit | PASS |
+| 34 | Draft, paused and archived campaigns never fire | `due-runs.test.ts:only active campaigns can fire` group | unit | PASS |
+| 35 | Ready campaigns are ordered most-overdue-first | `due-runs.test.ts:sorts the most overdue first` | unit | PASS |
+| 36 | A template with an unknown variable cannot be saved | `campaign-form.test.ts:rejects a message using a variable that does not exist` | unit | PASS |
+| 37 | A one-off dated in the past is rejected at save time | `campaign-form.test.ts:rejects a one-off dated in the past` | unit | PASS |
+| 38 | Per-run cap is validated against the same range as the DB CHECK | `campaign-form.test.ts:the per-run cap` group | unit | PASS |
+| 39 | Cost is computed on the rendered message, not the raw template | `campaign-form.test.ts:counts the rendered length, not the raw template` | unit | PASS |
+| 40 | A run claimed by another device sends nothing and is not finished | `run-orchestrator.test.ts:claiming` group | unit | PASS |
+| 41 | A rate-limited, cancelled, or unloggable run is NOT marked completed | `run-orchestrator.test.ts:finishing` group | unit | PASS |
+| 42 | A resumed run skips whoever is already recorded against it | `run-orchestrator.test.ts:skips customers already recorded` | unit | PASS |
+| 43 | An empty audience completes cleanly instead of looking stuck | `run-orchestrator.test.ts:an empty audience` group | unit | PASS |
+| 44 | `claimRun` issues a conditional update and fails closed on error | `campaigns-repo.test.ts:claimRun` group | unit | PASS |
+| 45 | A partial run returns to pending, clearing the claim | `campaigns-repo.test.ts:leaves a partial run open` | unit | PASS |
+| 46 | `ensureRun` upserts on (campaign_id, due_at) with ignoreDuplicates | `campaigns-repo.test.ts:converges on one run row per due moment` | unit | PASS |
+| 47 | An edit cannot rewrite which tenant a campaign belongs to | `campaigns-repo.test.ts:does not let an edit rewrite which tenant` | unit | PASS |
+| 48 | Only completed runs anchor due-ness, so a halt does not suppress retry | `campaigns-repo.test.ts:only counts completed runs` | unit | PASS |
+| 49 | An unrecognised campaign status resolves to archived, never active | `campaigns-repo.test.ts:falls back to an unknown status` | unit | PASS |
+| 50 | The device id survives restart and still works when storage throws | `device-id.test.ts` | unit | PASS |
 
 ## Coverage
 
 `npx jest lib/sms --coverage --collectCoverageFrom='lib/sms/**/*.ts'`
 
 ```
-All files            |   97.24 |    89.47 |     100 |   99.08
+All files            |   97.45 |    87.69 |      99 |   99.32
  audience.ts         |   96.55 |    86.48 |     100 |   97.87
+ campaign-form.ts    |     100 |      100 |     100 |     100
+ campaigns-repo.ts   |   94.02 |       75 |     100 |     100
+ customer-list.ts    |   97.22 |    78.94 |     100 |     100
+ customers-repo.ts   |     100 |    90.47 |     100 |     100
+ device-id.ts        |     100 |      100 |     100 |     100
+ due-runs.ts         |   95.45 |      100 |   88.88 |   95.23
  message-template.ts |   98.57 |    94.11 |     100 |     100
+ run-orchestrator.ts |     100 |      100 |     100 |     100
  run-plan.ts         |     100 |      100 |     100 |     100
  schedule.ts         |    94.8  |    90.69 |     100 |   98.38
  send-run.ts         |     100 |    88.23 |     100 |     100
+ transport.ts        |     100 |      100 |     100 |     100
 ```
+
+225 tests in `lib/sms`; whole package 1965. Some of these are
+**characterization tests, not test-first** — the `customers-repo`,
+`campaigns-repo` extension and `device-id` suites all passed on their first
+run against code written minutes earlier. They are recorded that way rather
+than presented as RED/GREEN cycles.
 
 Above the 80% threshold on every metric. Uncovered lines are defensive guards for
 malformed stored data (unparseable dates, malformed `HH:MM`).
@@ -219,7 +252,13 @@ These are **not** covered by any passing test, and none of them should be read a
 
    APK: https://expo.dev/artifacts/eas/Tr4GkE6mrloRK_21hBZHCMtfkUnGBu_0r1qY1XkXOEI.apk
 2. ~~Migration not applied.~~ **Applied and probed** — see *Database probe* below. RLS is enabled with a policy on all four tables; the anon path was not separately exercised.
-3. **Phases 5–7 are not started.** Phase 3 (transport port) and Phase 4 (Customers tab) shipped; what is missing is everything that would let a merchant actually *send*: the campaign editor, the schedule UI, the due-list + local-notification engine, the run screen, and the web checkout consent opt-in. The engine underneath them (`audience`, `message-template`, `schedule`, `run-plan`, `send-run`, `transport`) is written and tested but is reachable from no screen.
+3. **Phase 5 shipped; Phases 6–7 are not started.** The campaign editor, schedule UI, audience preview, cost preview, run claim, and send-with-progress all exist and are reachable from the Customers tab. What is still missing:
+   - **Phase 6, the checkout consent opt-in** — the reason nothing can be sent yet (see gap 4).
+   - **Local-notification reminders at due time.** Due-ness is computed and shown when the merchant opens the screen; nothing yet fires a notification to bring them there. A campaign becomes due silently until they look.
+   - **Campaign status controls.** `setCampaignStatus` exists and is tested, but no button calls it — a campaign is created as `draft` and there is no UI to activate, pause, or archive it. **This means a saved campaign will not appear as due.** Closing this is the first thing Phase 6 should do.
+   - Suppression-list management UI (the per-customer opt-out toggle exists; the tenant-wide `sms_suppressions` table has no screen).
+
+4. **No test renders a screen.** The package's jest config is unit-only, matching the existing convention, so `customers.tsx`, `campaign/[campaignId].tsx` and `use-sms-run.ts` are covered only by the source-level mount guardrails. Their wiring is unverified until run on a device.
 4. **Until Phase 6 ships, no customer is targetable.** `customers.sms_consent` is written nowhere in the codebase today, so `selectAudience` correctly returns an empty audience for every existing tenant. That is the intended behaviour, not a defect.
 5. **Campaigns cannot be branch-scoped.** `public.customers` has no `outlet_id`, so a branch-scoped account must be denied the tab entirely in Phase 4.
 6. **No integration or E2E coverage.** The package's jest config is unit-only (`roots: lib, theme, plugins`), matching the existing convention; screens are exercised manually via Expo.
