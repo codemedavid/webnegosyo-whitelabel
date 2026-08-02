@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
+import { SmsOptInCheckbox } from './checkout-primitives'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
@@ -366,6 +367,10 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   </div>
                 ))}
               </div>
+              {/* Classic renders its own fields rather than composing
+                  CheckoutFields, so the consent box has to be added here
+                  explicitly — it is the one design that can silently miss it. */}
+              <SmsOptInCheckbox checkout={checkout} />
             </div>
           )}
 

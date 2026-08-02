@@ -60,9 +60,9 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
     'w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[color:var(--checkout-accent)] focus:border-[color:var(--checkout-accent)] transition-shadow'
 
   return (
+    <div style={{ ['--checkout-accent' as string]: accent }}>
     <div
       className={`grid gap-4 ${columns === 2 ? 'md:grid-cols-2' : 'grid-cols-1'}`}
-      style={{ ['--checkout-accent' as string]: accent }}
     >
       {formFields.map((field) => {
         const fieldId = `${reactId}-${field.id}`
@@ -183,6 +183,46 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
         )
       })}
     </div>
+      {/* Consent sits below the fields, spanning both columns — it is a
+          statement about all of them, not another field. */}
+      <SmsOptInCheckbox checkout={checkout} />
+    </div>
+  )
+}
+
+/**
+ * Permission to text this customer later.
+ *
+ * Unticked by default and never pre-checked: a pre-ticked box is not consent,
+ * and this is the record the merchant would rely on if a recipient ever
+ * complained. The value bypasses `customerData` entirely — that map is
+ * `Record<string, string>`, and a string "true" is rejected by both consent
+ * read sites, so routing it through the normal field path would look like it
+ * worked while quietly collecting nothing.
+ */
+export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) {
+  const { isSmsOptedIn, setIsSmsOptedIn, tenant } = checkout
+  const { accent } = useAccent(checkout)
+  const id = useId()
+
+  return (
+    <label
+      htmlFor={id}
+      className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-gray-600"
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={isSmsOptedIn}
+        onChange={(e) => setIsSmsOptedIn(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-gray-300"
+        style={{ accentColor: accent }}
+      />
+      <span>
+        Text me updates and offers from {tenant?.name ?? 'this store'}. Standard message rates apply,
+        and you can opt out any time.
+      </span>
+    </label>
   )
 }
 
