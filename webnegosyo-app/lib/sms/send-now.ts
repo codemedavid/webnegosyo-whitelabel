@@ -14,10 +14,14 @@
  *    same guests get a second text. `consumesCampaign` is what the caller uses
  *    to retire it. A recurring campaign is untouched: its next cycle is a
  *    genuinely different occurrence.
- *  - **Quiet hours still apply.** The guest-side rule here has always been
- *    unconditional — nobody is texted late at night, whatever the merchant
- *    arranged. A manual button is precisely where that protection would
- *    otherwise be lost, and a 2am marketing blast is how a SIM gets reported.
+ *  - **Quiet hours warn, they do not block** (changed 2026-08-03 at the
+ *    merchant's request; it blocked for one day before that). Every SCHEDULED
+ *    send is still shifted out of the quiet window by `shiftOutOfQuietHours`,
+ *    which is where the guest protection actually lives. What changed is that a
+ *    human deliberately pressing the button at 1am is no longer overruled by
+ *    it — they get a sentence in the confirmation instead, so a late-night
+ *    blast is a choice rather than an accident. The risk that sentence names is
+ *    real: a 2am marketing text is how a SIM gets reported.
  *
  * The status rule is deliberately *looser* than the schedule's. `due-runs.ts`
  * fires only `active`, because that is a campaign going out on its own. Pressing
@@ -36,8 +40,7 @@ export type SendNowBlock =
   | "invalid"
   | "archived"
   | "in_progress"
-  | "no_audience"
-  | "quiet_hours";
+  | "no_audience";
 
 export interface SendNowInput {
   /** `Platform.OS` as react-native reports it. */
@@ -58,6 +61,11 @@ export interface SendNowDecision {
   block: SendNowBlock | null;
   /** Merchant-facing; safe to put straight on screen. */
   message: string;
+  /**
+   * A caution worth showing in the confirmation, without standing in the way.
+   * Null when there is nothing to say.
+   */
+  warning: string | null;
 }
 
 /**
@@ -102,18 +110,25 @@ export function decideSendNow(input: SendNowInput): SendNowDecision {
   }
 
   const { time } = toManilaParts(input.now);
-  if (isWithinQuietHours(time, input.quietHoursStart, input.quietHoursEnd)) {
-    return blocked(
-      "quiet_hours",
-      `It is quiet hours, so nothing sends until ${input.quietHoursEnd}.`
-    );
-  }
+  const isQuiet = isWithinQuietHours(
+    time,
+    input.quietHoursStart,
+    input.quietHoursEnd
+  );
 
-  return { canSend: true, block: null, message: "" };
+  return {
+    canSend: true,
+    block: null,
+    message: "",
+    warning: isQuiet
+      ? `It is quiet hours — scheduled sends would wait until ${input.quietHoursEnd}. ` +
+        "Sending now texts guests at this hour."
+      : null,
+  };
 }
 
 function blocked(block: SendNowBlock, message: string): SendNowDecision {
-  return { canSend: false, block, message };
+  return { canSend: false, block, message, warning: null };
 }
 
 const MS_PER_MINUTE = 60_000;

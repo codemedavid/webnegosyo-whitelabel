@@ -283,7 +283,10 @@ export default function CampaignEditorScreen() {
       "Send this campaign?",
       `${audience.recipients.length} guests will get a text from this phone's SIM, ` +
         `costing about ${cost.totalSegments} SMS.` +
-        (isConsumed ? " This one-off campaign will be archived afterwards." : ""),
+        (isConsumed ? " This one-off campaign will be archived afterwards." : "") +
+        // Quiet hours no longer block a manual send; they are said out loud
+        // here instead, so a late-night blast is a choice not an accident.
+        (sendNowDecision.warning ? `\n\n${sendNowDecision.warning}` : ""),
       [
         { text: "Cancel", style: "cancel" },
         {
