@@ -23,9 +23,16 @@ import {
   ensureRun,
   listCampaignRows,
   lastRunAtByCampaign,
+  setCampaignStatus,
   toScheduledCampaign,
   updateCampaign,
 } from "../../../lib/sms/campaigns-repo";
+import {
+  canActivate,
+  statusActionsFor,
+  statusLabel,
+} from "../../../lib/sms/campaign-status";
+import type { CampaignStatus } from "../../../lib/sms/due-runs";
 import { computeCampaignDueStates } from "../../../lib/sms/due-runs";
 import { selectAudience } from "../../../lib/sms/audience";
 import { listCustomers, listSuppressedPhones } from "../../../lib/sms/customers-repo";
@@ -65,6 +72,7 @@ export default function CampaignEditorScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dueRunId, setDueRunId] = useState<string | null>(null);
+  const [status, setStatus] = useState<CampaignStatus>("draft");
 
   const run = useSmsRun();
 
@@ -117,6 +125,7 @@ export default function CampaignEditorScreen() {
           });
 
           const scheduled = toScheduledCampaign(row, lastRuns[row.id] ?? null);
+          setStatus(scheduled.status);
           const [state] = computeCampaignDueStates([scheduled], new Date());
           if (state.isDue && state.dueAt) {
             setDueRunId(await ensureRun(tenantId, row.id, state.dueAt));
@@ -148,6 +157,25 @@ export default function CampaignEditorScreen() {
       Alert.alert("Could not save", error instanceof Error ? error.message : "Try again.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const changeStatus = async (next: CampaignStatus) => {
+    if (next === "active" && !canActivate(status, validation.isValid)) {
+      Alert.alert(
+        "Fix the campaign first",
+        "A campaign with errors cannot go live — it would sit on a schedule it can never satisfy."
+      );
+      return;
+    }
+    const previous = status;
+    setStatus(next);
+    try {
+      await setCampaignStatus(String(campaignId), next);
+      await load();
+    } catch (error) {
+      setStatus(previous);
+      Alert.alert("Could not change", error instanceof Error ? error.message : "Try again.");
     }
   };
 
@@ -370,6 +398,40 @@ export default function CampaignEditorScreen() {
 
       {!isNew && (
         <View style={styles.sendBox}>
+          <Text style={styles.sectionTitle}>Status</Text>
+          <Text style={styles.hint}>
+            This campaign is {statusLabel(status)}.
+            {status !== "active"
+              ? " Only an active campaign becomes due and can send."
+              : ""}
+          </Text>
+          <View style={styles.chipRow}>
+            {statusActionsFor(status).map((action) => (
+              <TouchableOpacity
+                key={action.next}
+                style={[
+                  styles.statusButton,
+                  action.isDestructive && styles.statusButtonDestructive,
+                ]}
+                onPress={() => changeStatus(action.next)}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.statusButtonText,
+                    action.isDestructive && styles.statusButtonTextDestructive,
+                  ]}
+                >
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {!isNew && (
+        <View style={styles.sendBox}>
           <Text style={styles.sectionTitle}>Send</Text>
           {Platform.OS !== "android" ? (
             <Text style={styles.hint}>
@@ -554,4 +616,17 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   cancelText: { ...typography.caption, color: colors.danger, fontWeight: "700" },
   errorText: { ...typography.small, color: colors.danger },
+  statusButton: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  statusButtonDestructive: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  statusButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "700" },
+  statusButtonTextDestructive: { color: colors.danger },
 });
