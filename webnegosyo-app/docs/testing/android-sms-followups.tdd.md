@@ -21,7 +21,7 @@ Reference implementation studied: `sms/` (standalone Expo app) — its native mo
 | Phase | What was done | Validation run | Result |
 |---|---|---|---|
 | 0 | Android Expo module `modules/sms-sender` + `plugins/withSmsPermissions.js`, registered in `app.config.ts` | `npx jest plugins/withSmsPermissions.test.ts` | PASS 6/6 |
-| 1 | Migration `20260816120000_sms_followup_campaigns.sql` | not executed — see *Known gaps* | NOT APPLIED |
+| 1 | Migrations `20260816120000` + `20260816130000` | applied via Supabase MCP, then probed in a rolled-back `DO` block | APPLIED + PROBED |
 | 2 | Five pure domain modules under `lib/sms/` | `npx jest lib/sms` | PASS 85/85 |
 | — | Whole-package regression | `npx jest` | PASS 108 suites / 1822 tests |
 | — | Types | `npx tsc --noEmit` | clean |
@@ -111,12 +111,55 @@ All files            |   97.24 |    89.47 |     100 |   99.08
 Above the 80% threshold on every metric. Uncovered lines are defensive guards for
 malformed stored data (unparseable dates, malformed `HH:MM`).
 
+## Database probe (2026-08-02, project `tjcmkstsuhqdwkfdrxan`)
+
+Applied as two migrations: `sms_followup_campaigns`, then
+`sms_campaigns_fix_weekly_schedule_check`. Every assertion below ran inside a
+`DO` block that ends in `RAISE EXCEPTION`, so the whole probe rolled back — the
+post-probe row counts are all zero and the 571 existing customer rows were
+untouched.
+
+**The probe found a real defect, which is why it was run.** First pass:
+
+```
+OK one_off-without-date rejected;  FAIL weekly-without-weekdays accepted;
+OK campaign+run+send inserted;     OK duplicate send blocked;
+OK duplicate run blocked;          FAIL updated_at unchanged;
+```
+
+- `FAIL weekly-without-weekdays` was genuine. `array_length(x, 1)` returns NULL
+  for an empty array, so the weekly branch of the CHECK evaluated to NULL, and a
+  CHECK passes on NULL. A weekly campaign with no weekday selected was accepted
+  and would then have sat in the merchant's list looking active and never sent
+  anything — no error, no failed run. Fixed by `cardinality()` in `20260816130000`.
+- `FAIL updated_at unchanged` was **my probe's fault, not a defect**: `now()` is
+  transaction-start time, so `created_at` and `updated_at` are identical inside a
+  single transaction. Re-probed by writing a stale `2020-01-01` value and
+  checking the trigger overwrote it.
+
+Second pass, after the fix:
+
+```
+OK weekly-empty rejected;  OK weekly-with-weekdays accepted;
+OK interval-less rejected; OK updated_at trigger overwrote a stale value;
+OK blank message rejected;
+```
+
+Structure confirmed: all four tables have `rowsecurity = true` with one policy
+each; `sms_sends` carries 4 indexes, `sms_campaign_runs` 3, `sms_campaigns` and
+`sms_suppressions` 2 each; `customers` now has `sms_consent`, `sms_consent_at`,
+`sms_opt_out`, `sms_opt_out_at`. `get_advisors(security)` reported **no new
+findings** on any `sms_*` table — every item it returned pre-dates this work.
+
+Also confirmed on live data: **571 customer rows, 0 with `sms_consent`**. Gap 4
+below is measured, not predicted.
+
 ## Known gaps
 
 These are **not** covered by any passing test, and none of them should be read as done:
 
 1. **The native module has never run on a device.** `modules/sms-sender/…/SmsSenderModule.kt` has not been compiled — no `eas build` was executed in this session. It is written against SDK 54 autolinking and departs from the `sms/` reference (system-service `SmsManager`, sent-intent `BroadcastReceiver`, `RECEIVER_NOT_EXPORTED`, dual-SIM `createForSubscriptionId`), so it is the highest-risk artifact here. **Phase 0 is not complete until `eas build -p android --profile development` succeeds and one real SMS is sent.**
-2. **Migration `20260816120000` is written but not applied.** No `mcp__supabase__apply_migration` was run and the RLS policies are unprobed.
+2. ~~Migration not applied.~~ **Applied and probed** — see *Database probe* below. RLS is enabled with a policy on all four tables; the anon path was not separately exercised.
 3. **Phases 3–7 are not started**: the `SmsTransport` port and permission wrapper, the Customers tab and its `TAB_PERMISSIONS` entry, the due-list/notification engine, and the web checkout consent opt-in.
 4. **Until Phase 6 ships, no customer is targetable.** `customers.sms_consent` is written nowhere in the codebase today, so `selectAudience` correctly returns an empty audience for every existing tenant. That is the intended behaviour, not a defect.
 5. **Campaigns cannot be branch-scoped.** `public.customers` has no `outlet_id`, so a branch-scoped account must be denied the tab entirely in Phase 4.
