@@ -16,6 +16,7 @@ import { ArrowLeft, MessageCircle, CreditCard, QrCode, Copy, Check, CheckCircle2
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
+import { computeOrderTotals } from '@/lib/order-totals'
 import { toast } from 'sonner'
 import { resolveFinalSubmitLabel } from '@/lib/messenger-availability'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
@@ -154,7 +155,11 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>
                 <span className="text-green-700">
-                  {formatPrice(completedOrderData.total + (completedOrderData.deliveryFee ?? 0) + completedOrderData.serviceChargeAmount)}
+                  {formatPrice(computeOrderTotals({
+                    subtotal: completedOrderData.total,
+                    deliveryFee: completedOrderData.deliveryFee,
+                    serviceCharge: completedOrderData.serviceChargeAmount,
+                  }).grandTotal)}
                 </span>
               </div>
             </div>
@@ -380,6 +385,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
     showPaymentDetails, selectedPaymentMethod, paymentMethods, total, deliveryFee,
+    deliveryFeeAddress, customerData, grandTotal,
     serviceChargeAmount, isProcessing, handleCheckout, setShowPaymentDetails,
     handleCopyText, copiedText,
     paymentProofUrl, paymentProofReference, setPaymentProofReference,
@@ -481,7 +487,9 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
                 <span className="text-gray-600">Subtotal</span>
                 <span className="font-medium">{formatPrice(total)}</span>
               </div>
-              {deliveryFee !== null && deliveryFee > 0 && (
+              {/* Same staleness guard the summary uses: a fee quoted for a
+                  different address is not billed, so it is not shown either. */}
+              {deliveryFee !== null && deliveryFee > 0 && deliveryFeeAddress === customerData.delivery_address && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Delivery Fee</span>
                   <span className="font-medium">{formatPrice(deliveryFee)}</span>
@@ -496,7 +504,7 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
               <Separator className="my-2" />
               <div className="flex justify-between text-lg font-bold">
                 <span>Total Amount to Pay</span>
-                <span className="text-orange-600">{formatPrice(total + (deliveryFee || 0) + serviceChargeAmount)}</span>
+                <span className="text-orange-600">{formatPrice(grandTotal)}</span>
               </div>
             </div>
           </div>

@@ -33,6 +33,7 @@ import {
   formatScheduledFor,
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
+import { computeOrderTotals } from '@/lib/order-totals'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
@@ -217,10 +218,17 @@ export function useCheckout(tenantSlug: string) {
   }
 
   // Derived totals shared by every design so they never recompute the fee/total rules.
+  // A fee quoted against a DIFFERENT address than the one currently typed is
+  // stale and must not be billed — the summary renders "—" for it, and the
+  // total has to agree.
   const validDeliveryFee = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address)
     ? deliveryFee
     : null
-  const grandTotal = total + (validDeliveryFee ?? 0) + serviceChargeAmount
+  const { grandTotal } = computeOrderTotals({
+    subtotal: total,
+    deliveryFee: validDeliveryFee,
+    serviceCharge: serviceChargeAmount,
+  })
 
   // Convenience: change the scheduled date and snap the time to the first valid slot.
   const handleScheduleDateChange = (date: string) => {
