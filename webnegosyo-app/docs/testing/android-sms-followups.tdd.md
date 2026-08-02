@@ -754,13 +754,22 @@ second time at the same guests. It is therefore archived after a successful
 manual send, and the confirmation dialog says so. Recurring campaigns are
 untouched: their next cycle is a genuinely different occurrence.
 
-**Quiet hours are enforced on the manual path too.** Journey 5 of Phase 0–5 —
-"as a guest, I want never to be texted late at night, whatever the merchant
-scheduled" — has always been unconditional, and a manual button is precisely
-where that protection would otherwise be lost. `20260816120000` puts it plainly:
-"a 2am marketing text is how a SIM gets reported." This is the one place where
-Send now deliberately refuses an explicit instruction, and the merchant is told
-when the window reopens.
+**Quiet hours warn on the manual path; they do not block.** This shipped as a
+block and was reversed the same day at the merchant's explicit request, after
+the trade-off was put to them. Recorded here rather than quietly amended:
+
+- Originally, `decideSendNow` returned `block: "quiet_hours"` inside the window,
+  on the reading that journey 5 ("as a guest, I want never to be texted late at
+  night, whatever the merchant scheduled") was unconditional.
+- The merchant asked for it removed. Reaffirmed after the risk was stated, so it
+  is their call. `SendNowDecision` gained a non-blocking `warning`, surfaced in
+  the confirmation dialog, naming the hour the window reopens.
+- **The guest protection is not gone.** Every SCHEDULED send is still shifted out
+  of the quiet window by `shiftOutOfQuietHours`, and Phase 10's reminders are
+  held too. What changed is only that a human pressing the button at 1am is no
+  longer overruled — a late-night blast is now a choice, not an accident.
+- The risk the warning names is real and unchanged: `20260816120000` puts it
+  plainly, "a 2am marketing text is how a SIM gets reported.
 
 **The status rule is looser than the schedule's.** `due-runs.ts` fires only
 `active`, because that is a campaign going out on its own. A draft or paused
@@ -779,8 +788,8 @@ campaign may still be sent by hand. Only `archived` is refused.
 | 7 | An archived campaign cannot send | `…:refuses an archived campaign` | unit | PASS |
 | 8 | A second send cannot start while one is in flight | `…:refuses while a run is already in flight` | unit | PASS |
 | 9 | An empty audience cannot send | `…:refuses when nobody matches the audience` | unit | PASS |
-| 10 | Quiet hours hold even for an explicit manual send | `…:refuses inside quiet hours, however explicitly the merchant asked` | unit | PASS |
-| 11 | The merchant is told when the quiet window reopens | `…:tells the merchant when the quiet window reopens` | unit | PASS |
+| 10 | A manual send proceeds during quiet hours, on the merchant's say-so | `…:sends inside quiet hours on the merchant's explicit say-so` | unit | PASS |
+| 11 | It still warns, naming when the window reopens; no warning by day | `…:still warns that it is quiet hours` + "carries no warning during the day" | unit | PASS |
 | 12 | With several blockers, the most fundamental is the one reported | `…:reports the most fundamental blocker first` | unit | PASS |
 | 13 | Every refusal carries merchant-facing prose, never a code | `…:explains itself in the merchant's words` | unit | PASS |
 | 14 | A double-tap converges on ONE run row rather than texting everyone twice | `…:quantizes to the minute` | unit | PASS |
@@ -810,6 +819,9 @@ Deliberately **not** covered:
    let the merchant edit (it displays `21:00`–`08:00` and the DB defaults match).
    A campaign with a custom window would be honoured correctly; nothing can
    currently create one.
+2b. **Nothing now stops a 1am manual blast** except a sentence in a dialog. That
+   is the merchant's decision, recorded above. If a SIM is ever flagged for bulk
+   messaging, this is the first thing to look at.
 3. **Still unverified on a handset** — as with every Android-side change in this
    feature. Send now makes the device test materially easier: a campaign no
    longer has to be scheduled and waited on to exercise the real radio.
