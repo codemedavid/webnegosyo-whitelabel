@@ -74,3 +74,36 @@ describe("campaign editor — the test send", () => {
     expect(handler).not.toMatch(/dueRunId/);
   });
 });
+
+describe("campaign editor — Send now", () => {
+  it("offers a send that does not wait for the schedule", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/decideSendNow/);
+  });
+
+  it("does not gate the manual send behind the campaign being due", () => {
+    // `dueRunId` is set only when the schedule says so. Requiring it is the
+    // exact limitation Send now exists to remove.
+    const source = readCode(...EDITOR);
+    const start = source.indexOf("const sendNow");
+    const handler = source.slice(start, source.indexOf("\n  const ", start + 10));
+
+    expect(start).toBeGreaterThan(-1);
+    expect(handler).not.toMatch(/dueRunId/);
+  });
+
+  it("consumes a one-off after a manual send, so it cannot fire twice", () => {
+    // Without this the campaign's own scheduled date is still ahead of
+    // `lastRunAt` and the same guests get a second text.
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/consumesCampaign/);
+  });
+
+  it("creates the run at a quantized instant, so a double-tap is one run", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/immediateRunAt/);
+  });
+});
