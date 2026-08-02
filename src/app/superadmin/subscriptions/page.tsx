@@ -8,9 +8,21 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSubscriptionRoster, summarizeRoster, type RosterInput } from '@/lib/billing/subscription-roster'
+import {
+  buildAllowanceRows,
+  type AllowanceStaffMember,
+} from '@/lib/billing/tenant-allowances'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
 
 export const dynamic = 'force-dynamic'
+
+interface TenantRowShape {
+  id: string
+  name: string
+  slug: string
+  max_outlets: number | null
+  max_staff_per_branch: number | null
+}
 
 interface SubscriptionRowShape {
   tenant_id: string
@@ -23,18 +35,24 @@ interface SubscriptionRowShape {
 export default async function SubscriptionsPage() {
   const supabase = createAdminClient()
 
-  const [{ data: tenants }, { data: subscriptions }] = await Promise.all([
-    supabase.from('tenants').select('id, name, slug').order('name'),
-    supabase
-      .from('tenant_subscriptions')
-      .select('tenant_id, status, paid_through, grace_days, monthly_price_php'),
-  ])
+  const [{ data: tenants }, { data: subscriptions }, { data: outlets }, { data: staff }] =
+    await Promise.all([
+      supabase.from('tenants').select('id, name, slug, max_outlets, max_staff_per_branch').order('name'),
+      supabase
+        .from('tenant_subscriptions')
+        .select('tenant_id, status, paid_through, grace_days, monthly_price_php'),
+      // Whole-table reads, counted in JS: PostgREST has no GROUP BY, and both
+      // tables are small (single-digit rows per tenant across the platform).
+      // Revisit if either grows a zero.
+      supabase.from('outlets').select('id, tenant_id'),
+      supabase.from('app_users').select('tenant_id, outlet_id, is_owner'),
+    ])
 
   const byTenant = new Map<string, SubscriptionRowShape>(
     ((subscriptions ?? []) as SubscriptionRowShape[]).map((row) => [row.tenant_id, row])
   )
 
-  const inputs: RosterInput[] = ((tenants ?? []) as { id: string; name: string; slug: string }[]).map(
+  const inputs: RosterInput[] = ((tenants ?? []) as TenantRowShape[]).map(
     (tenant) => {
       const subscription = byTenant.get(tenant.id)
       return {
@@ -51,6 +69,35 @@ export default async function SubscriptionsPage() {
 
   const rows = buildSubscriptionRoster(inputs, new Date().toISOString())
 
+  // Group once per table rather than filtering inside the tenant loop, so the
+  // page stays linear in rows instead of quadratic as the platform grows.
+  const outletsByTenant = new Map<string, string[]>()
+  for (const outlet of (outlets ?? []) as { id: string; tenant_id: string }[]) {
+    outletsByTenant.set(outlet.tenant_id, [...(outletsByTenant.get(outlet.tenant_id) ?? []), outlet.id])
+  }
+
+  const staffByTenant = new Map<string, AllowanceStaffMember[]>()
+  for (const member of (staff ?? []) as {
+    tenant_id: string
+    outlet_id: string | null
+    is_owner: boolean | null
+  }[]) {
+    staffByTenant.set(member.tenant_id, [
+      ...(staffByTenant.get(member.tenant_id) ?? []),
+      { outletId: member.outlet_id ?? null, isOwner: member.is_owner },
+    ])
+  }
+
+  const allowances = buildAllowanceRows(
+    ((tenants ?? []) as TenantRowShape[]).map((tenant) => ({
+      tenantId: tenant.id,
+      maxOutlets: tenant.max_outlets,
+      maxStaffPerBranch: tenant.max_staff_per_branch,
+      outletIds: outletsByTenant.get(tenant.id) ?? [],
+      staff: staffByTenant.get(tenant.id) ?? [],
+    }))
+  )
+
   return (
     <div className="space-y-6 p-6">
       <header>
@@ -60,7 +107,11 @@ export default async function SubscriptionsPage() {
         </p>
       </header>
 
-      <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} />
+      <SubscriptionManager
+        rows={rows}
+        summary={summarizeRoster(rows)}
+        allowances={allowances}
+      />
     </div>
   )
 }
