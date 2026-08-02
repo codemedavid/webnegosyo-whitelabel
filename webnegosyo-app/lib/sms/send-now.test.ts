@@ -64,6 +64,29 @@ describe("decideSendNow — when the button works", () => {
     // Pausing stops the schedule, not the merchant's own hand.
     expect(decideSendNow(input({ status: "paused" })).canSend).toBe(true);
   });
+
+  it("sends inside quiet hours on the merchant's explicit say-so", () => {
+    // Reversed 2026-08-03 at the merchant's request. Quiet hours still shift
+    // every SCHEDULED send (`shiftOutOfQuietHours`); what changed is that a
+    // human pressing the button at 1am is no longer overruled by it.
+    const decision = decideSendNow(input({ now: NIGHT }));
+
+    expect(decision.canSend).toBe(true);
+    expect(decision.block).toBeNull();
+  });
+
+  it("still warns that it is quiet hours, naming when the window reopens", () => {
+    // Not a block — a sentence in the confirmation, so a 1am blast is a choice
+    // rather than an accident.
+    const decision = decideSendNow(input({ now: NIGHT }));
+
+    expect(decision.warning).not.toBeNull();
+    expect(String(decision.warning)).toContain("08:00");
+  });
+
+  it("carries no warning during the day", () => {
+    expect(decideSendNow(input()).warning).toBeNull();
+  });
 });
 
 describe("decideSendNow — when it must not", () => {
@@ -113,19 +136,6 @@ describe("decideSendNow — when it must not", () => {
     expect(decision.block).toBe("no_audience");
   });
 
-  it("refuses inside quiet hours, however explicitly the merchant asked", () => {
-    const decision = decideSendNow(input({ now: NIGHT }));
-
-    expect(decision.canSend).toBe(false);
-    expect(decision.block).toBe("quiet_hours");
-  });
-
-  it("tells the merchant when the quiet window reopens", () => {
-    const decision = decideSendNow(input({ now: NIGHT }));
-
-    expect(decision.message).toContain("08:00");
-  });
-
   it("reports the most fundamental blocker first", () => {
     // Everything wrong at once: the platform is the one worth saying, because
     // fixing any of the others would change nothing.
@@ -144,7 +154,6 @@ describe("decideSendNow — when it must not", () => {
       decideSendNow(input({ status: "archived" })),
       decideSendNow(input({ isRunning: true })),
       decideSendNow(input({ recipientCount: 0 })),
-      decideSendNow(input({ now: NIGHT })),
     ]) {
       expect(decision.message.trim()).not.toBe("");
       expect(decision.message).not.toContain("_");
