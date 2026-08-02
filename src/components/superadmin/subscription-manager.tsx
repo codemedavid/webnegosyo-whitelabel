@@ -18,7 +18,9 @@ import { useMemo, useState, useTransition } from 'react'
 import type { RosterRow, RosterSummary } from '@/lib/billing/subscription-roster'
 import { DUE_SOON_WINDOW_DAYS } from '@/lib/billing/subscription-roster'
 import { setTenantPausedAction } from '@/app/actions/subscriptions'
+import type { AllowanceRow } from '@/lib/billing/tenant-allowances'
 import { MarkPaidDialog } from '@/components/superadmin/mark-paid-dialog'
+import { AllowanceDialog } from '@/components/superadmin/allowance-dialog'
 
 const STATE_STYLES: Record<RosterRow['state'], string> = {
   active: 'bg-emerald-100 text-emerald-800',
@@ -52,14 +54,52 @@ function needsChasing(row: RosterRow): boolean {
   return row.state !== 'active' || row.isDueSoon
 }
 
+/**
+ * Usage against allowance, in a cell.
+ *
+ * `used / limit`, because the allowance alone tells the owner nothing about
+ * whether raising it would change anything. Over the line is marked but never
+ * blocked — a tenant above a lowered allowance keeps what it has.
+ */
+function AllowanceCell({
+  used,
+  limit,
+  isOver,
+  testId,
+}: {
+  used: number
+  limit: number
+  isOver: boolean
+  testId: string
+}) {
+  return (
+    <td
+      className="px-4 py-3"
+      data-testid={testId}
+      data-over={isOver ? 'true' : 'false'}
+    >
+      <span className={isOver ? 'font-semibold text-amber-800' : 'text-neutral-600'}>
+        {used} / {limit}
+      </span>
+    </td>
+  )
+}
+
 interface SubscriptionManagerProps {
   rows: RosterRow[]
   summary: RosterSummary
+  /**
+   * Allowance usage per tenant. Optional so the screen still renders if a
+   * caller has not been taught to supply it — a missing count must not blank
+   * the collections table, which is the job this screen cannot fail at.
+   */
+  allowances?: readonly AllowanceRow[]
 }
 
-export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps) {
+export function SubscriptionManager({ rows, summary, allowances }: SubscriptionManagerProps) {
   const router = useRouter()
   const [selected, setSelected] = useState<RosterRow | null>(null)
+  const [editingAllowance, setEditingAllowance] = useState<AllowanceRow | null>(null)
   const [isChaseOnly, setIsChaseOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null)
@@ -71,6 +111,11 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
   )
 
   const chaseCount = useMemo(() => rows.filter(needsChasing).length, [rows])
+
+  const allowanceByTenant = useMemo(
+    () => new Map((allowances ?? []).map((allowance) => [allowance.tenantId, allowance])),
+    [allowances]
+  )
 
   const handlePausedChange = (row: RosterRow, isPaused: boolean) => {
     setError(null)
@@ -154,6 +199,11 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
                 <th className="px-4 py-3">Paid through</th>
                 <th className="px-4 py-3">Due in</th>
                 <th className="px-4 py-3">Overdue</th>
+                <th className="px-4 py-3">Branches</th>
+                {/* Named for the branch it reports, not the store: the number
+                    is the fullest single branch, which is the one that would
+                    refuse the next hire. */}
+                <th className="px-4 py-3">Staff / busiest</th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
@@ -188,6 +238,33 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
                   <td className="px-4 py-3 text-neutral-600">
                     {row.daysOverdue > 0 ? `${row.daysOverdue}d` : '—'}
                   </td>
+                  {(() => {
+                    const allowance = allowanceByTenant.get(row.tenantId)
+                    if (!allowance) {
+                      return (
+                        <>
+                          <td className="px-4 py-3 text-neutral-400">—</td>
+                          <td className="px-4 py-3 text-neutral-400">—</td>
+                        </>
+                      )
+                    }
+                    return (
+                      <>
+                        <AllowanceCell
+                          used={allowance.outletsUsed}
+                          limit={allowance.outletLimit}
+                          isOver={allowance.isOverOutlets}
+                          testId={`allowance-outlets-${row.tenantId}`}
+                        />
+                        <AllowanceCell
+                          used={allowance.peakBranchStaff}
+                          limit={allowance.staffLimit}
+                          isOver={allowance.isOverStaff}
+                          testId={`allowance-staff-${row.tenantId}`}
+                        />
+                      </>
+                    )
+                  })()}
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <button
@@ -197,6 +274,19 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
                       >
                         Mark paid
                       </button>
+
+                      {allowanceByTenant.has(row.tenantId) && (
+                        <button
+                          type="button"
+                          data-testid={`allowance-edit-${row.tenantId}`}
+                          onClick={() =>
+                            setEditingAllowance(allowanceByTenant.get(row.tenantId) ?? null)
+                          }
+                          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                        >
+                          Allowances
+                        </button>
+                      )}
 
                       {/* Exactly one row in three gets a lever.
                           - hand-paused: Resume, because the owner pulled it.
@@ -232,6 +322,17 @@ export function SubscriptionManager({ rows, summary }: SubscriptionManagerProps)
           monthlyPricePhp={selected.monthlyPricePhp}
           onClose={() => setSelected(null)}
           onRecorded={() => router.refresh()}
+        />
+      )}
+
+      {editingAllowance && (
+        <AllowanceDialog
+          tenantName={
+            rows.find((row) => row.tenantId === editingAllowance.tenantId)?.name ?? 'This tenant'
+          }
+          allowance={editingAllowance}
+          onClose={() => setEditingAllowance(null)}
+          onSaved={() => router.refresh()}
         />
       )}
     </div>

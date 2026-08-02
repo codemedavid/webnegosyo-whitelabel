@@ -6,26 +6,45 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { createTenantUser } from '@/actions/users'
-import { AlertCircle, Check, Eye, EyeOff, Loader2, UserPlus } from 'lucide-react'
+import { createTenantUser, type TenantUser } from '@/actions/users'
+import { AlertCircle, Check, Crown, Eye, EyeOff, Loader2, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { findTenantOwner } from '@/lib/tenant-ownership'
 
 interface AddTenantUserDialogProps {
   tenantId: string
   tenantName: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onUserCreated?: (user: { user_id: string; email: string }) => void
+  /** The store's current accounts, so a second owner is never offered. */
+  existingUsers?: readonly TenantUser[]
+  onUserCreated?: (user: { user_id: string; email: string; is_owner: boolean }) => void
 }
 
 const fieldClass =
   'h-11 rounded-xl border-white/10 bg-white/[0.03] text-white placeholder:text-white/35 focus-visible:border-white/25 focus-visible:ring-white/10'
+
+const ROLE_OPTIONS = [
+  {
+    value: 'owner',
+    label: 'Store Owner',
+    description: 'Full access, manages staff, and does not use up a staff seat.',
+  },
+  {
+    value: 'admin',
+    label: 'Admin',
+    description: 'Full feature access, but cannot manage staff and uses a staff seat.',
+  },
+] as const
+
+type RoleOption = (typeof ROLE_OPTIONS)[number]['value']
 
 export function AddTenantUserDialog({
   tenantId,
   tenantName,
   open,
   onOpenChange,
+  existingUsers = [],
   onUserCreated,
 }: AddTenantUserDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -35,6 +54,12 @@ export function AddTenantUserDialog({
     password: '',
     confirmPassword: '',
   })
+
+  // A store has exactly one owner, so the choice only exists while it has
+  // none — and when it has none, that is the gap worth closing by default.
+  const hasOwner = findTenantOwner(existingUsers) !== null
+  const [role, setRole] = useState<RoleOption>(hasOwner ? 'admin' : 'owner')
+  const selectedRole: RoleOption = hasOwner ? 'admin' : role
 
   const passwordTooShort = formData.password.length > 0 && formData.password.length < 8
   const passwordsMismatch =
@@ -58,16 +83,18 @@ export function AddTenantUserDialog({
 
     setIsSubmitting(true)
 
+    const isOwner = selectedRole === 'owner'
     const result = await createTenantUser({
       email: formData.email,
       password: formData.password,
       tenant_id: tenantId,
+      is_owner: isOwner,
     })
 
     if (result.error) {
       toast.error(result.error)
     } else {
-      toast.success('User created successfully')
+      toast.success(isOwner ? 'Store owner created' : 'User created successfully')
       // Notify parent to update the list optimistically
       if (result.user && onUserCreated) {
         onUserCreated(result.user)
@@ -83,6 +110,7 @@ export function AddTenantUserDialog({
     if (!isSubmitting) {
       setFormData({ email: '', password: '', confirmPassword: '' })
       setShowPassword(false)
+      setRole(hasOwner ? 'admin' : 'owner')
       onOpenChange(false)
     }
   }
@@ -104,6 +132,51 @@ export function AddTenantUserDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-xs font-medium text-white/60">Role</legend>
+            <div className="grid gap-2">
+              {ROLE_OPTIONS.map((option) => {
+                const isDisabled = option.value === 'owner' && hasOwner
+                const isSelected = selectedRole === option.value
+                return (
+                  <label
+                    key={option.value}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors',
+                      isSelected
+                        ? 'border-amber-400/30 bg-amber-400/[0.07]'
+                        : 'border-white/10 bg-white/[0.02] hover:border-white/20',
+                      isDisabled && 'cursor-not-allowed opacity-45 hover:border-white/10',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      value={option.value}
+                      checked={isSelected}
+                      disabled={isDisabled || isSubmitting}
+                      onChange={() => setRole(option.value)}
+                      className="mt-1 h-4 w-4 shrink-0 accent-amber-400"
+                    />
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-white">
+                        {option.value === 'owner' && (
+                          <Crown className="h-3.5 w-3.5 text-amber-400" aria-hidden />
+                        )}
+                        {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-white/45">
+                        {isDisabled
+                          ? `${tenantName} already has an owner — transfer ownership from the user list instead.`
+                          : option.description}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
+
           <div className="space-y-2">
             <Label htmlFor="email" className="text-xs font-medium text-white/60">
               Email Address
