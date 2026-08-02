@@ -50,8 +50,14 @@ jest.mock("../supabase", () => {
   };
 });
 
+import { EMPTY_CAMPAIGN_DRAFT } from "./campaign-form";
 import {
   claimRun,
+  createCampaign,
+  ensureRun,
+  lastRunAtByCampaign,
+  listCampaignRows,
+  updateCampaign,
   finishRun,
   listSentCustomerIds,
   recordSend,
@@ -254,5 +260,129 @@ describe("toScheduledCampaign — row to domain", () => {
     const campaign = toScheduledCampaign({ ...row, status: "something_new" }, null);
 
     expect(campaign.status).not.toBe("active");
+  });
+});
+
+describe("listCampaignRows", () => {
+  it("scopes to the tenant and returns newest first", async () => {
+    queued = [{ data: [{ id: "camp-1" }], error: null }];
+
+    await listCampaignRows("tenant-1");
+
+    expect(argsFor("from")).toContainEqual(["sms_campaigns"]);
+    expect(argsFor("eq")).toContainEqual(["tenant_id", "tenant-1"]);
+    expect(argsFor("order")).toContainEqual(["created_at", { ascending: false }]);
+  });
+
+  it("throws on failure rather than showing an empty campaign list", async () => {
+    queued = [{ data: null, error: { message: "denied" } }];
+
+    await expect(listCampaignRows("tenant-1")).rejects.toThrow("denied");
+  });
+});
+
+describe("createCampaign / updateCampaign", () => {
+  const draft = {
+    ...EMPTY_CAMPAIGN_DRAFT,
+    name: "  Win back  ",
+    messageTemplate: "Hi {{firstName}}",
+    scheduleDate: "2026-09-01",
+  };
+
+  it("stamps the tenant onto a new campaign", async () => {
+    queued = [{ data: null, error: null }];
+
+    await createCampaign("tenant-1", draft);
+
+    const [[row]] = argsFor("insert") as [[Record<string, unknown>]];
+    expect(row.tenant_id).toBe("tenant-1");
+    expect(row.message_template).toBe("Hi {{firstName}}");
+  });
+
+  it("trims the name so a stray space cannot create a near-duplicate", async () => {
+    queued = [{ data: null, error: null }];
+
+    await createCampaign("tenant-1", draft);
+
+    const [[row]] = argsFor("insert") as [[Record<string, unknown>]];
+    expect(row.name).toBe("Win back");
+  });
+
+  it("does not let an edit rewrite which tenant a campaign belongs to", async () => {
+    queued = [{ data: null, error: null }];
+
+    await updateCampaign("camp-1", draft);
+
+    const [[patch]] = argsFor("update") as [[Record<string, unknown>]];
+    expect(patch).not.toHaveProperty("tenant_id");
+    expect(argsFor("eq")).toContainEqual(["id", "camp-1"]);
+  });
+
+  it("throws when the write fails", async () => {
+    queued = [{ data: null, error: { message: "denied" } }];
+
+    await expect(createCampaign("tenant-1", draft)).rejects.toThrow("denied");
+  });
+});
+
+describe("ensureRun", () => {
+  const dueAt = new Date("2026-08-20T02:00:00.000Z");
+
+  it("converges on one run row per due moment", async () => {
+    queued = [
+      { data: null, error: null },
+      { data: [{ id: "run-1" }], error: null },
+    ];
+
+    await expect(ensureRun("tenant-1", "camp-1", dueAt)).resolves.toBe("run-1");
+
+    // ignoreDuplicates on the (campaign_id, due_at) unique index is what stops
+    // two devices creating two runs of the same campaign occurrence.
+    const [[, options]] = argsFor("upsert") as [[unknown, Record<string, unknown>]];
+    expect(options.onConflict).toBe("campaign_id,due_at");
+    expect(options.ignoreDuplicates).toBe(true);
+  });
+
+  it("returns null when the run cannot be found after upserting", async () => {
+    queued = [
+      { data: null, error: null },
+      { data: [], error: null },
+    ];
+
+    await expect(ensureRun("tenant-1", "camp-1", dueAt)).resolves.toBeNull();
+  });
+});
+
+describe("lastRunAtByCampaign", () => {
+  it("keeps the most recent completed run per campaign", async () => {
+    queued = [
+      {
+        data: [
+          { campaign_id: "a", completed_at: "2026-08-20T02:00:00.000Z" },
+          { campaign_id: "a", completed_at: "2026-08-01T02:00:00.000Z" },
+          { campaign_id: "b", completed_at: "2026-08-10T02:00:00.000Z" },
+        ],
+        error: null,
+      },
+    ];
+
+    await expect(lastRunAtByCampaign("tenant-1")).resolves.toEqual({
+      a: "2026-08-20T02:00:00.000Z",
+      b: "2026-08-10T02:00:00.000Z",
+    });
+  });
+
+  it("only counts completed runs, so a halted run does not suppress the next one", async () => {
+    queued = [{ data: [], error: null }];
+
+    await lastRunAtByCampaign("tenant-1");
+
+    expect(argsFor("eq")).toContainEqual(["status", "completed"]);
+  });
+
+  it("ignores rows with no completion timestamp", async () => {
+    queued = [{ data: [{ campaign_id: "a", completed_at: null }], error: null }];
+
+    await expect(lastRunAtByCampaign("tenant-1")).resolves.toEqual({});
   });
 });
