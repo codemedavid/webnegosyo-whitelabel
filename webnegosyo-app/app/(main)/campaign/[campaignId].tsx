@@ -35,6 +35,11 @@ import {
 import type { CampaignStatus } from "../../../lib/sms/due-runs";
 import { computeCampaignDueStates } from "../../../lib/sms/due-runs";
 import { selectAudience } from "../../../lib/sms/audience";
+import {
+  consumesCampaign,
+  decideSendNow,
+  immediateRunAt,
+} from "../../../lib/sms/send-now";
 import { listCustomers, listSuppressedPhones } from "../../../lib/sms/customers-repo";
 import { toManilaParts } from "../../../lib/sms/schedule";
 import {
@@ -79,7 +84,7 @@ export default function CampaignEditorScreen() {
   const [suppressedPhones, setSuppressedPhones] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [dueRunId, setDueRunId] = useState<string | null>(null);
+  const [dueAt, setDueAt] = useState<Date | null>(null);
   const [status, setStatus] = useState<CampaignStatus>("draft");
   const [testPhone, setTestPhone] = useState("");
   const [isTesting, setIsTesting] = useState(false);
@@ -97,6 +102,30 @@ export default function CampaignEditorScreen() {
         suppressedPhones,
       }),
     [customers, draft.audience, suppressedPhones]
+  );
+
+  const sendNowDecision = useMemo(
+    () =>
+      decideSendNow({
+        platform: Platform.OS,
+        isNew,
+        isValid: validation.isValid,
+        status,
+        isRunning: run.isRunning,
+        recipientCount: audience.recipients.length,
+        now: new Date(),
+        quietHoursStart: draft.quietHoursStart,
+        quietHoursEnd: draft.quietHoursEnd,
+      }),
+    [
+      isNew,
+      validation.isValid,
+      status,
+      run.isRunning,
+      audience.recipients.length,
+      draft.quietHoursStart,
+      draft.quietHoursEnd,
+    ]
   );
 
   const cost = useMemo(
@@ -137,10 +166,10 @@ export default function CampaignEditorScreen() {
 
           const scheduled = toScheduledCampaign(row, lastRuns[row.id] ?? null);
           setStatus(scheduled.status);
+          // The run row is opened when the merchant sends, not when they merely
+          // open the screen — reading a campaign should not write one.
           const [state] = computeCampaignDueStates([scheduled], new Date());
-          if (state.isDue && state.dueAt) {
-            setDueRunId(await ensureRun(tenantId, row.id, state.dueAt));
-          }
+          setDueAt(state.isDue ? state.dueAt : null);
         }
       }
     } catch (error) {
@@ -235,35 +264,67 @@ export default function CampaignEditorScreen() {
     }
   };
 
-  const sendNow = () => {
-    if (!tenantId || !dueRunId) return;
+  /**
+   * Send this campaign, now, without waiting for its schedule.
+   *
+   * Deliberately not gated on `dueRunId` — that is the limitation this exists
+   * to remove. When the campaign IS due the scheduled occurrence is used, so
+   * the run is filed against the moment the schedule promised; otherwise a
+   * fresh run is opened at a minute-quantized "now", which is what keeps a
+   * double-tap to one run row.
+   */
+  const sendNow = async () => {
+    if (!tenantId || !sendNowDecision.canSend) return;
+
+    const runAt = dueAt ?? immediateRunAt(new Date());
+    const isConsumed = consumesCampaign(draft.scheduleKind);
+
     Alert.alert(
       "Send this campaign?",
       `${audience.recipients.length} guests will get a text from this phone's SIM, ` +
-        `costing about ${cost.totalSegments} SMS.`,
+        `costing about ${cost.totalSegments} SMS.` +
+        (isConsumed ? " This one-off campaign will be archived afterwards." : ""),
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Send",
           style: "destructive",
-          onPress: () =>
-            run.start({
-              tenantId,
-              runId: dueRunId,
-              template: draft.messageTemplate,
-              storeName: tenantName ?? "our store",
-              maxPerRun: draft.maxPerRun,
-              audience: audience.recipients,
-            }),
+          onPress: async () => {
+            try {
+              const runId = await ensureRun(tenantId, String(campaignId), runAt);
+              if (!runId) {
+                Alert.alert("Could not start", "That run could not be opened. Try again.");
+                return;
+              }
+              await run.start({
+                tenantId,
+                runId,
+                template: draft.messageTemplate,
+                storeName: tenantName ?? "our store",
+                maxPerRun: draft.maxPerRun,
+                audience: audience.recipients,
+              });
+              // A one-off's own scheduled date is still ahead of `lastRunAt`
+              // (which is completed_at), so leaving it active would text the
+              // same guests a second time when that date arrives.
+              if (isConsumed) {
+                await setCampaignStatus(String(campaignId), "archived");
+                setStatus("archived");
+              }
+              await load();
+            } catch (error) {
+              Alert.alert(
+                "Could not send",
+                error instanceof Error ? error.message : "Try again."
+              );
+            }
+          },
         },
       ]
     );
   };
 
   if (isLoading) return <LoadingState message="Loading campaign…" />;
-
-  const canSend =
-    Platform.OS === "android" && dueRunId !== null && audience.recipients.length > 0;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -551,42 +612,47 @@ export default function CampaignEditorScreen() {
       {!isNew && (
         <View style={styles.sendBox}>
           <Text style={styles.sectionTitle}>Send</Text>
-          {Platform.OS !== "android" ? (
-            <Text style={styles.hint}>
-              Texts send from the Android app, using that phone&apos;s SIM.
-            </Text>
-          ) : !dueRunId ? (
-            <Text style={styles.hint}>
-              This campaign is not due yet. It will appear here when it is.
-            </Text>
+
+          <Text style={styles.hint}>
+            {dueAt
+              ? "This campaign is due now."
+              : "You can send this straight away — it does not have to wait for its schedule."}
+          </Text>
+
+          {run.isRunning && run.progress ? (
+            <View style={styles.progressRow}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.hint}>
+                Sending {run.progress.attempted} of {run.progress.total}…
+              </Text>
+              <TouchableOpacity onPress={run.cancel}>
+                <Text style={styles.cancelText}>Stop</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <>
-              {run.isRunning && run.progress && (
-                <View style={styles.progressRow}>
-                  <ActivityIndicator color={colors.accent} />
-                  <Text style={styles.hint}>
-                    Sending {run.progress.attempted} of {run.progress.total}…
-                  </Text>
-                  <TouchableOpacity onPress={run.cancel}>
-                    <Text style={styles.cancelText}>Stop</Text>
-                  </TouchableOpacity>
-                </View>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  !sendNowDecision.canSend && styles.buttonDisabled,
+                ]}
+                onPress={sendNow}
+                disabled={!sendNowDecision.canSend}
+                accessibilityRole="button"
+              >
+                <Text style={styles.primaryButtonText}>
+                  Send now to {audience.recipients.length} guests
+                </Text>
+              </TouchableOpacity>
+              {/* Why the button is dead, rather than leaving it inert and silent. */}
+              {!sendNowDecision.canSend && (
+                <Text style={styles.hint}>{sendNowDecision.message}</Text>
               )}
-              {!run.isRunning && (
-                <TouchableOpacity
-                  style={[styles.primaryButton, !canSend && styles.buttonDisabled]}
-                  onPress={sendNow}
-                  disabled={!canSend}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    Send to {audience.recipients.length} guests
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {run.result && <RunSummary result={run.result} />}
-              {run.error && <Text style={styles.errorText}>{run.error}</Text>}
             </>
           )}
+
+          {run.result && <RunSummary result={run.result} />}
+          {run.error && <Text style={styles.errorText}>{run.error}</Text>}
         </View>
       )}
     </ScrollView>
