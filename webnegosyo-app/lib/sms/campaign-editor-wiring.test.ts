@@ -64,8 +64,13 @@ describe("campaign editor — the test send", () => {
     // `dueRunId` gates the real send. Gating the test send on it too would put
     // the merchant back where they started: unable to try anything.
     const source = readCode(...EDITOR);
-    const testSendBlock = source.slice(source.indexOf("planTestSend"));
+    // The handler itself, not everything below it: the real send further down
+    // is gated on `dueRunId` and legitimately so.
+    const start = source.indexOf("const sendTest");
+    const handler = source.slice(start, source.indexOf("const sendNow", start));
 
-    expect(testSendBlock).not.toMatch(/dueRunId/);
+    expect(start).toBeGreaterThan(-1);
+    expect(handler).toMatch(/planTestSend/);
+    expect(handler).not.toMatch(/dueRunId/);
   });
 });

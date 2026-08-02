@@ -37,8 +37,16 @@ import { computeCampaignDueStates } from "../../../lib/sms/due-runs";
 import { selectAudience } from "../../../lib/sms/audience";
 import { listCustomers, listSuppressedPhones } from "../../../lib/sms/customers-repo";
 import { toManilaParts } from "../../../lib/sms/schedule";
+import {
+  CAMPAIGN_PRESETS,
+  buildPresetDraft,
+} from "../../../lib/sms/campaign-presets";
+import { planTestSend } from "../../../lib/sms/test-send";
+import { createSmsTransport } from "../../../lib/sms/transport";
+import { androidSmsPermissions } from "../../../lib/sms/android-permissions";
+import { SmsSenderModule } from "../../../modules/sms-sender";
 import { useSmsRun } from "../../../hooks/use-sms-run";
-import type { SmsCustomer, ScheduleKind } from "../../../lib/sms/types";
+import type { SmsCustomer, SmsNativeClient, ScheduleKind } from "../../../lib/sms/types";
 import { colors, typography, spacing, radius } from "../../../theme/colors";
 import { LoadingState } from "../../../components/LoadingState";
 
@@ -73,6 +81,9 @@ export default function CampaignEditorScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [dueRunId, setDueRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<CampaignStatus>("draft");
+  const [testPhone, setTestPhone] = useState("");
+  const [isTesting, setIsTesting] = useState(false);
+  const [testOutcome, setTestOutcome] = useState<string | null>(null);
 
   const run = useSmsRun();
 
@@ -179,6 +190,51 @@ export default function CampaignEditorScreen() {
     }
   };
 
+  /**
+   * Text this message to one number, now.
+   *
+   * Deliberately independent of `dueRunId`: the whole point is to try the
+   * message — and find out whether this handset can send at all — before a
+   * campaign is ever scheduled or activated. Nothing is written to `sms_sends`;
+   * a rehearsal row there would make a resumed run skip a real guest.
+   */
+  const sendTest = async () => {
+    const planned = planTestSend({
+      phone: testPhone,
+      template: draft.messageTemplate,
+      storeName: tenantName ?? "our store",
+    });
+
+    if (!planned.ok) {
+      setTestOutcome(planned.error);
+      return;
+    }
+
+    setIsTesting(true);
+    setTestOutcome(null);
+    try {
+      // Lazy, like the run hook: constructing the native module at render is
+      // what caused a post-login crash on iOS once already.
+      const transport = createSmsTransport({
+        platform: Platform.OS,
+        native: SmsSenderModule as SmsNativeClient | null,
+        permissions: androidSmsPermissions,
+      });
+
+      await transport.send(planned.plan.phoneE164, planned.plan.body);
+      setTestOutcome(
+        `Sent to ${planned.plan.phoneE164}. If it does not arrive in a minute, ` +
+          "check your SIM has load and signal."
+      );
+    } catch (error) {
+      setTestOutcome(
+        error instanceof Error ? error.message : "The test message could not be sent."
+      );
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const sendNow = () => {
     if (!tenantId || !dueRunId) return;
     Alert.alert(
@@ -212,6 +268,30 @@ export default function CampaignEditorScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{isNew ? "New campaign" : "Edit campaign"}</Text>
+
+      {/*
+        A blank draft is not saveable — a one-off with no date fails validation
+        the moment this screen opens. A preset is one tap to a campaign that is
+        already valid, which is the difference between "write six fields" and
+        "check these are right".
+      */}
+      {isNew && (
+        <View style={styles.presetBox}>
+          <Text style={styles.label}>Start from a ready-made campaign</Text>
+          {CAMPAIGN_PRESETS.map((preset) => (
+            <TouchableOpacity
+              key={preset.id}
+              style={styles.presetCard}
+              onPress={() => setDraft(buildPresetDraft(preset.id, today))}
+              accessibilityRole="button"
+            >
+              <Text style={styles.presetTitle}>{preset.title}</Text>
+              <Text style={styles.hint}>{preset.description}</Text>
+            </TouchableOpacity>
+          ))}
+          <Text style={styles.hint}>Or fill in the fields below yourself.</Text>
+        </View>
+      )}
 
       <Field label="Campaign name" error={validation.errors.name}>
         <TextInput
@@ -254,6 +334,44 @@ export default function CampaignEditorScreen() {
             A special character made this message cost more. Plain letters are cheaper.
           </Text>
         )}
+      </View>
+
+      {/*
+        Available on a brand-new, unsaved campaign on purpose. Everything below
+        this point — audience, schedule, activation — is guesswork until the
+        merchant has seen one of these messages land on a real handset.
+      */}
+      <View style={styles.testBox}>
+        <Text style={styles.label}>Send yourself a test</Text>
+        <Text style={styles.hint}>
+          One text to your own number, exactly as a guest would receive it. It is not
+          counted against the campaign.
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={testPhone}
+          onChangeText={setTestPhone}
+          keyboardType="phone-pad"
+          placeholder="0917 123 4567"
+          placeholderTextColor={colors.textTertiary}
+        />
+        {Platform.OS !== "android" ? (
+          <Text style={styles.hint}>
+            Test sending needs the Android app — it uses that phone&apos;s SIM.
+          </Text>
+        ) : (
+          <TouchableOpacity
+            style={[styles.secondaryButton, isTesting && styles.buttonDisabled]}
+            onPress={sendTest}
+            disabled={isTesting}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>
+              {isTesting ? "Sending…" : "Send test message"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {testOutcome && <Text style={styles.hint}>{testOutcome}</Text>}
       </View>
 
       <Text style={styles.sectionTitle}>Who gets it</Text>
@@ -605,6 +723,36 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   buttonDisabled: { opacity: 0.4 },
+  secondaryButton: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  secondaryButtonText: { ...typography.caption, color: colors.primary, fontWeight: "700" },
+  presetBox: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  presetCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    gap: 2,
+  },
+  presetTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+  testBox: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
   primaryButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
   sendBox: {
     marginTop: spacing.lg,

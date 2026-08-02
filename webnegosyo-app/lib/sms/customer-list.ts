@@ -65,7 +65,12 @@ function resolveStatus(
   return "textable";
 }
 
-export type CustomerListFilter = "all" | "textable";
+/**
+ * `no_consent` is the merchant's working list: guests who could be reachable
+ * and are not, which is where the consent button does its work. Doing that by
+ * eye over hundreds of rows is why the audience stayed at zero.
+ */
+export type CustomerListFilter = "all" | "textable" | "no_consent";
 
 export interface CustomerListOptions {
   query: string;
@@ -111,6 +116,16 @@ function matchesQuery(customer: SmsCustomer, query: string): boolean {
   return normalizedNeedle !== null && normalizedNeedle === customer.phone_e164;
 }
 
+function matchesFilter(
+  status: ReachabilityStatus,
+  filter: CustomerListFilter
+): boolean {
+  if (filter === "all") return true;
+  // `no_consent` means "could be asked", so an opt-out or a missing number is
+  // out: neither is a guest the merchant should be walking up to.
+  return status === filter;
+}
+
 function byRecencyDesc(a: CustomerRow, b: CustomerRow): number {
   const aTime = a.customer.last_order_at ? new Date(a.customer.last_order_at).getTime() : 0;
   const bTime = b.customer.last_order_at ? new Date(b.customer.last_order_at).getTime() : 0;
@@ -127,7 +142,7 @@ export function buildCustomerList(
   }));
 
   const rows = all
-    .filter((row) => options.filter !== "textable" || row.reachability.status === "textable")
+    .filter((row) => matchesFilter(row.reachability.status, options.filter))
     .filter((row) => matchesQuery(row.customer, options.query))
     .sort(byRecencyDesc);
 

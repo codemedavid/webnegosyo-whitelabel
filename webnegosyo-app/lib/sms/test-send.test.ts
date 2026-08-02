@@ -83,12 +83,11 @@ describe("planTestSend", () => {
   });
 
   it("fills the sample guest with plausible values, not blanks", () => {
-    const body = planOf({
+    const { body } = planOf({
       template: "{{firstName}} / {{orderCount}} / {{lastOrderDate}}",
     });
 
-    expect(body).not.toMatch(/(^| )\/( |$)\s*\//);
-    expect(body.split("/").every((part) => part.trim() !== "")).toBe(true);
+    expect(body.split("/").every((part: string) => part.trim() !== "")).toBe(true);
   });
 
   it("keeps the rehearsal identical to the real thing for the same template", () => {

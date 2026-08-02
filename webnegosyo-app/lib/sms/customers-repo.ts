@@ -60,6 +60,32 @@ export async function listSuppressedPhones(tenantId: string): Promise<string[]> 
   return (data ?? []).map((row) => String((row as { phone_e164: unknown }).phone_e164));
 }
 
+/**
+ * Record or withdraw a guest's consent to be texted.
+ *
+ * `sms_consent` is written as a real boolean, never a string: both read sites
+ * compare with `=== true`, so a `"true"` would look captured on screen and be
+ * silently ignored by every audience query.
+ *
+ * `sms_opt_out` is deliberately left alone. Consent and opt-out are separate
+ * statements, and folding them together here is how a guest's "do not text me"
+ * gets undone by a helpful tap at the counter.
+ */
+export async function setCustomerConsent(
+  customerId: string,
+  hasConsented: boolean
+): Promise<void> {
+  const { error } = await supabase
+    .from("customers")
+    .update({
+      sms_consent: hasConsented,
+      sms_consent_at: hasConsented ? new Date().toISOString() : null,
+    })
+    .eq("id", customerId);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Flip a guest's do-not-text flag. Writing the timestamp is what makes it auditable. */
 export async function setCustomerOptOut(customerId: string, optOut: boolean): Promise<void> {
   const { error } = await supabase

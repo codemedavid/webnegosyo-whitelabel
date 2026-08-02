@@ -10,12 +10,13 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { PermissionsAndroid, Platform } from "react-native";
+import { Platform } from "react-native";
 import { supabase } from "../lib/supabase";
 import { SmsSenderModule } from "../modules/sms-sender";
 import { executeRun } from "../lib/sms/send-run";
 import { orchestrateRun } from "../lib/sms/run-orchestrator";
 import { createSmsTransport } from "../lib/sms/transport";
+import { androidSmsPermissions } from "../lib/sms/android-permissions";
 import { getDeviceId } from "../lib/sms/device-id";
 import {
   claimRun,
@@ -24,29 +25,10 @@ import {
   recordSend,
 } from "../lib/sms/campaigns-repo";
 import type { OrchestratedRun } from "../lib/sms/run-orchestrator";
-import type {
-  SmsNativeClient,
-  SmsPermissionClient,
-  SmsPermissionRequestResult,
-  SmsCustomer,
-} from "../lib/sms/types";
+import type { SmsNativeClient, SmsCustomer } from "../lib/sms/types";
 
 /** Gap between messages. Keeps a run under Android's silent ~30/30min throttle. */
 const STAGGER_MS = 2500;
-
-const androidPermissions: SmsPermissionClient = {
-  async check() {
-    if (Platform.OS !== "android") return false;
-    return PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.SEND_SMS);
-  },
-  async request(): Promise<SmsPermissionRequestResult> {
-    if (Platform.OS !== "android") return "denied";
-    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.SEND_SMS);
-    if (result === PermissionsAndroid.RESULTS.GRANTED) return "granted";
-    if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return "never_ask_again";
-    return "denied";
-  },
-};
 
 export interface RunProgress {
   total: number;
@@ -96,7 +78,7 @@ export function useSmsRun(): UseSmsRun {
       const transport = createSmsTransport({
         platform: Platform.OS,
         native: SmsSenderModule as SmsNativeClient | null,
-        permissions: androidPermissions,
+        permissions: androidSmsPermissions,
       });
 
       const deviceId = await getDeviceId();

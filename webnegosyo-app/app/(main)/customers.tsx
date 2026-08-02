@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
 import { NEW_CAMPAIGN_ID, campaignHref } from "../../lib/navigation";
 import {
@@ -31,8 +31,14 @@ import {
 import {
   listCustomers,
   listSuppressedPhones,
+  setCustomerConsent,
   setCustomerOptOut,
 } from "../../lib/sms/customers-repo";
+import {
+  consentActionFor,
+  withConsentRecorded,
+  type ConsentAction,
+} from "../../lib/sms/consent-actions";
 import type { SmsCustomer } from "../../lib/sms/types";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
@@ -105,9 +111,14 @@ export default function CustomersScreen() {
     }
   }, [tenantId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // On focus, not on mount. This tab never unmounts, so a mount-only effect
+  // meant a campaign saved in the editor did not appear until the app was
+  // force-quit from the background — which reads exactly like a failed save.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const list = useMemo(
     () => buildCustomerList(customers, { query, filter, suppressedPhones }),
@@ -130,6 +141,47 @@ export default function CustomersScreen() {
     }
   };
 
+  /**
+   * Record what the guest just said at the counter.
+   *
+   * Confirmed before writing, because this is a consent record the merchant is
+   * attesting to on the guest's behalf — a mis-tap here texts someone who never
+   * agreed, and the tap is one row away from "Do not text".
+   */
+  const recordConsent = (customer: SmsCustomer, action: ConsentAction) => {
+    if (!action.isEnabled) return;
+    const nextConsent = action.kind === "record";
+
+    const apply = async () => {
+      setCustomers((current) =>
+        current.map((c) => (c.id === customer.id ? withConsentRecorded(c, nextConsent) : c))
+      );
+      try {
+        await setCustomerConsent(customer.id, nextConsent);
+      } catch {
+        setCustomers((current) =>
+          current.map((c) => (c.id === customer.id ? withConsentRecorded(c, !nextConsent) : c))
+        );
+        Alert.alert("Could not save", "That change did not stick. Please try again.");
+      }
+    };
+
+    if (!nextConsent) {
+      apply();
+      return;
+    }
+
+    Alert.alert(
+      "Did they agree to texts?",
+      `Only tap yes if ${customer.name?.trim() || "this guest"} told you they are happy to ` +
+        "get follow-up texts from your store.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Yes, they agreed", onPress: apply },
+      ]
+    );
+  };
+
   if (isLoading) return <LoadingState message="Loading customers…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
@@ -147,8 +199,8 @@ export default function CustomersScreen() {
 
       {/*
         The reachable count is stated up front rather than discovered when a
-        campaign sends to nobody. With the checkout opt-in not yet shipped this
-        will read "0 can be texted", which is the honest number.
+        campaign sends to nobody. It is the honest number, and the "Ask to opt
+        in" filter below is how the merchant moves it.
       */}
       <View style={styles.statsRow}>
         <Stat label="Can text" value={list.stats.textable} tone={colors.success} />
@@ -169,8 +221,8 @@ export default function CustomersScreen() {
       {list.stats.textable === 0 && list.stats.total > 0 && (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>
-            Nobody can be texted yet. Guests become reachable once they agree to SMS
-            updates at checkout.
+            Nobody can be texted yet. Guests opt in at online checkout — or ask them at
+            the counter and tap &quot;They agreed to texts&quot; on their row.
           </Text>
         </View>
       )}
@@ -215,6 +267,11 @@ export default function CustomersScreen() {
             isActive={filter === "textable"}
             onPress={() => setFilter("textable")}
           />
+          <FilterChip
+            label={`Ask to opt in (${list.stats.noConsent})`}
+            isActive={filter === "no_consent"}
+            onPress={() => setFilter("no_consent")}
+          />
         </View>
       </View>
 
@@ -243,7 +300,12 @@ export default function CustomersScreen() {
           />
         }
         renderItem={({ item }) => (
-          <CustomerCard row={item} onToggleOptOut={() => toggleOptOut(item.customer)} />
+          <CustomerCard
+            row={item}
+            consentAction={consentActionFor(item.customer, suppressedPhones)}
+            onToggleOptOut={() => toggleOptOut(item.customer)}
+            onRecordConsent={(action) => recordConsent(item.customer, action)}
+          />
         )}
       />
         </>
@@ -353,10 +415,14 @@ function FilterChip({
 
 function CustomerCard({
   row,
+  consentAction,
   onToggleOptOut,
+  onRecordConsent,
 }: {
   row: CustomerRow;
+  consentAction: ConsentAction;
   onToggleOptOut: () => void;
+  onRecordConsent: (action: ConsentAction) => void;
 }) {
   const { customer, reachability } = row;
   const badge = BADGE_STYLES[reachability.status];
@@ -385,17 +451,41 @@ function CustomerCard({
         <Text style={styles.metric}>{lastOrderLabel(customer.last_order_at)}</Text>
       </View>
 
-      {customer.phone_e164 && (
-        <TouchableOpacity
-          style={styles.optOutButton}
-          onPress={onToggleOptOut}
-          accessibilityRole="button"
-        >
-          <Text style={styles.optOutText}>
-            {customer.sms_opt_out ? "Allow texts again" : "Do not text"}
-          </Text>
-        </TouchableOpacity>
-      )}
+      <View style={styles.cardActions}>
+        {consentAction.isEnabled && (
+          <TouchableOpacity
+            style={
+              consentAction.kind === "record"
+                ? styles.consentButton
+                : styles.consentButtonMuted
+            }
+            onPress={() => onRecordConsent(consentAction)}
+            accessibilityRole="button"
+          >
+            <Text
+              style={
+                consentAction.kind === "record"
+                  ? styles.consentText
+                  : styles.consentTextMuted
+              }
+            >
+              {consentAction.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {customer.phone_e164 && (
+          <TouchableOpacity
+            style={styles.optOutButton}
+            onPress={onToggleOptOut}
+            accessibilityRole="button"
+          >
+            <Text style={styles.optOutText}>
+              {customer.sms_opt_out ? "Allow texts again" : "Do not text"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -477,8 +567,24 @@ const styles = StyleSheet.create({
   },
   metric: { ...typography.caption, color: colors.textSecondary },
   metricDot: { ...typography.caption, color: colors.textTertiary },
-  optOutButton: { marginTop: spacing.sm, alignSelf: "flex-start" },
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  optOutButton: { alignSelf: "flex-start" },
   optOutText: { ...typography.caption, color: colors.accent, fontWeight: "600" },
+  consentButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.successLight,
+  },
+  consentButtonMuted: { alignSelf: "flex-start" },
+  consentText: { ...typography.caption, color: colors.success, fontWeight: "700" },
+  consentTextMuted: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   newCampaignButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.md,
