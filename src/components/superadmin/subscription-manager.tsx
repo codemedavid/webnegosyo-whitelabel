@@ -21,11 +21,16 @@ import { setTenantPausedAction } from '@/app/actions/subscriptions'
 import type { AllowanceRow } from '@/lib/billing/tenant-allowances'
 import { MarkPaidDialog } from '@/components/superadmin/mark-paid-dialog'
 import { AllowanceDialog } from '@/components/superadmin/allowance-dialog'
+import { Panel } from '@/components/superadmin/ui/primitives'
 
+/**
+ * Translucent fills rather than solid pastels: this screen sits on the pure
+ * black superadmin shell, where a `bg-emerald-100` pill reads as a lamp.
+ */
 const STATE_STYLES: Record<RosterRow['state'], string> = {
-  active: 'bg-emerald-100 text-emerald-800',
-  grace: 'bg-amber-100 text-amber-900',
-  paused: 'bg-red-100 text-red-800',
+  active: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400',
+  grace: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+  paused: 'border-red-400/20 bg-red-400/10 text-red-400',
 }
 
 const STATE_LABELS: Record<RosterRow['state'], string> = {
@@ -46,6 +51,10 @@ function statusLabel(row: RosterRow): string {
   if (row.state === 'paused' && row.manualBlock === null) return 'Lapsed'
   return STATE_LABELS[row.state]
 }
+
+/** Every non-primary row button. One string so the three cannot drift apart. */
+const SECONDARY_ACTION =
+  'whitespace-nowrap rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-white'
 
 const peso = (value: number) => `₱${value.toLocaleString('en-PH')}`
 
@@ -74,11 +83,11 @@ function AllowanceCell({
 }) {
   return (
     <td
-      className="px-4 py-3"
+      className="whitespace-nowrap px-4 py-3"
       data-testid={testId}
       data-over={isOver ? 'true' : 'false'}
     >
-      <span className={isOver ? 'font-semibold text-amber-800' : 'text-neutral-600'}>
+      <span className={isOver ? 'font-semibold text-amber-300' : 'text-white/60'}>
         {used} / {limit}
       </span>
     </td>
@@ -151,7 +160,7 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg border border-neutral-200 p-1">
+        <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
           <FilterTab
             label="All tenants"
             isActive={!isChaseOnly}
@@ -165,77 +174,89 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
         </div>
 
         {summary.dueSoonPhp > 0 && (
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-white/55">
             {peso(summary.dueSoonPhp)} due within {DUE_SOON_WINDOW_DAYS} days.
           </p>
         )}
       </div>
 
       {summary.overduePhp > 0 && (
-        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
           {peso(summary.overduePhp)} outstanding across {summary.inGrace + summary.paused}{' '}
           {summary.inGrace + summary.paused === 1 ? 'tenant' : 'tenants'}.
         </p>
       )}
 
       {error && (
-        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300"
+        >
           {error}
         </p>
       )}
 
       {visibleRows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-neutral-200 px-4 py-10 text-center text-sm text-neutral-500">
+        <p className="rounded-2xl border border-dashed border-white/15 px-4 py-12 text-center text-sm text-white/55">
           Nobody needs chasing — every tenant is paid beyond the next{' '}
           {DUE_SOON_WINDOW_DAYS} days.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-neutral-200">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-3">Tenant</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Paid through</th>
-                <th className="px-4 py-3">Due in</th>
-                <th className="px-4 py-3">Overdue</th>
-                <th className="px-4 py-3">Branches</th>
+        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
+          <table className="w-full min-w-[880px] text-sm">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/[0.02] text-left text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                <th className="px-4 py-2.5">Tenant</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Paid through</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Due in</th>
+                <th className="px-4 py-2.5">Overdue</th>
+                <th className="px-4 py-2.5">Branches</th>
                 {/* Named for the branch it reports, not the store: the number
                     is the fullest single branch, which is the one that would
                     refuse the next hire. */}
-                <th className="px-4 py-3">Staff / busiest</th>
-                <th className="px-4 py-3 text-right">Action</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Staff / busiest</th>
+                <th className="px-4 py-2.5 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100">
+            <tbody className="divide-y divide-white/[0.06]">
               {visibleRows.map((row) => (
-                <tr key={row.tenantId} className={row.isDueSoon ? 'bg-amber-50/40' : undefined}>
+                <tr
+                  key={row.tenantId}
+                  className={
+                    row.isDueSoon
+                      ? 'bg-amber-400/[0.06] transition-colors hover:bg-amber-400/10'
+                      : 'transition-colors hover:bg-white/[0.03]'
+                  }
+                >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-neutral-900">{row.name}</div>
-                    <div className="text-xs text-neutral-500">/{row.slug}</div>
+                    <div className="font-medium text-white">{row.name}</div>
+                    <div className="text-xs text-white/45">/{row.slug}</div>
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`rounded-full px-2 py-1 text-xs font-semibold ${STATE_STYLES[row.state]}`}
+                      className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${STATE_STYLES[row.state]}`}
                     >
                       {statusLabel(row)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">{row.paidThroughDayKey ?? '—'}</td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
+                    {row.paidThroughDayKey ?? '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
                     {row.daysUntilDue === null ? (
-                      <span className="text-neutral-600">—</span>
+                      <span className="text-white/60">—</span>
                     ) : (
                       <span
                         className={
-                          row.isDueSoon ? 'font-semibold text-amber-800' : 'text-neutral-600'
+                          row.isDueSoon ? 'font-semibold text-amber-300' : 'text-white/60'
                         }
                       >
                         {row.daysUntilDue}d
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
                     {row.daysOverdue > 0 ? `${row.daysOverdue}d` : '—'}
                   </td>
                   {(() => {
@@ -243,8 +264,8 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                     if (!allowance) {
                       return (
                         <>
-                          <td className="px-4 py-3 text-neutral-400">—</td>
-                          <td className="px-4 py-3 text-neutral-400">—</td>
+                          <td className="px-4 py-3 text-white/30">—</td>
+                          <td className="px-4 py-3 text-white/30">—</td>
                         </>
                       )
                     }
@@ -270,7 +291,7 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                       <button
                         type="button"
                         onClick={() => setSelected(row)}
-                        className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white"
+                        className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition-opacity hover:opacity-90"
                       >
                         Mark paid
                       </button>
@@ -282,7 +303,7 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                           onClick={() =>
                             setEditingAllowance(allowanceByTenant.get(row.tenantId) ?? null)
                           }
-                          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                          className={SECONDARY_ACTION}
                         >
                           Allowances
                         </button>
@@ -301,7 +322,7 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                           type="button"
                           onClick={() => handlePausedChange(row, row.manualBlock !== 'paused')}
                           disabled={isPending && pendingTenantId === row.tenantId}
-                          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                          className={`${SECONDARY_ACTION} disabled:opacity-50`}
                         >
                           {row.manualBlock === 'paused' ? 'Resume' : 'Pause'}
                         </button>
@@ -353,8 +374,8 @@ function FilterTab({
       type="button"
       onClick={onClick}
       aria-pressed={isActive}
-      className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-        isActive ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:bg-neutral-100'
+      className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+        isActive ? 'bg-white text-black' : 'text-white/60 hover:text-white'
       }`}
     >
       {label}
@@ -364,9 +385,9 @@ function FilterTab({
 
 function Stat({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4" data-testid={testId}>
-      <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-xl font-bold text-neutral-900">{value}</p>
-    </div>
+    <Panel hover padding="p-5" testId={testId}>
+      <p className="text-xs uppercase tracking-wide text-white/45">{label}</p>
+      <p className="mt-2 text-2xl font-bold tracking-tight text-white">{value}</p>
+    </Panel>
   )
 }

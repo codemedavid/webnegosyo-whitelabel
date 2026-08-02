@@ -57,14 +57,18 @@ export function Panel({
   className,
   hover,
   padding = 'p-6',
+  testId,
 }: {
   children: ReactNode
   className?: string
   hover?: boolean
   padding?: string
+  /** Lets a caller address one panel among many without wrapping it in a div. */
+  testId?: string
 }) {
   return (
     <div
+      data-testid={testId}
       className={cn(
         'rounded-2xl border border-white/10 bg-white/[0.02]',
         hover && 'transition-colors hover:border-white/20 hover:bg-white/[0.04]',
