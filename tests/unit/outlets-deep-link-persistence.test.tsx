@@ -12,7 +12,7 @@
  * named, and checkout's picker starts from it under the "after" timing.
  */
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { useOutletSelection } from '@/hooks/use-outlet-selection'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { readLinkedOutletSlug, writeLinkedOutletSlug } from '@/lib/outlets/linked-outlet'
@@ -173,7 +173,7 @@ describe('checkout starts from the branch the link named', () => {
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-cainta'))
 
     // Act
-    result.current.select('o-makati')
+    act(() => result.current.select('o-makati'))
 
     // Assert
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-makati'))

@@ -11,6 +11,7 @@ import {
   type SelectableOutlet,
   type StoredOutletSelection,
 } from '@/lib/outlets/outlet-selection'
+import { writeLinkedOutletSlug } from '@/lib/outlets/linked-outlet'
 import { requestOutletGeoOrigin, type GeoResult } from '@/lib/outlets/geolocation'
 import { rankOutlets, type OutletOrderMode } from '@/lib/outlets/nearest-outlet'
 
@@ -60,6 +61,21 @@ export function useOutletSelection({
       clearOutletSelection(window.localStorage, tenantSlug)
     }
   }, [isHydrated, resolution.shouldClearStorage, tenantSlug])
+
+  /**
+   * Remember the branch a `/b/{slug}` link named, so the walk from the menu to
+   * checkout does not lose it. Written only when the slug resolved to a real,
+   * active branch — a dead or mistyped code prompts instead, and must not leave
+   * a branch behind for checkout to trust.
+   *
+   * Kept out of the stored SELECTION because that record carries a mode the
+   * customer picked and a link has none; see `linked-outlet.ts`.
+   */
+  useEffect(() => {
+    if (!isHydrated || typeof window === 'undefined') return
+    if (!isEnabled || urlSlug === null || resolution.outlet === null) return
+    writeLinkedOutletSlug(window.localStorage, tenantSlug, resolution.outlet.slug, Date.now())
+  }, [isHydrated, isEnabled, urlSlug, resolution.outlet, tenantSlug])
 
   const select = useCallback(
     (outletId: string, mode: OutletOrderMode) => {

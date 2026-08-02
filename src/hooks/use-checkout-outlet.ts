@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchActiveOutlets } from '@/lib/outlets/outlets-client'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
+import { readLinkedOutletSlug } from '@/lib/outlets/linked-outlet'
 import { resolveModeForOrderType } from '@/lib/outlets/mode-order-type'
 import { resolveCheckoutOutletSelection } from '@/lib/outlets/checkout-outlet'
 import {
@@ -74,8 +75,12 @@ export function useCheckoutOutlet({
 
   const [outlets, setOutlets] = useState<Outlet[]>([])
   const [hasLoadedOutlets, setHasLoadedOutlets] = useState(false)
-  const [chosenOutletId, setChosenOutletId] = useState<string | null>(null)
+  // `undefined` is "the customer has not answered", which is NOT the same as
+  // `null`: clearing a choice is itself an answer, and has to bring the picker
+  // back rather than fall through to the branch their QR link named.
+  const [chosenOutletId, setChosenOutletId] = useState<string | null | undefined>(undefined)
   const [storedOutletId, setStoredOutletId] = useState<string | null>(null)
+  const [linkedSlug, setLinkedSlug] = useState<string | null>(null)
 
   // The `before` path's answer. Read after mount because storage is not
   // available during render on the server.
@@ -83,6 +88,13 @@ export function useCheckoutOutlet({
     if (isAfterTiming || !isMultiBranchEnabled(tenant) || typeof window === 'undefined') return
     setStoredOutletId(readOutletSelection(window.localStorage, tenantSlug, Date.now())?.outletId ?? null)
   }, [isAfterTiming, tenant, tenantSlug])
+
+  // The branch a `/b/{slug}` link named, if the customer arrived through one.
+  // Read after mount for the same reason as the stored selection above.
+  useEffect(() => {
+    if (!isAfterTiming || typeof window === 'undefined') return
+    setLinkedSlug(readLinkedOutletSlug(window.localStorage, tenantSlug, Date.now()))
+  }, [isAfterTiming, tenantSlug])
 
   useEffect(() => {
     if (!isAfterTiming || !tenant?.id) return
@@ -106,9 +118,26 @@ export function useCheckoutOutlet({
     [orderTypes, orderTypeId]
   )
 
+  /**
+   * The branch to resolve from: what the customer tapped, or — while they have
+   * not answered — the one their link named.
+   *
+   * Matched by slug against the live list rather than trusted outright, and then
+   * handed to `resolveCheckoutOutletSelection` like any other candidate, so a
+   * branch that has since been deactivated or that cannot serve the chosen order
+   * type is dropped and the picker comes back. A printed link is a suggestion,
+   * not an instruction.
+   */
+  const candidateOutletId = useMemo(() => {
+    if (chosenOutletId !== undefined) return chosenOutletId
+    if (linkedSlug === null) return null
+    const wanted = linkedSlug.trim().toLowerCase()
+    return outlets.find((outlet) => outlet.slug.toLowerCase() === wanted)?.id ?? null
+  }, [chosenOutletId, linkedSlug, outlets])
+
   const resolution = useMemo(
-    () => resolveCheckoutOutletSelection({ outlets, mode, selectedOutletId: chosenOutletId }),
-    [outlets, mode, chosenOutletId]
+    () => resolveCheckoutOutletSelection({ outlets, mode, selectedOutletId: candidateOutletId }),
+    [outlets, mode, candidateOutletId]
   )
 
   // Keeping the resolved id — not the raw click — as the source of truth is what
@@ -142,7 +171,9 @@ export function useCheckoutOutlet({
   // The customer tapped a branch and no longer has it — only ever because the
   // order type changed under them, since nothing else clears a live choice.
   const droppedReason: CheckoutOutletDroppedReason | null =
-    chosenOutletId !== null && resolvedOutletId !== chosenOutletId ? 'order-type-changed' : null
+    typeof chosenOutletId === 'string' && resolvedOutletId !== chosenOutletId
+      ? 'order-type-changed'
+      : null
 
   return {
     isPickerVisible,
