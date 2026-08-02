@@ -28,8 +28,10 @@ import {
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { notifyCustomerOrderStock } from '@/lib/order-stock-notify'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
+import { withSmsConsent } from '@/lib/sms-consent'
 import { pickAndUploadPaymentProof, deletePaymentProof, isImageKitConfigured } from '@/lib/imagekit-upload'
 import { PaymentProofField } from '@/components/checkout/payment-proof-field'
+import { SmsOptIn } from '@/components/checkout/sms-opt-in'
 import type { OrderType, PaymentMethod, CustomerFormField } from '@/types/database'
 
 export default function CheckoutScreen() {
@@ -49,6 +51,11 @@ export default function CheckoutScreen() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  // Permission to text this customer later. Held apart from `formValues`,
+  // which is Record<string, string> — a string "true" is rejected by the
+  // consent read sites, so it would look captured and never be. See
+  // lib/sms-consent.
+  const [isSmsOptedIn, setIsSmsOptedIn] = useState(false)
   const [step, setStep] = useState(1) // Step 1 = form, Step 2 = payment
   const [isSubmitting, setIsSubmitting] = useState(false)
   const isCompletingCheckoutRef = useRef(false)
@@ -292,7 +299,7 @@ export default function CheckoutScreen() {
               // Resolve from any phone/email field the tenant form uses (normalized
               // to match the web app) so the contact is a stable customer identity.
               customerContact: resolveOrderContact(formValues),
-              customerData: {
+              customerData: withSmsConsent({
                 ...formValues,
                 ...(scheduledForISO
                   ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
@@ -304,7 +311,7 @@ export default function CheckoutScreen() {
                       payment_proof_reference: paymentProofReference || undefined,
                     }
                   : {}),
-              },
+              }, isSmsOptedIn, new Date().toISOString()),
               total,
               orderType: selectedOrderType.name,
               orderTypeId: String(selectedOrderType.id),
@@ -378,12 +385,16 @@ export default function CheckoutScreen() {
             order_type: selectedOrderType.name,
             customer_name: formValues.customer_name || null,
             customer_contact: formValues.customer_phone || formValues.customer_email || null,
-            customer_data: {
-              ...formValues,
-              ...(scheduledForISO
-                ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
-                : {}),
-            },
+            customer_data: withSmsConsent(
+              {
+                ...formValues,
+                ...(scheduledForISO
+                  ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
+                  : {}),
+              },
+              isSmsOptedIn,
+              new Date().toISOString()
+            ),
             total,
             ...(scheduledForISO ? { scheduled_for: scheduledForISO } : {}),
             status: 'pending',
@@ -609,6 +620,14 @@ export default function CheckoutScreen() {
                   setFormValues(prev => ({ ...prev, [name]: value }))
                 }
                 checkoutTheme
+              />
+              <SmsOptIn
+                isOptedIn={isSmsOptedIn}
+                onChange={setIsSmsOptedIn}
+                storeName={tenant?.name ?? 'this store'}
+                accentColor={theme.primary}
+                textColor={theme.textSecondary}
+                borderColor={theme.border}
               />
               {customerLookup?.customerKey ? (
                 <View style={[styles.customerHistoryCard, { backgroundColor: theme.cards, borderColor: theme.border }]}>
