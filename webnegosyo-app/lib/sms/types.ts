@@ -142,3 +142,22 @@ export interface RunOutcome {
   skippedCount: number;
   haltedReason: HaltReason | null;
 }
+
+/** Result of asking Android for the SEND_SMS runtime permission. */
+export type SmsPermissionRequestResult = "granted" | "denied" | "never_ask_again";
+
+export interface SmsPermissionClient {
+  check(): Promise<boolean>;
+  request(): Promise<SmsPermissionRequestResult>;
+}
+
+/** The native module's surface, narrowed so tests never touch Expo. */
+export interface SmsNativeClient {
+  sendSms(phoneE164: string, body: string, subscriptionId: number | null): Promise<void>;
+}
+
+/** Anything that can put a message on the wire. Device today, gateway later. */
+export interface SmsTransport {
+  isAvailable: boolean;
+  send(phoneE164: string, body: string): Promise<void>;
+}

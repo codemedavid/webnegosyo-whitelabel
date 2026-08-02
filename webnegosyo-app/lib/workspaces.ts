@@ -45,7 +45,11 @@ export const WORKSPACES: readonly Workspace[] = [
     key: "insights",
     label: "Insights",
     description: "Sales analytics, growth, and trends",
-    tabs: ["analytics", "growth", "trends"],
+    // Customers sits beside Growth rather than in Products: the guest list is
+    // an audience to grow, not a thing on the shelf, and the follow-up
+    // campaigns launched from it are the acquisition lever the Growth tab
+    // spends its time telling the merchant to pull.
+    tabs: ["analytics", "growth", "customers", "trends"],
     defaultTab: "analytics",
   },
   {

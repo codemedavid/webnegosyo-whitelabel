@@ -149,6 +149,15 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="customers"
+        options={{
+          href: show("customers"),
+          title: "Customers",
+          tabBarLabel: "Customers",
+          tabBarIcon: ({ color }) => <TabIcon symbol="☺" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="trends"
         options={{
           href: show("trends"),
