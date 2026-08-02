@@ -262,14 +262,14 @@ create policy vouchers_tenant_access on public.vouchers
   using (
     exists (
       select 1 from public.app_users au
-       where au.id = auth.uid()
+       where au.user_id = auth.uid()
          and (au.role = 'superadmin' or au.tenant_id = vouchers.tenant_id)
     )
   )
   with check (
     exists (
       select 1 from public.app_users au
-       where au.id = auth.uid()
+       where au.user_id = auth.uid()
          and (au.role = 'superadmin' or au.tenant_id = vouchers.tenant_id)
     )
   );
@@ -281,7 +281,7 @@ create policy voucher_targets_tenant_access on public.voucher_targets
     exists (
       select 1
         from public.vouchers v
-        join public.app_users au on au.id = auth.uid()
+        join public.app_users au on au.user_id = auth.uid()
        where v.id = voucher_targets.voucher_id
          and (au.role = 'superadmin' or au.tenant_id = v.tenant_id)
     )
@@ -290,7 +290,7 @@ create policy voucher_targets_tenant_access on public.voucher_targets
     exists (
       select 1
         from public.vouchers v
-        join public.app_users au on au.id = auth.uid()
+        join public.app_users au on au.user_id = auth.uid()
        where v.id = voucher_targets.voucher_id
          and (au.role = 'superadmin' or au.tenant_id = v.tenant_id)
     )
@@ -302,14 +302,14 @@ create policy voucher_redemptions_tenant_access on public.voucher_redemptions
   using (
     exists (
       select 1 from public.app_users au
-       where au.id = auth.uid()
+       where au.user_id = auth.uid()
          and (au.role = 'superadmin' or au.tenant_id = voucher_redemptions.tenant_id)
     )
   )
   with check (
     exists (
       select 1 from public.app_users au
-       where au.id = auth.uid()
+       where au.user_id = auth.uid()
          and (au.role = 'superadmin' or au.tenant_id = voucher_redemptions.tenant_id)
     )
   );
@@ -318,6 +318,21 @@ create policy voucher_redemptions_tenant_access on public.voucher_redemptions
 -- service-role client on the server, never from the browser. No anon policy is
 -- granted here on purpose: a public read would let anyone enumerate every
 -- tenant's unreleased promo codes.
+
+-- 8. Lock the RPCs down -----------------------------------------------------------
+-- Both functions are SECURITY DEFINER, and PostgREST publishes every function in
+-- `public` as an RPC endpoint. Left as created, /rest/v1/rpc/redeem_voucher would
+-- let an anonymous caller claim redemptions against any voucher — the definer
+-- rights bypass the very RLS that protects the ledger. Only the server redeems.
+-- (Caught by the Supabase security advisor, `anon_security_definer_function_executable`.)
+revoke all on function public.redeem_voucher(uuid, uuid, text, numeric, text, text, uuid, uuid)
+  from public, anon, authenticated;
+grant execute on function public.redeem_voucher(uuid, uuid, text, numeric, text, text, uuid, uuid)
+  to service_role;
+
+-- Trigger function: it fires with the table owner's rights regardless of grants,
+-- so it has no business being reachable as an RPC at all.
+revoke all on function public.sync_voucher_used_count() from public, anon, authenticated;
 
 -- Manual rollback -----------------------------------------------------------------
 -- drop function if exists public.redeem_voucher(uuid, uuid, text, numeric, text, text, uuid, uuid);
