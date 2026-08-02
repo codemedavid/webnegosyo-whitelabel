@@ -38,7 +38,12 @@ jest.mock("../supabase", () => {
   };
 });
 
-import { listCustomers, listSuppressedPhones, setCustomerOptOut } from "./customers-repo";
+import {
+  listCustomers,
+  listSuppressedPhones,
+  setCustomerConsent,
+  setCustomerOptOut,
+} from "./customers-repo";
 
 beforeEach(() => {
   calls.length = 0;
@@ -157,6 +162,63 @@ describe("listSuppressedPhones", () => {
     queued = [{ data: null, error: { message: "network" } }];
 
     await expect(listSuppressedPhones("tenant-1")).rejects.toThrow("network");
+  });
+});
+
+describe("setCustomerConsent", () => {
+  it("writes a real boolean, never the string a form field would hand over", async () => {
+    // Both read sites compare with `=== true`. A string "true" looks captured
+    // on screen and is silently ignored by every audience query.
+    queued = [{ data: null, error: null }];
+
+    await setCustomerConsent("c1", true);
+
+    const [[patch]] = argsFor("update") as [[Record<string, unknown>]];
+    expect(patch.sms_consent).toBe(true);
+  });
+
+  it("stamps when consent was given, so it can be evidenced later", async () => {
+    queued = [{ data: null, error: null }];
+
+    await setCustomerConsent("c1", true);
+
+    const [[patch]] = argsFor("update") as [[Record<string, unknown>]];
+    expect(typeof patch.sms_consent_at).toBe("string");
+  });
+
+  it("clears the timestamp when consent is withdrawn", async () => {
+    queued = [{ data: null, error: null }];
+
+    await setCustomerConsent("c1", false);
+
+    const [[patch]] = argsFor("update") as [[Record<string, unknown>]];
+    expect(patch.sms_consent).toBe(false);
+    expect(patch.sms_consent_at).toBeNull();
+  });
+
+  it("never touches the opt-out flag while recording consent", async () => {
+    // Consent and opt-out are separate statements; folding them together here
+    // is how a "do not text me" gets undone by a helpful tap at the counter.
+    queued = [{ data: null, error: null }];
+
+    await setCustomerConsent("c1", true);
+
+    const [[patch]] = argsFor("update") as [[Record<string, unknown>]];
+    expect(patch).not.toHaveProperty("sms_opt_out");
+  });
+
+  it("targets exactly one customer", async () => {
+    queued = [{ data: null, error: null }];
+
+    await setCustomerConsent("c1", true);
+
+    expect(argsFor("eq")).toContainEqual(["id", "c1"]);
+  });
+
+  it("throws when the write fails, so the screen can roll its optimism back", async () => {
+    queued = [{ data: null, error: { message: "offline" } }];
+
+    await expect(setCustomerConsent("c1", true)).rejects.toThrow("offline");
   });
 });
 

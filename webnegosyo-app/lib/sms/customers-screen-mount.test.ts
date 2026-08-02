@@ -79,6 +79,24 @@ describe("customers screen wiring", () => {
     expect(source).toMatch(/from "\.\.\/\.\.\/lib\/sms\//);
   });
 
+  it("reloads when the screen comes back into focus", () => {
+    // This tab never unmounts. A mount-only `useEffect` meant a campaign saved
+    // in the editor did not appear until the app was force-quit from the
+    // background, which reads exactly like the save silently failed.
+    const source = readCode("app", "(main)", "customers.tsx");
+
+    expect(source).toMatch(/useFocusEffect/);
+  });
+
+  it("offers to record a guest's consent from the row", () => {
+    // Consent only accrued at online checkout, so the audience never left zero
+    // for a merchant whose guests order over the counter.
+    const source = readCode("app", "(main)", "customers.tsx");
+
+    expect(source).toMatch(/consentActionFor/);
+    expect(source).toMatch(/setCustomerConsent/);
+  });
+
   it("does not recompute reachability inline", () => {
     // The rules for who may be texted live in one place on purpose; a second
     // copy in the JSX is how a screen starts disagreeing with the send loop.

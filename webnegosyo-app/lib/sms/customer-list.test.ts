@@ -136,3 +136,47 @@ describe("buildCustomerList — the screen must show the whole database", () => 
     expect(list.stats.total).toBe(0);
   });
 });
+
+describe("the 'not opted in' working list", () => {
+  // The merchant's job with the new consent button is to work through the
+  // guests who could be reachable and are not. That is a different list from
+  // "everyone" and from "can text", and doing it by eye over 571 rows is why
+  // the audience stayed at zero.
+  const people = [
+    customer({ id: "yes", sms_consent: true }),
+    customer({ id: "askable", sms_consent: false }),
+    customer({ id: "refused", sms_consent: false, sms_opt_out: true }),
+    customer({ id: "nonumber", sms_consent: false, phone_e164: null }),
+  ];
+
+  it("lists only the guests who could be asked", () => {
+    const list = buildCustomerList(people, {
+      query: "",
+      filter: "no_consent",
+      suppressedPhones: [],
+    });
+
+    expect(list.rows.map((row) => row.customer.id)).toEqual(["askable"]);
+  });
+
+  it("leaves out a guest who has already said no", () => {
+    const list = buildCustomerList(people, {
+      query: "",
+      filter: "no_consent",
+      suppressedPhones: [],
+    });
+
+    expect(list.rows.map((row) => row.customer.id)).not.toContain("refused");
+  });
+
+  it("keeps the header counts over the whole database while the filter narrows", () => {
+    const list = buildCustomerList(people, {
+      query: "",
+      filter: "no_consent",
+      suppressedPhones: [],
+    });
+
+    expect(list.stats.total).toBe(4);
+    expect(list.stats.noConsent).toBe(1);
+  });
+});
