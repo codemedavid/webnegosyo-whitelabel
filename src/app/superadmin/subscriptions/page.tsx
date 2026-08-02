@@ -13,6 +13,8 @@ import {
   type AllowanceStaffMember,
 } from '@/lib/billing/tenant-allowances'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
+import { Breadcrumbs } from '@/components/shared/breadcrumbs'
+import { PageHeader } from '@/components/superadmin/ui/primitives'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,14 +100,18 @@ export default async function SubscriptionsPage() {
     }))
   )
 
+  // No padding of its own: the superadmin layout already frames the page, and
+  // the second p-6 pushed the table a full gutter off every sibling screen.
   return (
-    <div className="space-y-6 p-6">
-      <header>
-        <h1 className="text-2xl font-bold text-neutral-900">Subscriptions</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Overdue tenants first. Marking a client paid extends their access immediately.
-        </p>
-      </header>
+    <div className="space-y-6">
+      <Breadcrumbs
+        items={[{ label: 'Dashboard', href: '/superadmin' }, { label: 'Subscriptions' }]}
+      />
+      <PageHeader
+        eyebrow="Billing"
+        title="Subscriptions"
+        subtitle="Overdue tenants first. Marking a client paid extends their access immediately."
+      />
 
       <SubscriptionManager
         rows={rows}

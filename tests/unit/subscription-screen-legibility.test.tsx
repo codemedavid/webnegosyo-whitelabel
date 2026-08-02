@@ -59,14 +59,25 @@ const INVISIBLE_ON_BLACK = [
   'text-neutral-700',
   'text-neutral-600',
   'text-neutral-500',
-  'text-black',
   'bg-white',
   'bg-neutral-50',
 ]
 
+/**
+ * `bg-white` is not always wrong. The design system's own primary control is an
+ * inverted pill — `bg-white text-black` in `RangeTabs` — and that reads
+ * perfectly. What cannot appear is a white SURFACE, i.e. one that turns white
+ * without also restating the ink, leaving light text on light ground.
+ */
+function isDeliberateInversion(element: HTMLElement): boolean {
+  const tokens = element.className.split(/\s+/)
+  return tokens.includes('bg-white') && tokens.includes('text-black')
+}
+
 function offendingTokens(container: HTMLElement): string[] {
   const found = new Set<string>()
   for (const element of Array.from(container.querySelectorAll<HTMLElement>('[class]'))) {
+    if (isDeliberateInversion(element)) continue
     for (const token of element.className.split(/\s+/)) {
       if (INVISIBLE_ON_BLACK.includes(token)) found.add(token)
     }
