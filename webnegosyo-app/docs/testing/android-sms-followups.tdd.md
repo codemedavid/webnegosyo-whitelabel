@@ -24,6 +24,8 @@ Reference implementation studied: `sms/` (standalone Expo app) — its native mo
 | 0 | The module compiles and ships in the APK | `eas build -p android --profile production-apk` + artifact inspection | BUILT + INSPECTED |
 | 1 | Migrations `20260816120000` + `20260816130000` | applied via Supabase MCP, then probed in a rolled-back `DO` block | APPLIED + PROBED |
 | 2 | Five pure domain modules under `lib/sms/` | `npx jest lib/sms` | PASS 85/85 |
+| 3 | `lib/sms/transport.ts` — the SmsTransport port | `npx jest lib/sms/transport` | PASS |
+| 4 | Customers tab: `lib/sms/customer-list.ts`, `customers-repo.ts`, `app/(main)/customers.tsx`, tab + permission registration | `npx jest lib/sms` | PASS 122/122 |
 | — | Whole-package regression | `npx jest` | PASS 108 suites / 1822 tests |
 | — | Types | `npx tsc --noEmit` | clean |
 
@@ -95,6 +97,16 @@ here rather than quietly amended:
 | 20 | The merchant can cancel a run in flight | `send-run.test.ts:stops when the merchant cancels mid-run` | unit | PASS |
 | 21 | The send loop never throws, whatever the phone does | `send-run.test.ts:never throws, whatever the phone does` | unit | PASS |
 | 22 | The manifest gains SEND_SMS and never READ_SMS/RECEIVE_SMS | `plugins/withSmsPermissions.test.ts` | unit | PASS |
+| 23 | The Customers screen lists the WHOLE database, not only the textable minority | `customer-list.test.ts:lists every customer, not only the ones who can be texted` | unit | PASS |
+| 24 | Header counts stay computed over the whole database while search narrows the rows | `customer-list.test.ts:keeps stats over the whole database…` | unit | PASS |
+| 25 | Phone search matches however the merchant types it (`0917 000 0002` → `+639170000002`) | `customer-list.test.ts:searches by phone number, ignoring how the merchant types it` | unit | PASS |
+| 26 | A row's badge reports opt-out ahead of missing consent, matching `audience.ts` | `customer-list.test.ts:marks an opt-out ahead of a missing consent` | unit | PASS |
+| 27 | Sending is impossible on iOS/web and never reaches the native module | `transport.test.ts:unsupported platforms` group | unit | PASS |
+| 28 | Permission is requested once per transport, not once per message | `transport.test.ts:does not re-request on every message once granted` | unit | PASS |
+| 29 | A denied permission refuses to send; `never_ask_again` points at Settings | `transport.test.ts:permission handling` group | unit | PASS |
+| 30 | The chosen SIM is passed through; absent means device default | `transport.test.ts:SIM selection` group | unit | PASS |
+| 31 | The customers tab is closed to a cashier holding only the POS grant | `customers-screen-mount.test.ts:is closed to a cashier…` | unit | PASS |
+| 32 | The tab has a route file and is registered in the layout | `customers-screen-mount.test.ts:customers tab registration` | unit | PASS |
 
 ## Coverage
 
@@ -207,7 +219,7 @@ These are **not** covered by any passing test, and none of them should be read a
 
    APK: https://expo.dev/artifacts/eas/Tr4GkE6mrloRK_21hBZHCMtfkUnGBu_0r1qY1XkXOEI.apk
 2. ~~Migration not applied.~~ **Applied and probed** — see *Database probe* below. RLS is enabled with a policy on all four tables; the anon path was not separately exercised.
-3. **Phases 3–7 are not started**: the `SmsTransport` port and permission wrapper, the Customers tab and its `TAB_PERMISSIONS` entry, the due-list/notification engine, and the web checkout consent opt-in.
+3. **Phases 5–7 are not started.** Phase 3 (transport port) and Phase 4 (Customers tab) shipped; what is missing is everything that would let a merchant actually *send*: the campaign editor, the schedule UI, the due-list + local-notification engine, the run screen, and the web checkout consent opt-in. The engine underneath them (`audience`, `message-template`, `schedule`, `run-plan`, `send-run`, `transport`) is written and tested but is reachable from no screen.
 4. **Until Phase 6 ships, no customer is targetable.** `customers.sms_consent` is written nowhere in the codebase today, so `selectAudience` correctly returns an empty audience for every existing tenant. That is the intended behaviour, not a defect.
 5. **Campaigns cannot be branch-scoped.** `public.customers` has no `outlet_id`, so a branch-scoped account must be denied the tab entirely in Phase 4.
 6. **No integration or E2E coverage.** The package's jest config is unit-only (`roots: lib, theme, plugins`), matching the existing convention; screens are exercised manually via Expo.
