@@ -235,10 +235,18 @@ export function createSupabaseCustomerStore(admin: AdminClient): CustomerStore {
         last_order_at: patch.lastOrderAt,
         channels_used: patch.channelsUsed,
         top_items: patch.topItems,
-        sms_consent: patch.smsConsent,
-        sms_consent_at: patch.smsConsentAt,
         phone_e164: patch.phoneE164,
         email: patch.email,
+      }
+      // Consent is RAISED here, never cleared. The aggregate derives it purely
+      // from linked orders, so `false` means "no order carried consent" — not
+      // "they said no". Written unconditionally it would wipe consent recorded
+      // any other way (the merchant app's counter opt-in) the next time the
+      // guest ordered. Withdrawal is an explicit act: the opt-out flag, or
+      // undoing the opt-in.
+      if (patch.smsConsent) {
+        update.sms_consent = true
+        update.sms_consent_at = patch.smsConsentAt
       }
       // Only overwrite the name when this order actually carried one.
       if (patch.name) update.name = patch.name
