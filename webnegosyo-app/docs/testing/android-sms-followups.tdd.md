@@ -371,3 +371,186 @@ Deliberately **not** covered:
 4. **Consent accrues one order at a time.** The 571 existing customers stay
    unreachable. They never consented, and back-filling consent they did not
    give is not defensible; day-one audience for any campaign is zero.
+
+---
+
+# Phase 9 — usable SMS: counter opt-in, live campaign list, presets, test send
+
+**Date**: 2026-08-03. **Branch**: `feat/android-sms-followups`.
+**Source plan**: none — journeys were derived during this TDD run from four
+defects the merchant reported after using the shipped build.
+
+## What was reported
+
+1. "Everyone is still not opted in yet" — the audience never left zero.
+2. "Saving doesn't show we already saved it — we have to remove the app from the
+   background before we can actually see the saved campaigns."
+3. "We want to make it easier to make an SMS."
+4. "We want to be able to at least test it."
+
+## User journeys
+
+1. As a merchant, I want to record a guest's spoken consent at the counter, so
+   my campaigns are not stuck at zero while online consent trickles in.
+2. As a merchant, I want consent I recorded to survive that guest's next order,
+   so the reachable count does not quietly go back down.
+3. As a merchant, I want a campaign I just saved to appear the moment I go back,
+   so I do not force-quit the app to see my own work.
+4. As a merchant, I want to start from a ready-made campaign, so my first
+   follow-up is one tap rather than six fields I have to reason about.
+5. As a merchant, I want to text myself the exact message first, so I find out
+   how it reads — and whether this handset can send at all — before hundreds of
+   guests do.
+
+## Task report
+
+| # | What was done | Validation run | Result |
+|---|---|---|---|
+| 1 | `lib/sms/consent-actions.ts`, `setCustomerConsent`, `no_consent` filter, row control + "Ask to opt in" chip | `npx jest lib/sms` | PASS |
+| 2 | `saveCustomerProfile` raises consent, never clears it (`src/lib/customers-service.ts`) | `npx jest tests/unit/customers-service-consent-persistence.test.ts` | PASS 4/4 |
+| 3 | `customers.tsx` reloads via `useFocusEffect` instead of a mount-only `useEffect` | `npx jest lib/sms/customers-screen-mount` | PASS |
+| 4 | `lib/sms/campaign-presets.ts` + preset picker on a new campaign | `npx jest lib/sms/campaign-presets` | PASS 10/10 |
+| 5 | `lib/sms/test-send.ts` + test-send panel; `androidSmsPermissions` extracted so the rehearsal uses the real transport | `npx jest lib/sms/test-send` | PASS 10/10 |
+| — | Merchant-app regression | `npx jest` (webnegosyo-app) | PASS 122 suites / 2025 tests |
+| — | Merchant-app types | `npx tsc --noEmit` | clean |
+| — | Merchant-app lint | `npx expo lint` | 0 errors (7 pre-existing warnings, none in changed files) |
+| — | Web regression | `npx jest` (root) | 415 passed; 5 pre-existing `sms/` failures (see gaps) |
+| — | Web lint | `npm run lint` | no findings in changed files |
+
+### RED evidence
+
+`npx jest lib/sms` with the tests written and no implementation:
+
+```
+FAIL lib/sms/consent-actions.test.ts
+  ● Test suite failed to run
+    lib/sms/consent-actions.test.ts:16:55 - error TS2307: Cannot find module './consent-actions'
+FAIL lib/sms/campaign-presets.test.ts   — TS2307: Cannot find module './campaign-presets'
+FAIL lib/sms/test-send.test.ts          — TS2307: Cannot find module './test-send'
+FAIL lib/sms/customer-list.test.ts      — no `no_consent` filter
+FAIL lib/sms/customers-repo.test.ts     — no `setCustomerConsent` export
+FAIL lib/sms/customers-screen-mount.test.ts
+  ● reloads when the screen comes back into focus
+  ● offers to record a guest's consent from the row
+FAIL lib/sms/campaign-editor-wiring.test.ts   (4 assertions)
+
+Test Suites: 7 failed, 12 passed, 19 total
+Tests:       6 failed, 210 passed, 216 total
+```
+
+Mixed compile-time and runtime RED, and the failures are the missing feature and
+not broken setup: 12 suites compiled and passed under the same jest config in the
+same run. Committed as `6eee449`.
+
+The consent-persistence defect got its own RED, run before the fix:
+
+```
+● saveCustomerProfile — consent is raised, never cleared
+  › does not write consent at all when this guest has never consented on an order
+  Expected path: not "sms_consent"
+  Received value: false
+Tests: 1 failed, 3 passed, 4 total
+```
+
+Committed as `7216728`.
+
+### GREEN evidence
+
+```
+Test Suites: 122 passed, 122 total
+Tests:       2025 passed, 2025 total     (webnegosyo-app)
+```
+
+Committed as `772ece3` and `5040d4d`.
+
+**One assertion was corrected as wrong-test, not wrong-code**, and is recorded
+rather than quietly amended: `campaign-editor-wiring.test.ts` asserted that
+"everything after the first mention of `planTestSend`" contained no `dueRunId`.
+That slice ran to the end of the file and swept in the real send section, which
+is gated on `dueRunId` and legitimately so. Narrowed to the `sendTest` handler
+itself. (A second, purely mechanical fix: `planOf()` returns the plan, and one
+test read it as if it were the body.)
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | Consent can be recorded for a guest with a number and no opt-in on file | `consent-actions.test.ts:offers to record consent…` | unit | PASS |
+| 2 | Consent can never be recorded over an explicit opt-out | `consent-actions.test.ts:cannot record consent over an explicit opt-out` | unit | PASS |
+| 3 | Consent can never be recorded for a guest with no number | `consent-actions.test.ts:cannot record consent for a guest with no number` | unit | PASS |
+| 4 | A suppressed number is never offered a consent button | `consent-actions.test.ts:cannot record consent for a suppressed number` | unit | PASS |
+| 5 | An opted-out guest is never offered "Undo opt-in", which would imply they are reachable | `consent-actions.test.ts:blocks rather than offering to withdraw…` | unit | PASS |
+| 6 | Recording consent returns a new customer, never mutating the row the screen is holding | `consent-actions.test.ts:returns a new customer rather than mutating…` | unit | PASS |
+| 7 | Recording consent moves the row's badge to "Can text" without a round-trip | `consent-actions.test.ts:makes the row read as textable…` | unit | PASS |
+| 8 | Recording consent puts the guest into the actual send audience, not just the badge | `consent-actions.test.ts:puts the guest into the send audience…` | unit | PASS |
+| 9 | Withdrawing consent takes the guest back out of the audience | `consent-actions.test.ts:takes the guest back out…` | unit | PASS |
+| 10 | Consent is written as a real boolean, never the string a form field would hand over | `customers-repo.test.ts:writes a real boolean…` | unit | PASS |
+| 11 | Consent carries a timestamp, so it can be evidenced later | `customers-repo.test.ts:stamps when consent was given` | unit | PASS |
+| 12 | Recording consent never touches the opt-out flag | `customers-repo.test.ts:never touches the opt-out flag…` | unit | PASS |
+| 13 | A failed consent write throws, so the screen can roll its optimism back | `customers-repo.test.ts:throws when the write fails…` | unit | PASS |
+| 14 | An order never clears consent recorded outside the order stream | `customers-service-consent-persistence.test.ts:does not write consent at all…` | unit | PASS |
+| 15 | An order that DID carry consent still records it | `customers-service-consent-persistence.test.ts:still writes consent when an order actually carried it` | unit | PASS |
+| 16 | Skipping consent does not turn into skipping the rest of the profile | `…test.ts:keeps writing the rest of the profile either way` | unit | PASS |
+| 17 | The "Ask to opt in" list holds only guests who could be asked | `customer-list.test.ts:lists only the guests who could be asked` | unit | PASS |
+| 18 | A guest who already said no never appears on that list | `customer-list.test.ts:leaves out a guest who has already said no` | unit | PASS |
+| 19 | Header counts stay over the whole database while that filter narrows | `customer-list.test.ts:keeps the header counts…` | unit | PASS |
+| 20 | The Customers tab reloads on focus, so a saved campaign appears without a force-quit | `customers-screen-mount.test.ts:reloads when the screen comes back into focus` | guardrail | PASS |
+| 21 | The consent control is actually wired into the screen | `customers-screen-mount.test.ts:offers to record a guest's consent from the row` | guardrail | PASS |
+| 22 | Every preset builds a draft that is valid the moment it lands in the form | `campaign-presets.test.ts:builds a draft that is valid…` | unit | PASS |
+| 23 | A one-off preset is never dated in the past | `campaign-presets.test.ts:never dates a one-off preset in the past` | unit | PASS |
+| 24 | Every preset message uses only variables the renderer knows | `campaign-presets.test.ts:writes messages using only variables…` | unit | PASS |
+| 25 | No preset silently costs the merchant two segments per guest | `campaign-presets.test.ts:keeps every preset message inside a single SMS segment` | unit | PASS |
+| 26 | No preset trips the UCS-2 billing cliff | `campaign-presets.test.ts:keeps preset messages on plain letters` | unit | PASS |
+| 27 | Editing a preset-built draft cannot alter the preset for the next tap | `campaign-presets.test.ts:hands back an independent draft each time` | unit | PASS |
+| 28 | An unknown preset throws rather than returning a blank campaign | `campaign-presets.test.ts:throws on an unknown preset` | unit | PASS |
+| 29 | A test send accepts the number the way a merchant types it | `test-send.test.ts:accepts the number the way a merchant actually types it` | unit | PASS |
+| 30 | The test message is rendered, so the merchant reads what a guest reads | `test-send.test.ts:renders the placeholders` | unit | PASS |
+| 31 | The rehearsal is byte-identical to the real message, so its segment count is not a lie | `test-send.test.ts:keeps the rehearsal identical to the real thing` | unit | PASS |
+| 32 | A test send reports what one message costs, incl. the UCS-2 cliff | `test-send.test.ts:reports what one message costs` + "prices a curly apostrophe" | unit | PASS |
+| 33 | An undiallable or blank number is refused before anything is sent | `test-send.test.ts:refuses a number that cannot be dialled` + "refuses a blank number" | unit | PASS |
+| 34 | An empty or broken template is refused, naming the offending variable | `test-send.test.ts:refuses an empty message` + "names the unknown variable" | unit | PASS |
+| 35 | The sample guest renders plausible values, not blanks | `test-send.test.ts:fills the sample guest with plausible values` | unit | PASS |
+| 36 | Presets are reachable from the editor and not re-typed into the JSX | `campaign-editor-wiring.test.ts:starting from a preset` group | guardrail | PASS |
+| 37 | The rehearsal runs on the SAME transport a real run uses | `campaign-editor-wiring.test.ts:puts the rehearsal on the same transport` | guardrail | PASS |
+| 38 | A test send is never recorded in `sms_sends`, so a resumed run cannot skip a real guest | `campaign-editor-wiring.test.ts:never records a test send…` | guardrail | PASS |
+| 39 | The rehearsal is not gated on the campaign being due | `campaign-editor-wiring.test.ts:does not gate the rehearsal behind the campaign being due` | guardrail | PASS |
+
+## Coverage and known gaps for this phase
+
+```
+npx jest lib/sms --coverage --collectCoverageFrom='lib/sms/**/*.ts'
+
+All files               |   95.51 |    86.47 |   97.34 |   97.62 |
+ campaign-presets.ts    |     100 |      100 |     100 |     100 |
+ consent-actions.ts     |     100 |      100 |     100 |     100 |
+ test-send.ts           |     100 |      100 |     100 |     100 |
+ customer-list.ts       |   97.43 |    77.77 |     100 |     100 |
+ customers-repo.ts      |     100 |    91.66 |     100 |     100 |
+ android-permissions.ts |       0 |        0 |       0 |       0 |
+```
+
+Deliberately **not** covered:
+
+1. **`android-permissions.ts` is at 0%.** It imports `react-native`, so nothing
+   in the node-env jest roots can import it. It is a thin adapter satisfying
+   `SmsPermissionClient`, and that port's behaviour — request once, cache the
+   answer, refuse on a denial, point at Settings on `never_ask_again` — is fully
+   exercised in `transport.test.ts` against a fake. Extracting it from
+   `use-sms-run.ts` reduced the untested surface from two copies to one.
+2. **The screens are still source-level guardrails.** The merchant app's jest
+   config runs pure-logic roots only. `useFocusEffect` firing on focus, the
+   consent Alert, and the preset tap are asserted as wiring, not as behaviour.
+3. **The 5 failing `sms/` suites in the web run are pre-existing and unrelated.**
+   `sms/` is the untracked standalone reference app; the root jest config picks
+   it up and cannot parse its React Native sources. It fails identically without
+   this phase's changes.
+4. **The Kotlin module has still never sent a real SMS.** This phase built the
+   instrument to find out — a test send that is one number and one tap, reachable
+   on an unsaved campaign — but running it needs a handset. The two device checks
+   named in the earlier phases still stand: once with the radio on, and once in
+   airplane mode (the airplane case is the exact bug this module exists to avoid;
+   the reference `sms/` app reports "sent" there).
+5. **Consent recorded at the counter is merchant-attested, not guest-signed.**
+   It is per guest, never bulk, confirmed behind a dialog, refused over an
+   opt-out, and timestamped. That is the strongest evidence a counter interaction
+   can produce; it is not the same artefact as a checkout tick-box.
