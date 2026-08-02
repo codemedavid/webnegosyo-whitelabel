@@ -686,3 +686,130 @@ Deliberately **not** covered:
    channel is created at DEFAULT importance, that a DATE trigger survives a
    reboot, and that cancelling by our own identifier works. The device pass that
    Phase 0 still needs should cover these in the same sitting.
+
+---
+
+# Phase 11 — Send now
+
+**Date**: 2026-08-03. **Branch**: `feat/android-sms-followups`.
+**Source plan**: none — derived from the request "I want to allow to send now,
+currently only schedule works".
+
+Until this phase a run existed only when the schedule said the campaign was due
+(`dueRunId` was set inside `load()` and gated the only send button). A merchant
+who wrote a campaign and wanted it out that afternoon had no button to press.
+
+## User journeys
+
+1. As a merchant, I want to send a campaign the moment I finish writing it, so I
+   am not waiting on a schedule I only set because the form demanded one.
+2. As a merchant, I want to know why the Send button is dead, so I am not
+   tapping an inert control guessing at the reason.
+3. As a merchant, I want a one-off I sent by hand not to go out again on its
+   original date, so the same guests are not texted twice.
+4. As a guest, I want quiet hours to hold even when the merchant sends by hand.
+
+## Task report
+
+| # | What was done | Validation run | Result |
+|---|---|---|---|
+| 1 | `lib/sms/send-now.ts` — `decideSendNow`, `immediateRunAt`, `consumesCampaign` | `npx jest lib/sms/send-now` | PASS 18/18 |
+| 2 | Editor: one always-present "Send now" button, reason shown when blocked | `npx jest lib/sms/campaign-editor-wiring` | PASS |
+| 3 | Run row is opened on send, not on screen load (reading a campaign no longer writes one) | `npx tsc --noEmit` | clean |
+| — | Merchant-app regression | `npx jest` (webnegosyo-app) | PASS 124 suites / 2069 tests |
+| — | Merchant-app lint | `npx expo lint` | 0 errors (7 pre-existing warnings) |
+
+### RED evidence
+
+```
+lib/sms/send-now.test.ts:24:65 - error TS2307:
+  Cannot find module './send-now' or its corresponding type declarations.
+
+✕ offers a send that does not wait for the schedule
+✕ does not gate the manual send behind the campaign being due
+✕ consumes a one-off after a manual send, so it cannot fire twice
+✕ creates the run at a quantized instant, so a double-tap is one run
+Tests: 4 failed, 6 passed, 10 total
+```
+
+Compile-time RED for the module, runtime RED for the four wiring guardrails, in
+the same run as 6 passing assertions on the same file. Committed as `9cb1e6f`.
+
+### GREEN evidence
+
+```
+Test Suites: 124 passed, 124 total
+Tests:       2069 passed, 2069 total
+```
+
+Committed as `664b176`. No test was corrected in this phase.
+
+## Design decisions worth recording
+
+**A one-off is consumed by a manual send.** `lastRunAt` is a run's
+`completed_at`, not its `due_at` (`lastRunAtByCampaign`, campaigns-repo.ts:241).
+Sending a one-off dated the 10th on the 3rd sets `lastRunAt` to the 3rd, and
+`computeNextDueAt` then still finds the 10th ahead of it — the campaign fires a
+second time at the same guests. It is therefore archived after a successful
+manual send, and the confirmation dialog says so. Recurring campaigns are
+untouched: their next cycle is a genuinely different occurrence.
+
+**Quiet hours are enforced on the manual path too.** Journey 5 of Phase 0–5 —
+"as a guest, I want never to be texted late at night, whatever the merchant
+scheduled" — has always been unconditional, and a manual button is precisely
+where that protection would otherwise be lost. `20260816120000` puts it plainly:
+"a 2am marketing text is how a SIM gets reported." This is the one place where
+Send now deliberately refuses an explicit instruction, and the merchant is told
+when the window reopens.
+
+**The status rule is looser than the schedule's.** `due-runs.ts` fires only
+`active`, because that is a campaign going out on its own. A draft or paused
+campaign may still be sent by hand. Only `archived` is refused.
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | A saved, valid campaign with an audience can send immediately | `send-now.test.ts:lets a saved, valid campaign…` | unit | PASS |
+| 2 | A draft can be sent by hand, though the schedule would never fire it | `…:lets a DRAFT campaign send` | unit | PASS |
+| 3 | A paused campaign can be sent by hand | `…:lets a PAUSED campaign send` | unit | PASS |
+| 4 | A non-Android platform can never send | `…:refuses on a platform that cannot send at all` | unit | PASS |
+| 5 | An unsaved campaign cannot send (no row to hang a run on) | `…:refuses an unsaved campaign` | unit | PASS |
+| 6 | A campaign with validation errors cannot send | `…:refuses a campaign with validation errors` | unit | PASS |
+| 7 | An archived campaign cannot send | `…:refuses an archived campaign` | unit | PASS |
+| 8 | A second send cannot start while one is in flight | `…:refuses while a run is already in flight` | unit | PASS |
+| 9 | An empty audience cannot send | `…:refuses when nobody matches the audience` | unit | PASS |
+| 10 | Quiet hours hold even for an explicit manual send | `…:refuses inside quiet hours, however explicitly the merchant asked` | unit | PASS |
+| 11 | The merchant is told when the quiet window reopens | `…:tells the merchant when the quiet window reopens` | unit | PASS |
+| 12 | With several blockers, the most fundamental is the one reported | `…:reports the most fundamental blocker first` | unit | PASS |
+| 13 | Every refusal carries merchant-facing prose, never a code | `…:explains itself in the merchant's words` | unit | PASS |
+| 14 | A double-tap converges on ONE run row rather than texting everyone twice | `…:quantizes to the minute` | unit | PASS |
+| 15 | A genuinely later send gets its own run | `…:starts a genuinely later tap on its own run` | unit | PASS |
+| 16 | A manual run is never dated in the future | `…:never dates a run in the future` | unit | PASS |
+| 17 | A hand-sent one-off is consumed, so its own date cannot fire it again | `…:consumes a one-off` | unit | PASS |
+| 18 | A recurring campaign keeps its cycle after a manual send | `…:does not consume a recurring campaign` | unit | PASS |
+| 19 | The editor offers a send that does not wait for the schedule | `campaign-editor-wiring.test.ts:Send now` group | guardrail | PASS |
+| 20 | The manual send is not gated on `dueRunId` | `…:does not gate the manual send behind the campaign being due` | guardrail | PASS |
+
+## Coverage and known gaps for this phase
+
+```
+send-now.ts            |     100 |      100 |     100 |     100 |
+lib/sms (all files)    |   91.43 |    84.38 |   93.89 |   93.21 |
+```
+
+Deliberately **not** covered:
+
+1. **The archive-after-send step is guardrail-only.** `consumesCampaign` is
+   proven pure and the editor is asserted to call it, but the sequence
+   "run completes → `setCampaignStatus('archived')`" is screen code and the jest
+   config runs pure-logic roots only. If that call is ever moved before the run,
+   or dropped, no test here fails. It is the single most consequential line in
+   this phase.
+2. **Quiet hours use the campaign's own window**, which the editor does not yet
+   let the merchant edit (it displays `21:00`–`08:00` and the DB defaults match).
+   A campaign with a custom window would be honoured correctly; nothing can
+   currently create one.
+3. **Still unverified on a handset** — as with every Android-side change in this
+   feature. Send now makes the device test materially easier: a campaign no
+   longer has to be scheduled and waited on to exercise the real radio.
