@@ -554,3 +554,135 @@ Deliberately **not** covered:
    It is per guest, never bulk, confirmed behind a dialog, refused over an
    opt-out, and timestamped. That is the strongest evidence a counter interaction
    can produce; it is not the same artefact as a checkout tick-box.
+
+---
+
+# Phase 10 — due-campaign reminders, and a jest scope fix
+
+**Date**: 2026-08-03. **Branch**: `feat/android-sms-followups`.
+**Source plan**: none — this closes two items named in *Known gaps* above
+("Local-notification reminders at due time"; the permanently-red `sms/` suites).
+
+## User journeys
+
+1. As a merchant, I want my phone to tell me when a campaign is ready, so a
+   10am Monday win-back does not go out Thursday afternoon because nobody
+   happened to open the app.
+2. As a merchant, I want one reminder per due campaign — not one per app launch,
+   and not silence forever after the first — so the reminders stay trustworthy.
+3. As a merchant, I want a reminder I no longer need to disappear when I pause
+   or reschedule the campaign, rather than firing at the old time.
+4. As a guest, I want the merchant's 2am reminder held until morning, because a
+   reminder that wakes them is a feature they will switch off.
+5. As a developer, I want `npm test` to run only this app's suites, so "5 failed"
+   stops being the normal result.
+
+## Task report
+
+| # | What was done | Validation run | Result |
+|---|---|---|---|
+| 1 | `lib/sms/due-notifications.ts` — the pure planner (schedule / cancel / keep) | `npx jest lib/sms/due-notifications` | PASS 19/19 |
+| 2 | `lib/sms/due-alerts.ts` — expo-notifications adapter, own DEFAULT-importance channel, AsyncStorage-backed dedupe | `npx jest lib/sms/customers-screen-mount` | PASS (guardrails) |
+| 3 | `customers.tsx` syncs reminders from the states it already computes | as above | PASS |
+| 4 | `jest.config.cjs` excludes `<rootDir>/sms/` | `npx jest tests/unit/jest-config-scope.test.ts` | PASS 3/3 |
+| — | Merchant-app regression | `npx jest` (webnegosyo-app) | PASS 123 suites / 2047 tests |
+| — | Merchant-app types | `npx tsc --noEmit` | clean |
+| — | Merchant-app lint | `npx expo lint` | 0 errors (7 pre-existing warnings) |
+| — | Web regression | `npx jest` (root) | PASS 399 suites / 4916 tests, **0 failed** |
+| — | `sms/` under its OWN runner | `cd sms && npx jest` | PASS 22 suites / 123 tests |
+
+### RED evidence
+
+```
+FAIL lib/sms/due-notifications.test.ts
+  ● Test suite failed to run
+    lib/sms/due-notifications.test.ts:21:53 - error TS2307:
+      Cannot find module './due-notifications' or its corresponding type declarations.
+```
+
+```
+● root jest config scope › does not run the standalone sms reference app
+Tests: 1 failed, 2 passed, 3 total
+```
+
+Then, for the adapter and its wiring (runtime RED, same config, same run):
+
+```
+✕ has an adapter that turns the plan into real Android notifications
+✕ syncs reminders from the screen that already computes due states
+✕ does not ring campaign reminders on the new-order channel
+Tests: 3 failed, 11 passed, 14 total
+```
+
+Committed as `03610a9` (planner + config) with the wiring guardrails added and
+run before `due-alerts.ts` existed.
+
+### GREEN evidence
+
+```
+Test Suites: 123 passed, 123 total
+Tests:       2047 passed, 2047 total     (webnegosyo-app)
+
+Test Suites: 1 skipped, 399 passed, 399 of 400 total
+Tests:       8 skipped, 4916 passed, 4924 total   (web root — 0 failed)
+```
+
+Committed as `9702114`. No test was corrected in this phase.
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | A reminder is scheduled for the exact moment a campaign becomes due | `due-notifications.test.ts:schedules an upcoming campaign…` | unit | PASS |
+| 2 | The reminder names the campaign, so a merchant running several knows which | `…:names the campaign` | unit | PASS |
+| 3 | A campaign already overdue is still announced, not skipped | `…:still notifies about a campaign that is already overdue` | unit | PASS |
+| 4 | Draft, paused and archived campaigns never produce a reminder | `…:never schedules a draft, paused or archived campaign` | unit | PASS |
+| 5 | A campaign that will never be due again produces nothing | `…:never schedules a campaign that will never be due again` | unit | PASS |
+| 6 | The same due occurrence is never scheduled twice, however often the app opens | `…:does not re-schedule an occurrence already handled` | unit | PASS |
+| 7 | A recurring campaign's NEXT occurrence still notifies (occurrence-keyed, not campaign-keyed) | `…:does schedule the NEXT occurrence of a recurring campaign` | unit | PASS |
+| 8 | The caller is told exactly which keys to persist, incl. still-pending ones | `…:reports the keys worth remembering` + "keeps remembering an occurrence that is still pending" | unit | PASS |
+| 9 | Pausing a campaign cancels its pending reminder | `…:cancels a scheduled notification when its campaign is paused` | unit | PASS |
+| 10 | A deleted campaign's reminder is cancelled | `…:cancels a notification for a campaign that no longer exists` | unit | PASS |
+| 11 | Rescheduling cancels the old time and schedules the new one | `…:cancels the old occurrence when a campaign is rescheduled` | unit | PASS |
+| 12 | A still-live occurrence is never cancelled | `…:does not cancel an occurrence that is still live` | unit | PASS |
+| 13 | A reminder landing in quiet hours is held until the window reopens | `…:holds an overdue campaign until the quiet window reopens` | unit | PASS |
+| 14 | A daytime reminder is not shifted | `…:leaves a daytime notification exactly when it is due` | unit | PASS |
+| 15 | The planner never mutates the states it was given | `…:does not mutate the states it was given` | unit | PASS |
+| 16 | The adapter exists and the screen actually calls it | `customers-screen-mount.test.ts:due campaign reminders` | guardrail | PASS |
+| 17 | Campaign reminders never use the MAX-importance `orders` ringtone channel | `…:does not ring campaign reminders on the new-order channel` | guardrail | PASS |
+| 18 | `npm test` no longer runs the standalone `sms/` app | `jest-config-scope.test.ts` | guardrail | PASS |
+
+## Coverage and known gaps for this phase
+
+```
+due-notifications.ts   |     100 |      100 |     100 |     100 |
+due-alerts.ts          |       0 |        0 |       0 |       0 |
+lib/sms (all files)    |   91.11 |    84.01 |    93.7 |   92.92 |
+```
+
+Deliberately **not** covered:
+
+1. **`due-alerts.ts` is at 0%,** for the same reason as `android-permissions.ts`:
+   it imports `expo-notifications`, `AsyncStorage` and `react-native`, none of
+   which resolve in the node-env jest roots. Every decision it makes lives in
+   the planner (100%); what remains is three API calls, a channel definition and
+   a try/catch. Its wiring is asserted by guardrail, not executed.
+2. **Excluding `sms/` from the web runner loses no coverage.** Verified rather
+   than assumed: `cd sms && npx jest` runs 22 suites / 123 tests, all passing,
+   under its own config. The web runner was executing a subset of them in the
+   wrong environment.
+3. **Reminders are scheduled while the app is open.** Android delivers them with
+   the app closed, but the *plan* is only recomputed when the Customers screen
+   loads. A campaign created and never revisited still gets its first reminder
+   (the plan runs on save-and-return); one whose schedule changes on the server
+   from another device will not be re-planned on this handset until it next
+   opens that screen. Closing that needs the background work the project
+   deliberately rejected.
+4. **Notification permission is not requested by this path.** It piggybacks on
+   the permission the order-alerts flow already requests at login. A merchant
+   who denied notifications gets no reminders, and `due-alerts.ts` swallows that
+   silently by design — it must not error a screen whose job is listing guests.
+5. **Unverified on a handset**, like everything else Android-side here: that the
+   channel is created at DEFAULT importance, that a DATE trigger survives a
+   reboot, and that cancelling by our own identifier works. The device pass that
+   Phase 0 still needs should cover these in the same sitting.
