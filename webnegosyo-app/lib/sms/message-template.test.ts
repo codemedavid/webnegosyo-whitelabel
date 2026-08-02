@@ -140,10 +140,19 @@ describe("countSmsSegments — what the merchant will actually be charged for", 
   });
 
   it("treats a single non-GSM character as making the whole message UCS-2", () => {
-    // One accented character re-encodes the entire message — the classic
-    // "why did my 1-segment blast cost 3x" surprise.
-    expect(countSmsSegments(`${"a".repeat(100)}ñ`).encoding).toBe("UCS2");
-    expect(countSmsSegments(`${"a".repeat(100)}ñ`).segments).toBe(2);
+    // A curly apostrophe — what a phone keyboard inserts for "Nena's" — is not
+    // in GSM 03.38 and re-encodes the entire message. This is the classic
+    // "why did my one-segment blast cost triple" surprise.
+    const curly = `${"a".repeat(100)}’`;
+
+    expect(countSmsSegments(curly).encoding).toBe("UCS2");
+    expect(countSmsSegments(curly).segments).toBe(2);
+  });
+
+  it("keeps ñ on the cheap encoding — it is in GSM 03.38, unlike the curly quote", () => {
+    // Worth pinning: a PH merchant writes "Piña" constantly, and wrongly
+    // classifying it as UCS-2 would halve every campaign's apparent capacity.
+    expect(countSmsSegments("Piña").encoding).toBe("GSM7");
   });
 
   it("counts a GSM extension character as two, the way the carrier does", () => {

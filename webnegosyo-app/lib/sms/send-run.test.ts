@@ -40,7 +40,7 @@ describe("executeRun — the happy path", () => {
 
     const outcome = await executeRun([customer("1"), customer("2")], CONTEXT, deps);
 
-    expect(deps.sendSms).toHaveBeenNthCalledWith(1, "+639170000001", "Hi Guest!");
+    expect(deps.sendSms).toHaveBeenNthCalledWith(1, "+63917000001", "Hi Guest!");
     expect(deps.sendSms).toHaveBeenCalledTimes(2);
     expect(outcome.sentCount).toBe(2);
     expect(outcome.haltedReason).toBeNull();
@@ -53,7 +53,7 @@ describe("executeRun — the happy path", () => {
 
     expect(deps.recordSend).toHaveBeenCalledWith({
       customerId: "1",
-      phoneE164: "+639170000001",
+      phoneE164: "+63917000001",
       messageBody: "Hi Guest!",
       result: "sent",
       sentAt: "2026-08-16T02:00:00.000Z",
