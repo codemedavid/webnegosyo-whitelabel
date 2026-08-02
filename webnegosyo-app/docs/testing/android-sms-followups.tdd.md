@@ -21,6 +21,7 @@ Reference implementation studied: `sms/` (standalone Expo app) — its native mo
 | Phase | What was done | Validation run | Result |
 |---|---|---|---|
 | 0 | Android Expo module `modules/sms-sender` + `plugins/withSmsPermissions.js`, registered in `app.config.ts` | `npx jest plugins/withSmsPermissions.test.ts` | PASS 6/6 |
+| 0 | The module compiles and ships in the APK | `eas build -p android --profile production-apk` + artifact inspection | BUILT + INSPECTED |
 | 1 | Migrations `20260816120000` + `20260816130000` | applied via Supabase MCP, then probed in a rolled-back `DO` block | APPLIED + PROBED |
 | 2 | Five pure domain modules under `lib/sms/` | `npx jest lib/sms` | PASS 85/85 |
 | — | Whole-package regression | `npx jest` | PASS 108 suites / 1822 tests |
@@ -111,6 +112,44 @@ All files            |   97.24 |    89.47 |     100 |   99.08
 Above the 80% threshold on every metric. Uncovered lines are defensive guards for
 malformed stored data (unparseable dates, malformed `HH:MM`).
 
+## Android build (2026-08-02)
+
+**Build**: https://expo.dev/accounts/itscodemedavid/projects/webnegosyo-app/builds/46c5a2cd-8597-4889-b378-4efb9d62b595 → `Build finished`, `EAS_EXIT=0`.
+
+The first attempt (`--profile development`) failed, but **never reached the Kotlin**:
+
+```
+"google-services.json" is missing, make sure that the file exists.
+Remember that EAS Build only uploads the files tracked by git.
+```
+
+Pre-existing and unrelated to this feature: `webnegosyo-app/.gitignore:60` ignores
+`google-services.json`, and `eas env:list` shows `GOOGLE_SERVICES_JSON` set as a
+secret file variable in the **production** environment only. The `development`
+environment has just the two Supabase vars, so dev-client builds have been broken
+for this reason independently of this work. Rebuilt on `production-apk`, which
+already carries the variable and is the sideload artifact this feature ships on
+anyway.
+
+The green build was not taken as proof. The artifact was downloaded (107 MB) and
+inspected:
+
+- `classes*.dex` contains `Lexpo/modules/smssender/SmsSenderModule;`,
+  `Lexpo/modules/smssender/SmsSendException;`, and
+  `SmsSenderModule$definition$lambda$1$$inlined$AsyncFunctionWithPromise$1..3`.
+  Those inlined lambdas are the load-bearing detail: they show the
+  `AsyncFunction(... promise: Promise)` overload resolved against SDK 54's
+  `expo.modules.kotlin` API, which was the riskiest part of porting a module
+  written for SDK 57.
+- `AndroidManifest.xml` string pool contains `android.permission.SEND_SMS` and,
+  across all 23 permission entries, **no** `READ_SMS` and **no** `RECEIVE_SMS` —
+  the plugin grants exactly what it claims and nothing more.
+
+**This proves compilation, linking, and packaging. It does not prove the module
+works.** The `BroadcastReceiver` / `PendingIntent` result path — the whole reason
+this module is not a copy of `sms/` — is only exercised by a real radio. See gap
+1 below.
+
 ## Database probe (2026-08-02, project `tjcmkstsuhqdwkfdrxan`)
 
 Applied as two migrations: `sms_followup_campaigns`, then
@@ -158,7 +197,15 @@ below is measured, not predicted.
 
 These are **not** covered by any passing test, and none of them should be read as done:
 
-1. **The native module has never run on a device.** `modules/sms-sender/…/SmsSenderModule.kt` has not been compiled — no `eas build` was executed in this session. It is written against SDK 54 autolinking and departs from the `sms/` reference (system-service `SmsManager`, sent-intent `BroadcastReceiver`, `RECEIVER_NOT_EXPORTED`, dual-SIM `createForSubscriptionId`), so it is the highest-risk artifact here. **Phase 0 is not complete until `eas build -p android --profile development` succeeds and one real SMS is sent.**
+1. **The native module compiles and ships, but has never actually sent a message.** The build above proves the Kotlin builds against SDK 54 and that `SEND_SMS` is in the shipped manifest. It proves nothing about runtime. Specifically unverified, and all of it is where this module departs from `sms/`:
+   - whether the `sentIntent` broadcast is received at all, so the promise resolves on the real radio result rather than hanging to the 60s `TIMEOUT`
+   - whether `RECEIVER_NOT_EXPORTED` + a package-scoped `Intent` still lets our own `PendingIntent` broadcast through on API 33+
+   - whether `createForSubscriptionId` picks the intended SIM on a dual-SIM handset
+   - whether the runtime permission prompt appears and `never_ask_again` is handled
+
+   **Phase 0 closes only when someone installs this APK and one real SMS arrives**, ideally once with the radio on and once in airplane mode — the airplane-mode case is the exact bug this module exists to avoid (`sms/` reports "sent" there).
+
+   APK: https://expo.dev/artifacts/eas/Tr4GkE6mrloRK_21hBZHCMtfkUnGBu_0r1qY1XkXOEI.apk
 2. ~~Migration not applied.~~ **Applied and probed** — see *Database probe* below. RLS is enabled with a policy on all four tables; the anon path was not separately exercised.
 3. **Phases 3–7 are not started**: the `SmsTransport` port and permission wrapper, the Customers tab and its `TAB_PERMISSIONS` entry, the due-list/notification engine, and the web checkout consent opt-in.
 4. **Until Phase 6 ships, no customer is targetable.** `customers.sms_consent` is written nowhere in the codebase today, so `selectAudience` correctly returns an empty audience for every existing tenant. That is the intended behaviour, not a defect.
