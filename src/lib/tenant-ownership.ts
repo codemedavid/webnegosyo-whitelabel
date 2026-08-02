@@ -52,8 +52,14 @@ export const OWNER_PATCH = {
  */
 export const DEMOTED_OWNER_PATCH = { is_owner: false } as const
 
-/** The account that owns this store, if one does. */
-export function findTenantOwner(users: readonly OwnershipUser[]): OwnershipUser | null {
+/**
+ * The account that owns this store, if one does.
+ *
+ * Generic so callers get their own row type back — the superadmin list needs
+ * the owner's email to name them, and narrowing to `OwnershipUser` would hide
+ * it behind a cast.
+ */
+export function findTenantOwner<T extends OwnershipUser>(users: readonly T[]): T | null {
   return users.find((user) => user.is_owner) ?? null
 }
 

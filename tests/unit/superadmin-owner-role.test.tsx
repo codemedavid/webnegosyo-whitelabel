@@ -130,7 +130,7 @@ describe('the tenant user list', () => {
     renderList([OWNER, ADMIN])
 
     const ownerRow = screen.getByText('owner@example.com').closest('div[class*="group"]')
-    expect(within(ownerRow as HTMLElement).getByText(/owner/i)).toBeInTheDocument()
+    expect(within(ownerRow as HTMLElement).getByText('Owner')).toBeInTheDocument()
   })
 
   it('warns when a staffed store has nobody in charge', () => {
@@ -165,7 +165,8 @@ describe('the tenant user list', () => {
 
     fireEvent.click(within(adminRow as HTMLElement).getByRole('button', { name: /make owner/i }))
 
-    expect(screen.getByText(/owner@example\.com/)).toBeInTheDocument()
+    const confirmation = screen.getByRole('alertdialog')
+    expect(within(confirmation).getByText(/owner@example\.com/)).toBeInTheDocument()
   })
 
   it('does not offer to make the sitting owner the owner again', () => {
@@ -191,7 +192,7 @@ describe('the tenant user list', () => {
     await waitFor(() => expect(mockSetOwner).toHaveBeenCalled())
     await waitFor(() => {
       const restored = screen.getByText('owner@example.com').closest('div[class*="group"]')
-      expect(within(restored as HTMLElement).getByText(/owner/i)).toBeInTheDocument()
+      expect(within(restored as HTMLElement).getByText('Owner')).toBeInTheDocument()
     })
   })
 })

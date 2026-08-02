@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Trash2, UserPlus, Users, ShieldAlert } from 'lucide-react'
+import { Trash2, UserPlus, Users, ShieldAlert, Crown } from 'lucide-react'
 import { toast } from 'sonner'
-import { removeTenantUser, type TenantUser } from '@/actions/users'
+import { removeTenantUser, setTenantOwner, type TenantUser } from '@/actions/users'
+import { isTenantOwnerless, findTenantOwner } from '@/lib/tenant-ownership'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +30,32 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
   const [isDeleting, setIsDeleting] = useState(false)
   const [userToDelete, setUserToDelete] = useState<TenantUser | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [userToPromote, setUserToPromote] = useState<TenantUser | null>(null)
+  const [isTransferring, setIsTransferring] = useState(false)
+
+  const currentOwner = findTenantOwner(users)
+  const isOwnerless = isTenantOwnerless(users)
+
+  const handleTransferOwnership = async (target: TenantUser) => {
+    setIsTransferring(true)
+    const previous = users
+    setUserToPromote(null)
+
+    // Optimistic: move the crown, so the list never shows two owners
+    setUsers((prev) =>
+      prev.map((u) => ({ ...u, is_owner: u.user_id === target.user_id }))
+    )
+
+    const result = await setTenantOwner({ tenant_id: tenantId, user_id: target.user_id })
+
+    if (result.error) {
+      setUsers(previous)
+      toast.error(result.error)
+    } else {
+      toast.success(`${target.email} now owns ${tenantName}`)
+    }
+    setIsTransferring(false)
+  }
 
   const handleDeleteUser = async (user: TenantUser) => {
     setIsDeleting(true)
@@ -49,13 +76,14 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
     setIsDeleting(false)
   }
 
-  const handleUserCreated = (newUser: { user_id: string; email: string }) => {
+  const handleUserCreated = (newUser: { user_id: string; email: string; is_owner: boolean }) => {
     // Optimistic: add to list immediately
     setUsers((prev) => [
       {
         user_id: newUser.user_id,
         email: newUser.email,
         role: 'admin',
+        is_owner: newUser.is_owner,
         tenant_id: tenantId,
         created_at: new Date().toISOString(),
       },
@@ -89,6 +117,16 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
             }
           />
         </div>
+
+        {isOwnerless && (
+          <div className="flex items-start gap-2.5 border-b border-white/[0.06] bg-amber-400/[0.07] px-6 py-3.5 text-xs text-amber-300">
+            <Crown className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <p>
+              <span className="font-semibold">This store has no owner.</span> Nobody here can add
+              or manage staff until one of these admins is made the owner.
+            </p>
+          </div>
+        )}
 
         <div className="p-6">
           {users.length === 0 ? (
@@ -132,9 +170,27 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-                    <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-0.5 text-xs font-medium capitalize text-sky-400">
-                      {user.role}
-                    </span>
+                    {!user.is_owner && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setUserToPromote(user)}
+                        disabled={isTransferring}
+                        className="rounded-xl text-xs text-white/45 hover:bg-amber-400/10 hover:text-amber-300"
+                      >
+                        Make owner
+                      </Button>
+                    )}
+                    {user.is_owner ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+                        <Crown className="h-3 w-3" aria-hidden />
+                        Owner
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-0.5 text-xs font-medium capitalize text-sky-400">
+                        {user.role}
+                      </span>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -189,12 +245,56 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Ownership Transfer Confirmation */}
+      <AlertDialog
+        open={!!userToPromote}
+        onOpenChange={(open) => !open && setUserToPromote(null)}
+      >
+        <AlertDialogContent className="rounded-2xl border-white/10 bg-[#0a0a0a]">
+          <AlertDialogHeader>
+            <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-amber-400/20 bg-amber-400/10">
+              <Crown className="h-5 w-5 text-amber-400" />
+            </div>
+            <AlertDialogTitle className="text-white">Transfer Ownership</AlertDialogTitle>
+            <AlertDialogDescription className="text-white/55">
+              <span className="font-medium text-white/80">{userToPromote?.email}</span> will own{' '}
+              {tenantName} — full access, and the only account able to manage staff.
+              {currentOwner && (
+                <span className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-xs font-medium text-amber-300">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    {currentOwner.email} stays an admin but loses ownership, and will start using
+                    a staff seat.
+                  </span>
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isTransferring}
+              className="rounded-xl border-white/15 bg-transparent text-white hover:bg-white/10"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => userToPromote && handleTransferOwnership(userToPromote)}
+              disabled={isTransferring}
+              className="rounded-xl border border-amber-400/25 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20"
+            >
+              {isTransferring ? 'Transferring...' : 'Transfer ownership'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Add User Dialog */}
       <AddTenantUserDialog
         tenantId={tenantId}
         tenantName={tenantName}
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
+        existingUsers={users}
         onUserCreated={handleUserCreated}
       />
     </>

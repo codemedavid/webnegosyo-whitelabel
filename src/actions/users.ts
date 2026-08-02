@@ -4,12 +4,26 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import {
+  OWNER_PATCH,
+  assertCanAddOwner,
+  assertNotLastOwner,
+  type OwnershipUser,
+} from '@/lib/tenant-ownership'
+import { transferOwnership, type OwnershipStore } from '@/lib/tenant-ownership-service'
 
 // Schema for creating new admin user
 const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   tenant_id: z.string().uuid(),
+  is_owner: z.boolean().default(false),
+})
+
+// Schema for handing a store to one of its existing admins
+const setOwnerSchema = z.object({
+  tenant_id: z.string().uuid(),
+  user_id: z.string().uuid(),
 })
 
 // Schema for updating user role/tenant
@@ -23,20 +37,27 @@ export interface TenantUser {
   user_id: string
   email: string
   role: 'superadmin' | 'admin'
+  /** Owns the store: full access, manages staff, exempt from the staff seat cap. */
+  is_owner: boolean
   tenant_id: string | null
   created_at: string
 }
 
 /**
- * Get all users for a specific tenant
+ * The superadmin gate every action in this file sits behind.
+ *
+ * Returns the caller on success and an error envelope on failure, so each
+ * action keeps its existing `{ error }` contract with the client.
  */
-export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
-  // Verify caller is authenticated and has superadmin role
+async function requireSuperadmin(): Promise<
+  { currentUser: { id: string }; error: null } | { currentUser: null; error: string }
+> {
   const supabase = await createClient()
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser()
   if (!currentUser) {
-    console.error('getTenantUsers: Unauthorized - not authenticated')
-    return []
+    return { currentUser: null, error: 'Unauthorized: Not authenticated' }
   }
 
   const { data: roleData } = await supabase
@@ -47,7 +68,45 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!roleData || (roleData as any).role !== 'superadmin') {
-    console.error('getTenantUsers: Unauthorized - not superadmin')
+    return { currentUser: null, error: 'Unauthorized: Only superadmins can manage tenant users' }
+  }
+
+  return { currentUser, error: null }
+}
+
+/** Reads and writes `app_users` ownership rows with service-role access. */
+function makeOwnershipStore(): OwnershipStore {
+  const adminClient = createAdminClient()
+
+  return {
+    listTenantUsers: async (tenantId) => {
+      const { data, error } = await adminClient
+        .from('app_users')
+        .select('user_id, role, is_owner, outlet_id')
+        .eq('tenant_id', tenantId)
+
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as OwnershipUser[]
+    },
+    updateUserRow: async (userId, patch) => {
+      const { error } = await adminClient
+        .from('app_users')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(patch as any)
+        .eq('user_id', userId)
+
+      if (error) throw new Error(error.message)
+    },
+  }
+}
+
+/**
+ * Get all users for a specific tenant
+ */
+export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
+  const auth = await requireSuperadmin()
+  if (auth.error) {
+    console.error('getTenantUsers:', auth.error)
     return []
   }
 
@@ -60,6 +119,7 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     .select(`
       user_id,
       role,
+      is_owner,
       tenant_id,
       created_at
     `)
@@ -92,6 +152,7 @@ export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
     user_id: user.user_id,
     email: emailMap.get(user.user_id) || 'Unknown',
     role: user.role as 'superadmin' | 'admin',
+    is_owner: user.is_owner === true,
     tenant_id: user.tenant_id,
     created_at: user.created_at,
   }))
@@ -106,32 +167,26 @@ export async function createTenantUser(input: {
   email: string
   password: string
   tenant_id: string
+  is_owner?: boolean
 }) {
   try {
-    const supabase = await createClient()
-
     // Validate input
     const parsed = createUserSchema.parse(input)
 
-    // Verify current user is superadmin
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (!currentUser) {
-      return { error: 'Unauthorized: Not authenticated' }
+    const auth = await requireSuperadmin()
+    if (!auth.currentUser) {
+      return { error: auth.error }
     }
 
-    const { data: roleData } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .maybeSingle()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!roleData || (roleData as any).role !== 'superadmin') {
-      return { error: 'Unauthorized: Only superadmins can create users' }
-    }
-
-    // Create auth user using admin client
     const adminClient = createAdminClient()
+
+    // A store has exactly one owner. Checked before the auth user is created
+    // so a rejected second owner cannot leave an orphan login behind.
+    if (parsed.is_owner) {
+      const existing = await makeOwnershipStore().listTenantUsers(parsed.tenant_id)
+      assertCanAddOwner(existing)
+    }
+
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email: parsed.email,
       password: parsed.password,
@@ -153,6 +208,9 @@ export async function createTenantUser(input: {
         user_id: authData.user.id,
         role: 'admin',
         tenant_id: parsed.tenant_id,
+        // Denormalized so staff lists render without reading auth.users.
+        email: parsed.email,
+        ...(parsed.is_owner ? OWNER_PATCH : {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any)
 
@@ -179,6 +237,7 @@ export async function createTenantUser(input: {
       user: {
         user_id: authData.user.id,
         email: authData.user.email || '',
+        is_owner: parsed.is_owner,
       }
     }
   } catch (err) {
@@ -197,27 +256,19 @@ export async function removeTenantUser(userId: string, tenantId: string) {
   try {
     const supabase = await createClient()
 
-    // Verify current user is superadmin
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (!currentUser) {
-      return { error: 'Unauthorized: Not authenticated' }
-    }
-
-    const { data: roleData } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .maybeSingle()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!roleData || (roleData as any).role !== 'superadmin') {
-      return { error: 'Unauthorized: Only superadmins can remove users' }
+    const auth = await requireSuperadmin()
+    if (!auth.currentUser) {
+      return { error: auth.error }
     }
 
     // Don't allow removing self
-    if (currentUser.id === userId) {
+    if (auth.currentUser.id === userId) {
       return { error: 'Cannot remove yourself' }
     }
+
+    // Removing the owner of a store that still has admins would leave nobody
+    // able to manage staff, and no in-product way to fix it.
+    assertNotLastOwner(await makeOwnershipStore().listTenantUsers(tenantId), userId)
 
     // Delete from app_users
     const { data: deletedRows, error } = await supabase
@@ -264,25 +315,13 @@ export async function updateTenantUser(input: {
     // Validate input
     const parsed = updateUserSchema.parse(input)
 
-    // Verify current user is superadmin
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (!currentUser) {
-      return { error: 'Unauthorized: Not authenticated' }
-    }
-
-    const { data: roleData } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .maybeSingle()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!roleData || (roleData as any).role !== 'superadmin') {
-      return { error: 'Unauthorized: Only superadmins can update users' }
+    const auth = await requireSuperadmin()
+    if (!auth.currentUser) {
+      return { error: auth.error }
     }
 
     // Don't allow modifying self
-    if (currentUser.id === parsed.user_id) {
+    if (auth.currentUser.id === parsed.user_id) {
       return { error: 'Cannot modify your own role' }
     }
 
@@ -313,6 +352,37 @@ export async function updateTenantUser(input: {
     return { success: true }
   } catch (err) {
     console.error('updateTenantUser error:', err)
+    if (err instanceof z.ZodError) {
+      return { error: err.issues.map((e: z.ZodIssue) => e.message).join(', ') }
+    }
+    return { error: err instanceof Error ? err.message : 'An unexpected error occurred' }
+  }
+}
+
+/**
+ * Hand a store to one of its existing admin accounts.
+ *
+ * A store has exactly one owner, so this is a transfer rather than a grant:
+ * the sitting owner is stood down in the same operation. See
+ * `tenant-ownership-service.ts` for the ordering and rollback rules.
+ */
+export async function setTenantOwner(input: { tenant_id: string; user_id: string }) {
+  try {
+    const parsed = setOwnerSchema.parse(input)
+
+    const auth = await requireSuperadmin()
+    if (!auth.currentUser) {
+      return { error: auth.error }
+    }
+
+    await transferOwnership(makeOwnershipStore(), parsed.tenant_id, parsed.user_id)
+
+    revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
+    revalidatePath('/superadmin/tenants')
+
+    return { success: true }
+  } catch (err) {
+    console.error('setTenantOwner error:', err)
     if (err instanceof z.ZodError) {
       return { error: err.issues.map((e: z.ZodIssue) => e.message).join(', ') }
     }
