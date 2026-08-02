@@ -8,7 +8,12 @@
  * for a three-branch store that is perfectly within its plan.
  */
 
-import { buildAllowanceRows, type AllowanceInput } from '@/lib/billing/tenant-allowances'
+import {
+  buildAllowanceRows,
+  sanitizeOutletAllowance,
+  sanitizeStaffAllowance,
+  type AllowanceInput,
+} from '@/lib/billing/tenant-allowances'
 
 const tenant = (overrides: Partial<AllowanceInput> = {}): AllowanceInput => ({
   tenantId: 't1',
@@ -170,5 +175,48 @@ describe('buildAllowanceRows', () => {
     expect(rows.map((r) => r.tenantId)).toEqual(['a', 'b'])
     expect(rows[0].peakBranchStaff).toBe(1)
     expect(rows[1].peakBranchStaff).toBe(0)
+  })
+})
+
+describe('sanitizeOutletAllowance', () => {
+  it('refuses to store a branch allowance of zero', () => {
+    // `resolveLimit` accepts 0, and the column has no CHECK, so a mistyped 0
+    // would store cleanly and then refuse every branch the merchant tried to
+    // create — with the storefront still telling them their plan includes 0.
+    // A store with no branches is not a configuration anyone sells.
+    expect(sanitizeOutletAllowance(0)).toBe(1)
+  })
+
+  it('refuses a negative branch allowance', () => {
+    expect(sanitizeOutletAllowance(-4)).toBe(1)
+  })
+
+  it('keeps a real branch allowance untouched', () => {
+    expect(sanitizeOutletAllowance(5)).toBe(5)
+  })
+
+  it('floors a fractional branch allowance', () => {
+    expect(sanitizeOutletAllowance(2.9)).toBe(2)
+  })
+
+  it('falls back to the default rather than trusting nonsense', () => {
+    expect(sanitizeOutletAllowance(Number.NaN)).toBe(1)
+  })
+})
+
+describe('sanitizeStaffAllowance', () => {
+  it('allows zero seats', () => {
+    // Unlike branches, no seats is a real plan: an owner-only store that runs
+    // the counter itself. Flooring this at 1 would hand out a seat nobody
+    // bought.
+    expect(sanitizeStaffAllowance(0)).toBe(0)
+  })
+
+  it('rejects a negative seat allowance', () => {
+    expect(sanitizeStaffAllowance(-1)).toBe(3)
+  })
+
+  it('keeps a real seat allowance untouched', () => {
+    expect(sanitizeStaffAllowance(8)).toBe(8)
   })
 })

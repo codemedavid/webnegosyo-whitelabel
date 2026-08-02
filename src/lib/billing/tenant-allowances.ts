@@ -100,3 +100,30 @@ function toRow(input: AllowanceInput): AllowanceRow {
 export function buildAllowanceRows(inputs: readonly AllowanceInput[]): AllowanceRow[] {
   return inputs.map(toRow)
 }
+
+/**
+ * The fewest branches worth selling.
+ *
+ * `resolveOutletLimit` accepts 0 — it guards against nonsense, not against a
+ * number that is merely wrong — and the column carries no CHECK. So a mistyped
+ * 0 stores cleanly and then refuses every branch the merchant tries to create,
+ * while telling them their plan includes none. Nobody sells that plan, so the
+ * one place a human types the number is where it gets caught.
+ */
+export const MIN_OUTLET_ALLOWANCE = 1
+
+/** A branch allowance safe to store: at least one, whole, never nonsense. */
+export function sanitizeOutletAllowance(value: number): number {
+  return Math.max(MIN_OUTLET_ALLOWANCE, resolveOutletLimit({ max_outlets: value }))
+}
+
+/**
+ * A seat allowance safe to store.
+ *
+ * No floor beyond zero, deliberately: an owner-only store that works its own
+ * counter buys no seats, and rounding that up to one would hand out an account
+ * nobody paid for.
+ */
+export function sanitizeStaffAllowance(value: number): number {
+  return resolveStaffLimit({ max_staff_per_branch: value })
+}

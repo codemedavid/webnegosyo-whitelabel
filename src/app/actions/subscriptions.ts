@@ -20,7 +20,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createSupabaseSubscriptionStore } from '@/lib/billing/subscription-repository'
 import { markPaid } from '@/lib/billing/subscription-service'
 import { pauseSubscription, resumeSubscription } from '@/lib/billing/subscription-lifecycle'
-import { resolveOutletLimit, resolveStaffLimit } from '@/lib/billing/subscription-status'
+import {
+  sanitizeOutletAllowance,
+  sanitizeStaffAllowance,
+} from '@/lib/billing/tenant-allowances'
 
 const NOT_ALLOWED = 'Only a platform superadmin can manage subscriptions.'
 
@@ -131,12 +134,10 @@ export async function updateTenantLimitsAction(
   try {
     const patch: Record<string, number> = {}
     if (limits.maxOutlets !== undefined) {
-      patch.max_outlets = resolveOutletLimit({ max_outlets: limits.maxOutlets })
+      patch.max_outlets = sanitizeOutletAllowance(limits.maxOutlets)
     }
     if (limits.maxStaffPerBranch !== undefined) {
-      patch.max_staff_per_branch = resolveStaffLimit({
-        max_staff_per_branch: limits.maxStaffPerBranch,
-      })
+      patch.max_staff_per_branch = sanitizeStaffAllowance(limits.maxStaffPerBranch)
     }
 
     if (Object.keys(patch).length === 0) {
