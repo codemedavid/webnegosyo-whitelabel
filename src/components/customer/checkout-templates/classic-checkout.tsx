@@ -32,7 +32,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
     scheduleDates, timeSlots, scheduledForLabel, handleScheduleDateChange,
     formFields, customerData, setCustomerData,
-    items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount,
+    items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
     isProcessing, handleProceedToPayment, messengerEnabled,
   } = checkout
@@ -458,7 +458,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   {isFetchingDeliveryFee ? (
                     <span className="animate-pulse">Calculating...</span>
                   ) : (
-                    formatPrice(total + ((deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : 0) + serviceChargeAmount)
+                    formatPrice(grandTotal)
                   )}
                 </span>
               </div>
