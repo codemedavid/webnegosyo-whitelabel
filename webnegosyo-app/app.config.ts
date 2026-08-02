@@ -78,6 +78,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "./plugins/withThermalPrinterSimulatorFix.js",
+    // Android-only: adds SEND_SMS for the follow-up campaign feature. The mod
+    // is a withAndroidManifest mod, so the iOS prebuild is untouched.
+    "./plugins/withSmsPermissions.js",
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",
