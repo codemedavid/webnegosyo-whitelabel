@@ -253,12 +253,121 @@ These are **not** covered by any passing test, and none of them should be read a
    APK: https://expo.dev/artifacts/eas/Tr4GkE6mrloRK_21hBZHCMtfkUnGBu_0r1qY1XkXOEI.apk
 2. ~~Migration not applied.~~ **Applied and probed** — see *Database probe* below. RLS is enabled with a policy on all four tables; the anon path was not separately exercised.
 3. **Phase 5 shipped; Phases 6–7 are not started.** The campaign editor, schedule UI, audience preview, cost preview, run claim, and send-with-progress all exist and are reachable from the Customers tab. What is still missing:
-   - **Phase 6, the checkout consent opt-in** — the reason nothing can be sent yet (see gap 4).
+   - ~~**Phase 6, the checkout consent opt-in**~~ — **shipped**, web + customer app. See *Phase 6* below.
    - **Local-notification reminders at due time.** Due-ness is computed and shown when the merchant opens the screen; nothing yet fires a notification to bring them there. A campaign becomes due silently until they look.
-   - **Campaign status controls.** `setCampaignStatus` exists and is tested, but no button calls it — a campaign is created as `draft` and there is no UI to activate, pause, or archive it. **This means a saved campaign will not appear as due.** Closing this is the first thing Phase 6 should do.
+   - ~~**Campaign status controls.**~~ **Shipped** — `campaign-status.ts` + Activate/Pause/Resume/Archive buttons, 11/11 GREEN.
    - Suppression-list management UI (the per-customer opt-out toggle exists; the tenant-wide `sms_suppressions` table has no screen).
 
 4. **No test renders a screen.** The package's jest config is unit-only, matching the existing convention, so `customers.tsx`, `campaign/[campaignId].tsx` and `use-sms-run.ts` are covered only by the source-level mount guardrails. Their wiring is unverified until run on a device.
 4. **Until Phase 6 ships, no customer is targetable.** `customers.sms_consent` is written nowhere in the codebase today, so `selectAudience` correctly returns an empty audience for every existing tenant. That is the intended behaviour, not a defect.
 5. **Campaigns cannot be branch-scoped.** `public.customers` has no `outlet_id`, so a branch-scoped account must be denied the tab entirely in Phase 4.
 6. **No integration or E2E coverage.** The package's jest config is unit-only (`roots: lib, theme, plugins`), matching the existing convention; screens are exercised manually via Expo.
+
+
+---
+
+# Phase 6 — checkout consent capture
+
+Until this phase, `customers.sms_consent` was written **nowhere in the
+codebase**. The column had existed since migration `20260706120000`, both read
+sites (`customers-service.ts`, `customer-external-orders.ts`) already consulted
+it, and every one of the platform's 571 customer rows carried `false`. The
+audience selector was returning an empty set correctly, for a reason no test
+could have caught: nothing was feeding it.
+
+## User journeys
+
+- As a guest checking out, I want to choose whether this store may text me, so that I am not signed up for marketing I did not ask for.
+- As a merchant, I want the customers who agreed to be textable, so that a follow-up campaign has an audience.
+
+## Task report
+
+### Task 1 — write consent as a boolean (`src/lib/sms-consent.ts`)
+
+| | |
+|---|---|
+| RED | `npx jest tests/unit/sms-consent.test.ts` → `Cannot find module '@/lib/sms-consent'`, 0 tests ran |
+| GREEN | same command → **10/10 pass** |
+| Coverage | `src/lib/sms-consent.ts` — **100%** statements, branches, functions, lines |
+
+The load-bearing decision, pinned by `is false for the string "true", which is
+how a form field would arrive`: checkout form values are
+`Record<string, string>`, so routing consent through the normal field path
+would store the **string** `"true"`. Both read sites compare with `=== true`,
+so that value is silently ignored — the guest ticks the box, the order records
+it, and they never become reachable. Consent is therefore held as its own
+boolean state, never as a `customerData` entry.
+
+### Task 2 — ask for it on the web (`useCheckout` + the five designs)
+
+| | |
+|---|---|
+| RED | `npx jest tests/unit/checkout-sms-opt-in.test.tsx` → **7 failed, 5 passed**; `SmsOptInCheckbox` not exported, and `classic-checkout` matched neither it nor `CheckoutFields` |
+| GREEN | same command → **12/12 pass** |
+| Regression | `npx jest --silent` → **5008 passed**, up from 4990; 5 pre-existing `sms/` suite failures unchanged (see *Known gaps*) |
+| Lint | `npx next lint` on the three changed files → only the pre-existing `exhaustive-deps` warning at `useCheckout.ts:395` |
+| Types | `npx tsc --noEmit` → no error in any changed file |
+
+Four designs (modern, wizard, minimal, express) compose `CheckoutFields`, so
+one insertion covers them. **Classic renders its own field loop verbatim** and
+had to be changed separately — it is the one design that could silently collect
+no consent, which is why guarantee 7 below tests all five by name rather than
+trusting the shared primitive.
+
+### Task 3 — ask for it in the customer app (`mobile/`)
+
+| | |
+|---|---|
+| RED | `npx jest tests/unit/mobile-checkout-sms-consent.test.ts` → **6 failed, 0 passed** |
+| GREEN | same command → **6/6 pass** |
+| Types | `cd mobile && npx tsc --noEmit` → clean |
+
+The checkout screen has **two** order-creation paths — Convex and Supabase,
+chosen by the tenant's backend — and consent had to be folded into both, or
+every tenant on one backend would collect nothing while the other worked.
+`mobile/lib/sms-consent.ts` is a deliberate port: the Expo app cannot import
+from `src/`, the same way `cart-utils` and `branding-utils` are duplicated.
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | An opt-in is recorded as boolean `true`, never the string | `tests/unit/sms-consent.test.ts` | unit | PASS |
+| 2 | A decline is recorded as `false`, not omitted — evidence the guest was asked | `tests/unit/sms-consent.test.ts` | unit | PASS |
+| 3 | `hasSmsConsent` fails closed on `"true"`, null, arrays and malformed blobs | `tests/unit/sms-consent.test.ts` | unit | PASS |
+| 4 | The web checkbox starts unchecked — consent is never assumed | `checkout-sms-opt-in.test.tsx` | unit | PASS |
+| 5 | Ticking it reports a `boolean`, asserted via `typeof` | `checkout-sms-opt-in.test.tsx` | unit | PASS |
+| 6 | Consent can be withdrawn once given | `checkout-sms-opt-in.test.tsx` | unit | PASS |
+| 7 | All five checkout designs reach a consent path, Classic included | `checkout-sms-opt-in.test.tsx` | guardrail | PASS |
+| 8 | Tenants collecting no customer fields render nothing at all | `checkout-sms-opt-in.test.tsx` | unit | PASS |
+| 9 | The customer app applies consent on the Convex order path | `mobile-checkout-sms-consent.test.ts` | guardrail | PASS |
+| 10 | The customer app applies consent on the Supabase order path | `mobile-checkout-sms-consent.test.ts` | guardrail | PASS |
+| 11 | The app's consent box is never pre-ticked | `mobile-checkout-sms-consent.test.ts` | guardrail | PASS |
+
+## Coverage and known gaps for this phase
+
+`src/lib/sms-consent.ts` is at **100%**. `checkout-primitives.tsx` reports
+24.7% at file level, which is not a meaningful number here: the uncovered
+ranges skip lines 178–233, which is exactly the new `SmsOptInCheckbox`. The
+remainder is six pre-existing primitives (payment lists, schedulers, Mapbox
+autocomplete) that this phase did not touch and these tests do not exercise.
+
+Deliberately **not** covered:
+
+1. **The `useCheckout` wiring is not executed by a test.** `withSmsConsent` is
+   applied where the hook calls `createOrderAction`, but rendering `useCheckout`
+   would mean mocking roughly twenty modules. What is proven is the pure helper
+   (executed, 100%) and the presence of the call (type-checked). An end-to-end
+   order placement would close this; nothing here does.
+2. **The `mobile/` tests are source-level guardrails, not executed code.** That
+   app has **no test runner at all**, so these read its source from the web
+   suite. They catch a write path that forgets consent — the failure that
+   actually matters — but they do not prove the screen runs.
+3. **The QR-handoff path does not carry consent.** `savePendingOrder` encodes
+   into a size-capped QR payload typed `Record<string, string>`; adding a
+   boolean would break the codec's type and inflate the payload against
+   `QR_SIZE_WARN_THRESHOLD`. A guest who checks out via QR handoff is not
+   asked. Deliberate, and narrow — it is a dine-in kiosk flow.
+4. **Consent accrues one order at a time.** The 571 existing customers stay
+   unreachable. They never consented, and back-filling consent they did not
+   give is not defensible; day-one audience for any campaign is zero.
