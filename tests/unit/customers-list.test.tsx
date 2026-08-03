@@ -32,6 +32,8 @@ function makeCustomer(overrides: Partial<Customer> = {}): Customer {
     top_items: [{ name: 'Latte', quantity: 6 }],
     sms_consent: false,
     sms_consent_at: null,
+    created_source: 'order',
+    notes: null,
     created_at: '2026-01-01T08:00:00.000Z',
     updated_at: '2026-07-01T08:00:00.000Z',
     ...overrides,
