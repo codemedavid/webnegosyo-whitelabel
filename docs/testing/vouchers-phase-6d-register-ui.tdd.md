@@ -121,11 +121,14 @@ was added for in 6a.
   database. This remains the most valuable missing test in the feature.
 - **Offline sales still cannot burn**, unchanged from 6c and deliberate.
 - **No product/category picker** for scoped vouchers — still SQL only.
-- **A voucher's usage limit is not checked at entry.** `usedCount` in the
-  engine is advisory; an exhausted code is accepted at the counter and refused
-  only when the burn reaches the server, where nothing surfaces it to the
-  cashier. The customer is not overcharged, but the shop gives a discount the
-  rule had run out of.
+- ~~**A voucher's usage limit is not checked at entry.**~~ **Overstated;
+  corrected in Phase 7.** `eligibility.ts:93` does reject
+  `usage_limit_reached`, so an exhausted code was never priced as a discount.
+  The real defect was narrower and is now fixed: the register accepted any code
+  that *existed*, and a code the engine then refused simply rendered no row —
+  the engine's explanation was computed and discarded. See
+  `pos-voucher-entry.ts`. What genuinely remains is a race: `usedCount` is a
+  snapshot, so another till can exhaust a code between lookup and burn.
 
 ## Checkpoint commits
 

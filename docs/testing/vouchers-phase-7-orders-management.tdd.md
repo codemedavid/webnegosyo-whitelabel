@@ -106,11 +106,15 @@ detail surfaces; what remains is listed honestly rather than implied complete:
   order totals in the admin list and the Convex order sheet and still ignore
   the discount. They have the same fix available now that the shared rules
   exist; they were not reached in this pass.
-- **Refund and void still work from the gross.** A refund on a discounted order
-  should return the discounted total. This was identified in the plan as a live
-  cash-loss risk once register discounting shipped — which it now has — and it
-  is **not addressed**. This is the most important remaining item in the
-  feature.
+- ~~**Refund and void still work from the gross.**~~ **This claim was wrong and
+  is retracted.** It came from the plan's assumptions, not from the code. The
+  refund path routes through `computeBalance(newTotal, payments)` where
+  `newTotal = revisedOrderTotal(items, deliveryFee, carriedCharges)` and
+  `carriedCharges` is derived from `order.total` — which is stored **net of the
+  discount**. Both sides of the balance are therefore discounted figures and
+  the refund is already correct. There is also no separate void-refund path,
+  and the web app has no refund logic at all (only refund *policy* text). No
+  fix was needed and none was made.
 - **The edit path is untouched.** `carriedCharges` still preserves a discount
   blindly through an edit. The open business question — what should happen to a
   voucher when an edit removes the item that qualified for it — remains
