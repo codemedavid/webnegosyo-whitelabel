@@ -722,6 +722,8 @@ export interface OrderType {
   service_charge_enabled: boolean;
   service_charge_type: "percentage" | "fixed";
   service_charge_value: number;
+  /** Minimum cart subtotal required to check out with this order type. 0 means no minimum. */
+  minimum_order_amount: number;
   // Advance order (scheduled / pre-order) configuration
   advance_order_enabled: boolean;
   advance_order_allow_asap: boolean;
