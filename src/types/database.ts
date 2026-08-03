@@ -936,6 +936,15 @@ export interface Customer {
   top_items: CustomerTopItem[];
   sms_consent: boolean;
   sms_consent_at: string | null;
+  /**
+   * How the profile came to exist. Before `20260819120000` the derived path was
+   * the only writer, so every historic row is `'order'`. Needed because a
+   * hand-entered guest who has not ordered yet and a derived row whose rollup
+   * failed both have `order_count = 0`.
+   */
+  created_source: 'order' | 'manual' | 'import';
+  /** Merchant-authored notes (allergies, preferences). Never derived. */
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
