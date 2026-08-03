@@ -16,6 +16,7 @@ import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backen
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
+import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import {
@@ -192,6 +193,33 @@ export async function createOrderAction(
 
     if (!tenantConfig) {
       return { success: false, error: 'Restaurant not found or is currently inactive' }
+    }
+
+    // ── Minimum-order enforcement (authoritative; covers EVERY order backend) ──
+    // Runs before any backend dispatch, because the checkout button is only a
+    // courtesy: the mobile apps, a stale tab, and a direct action call all reach
+    // here without it. Measured against the ITEM subtotal so a delivery fee can
+    // never carry a small cart over a delivery minimum.
+    if (orderTypeId) {
+      const { data: minRow } = await supabaseAdmin
+        .from('order_types')
+        .select('name, minimum_order_amount')
+        .eq('id', orderTypeId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
+      const minOrderType = minRow as { name?: string; minimum_order_amount?: number | string | null } | null
+      const itemsSubtotal = items.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0)
+      const minimumStatus = checkOrderMinimum(itemsSubtotal, minOrderType)
+
+      if (!minimumStatus.meets) {
+        return {
+          success: false,
+          error:
+            formatOrderMinimumMessage(minimumStatus, minOrderType?.name) ??
+            'This order is below the minimum for checkout',
+        }
+      }
     }
 
     // ── Advance-order schedule validation (authoritative; covers BOTH Supabase + Convex) ──
