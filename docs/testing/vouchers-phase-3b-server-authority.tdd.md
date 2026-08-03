@@ -164,22 +164,54 @@ Nothing in this stage is reachable from the running product yet — no UI calls
 any of it, so the shipped behaviour is unchanged apart from the merchant email
 total and the payment-term label.
 
-**One connective step remains.** Every piece exists and is tested; nothing
-calls them together yet. `createOrderAction` needs to:
+## Third pass: the wiring
 
-1. take a `voucherCodes?: string[]` parameter (append it — the signature is
-   positional, 16 params deep);
-2. load a `categoryByMenuItemId` map when codes are present, so
-   category-scoped vouchers match (an absent map matches nothing by design);
-3. call `priceOrderWithVouchers`, then pass `application.discountLines` as the
-   new `discounts` argument on all three backend calls;
-4. persist the breakdown with `writeOrderDiscount` into `customerData`;
-5. call `redeemVoucher` **after** the order row exists, so a failure cannot
-   burn a use for an order that was never saved, and the unique
-   `(voucher_id, order_id)` index makes a retry a no-op.
+`createOrderAction` now takes `voucherCodes` and applies them on all three
+order backends. 165 tests across the voucher and totals suites.
 
-Also still open: **`checkout_lead_status_history`** — decide whether to add the
-table or drop the panel.
+`src/lib/vouchers/order-voucher-flow.ts` holds the two database chores that
+sit either side of pricing, kept out of the 640-line action so the rules that
+matter are testable alone:
+
+- **`burnRedemptions`** requires an order id it cannot invent, so a use is
+  never burned for an order that was never saved. A failed burn is collected,
+  not thrown — by that point the customer has paid and the kitchen has the
+  order, so losing a coupon count is the cheaper failure. It is logged.
+- **`loadCategoryMap`** returns an empty map on a failed query, which the
+  engine reads as "matches nothing". Widening a category voucher to the whole
+  cart because a lookup failed would discount items it was never meant to
+  touch. It is only queried when a code was actually presented, so an ordinary
+  order pays nothing for the feature.
+
+Ordering that the wiring guarantees:
+
+- the discount is priced **after** every line is re-priced and the delivery fee
+  is settled, so it is computed against numbers the browser could not influence;
+- `writeOrderDiscount` runs **before** any backend reads `customerData`, so the
+  breakdown reaches Convex tenants whose per-tenant schema has no column for it;
+- `burnFor(result.order.id)` runs **after** each insert returns, on all three
+  paths.
+
+Two guardrail assertions were corrected after GREEN. They had encoded named
+arguments and a direct `burnRedemptions` call, but the implementation passes the
+discount positionally to two of the three backends and burns through a local
+helper. The intent — all three backends receive it, every burn is keyed on a
+saved order id — is unchanged and is now asserted exactly.
+
+| Stage | Commit |
+|---|---|
+| RED — burn + category load | `def8594` |
+| GREEN — burn + category load | `e148ef7` |
+| RED — createOrderAction wiring | `7d62ee3` |
+| GREEN — createOrderAction wiring | `db97a75` |
+
+## What is NOT done
+
+Phase 3 is complete. No UI sends `voucherCodes` yet, so no customer can present
+one until Phase 5 — and no voucher rows exist until the Phase 4 admin UI.
+
+Still open and needing a decision: **`checkout_lead_status_history`** — add the
+table, or drop the superadmin panel that reads it.
 
 ## Checkpoint commits
 
