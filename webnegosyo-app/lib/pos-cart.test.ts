@@ -337,3 +337,87 @@ describe("quantityByItem", () => {
     expect(quantityByItem(cart)).toEqual({ "m-latte": 1, "m-mocha": 4 });
   });
 });
+
+/**
+ * Discounts at the register.
+ *
+ * The semantics must match `computeOrderTotals` on the web exactly, because
+ * the same voucher can be presented at either. Divergence here means a code
+ * worth one figure online and another in the shop.
+ */
+describe("cartTotals with discounts", () => {
+  const twoLattes = addLine([], { ...latte, quantity: 2 }); // 240
+
+  it("takes the discount off the total", () => {
+    const totals = cartTotals(twoLattes, undefined, [
+      { label: "WELCOME10", amount: 24 },
+    ]);
+
+    expect(totals.total).toBe(216);
+    expect(totals.discountTotal).toBe(24);
+  });
+
+  it("leaves the subtotal alone, so the receipt can show what was taken off", () => {
+    const totals = cartTotals(twoLattes, undefined, [
+      { label: "WELCOME10", amount: 24 },
+    ]);
+
+    expect(totals.subtotal).toBe(240);
+  });
+
+  it("discounts the service charge too, matching the web", () => {
+    // The web applies the discount to subtotal + delivery + service charge, so
+    // a ₱300 voucher on a ₱240 cart with a ₱24 charge leaves ₱0, not ₱24.
+    const totals = cartTotals(twoLattes, { type: "percentage", value: 10 }, [
+      { label: "BIG", amount: 300 },
+    ]);
+
+    expect(totals.total).toBe(0);
+  });
+
+  it("never turns an over-large voucher into a refund", () => {
+    const totals = cartTotals(twoLattes, undefined, [
+      { label: "HUGE", amount: 1000 },
+    ]);
+
+    expect(totals.total).toBe(0);
+    expect(totals.discountTotal).toBe(240);
+  });
+
+  it("stacks multiple discount lines", () => {
+    const totals = cartTotals(twoLattes, undefined, [
+      { label: "A", amount: 20 },
+      { label: "B", amount: 15 },
+    ]);
+
+    expect(totals.discountTotal).toBe(35);
+    expect(totals.total).toBe(205);
+  });
+
+  it("ignores a corrupt discount amount rather than billing it", () => {
+    // A negative amount would ADD to the bill if summed naively.
+    const totals = cartTotals(twoLattes, undefined, [
+      { label: "BAD", amount: -50 },
+      { label: "ALSO BAD", amount: Number.NaN },
+      { label: "GOOD", amount: 10 },
+    ]);
+
+    expect(totals.discountTotal).toBe(10);
+    expect(totals.total).toBe(230);
+  });
+
+  it("reports no discount when none is passed", () => {
+    expect(cartTotals(twoLattes).discountTotal).toBe(0);
+  });
+
+  it("reports no discount on an empty cart", () => {
+    // An empty cart short-circuits; it must still answer the same shape.
+    expect(cartTotals([], undefined, [{ label: "X", amount: 50 }])).toEqual({
+      subtotal: 0,
+      serviceCharge: 0,
+      discountTotal: 0,
+      total: 0,
+      itemCount: 0,
+    });
+  });
+});
