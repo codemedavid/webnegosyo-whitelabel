@@ -15,6 +15,7 @@ import {
   type SubscriptionState,
 } from '@/lib/billing/subscription-status'
 import { MONTHLY_PRICE_PHP } from '@/lib/billing/plan'
+import { toBusinessDayKey } from '@/lib/inventory/business-day'
 
 export interface RosterInput {
   tenantId: string
@@ -24,6 +25,10 @@ export interface RosterInput {
   paidThrough?: string | null
   graceDays?: number | null
   monthlyPricePhp?: number | null
+  /** `tenants.created_at` — when the store was created on the platform. */
+  joinedAt?: string | null
+  /** `YYYY-MM-DD`; the date this client's month turns over. */
+  billingAnchorDate?: string | null
 }
 
 export interface RosterRow {
@@ -47,6 +52,15 @@ export interface RosterRow {
   manualBlock: 'paused' | 'cancelled' | null
   paidThroughDayKey: string | null
   monthlyPricePhp: number
+  /**
+   * The Manila day the store was created, or null.
+   *
+   * Never the same question as `anchorDayKey`: a client can have joined in
+   * March and be anchored to August because that is when they started paying.
+   */
+  joinedDayKey: string | null
+  /** The date this client's month turns over, or null when unanchored. */
+  anchorDayKey: string | null
 }
 
 export interface RosterSummary {
@@ -94,6 +108,32 @@ function sortWeight(row: RosterRow): number {
   return row.isDueSoon ? DUE_SOON_ORDER : ACTIVE_ORDER
 }
 
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/** A real `YYYY-MM-DD`, or null. Rejects "2026-02-31". */
+function toDayKeyOrNull(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || !DAY_KEY_PATTERN.test(value)) return null
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString().slice(0, 10) === value ? value : null
+}
+
+/**
+ * The Manila calendar day a timestamp fell on, or null.
+ *
+ * Guarded rather than allowed to throw: this screen's one job is listing who
+ * owes money, and a single corrupt `created_at` must not take the whole
+ * collections table down with it.
+ */
+function toJoinedDayKey(joinedAt: string | null | undefined): string | null {
+  if (typeof joinedAt !== 'string') return null
+  try {
+    return toBusinessDayKey(joinedAt)
+  } catch {
+    return null
+  }
+}
+
 function toRow(input: RosterInput, nowIso: string): RosterRow {
   const access = resolveSubscriptionAccess(
     { status: input.status, paid_through: input.paidThrough, grace_days: input.graceDays },
@@ -115,6 +155,11 @@ function toRow(input: RosterInput, nowIso: string): RosterRow {
     manualBlock: resolveManualBlock(input.status),
     paidThroughDayKey: access.paidThroughDayKey,
     monthlyPricePhp: input.monthlyPricePhp ?? MONTHLY_PRICE_PHP,
+    joinedDayKey: toJoinedDayKey(input.joinedAt),
+    // Validated, not echoed: the period arithmetic ignores an anchor it cannot
+    // parse, so displaying one would promise a turnover date billing does not
+    // keep.
+    anchorDayKey: toDayKeyOrNull(input.billingAnchorDate),
   }
 }
 
