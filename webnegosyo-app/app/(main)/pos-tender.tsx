@@ -202,13 +202,20 @@ export default function PosTenderScreen() {
 
     setIsCompleting(true);
     try {
+      // Derived here rather than read from the render memo, so the figure saved
+      // is the one these exact lines produce. `carriedCharges` on its own is
+      // NOT it: the re-priced discount has to be folded in, or a discounted
+      // order would be saved at full price and the customer re-charged the
+      // discount they were given.
+      const saved = editModeTotals(lines, editContext);
+
       await reviseOrder({
         orderId: editContext.orderId,
         expectedRevisionNumber: editContext.expectedRevisionNumber,
         items: posCartToOrderItems(lines),
         deliveryFee: editContext.deliveryFee,
         // The only channel the mutation offers for the rest of the bill.
-        serviceChargeAmount: editContext.carriedCharges,
+        serviceChargeAmount: saved.carriedChargesForSave,
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),

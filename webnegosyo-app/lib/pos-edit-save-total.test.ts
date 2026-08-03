@@ -142,6 +142,6 @@ describe("the tender screen", () => {
       "utf8",
     );
 
-    expect(source).toMatch(/serviceChargeAmount:\s*\w*[Tt]otals\.carriedChargesForSave/);
+    expect(source).toMatch(/serviceChargeAmount:\s*[\w.]*carriedChargesForSave/);
   });
 });

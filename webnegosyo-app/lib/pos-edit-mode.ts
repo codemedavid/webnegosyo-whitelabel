@@ -215,6 +215,16 @@ export interface EditModeTotals {
   itemsTotal: number;
   /** What the order is now worth, fees included. */
   newTotal: number;
+  /**
+   * What to send as the revise mutation's `serviceChargeAmount`.
+   *
+   * That argument is the only channel for everything which is neither line
+   * items nor delivery, so the re-priced discount has to be folded into it.
+   * Passing `carriedCharges` raw was correct only while the residue still
+   * absorbed the discount; since it no longer does, the raw value would save a
+   * bill the screen never showed and re-charge the customer their discount.
+   */
+  carriedChargesForSave: number;
   /** Positive: collect. Negative: refund. */
   balance: number;
   intent: SettlementIntent;
@@ -304,9 +314,14 @@ export function editModeTotals(
     now: new Date(),
   });
 
-  const newTotal = round2(
-    revisedOrderTotal(itemsTotal, context.deliveryFee, context.carriedCharges) -
-      discount.total,
+  // Folded once, here, so the shown total and the saved one cannot disagree:
+  // `revisedOrderTotal(items, delivery, carriedChargesForSave)` reproduces
+  // `newTotal` exactly, which is what the revise mutation recomputes.
+  const carriedChargesForSave = round2(context.carriedCharges - discount.total);
+  const newTotal = revisedOrderTotal(
+    itemsTotal,
+    context.deliveryFee,
+    carriedChargesForSave,
   );
 
   const balance = computeBalance(newTotal, context.payments);
@@ -325,6 +340,7 @@ export function editModeTotals(
   return {
     itemsTotal,
     newTotal,
+    carriedChargesForSave,
     balance,
     intent: settlementIntent(balance),
     isDirty,
