@@ -16,6 +16,7 @@ import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backen
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
+import { computeOrderTotals } from '@/lib/order-totals'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import {
@@ -346,7 +347,13 @@ export async function createOrderAction(
               addons: i.addons,
               subtotal: i.subtotal,
             })),
-            orderTotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0) + (effectiveDeliveryFee ?? 0) + (serviceChargeAmount ?? 0),
+            // The merchant's copy of the total must be the same arithmetic the
+            // customer was shown, or a discount lands on one side only.
+            orderTotal: computeOrderTotals({
+              subtotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0),
+              deliveryFee: effectiveDeliveryFee,
+              serviceCharge: serviceChargeAmount,
+            }).grandTotal,
             deliveryFee: effectiveDeliveryFee ?? 0,
             orderType: orderTypeName,
             paymentMethod: paymentMethodName ?? null,
