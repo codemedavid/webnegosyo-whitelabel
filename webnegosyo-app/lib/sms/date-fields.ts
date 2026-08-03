@@ -44,10 +44,13 @@ export function dateFieldToDate(value: string | null | undefined, fallback: Date
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
   if (!parts) return fallback;
 
+  // No Invalid-Date guard below: the regex has already established four digits,
+  // two, and two, and the date-part constructor never returns NaN for finite
+  // numbers — an impossible day like 2026-02-31 rolls forward into March rather
+  // than failing. A guard here would be a branch no test could ever reach.
   const [, year, month, day] = parts;
-  const parsed = new Date(Number(year), Number(month) - 1, Number(day), SAFE_HOUR);
 
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  return new Date(Number(year), Number(month) - 1, Number(day), SAFE_HOUR);
 }
 
 /**

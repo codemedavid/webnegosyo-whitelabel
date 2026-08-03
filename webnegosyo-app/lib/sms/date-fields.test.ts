@@ -76,11 +76,18 @@ describe("timeFieldToDate — HH:MM to a Date the picker can show", () => {
     expect(dateToTimeField(timeFieldToDate("21:30"))).toBe("21:30");
   });
 
+  it("clamps a nonsense clock rather than rolling into the next day", () => {
+    // `setHours(99, 99)` silently walks the date forward four days. A time
+    // picker showing the wrong DAY for a quiet-hours field would be baffling.
+    expect(dateToTimeField(timeFieldToDate("99:99"))).toBe("23:59");
+  });
+
   it("survives a value the merchant half-typed", () => {
     // The field is still a string in the draft; a picker is not the only way
     // it can be set. Anything unreadable must not become an Invalid Date that
     // crashes the picker on open.
     expect(dateToTimeField(timeFieldToDate("2"))).toMatch(/^\d{2}:\d{2}$/);
     expect(dateToTimeField(timeFieldToDate(""))).toMatch(/^\d{2}:\d{2}$/);
+    expect(dateToTimeField(timeFieldToDate(null))).toBe("00:00");
   });
 });
