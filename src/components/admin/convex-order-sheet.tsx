@@ -43,6 +43,8 @@ import {
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
 import { restoreOrderStockAction } from "@/app/actions/inventory";
+import { orderSummaryRows } from "@/lib/order-summary-rows";
+import { readOrderDiscount } from "@/lib/order-discount";
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
@@ -272,17 +274,48 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
 
                 <Separator />
 
-                {order.deliveryFee != null && order.deliveryFee > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Delivery Fee</span>
-                    <span>{formatCurrency(order.deliveryFee)}</span>
-                  </div>
+                {/*
+                  Without the discount rows the item lines above visibly failed
+                  to add up to the total, and nothing accounted for the gap.
+                  Convex orders carry the breakdown in `customerData`, which is
+                  what `readOrderDiscount` shape-checks.
+                */}
+                {orderSummaryRows({
+                  subtotal: (order.items ?? []).reduce(
+                    (sum: number, item: OrderItem) => sum + Number(item.subtotal ?? 0),
+                    0,
+                  ),
+                  deliveryFee: order.deliveryFee,
+                  discount: readOrderDiscount(order),
+                  total: order.total,
+                }).map((row, index) =>
+                  row.kind === 'total' ? (
+                    <div
+                      key={`${row.kind}-${index}`}
+                      className="flex items-center justify-between font-semibold"
+                    >
+                      <span>Total</span>
+                      <span className="text-base">{formatCurrency(row.amount)}</span>
+                    </div>
+                  ) : (
+                    <div
+                      key={`${row.kind}-${index}`}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-muted-foreground">{row.label}</span>
+                      <span
+                        className={
+                          row.kind === 'discount'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : undefined
+                        }
+                      >
+                        {row.kind === 'discount' ? '−' : ''}
+                        {formatCurrency(row.amount)}
+                      </span>
+                    </div>
+                  ),
                 )}
-
-                <div className="flex items-center justify-between font-semibold">
-                  <span>Total</span>
-                  <span className="text-base">{formatCurrency(order.total)}</span>
-                </div>
               </CardContent>
             </Card>
 
