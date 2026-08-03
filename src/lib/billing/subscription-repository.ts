@@ -28,7 +28,8 @@ import type { SubscriptionRecord } from '@/lib/billing/subscription-status'
  * opens the gate for every tenant at once. This platform has shipped that class
  * of bug twice.
  */
-export const SUBSCRIPTION_SELECT = 'tenant_id, status, monthly_price_php, paid_through, grace_days'
+export const SUBSCRIPTION_SELECT =
+  'tenant_id, status, monthly_price_php, paid_through, grace_days, billing_anchor_date'
 
 /**
  * Either Supabase client this module is handed: the cookie-scoped one for

@@ -8,8 +8,10 @@
  * and a locked field would send the platform owner to the SQL console.
  */
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { markTenantPaidAction } from '@/app/actions/subscriptions'
+import { resolveAnchoredPeriod } from '@/lib/billing/billing-anchor'
+import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import {
   DIALOG_CANCEL_BUTTON,
   DIALOG_FIELD,
@@ -24,23 +26,66 @@ interface MarkPaidDialogProps {
   tenantId: string
   tenantName: string
   monthlyPricePhp: number
+  /** The client's billing anchor, or null when they bill from their pay day. */
+  anchorDayKey: string | null
+  /** The last day already bought, so an early payment shows as stacking. */
+  paidThroughDayKey: string | null
   onClose: () => void
   onRecorded: () => void
+}
+
+/** A `YYYY-MM-DD` as a short human date, formatted in UTC so it cannot drift. */
+function formatDayKey(dayKey: string): string {
+  return new Date(`${dayKey}T00:00:00.000Z`).toLocaleDateString('en-PH', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 export function MarkPaidDialog({
   tenantId,
   tenantName,
   monthlyPricePhp,
+  anchorDayKey,
+  paidThroughDayKey,
   onClose,
   onRecorded,
 }: MarkPaidDialogProps) {
   const [amount, setAmount] = useState(String(monthlyPricePhp))
-  const [months, setMonths] = useState('1')
+  const [monthsInput, setMonths] = useState('1')
   const [method, setMethod] = useState<string>('gcash')
   const [reference, setReference] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  /**
+   * The period this payment will buy, computed from the SAME function the
+   * server uses.
+   *
+   * Shown before submitting because an anchored client's period is not "a month
+   * from today" and the owner would otherwise only discover what they sold
+   * after the ledger row was written. Recomputing it here with different
+   * arithmetic would be worse than not showing it at all, so this imports the
+   * real one.
+   */
+  const period = useMemo(() => {
+    const months = Number(monthsInput)
+    if (!Number.isInteger(months) || months < 1) return null
+
+    try {
+      return resolveAnchoredPeriod(
+        anchorDayKey,
+        paidThroughDayKey,
+        toBusinessDayKey(new Date().toISOString()),
+        months
+      )
+    } catch {
+      // A preview is a courtesy; it must never stop a payment being recorded.
+      return null
+    }
+  }, [anchorDayKey, paidThroughDayKey, monthsInput])
 
   const handleSubmit = () => {
     setError(null)
@@ -49,7 +94,7 @@ export function MarkPaidDialog({
       const result = await markTenantPaidAction({
         tenantId,
         amountPhp: Number(amount),
-        periodMonths: Number(months),
+        periodMonths: Number(monthsInput),
         method,
         reference,
       })
@@ -87,7 +132,7 @@ export function MarkPaidDialog({
             <input
               type="number"
               min="1"
-              value={months}
+              value={monthsInput}
               onChange={(e) => setMonths(e.target.value)}
               className={DIALOG_FIELD}
             />
@@ -122,8 +167,10 @@ export function MarkPaidDialog({
         {/* The reference is what the merchant quotes when they dispute a
             charge months later, so it is worth a nudge even though it is
             optional. */}
-        <p className={DIALOG_HINT}>
-          Paying early stacks onto the current period — no days are lost.
+        <p className={DIALOG_HINT} data-testid="mark-paid-period">
+          {period
+            ? `This buys ${formatDayKey(period.periodStart)} – ${formatDayKey(period.periodEnd)}.`
+            : 'Paying early stacks onto the current period — no days are lost.'}
         </p>
 
         {error && (

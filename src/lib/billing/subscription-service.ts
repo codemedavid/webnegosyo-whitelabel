@@ -12,7 +12,7 @@
  */
 
 import { BILLING_PERIOD_MONTHS, MONTHLY_PRICE_PHP } from '@/lib/billing/plan'
-import { addDays } from '@/lib/billing/subscription-status'
+import { resolveAnchoredPeriod } from '@/lib/billing/billing-anchor'
 import { toBusinessDayKey } from '@/lib/inventory/business-day'
 
 /** The subset of a `tenant_subscriptions` row this module reads and writes. */
@@ -22,6 +22,13 @@ export interface SubscriptionRow {
   monthly_price_php: number
   paid_through: string | null
   grace_days: number
+  /**
+   * The date this client's month turns over, or null.
+   *
+   * Null is the norm and means "no anchor": periods start the day the merchant
+   * pays, exactly as they did before anchors existed.
+   */
+  billing_anchor_date: string | null
 }
 
 /** A row in `subscription_payments`. */
@@ -60,70 +67,11 @@ export interface MarkPaidResult {
   periodEnd: string
 }
 
-const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-
-function isDayKey(value: unknown): value is string {
-  if (typeof value !== 'string' || !DAY_KEY_PATTERN.test(value)) return false
-  const parsed = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
-}
-
 /** Blank string → null; trimmed value otherwise. Mirrors `outlet-form.ts`. */
 function nullableText(value: string | null | undefined): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed === '' ? null : trimmed
-}
-
-/**
- * A whole number of months later, clamped to the end of a shorter month.
- *
- * 31 January plus one month is 28 February, not 3 March. Letting the date roll
- * over would hand out free days every time a long month met a short one, and
- * the drift compounds across a year of renewals.
- */
-export function addMonths(dayKey: string, months: number): string {
-  const [year, month, day] = dayKey.split('-').map(Number)
-
-  const targetMonthIndex = month - 1 + months
-  const targetYear = year + Math.floor(targetMonthIndex / 12)
-  // JS `%` keeps the sign of the dividend, so a negative month needs wrapping.
-  const targetMonth = ((targetMonthIndex % 12) + 12) % 12
-
-  // Day 0 of the following month is the last day of the target month.
-  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
-
-  const shifted = new Date(
-    Date.UTC(targetYear, targetMonth, Math.min(day, lastDayOfTargetMonth))
-  )
-  return shifted.toISOString().slice(0, 10)
-}
-
-/** The day-of-month, as a number. */
-function dayOfMonth(dayKey: string): number {
-  return Number(dayKey.slice(8, 10))
-}
-
-/**
- * The last day the merchant has bought.
- *
- * Normally the day before the same date next month, so consecutive periods tile
- * without a paid day belonging to two of them: 10 August plus a month runs to 9
- * September.
- *
- * When the month arithmetic CLAMPED — 31 January plus a month is 28 February —
- * that clamp has already consumed the boundary, and subtracting a further day
- * would end the period on the 27th and quietly sell the merchant a 28-day
- * month. In that case the clamped date is itself the end.
- */
-function resolvePeriodEnd(periodStart: string, periodMonths: number): string {
-  const sameDateNextPeriod = addMonths(periodStart, periodMonths)
-
-  if (dayOfMonth(sameDateNextPeriod) < dayOfMonth(periodStart)) {
-    return sameDateNextPeriod
-  }
-
-  return addDays(sameDateNextPeriod, -1)
 }
 
 function assertValidInput(input: MarkPaidInput, amountPhp: number, periodMonths: number): void {
@@ -136,20 +84,6 @@ function assertValidInput(input: MarkPaidInput, amountPhp: number, periodMonths:
   if (!Number.isInteger(periodMonths) || periodMonths < 1) {
     throw new Error('A payment must cover at least one month')
   }
-}
-
-/**
- * Where the newly-bought period starts.
- *
- * The day after the current paid-through date when that is still ahead, so a
- * merchant paying early STACKS the new month onto the old one. Resetting to
- * "a month from today" would quietly burn the days they had already paid for.
- * A lapsed merchant starts today instead: charging them again for a month that
- * has already gone by would be selling them nothing.
- */
-function resolvePeriodStart(paidThrough: string | null | undefined, today: string): string {
-  if (isDayKey(paidThrough) && paidThrough >= today) return addDays(paidThrough, 1)
-  return today
 }
 
 /**
@@ -174,9 +108,16 @@ export async function markPaid(
   const today = toBusinessDayKey(nowIso)
 
   const existing = await store.getSubscription(tenantId)
-  const periodStart = resolvePeriodStart(existing?.paid_through, today)
 
-  const periodEnd = resolvePeriodEnd(periodStart, periodMonths)
+  // The anchor decides the period; this module decides only that a payment
+  // happened. Keeping the calendar in one pure module is what stops the ledger
+  // and the access date from ever disagreeing about which month was bought.
+  const { periodStart, periodEnd } = resolveAnchoredPeriod(
+    existing?.billing_anchor_date,
+    existing?.paid_through,
+    today,
+    periodMonths
+  )
 
   await store.insertPayment({
     tenant_id: tenantId,

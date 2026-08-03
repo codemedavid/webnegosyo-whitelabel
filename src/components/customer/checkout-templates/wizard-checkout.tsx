@@ -19,6 +19,7 @@ import {
   OrderSummaryLines,
   PaymentMethodList,
   CheckoutCTA,
+  MinimumOrderNotice,
 } from './checkout-primitives'
 
 const STEPS = ['Receive', 'Details', 'Payment', 'Review'] as const
@@ -236,7 +237,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             </button>
 
             {isLastStep ? (
-              <CheckoutCTA checkout={checkout} className="flex-1" />
+              <>
+                <MinimumOrderNotice checkout={checkout} className="order-first basis-full text-center" />
+                <CheckoutCTA checkout={checkout} className="flex-1" />
+              </>
             ) : (
               <button
                 type="button"

@@ -23,6 +23,8 @@ export interface SubscriptionRow {
   monthly_price_php: number
   paid_through: string | null
   grace_days: number
+  /** The date this client's month turns over, or null for pay-day billing. */
+  billing_anchor_date: string | null
 }
 
 /**
@@ -101,4 +103,48 @@ export async function resumeSubscription(
   const tenantId = requireTenantId(input)
 
   await store.upsertSubscription(tenantId, { status: RESUMED_STATUS })
+}
+
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/** A real `YYYY-MM-DD`, round-tripped so "2026-02-31" is rejected. */
+function isDayKey(value: string): boolean {
+  if (!DAY_KEY_PATTERN.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+export interface BillingAnchorInput extends LifecycleInput {
+  /** `YYYY-MM-DD`, or null to return the client to pay-day billing. */
+  anchorDate: string | null
+}
+
+/**
+ * Records the date a client's month turns over.
+ *
+ * Belongs with the pause lever rather than with `markPaid` because it shares
+ * that module's invariant, and shares it harder: this GRANTS NOTHING. It must
+ * never touch `paid_through` or `status`. A date field that quietly extended
+ * access would be the cheapest way on this platform to give away service with
+ * no ledger row to find it by — and the screen that calls this is the same one
+ * where the owner marks people paid, so the two are one slip apart.
+ *
+ * Rejects a malformed date rather than storing it. The period arithmetic
+ * silently ignores an anchor it cannot parse, so a stored junk value would
+ * leave the merchant drifting while the screen displayed a start date — a lie
+ * that looks like a working feature.
+ */
+export async function setBillingAnchor(
+  store: SubscriptionStore,
+  input: BillingAnchorInput
+): Promise<void> {
+  const tenantId = requireTenantId(input)
+
+  if (input.anchorDate !== null && !isDayKey(input.anchorDate)) {
+    throw new Error('A billing start date must be a real calendar date (YYYY-MM-DD)')
+  }
+
+  // Upserts, because the client most likely to need a start date is the one who
+  // has just joined and has no subscription row yet.
+  await store.upsertSubscription(tenantId, { billing_anchor_date: input.anchorDate })
 }

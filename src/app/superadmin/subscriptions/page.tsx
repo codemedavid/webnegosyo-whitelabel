@@ -24,6 +24,7 @@ interface TenantRowShape {
   slug: string
   max_outlets: number | null
   max_staff_per_branch: number | null
+  created_at: string | null
 }
 
 interface SubscriptionRowShape {
@@ -32,6 +33,7 @@ interface SubscriptionRowShape {
   paid_through: string | null
   grace_days: number | null
   monthly_price_php: number | null
+  billing_anchor_date: string | null
 }
 
 export default async function SubscriptionsPage() {
@@ -39,10 +41,12 @@ export default async function SubscriptionsPage() {
 
   const [{ data: tenants }, { data: subscriptions }, { data: outlets }, { data: staff }] =
     await Promise.all([
-      supabase.from('tenants').select('id, name, slug, max_outlets, max_staff_per_branch').order('name'),
+      supabase.from('tenants').select('id, name, slug, max_outlets, max_staff_per_branch, created_at').order('name'),
       supabase
         .from('tenant_subscriptions')
-        .select('tenant_id, status, paid_through, grace_days, monthly_price_php'),
+        .select(
+          'tenant_id, status, paid_through, grace_days, monthly_price_php, billing_anchor_date'
+        ),
       // Whole-table reads, counted in JS: PostgREST has no GROUP BY, and both
       // tables are small (single-digit rows per tenant across the platform).
       // Revisit if either grows a zero.
@@ -65,6 +69,8 @@ export default async function SubscriptionsPage() {
         paidThrough: subscription?.paid_through ?? null,
         graceDays: subscription?.grace_days ?? null,
         monthlyPricePhp: subscription?.monthly_price_php ?? null,
+        joinedAt: tenant.created_at,
+        billingAnchorDate: subscription?.billing_anchor_date ?? null,
       }
     }
   )

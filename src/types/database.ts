@@ -722,6 +722,8 @@ export interface OrderType {
   service_charge_enabled: boolean;
   service_charge_type: "percentage" | "fixed";
   service_charge_value: number;
+  /** Minimum cart subtotal required to check out with this order type. 0 means no minimum. */
+  minimum_order_amount: number;
   // Advance order (scheduled / pre-order) configuration
   advance_order_enabled: boolean;
   advance_order_allow_asap: boolean;
@@ -934,6 +936,15 @@ export interface Customer {
   top_items: CustomerTopItem[];
   sms_consent: boolean;
   sms_consent_at: string | null;
+  /**
+   * How the profile came to exist. Before `20260819120000` the derived path was
+   * the only writer, so every historic row is `'order'`. Needed because a
+   * hand-entered guest who has not ordered yet and a derived row whose rollup
+   * failed both have `order_count = 0`.
+   */
+  created_source: 'order' | 'manual' | 'import';
+  /** Merchant-authored notes (allergies, preferences). Never derived. */
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -65,6 +65,13 @@ export interface SubscriptionRecord {
   /** `YYYY-MM-DD`; the last day the merchant has paid for. */
   paid_through?: string | null
   grace_days?: number | null
+  /**
+   * `YYYY-MM-DD`; the date this client's month turns over, or null.
+   *
+   * Read by the merchant-facing page and by `markPaid`, never by the gate: an
+   * anchor decides which month money buys, not whether the door is open.
+   */
+  billing_anchor_date?: string | null
 }
 
 export interface SubscriptionAccess {

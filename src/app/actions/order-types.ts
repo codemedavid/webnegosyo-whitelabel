@@ -55,6 +55,7 @@ export async function createOrderTypeAction(
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
     service_charge_value?: number
+    minimum_order_amount?: number
     advance_order_enabled?: boolean
     advance_order_allow_asap?: boolean
     advance_order_lead_time_minutes?: number
@@ -91,6 +92,7 @@ export async function updateOrderTypeAction(
     service_charge_enabled?: boolean
     service_charge_type?: 'percentage' | 'fixed'
     service_charge_value?: number
+    minimum_order_amount?: number
     advance_order_enabled?: boolean
     advance_order_allow_asap?: boolean
     advance_order_lead_time_minutes?: number

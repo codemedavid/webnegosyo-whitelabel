@@ -34,6 +34,7 @@ import {
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals } from '@/lib/order-totals'
+import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { validateVoucherAction } from '@/app/actions/vouchers'
 import {
   addCode,
@@ -64,6 +65,7 @@ import { savePendingOrder } from '@/lib/qr-pending-order'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
 import { validateCheckoutFields } from '@/lib/checkout-field-validation'
+import { withSmsConsent } from '@/lib/sms-consent'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { toast } from 'sonner'
 import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
@@ -103,6 +105,11 @@ export function useCheckout(tenantSlug: string) {
   const [areOrderTypesReady, setAreOrderTypesReady] = useState(false)
   const [formFields, setFormFields] = useState<CustomerFormField[]>([])
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
+  // Permission to text this customer later. Deliberately NOT part of
+  // `customerData`: that map is `Record<string, string>`, and both consent read
+  // sites compare with `=== true`, so a string "true" would be silently
+  // ignored and the customer would never become reachable. See lib/sms-consent.
+  const [isSmsOptedIn, setIsSmsOptedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
@@ -258,6 +265,15 @@ export function useCheckout(tenantSlug: string) {
       ? []
       : discountLinesFrom(voucherState.preview),
   })
+
+  // Per-order-type minimum. Measured against the ITEM subtotal, never the grand
+  // total — a delivery fee must not carry a small cart over a delivery minimum.
+  // Re-derives whenever the customer switches order type, so picking pickup
+  // releases a delivery-only gate immediately.
+  //
+  // Deliberately the pre-discount subtotal: a voucher must not unlock a
+  // minimum the cart never actually met.
+  const orderMinimum = checkOrderMinimum(total, selectedOrderTypeData)
 
   /**
    * Re-prices whatever codes are currently entered.
@@ -920,6 +936,16 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
+    // Per-order-type minimum: block submit and name the shortfall, so the customer
+    // knows to add items or switch order type rather than retapping a dead button.
+    if (!orderMinimum.meets) {
+      toast.error(
+        formatOrderMinimumMessage(orderMinimum, selectedOrderTypeData?.name) ??
+          'This order is below the minimum for checkout'
+      )
+      return
+    }
+
     // Distance-based delivery: block submit when the chosen address is outside the radius.
     if (selectedOrderTypeData?.type === 'delivery' && deliveryOutOfRange) {
       toast.error('This address is outside the delivery area. Please choose a closer address or switch to pickup.')
@@ -1239,11 +1265,15 @@ export function useCheckout(tenantSlug: string) {
         // Fire-and-forget: save order + send proactive webhook
         createOrderAction(
           tenant.id, orderItems, customerInfo, orderType,
-          {
-            ...snapshotCustomerData,
-            ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
-            ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
-          },
+          withSmsConsent(
+            {
+              ...snapshotCustomerData,
+              ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
+              ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
+            },
+            isSmsOptedIn,
+            new Date().toISOString()
+          ),
           validDeliveryFeeForOrder, validQuotationId,
           selectedPaymentMethod || undefined,
           selectedPayment?.name || undefined,
@@ -1351,6 +1381,8 @@ export function useCheckout(tenantSlug: string) {
     formFields,
     customerData,
     setCustomerData,
+    isSmsOptedIn,
+    setIsSmsOptedIn,
     // payment
     paymentMethods,
     selectedPaymentMethod,
@@ -1368,6 +1400,7 @@ export function useCheckout(tenantSlug: string) {
     deliveryFeeError,
     validDeliveryFee,
     grandTotal,
+    orderMinimum,
     // vouchers
     voucherCodes: voucherState.codes,
     voucherPreview: isPreviewStale(voucherState, voucherFingerprint)

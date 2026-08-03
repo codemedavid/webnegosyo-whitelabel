@@ -72,6 +72,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // The roster is staff management: an owner holds it outright, a branch admin
   // through the grant that lets them run their own branch's people.
   team: "branch_staff",
+  // The guest list is every customer's name and phone number, and the screen
+  // can text all of them. An unmapped tab defaults to ALLOWED, which would
+  // hand the store's contact database to whoever can ring up a sale.
+  customers: "customers",
   "product-management": "menu",
   // Deciding which branches carry a dish is a menu decision, so it rides the
   // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with

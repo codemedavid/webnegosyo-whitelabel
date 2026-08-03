@@ -46,6 +46,7 @@ export default async function SubscriptionPage({
 
   const supabase = await createClient()
   const subscription = await fetchSubscription(supabase, tenant.id)
+  const billingAnchor = subscription?.billing_anchor_date ?? null
   const access = resolveSubscriptionAccess(subscription, new Date().toISOString())
 
   return (
@@ -76,6 +77,15 @@ export default async function SubscriptionPage({
               {formatDay(access.paidThroughDayKey)}
             </dd>
           </div>
+          {/* Only when it is set. A merchant on pay-day billing has no turnover
+              date to show, and an em dash here would read as something missing
+              from their account rather than a rule that does not apply. */}
+          {billingAnchor && (
+            <div className="col-span-2">
+              <dt className="text-neutral-500">Billing month starts</dt>
+              <dd className="font-semibold text-neutral-900">{formatDay(billingAnchor)}</dd>
+            </div>
+          )}
           {access.daysOverdue > 0 && (
             <div className="col-span-2">
               <dt className="text-neutral-500">Overdue</dt>

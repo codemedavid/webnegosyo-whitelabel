@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
+import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -61,9 +62,9 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
     'w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[color:var(--checkout-accent)] focus:border-[color:var(--checkout-accent)] transition-shadow'
 
   return (
+    <div style={{ ['--checkout-accent' as string]: accent }}>
     <div
       className={`grid gap-4 ${columns === 2 ? 'md:grid-cols-2' : 'grid-cols-1'}`}
-      style={{ ['--checkout-accent' as string]: accent }}
     >
       {formFields.map((field) => {
         const fieldId = `${reactId}-${field.id}`
@@ -184,6 +185,46 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
         )
       })}
     </div>
+      {/* Consent sits below the fields, spanning both columns — it is a
+          statement about all of them, not another field. */}
+      <SmsOptInCheckbox checkout={checkout} />
+    </div>
+  )
+}
+
+/**
+ * Permission to text this customer later.
+ *
+ * Unticked by default and never pre-checked: a pre-ticked box is not consent,
+ * and this is the record the merchant would rely on if a recipient ever
+ * complained. The value bypasses `customerData` entirely — that map is
+ * `Record<string, string>`, and a string "true" is rejected by both consent
+ * read sites, so routing it through the normal field path would look like it
+ * worked while quietly collecting nothing.
+ */
+export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) {
+  const { isSmsOptedIn, setIsSmsOptedIn, tenant } = checkout
+  const { accent } = useAccent(checkout)
+  const id = useId()
+
+  return (
+    <label
+      htmlFor={id}
+      className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-gray-600"
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={isSmsOptedIn}
+        onChange={(e) => setIsSmsOptedIn(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-gray-300"
+        style={{ accentColor: accent }}
+      />
+      <span>
+        Text me updates and offers from {tenant?.name ?? 'this store'}. Standard message rates apply,
+        and you can opt out any time.
+      </span>
+    </label>
   )
 }
 
@@ -636,8 +677,31 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
  * Primary checkout CTA button (branded). Reflects QR-handoff / payment / messenger
  * states exactly like the original and drives `handleProceedToPayment`.
  */
+/**
+ * The unmet-minimum notice. Renders nothing when the cart clears its order type's
+ * minimum, so designs can drop it in unconditionally beside the submit button.
+ */
+export function MinimumOrderNotice({
+  checkout,
+  className = '',
+}: {
+  checkout: UseCheckoutReturn
+  className?: string
+}) {
+  const message = checkout.orderMinimum
+    ? formatOrderMinimumMessage(checkout.orderMinimum, checkout.selectedOrderTypeData?.name)
+    : null
+  if (!message) return null
+
+  return (
+    <p className={`text-sm font-medium text-red-600 ${className}`} role="alert">
+      {message}
+    </p>
+  )
+}
+
 export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
-  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled } = checkout
+  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled, orderMinimum } = checkout
   const { accent, accentText, button } = useAccent(checkout)
   const ctaLabel = resolveCheckoutCtaLabel({
     hasPaymentMethods: paymentMethods.length > 0,
@@ -648,7 +712,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
     <button
       type="button"
       onClick={handleProceedToPayment}
-      disabled={isProcessing}
+      disabled={isProcessing || orderMinimum?.meets === false}
       className={`w-full h-14 inline-flex items-center justify-center gap-3 font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${className}`}
       style={{ backgroundColor: button ?? accent, color: accentText }}
     >

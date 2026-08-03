@@ -78,6 +78,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "./plugins/withThermalPrinterSimulatorFix.js",
+    // Android-only: adds SEND_SMS for the follow-up campaign feature. The mod
+    // is a withAndroidManifest mod, so the iOS prebuild is untouched.
+    "./plugins/withSmsPermissions.js",
+    // Calendar and clock pickers for the campaign schedule. A native module, so
+    // it only reaches the merchant through a new build — not an OTA update.
+    "@react-native-community/datetimepicker",
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",

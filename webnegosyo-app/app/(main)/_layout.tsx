@@ -149,6 +149,15 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="customers"
+        options={{
+          href: show("customers"),
+          title: "Customers",
+          tabBarLabel: "Customers",
+          tabBarIcon: ({ color }) => <TabIcon symbol="☺" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="trends"
         options={{
           href: show("trends"),
@@ -237,6 +246,11 @@ export default function MainLayout() {
       <Tabs.Screen
         name="payment/[methodId]"
         options={{ href: null, title: "Payment Method" }}
+      />
+      {/* Routable detail screen, never a tab — href: null keeps it off the bar. */}
+      <Tabs.Screen
+        name="campaign/[campaignId]"
+        options={{ href: null, title: "Campaign" }}
       />
       <Tabs.Screen
         name="scan"

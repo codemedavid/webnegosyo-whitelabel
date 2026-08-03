@@ -22,6 +22,7 @@ import {
   OrderSummaryLines,
   PaymentMethodList,
   CheckoutCTA,
+  MinimumOrderNotice,
 } from './checkout-primitives'
 
 export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
@@ -113,6 +114,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         style={{ backgroundColor: setAlpha(pageBackground, 0.92), borderColor: palette.border }}
       >
         <div className="mx-auto max-w-xl px-5 sm:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <MinimumOrderNotice checkout={checkout} className="mb-3 text-center" />
           <CheckoutCTA checkout={checkout} />
           <p className="text-center text-xs text-gray-400 mt-3" style={{ color: palette.mutedText }}>
             Your order will be sent to the restaurant for confirmation.

@@ -26,6 +26,8 @@ const rosterRow = (overrides: Partial<RosterRow> = {}): RosterRow => ({
   manualBlock: null,
   monthlyPricePhp: 649,
   paidThroughDayKey: '2026-08-31',
+  joinedDayKey: '2026-03-12',
+  anchorDayKey: null,
   ...overrides,
 })
 

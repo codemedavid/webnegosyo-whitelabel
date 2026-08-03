@@ -36,3 +36,15 @@ export const NEW_PAYMENT_METHOD_ID = "new" as const;
 export function paymentMethodHref(methodId: string): `/(main)/payment/${string}` {
   return `/(main)/payment/${encodeURIComponent(methodId)}`;
 }
+
+/** Sentinel campaignId that puts the SMS campaign editor into create mode. */
+export const NEW_CAMPAIGN_ID = "new" as const;
+
+/**
+ * Build the href for the SMS follow-up campaign editor.
+ *
+ * @param campaignId an existing campaign id, or {@link NEW_CAMPAIGN_ID}.
+ */
+export function campaignHref(campaignId: string): `/(main)/campaign/${string}` {
+  return `/(main)/campaign/${encodeURIComponent(campaignId)}`;
+}

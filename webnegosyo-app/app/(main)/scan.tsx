@@ -22,6 +22,7 @@ import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
+import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
 import { goTo } from "../../lib/tab-navigation";
@@ -182,7 +183,7 @@ export default function ScanScreen() {
       const hasUpsellItems = items.some((i) => i.isUpsellItem);
       const hasBundleItems = items.some((i) => i.isBundleItem);
 
-      await createOrder({
+      const orderId = await createOrder({
         customerName: payload.customerName,
         customerContact: payload.customerContact,
         // The staff member scanning the code is the branch taking the order,
@@ -218,6 +219,24 @@ export default function ScanScreen() {
         })),
       });
 
+      // Roll the handoff into its guest's profile. A scanned order reaches none
+      // of the web app's order actions either, so without this a QR sale is as
+      // invisible to the Regulars list as a counter sale was. Skips itself when
+      // the payload names nobody, and never throws — the order is already in.
+      if (tenantId) {
+        await notifyCustomerCapture(tenantId, {
+          backend: "convex",
+          orderId: String(orderId),
+          name: payload.customerName,
+          contact: payload.customerContact,
+          customerData: payload.customerData,
+          total,
+          createdAt: new Date().toISOString(),
+          channel: payload.orderType ?? null,
+          items: items.map((i) => ({ name: i.menuItemName, quantity: i.quantity })),
+        });
+      }
+
       // createOrder is idempotent on clientOrderId, so a duplicate scan just
       // returns the existing order. Either way the order is now in the queue,
       // so we land the vendor straight on the orders list.
@@ -230,7 +249,7 @@ export default function ScanScreen() {
       Alert.alert("Could not accept order", msg, [{ text: "OK" }]);
       setIsAccepting(false);
     }
-  }, [state, isAccepting, convexUrl, createOrder]);
+  }, [state, isAccepting, convexUrl, createOrder, tenantId, outletId, outletName]);
 
   const handleReject = useCallback(() => {
     // Reject writes nothing. Return to the dashboard.

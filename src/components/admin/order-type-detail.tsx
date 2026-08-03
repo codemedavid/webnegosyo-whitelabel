@@ -81,6 +81,9 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     service_charge_enabled: orderType.service_charge_enabled ?? false,
     service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
     service_charge_value: orderType.service_charge_value ?? 0,
+    // 0 (the column default) means "no minimum" — an order type saved before the
+    // column existed arrives undefined and must behave the same way.
+    minimum_order_amount: orderType.minimum_order_amount ?? 0,
     advance_order_enabled: advanceConfig.enabled,
     advance_order_allow_asap: advanceConfig.allowAsap,
     advance_order_lead_time_minutes: advanceConfig.leadTimeMinutes,
@@ -110,6 +113,9 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           service_charge_enabled: formData.service_charge_enabled,
           service_charge_type: formData.service_charge_type,
           service_charge_value: formData.service_charge_value,
+          // Guard the same way the advance-order fields do, so a blank or negative
+          // field never produces a cryptic Zod save error.
+          minimum_order_amount: Math.max(0, Number(formData.minimum_order_amount) || 0),
           advance_order_enabled: formData.advance_order_enabled,
           advance_order_allow_asap: formData.advance_order_allow_asap,
           // Clamp to the Zod-accepted ranges so a blank/out-of-range field never produces a cryptic save error.
@@ -341,6 +347,25 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Minimum Order */}
+            <div className="space-y-2 border-t pt-4">
+              <Label htmlFor="minimum_order_amount">Minimum Order (₱)</Label>
+              <Input
+                id="minimum_order_amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.minimum_order_amount}
+                onChange={(e) => setFormData({ ...formData, minimum_order_amount: parseFloat(e.target.value) || 0 })}
+                placeholder="e.g., 500"
+              />
+              <p className="text-xs text-muted-foreground">
+                {formData.minimum_order_amount > 0
+                  ? `Customers must reach ₱${formData.minimum_order_amount.toFixed(2)} before they can check out with ${formData.name || 'this order type'}.`
+                  : 'Set to 0 for no minimum — customers can check out with any amount.'}
+              </p>
             </div>
 
             {/* Advance Orders / Scheduling */}

@@ -256,7 +256,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Ref for debounced sync timeout
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Typed from the DOM `setTimeout` that actually runs here, not `NodeJS.Timeout`:
+  // this is a client component, and the Node type makes the build reject the
+  // number the browser returns.
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Track if we've already synced the current cart state
   const lastSyncedCart = useRef<string>('')
   // Keep a stable ref to items so getItem doesn't need to be recreated on every items change
