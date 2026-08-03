@@ -11,6 +11,7 @@
  */
 
 import type { ModifierGroup } from "./modifier-groups";
+import type { OrderDiscountLine } from "./order-totals";
 
 /** One chosen modifier option, flattened for the cart line. */
 export interface PosCartSelection {
@@ -52,6 +53,11 @@ export interface ServiceCharge {
 export interface CartTotals {
   subtotal: number;
   serviceCharge: number;
+  /**
+   * What was actually taken off, which is not always what was asked for: a
+   * voucher worth more than the sale is capped rather than paid out.
+   */
+  discountTotal: number;
   total: number;
   /** Units sold, not lines — 2× Latte counts as 2. */
   itemCount: number;
@@ -60,9 +66,24 @@ export interface CartTotals {
 const EMPTY_TOTALS: CartTotals = {
   subtotal: 0,
   serviceCharge: 0,
+  discountTotal: 0,
   total: 0,
   itemCount: 0,
 };
+
+/**
+ * Sums the discount lines, ignoring corrupt (negative or non-finite) amounts.
+ *
+ * Mirrors `sumDiscounts` in `src/lib/order-totals.ts`. A negative amount summed
+ * naively would ADD to the bill, which is the one direction a discount must
+ * never move a total.
+ */
+function sumDiscounts(discounts: readonly OrderDiscountLine[]): number {
+  return discounts.reduce((sum, line) => {
+    if (!Number.isFinite(line.amount) || line.amount <= 0) return sum;
+    return sum + line.amount;
+  }, 0);
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -138,10 +159,21 @@ export function clearCart(): PosCartLine[] {
   return [];
 }
 
-/** Subtotal, service charge, total, and unit count for the current cart. */
+/**
+ * Subtotal, service charge, discount, total, and unit count for the cart.
+ *
+ * Discount semantics are deliberately identical to `computeOrderTotals` on the
+ * web — applied to the WHOLE chargeable amount (service charge included) and
+ * capped at it, so an over-large voucher makes the sale free and never a
+ * refund. The same code can be presented online or at the counter, and a
+ * customer quoted one figure and charged another has no way to tell which was
+ * right. `tests/unit/vouchers/engine-parity.test.ts` pins the engine that
+ * produces these lines; this function is where its output is spent.
+ */
 export function cartTotals(
   cart: PosCartLine[],
   serviceCharge?: ServiceCharge,
+  discounts?: readonly OrderDiscountLine[],
 ): CartTotals {
   if (cart.length === 0) return EMPTY_TOTALS;
 
@@ -154,10 +186,14 @@ export function cartTotals(
       ? round2((subtotal * serviceCharge.value) / 100)
       : round2(serviceCharge.value);
 
+  const chargeable = round2(subtotal + charge);
+  const discountTotal = Math.min(round2(sumDiscounts(discounts ?? [])), chargeable);
+
   return {
     subtotal,
     serviceCharge: charge,
-    total: round2(subtotal + charge),
+    discountTotal,
+    total: round2(chargeable - discountTotal),
     itemCount,
   };
 }
