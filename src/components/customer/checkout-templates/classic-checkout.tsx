@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
-import { SmsOptInCheckbox } from './checkout-primitives'
+import { SmsOptInCheckbox, MinimumOrderNotice } from './checkout-primitives'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
@@ -35,7 +35,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     formFields, customerData, setCustomerData,
     items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
-    isProcessing, handleProceedToPayment, messengerEnabled,
+    isProcessing, handleProceedToPayment, messengerEnabled, orderMinimum,
   } = checkout
 
   if (!tenant) return null
@@ -646,12 +646,14 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               }
             </p>
 
+            <MinimumOrderNotice checkout={checkout} className="mb-3 text-center" />
+
             <Button
               size="lg"
               className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: palette.button, color: palette.button ? palette.accentText : undefined }}
               onClick={handleProceedToPayment}
-              disabled={isProcessing}
+              disabled={isProcessing || !orderMinimum.meets}
             >
               {isProcessing ? (
                 <>

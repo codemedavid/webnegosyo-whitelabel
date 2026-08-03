@@ -34,6 +34,7 @@ import {
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals } from '@/lib/order-totals'
+import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
@@ -235,6 +236,12 @@ export function useCheckout(tenantSlug: string) {
     deliveryFee: validDeliveryFee,
     serviceCharge: serviceChargeAmount,
   })
+
+  // Per-order-type minimum. Measured against the ITEM subtotal, never the grand
+  // total — a delivery fee must not carry a small cart over a delivery minimum.
+  // Re-derives whenever the customer switches order type, so picking pickup
+  // releases a delivery-only gate immediately.
+  const orderMinimum = checkOrderMinimum(total, selectedOrderTypeData)
 
   // Convenience: change the scheduled date and snap the time to the first valid slot.
   const handleScheduleDateChange = (date: string) => {
@@ -819,6 +826,16 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
+    // Per-order-type minimum: block submit and name the shortfall, so the customer
+    // knows to add items or switch order type rather than retapping a dead button.
+    if (!orderMinimum.meets) {
+      toast.error(
+        formatOrderMinimumMessage(orderMinimum, selectedOrderTypeData?.name) ??
+          'This order is below the minimum for checkout'
+      )
+      return
+    }
+
     // Distance-based delivery: block submit when the chosen address is outside the radius.
     if (selectedOrderTypeData?.type === 'delivery' && deliveryOutOfRange) {
       toast.error('This address is outside the delivery area. Please choose a closer address or switch to pickup.')
@@ -1271,6 +1288,7 @@ export function useCheckout(tenantSlug: string) {
     deliveryFeeError,
     validDeliveryFee,
     grandTotal,
+    orderMinimum,
     // advance order / scheduling
     advanceConfig,
     scheduleMode,

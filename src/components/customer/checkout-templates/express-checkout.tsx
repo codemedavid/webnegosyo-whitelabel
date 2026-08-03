@@ -24,6 +24,7 @@ import {
   OrderSummaryLines,
   PaymentMethodList,
   CheckoutCTA,
+  MinimumOrderNotice,
 } from './checkout-primitives'
 
 function Section({
@@ -142,6 +143,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               )}
             </span>
           </div>
+          <MinimumOrderNotice checkout={checkout} className="mb-3 text-center" />
           <CheckoutCTA checkout={checkout} />
         </div>
       </div>

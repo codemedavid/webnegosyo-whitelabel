@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
+import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -654,8 +655,29 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
  * Primary checkout CTA button (branded). Reflects QR-handoff / payment / messenger
  * states exactly like the original and drives `handleProceedToPayment`.
  */
+/**
+ * The unmet-minimum notice. Renders nothing when the cart clears its order type's
+ * minimum, so designs can drop it in unconditionally beside the submit button.
+ */
+export function MinimumOrderNotice({
+  checkout,
+  className = '',
+}: {
+  checkout: UseCheckoutReturn
+  className?: string
+}) {
+  const message = formatOrderMinimumMessage(checkout.orderMinimum, checkout.selectedOrderTypeData?.name)
+  if (!message) return null
+
+  return (
+    <p className={`text-sm font-medium text-red-600 ${className}`} role="alert">
+      {message}
+    </p>
+  )
+}
+
 export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
-  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled } = checkout
+  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled, orderMinimum } = checkout
   const { accent, accentText, button } = useAccent(checkout)
   const ctaLabel = resolveCheckoutCtaLabel({
     hasPaymentMethods: paymentMethods.length > 0,
@@ -666,7 +688,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
     <button
       type="button"
       onClick={handleProceedToPayment}
-      disabled={isProcessing}
+      disabled={isProcessing || !orderMinimum.meets}
       className={`w-full h-14 inline-flex items-center justify-center gap-3 font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${className}`}
       style={{ backgroundColor: button ?? accent, color: accentText }}
     >

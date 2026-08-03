@@ -22,6 +22,7 @@ import {
   OrderSummaryLines,
   PaymentMethodList,
   CheckoutCTA,
+  MinimumOrderNotice,
 } from './checkout-primitives'
 
 export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
@@ -160,6 +161,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     <OrderSummaryLines checkout={checkout} />
 
                     <div className="mt-5">
+                      <MinimumOrderNotice checkout={checkout} className="mb-3 text-center" />
                       <CheckoutCTA checkout={checkout} />
                     </div>
 
