@@ -17,6 +17,11 @@ import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
 import { computeOrderTotals } from '@/lib/order-totals'
+import { priceOrderWithVouchers } from '@/lib/vouchers/order-pricing'
+import { createVoucherLookup } from '@/lib/vouchers/repository'
+import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
+import { writeOrderDiscount } from '@/lib/order-discount'
+import { resolveOrderContact } from '@/lib/customer-identity'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import {
@@ -166,7 +171,14 @@ export async function createOrderAction(
    * here against the tenant's own outlets — never trusted as sent. Ignored
    * entirely unless the tenant enabled multi-branch.
    */
-  outletId?: string
+  outletId?: string,
+  /**
+   * Voucher codes as the customer typed them. CODES, never amounts — the
+   * discount is recomputed here from the tenant's own voucher rows, the same
+   * way the delivery fee and the outlet id are re-validated rather than
+   * trusted. A client-supplied amount would let anyone check out for nothing.
+   */
+  voucherCodes?: string[]
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -433,6 +445,73 @@ export async function createOrderAction(
     }
     items = pricedItems
 
+    // ---- Vouchers -------------------------------------------------------
+    // Priced here, after the server has re-priced every line and settled the
+    // delivery fee, so the discount is computed against numbers the customer
+    // could not influence. Only codes came from the browser.
+    const requestedCodes = Array.isArray(voucherCodes)
+      ? voucherCodes.filter((code): code is string => typeof code === 'string')
+      : []
+
+    // Category-scoped vouchers need to know each item's category. Loaded only
+    // when a code was actually presented — an ordinary order pays nothing for
+    // this feature. An empty map matches nothing, which is the safe direction.
+    const categoryByMenuItemId =
+      requestedCodes.length === 0
+        ? {}
+        : await loadCategoryMap(supabaseAdmin, tenantId, items.map((i) => i.menu_item_id))
+
+    const customerKey = resolveOrderContact({
+      name: customerInfo?.name,
+      contact: customerInfo?.contact,
+      customerData: effectiveCustomerData,
+    })
+
+    const pricing = await priceOrderWithVouchers({
+      tenantId,
+      items,
+      deliveryFee: effectiveDeliveryFee,
+      serviceCharge: serviceChargeAmount,
+      voucherCodes: requestedCodes,
+      channel: 'checkout',
+      now: new Date(),
+      lookup: createVoucherLookup(supabaseAdmin),
+      categoryByMenuItemId,
+      outletId: resolvedOutlet?.id ?? null,
+      customerKey,
+    })
+
+    // The breakdown rides in customerData so it reaches Convex tenants too,
+    // whose schema is deployed per tenant and would not have a new column.
+    // `total` is already net of the discount on every backend; this is the
+    // receipt detail, never the source of the amount charged.
+    const customerDataWithDiscount = writeOrderDiscount(
+      effectiveCustomerData,
+      pricing.discountPayload
+    )
+    effectiveCustomerData = customerDataWithDiscount
+
+    /** Burns the uses once an order row exists. Never before. */
+    const burnFor = async (orderId: string) => {
+      const outcome = await burnRedemptions(supabaseAdmin, {
+        tenantId,
+        orderId,
+        channel: 'checkout',
+        redemptions: pricing.redemptions,
+        customerKey,
+        outletId: resolvedOutlet?.id ?? null,
+      })
+
+      if (outcome.failures.length > 0) {
+        // Not fatal: the order is saved and paid for. Losing a coupon count is
+        // the cheaper failure, but it must be visible.
+        console.error(
+          `[createOrderAction] Order ${orderId} saved but ${outcome.failures.length} voucher redemption(s) failed:`,
+          outcome.failures
+        )
+      }
+    }
+
     // Convex has no payment-proof columns, so proof rides in customerData (same
     // pattern as advance-order schedule) to stay cross-tenant compatible.
     const hasProof = Boolean(paymentProof?.url || paymentProof?.reference)
@@ -483,7 +562,10 @@ export async function createOrderAction(
         serviceChargeAmount,
         scheduledForISO: validatedScheduledISO,
         paymentProof,
+        discounts: pricing.application.discountLines,
       })
+
+      await burnFor(result.order.id)
 
       // Same reason as the Convex branch: this order lives in the tenant's own
       // project, so nothing else would ever roll it into the platform-side
@@ -533,8 +615,10 @@ export async function createOrderAction(
         paymentMethodDetails,
         paymentMethodQrCodeUrl,
         serviceChargeAmount,
-        validatedScheduledISO
+        validatedScheduledISO,
+        pricing.application.discountLines
       )
+      await burnFor(result.order.id)
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
@@ -560,8 +644,10 @@ export async function createOrderAction(
       paymentProof,
       // Only the platform database has an outlet_id column; the other two
       // backends carry the branch in customer_data (stamped above).
-      resolvedOutlet?.id ?? null
+      resolvedOutlet?.id ?? null,
+      pricing.application.discountLines
     )
+    await burnFor(result.order.id)
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
     await firePostHogNotification(result.order.id, items)

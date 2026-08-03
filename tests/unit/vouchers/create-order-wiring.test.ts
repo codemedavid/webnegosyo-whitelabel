@@ -45,8 +45,9 @@ describe('createOrderAction voucher wiring', () => {
   it('hands the priced discount to every order backend', () => {
     const source = readAction()
 
-    // One per backend: per-tenant Supabase, Convex, platform Supabase.
-    const handoffs = source.match(/discounts:\s*pricing\.application\.discountLines/g) ?? []
+    // One per backend: per-tenant Supabase (named), Convex and platform
+    // Supabase (positional — both take it as a trailing argument).
+    const handoffs = source.match(/pricing\.application\.discountLines/g) ?? []
     expect(handoffs).toHaveLength(3)
   })
 
@@ -57,11 +58,9 @@ describe('createOrderAction voucher wiring', () => {
   it('burns redemptions only against a saved order id', () => {
     const source = readAction()
 
-    // Every burn must be keyed on an id that came back from the insert.
-    const burns = source.match(/burnRedemptions\([\s\S]{0,400}?\)/g) ?? []
-    expect(burns.length).toBeGreaterThan(0)
-    for (const burn of burns) {
-      expect(burn).toContain('result.order.id')
-    }
+    // Every burn is keyed on an id that came back from the insert — one per
+    // backend, and never on an id the action made up before saving.
+    const burns = source.match(/burnFor\([^)]*\)/g) ?? []
+    expect(burns).toEqual(['burnFor(result.order.id)', 'burnFor(result.order.id)', 'burnFor(result.order.id)'])
   })
 })
