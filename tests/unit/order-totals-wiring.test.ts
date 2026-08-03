@@ -17,17 +17,37 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { computeOrderTotals } from '@/lib/order-totals'
 
-const CHECKOUT_TEMPLATE_DIR = join(process.cwd(), 'src/components/customer/checkout-templates')
+const CHECKOUT_TEMPLATE_DIR = 'src/components/customer/checkout-templates'
 
-/** Every file that renders a customer-facing total. */
+/**
+ * Every file that renders or reports a customer-facing total.
+ *
+ * `src/app/actions/orders.ts` is on this list because the server is the last
+ * place a total is stated: it composes the merchant's order-notification email.
+ * It was missed on the first pass — the list only covered the five checkout
+ * templates — and it was quoting its own inline sum, so a discounted order
+ * would have shown the customer the discounted price and emailed the merchant
+ * the full one.
+ */
 const MONEY_BEARING_FILES = [
-  'checkout-primitives.tsx',
-  'checkout-shared.tsx',
-  'classic-checkout.tsx',
-  'modern-checkout.tsx',
-  'minimal-checkout.tsx',
-  'wizard-checkout.tsx',
-  'express-checkout.tsx',
+  `${CHECKOUT_TEMPLATE_DIR}/checkout-primitives.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/checkout-shared.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/classic-checkout.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/modern-checkout.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/minimal-checkout.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/wizard-checkout.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/express-checkout.tsx`,
+  'src/app/actions/orders.ts',
+  // The three write paths. Each one persists the amount actually charged, for
+  // a different order backend, and each had its own copy of the arithmetic.
+  // A discount applied on the display side and missed here would show the
+  // customer one price and bill them another.
+  'src/lib/orders-service.ts',
+  'src/lib/tenant-supabase-orders.ts',
+  // The hook itself. It derives the shared `grandTotal` correctly, and then
+  // built a SECOND total further down for the QR handoff payload — the amount
+  // a customer is asked to pay when they scan. Two totals, one order.
+  'src/hooks/useCheckout.ts',
 ] as const
 
 /**
@@ -37,18 +57,29 @@ const MONEY_BEARING_FILES = [
  */
 const INLINE_TOTAL = /total\s*\+[^\n]*\b(deliveryFee|serviceChargeAmount)\b/
 
+/**
+ * The same offence written from the other end: a delivery-fee term added to a
+ * service-charge term. `orders.ts` summed its own line subtotals first, so the
+ * `total +` shape above never matched it.
+ */
+const INLINE_PARTS_SUM = /\b\w*[Dd]eliveryFee\b[^\n]*\+[^\n]*\b\w*[Ss]erviceCharge\w*\b/
+
+function readSource(file: string): string {
+  return readFileSync(join(process.cwd(), file), 'utf8')
+}
+
 function readTemplate(file: string): string {
-  return readFileSync(join(CHECKOUT_TEMPLATE_DIR, file), 'utf8')
+  return readSource(`${CHECKOUT_TEMPLATE_DIR}/${file}`)
 }
 
 describe('order totals wiring', () => {
   it.each(MONEY_BEARING_FILES)('%s does not recompute the grand total inline', (file) => {
-    const source = readTemplate(file)
+    const source = readSource(file)
 
     const offendingLines = source
       .split('\n')
       .map((line, index) => ({ line: line.trim(), number: index + 1 }))
-      .filter(({ line }) => INLINE_TOTAL.test(line))
+      .filter(({ line }) => INLINE_TOTAL.test(line) || INLINE_PARTS_SUM.test(line))
 
     expect(offendingLines).toEqual([])
   })

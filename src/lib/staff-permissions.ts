@@ -14,6 +14,7 @@ export const STAFF_PERMISSION_KEYS = [
   'branch_staff',
   'order_edit',
   'order_refund',
+  'vouchers',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -61,6 +62,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   order_refund: {
     label: 'Issue Refunds',
     description: 'Return money on an edited order — grant sparingly',
+  },
+  vouchers: {
+    label: 'Vouchers & Discounts',
+    description: 'Create and retire discount codes — grant sparingly',
   },
 }
 
@@ -135,6 +140,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   branding: 'store_setup',
   'hero-designer': 'store_setup',
   customers: 'customers',
+  vouchers: 'vouchers',
 }
 
 /**

@@ -25,6 +25,7 @@ import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { VoucherField } from './voucher-field'
 
 const MapboxAddressAutocomplete = dynamic(
   () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
@@ -423,7 +424,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
 
 /** Order summary line items + totals (branded). */
 export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn }) {
-  const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, customerData, serviceChargeAmount, grandTotal } = checkout
+  const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, customerData, serviceChargeAmount, grandTotal, voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode } = checkout
   const { accent, text, mutedText } = useAccent(checkout)
   const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
 
@@ -488,6 +489,27 @@ export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn })
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Service Charge</span>
           <span className="font-medium text-gray-900">{formatPrice(serviceChargeAmount)}</span>
+        </div>
+      )}
+
+      <div className="my-2 border-t border-gray-200" />
+
+      {/* Shared by all five designs, so a voucher works the same everywhere. */}
+      <VoucherField
+        codes={voucherCodes}
+        preview={voucherPreview}
+        isChecking={isCheckingVoucher}
+        onApply={applyVoucherCode}
+        onRemove={removeVoucherCode}
+        formatPrice={formatPrice}
+      />
+
+      {(voucherPreview?.accepted.length ?? 0) > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Discount</span>
+          <span className="font-medium text-green-700">
+            −{formatPrice(voucherPreview?.discountTotal ?? 0)}
+          </span>
         </div>
       )}
 

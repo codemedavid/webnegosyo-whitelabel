@@ -20,6 +20,7 @@ import {
   Cog,
   Box,
   Users,
+  Ticket,
   Menu,
   MapPin,
 } from 'lucide-react'
@@ -675,6 +676,11 @@ export const adminSidebarItems: SidebarEntry[] = [
     label: 'Orders',
     href: '/admin/orders',
     icon: ShoppingBag,
+  },
+  {
+    label: 'Vouchers',
+    href: '/admin/vouchers',
+    icon: Ticket,
   },
   {
     label: 'Customers',

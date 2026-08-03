@@ -21,6 +21,7 @@ import {
   type OrderStatsRow,
 } from '@/lib/order-stats'
 import type { Order } from '@/types/database'
+import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 
 export interface OrderWithItems extends Order {
   order_items: Array<{
@@ -366,7 +367,12 @@ export async function createOrder(
    * own outlets by the caller. Null/undefined for every single-location tenant,
    * which is every tenant that has not opted into multi-branch.
    */
-  outletId?: string | null
+  outletId?: string | null,
+  /**
+   * Discount lines already priced by the server from voucher CODES — see
+   * `src/lib/vouchers/order-pricing.ts`. Never a client-supplied amount.
+   */
+  discounts?: readonly OrderDiscountLine[]
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -514,7 +520,15 @@ export async function createOrder(
   }
 
   const total = verifiedTotal
-  const finalTotal = total + (deliveryFee || 0) + (serviceChargeAmount || 0)
+  // The persisted amount and the amount the customer was shown come from one
+  // function. `discounts` is threaded here so a voucher applied at checkout
+  // reaches the row that is actually billed.
+  const finalTotal = computeOrderTotals({
+    subtotal: total,
+    deliveryFee,
+    serviceCharge: serviceChargeAmount,
+    discounts,
+  }).grandTotal
 
   // Advance order: validate the requested fulfillment time. Accept only a parseable
   // timestamp within a sane horizon (now-1h .. now+90d); otherwise treat as ASAP.
@@ -677,7 +691,9 @@ export async function createOrderConvex(
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
   serviceChargeAmount?: number,
-  scheduledForISO?: string
+  scheduledForISO?: string,
+  /** Server-priced discount lines. See the Supabase path above. */
+  discounts?: readonly OrderDiscountLine[]
 ) {
   // Same authoritative operating-hours guard as the Supabase path — a Convex tenant
   // must not be the one storefront where a closed shop still takes ASAP orders.
@@ -719,7 +735,12 @@ export async function createOrderConvex(
       (customerInfo?.contact && customerInfo.contact.trim()) ||
       resolveOrderContact({ name: customerInfo?.name, contact: customerInfo?.contact, customerData }),
     customerData: convexCustomerData,
-    total: items.reduce((sum, i) => sum + i.subtotal, 0) + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0),
+    total: computeOrderTotals({
+      subtotal: items.reduce((sum, i) => sum + i.subtotal, 0),
+      deliveryFee,
+      serviceCharge: serviceChargeAmount,
+      discounts,
+    }).grandTotal,
     source: 'web' as const,
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
     items: items.map((item) => ({

@@ -29,6 +29,9 @@ export const STAFF_PERMISSION_KEYS = [
   // again cannot undo.
   "order_edit",
   "order_refund",
+  // A standing discount on the merchant's own revenue. Kept off "menu" so
+  // it is not handed to everyone who can rename a dish.
+  "vouchers",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];

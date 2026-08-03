@@ -33,6 +33,7 @@ import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
+import { burnPosRedemptions } from "../../lib/voucher-service";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
@@ -202,13 +203,20 @@ export default function PosTenderScreen() {
 
     setIsCompleting(true);
     try {
+      // Derived here rather than read from the render memo, so the figure saved
+      // is the one these exact lines produce. `carriedCharges` on its own is
+      // NOT it: the re-priced discount has to be folded in, or a discounted
+      // order would be saved at full price and the customer re-charged the
+      // discount they were given.
+      const saved = editModeTotals(lines, editContext);
+
       await reviseOrder({
         orderId: editContext.orderId,
         expectedRevisionNumber: editContext.expectedRevisionNumber,
         items: posCartToOrderItems(lines),
         deliveryFee: editContext.deliveryFee,
         // The only channel the mutation offers for the rest of the bill.
-        serviceChargeAmount: editContext.carriedCharges,
+        serviceChargeAmount: saved.carriedChargesForSave,
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),
@@ -297,6 +305,11 @@ export default function PosTenderScreen() {
         reference: reference.trim() || undefined,
       });
 
+      // Read at tender time rather than held in state: the engine re-prices
+      // against the current cart, so a line voided after a code was typed is
+      // reflected in what the customer is actually charged.
+      const discountLines = usePosCartStore.getState().sessionDiscount().lines;
+
       const args = buildPosOrder({
         cart: lines,
         tender,
@@ -306,6 +319,9 @@ export default function PosTenderScreen() {
         serviceCharge,
         customerName,
         cashierId: userId ?? undefined,
+        // Priced from the cart as it stands at the moment of tender, not from
+        // whatever was showing when the code was typed.
+        discounts: discountLines,
         // A counter sale belongs to the till that rang it, so the branch on
         // the session is stamped onto the order. Null for a single-location
         // register, which stamps nothing.
@@ -330,6 +346,17 @@ export default function PosTenderScreen() {
           tenantId,
           String(orderId),
           buildPosStockItems(lines),
+        );
+
+        // Burn what this sale used. The register cannot call redeem_voucher()
+        // itself — it is service_role only — so this goes through the web app
+        // on the cashier's own token. Never throws: the customer has already
+        // paid, and the burn is keyed on the order id so a retry is a no-op.
+        await burnPosRedemptions(
+          tenantId,
+          String(orderId),
+          discountLines,
+          outletId,
         );
       }
 

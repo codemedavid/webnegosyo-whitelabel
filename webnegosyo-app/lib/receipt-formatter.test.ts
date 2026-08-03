@@ -126,3 +126,86 @@ describe("formatReceipt — POS payment reference", () => {
     }
   });
 });
+
+/**
+ * A discounted sale.
+ *
+ * The receipt is the only record the customer walks away with, and the only
+ * one a merchant can hand to an auditor. Printing an authoritative TOTAL that
+ * is less than the items above it, with nothing to explain the gap, reads as
+ * an arithmetic error on the merchant's own paperwork — and gives a customer
+ * disputing the charge nothing to check.
+ *
+ * The discount breakdown rides in `customerData.discount`, written by
+ * `writeOrderDiscount` on every order backend (see `lib/order-discount.ts`).
+ */
+const discountedOrder = {
+  ...baseOrder,
+  // Items still sum to 327.50; the voucher took 27.50 off.
+  total: 300,
+  customerData: {
+    discount: {
+      total: 27.5,
+      deliveryDiscount: 0,
+      lines: [{ label: "WELCOME10", amount: 27.5, code: "WELCOME10" }],
+      allocationsByLine: {},
+    },
+  },
+};
+
+describe("formatReceipt — a discounted sale", () => {
+  it("prints a discount line so the total is explainable", () => {
+    const receipt = formatReceipt(discountedOrder, config);
+
+    expect(findLine(receipt, "WELCOME10")).toBeDefined();
+  });
+
+  it("shows the discount as an amount taken off", () => {
+    const receipt = formatReceipt(discountedOrder, config);
+
+    expect(findLine(receipt, "WELCOME10")).toContain("-P27.50");
+  });
+
+  it("prints the subtotal too, so the arithmetic reads top to bottom", () => {
+    // Without a subtotal line the customer sees items, a discount, and a total
+    // with no stated starting point. Today this line only appears when there
+    // is a delivery fee.
+    const receipt = formatReceipt(discountedOrder, config);
+
+    expect(findLine(receipt, "Subtotal:")).toContain("P327.50");
+  });
+
+  it("still prints the backend total as authoritative", () => {
+    const receipt = formatReceipt(discountedOrder, config);
+
+    expect(findLine(receipt, "TOTAL:")).toContain("P300.00");
+  });
+
+  it("does not warn about a mismatch it can now account for", () => {
+    // The existing guard compares the item sum against order.total. Every
+    // discounted order trips it, which trains merchants to ignore a warning
+    // that is meant to catch real corruption.
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    formatReceipt(discountedOrder, config);
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("keeps a discounted receipt within the paper width", () => {
+    const receipt = formatReceipt(discountedOrder, config);
+
+    for (const l of linesOf(receipt)) {
+      expect(l.length).toBeLessThanOrEqual(32);
+    }
+  });
+
+  it("leaves an undiscounted receipt byte-for-byte unchanged", () => {
+    // The overwhelming majority of sales carry no voucher.
+    const receipt = formatReceipt(baseOrder, config);
+
+    expect(receipt).not.toContain("Discount");
+    expect(findLine(receipt, "Subtotal:")).toBeUndefined();
+  });
+});

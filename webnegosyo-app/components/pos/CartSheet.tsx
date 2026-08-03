@@ -4,6 +4,7 @@ import { colors, radius, shadow, spacing, typography } from "../../theme/colors"
 import { formatPeso } from "../../lib/format";
 import type { CartTotals, PosCartLine } from "../../lib/pos-cart";
 import type { PosOrderType } from "../../lib/pos-catalog";
+import type { OrderDiscountLine } from "../../lib/order-totals";
 
 interface CartSheetProps {
   lines: PosCartLine[];
@@ -28,6 +29,12 @@ interface CartSheetProps {
   chargeTotal?: number;
   /** Blocks the action with a reason shown in place of the amount. */
   blockedReason?: string;
+  /** Vouchers and manual discounts applied to this sale, priced live. */
+  discountLines?: readonly OrderDiscountLine[];
+  /** Opens discount entry. Absent hides the entry point entirely. */
+  onAddDiscount?: () => void;
+  /** Removes one applied discount by its label. */
+  onRemoveDiscount?: (line: OrderDiscountLine) => void;
 }
 
 /**
@@ -52,6 +59,9 @@ export function CartSheet({
   chargeLabel,
   chargeTotal,
   blockedReason,
+  discountLines = [],
+  onAddDiscount,
+  onRemoveDiscount,
 }: CartSheetProps) {
   const hasItems = lines.length > 0;
   const activeType = orderTypes.find((type) => type.id === orderTypeId);
@@ -137,6 +147,39 @@ export function CartSheet({
                 <Text style={styles.totalLabel}>Service charge</Text>
                 <Text style={styles.totalValue}>{formatPeso(totals.serviceCharge)}</Text>
               </View>
+            )}
+
+            {/*
+              One row per discount, each removable. Shown individually rather
+              than as a single "Discount" figure so the cashier can tell a
+              customer which code did what, and undo the right one.
+            */}
+            {discountLines.map((line, index) => (
+              <TouchableOpacity
+                key={`${line.label}-${index}`}
+                style={styles.totalRow}
+                onPress={onRemoveDiscount ? () => onRemoveDiscount(line) : undefined}
+                disabled={!onRemoveDiscount}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${line.label}`}
+              >
+                <Text style={[styles.totalLabel, styles.discountLabel]} numberOfLines={1}>
+                  {line.label}
+                </Text>
+                <Text style={[styles.totalValue, styles.discountValue]}>
+                  −{formatPeso(line.amount)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            {onAddDiscount && (
+              <TouchableOpacity
+                style={styles.addDiscount}
+                onPress={onAddDiscount}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addDiscountText}>+ Add discount</Text>
+              </TouchableOpacity>
             )}
           </View>
         </>
@@ -265,6 +308,10 @@ const styles = StyleSheet.create({
   totalRow: { flexDirection: "row", justifyContent: "space-between" },
   totalLabel: { ...typography.caption, color: colors.textSecondary },
   totalValue: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
+  discountLabel: { flex: 1, marginRight: spacing.sm },
+  discountValue: { color: colors.success },
+  addDiscount: { paddingTop: spacing.xs },
+  addDiscountText: { ...typography.caption, fontWeight: "600", color: colors.primary },
   typeRow: { gap: spacing.sm, paddingVertical: spacing.sm },
   typeChip: {
     paddingHorizontal: spacing.lg,

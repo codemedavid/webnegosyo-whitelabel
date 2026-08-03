@@ -15,6 +15,7 @@
  */
 
 import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
+import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
 
@@ -64,6 +65,15 @@ export interface PosOrderContext {
   outlet?: OrderOutletContext | null;
   /** Any non-POS customerData the caller already assembled. */
   customerData?: Record<string, unknown>;
+  /**
+   * Vouchers and manual discounts already resolved by `pos-discount.ts`.
+   *
+   * Lines rather than codes, because the register prices locally — it has to
+   * work on a flaky connection at a counter. The redemption is still burned
+   * server-side, where the conditional UPDATE in `redeem_voucher()` is the real
+   * protection against over-redemption.
+   */
+  discounts?: readonly OrderDiscountLine[];
 }
 
 interface PosOrderItem {
@@ -93,6 +103,36 @@ export interface PosOrderArgs {
   paymentMethod: string;
   paymentMethodDetails?: string;
   items: PosOrderItem[];
+}
+
+/**
+ * The discount breakdown as it is stored, or nothing at all.
+ *
+ * Returns an empty object rather than `{ discount: null }` so an ordinary sale
+ * carries no discount key — the overwhelming majority of them.
+ *
+ * `discountTotal` is the amount ACTUALLY taken off, already capped by
+ * `cartTotals`, not the sum requested. A voucher worth more than the sale makes
+ * it free, never a payout, and the stored breakdown must say what really
+ * happened rather than what was asked for.
+ */
+function discountBlob(
+  discounts: readonly OrderDiscountLine[] | undefined,
+  discountTotal: number,
+): Record<string, unknown> {
+  if (!discounts || discounts.length === 0 || discountTotal <= 0) return {};
+
+  return {
+    discount: {
+      total: discountTotal,
+      // Always zero at a counter: a walk-in sale has no delivery to discount.
+      deliveryDiscount: 0,
+      lines: discounts.filter((line) => Number.isFinite(line.amount) && line.amount > 0),
+      // Per-line allocation is a checkout concern (partial refunds of a
+      // delivered order). A counter sale is refunded whole.
+      allocationsByLine: {},
+    },
+  };
 }
 
 /** Drop undefined keys so the blob stays readable in the Convex dashboard. */
@@ -148,7 +188,11 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     throw new Error("Cannot complete a sale with an empty cart.");
   }
 
-  const { total, itemCount } = cartTotals(cart, serviceCharge);
+  const { total, itemCount, discountTotal } = cartTotals(
+    cart,
+    serviceCharge,
+    context.discounts,
+  );
 
   if (tender.isCash && !computeChange(total, tender.cashTendered ?? 0).isSufficient) {
     throw new Error("Insufficient cash tendered for this sale.");
@@ -161,6 +205,9 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
       // The branch is stamped by the register, not accepted from the caller,
       // so a counter sale is always attributable to the till that rang it.
       ...withOrderOutlet(context.customerData, context.outlet),
+      // Spread before `pos` so a discount can never displace the payment
+      // payload — both live in this blob and both are needed to settle a sale.
+      ...discountBlob(context.discounts, discountTotal),
       pos: paymentPayload(tender, context.cashierId),
     },
     total,

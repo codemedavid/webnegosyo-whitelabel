@@ -10,6 +10,9 @@ export function getPaymentTermLabel(paymentTerm: PaymentTerm): string {
     case 'full_payment':
       return 'Full Payment'
     default:
-      return paymentTerm
+      // The column is nullable. An unknown term is still worth showing raw —
+      // a term added by a later migration should not go invisible — but a
+      // missing one must render as nothing, not as "null".
+      return paymentTerm ?? ''
   }
 }

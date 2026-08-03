@@ -5,6 +5,8 @@ import { Clock, CheckCircle, XCircle, ShoppingBag, Package, Truck, UtensilsCross
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
+import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { readOrderDiscount } from '@/lib/order-discount'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import type { OrderWithItems } from '@/lib/orders-service'
 
@@ -107,12 +109,6 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               })()}
             </div>
           )}
-          {order.delivery_fee && Number(order.delivery_fee) > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Delivery Fee:</span>
-              <span className="font-medium">{formatPrice(Number(order.delivery_fee))}</span>
-            </div>
-          )}
           {order.lalamove_quotation_id && (
             <div className="flex items-center gap-2 text-sm">
               <Truck className="h-4 w-4 text-blue-600" />
@@ -146,10 +142,44 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             <span className="text-muted-foreground">Items:</span>
             <span className="font-medium">{itemCount}</span>
           </div>
-          <div className="flex justify-between text-sm font-semibold">
-            <span>Total:</span>
-            <span>{formatPrice(Number(order.total))}</span>
-          </div>
+          {/*
+            The delivery fee moved down here from above the Lalamove block so
+            the money reads as one run. Without the discount rows a voucher was
+            invisible on this card: the merchant saw a smaller total and no way
+            to tell whether it was a discount or a shortfall.
+          */}
+          {orderSummaryRows({
+            subtotal: order.order_items.reduce(
+              (sum, item) => sum + Number(item.subtotal ?? 0),
+              0,
+            ),
+            deliveryFee: Number(order.delivery_fee) || 0,
+            discount: readOrderDiscount(order),
+            total: Number(order.total),
+          }).map((row, index) => (
+            <div
+              key={`${row.kind}-${index}`}
+              className={
+                row.kind === 'total'
+                  ? 'flex justify-between text-sm font-semibold'
+                  : 'flex justify-between text-sm'
+              }
+            >
+              <span className={row.kind === 'total' ? undefined : 'text-muted-foreground'}>
+                {row.label}:
+              </span>
+              <span
+                className={
+                  row.kind === 'discount'
+                    ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                    : 'font-medium'
+                }
+              >
+                {row.kind === 'discount' ? '−' : ''}
+                {formatPrice(row.amount)}
+              </span>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
