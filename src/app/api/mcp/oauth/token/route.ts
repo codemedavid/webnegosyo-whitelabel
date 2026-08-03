@@ -24,7 +24,12 @@ async function readParams(req: Request): Promise<Record<string, string>> {
   }
   const form = await req.formData()
   const out: Record<string, string> = {}
-  for (const [k, v] of form.entries()) out[k] = typeof v === 'string' ? v : ''
+  // Iterated through the entry tuples rather than `form.entries()`: this
+  // project's TS lib does not declare `entries` on FormData, and the build
+  // fails on it even though the runtime has it.
+  for (const [k, v] of form as unknown as Iterable<[string, FormDataEntryValue]>) {
+    out[k] = typeof v === 'string' ? v : ''
+  }
   return out
 }
 
