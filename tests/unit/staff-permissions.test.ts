@@ -33,6 +33,9 @@ describe('staff permission registry', () => {
       // Separate from 'orders', which only advances status.
       'order_edit',
       'order_refund',
+      // Vouchers: a standing discount on the merchant's own revenue, kept off
+      // 'menu' so it is not handed to everyone who can rename a dish.
+      'vouchers',
     ])
   })
 
