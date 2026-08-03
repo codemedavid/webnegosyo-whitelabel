@@ -14,7 +14,7 @@ import { router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
-import { hasLiveOrderBackend } from "../../lib/order-backend";
+import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { listAllPaymentMethods, listPaymentMethods } from "../../lib/pos-catalog";
@@ -32,6 +32,7 @@ import { buildPosOrder } from "../../lib/pos-order";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
@@ -332,6 +333,31 @@ export default function PosTenderScreen() {
         );
       }
 
+      // Roll the sale into its guest's profile. Same reasoning as depletion
+      // above: counter sales reach none of the web app's order actions, which
+      // are the only places customer capture is wired, so without this a POS
+      // sale is invisible to the Regulars list. Skips itself for an anonymous
+      // walk-in, and never throws.
+      if (tenantId) {
+        await notifyCustomerCapture(tenantId, {
+          backend: resolveOrderBackend({
+            order_backend: orderBackend,
+            convex_deployment_url: convexUrl,
+          }),
+          orderId: String(orderId),
+          name: args.customerName,
+          contact: args.customerContact,
+          customerData: args.customerData,
+          total: args.total,
+          createdAt: new Date().toISOString(),
+          channel: args.orderType ?? null,
+          items: lines.map((line) => ({
+            name: line.name,
+            quantity: line.quantity,
+          })),
+        });
+      }
+
       if (hasPrinter) {
         await printOrder({
           _id: String(orderId),
@@ -390,6 +416,11 @@ export default function PosTenderScreen() {
     // up against a stale (or absent) branch.
     outletId,
     outletName,
+    // Which backend wrote the order, which decides how its guest is captured.
+    // Listed for the same reason as the branch: a session that resolves its
+    // backend late must not keep capturing sales against a stale answer.
+    convexUrl,
+    orderBackend,
     createOrder,
     updatePaymentStatus,
     hasPrinter,
