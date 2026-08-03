@@ -121,22 +121,65 @@ was always correct. (1) and (2) were real.
 tests. The voucher modules remain at 100% statements/lines apart from the
 type-only `types.ts`, which has no runtime code.
 
+## Second pass: the write paths
+
+The guardrail had been extended to `src/app/actions/orders.ts` but still did
+not cover a single place where the total is **persisted**. Adding the three
+write paths to `MONEY_BEARING_FILES` failed immediately:
+
+```
+src/lib/orders-service.ts:517         (platform Supabase)
+src/lib/orders-service.ts:722         (Convex)
+src/lib/tenant-supabase-orders.ts:145 (per-tenant Supabase)
+```
+
+Three order backends, three private copies of `subtotal + deliveryFee +
+serviceCharge`. All three now go through `computeOrderTotals` and take an
+optional `discounts` list, so a voucher reaches the row that is actually
+billed rather than only the screen. Behaviour is unchanged today — nothing
+passes `discounts` yet.
+
+`priceOrderWithVouchers` (`src/lib/vouchers/order-pricing.ts`) is the
+authoritative pricing function, with 11 tests. It has **no parameter for a
+client-supplied discount amount**; it takes codes and recomputes, mirroring how
+`createOrderAction` already re-validates the delivery fee and outlet id. One
+test feeds it `discountTotal`, `discount_total` and `discount` fields set to
+the full order value and asserts they are ignored.
+
+`validateVoucherAction` (`src/app/actions/vouchers.ts`) is the read-only
+preview. It uses the **server** clock, so a browser with a shifted clock cannot
+revive an expired voucher, and reads through the service-role client because
+`vouchers` has no anon RLS policy by design.
+
+| Stage | Commit |
+|---|---|
+| RED — order pricing | `77862ec` |
+| GREEN — order pricing | `d6b39a9` |
+| RED — guardrail on the write paths | `2f31fde` |
+| GREEN — write paths + validateVoucherAction | `d604a78` |
+
 ## What is NOT done (rest of Phase 3b)
 
 Nothing in this stage is reachable from the running product yet — no UI calls
 any of it, so the shipped behaviour is unchanged apart from the merchant email
 total and the payment-term label.
 
-1. **`validateVoucherAction`** — the `'use server'` wrapper around
-   `buildVoucherPreview`. Needs tenant resolution and Zod input validation.
-   Note the `'use server'` type re-export hazard: `export type { X }` in such a
-   file throws at build while `tsc` and Jest stay green.
-2. **Authoritative re-pricing inside `createOrderAction`** — accept codes,
-   ignore any client-sent amount, recompute, persist via `writeOrderDiscount`,
-   then call `redeemVoucher` after the order row exists so the unique
+**One connective step remains.** Every piece exists and is tested; nothing
+calls them together yet. `createOrderAction` needs to:
+
+1. take a `voucherCodes?: string[]` parameter (append it — the signature is
+   positional, 16 params deep);
+2. load a `categoryByMenuItemId` map when codes are present, so
+   category-scoped vouchers match (an absent map matches nothing by design);
+3. call `priceOrderWithVouchers`, then pass `application.discountLines` as the
+   new `discounts` argument on all three backend calls;
+4. persist the breakdown with `writeOrderDiscount` into `customerData`;
+5. call `redeemVoucher` **after** the order row exists, so a failure cannot
+   burn a use for an order that was never saved, and the unique
    `(voucher_id, order_id)` index makes a retry a no-op.
-3. **`checkout_lead_status_history`** — decide whether to add the table or drop
-   the panel.
+
+Also still open: **`checkout_lead_status_history`** — decide whether to add the
+table or drop the panel.
 
 ## Checkpoint commits
 
