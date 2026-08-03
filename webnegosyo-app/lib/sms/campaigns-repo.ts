@@ -109,15 +109,38 @@ export async function listCampaignRows(tenantId: string): Promise<CampaignRow[]>
   return (data ?? []) as unknown as CampaignRow[];
 }
 
+/**
+ * Write a new campaign and hand back its id.
+ *
+ * **Saved live, not as a draft.** The column default is `draft`, and
+ * `computeCampaignDueStates` only ever marks an ACTIVE campaign due — so a
+ * campaign written without a status sits there forever: never due, never
+ * announced, never sent, with nothing on screen explaining why. A merchant who
+ * filled in a schedule has already said what they want. Retiring a campaign is
+ * still explicit, via pause or archive.
+ *
+ * The id is returned because the editor needs somewhere to go: its Send block
+ * renders only for a campaign that has one.
+ */
 export async function createCampaign(
   tenantId: string,
   draft: CampaignDraft
-): Promise<void> {
-  const { error } = await supabase
+): Promise<string> {
+  const { data, error } = await supabase
     .from("sms_campaigns")
-    .insert({ tenant_id: tenantId, ...draftToRow(draft) });
+    .insert({ tenant_id: tenantId, status: "active", ...draftToRow(draft) })
+    .select("id")
+    .single();
 
   if (error) throw new Error(error.message);
+
+  // An insert that comes back with no row is not a success with a missing
+  // detail — the editor would navigate to a campaign that may not exist, and
+  // report a save that cannot be proven. Fail where it happened.
+  const id = (data as { id?: string } | null)?.id;
+  if (!id) throw new Error("The campaign was not saved. Try again.");
+
+  return id;
 }
 
 export async function updateCampaign(id: string, draft: CampaignDraft): Promise<void> {

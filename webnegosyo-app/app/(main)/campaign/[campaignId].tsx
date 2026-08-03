@@ -11,7 +11,17 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useAuthStore } from "../../../stores/auth-store";
+import { campaignHref } from "../../../lib/navigation";
+import {
+  dateFieldToDate,
+  dateToDateField,
+  dateToTimeField,
+  timeFieldToDate,
+} from "../../../lib/sms/date-fields";
 import {
   EMPTY_CAMPAIGN_DRAFT,
   describeCampaignCost,
@@ -86,6 +96,8 @@ export default function CampaignEditorScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [dueAt, setDueAt] = useState<Date | null>(null);
   const [status, setStatus] = useState<CampaignStatus>("draft");
+  const [openPicker, setOpenPicker] = useState<PickerField | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [isTesting, setIsTesting] = useState(false);
   const [testOutcome, setTestOutcome] = useState<string | null>(null);
@@ -186,13 +198,52 @@ export default function CampaignEditorScreen() {
   const patch = (changes: Partial<CampaignDraft>) =>
     setDraft((current) => ({ ...current, ...changes }));
 
+  /**
+   * Apply whatever the calendar or clock came back with.
+   *
+   * The draft still stores `YYYY-MM-DD` and `HH:MM` — `date-fields.ts` does the
+   * conversion, and does it off the local clock rather than UTC, which is what
+   * keeps a Manila evening from being filed under yesterday.
+   */
+  const applyPicked = (event: DateTimePickerEvent, picked?: Date) => {
+    const field = openPicker;
+    // Android shows this as a dialog; closing it first keeps a re-tap working
+    // even when the merchant dismisses without choosing.
+    setOpenPicker(null);
+    if (event.type === "dismissed" || !picked || !field) return;
+
+    if (field === "date") patch({ scheduleDate: dateToDateField(picked) });
+    else if (field === "time") patch({ scheduleTime: dateToTimeField(picked) });
+    else if (field === "quietStart") patch({ quietHoursStart: dateToTimeField(picked) });
+    else patch({ quietHoursEnd: dateToTimeField(picked) });
+  };
+
+  /**
+   * Save, and stay on the campaign that was just saved.
+   *
+   * Going back to the list after a save is what made "Send now is not
+   * available" true: the whole Send block is gated on the campaign having an
+   * id, so a merchant who created a campaign was returned to a list without
+   * ever seeing the button. Replacing the route with the real id puts them on
+   * the saved campaign, with Send right there.
+   */
   const save = async () => {
     if (!tenantId || !validation.isValid) return;
     setIsSaving(true);
     try {
-      if (isNew) await createCampaign(tenantId, draft);
-      else await updateCampaign(String(campaignId), draft);
-      router.back();
+      if (isNew) {
+        const newId = await createCampaign(tenantId, draft);
+        // replace, not push: going back should return to the list, not to an
+        // empty create form that would save a second copy.
+        router.replace(campaignHref(newId));
+        return;
+      }
+      await updateCampaign(String(campaignId), draft);
+      setSavedAt(new Date().toLocaleTimeString("en-PH", {
+        hour: "numeric",
+        minute: "2-digit",
+      }));
+      await load();
     } catch (error) {
       Alert.alert("Could not save", error instanceof Error ? error.message : "Try again.");
     } finally {
@@ -401,6 +452,76 @@ export default function CampaignEditorScreen() {
       </View>
 
       {/*
+        Sending sits here, above the audience and the schedule, because it is
+        the action the merchant opened this screen for. It used to be the very
+        last thing on a long scroll, under status and quiet hours — which is a
+        large part of why "the send now button is not available" was true.
+      */}
+      {!isNew && (
+        <View style={styles.sendBox}>
+          <Text style={styles.sectionTitle}>Send</Text>
+
+          <Text style={styles.hint}>
+            {dueAt
+              ? "This campaign is due now."
+              : "You can send this straight away — it does not have to wait for its schedule."}
+          </Text>
+
+          {run.isRunning && run.progress ? (
+            <View style={styles.progressRow}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.hint}>
+                Sending {run.progress.attempted} of {run.progress.total}…
+              </Text>
+              <TouchableOpacity onPress={run.cancel}>
+                <Text style={styles.cancelText}>Stop</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  !sendNowDecision.canSend && styles.buttonDisabled,
+                ]}
+                onPress={sendNow}
+                disabled={!sendNowDecision.canSend}
+                accessibilityRole="button"
+              >
+                <Text style={styles.primaryButtonText}>
+                  Send now to {audience.recipients.length} guests
+                </Text>
+              </TouchableOpacity>
+              {/*
+                Why the button is dead. This was grey hint text under a greyed
+                button, which reads as a broken app rather than an answer — so
+                it is a notice now, and the one blocker a merchant can actually
+                do something about gets a way through.
+              */}
+              {!sendNowDecision.canSend && (
+                <View style={styles.notice}>
+                  <Text style={styles.noticeText}>{sendNowDecision.message}</Text>
+                  {sendNowDecision.block === "no_audience" && (
+                    <TouchableOpacity
+                      onPress={() => router.push("/(main)/customers")}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.linkText}>
+                        Record who agreed to texts →
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+
+          {run.result && <RunSummary result={run.result} />}
+          {run.error && <Text style={styles.errorText}>{run.error}</Text>}
+        </View>
+      )}
+
+      {/*
         Available on a brand-new, unsaved campaign on purpose. Everything below
         this point — audience, schedule, activation — is guesswork until the
         merchant has seen one of these messages land on a real handset.
@@ -504,13 +625,11 @@ export default function CampaignEditorScreen() {
       </View>
 
       {draft.scheduleKind === "one_off" && (
-        <Field label="Date (YYYY-MM-DD)" error={validation.errors.scheduleDate}>
-          <TextInput
-            style={styles.input}
-            value={draft.scheduleDate ?? ""}
-            onChangeText={(scheduleDate) => patch({ scheduleDate: scheduleDate || null })}
-            placeholder={today}
-            placeholderTextColor={colors.textTertiary}
+        <Field label="Date" error={validation.errors.scheduleDate}>
+          <PickerRow
+            value={draft.scheduleDate}
+            placeholder="Pick a date"
+            onPress={() => setOpenPicker("date")}
           />
         </Field>
       )}
@@ -553,20 +672,39 @@ export default function CampaignEditorScreen() {
         </Field>
       )}
 
-      <Field label="Send at (24-hour)" error={validation.errors.scheduleTime}>
-        <TextInput
-          style={styles.input}
+      <Field label="Send at" error={validation.errors.scheduleTime}>
+        <PickerRow
           value={draft.scheduleTime}
-          onChangeText={(scheduleTime) => patch({ scheduleTime })}
-          placeholder="10:00"
-          placeholderTextColor={colors.textTertiary}
+          placeholder="Pick a time"
+          onPress={() => setOpenPicker("time")}
         />
       </Field>
 
+      <Text style={styles.sectionTitle}>Quiet hours</Text>
       <Text style={styles.hint}>
-        Nothing sends between {draft.quietHoursStart} and {draft.quietHoursEnd}. A message
-        scheduled inside those hours waits until morning.
+        A SCHEDULED message landing inside these hours waits until morning. Sending by
+        hand is still your call — you will be told, not stopped.
       </Text>
+      <View style={styles.quietRow}>
+        <View style={styles.quietCell}>
+        <Field label="From">
+          <PickerRow
+            value={draft.quietHoursStart}
+            placeholder="21:00"
+            onPress={() => setOpenPicker("quietStart")}
+          />
+        </Field>
+        </View>
+        <View style={styles.quietCell}>
+        <Field label="Until">
+          <PickerRow
+            value={draft.quietHoursEnd}
+            placeholder="08:00"
+            onPress={() => setOpenPicker("quietEnd")}
+          />
+        </Field>
+        </View>
+      </View>
 
       <TouchableOpacity
         style={[styles.primaryButton, !validation.isValid && styles.buttonDisabled]}
@@ -577,6 +715,14 @@ export default function CampaignEditorScreen() {
           {isSaving ? "Saving…" : isNew ? "Create campaign" : "Save changes"}
         </Text>
       </TouchableOpacity>
+      {/*
+        A save used to be acknowledged only by the screen disappearing, which is
+        indistinguishable from a crash. Now it says so, on the screen you are
+        still standing on.
+      */}
+      {savedAt && !isSaving && (
+        <Text style={styles.savedText}>Saved at {savedAt}.</Text>
+      )}
 
       {!isNew && (
         <View style={styles.sendBox}>
@@ -612,51 +758,26 @@ export default function CampaignEditorScreen() {
         </View>
       )}
 
-      {!isNew && (
-        <View style={styles.sendBox}>
-          <Text style={styles.sectionTitle}>Send</Text>
-
-          <Text style={styles.hint}>
-            {dueAt
-              ? "This campaign is due now."
-              : "You can send this straight away — it does not have to wait for its schedule."}
-          </Text>
-
-          {run.isRunning && run.progress ? (
-            <View style={styles.progressRow}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.hint}>
-                Sending {run.progress.attempted} of {run.progress.total}…
-              </Text>
-              <TouchableOpacity onPress={run.cancel}>
-                <Text style={styles.cancelText}>Stop</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  !sendNowDecision.canSend && styles.buttonDisabled,
-                ]}
-                onPress={sendNow}
-                disabled={!sendNowDecision.canSend}
-                accessibilityRole="button"
-              >
-                <Text style={styles.primaryButtonText}>
-                  Send now to {audience.recipients.length} guests
-                </Text>
-              </TouchableOpacity>
-              {/* Why the button is dead, rather than leaving it inert and silent. */}
-              {!sendNowDecision.canSend && (
-                <Text style={styles.hint}>{sendNowDecision.message}</Text>
-              )}
-            </>
+      {openPicker === "date" && (
+        <DateTimePicker
+          mode="date"
+          value={dateFieldToDate(draft.scheduleDate, new Date())}
+          onChange={applyPicked}
+        />
+      )}
+      {openPicker !== null && openPicker !== "date" && (
+        <DateTimePicker
+          mode="time"
+          is24Hour
+          value={timeFieldToDate(
+            openPicker === "time"
+              ? draft.scheduleTime
+              : openPicker === "quietStart"
+                ? draft.quietHoursStart
+                : draft.quietHoursEnd
           )}
-
-          {run.result && <RunSummary result={run.result} />}
-          {run.error && <Text style={styles.errorText}>{run.error}</Text>}
-        </View>
+          onChange={applyPicked}
+        />
       )}
     </ScrollView>
   );
@@ -710,6 +831,33 @@ function Field({
   );
 }
 
+/** Which of the four date/time fields the open picker is editing. */
+type PickerField = "date" | "time" | "quietStart" | "quietEnd";
+
+/**
+ * A field that opens a picker instead of asking for a typed string.
+ *
+ * Looks like the text inputs around it on purpose — the merchant should not
+ * have to learn that two of these fields behave differently.
+ */
+function PickerRow({
+  value,
+  placeholder,
+  onPress,
+}: {
+  value: string | null;
+  placeholder: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.input} onPress={onPress} accessibilityRole="button">
+      <Text style={value ? styles.pickerValue : styles.pickerPlaceholder}>
+        {value || placeholder}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function Chip({
   label,
   isActive,
@@ -754,6 +902,17 @@ const styles = StyleSheet.create({
   },
   textarea: { minHeight: 96, textAlignVertical: "top" },
   hint: { ...typography.small, color: colors.textSecondary, lineHeight: 17 },
+  pickerValue: { ...typography.body, color: colors.textPrimary },
+  pickerPlaceholder: { ...typography.body, color: colors.textTertiary },
+  quietRow: { flexDirection: "row", gap: spacing.md },
+  quietCell: { flex: 1 },
+  linkText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  savedText: { ...typography.small, color: colors.success, fontWeight: "600" },
   costBox: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,

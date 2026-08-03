@@ -329,7 +329,7 @@ describe("createCampaign / updateCampaign", () => {
   };
 
   it("stamps the tenant onto a new campaign", async () => {
-    queued = [{ data: null, error: null }];
+    queued = [{ data: { id: "c-1" }, error: null }];
 
     await createCampaign("tenant-1", draft);
 
@@ -339,7 +339,7 @@ describe("createCampaign / updateCampaign", () => {
   });
 
   it("trims the name so a stray space cannot create a near-duplicate", async () => {
-    queued = [{ data: null, error: null }];
+    queued = [{ data: { id: "c-1" }, error: null }];
 
     await createCampaign("tenant-1", draft);
 
