@@ -140,6 +140,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   branding: 'store_setup',
   'hero-designer': 'store_setup',
   customers: 'customers',
+  vouchers: 'vouchers',
 }
 
 /**
