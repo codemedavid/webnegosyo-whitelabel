@@ -94,6 +94,29 @@ at the type level rather than silent.
 | 13 | Losing the discount produces a collectable balance | `…:asks the customer for the difference once the discount is lost` | unit | PASS |
 | 14 | The bill as placed shows until the lookup returns | `…:keeps the discount while the vouchers are still unfetched` | unit | PASS |
 
+## A regression this phase introduced, and caught
+
+Pulling the discount out of `carriedCharges` broke the SAVE path, which the
+first pass missed. `pos-tender.tsx` sent `serviceChargeAmount:
+editContext.carriedCharges` — correct only while that residue still absorbed
+the discount. Afterwards the screen subtracted the re-priced discount and the
+save did not, so **a discounted order edited and saved was re-billed at full
+price**, charging the customer back the discount they had been given.
+
+The money-wiring guardrail could not see it: `order-revise.ts` does call
+`revisedOrderTotal`, an approved owner of the arithmetic. The defect was in the
+ARGUMENT handed to it — a class of bug that guardrail is not shaped to catch.
+
+`lib/pos-edit-save-total.test.ts` now checks the seam directly, in two ways:
+
+- **Behaviourally** — `revisedOrderTotal(items, delivery, carriedChargesForSave)`
+  must reproduce `newTotal` exactly, which is what the mutation recomputes on
+  the other side.
+- **At the source** — the tender screen must not pass the raw residue.
+
+`editModeTotals` now derives `carriedChargesForSave` once, so the shown total
+and the saved one cannot disagree.
+
 ## Known gaps
 
 - **The wiring is untested**, as with all register screens: the store, the edit
@@ -102,12 +125,18 @@ at the type level rather than silent.
   pass on a real register**, specifically: edit a discounted order, remove the
   qualifying item, and confirm the total rises and the balance asks for the
   difference.
-- **The re-priced discount is not re-persisted on save.** The revise mutation
-  receives the new total via `serviceChargeAmount`, so the customer is charged
-  correctly, but the stored `discount` blob still describes the ORIGINAL
-  breakdown. A receipt reprinted after such an edit would show the old discount
-  lines against the new total. This is the most significant remaining gap in
-  the feature.
+- **The re-priced discount is not re-persisted on save, and cannot be from
+  here.** The customer is now charged correctly — the folded figure rides
+  `serviceChargeAmount` — but the stored `discount` blob still describes the
+  ORIGINAL breakdown, so a receipt reprinted after such an edit shows old
+  discount lines against the new total.
+
+  This is not an oversight that a bigger diff would fix: `ReviseOrderArgs` has
+  **no field** for a discount breakdown, and that signature belongs to a Convex
+  function deployed per tenant. Closing it means changing the mutation and
+  rolling it to every tenant deployment (see the tenant deploy pipeline), not
+  editing this codebase. Recorded here so the next person does not go looking
+  for a client-side fix that does not exist.
 - **A redemption is not returned when a voucher is dropped by an edit.** The
   usage count stays spent even though the discount no longer applies. Arguably
   correct — the customer did use it — but it is a decision nobody has made
@@ -123,3 +152,5 @@ at the type level rather than silent.
 | RED — an edited order double-counts its discount | `c72771c` |
 | GREEN — discount leaves the carried residue | `d48db93` |
 | GREEN — vouchers fetched so the edit can re-price | `b7dd890` |
+| RED — an edited discounted order saves at full price | `3301974` |
+| GREEN — the saved total is the shown total | `3c8f495` |
