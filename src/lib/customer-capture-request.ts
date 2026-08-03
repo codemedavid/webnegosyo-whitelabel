@@ -49,8 +49,8 @@ export interface CustomerCaptureRequest {
   orderId: string
   name: string | null
   contact: string | null
-  /** Untyped blob; the shared resolver reads phone/email out of it structurally. */
-  customerData: unknown
+  /** Loose blob; the shared resolver reads phone/email out of it structurally. */
+  customerData: Record<string, unknown> | null
   total: number
   /** ISO string, epoch ms, or null when the server should stamp its own. */
   createdAt: string | number | null
@@ -94,6 +94,18 @@ function toCreatedAt(value: unknown): string | number | null {
   return trimmedOrNull(value)
 }
 
+/**
+ * The loose customer blob, narrowed to something the resolver can read.
+ *
+ * It looks for phone/email keys structurally, so a string or an array cannot
+ * carry an identity — passing one through only gives the resolver something
+ * more to defend against.
+ */
+function toCustomerData(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
 /** Well-formed lines only. One unreadable line must not cost the whole capture. */
 function toItems(value: unknown): CaptureItem[] {
   if (!Array.isArray(value)) return []
@@ -134,7 +146,7 @@ export function parseCustomerCaptureRequest(body: unknown): CustomerCaptureParse
       orderId,
       name: trimmedOrNull(raw.name),
       contact: trimmedOrNull(raw.contact),
-      customerData: raw.customerData ?? null,
+      customerData: toCustomerData(raw.customerData),
       total: toTotal(raw.total),
       createdAt: toCreatedAt(raw.createdAt),
       channel: trimmedOrNull(raw.channel),

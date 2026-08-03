@@ -149,6 +149,14 @@ describe('parseCustomerCaptureRequest — identity is resolved, never asserted',
     expect(parsed).not.toHaveProperty('customerId')
   })
 
+  it('nulls a customerData that is not an object', () => {
+    // The blob is read structurally downstream for phone/email keys. A string
+    // or an array cannot carry those, and passing one through only gives the
+    // resolver something to defend against.
+    expect(parseOk({ ...VALID, customerData: 'phone: 0917' }).customerData).toBeNull()
+    expect(parseOk({ ...VALID, customerData: ['0917'] }).customerData).toBeNull()
+  })
+
   it('accepts an order with no name at all', () => {
     // A phone-only sale is still a guest. Whether the contact identifies anybody
     // is the resolver's call, not this boundary's.
