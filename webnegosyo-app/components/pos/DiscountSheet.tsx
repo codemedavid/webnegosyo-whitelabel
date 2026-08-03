@@ -12,6 +12,7 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { validateManualDiscount, type ManualDiscount } from "../../lib/pos-discount";
 import { hasPermission, type StaffPermissionHolder } from "../../lib/staff-permissions";
 import { lookupVouchers } from "../../lib/voucher-service";
+import type { VoucherEntryVerdict } from "../../lib/pos-voucher-entry";
 import type { Voucher } from "../../lib/vouchers/types";
 
 interface DiscountSheetProps {
@@ -19,6 +20,8 @@ interface DiscountSheetProps {
   onClose: () => void;
   tenantId: string | null;
   user: StaffPermissionHolder;
+  /** Judges a found code against the sale before it is accepted. */
+  onCheckVoucher: (voucher: Voucher) => VoucherEntryVerdict;
   onApplyVoucher: (voucher: Voucher) => void;
   onApplyManual: (manual: ManualDiscount) => void;
 }
@@ -43,6 +46,7 @@ export function DiscountSheet({
   onClose,
   tenantId,
   user,
+  onCheckVoucher,
   onApplyVoucher,
   onApplyManual,
 }: DiscountSheetProps) {
@@ -85,6 +89,16 @@ export function DiscountSheet({
     // signal at the counter — is worth nothing rather than assumed valid.
     if (vouchers.length === 0) {
       setCodeError("That code could not be applied. Check it and try again.");
+      return;
+    }
+
+    // Existing is not the same as usable. A fully claimed, expired or
+    // wrong-branch code would otherwise be accepted here and then render no
+    // discount row, leaving the cashier watching the sheet close with nothing
+    // changed and no reason to give the customer.
+    const verdict = onCheckVoucher(vouchers[0]);
+    if (!verdict.isAccepted) {
+      setCodeError(verdict.message ?? "That code cannot be used on this sale.");
       return;
     }
 

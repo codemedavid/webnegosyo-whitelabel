@@ -97,6 +97,7 @@ export default function PosScreen() {
   const endEdit = usePosCartStore((s) => s.endEdit);
   const discount = usePosCartStore((s) => s.discount);
   const applyVoucher = usePosCartStore((s) => s.applyVoucher);
+  const checkVoucher = usePosCartStore((s) => s.checkVoucher);
   const removeVoucher = usePosCartStore((s) => s.removeVoucher);
   const setManualDiscount = usePosCartStore((s) => s.setManualDiscount);
   const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
@@ -542,6 +543,7 @@ export default function PosScreen() {
         onClose={() => setIsDiscountOpen(false)}
         tenantId={tenantId}
         user={{ role, isOwner, permissions }}
+        onCheckVoucher={checkVoucher}
         onApplyVoucher={applyVoucher}
         onApplyManual={(manual) => setManualDiscount(manual, { role, isOwner, permissions })}
       />

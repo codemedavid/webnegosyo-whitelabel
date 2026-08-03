@@ -33,6 +33,7 @@ import {
   type PosSessionDiscount,
 } from "../lib/pos-discount-session";
 import type { ManualDiscount } from "../lib/pos-discount";
+import { previewSessionVoucher, type VoucherEntryVerdict } from "../lib/pos-voucher-entry";
 import type { StaffPermissionHolder } from "../lib/staff-permissions";
 import type { Voucher } from "../lib/vouchers/types";
 
@@ -76,6 +77,8 @@ interface PosCartState {
   clearManualDiscount: () => void;
   /** Priced against the cart as it stands, never a remembered figure. */
   sessionDiscount: () => PosSessionDiscount;
+  /** Judges a code against this sale before it is accepted. */
+  checkVoucher: (voucher: Voucher) => VoucherEntryVerdict;
 
   /** Load a placed order into the register. Replaces the cart wholesale. */
   beginEdit: (entered: EnteredEditMode) => void;
@@ -156,6 +159,19 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     // branch would silently honour a voucher locked to another shop.
     const outletId = useAuthStore.getState().outletId;
     return sessionDiscount(discount, lines, charge, new Date(), outletId);
+  },
+
+  checkVoucher: (voucher) => {
+    const { lines, serviceCharge, discount } = get();
+    const { serviceCharge: charge } = cartTotals(lines, serviceCharge);
+    return previewSessionVoucher(
+      discount,
+      voucher,
+      lines,
+      charge,
+      new Date(),
+      useAuthStore.getState().outletId,
+    );
   },
 
   totals: () =>
