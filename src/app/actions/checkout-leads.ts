@@ -7,7 +7,6 @@ import {
   getCheckoutLeadByRef,
   updateCheckoutLeadStatus,
   uploadPaymentProof,
-  getCheckoutLeadHistory,
   type CreateCheckoutLeadInput,
 } from '@/lib/checkout-leads/checkout-leads-service'
 import {
@@ -75,11 +74,8 @@ export async function fetchCheckoutLeads(options: {
 
 export async function fetchCheckoutLeadDetail(id: string) {
   await verifySuperadmin()
-  const [lead, history] = await Promise.all([
-    getCheckoutLeadById(id),
-    getCheckoutLeadHistory(id),
-  ])
-  return { lead: lead.data, history: history.data }
+  const lead = await getCheckoutLeadById(id)
+  return { lead: lead.data }
 }
 
 export async function fetchCheckoutLeadByRef(ref: string) {
@@ -88,19 +84,10 @@ export async function fetchCheckoutLeadByRef(ref: string) {
 
 export async function changeCheckoutLeadStatus(
   leadId: string,
-  oldStatus: string,
-  newStatus: CheckoutLeadStatus,
-  userId?: string,
-  note?: string
+  newStatus: CheckoutLeadStatus
 ) {
   await verifySuperadmin()
-  return updateCheckoutLeadStatus(
-    leadId,
-    oldStatus as CheckoutLeadStatus,
-    newStatus,
-    userId,
-    note
-  )
+  return updateCheckoutLeadStatus(leadId, newStatus)
 }
 
 export async function submitPaymentProof(referenceNumber: string, paymentProofUrl: string) {

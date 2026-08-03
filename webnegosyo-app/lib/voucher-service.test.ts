@@ -1,0 +1,169 @@
+jest.mock("expo-constants", () => ({
+  default: {
+    expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } },
+  },
+}));
+
+const getSessionMock = jest.fn();
+jest.mock("./supabase", () => ({
+  supabase: { auth: { getSession: getSessionMock } },
+}));
+
+import { burnPosRedemptions, lookupVouchers } from "./voucher-service";
+import type { OrderDiscountLine } from "./order-totals";
+
+/**
+ * The register's two server-mediated voucher calls.
+ *
+ * The register prices vouchers locally so it survives a flaky counter
+ * connection, but two things it cannot do alone: read a merchant's vouchers
+ * (they are not on the phone) and burn a redemption (`redeem_voucher()` is
+ * service_role only). Both go through the web app, authenticated with the
+ * cashier's own session token.
+ *
+ * The burn is best-effort by the same reasoning as stock depletion: it runs
+ * behind a sale already rung up and paid for, and a register that refuses to
+ * close a tender because a burn failed is worse than a voucher count that
+ * drifts. `redeem_voucher()` is keyed on the order id, so a retry is a no-op
+ * rather than a second burn.
+ */
+
+const voucherLine = (voucherId: string, amount: number): OrderDiscountLine => ({
+  label: "WELCOME10",
+  amount,
+  voucherId,
+  code: "WELCOME10",
+});
+
+describe("burnPosRedemptions", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-1" } },
+    });
+  });
+
+  it("posts each voucher line to the redeem route with the session token", async () => {
+    // Arrange
+    const lines = [voucherLine("v-1", 20), voucherLine("v-2", 5)];
+
+    // Act
+    await burnPosRedemptions("t1", "order-1", lines, "outlet-9");
+
+    // Assert
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://webnegosyo.com/api/vouchers/redeem");
+    expect(init.headers.Authorization).toBe("Bearer token-1");
+    expect(JSON.parse(init.body)).toEqual({
+      tenantId: "t1",
+      orderId: "order-1",
+      channel: "pos",
+      outletId: "outlet-9",
+      redemptions: [
+        { voucherId: "v-1", amount: 20 },
+        { voucherId: "v-2", amount: 5 },
+      ],
+    });
+  });
+
+  it("ignores a manual discount, which redeems nothing", async () => {
+    // A cashier-entered discount has no voucher behind it, so there is no
+    // usage count to move.
+    await burnPosRedemptions("t1", "order-1", [
+      { label: "Discount — Damaged item", amount: 50 },
+    ]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not call the server when the sale had no discount at all", async () => {
+    await burnPosRedemptions("t1", "order-1", []);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends only the voucher lines when a sale mixes both kinds", async () => {
+    await burnPosRedemptions("t1", "order-1", [
+      voucherLine("v-1", 20),
+      { label: "Discount — Regular", amount: 10 },
+    ]);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).redemptions).toEqual([
+      { voucherId: "v-1", amount: 20 },
+    ]);
+  });
+
+  it("never throws when the network fails, because the sale is already paid", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+
+    await expect(
+      burnPosRedemptions("t1", "order-1", [voucherLine("v-1", 20)]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does nothing without a session rather than burning anonymously", async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+
+    await burnPosRedemptions("t1", "order-1", [voucherLine("v-1", 20)]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("lookupVouchers", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-1" } },
+    });
+  });
+
+  it("returns the vouchers the server resolved for the codes", async () => {
+    // Arrange
+    const voucher = { id: "v-1", code: "WELCOME10", discountType: "percent" };
+    fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ vouchers: [voucher] }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // Act
+    const result = await lookupVouchers("t1", ["WELCOME10"]);
+
+    // Assert
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://webnegosyo.com/api/vouchers/lookup");
+    expect(JSON.parse(init.body)).toEqual({ tenantId: "t1", codes: ["WELCOME10"] });
+    expect(result).toEqual([voucher]);
+  });
+
+  it("returns nothing when the lookup fails, so no discount is applied", async () => {
+    // A code that cannot be verified must be worth zero, never assumed valid.
+    fetchMock = jest.fn().mockRejectedValue(new Error("offline"));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(lookupVouchers("t1", ["WELCOME10"])).resolves.toEqual([]);
+  });
+
+  it("returns nothing when the server refuses the request", async () => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(lookupVouchers("t1", ["WELCOME10"])).resolves.toEqual([]);
+  });
+
+  it("does not call the server for an empty code list", async () => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(lookupVouchers("t1", [])).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

@@ -16,7 +16,7 @@
  */
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
@@ -33,6 +33,17 @@ import {
   formatScheduledFor,
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
+import { computeOrderTotals } from '@/lib/order-totals'
+import { validateVoucherAction } from '@/app/actions/vouchers'
+import {
+  addCode,
+  cartFingerprint,
+  discountLinesFrom,
+  isPreviewStale,
+  removeCode,
+  EMPTY_CHECKOUT_VOUCHER_STATE,
+  type CheckoutVoucherState,
+} from '@/lib/vouchers/checkout-codes'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
@@ -217,10 +228,111 @@ export function useCheckout(tenantSlug: string) {
   }
 
   // Derived totals shared by every design so they never recompute the fee/total rules.
+  // A fee quoted against a DIFFERENT address than the one currently typed is
+  // stale and must not be billed — the summary renders "—" for it, and the
+  // total has to agree.
   const validDeliveryFee = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address)
     ? deliveryFee
     : null
-  const grandTotal = total + (validDeliveryFee ?? 0) + serviceChargeAmount
+  // Vouchers. The preview is a rendering hint only — the server re-prices from
+  // the codes at order time — so it is dropped the moment the cart moves under
+  // it rather than shown stale.
+  const [voucherState, setVoucherState] = useState<CheckoutVoucherState>(
+    EMPTY_CHECKOUT_VOUCHER_STATE
+  )
+  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false)
+
+  const voucherFingerprint = cartFingerprint(
+    items.map((item) => ({ id: item.id, subtotal: item.subtotal })),
+    validDeliveryFee,
+    serviceChargeAmount
+  )
+
+  const { grandTotal } = computeOrderTotals({
+    subtotal: total,
+    deliveryFee: validDeliveryFee,
+    serviceCharge: serviceChargeAmount,
+    // A stale preview contributes nothing: the summary shows full price for a
+    // moment rather than a discount the server will not honour.
+    discounts: isPreviewStale(voucherState, voucherFingerprint)
+      ? []
+      : discountLinesFrom(voucherState.preview),
+  })
+
+  /**
+   * Re-prices whatever codes are currently entered.
+   *
+   * Runs on every code change and whenever the cart moves, because both change
+   * what a voucher is worth. Guarded on the fingerprint captured before the
+   * request so a slow reply cannot overwrite a newer cart.
+   */
+  const refreshVoucherPreview = useCallback(
+    async (codes: readonly string[], fingerprint: string) => {
+      if (codes.length === 0) {
+        setVoucherState({ codes: [], preview: null, previewFingerprint: null })
+        return
+      }
+
+      if (!tenant) return
+
+      setIsCheckingVoucher(true)
+      const result = await validateVoucherAction({
+        tenantId: tenant.id,
+        codes: [...codes],
+        lines: items.map((item) => ({
+          id: item.id,
+          menuItemId: item.menu_item.id,
+          categoryId: item.menu_item.category_id ?? null,
+          quantity: item.quantity,
+          subtotal: item.subtotal,
+        })),
+        deliveryFee: validDeliveryFee,
+        serviceCharge: serviceChargeAmount,
+        channel: 'checkout',
+        outletId: outlet.selectedOutletId ?? null,
+      })
+      setIsCheckingVoucher(false)
+
+      if (!result.success || !result.data) {
+        toast.error(result.error ?? 'Could not check that voucher')
+        return
+      }
+
+      setVoucherState((prev) => ({
+        ...prev,
+        preview: result.data ?? null,
+        previewFingerprint: fingerprint,
+      }))
+    },
+    [tenant, items, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
+  )
+
+  const applyVoucherCode = useCallback(
+    async (raw: string) => {
+      const next = addCode(voucherState, raw)
+      if (next === voucherState) return
+      setVoucherState(next)
+      await refreshVoucherPreview(next.codes, voucherFingerprint)
+    },
+    [voucherState, refreshVoucherPreview, voucherFingerprint]
+  )
+
+  const removeVoucherCode = useCallback(
+    async (raw: string) => {
+      const next = removeCode(voucherState, raw)
+      if (next === voucherState) return
+      setVoucherState(next)
+      await refreshVoucherPreview(next.codes, voucherFingerprint)
+    },
+    [voucherState, refreshVoucherPreview, voucherFingerprint]
+  )
+
+  // The cart moved under an applied code — re-price rather than show a
+  // discount the server will not honour.
+  useEffect(() => {
+    if (!isPreviewStale(voucherState, voucherFingerprint)) return
+    void refreshVoucherPreview(voucherState.codes, voucherFingerprint)
+  }, [voucherState, voucherFingerprint, refreshVoucherPreview])
 
   // Convenience: change the scheduled date and snap the time to the first valid slot.
   const handleScheduleDateChange = (date: string) => {
@@ -735,7 +847,10 @@ export function useCheckout(tenantSlug: string) {
         }
       }
 
-      const grandTotalForQr = total + serviceChargeAmount
+      // The same number the summary shows. Built separately it drifted: it
+      // omitted the delivery fee entirely, so a delivery order paid by QR
+      // asked for less than it billed, and it would have missed any discount.
+      const grandTotalForQr = grandTotal
 
       const payload: Omit<QrOrderPayloadV1, 'ck'> = {
         v: 1,
@@ -1143,7 +1258,9 @@ export function useCheckout(tenantSlug: string) {
                 reference: paymentProofReference || null,
               }
             : undefined,
-          selectedOutletId
+          selectedOutletId,
+          // Codes, not amounts. The server recomputes the discount from these.
+          [...voucherState.codes]
         ).then(result => {
           if (result.success) {
             // Track upsell conversions
@@ -1251,6 +1368,14 @@ export function useCheckout(tenantSlug: string) {
     deliveryFeeError,
     validDeliveryFee,
     grandTotal,
+    // vouchers
+    voucherCodes: voucherState.codes,
+    voucherPreview: isPreviewStale(voucherState, voucherFingerprint)
+      ? null
+      : voucherState.preview,
+    isCheckingVoucher,
+    applyVoucherCode,
+    removeVoucherCode,
     // advance order / scheduling
     advanceConfig,
     scheduleMode,

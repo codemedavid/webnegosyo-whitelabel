@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOrderTokenPair, type OrderTokenPair } from "@/lib/order-token";
 import { resolveOrderContact } from "@/lib/customer-identity";
+import {
+  computeOrderTotals,
+  type OrderDiscountLine,
+} from "@/lib/order-totals";
 
 /**
  * Order writes against a tenant's OWN Supabase project (`order_backend = 'supabase'`).
@@ -45,6 +49,11 @@ export interface TenantOrderInput {
   paymentMethodDetails?: string;
   paymentMethodQrCodeUrl?: string;
   serviceChargeAmount?: number;
+  /**
+   * Discount lines already priced by the server from voucher CODES — see
+   * `src/lib/vouchers/order-pricing.ts`. Never a client-supplied amount.
+   */
+  discounts?: readonly OrderDiscountLine[];
   scheduledForISO?: string;
   paymentProof?: {
     url?: string | null;
@@ -142,7 +151,12 @@ export function buildTenantOrderRow(
       ),
     customer_data: input.customerData ?? {},
     scheduled_for: input.scheduledForISO ?? null,
-    total: itemsTotal + deliveryFee + serviceCharge,
+    total: computeOrderTotals({
+      subtotal: itemsTotal,
+      deliveryFee,
+      serviceCharge,
+      discounts: input.discounts,
+    }).grandTotal,
     delivery_fee: deliveryFee,
     service_charge_amount: serviceCharge,
     lalamove_quotation_id: input.lalamoveQuotationId || null,

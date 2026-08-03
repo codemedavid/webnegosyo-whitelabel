@@ -7,7 +7,6 @@ import {
   Phone,
   Building2,
   FileText,
-  Clock,
   ImageIcon,
   User,
   Hash,
@@ -18,8 +17,6 @@ import {
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/components/superadmin/ui/format'
 import { fetchCheckoutLeadDetail, changeCheckoutLeadStatus } from '@/app/actions/checkout-leads'
 import { CheckoutLeadStatusBadge } from './checkout-lead-status-badge'
@@ -27,7 +24,6 @@ import { getPaymentTermLabel } from './payment-term'
 import type {
   CheckoutLeadStatus,
   CheckoutLeadWithPaymentMethod,
-  CheckoutLeadStatusHistory,
 } from '@/types/database'
 
 const ALL_STATUSES: { value: CheckoutLeadStatus; label: string }[] = [
@@ -58,10 +54,8 @@ export function CheckoutLeadDetailPanel({
   onStatusChange,
 }: CheckoutLeadDetailPanelProps) {
   const [lead, setLead] = useState<CheckoutLeadWithPaymentMethod | null>(null)
-  const [history, setHistory] = useState<CheckoutLeadStatusHistory[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
-  const [statusNote, setStatusNote] = useState('')
 
   const loadDetail = useCallback(async () => {
     if (!leadId) return
@@ -69,7 +63,6 @@ export function CheckoutLeadDetailPanel({
     try {
       const result = await fetchCheckoutLeadDetail(leadId)
       setLead(result.lead ?? null)
-      setHistory(result.history ?? [])
     } finally {
       setIsLoading(false)
     }
@@ -85,18 +78,11 @@ export function CheckoutLeadDetailPanel({
     if (!lead || newStatus === lead.status || isChangingStatus) return
     setIsChangingStatus(true)
     try {
-      const result = await changeCheckoutLeadStatus(
-        lead.id,
-        lead.status,
-        newStatus,
-        undefined,
-        statusNote || undefined
-      )
+      const result = await changeCheckoutLeadStatus(lead.id, newStatus)
       if (result.error) {
         toast.error(result.error)
       } else {
         toast.success(`Status changed to ${newStatus}`)
-        setStatusNote('')
         await loadDetail()
         onStatusChange()
       }
@@ -258,53 +244,11 @@ export function CheckoutLeadDetailPanel({
                 </SelectContent>
               </Select>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs text-white/55">Note (optional)</Label>
-                <Textarea
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  placeholder="Add a note about this status change…"
-                  rows={2}
-                  className="text-sm"
-                />
-              </div>
-
               {isChangingStatus && (
                 <div className="flex items-center gap-2 text-xs text-white/45">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Updating status…
                 </div>
-              )}
-            </div>
-
-            {/* Status history timeline */}
-            <div className="space-y-3">
-              <SectionLabel>History</SectionLabel>
-              {history.length === 0 ? (
-                <p className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white/45">
-                  No status changes yet
-                </p>
-              ) : (
-                <ol className="relative space-y-4 border-l border-white/10 pl-5">
-                  {history.map((entry) => (
-                    <li key={entry.id} className="relative">
-                      <span className="absolute -left-[1.4rem] top-1 flex h-3 w-3 items-center justify-center">
-                        <Clock className="h-3 w-3 text-white/35" />
-                      </span>
-                      <p className="text-xs text-white/70">
-                        <span className="text-white/45">{entry.old_status ?? 'new'}</span>
-                        <span className="mx-1 text-white/35">→</span>
-                        <span className="font-medium text-white">{entry.new_status}</span>
-                      </p>
-                      {entry.note && (
-                        <p className="mt-0.5 text-xs italic text-white/55">&quot;{entry.note}&quot;</p>
-                      )}
-                      <p className="mt-0.5 text-[11px] text-white/35">
-                        {new Date(entry.created_at).toLocaleString()}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
               )}
             </div>
 

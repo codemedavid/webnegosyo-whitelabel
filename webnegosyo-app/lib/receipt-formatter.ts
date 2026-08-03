@@ -1,3 +1,6 @@
+import { readOrderDiscount } from "./order-discount";
+import { orderSummaryRows } from "./order-summary-rows";
+
 interface ReceiptOrderItem {
   menuItemName: string;
   quantity: number;
@@ -29,6 +32,12 @@ interface ReceiptOrder {
   changeDue?: number;
   /** Transaction reference for a scanned e-wallet payment. */
   paymentReference?: string;
+  // --- Discounts (see lib/order-discount.ts) ---
+  // Untyped on purpose: the breakdown rides in a free-form blob on Convex and
+  // in a column on Postgres, and `readOrderDiscount` is what shape-checks it.
+  customerData?: unknown;
+  customer_data?: unknown;
+  discount_data?: unknown;
 }
 
 interface ReceiptConfig {
@@ -191,8 +200,13 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
     lines.push(leftRight("  Bundle Total:", `P${bundle.total.toFixed(2)}`, w));
   }
 
-  // Totals — validate computed subtotal against order.total
-  const expectedTotal = subtotal + (order.deliveryFee ?? 0);
+  // Totals — validate computed subtotal against order.total.
+  //
+  // The discount has to be part of this sum, not just a printed line: without
+  // it every discounted sale trips the warning, which trains merchants to
+  // ignore the one signal meant to catch real corruption.
+  const discount = readOrderDiscount(order);
+  const expectedTotal = subtotal + (order.deliveryFee ?? 0) - (discount?.total ?? 0);
   if (Math.abs(expectedTotal - order.total) > 0.01) {
     console.warn(
       `[Receipt] Subtotal mismatch: computed=${expectedTotal.toFixed(2)} vs order.total=${order.total.toFixed(2)} (order ${order._id})`
@@ -200,12 +214,39 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
   }
 
   lines.push(line("-", w));
-  if (order.deliveryFee && order.deliveryFee > 0) {
-    lines.push(leftRight("Subtotal:", `P${subtotal.toFixed(2)}`, w));
-    lines.push(leftRight("Delivery Fee:", `P${order.deliveryFee.toFixed(2)}`, w));
+
+  // Which rows appear — whether a subtotal is warranted, one line per
+  // discount, a remainder row for a discount no line accounts for — is decided
+  // by `orderSummaryRows`, shared with the order screens. Only the wording and
+  // the column layout are the receipt's own. A second copy of those rules is
+  // how a printed receipt and a screen start disagreeing about one sale.
+  const summaryRows = orderSummaryRows({
+    subtotal,
+    deliveryFee: order.deliveryFee,
+    discount,
+    total: order.total,
+  });
+
+  // The total is printed straight from `order.total` rather than through the
+  // shared rows. It is the backend's authoritative figure, and the money
+  // guardrail checks for it by name so a reader can see at a glance that the
+  // receipt never prints a recomputed total.
+  for (const row of summaryRows.filter((r) => r.kind !== "total")) {
+    if (row.kind === "discount") {
+      // The label is merchant-authored (a voucher name), so it is clipped to
+      // leave room for the amount rather than trusted to fit.
+      const amount = `-P${row.amount.toFixed(2)}`;
+      lines.push(
+        leftRight(truncate(row.label, Math.max(0, w - amount.length - 1)), amount, w),
+      );
+      continue;
+    }
+
+    const label = row.kind === "delivery" ? "Delivery Fee:" : "Subtotal:";
+    lines.push(leftRight(label, `P${row.amount.toFixed(2)}`, w));
   }
+
   lines.push(line("-", w));
-  // Always use order.total as the authoritative total
   lines.push(leftRight("TOTAL:", `P${order.total.toFixed(2)}`, w));
   if (order.paymentMethod) {
     lines.push(`Payment: ${order.paymentMethod}`);
