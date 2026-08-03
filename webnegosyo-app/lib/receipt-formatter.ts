@@ -1,4 +1,5 @@
 import { readOrderDiscount } from "./order-discount";
+import { orderSummaryRows } from "./order-summary-rows";
 
 interface ReceiptOrderItem {
   menuItemName: string;
@@ -213,34 +214,39 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
   }
 
   lines.push(line("-", w));
-  // A subtotal is printed whenever something sits between the items and the
-  // total. Otherwise the customer reads a discount with no stated starting
-  // point, and the receipt cannot be checked by adding it up.
-  const hasDelivery = Boolean(order.deliveryFee && order.deliveryFee > 0);
-  if (hasDelivery || discount) {
-    lines.push(leftRight("Subtotal:", `P${subtotal.toFixed(2)}`, w));
-  }
-  if (discount) {
-    for (const discountLine of discount.lines) {
+
+  // Which rows appear — whether a subtotal is warranted, one line per
+  // discount, a remainder row for a discount no line accounts for — is decided
+  // by `orderSummaryRows`, shared with the order screens. Only the wording and
+  // the column layout are the receipt's own. A second copy of those rules is
+  // how a printed receipt and a screen start disagreeing about one sale.
+  const summaryRows = orderSummaryRows({
+    subtotal,
+    deliveryFee: order.deliveryFee,
+    discount,
+    total: order.total,
+  });
+
+  // The total is printed straight from `order.total` rather than through the
+  // shared rows. It is the backend's authoritative figure, and the money
+  // guardrail checks for it by name so a reader can see at a glance that the
+  // receipt never prints a recomputed total.
+  for (const row of summaryRows.filter((r) => r.kind !== "total")) {
+    if (row.kind === "discount") {
       // The label is merchant-authored (a voucher name), so it is clipped to
       // leave room for the amount rather than trusted to fit.
-      const amount = `-P${discountLine.amount.toFixed(2)}`;
-      const label = truncate(discountLine.label, Math.max(0, w - amount.length - 1));
-      lines.push(leftRight(label, amount, w));
+      const amount = `-P${row.amount.toFixed(2)}`;
+      lines.push(
+        leftRight(truncate(row.label, Math.max(0, w - amount.length - 1)), amount, w),
+      );
+      continue;
     }
-    // A discount total that does not match its lines is still owed to the
-    // customer, so it is printed rather than dropped. Happens when a payload
-    // carries a delivery discount, which has no line of its own.
-    const lineSum = discount.lines.reduce((sum, l) => sum + l.amount, 0);
-    if (Math.abs(lineSum - discount.total) > 0.01) {
-      lines.push(leftRight("Discount:", `-P${(discount.total - lineSum).toFixed(2)}`, w));
-    }
+
+    const label = row.kind === "delivery" ? "Delivery Fee:" : "Subtotal:";
+    lines.push(leftRight(label, `P${row.amount.toFixed(2)}`, w));
   }
-  if (hasDelivery) {
-    lines.push(leftRight("Delivery Fee:", `P${(order.deliveryFee ?? 0).toFixed(2)}`, w));
-  }
+
   lines.push(line("-", w));
-  // Always use order.total as the authoritative total
   lines.push(leftRight("TOTAL:", `P${order.total.toFixed(2)}`, w));
   if (order.paymentMethod) {
     lines.push(`Payment: ${order.paymentMethod}`);
