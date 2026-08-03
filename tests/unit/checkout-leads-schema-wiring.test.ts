@@ -51,9 +51,12 @@ describe('checkout-leads schema wiring', () => {
   })
 
   it.each(MISSING_TABLES)(
-    'never references %s, which does not exist in the database',
+    'never queries %s, which does not exist in the database',
     (table) => {
-      const offenders = files.filter((file) => readFileSync(file, 'utf8').includes(table))
+      // Matches a real PostgREST reference — `.from('table')` — not the prose
+      // in a comment explaining why the table is deliberately not used.
+      const query = new RegExp(String.raw`\.from\(\s*['"\`]${table}['"\`]`)
+      const offenders = files.filter((file) => query.test(readFileSync(file, 'utf8')))
 
       expect(offenders.map((f) => f.replace(process.cwd() + '/', ''))).toEqual([])
     },

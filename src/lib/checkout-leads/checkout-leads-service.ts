@@ -1,4 +1,3 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendMetaConversionEvent } from '@/lib/meta-conversions'
 import {
@@ -10,26 +9,22 @@ import { generateReferenceNumber } from './reference-number'
 import type {
   CheckoutLead,
   CheckoutLeadStatus,
-  CheckoutLeadStatusHistory,
   CheckoutLeadWithPaymentMethod,
 } from '@/types/database'
 
-/**
- * `checkout_lead_status_history` DOES NOT EXIST in the database.
+/*
+ * Status history was removed on 2026-08-03.
  *
- * The old hand-patched `src/types/supabase.ts` declared it, so this compiled;
- * regenerating the types from the live schema (2026-08-03) removed it, and
- * `information_schema.columns` confirms there is no such table. Every insert
- * below has therefore always failed — swallowed by the `console.error` that
- * follows it — and every read has always returned `[]`, which is why the
- * superadmin detail panel's history list has only ever rendered empty.
+ * `checkout_lead_status_history` is declared in
+ * `supabase/migrations/20260405000001_checkout_leads.sql` but was never
+ * applied, so every write silently failed and every read returned `[]`. The
+ * superadmin panel rendered "No status changes yet" unconditionally — a
+ * stronger claim than the truth, which was that nothing could be recorded.
  *
- * The behaviour is preserved exactly as-is rather than quietly deleted. This
- * alias is the seam that keeps it compiling and keeps the decision visible:
- * either add the table in a migration, or drop the panel and these two calls.
- * Do not widen this into a general escape hatch for other tables.
+ * It was dropped rather than completed because the pipeline it audits has
+ * never been worked: all 69 leads sit at `initiated`. Restore it when someone
+ * actually moves leads through statuses, and apply the table first.
  */
-const missingStatusHistoryTable = (client: unknown) => client as SupabaseClient
 
 export interface CreateCheckoutLeadInput {
   name: string
@@ -158,10 +153,7 @@ export async function uploadPaymentProof(
 // Update status (superadmin)
 export async function updateCheckoutLeadStatus(
   leadId: string,
-  oldStatus: CheckoutLeadStatus | null,
-  newStatus: CheckoutLeadStatus,
-  changedBy?: string,
-  note?: string
+  newStatus: CheckoutLeadStatus
 ): Promise<MutationResult> {
   const supabase = createAdminClient()
 
@@ -171,26 +163,7 @@ export async function updateCheckoutLeadStatus(
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq('id', leadId)
 
-  if (updateError) return { error: updateError.message }
-
-  // Insert history record
-  // See `missingStatusHistoryTable` — this table does not exist, so this
-  // insert always fails and is always swallowed below.
-  const { error: historyError } = await missingStatusHistoryTable(supabase)
-    .from('checkout_lead_status_history')
-    .insert({
-      checkout_lead_id: leadId,
-      old_status: oldStatus,
-      new_status: newStatus,
-      changed_by: changedBy ?? null,
-      note: note ?? null,
-    })
-
-  if (historyError) {
-    console.error('Failed to insert status history:', historyError)
-  }
-
-  return { error: null }
+  return { error: updateError?.message ?? null }
 }
 
 // List checkout leads (superadmin, paginated)
@@ -255,19 +228,3 @@ export async function getCheckoutLeadById(
   return { data: data as CheckoutLeadWithPaymentMethod, error: null }
 }
 
-// Get status history for a checkout lead
-export async function getCheckoutLeadHistory(
-  leadId: string
-): Promise<{ data: CheckoutLeadStatusHistory[]; error: string | null }> {
-  const supabase = createAdminClient()
-  // See `missingStatusHistoryTable` — this table does not exist, so this read
-  // always errors and this function always returns an empty list.
-  const { data, error } = await missingStatusHistoryTable(supabase)
-    .from('checkout_lead_status_history')
-    .select('*')
-    .eq('checkout_lead_id', leadId)
-    .order('created_at', { ascending: false })
-
-  if (error) return { data: [], error: error.message }
-  return { data: (data ?? []) as CheckoutLeadStatusHistory[], error: null }
-}
