@@ -4,18 +4,27 @@ import { useState, useTransition } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { updateTenantMessengerModeAction, updateTenantMessengerRedirectEnabledAction } from '@/actions/tenants'
+import { Input } from '@/components/ui/input'
+import {
+    updateTenantMessengerModeAction,
+    updateTenantMessengerRedirectEnabledAction,
+    updateTenantMessengerUsernameAction,
+} from '@/actions/tenants'
+import { normalizeMessengerUsername } from '@/lib/messenger-username'
 import { toast } from 'sonner'
 
 interface MessengerModeCardProps {
     tenantId: string
     currentMode: 'webhook' | 'direct'
     currentRedirectEnabled: boolean
+    /** The m.me handle "direct" mode links to. Empty when never configured. */
+    currentUsername?: string
 }
 
-export function MessengerModeCard({ tenantId, currentMode, currentRedirectEnabled }: MessengerModeCardProps) {
+export function MessengerModeCard({ tenantId, currentMode, currentRedirectEnabled, currentUsername = '' }: MessengerModeCardProps) {
     const [mode, setMode] = useState<'webhook' | 'direct'>(currentMode)
     const [redirectEnabled, setRedirectEnabled] = useState<boolean>(currentRedirectEnabled)
+    const [username, setUsername] = useState<string>(currentUsername)
     const [isPending, startTransition] = useTransition()
 
     const handleToggleRedirect = (next: boolean) => {
@@ -38,6 +47,23 @@ export function MessengerModeCard({ tenantId, currentMode, currentRedirectEnable
                 toast.error(result.error)
             } else {
                 toast.success('Messenger redirect mode updated!')
+            }
+        })
+    }
+
+    const handleSaveUsername = () => {
+        // Normalize before sending so the merchant sees the stored handle, not the
+        // URL they pasted. The action re-normalizes — this is display, not trust.
+        const normalized = normalizeMessengerUsername(username)
+        // Send the raw value when it normalizes to nothing, so the server can tell
+        // "cleared the field" from "pasted something that isn't a page link".
+        startTransition(async () => {
+            const result = await updateTenantMessengerUsernameAction(tenantId, normalized || username)
+            if (result.error) {
+                toast.error(result.error)
+            } else {
+                setUsername(normalized)
+                toast.success('Messenger username saved')
             }
         })
     }
@@ -70,6 +96,26 @@ export function MessengerModeCard({ tenantId, currentMode, currentRedirectEnable
                         disabled={isPending}
                     />
                 </label>
+
+                <div className="space-y-2 p-4 rounded-lg border border-gray-200">
+                    <Label htmlFor="messenger_username">Messenger username</Label>
+                    <div className="flex gap-2">
+                        <Input
+                            id="messenger_username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            placeholder="islandsilog or https://m.me/islandsilog"
+                            disabled={isPending}
+                        />
+                        <Button onClick={handleSaveUsername} disabled={isPending} variant="outline">
+                            Save username
+                        </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        The handle in your page&apos;s m.me link. Used by the &quot;pre-filled message&quot;
+                        method below — paste the link and we&apos;ll pull the handle out.
+                    </p>
+                </div>
 
                 <div className={`space-y-3 ${redirectEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
                     <Label>Select redirect method:</Label>

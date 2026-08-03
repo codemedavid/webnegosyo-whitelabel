@@ -8,6 +8,7 @@ import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
+import { normalizeMessengerUsername } from '@/lib/messenger-username'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
 import { invalidateTenantCache } from '@/lib/cache'
@@ -711,6 +712,50 @@ export async function updateTenantFlashScreenForAdminAction(
   }
 
   return { success: true }
+}
+
+/**
+ * Allow tenant admins to set their own Messenger username (the m.me handle the
+ * "direct" redirect mode links to). Previously superadmin-only, which left a
+ * merchant who switched Facebook pages unable to fix their own checkout handoff.
+ *
+ * The handle is normalized before it is stored, so a pasted m.me/facebook.com URL
+ * never becomes part of the generated link.
+ */
+export async function updateTenantMessengerUsernameAction(
+  tenantId: string,
+  username: string
+) {
+  const supabase = await createClient()
+
+  // Verify caller is admin of this tenant (or superadmin)
+  await verifyTenantAdmin(tenantId)
+
+  const normalized = normalizeMessengerUsername(username)
+  if (username.trim() !== '' && normalized === '') {
+    return { error: 'That does not look like a Messenger username or page link.' }
+  }
+
+  const { data, error } = await supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints if local types differ
+    .update({ messenger_username: normalized || null } as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+    revalidatePath(`/${updated.slug}/checkout`)
+  }
+
+  return { success: true, messenger_username: normalized }
 }
 
 /**

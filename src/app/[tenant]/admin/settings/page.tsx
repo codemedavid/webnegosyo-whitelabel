@@ -159,6 +159,7 @@ export default async function SettingsPage({
               tenant.facebook_page_id ? 'webhook' : 'direct'
             )}
             currentRedirectEnabled={tenant.messenger_redirect_enabled ?? true}
+            currentUsername={tenant.messenger_username ?? ''}
           />
 
           {/* Operating Hours (drives advance-order scheduling slots) */}

@@ -59,12 +59,15 @@ describe('normalizeMessengerUsername', () => {
 
 // ---- Admin card -----------------------------------------------------------
 
-const updateMessengerModeAction = jest.fn()
-const updateMessengerUsernameAction = jest.fn()
+const updateTenantMessengerModeAction = jest.fn()
+const updateTenantMessengerRedirectEnabledAction = jest.fn()
+const updateTenantMessengerUsernameAction = jest.fn()
 
 jest.mock('@/actions/tenants', () => ({
-  updateMessengerModeAction: (...args: unknown[]) => updateMessengerModeAction(...args),
-  updateMessengerUsernameAction: (...args: unknown[]) => updateMessengerUsernameAction(...args),
+  updateTenantMessengerModeAction: (...args: unknown[]) => updateTenantMessengerModeAction(...args),
+  updateTenantMessengerRedirectEnabledAction: (...args: unknown[]) =>
+    updateTenantMessengerRedirectEnabledAction(...args),
+  updateTenantMessengerUsernameAction: (...args: unknown[]) => updateTenantMessengerUsernameAction(...args),
 }))
 
 jest.mock('next/navigation', () => ({
@@ -90,8 +93,8 @@ function renderCard(props: Record<string, unknown> = {}) {
 
 describe('MessengerModeCard — Messenger username', () => {
   beforeEach(() => {
-    updateMessengerUsernameAction.mockReset()
-    updateMessengerUsernameAction.mockResolvedValue({ success: true })
+    updateTenantMessengerUsernameAction.mockReset()
+    updateTenantMessengerUsernameAction.mockResolvedValue({ success: true })
   })
 
   it('shows the merchant their saved username', () => {
@@ -106,6 +109,6 @@ describe('MessengerModeCard — Messenger username', () => {
     await user.type(screen.getByLabelText(/messenger username/i), 'https://m.me/islandsilog')
     await user.click(screen.getByRole('button', { name: /save username/i }))
 
-    expect(updateMessengerUsernameAction).toHaveBeenCalledWith('tenant-1', 'islandsilog')
+    expect(updateTenantMessengerUsernameAction).toHaveBeenCalledWith('tenant-1', 'islandsilog')
   })
 })
