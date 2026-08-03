@@ -163,6 +163,30 @@ export function cartTotals(
 }
 
 /**
+ * What a REVISED order is worth: its items, plus the fees carried over from
+ * when it was placed.
+ *
+ * Lives here, beside `cartTotals`, because two callers need the same answer and
+ * had grown their own copy of it — `editModeTotals` for the was/now header the
+ * cashier reads, and `buildRevisionRows` for the total actually written to the
+ * order. A drift between those two is a cashier confirming one figure while the
+ * customer is billed another, which is precisely the divergence this feature
+ * has already had to fix twice on the web side.
+ *
+ * `carriedCharges` may be NEGATIVE: it is the residue of the placed total after
+ * items and delivery are taken out, so a voucher discount lives inside it. That
+ * is how an edit preserves a discount nobody can recompute — the voucher's
+ * conditions were evaluated against the original cart, which no longer exists.
+ */
+export function revisedOrderTotal(
+  itemsTotal: number,
+  deliveryFee: number,
+  carriedCharges: number,
+): number {
+  return round2(itemsTotal + deliveryFee + carriedCharges);
+}
+
+/**
  * Units in the cart per menu item, for the quantity badge on a product tile.
  *
  * Sums across lines: the same drink ordered twice with different notes is two

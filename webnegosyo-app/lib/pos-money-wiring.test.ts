@@ -31,6 +31,17 @@ const SCANNED_DIRS = ["lib", "app", "components", "stores", "hooks"];
 const TOTALS_OWNERS = ["lib/pos-cart.ts", "lib/pos-edit-mode.ts"];
 
 /**
+ * Lines that add money up in order to CHECK a total, never to charge one.
+ *
+ * Exempted by exact text rather than by file, so that editing the line puts it
+ * back in front of this test. The receipt's own test pins that it prints
+ * `order.total` and not this figure.
+ */
+const VERIFICATION_ONLY = [
+  "const expectedTotal = subtotal + (order.deliveryFee ?? 0) - (discount?.total ?? 0);",
+];
+
+/**
  * A money term added to another money term. Deliberately loose: a false
  * positive costs one refactor, a false negative costs a customer the wrong
  * bill.
@@ -74,7 +85,8 @@ describe("POS money wiring", () => {
           .filter(({ text }) => INLINE_SUM.test(text)),
       )
       // A comment describing the arithmetic is not the arithmetic.
-      .filter(({ text }) => text.startsWith("//") === false && text.startsWith("*") === false);
+      .filter(({ text }) => text.startsWith("//") === false && text.startsWith("*") === false)
+      .filter(({ text }) => VERIFICATION_ONLY.includes(text) === false);
 
     expect(offenders).toEqual([]);
   });

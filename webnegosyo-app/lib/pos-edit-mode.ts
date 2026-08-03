@@ -29,7 +29,7 @@ import {
 import { canEditOrder, type EditGate } from "./order-edit-guards";
 import { diffOrderItems } from "./order-revision";
 
-import type { PosCartLine } from "./pos-cart";
+import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
 import type { StaffPermissionHolder } from "./staff-permissions";
@@ -237,7 +237,7 @@ export function editModeTotals(
   context: OrderEditContext,
 ): EditModeTotals {
   const itemsTotal = itemsTotalOf(cart);
-  const newTotal = round2(itemsTotal + context.deliveryFee + context.carriedCharges);
+  const newTotal = revisedOrderTotal(itemsTotal, context.deliveryFee, context.carriedCharges);
 
   const balance = computeBalance(newTotal, context.payments);
 
