@@ -1,4 +1,4 @@
-import { round2, type PosCartLine } from "./pos-cart";
+import { cartTotals, round2, type PosCartLine } from "./pos-cart";
 import type { OrderDiscountLine } from "./order-totals";
 import type { StaffPermissionHolder } from "./staff-permissions";
 import {
@@ -124,8 +124,14 @@ export function sessionDiscount(
 
   const lines: OrderDiscountLine[] = [...application.discountLines];
 
-  const subtotal = round2(cart.reduce((sum, line) => sum + line.subtotal, 0));
-  const chargeable = round2(subtotal + serviceCharge);
+  // `cartTotals` owns this arithmetic — asking it for an undiscounted total is
+  // how the sale's chargeable amount is obtained rather than re-adding the
+  // subtotal and the charge here. Two implementations of the same sum are what
+  // the money-wiring guardrail exists to prevent, and it caught exactly that.
+  const { total: chargeable } = cartTotals([...cart], {
+    type: "fixed",
+    value: serviceCharge,
+  });
   const remainder = round2(chargeable - application.discountTotal);
 
   if (session.manual) {

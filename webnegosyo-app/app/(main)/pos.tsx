@@ -44,6 +44,7 @@ import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
+import { DiscountSheet } from "../../components/pos/DiscountSheet";
 import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
@@ -77,6 +78,9 @@ function toRows<T>(items: T[], size: number): T[][] {
 
 export default function PosScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const role = useAuthStore((s) => s.role);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
@@ -91,6 +95,12 @@ export default function PosScreen() {
   const editContext = usePosCartStore((s) => s.editContext);
   const editWarnings = usePosCartStore((s) => s.editWarnings);
   const endEdit = usePosCartStore((s) => s.endEdit);
+  const discount = usePosCartStore((s) => s.discount);
+  const applyVoucher = usePosCartStore((s) => s.applyVoucher);
+  const removeVoucher = usePosCartStore((s) => s.removeVoucher);
+  const setManualDiscount = usePosCartStore((s) => s.setManualDiscount);
+  const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
+  const [isDiscountOpen, setIsDiscountOpen] = useState(false);
 
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -124,8 +134,18 @@ export default function PosScreen() {
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),
     // Recompute whenever the sale changes; `totals()` reads the live store.
+    // `discount` belongs here too: applying a code changes the total without
+    // touching a line, and leaving it out would show the undiscounted amount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge],
+    [lines, serviceCharge, discount],
+  );
+
+  // Priced against the current cart, so a voucher that stops qualifying after
+  // a line is voided disappears from the sheet rather than being billed.
+  const discountLines = useMemo(
+    () => usePosCartStore.getState().sessionDiscount().lines,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, serviceCharge, discount],
   );
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
@@ -479,6 +499,15 @@ export default function PosScreen() {
           setIsCartExpanded(false);
         }}
         onCharge={() => router.push("/(main)/pos-tender")}
+        discountLines={discountLines}
+        // Editing a placed order carries its original discount forward as an
+        // opaque charge nobody can recompute, so discounting is offered on new
+        // sales only.
+        onAddDiscount={edit ? undefined : () => setIsDiscountOpen(true)}
+        onRemoveDiscount={(line) => {
+          if (line.code) removeVoucher(line.code);
+          else clearManualDiscount();
+        }}
         chargeLabel={
           !edit
             ? undefined
@@ -507,6 +536,15 @@ export default function PosScreen() {
           onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
         />
       )}
+
+      <DiscountSheet
+        visible={isDiscountOpen}
+        onClose={() => setIsDiscountOpen(false)}
+        tenantId={tenantId}
+        user={{ role, isOwner, permissions }}
+        onApplyVoucher={applyVoucher}
+        onApplyManual={(manual) => setManualDiscount(manual, { role, isOwner, permissions })}
+      />
     </View>
   );
 }
