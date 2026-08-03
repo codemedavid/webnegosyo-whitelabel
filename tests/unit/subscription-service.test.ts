@@ -130,6 +130,72 @@ describe('markPaid', () => {
     })
   })
 
+  describe('honouring the billing anchor', () => {
+    it('bills the month the merchant is living in rather than starting today', () => {
+      // Anchored to the 1st, never billed, recorded on the 10th. Starting today
+      // would charge a full month for 22 days AND move every future renewal to
+      // the 10th — the drift this anchor exists to stop.
+      const { store } = fakeStore({ billing_anchor_date: '2026-08-01' })
+
+      return markPaid(store, input, NOW).then((result) => {
+        expect(result.periodStart).toBe('2026-08-01')
+        expect(result.periodEnd).toBe('2026-08-31')
+      })
+    })
+
+    it('keeps the turnover date when a lapsed merchant pays late', async () => {
+      // Paid through August, anchored to the 1st, recorded on 20 September.
+      // They buy September; October still falls due on the 1st.
+      const { store } = fakeStore({
+        billing_anchor_date: '2026-01-01',
+        paid_through: '2026-08-31',
+        status: 'past_due',
+      })
+
+      const result = await markPaid(store, input, '2026-09-20T07:00:00.000Z')
+
+      expect(result.periodStart).toBe('2026-09-01')
+      expect(result.periodEnd).toBe('2026-09-30')
+    })
+
+    it('records the anchored period in the ledger, not merely on the subscription', async () => {
+      // The ledger is what settles an argument about which month was paid, so
+      // it has to carry the same dates the access does.
+      const { store, payments, subscriptions } = fakeStore({
+        billing_anchor_date: '2026-08-01',
+      })
+
+      await markPaid(store, input, NOW)
+
+      expect(payments[0]).toMatchObject({
+        period_start: '2026-08-01',
+        period_end: '2026-08-31',
+      })
+      expect(subscriptions.get(TENANT)?.paid_through).toBe('2026-08-31')
+    })
+
+    it('still stacks an early payment onto days already bought', async () => {
+      // The anchor must never reclaim days the merchant already owns.
+      const { store } = fakeStore({
+        billing_anchor_date: '2026-08-01',
+        paid_through: '2026-08-31',
+      })
+
+      const result = await markPaid(store, input, NOW)
+
+      expect(result.periodStart).toBe('2026-09-01')
+      expect(result.periodEnd).toBe('2026-09-30')
+    })
+
+    it('ignores a corrupt anchor rather than refusing the payment', async () => {
+      const { store } = fakeStore({ billing_anchor_date: '2026-02-31' })
+
+      const result = await markPaid(store, input, NOW)
+
+      expect(result.periodStart).toBe('2026-08-10')
+    })
+  })
+
   describe('month arithmetic', () => {
     it('clamps to the last day of a shorter month', async () => {
       // A month after 31 January is 28 February, not 3 March. Rolling over
