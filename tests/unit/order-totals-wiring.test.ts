@@ -44,6 +44,10 @@ const MONEY_BEARING_FILES = [
   // customer one price and bill them another.
   'src/lib/orders-service.ts',
   'src/lib/tenant-supabase-orders.ts',
+  // The hook itself. It derives the shared `grandTotal` correctly, and then
+  // built a SECOND total further down for the QR handoff payload — the amount
+  // a customer is asked to pay when they scan. Two totals, one order.
+  'src/hooks/useCheckout.ts',
 ] as const
 
 /**
