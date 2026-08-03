@@ -825,3 +825,117 @@ Deliberately **not** covered:
 3. **Still unverified on a handset** — as with every Android-side change in this
    feature. Send now makes the device test materially easier: a campaign no
    longer has to be scheduled and waited on to exercise the real radio.
+
+---
+
+## Phase 12 — reaching the Send button, and picking dates from a calendar
+
+**Source plan.** The `/ecc:plan` run of 2026-08-03, from four reports off the
+version-code-14 APK: the message does not send automatically, it cannot be sent
+manually, the Send now button is not available, saved changes only appear after
+restarting the app, and dates/times are typed by hand.
+
+### The diagnosis, before the fix
+
+Three of those are one chain, not three bugs:
+
+1. `createCampaign` never wrote a `status`, so a new campaign took the column
+   default of **draft**. `computeCampaignDueStates` only ever marks an ACTIVE
+   campaign due — so a saved campaign never came due, never raised a Phase 10
+   reminder, and never sent. Nothing on screen said why.
+2. `save()` ended in `router.back()`, and the whole Send block is gated on
+   `!isNew`. **The campaign you just created never showed a Send button at
+   all** — you had to return to the list and re-open it. That is the literal
+   truth of "the send now button is not available".
+3. Send then sat at the very bottom of a long scroll, under status and quiet
+   hours.
+
+"Have to refresh to see saved changes" is partly the same thing: a save was
+acknowledged only by the screen vanishing, which is indistinguishable from a
+crash. The campaign list itself already refreshes on focus (Phase 9) and that
+was left alone.
+
+### User journeys
+
+- As a merchant, I want a campaign I saved to be able to send, so that filling
+  in a schedule is not silently ignored.
+- As a merchant, I want to send the campaign I just wrote without hunting for it
+  in a list.
+- As a merchant, when the button will not send I want to be told why on screen,
+  and — when it is fixable — where to go.
+- As a merchant, I want to pick a date from a calendar and a time from a clock.
+
+### Task report
+
+| Task | RED | GREEN |
+|---|---|---|
+| A saved campaign is live, and the insert returns its id | `createCampaign › saves it live rather than leaving it as a silent draft` failed (`row.status` undefined); `hands back the new id` failed | both pass |
+| The editor stays on the campaign it created | `reaching the Send button at all › stays on the campaign it just created` failed (`router.back` present, no `router.replace`) | passes |
+| Send moves above the audience and schedule | `puts sending above the schedule` failed | passes |
+| The blocking reason is a notice, with a way out of the no-audience dead end | both `saying why it will not send` tests failed | pass |
+| Calendar + clock pickers | whole `date-fields.test.ts` suite failed to run (module absent) plus 3 wiring tests | 11 + 3 pass |
+
+```
+# RED  — npx jest lib/sms/date-fields.test.ts lib/sms/campaigns-repo.test.ts \
+#        lib/sms/campaign-editor-wiring.test.ts
+Test Suites: 3 failed, 3 total
+Tests:       10 failed, 42 passed, 52 total
+
+# GREEN — npx jest
+Test Suites: 125 passed, 125 total
+Tests:       2093 passed, 2093 total
+```
+
+### Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | A new campaign is written `active`, so it can actually come due | `campaigns-repo.test.ts:saves it live rather than leaving it as a silent draft` | unit | PASS |
+| 2 | The insert is still tenant-scoped | `campaigns-repo.test.ts:still scopes the insert to the tenant` | unit | PASS |
+| 3 | `createCampaign` returns the new id | `campaigns-repo.test.ts:hands back the new id` | unit | PASS |
+| 4 | A save the DB did not confirm throws rather than reporting success | `campaigns-repo.test.ts:throws when the insert fails` | unit | PASS |
+| 5 | The editor replaces the route with the saved campaign, never goes back | `campaign-editor-wiring.test.ts:stays on the campaign it just created` | guardrail | PASS |
+| 6 | Send renders above the audience section | `campaign-editor-wiring.test.ts:puts sending above the schedule` | guardrail | PASS |
+| 7 | The blocking reason is a notice, and no-audience offers a route out | `campaign-editor-wiring.test.ts:saying why it will not send` (2) | guardrail | PASS |
+| 8 | Date/time conversion reads the LOCAL clock, never UTC | `date-fields.test.ts:reads the local calendar day, not the UTC one` | unit | PASS |
+| 9 | Unreadable or nonsense field values never produce an Invalid Date | `date-fields.test.ts` (4 tests) | unit | PASS |
+| 10 | The draft still stores `YYYY-MM-DD` / `HH:MM` | `campaign-editor-wiring.test.ts:keeps storing the plain strings` | guardrail | PASS |
+
+`lib/sms/date-fields.ts`: **100% statements, branches, functions, lines.**
+
+### The UTC trap this phase deliberately avoids
+
+`toISOString().slice(0, 10)` is the obvious way to get `YYYY-MM-DD` out of a
+picker's Date, and it is wrong here. Manila is UTC+8, so local midnight on the
+5th is 16:00 on the 4th in UTC — every campaign would be booked a day early.
+`new Date("2026-08-05")` has the mirror bug on the way in. Test #8 is what
+forbids both. This is why the conversion is a separate pure module rather than
+three lines in the screen: the app's jest run covers pure-logic roots only, so
+logic left in a `.tsx` is logic no test can see.
+
+### Decisions worth not re-litigating
+
+- **Active-on-save was a judgement call**, offered in the plan and taken on my
+  recommendation without waiting for an answer. Draft-by-default is a safety
+  belt that in practice only made campaigns do nothing silently. Retiring a
+  campaign is still explicit (pause/archive), and the send itself still confirms
+  with recipient count and cost.
+- **Editing an existing campaign no longer navigates away**; it says "Saved at
+  HH:MM" and reloads in place.
+
+### Deliberately not covered
+
+1. **Nothing proves the pickers render.** They are native components in a `.tsx`;
+   the guardrails prove the wiring and the imports, and `date-fields.ts` proves
+   the conversion. The dialog opening is a handset check.
+2. **"Refresh to see saved changes" is only partly addressed.** The save is now
+   acknowledged in place, and creation lands on the real campaign — but if
+   staleness is still seen elsewhere (the guest list after recording consent,
+   say), it has not been reproduced and has not been fixed. I asked which screen
+   and proceeded on the parts that were certain.
+3. **A send uses the on-screen draft, not the saved row.** Editing the message
+   and tapping Send now (without saving) texts what is on screen. That is
+   probably what a merchant expects, but it is untested and unstated in the UI.
+4. **Still unverified on a handset.** The Kotlin module has never sent a real
+   SMS. Everything in this phase is plumbing to a pipe nobody has proven carries
+   water.
