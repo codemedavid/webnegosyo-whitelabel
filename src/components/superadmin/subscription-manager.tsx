@@ -20,6 +20,7 @@ import { DUE_SOON_WINDOW_DAYS } from '@/lib/billing/subscription-roster'
 import { setTenantPausedAction } from '@/app/actions/subscriptions'
 import type { AllowanceRow } from '@/lib/billing/tenant-allowances'
 import { MarkPaidDialog } from '@/components/superadmin/mark-paid-dialog'
+import { BillingAnchorDialog } from '@/components/superadmin/billing-anchor-dialog'
 import { AllowanceDialog } from '@/components/superadmin/allowance-dialog'
 import { Panel } from '@/components/superadmin/ui/primitives'
 
@@ -57,6 +58,23 @@ const SECONDARY_ACTION =
   'whitespace-nowrap rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-white'
 
 const peso = (value: number) => `₱${value.toLocaleString('en-PH')}`
+
+/**
+ * A `YYYY-MM-DD` as a short human date.
+ *
+ * Formatted in UTC from a UTC-parsed date so the label cannot drift a day
+ * either way: these are calendar dates, not instants. The same reasoning as
+ * `formatDay` on the merchant-facing subscription page.
+ */
+function formatDayKey(dayKey: string | null): string {
+  if (!dayKey) return '—'
+  return new Date(`${dayKey}T00:00:00.000Z`).toLocaleDateString('en-PH', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
 
 /** Anyone the owner has a reason to contact about money. */
 function needsChasing(row: RosterRow): boolean {
@@ -109,6 +127,7 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
   const router = useRouter()
   const [selected, setSelected] = useState<RosterRow | null>(null)
   const [editingAllowance, setEditingAllowance] = useState<AllowanceRow | null>(null)
+  const [editingAnchor, setEditingAnchor] = useState<RosterRow | null>(null)
   const [isChaseOnly, setIsChaseOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null)
@@ -203,11 +222,12 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
         </p>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
-          <table className="w-full min-w-[880px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.02] text-left text-[11px] font-semibold uppercase tracking-wider text-white/45">
                 <th className="px-4 py-2.5">Tenant</th>
                 <th className="px-4 py-2.5">Status</th>
+                <th className="whitespace-nowrap px-4 py-2.5">Billing since</th>
                 <th className="whitespace-nowrap px-4 py-2.5">Paid through</th>
                 <th className="whitespace-nowrap px-4 py-2.5">Due in</th>
                 <th className="px-4 py-2.5">Overdue</th>
@@ -231,7 +251,14 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium text-white">{row.name}</div>
-                    <div className="text-xs text-white/45">/{row.slug}</div>
+                    <div className="text-xs text-white/45">
+                      <span>/{row.slug}</span>
+                      {row.joinedDayKey && (
+                        <span data-testid={`joined-${row.tenantId}`}>
+                          {` · joined ${formatDayKey(row.joinedDayKey)}`}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -239,6 +266,21 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                     >
                       {statusLabel(row)}
                     </span>
+                  </td>
+                  {/* Clickable, because it is the one date on this row the
+                      owner sets rather than reads. An unanchored client shows
+                      the prompt instead of an em dash: "—" reads as missing
+                      data, when it actually means a billing rule that has not
+                      been chosen yet. */}
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAnchor(row)}
+                      data-testid={`billing-anchor-${row.tenantId}`}
+                      className="rounded-lg px-2 py-1 text-left text-white/60 underline decoration-white/20 underline-offset-4 transition-colors hover:bg-white/[0.06] hover:text-white"
+                    >
+                      {row.anchorDayKey ? formatDayKey(row.anchorDayKey) : 'Set date'}
+                    </button>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
                     {row.paidThroughDayKey ?? '—'}
@@ -341,8 +383,20 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
           tenantId={selected.tenantId}
           tenantName={selected.name}
           monthlyPricePhp={selected.monthlyPricePhp}
+          anchorDayKey={selected.anchorDayKey}
+          paidThroughDayKey={selected.paidThroughDayKey}
           onClose={() => setSelected(null)}
           onRecorded={() => router.refresh()}
+        />
+      )}
+
+      {editingAnchor && (
+        <BillingAnchorDialog
+          tenantId={editingAnchor.tenantId}
+          tenantName={editingAnchor.name}
+          anchorDayKey={editingAnchor.anchorDayKey}
+          onClose={() => setEditingAnchor(null)}
+          onSaved={() => router.refresh()}
         />
       )}
 

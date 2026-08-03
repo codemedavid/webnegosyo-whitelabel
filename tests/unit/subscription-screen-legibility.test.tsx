@@ -163,6 +163,8 @@ describe('the dialogs opened from this screen match the shell', () => {
         tenantId="t-1"
         tenantName="Brew Daze Express"
         monthlyPricePhp={649}
+        anchorDayKey={null}
+        paidThroughDayKey="2026-08-31"
         onClose={jest.fn()}
         onRecorded={jest.fn()}
       />
