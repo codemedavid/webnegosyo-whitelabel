@@ -653,7 +653,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               className="w-full h-14 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: palette.button, color: palette.button ? palette.accentText : undefined }}
               onClick={handleProceedToPayment}
-              disabled={isProcessing || !orderMinimum.meets}
+              disabled={isProcessing || orderMinimum?.meets === false}
             >
               {isProcessing ? (
                 <>

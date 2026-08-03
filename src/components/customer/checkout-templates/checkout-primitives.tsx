@@ -666,7 +666,9 @@ export function MinimumOrderNotice({
   checkout: UseCheckoutReturn
   className?: string
 }) {
-  const message = formatOrderMinimumMessage(checkout.orderMinimum, checkout.selectedOrderTypeData?.name)
+  const message = checkout.orderMinimum
+    ? formatOrderMinimumMessage(checkout.orderMinimum, checkout.selectedOrderTypeData?.name)
+    : null
   if (!message) return null
 
   return (
@@ -688,7 +690,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
     <button
       type="button"
       onClick={handleProceedToPayment}
-      disabled={isProcessing || !orderMinimum.meets}
+      disabled={isProcessing || orderMinimum?.meets === false}
       className={`w-full h-14 inline-flex items-center justify-center gap-3 font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${className}`}
       style={{ backgroundColor: button ?? accent, color: accentText }}
     >
