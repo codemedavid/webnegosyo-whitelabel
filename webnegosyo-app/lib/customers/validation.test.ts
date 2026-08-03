@@ -1,4 +1,4 @@
-import { validateCustomerDraft, emptyCustomerDraft } from "./validation";
+import { validateCustomerDraft, emptyCustomerDraft, draftFromSearch } from "./validation";
 
 describe("validateCustomerDraft", () => {
   describe("identity requirement", () => {
@@ -168,5 +168,49 @@ describe("validateCustomerDraft", () => {
 describe("emptyCustomerDraft", () => {
   it("returns a blank draft with every field present", () => {
     expect(emptyCustomerDraft()).toEqual({ name: "", phone: "", email: "", notes: "" });
+  });
+});
+
+describe("draftFromSearch — turning what the cashier typed into a new guest", () => {
+  it("routes a phone-shaped query into the phone field", () => {
+    // At the counter the cashier types the number first and the name later,
+    // if at all. Putting "0917…" in the name box would fail validation and
+    // read as the app rejecting a perfectly good number.
+    expect(draftFromSearch("0917 123 4567")).toEqual({
+      name: "",
+      phone: "0917 123 4567",
+      email: "",
+      notes: "",
+    });
+  });
+
+  it.each(["+639171234567", "9171234567", "0917-123-4567"])(
+    "recognises %s as a phone",
+    (query) => {
+      expect(draftFromSearch(query)?.phone).toBe(query);
+    },
+  );
+
+  it("routes an email-shaped query into the email field", () => {
+    expect(draftFromSearch("ana@example.com")?.email).toBe("ana@example.com");
+  });
+
+  it("routes anything else into the name field", () => {
+    expect(draftFromSearch("Maria Santos")?.name).toBe("Maria Santos");
+  });
+
+  it("trims the query", () => {
+    expect(draftFromSearch("  Maria  ")?.name).toBe("Maria");
+  });
+
+  it("returns null for an empty query", () => {
+    expect(draftFromSearch("   ")).toBeNull();
+  });
+
+  it("returns null for a placeholder that names nobody", () => {
+    // Offering "Save 'walk-in' as a new guest" invites the cashier to create
+    // the exact row the validator exists to reject.
+    expect(draftFromSearch("walk-in")).toBeNull();
+    expect(draftFromSearch("N/A")).toBeNull();
   });
 });

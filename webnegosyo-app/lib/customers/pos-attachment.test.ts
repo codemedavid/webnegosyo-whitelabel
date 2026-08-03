@@ -16,6 +16,7 @@
 import {
   posCustomerFields,
   attachmentSummary,
+  clearedSaleCustomer,
   type AttachedCustomer,
 } from "./pos-attachment";
 
@@ -100,6 +101,25 @@ describe("posCustomerFields — no guest attached", () => {
     );
 
     expect(fields.customerContact).toBe("");
+  });
+});
+
+describe("clearedSaleCustomer — the guest must not outlive the sale", () => {
+  it("clears both the attachment and the typed name", () => {
+    // The worst bug this feature can have: a guest left attached after the
+    // sale ends, quietly crediting the next stranger's order to a regular.
+    // The register's own store has no test harness, so the rule lives here
+    // and the store spreads it into every path that finishes a sale.
+    expect(clearedSaleCustomer()).toEqual({
+      customerName: "",
+      attachedCustomer: null,
+    });
+  });
+
+  it("returns a fresh object each time", () => {
+    // A shared constant spread into store state would let one sale's mutation
+    // reach the next.
+    expect(clearedSaleCustomer()).not.toBe(clearedSaleCustomer());
   });
 });
 
