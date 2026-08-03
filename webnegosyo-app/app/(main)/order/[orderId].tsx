@@ -29,6 +29,7 @@ import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 import { orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
+import { lookupVouchers } from "../../../lib/voucher-service";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -371,6 +372,7 @@ export default function OrderDetailScreen() {
   // own rule: a placed order may not be loaded over an open counter sale.
   const registerCart = usePosCartStore((s) => s.lines);
   const beginEdit = usePosCartStore((s) => s.beginEdit);
+  const setEditVouchers = usePosCartStore((s) => s.setEditVouchers);
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const editGate = order
@@ -428,11 +430,30 @@ export default function OrderDetailScreen() {
             revisionNumber: order.revisionNumber,
             deliveryFee: order.deliveryFee,
             items: order.items ?? [],
+            // Without this the edit sees no discount at all and would charge
+            // the customer full price on any edit to a discounted order.
+            customerData: order.customerData,
           },
           payments ?? [],
           catalog,
         ),
       );
+
+      // Fetch the vouchers behind this order's discount so the edit can
+      // re-price it. Not awaited: the register opens immediately showing the
+      // bill as placed, and the discount is re-priced when this returns. A
+      // failure leaves `null`, which means "carry the bill as placed" — a
+      // counter with no signal must not silently charge full price.
+      const storedDiscount = readOrderDiscount(order);
+      const codes = (storedDiscount?.lines ?? [])
+        .map((line) => line.code)
+        .filter((code): code is string => typeof code === "string" && code !== "");
+
+      if (tenantId && codes.length > 0) {
+        lookupVouchers(tenantId, codes)
+          .then((vouchers) => setEditVouchers(vouchers))
+          .catch(() => setEditVouchers(null));
+      }
 
       // `goTo`, not `replace`: replacing into a sibling tab renames the tab
       // navigator's state key and remounts it mid-transition. See

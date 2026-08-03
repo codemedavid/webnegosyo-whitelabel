@@ -103,6 +103,14 @@ export interface EditableOrderLike {
   revisionNumber?: number;
   deliveryFee?: number;
   items: HydratableOrderItem[];
+  /**
+   * Where the discount breakdown rides, per backend. Untyped on purpose —
+   * `readOrderDiscount` is what shape-checks it. Omitting these at the call
+   * site silently means "this order had no discount", so they must be passed.
+   */
+  customerData?: unknown;
+  customer_data?: unknown;
+  discount_data?: unknown;
 }
 
 export interface EnterEditModeRequest {

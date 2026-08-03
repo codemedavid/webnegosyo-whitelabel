@@ -20,7 +20,7 @@ import {
   type PosLineInput,
   type ServiceCharge,
 } from "../lib/pos-cart";
-import type { EnteredEditMode, OrderEditContext } from "../lib/pos-edit-mode";
+import { withEditVouchers, type EnteredEditMode, type OrderEditContext } from "../lib/pos-edit-mode";
 import { useAuthStore } from "./auth-store";
 import {
   EMPTY_POS_DISCOUNT_SESSION,
@@ -82,6 +82,8 @@ interface PosCartState {
 
   /** Load a placed order into the register. Replaces the cart wholesale. */
   beginEdit: (entered: EnteredEditMode) => void;
+  /** Null means the lookup failed — the bill as placed is then carried. */
+  setEditVouchers: (vouchers: Voucher[] | null) => void;
   /** Leave edit mode and clear the cart, saved or abandoned. */
   endEdit: () => void;
 }
@@ -121,6 +123,17 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       editWarnings: entered.warnings,
       customerName: "",
     }),
+
+  /**
+   * Attaches the vouchers behind an edited order's discount once fetched.
+   *
+   * Ignored if the edit has already ended, so a slow lookup returning after
+   * the cashier backed out cannot resurrect a stale context.
+   */
+  setEditVouchers: (vouchers) =>
+    set((s) =>
+      s.editContext ? { editContext: withEditVouchers(s.editContext, vouchers) } : {},
+    ),
 
   // Leaves an empty register rather than restoring whatever preceded the edit:
   // `canEnterEditMode` only admits an edit onto an empty cart, so there is
