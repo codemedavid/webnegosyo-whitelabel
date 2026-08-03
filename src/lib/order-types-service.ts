@@ -24,6 +24,8 @@ export const orderTypeSchema = z.object({
   service_charge_enabled: z.boolean().optional(),
   service_charge_type: z.enum(['percentage', 'fixed']).optional(),
   service_charge_value: z.number().min(0).optional(),
+  /** Minimum cart subtotal to check out with this order type. 0 (the default) means no minimum. */
+  minimum_order_amount: z.number().min(0).optional(),
   // Advance order (scheduled / pre-order) configuration
   advance_order_enabled: z.boolean().optional(),
   advance_order_allow_asap: z.boolean().optional(),
