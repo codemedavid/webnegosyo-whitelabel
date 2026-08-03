@@ -30,6 +30,9 @@ import { canEditOrder, type EditGate } from "./order-edit-guards";
 import { diffOrderItems } from "./order-revision";
 
 import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
+import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
+import { repriceEditDiscount } from "./pos-edit-discount";
+import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
 import type { StaffPermissionHolder } from "./staff-permissions";
@@ -74,6 +77,23 @@ export interface OrderEditContext {
   carriedCharges: number;
   /** The settlement ledger as it stood when the register opened the order. */
   payments: OrderPayment[];
+  /**
+   * The discount as placed, when the order recorded a breakdown.
+   *
+   * Kept OUT of {@link carriedCharges} so it can be re-priced against the
+   * edited cart without being deducted twice. Null for an order with no
+   * recorded breakdown — there the residue is the only evidence a discount
+   * happened, so it stays inside `carriedCharges` as before.
+   */
+  storedDiscount: OrderDiscountPayload | null;
+  /**
+   * The vouchers behind that discount, fetched by code.
+   *
+   * Null until the lookup returns — and null forever at a counter with no
+   * signal, which is why `repriceEditDiscount` treats null as "carry the bill
+   * as placed" rather than "no vouchers found".
+   */
+  discountVouchers: Voucher[] | null;
 }
 
 /** The order as the detail screen already has it. */
@@ -157,6 +177,7 @@ export function enterEditMode(
   // Zero, not undefined: `undefined + subtotal` is NaN, and the tender screen
   // would ask the cashier for "₱NaN".
   const deliveryFee = order.deliveryFee ?? 0;
+  const storedDiscount = readOrderDiscount(order);
 
   return {
     cart: lines,
@@ -167,8 +188,11 @@ export function enterEditMode(
       originalItems: posCartToOrderItems(lines, catalog),
       originalStockItems: buildPosStockItems(lines),
       deliveryFee,
-      carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee),
+      carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee, storedDiscount),
       payments: [...payments],
+      storedDiscount,
+      // Fetched by the screen once the order is open; see `withEditVouchers`.
+      discountVouchers: null,
     },
     warnings: unresolved.map((item) =>
       item.optionName
@@ -222,8 +246,27 @@ function deriveCarriedCharges(
   placedTotal: number,
   cart: readonly PosCartLine[],
   deliveryFee: number,
+  storedDiscount: OrderDiscountPayload | null,
 ): number {
-  return round2(placedTotal - itemsTotalOf(cart) - deliveryFee);
+  // A recorded discount is added back, because it is re-priced separately
+  // against the edited cart. Left in, it would come off twice: once inside
+  // this residue and again as a discount line.
+  const recorded = storedDiscount?.total ?? 0;
+  return round2(placedTotal - itemsTotalOf(cart) - deliveryFee + recorded);
+}
+
+/**
+ * Attaches the vouchers behind a stored discount, once they have been fetched.
+ *
+ * A pure updater rather than a mutation, so the edit context stays a value the
+ * screen can hold in state. Null stays null when the lookup fails — that is
+ * the signal to carry the bill as placed.
+ */
+export function withEditVouchers(
+  context: OrderEditContext,
+  vouchers: Voucher[] | null,
+): OrderEditContext {
+  return { ...context, discountVouchers: vouchers };
 }
 
 /**
@@ -237,7 +280,26 @@ export function editModeTotals(
   context: OrderEditContext,
 ): EditModeTotals {
   const itemsTotal = itemsTotalOf(cart);
-  const newTotal = revisedOrderTotal(itemsTotal, context.deliveryFee, context.carriedCharges);
+
+  // Re-priced against the edited cart, per the owner's decision: remove the
+  // item a voucher qualified for and the discount goes with it. Until the
+  // lookup returns, `discountVouchers` is null and the bill as placed is
+  // carried — showing full price for a moment and then dropping would read as
+  // a price that changed itself.
+  const discount = repriceEditDiscount({
+    stored: context.storedDiscount,
+    vouchers: context.discountVouchers,
+    cart,
+    // The residue is whatever the placed bill carried beyond items and
+    // delivery, which is the register's stand-in for a service charge here.
+    serviceCharge: context.carriedCharges + context.deliveryFee,
+    now: new Date(),
+  });
+
+  const newTotal = round2(
+    revisedOrderTotal(itemsTotal, context.deliveryFee, context.carriedCharges) -
+      discount.total,
+  );
 
   const balance = computeBalance(newTotal, context.payments);
 
