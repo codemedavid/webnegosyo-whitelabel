@@ -56,6 +56,13 @@ receipt was refactored onto them so there is one copy rather than three.
 | Thermal receipt | `receipt-formatter.ts` | ✅ (refactored) |
 | App order detail | `app/(main)/order/[orderId].tsx` | ✅ |
 | Web admin dialog | `components/admin/order-detail-dialog.tsx` | ✅ |
+| Web admin card | `components/admin/order-card.tsx` | ✅ |
+| Web Convex sheet | `components/admin/convex-order-sheet.tsx` | ✅ |
+
+The three web surfaces are pinned by
+`tests/unit/order-surface-discount-wiring.test.ts`, the order-management twin of
+the checkout guardrail. It also asserts that none of them derives a subtotal by
+subtracting delivery from the total, which is the specific bug found above.
 
 Web and app copies are locked **byte-identical** by
 `tests/unit/vouchers/engine-parity.test.ts`, the same discipline the voucher
@@ -102,10 +109,13 @@ engine uses, and for the same reason: both surfaces describe one sale.
 Phase 7 is **partially delivered**. What is done is the read path on the two
 detail surfaces; what remains is listed honestly rather than implied complete:
 
-- **`order-card.tsx` and `convex-order-sheet.tsx` are not wired.** They show
-  order totals in the admin list and the Convex order sheet and still ignore
-  the discount. They have the same fix available now that the shared rules
-  exist; they were not reached in this pass.
+- ~~**`order-card.tsx` and `convex-order-sheet.tsx` are not wired.**~~ **Done
+  in a follow-up pass.** Both are now on the shared rules, and
+  `tests/unit/order-surface-discount-wiring.test.ts` pins all three surfaces —
+  a fourth added later has to make the same decision deliberately. On the
+  Convex sheet the item lines above the total visibly failed to add up; on the
+  card a voucher was simply invisible, leaving a merchant unable to tell a
+  discount from a shortfall.
 - ~~**Refund and void still work from the gross.**~~ **This claim was wrong and
   is retracted.** It came from the plan's assumptions, not from the code. The
   refund path routes through `computeBalance(newTotal, payments)` where
@@ -133,3 +143,5 @@ detail surfaces; what remains is listed honestly rather than implied complete:
 | GREEN — app screen wired, receipt refactored | `749631b` |
 | RED — web surfaces show no discount rows | `20fe3df` |
 | GREEN — admin subtotal fixed, parity locked | `7b7c5e5` |
+| RED — remaining two surfaces omit the discount | `17f377b` |
+| GREEN — all three surfaces wired and pinned | `a753aeb` |
