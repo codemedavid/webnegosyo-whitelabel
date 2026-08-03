@@ -19,6 +19,7 @@ export type Database = {
       // price. Read through src/lib/outlets/outlet-menu-repository.ts.
       tenant_subscriptions: {
         Row: {
+          billing_anchor_date: string | null
           cancelled_at: string | null
           grace_days: number
           monthly_price_php: number
@@ -30,6 +31,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_anchor_date?: string | null
           cancelled_at?: string | null
           grace_days?: number
           monthly_price_php?: number
@@ -41,6 +43,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_anchor_date?: string | null
           cancelled_at?: string | null
           grace_days?: number
           monthly_price_php?: number

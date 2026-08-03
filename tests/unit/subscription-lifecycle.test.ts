@@ -40,6 +40,7 @@ function createStore(seed: SubscriptionRow | null = null) {
         monthly_price_php: 649,
         paid_through: null,
         grace_days: 3,
+        billing_anchor_date: null,
         ...existing,
         ...patch,
       })
@@ -55,6 +56,7 @@ const CURRENT: SubscriptionRow = {
   monthly_price_php: 649,
   paid_through: '2026-08-31',
   grace_days: 3,
+  billing_anchor_date: null,
 }
 
 describe('pauseSubscription', () => {

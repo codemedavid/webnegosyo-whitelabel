@@ -19,7 +19,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSupabaseSubscriptionStore } from '@/lib/billing/subscription-repository'
 import { markPaid } from '@/lib/billing/subscription-service'
-import { pauseSubscription, resumeSubscription } from '@/lib/billing/subscription-lifecycle'
+import {
+  pauseSubscription,
+  resumeSubscription,
+  setBillingAnchor,
+} from '@/lib/billing/subscription-lifecycle'
 import {
   sanitizeOutletAllowance,
   sanitizeStaffAllowance,
@@ -114,6 +118,37 @@ export async function setTenantPausedAction(tenantId: string, isPaused: boolean)
     return { success: true as const }
   } catch (error) {
     return fail(error, isPaused ? 'Failed to pause the tenant' : 'Failed to resume the tenant')
+  }
+}
+
+/**
+ * Sets the date a tenant's month turns over.
+ *
+ * Grants no access and takes none away — `setBillingAnchor` writes one column.
+ * It still needs the superadmin check: the anchor decides which month the next
+ * payment buys, so a merchant who could set their own would be choosing what
+ * they are billed for.
+ *
+ * Does NOT revalidate the tenant's admin layout, unlike pausing: nothing about
+ * the gate depends on this, and the collections screen is the only surface that
+ * reads it.
+ */
+export async function setTenantBillingAnchorAction(
+  tenantId: string,
+  anchorDate: string | null
+) {
+  const superadminId = await requireSuperadmin()
+  if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
+
+  try {
+    const store = createSupabaseSubscriptionStore(createAdminClient())
+    await setBillingAnchor(store, { tenantId, anchorDate })
+
+    revalidatePath('/superadmin/subscriptions')
+    revalidatePath(`/superadmin/tenants/${tenantId}`)
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, 'Failed to set the billing start date')
   }
 }
 
