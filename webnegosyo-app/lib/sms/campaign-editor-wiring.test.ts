@@ -107,3 +107,83 @@ describe("campaign editor — Send now", () => {
     expect(source).toMatch(/immediateRunAt/);
   });
 });
+
+describe("campaign editor — reaching the Send button at all", () => {
+  it("stays on the campaign it just created instead of bouncing to the list", () => {
+    // The whole Send block is gated on `!isNew`. Going back after a save means
+    // the campaign you just wrote NEVER shows a Send button: you have to find
+    // it in the list and re-open it. That is the likeliest reason "Send now is
+    // not available" — the button exists and is simply unreachable.
+    const source = readCode(...EDITOR);
+    const start = source.indexOf("const save");
+    const handler = source.slice(start, source.indexOf("\n  const ", start + 10));
+
+    expect(start).toBeGreaterThan(-1);
+    expect(handler).toMatch(/router\.replace/);
+    expect(handler).not.toMatch(/router\.back/);
+  });
+
+  it("navigates to the real id returned by the insert, not the 'new' sentinel", () => {
+    // Replacing with `new` again would re-enter create mode and lose the row.
+    const source = readCode(...EDITOR);
+    const start = source.indexOf("const save");
+    const handler = source.slice(start, source.indexOf("\n  const ", start + 10));
+
+    expect(handler).toMatch(/createCampaign\(/);
+    expect(handler).toMatch(/campaignHref\(/);
+  });
+
+  it("puts sending above the schedule, not below every other setting", () => {
+    // Send used to be the last thing on a long scroll, under status and quiet
+    // hours. The one action the merchant came for should not be the one they
+    // have to hunt for.
+    const source = readCode(...EDITOR);
+
+    expect(source.indexOf("Send now to")).toBeLessThan(source.indexOf("Who gets it"));
+  });
+});
+
+describe("campaign editor — saying why it will not send", () => {
+  it("shows the blocking reason as a notice, not a grey aside", () => {
+    // A disabled button with faint hint text underneath reads as "broken app",
+    // which is exactly how it was reported.
+    const source = readCode(...EDITOR);
+    const start = source.indexOf("sendNowDecision.message");
+    const line = source.slice(Math.max(0, start - 300), start);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(line).toMatch(/styles\.notice/);
+  });
+
+  it("offers a way out when nobody has opted in yet", () => {
+    // "Nobody matches this campaign yet" is a dead end unless it says where
+    // consent is recorded. That screen is the Customers tab.
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/no_audience/);
+    expect(source).toMatch(/customers/i);
+  });
+});
+
+describe("campaign editor — picking a date and a time", () => {
+  it("offers a calendar rather than asking for YYYY-MM-DD by hand", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/DateTimePicker/);
+    expect(source).toMatch(/mode="date"|mode={"date"}/);
+  });
+
+  it("offers a clock for the send time and both quiet hours", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/mode="time"|mode={"time"}/);
+  });
+
+  it("keeps storing the plain strings the schedule already understands", () => {
+    // `schedule.ts`, validation and every existing test speak YYYY-MM-DD and
+    // HH:MM. The picker is how the string gets typed, not a new format.
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/from "\.\.\/\.\.\/\.\.\/lib\/sms\/date-fields"/);
+  });
+});

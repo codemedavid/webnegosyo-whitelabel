@@ -115,6 +115,45 @@ describe("claimRun — only one device may work a run", () => {
   });
 });
 
+describe("createCampaign — a saved campaign must be able to send", () => {
+  it("saves it live rather than leaving it as a silent draft", async () => {
+    // The column default is `draft`, and `computeCampaignDueStates` only ever
+    // marks an ACTIVE campaign due. So a campaign written without a status sits
+    // there forever: it never comes due, never raises a reminder, never sends —
+    // and nothing on the screen says why. The merchant filled in a schedule;
+    // that IS the intent to run it.
+    queued = [{ data: { id: "c-1" }, error: null }];
+
+    await createCampaign("t-1", EMPTY_CAMPAIGN_DRAFT);
+
+    const [[row]] = argsFor("insert") as [[Record<string, unknown>]];
+    expect(row.status).toBe("active");
+  });
+
+  it("still scopes the insert to the tenant", async () => {
+    queued = [{ data: { id: "c-1" }, error: null }];
+
+    await createCampaign("t-1", EMPTY_CAMPAIGN_DRAFT);
+
+    const [[row]] = argsFor("insert") as [[Record<string, unknown>]];
+    expect(row.tenant_id).toBe("t-1");
+  });
+
+  it("hands back the new id, so the editor can stay on what was just made", async () => {
+    // Without the id the screen has nowhere to go but back to the list — and
+    // the Send block only renders for a campaign that has one.
+    queued = [{ data: { id: "c-1" }, error: null }];
+
+    await expect(createCampaign("t-1", EMPTY_CAMPAIGN_DRAFT)).resolves.toBe("c-1");
+  });
+
+  it("throws when the insert fails, rather than reporting a save that did not happen", async () => {
+    queued = [{ data: null, error: { message: "denied" } }];
+
+    await expect(createCampaign("t-1", EMPTY_CAMPAIGN_DRAFT)).rejects.toThrow("denied");
+  });
+});
+
 describe("listSentCustomerIds — the resume set", () => {
   it("returns who has already been texted in this run", async () => {
     queued = [{ data: [{ customer_id: "c1" }, { customer_id: "c2" }], error: null }];
