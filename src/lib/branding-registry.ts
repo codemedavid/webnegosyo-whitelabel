@@ -89,6 +89,13 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     description: 'Foundation palette and theme. Every other surface inherits these when its own field is blank.',
     sections: [
       {
+        title: 'Brand identity',
+        fields: [
+          image('logo_url', 'Logo', 'https://…/logo.png'),
+          note('note_logo', 'Shown in the storefront header and carried into your Messenger order messages. A square or wide PNG with a transparent background works best.'),
+        ],
+      },
+      {
         title: 'Theme',
         fields: [
           select('font_pair', 'Font pairing', ['theme', 'bold display', 'elegant serif', 'warm editorial', 'modern sans'], 'theme'),

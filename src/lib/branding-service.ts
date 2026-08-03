@@ -22,6 +22,9 @@ function cssColorString() {
 
 // Schema for all branding fields
 export const brandingSchema = z.object({
+    // Brand identity. `logo_url` is NOT NULL in the database, so a cleared logo
+    // persists as '' — never null — which the `...parsed` spread below preserves.
+    logo_url: z.string().max(1000).optional().or(z.literal('')),
     // Storefront theme knobs (design-system presets)
     font_pair: z.enum(['theme', 'elegant serif', 'bold display', 'modern sans', 'warm editorial']).optional(),
     card_roundness: z.enum(['theme', 'sharp', 'soft', 'round']).optional(),
