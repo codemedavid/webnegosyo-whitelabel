@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendMetaConversionEvent } from '@/lib/meta-conversions'
 import {
@@ -12,6 +13,23 @@ import type {
   CheckoutLeadStatusHistory,
   CheckoutLeadWithPaymentMethod,
 } from '@/types/database'
+
+/**
+ * `checkout_lead_status_history` DOES NOT EXIST in the database.
+ *
+ * The old hand-patched `src/types/supabase.ts` declared it, so this compiled;
+ * regenerating the types from the live schema (2026-08-03) removed it, and
+ * `information_schema.columns` confirms there is no such table. Every insert
+ * below has therefore always failed — swallowed by the `console.error` that
+ * follows it — and every read has always returned `[]`, which is why the
+ * superadmin detail panel's history list has only ever rendered empty.
+ *
+ * The behaviour is preserved exactly as-is rather than quietly deleted. This
+ * alias is the seam that keeps it compiling and keeps the decision visible:
+ * either add the table in a migration, or drop the panel and these two calls.
+ * Do not widen this into a general escape hatch for other tables.
+ */
+const missingStatusHistoryTable = (client: unknown) => client as SupabaseClient
 
 export interface CreateCheckoutLeadInput {
   name: string
@@ -156,7 +174,9 @@ export async function updateCheckoutLeadStatus(
   if (updateError) return { error: updateError.message }
 
   // Insert history record
-  const { error: historyError } = await supabase
+  // See `missingStatusHistoryTable` — this table does not exist, so this
+  // insert always fails and is always swallowed below.
+  const { error: historyError } = await missingStatusHistoryTable(supabase)
     .from('checkout_lead_status_history')
     .insert({
       checkout_lead_id: leadId,
@@ -240,7 +260,9 @@ export async function getCheckoutLeadHistory(
   leadId: string
 ): Promise<{ data: CheckoutLeadStatusHistory[]; error: string | null }> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
+  // See `missingStatusHistoryTable` — this table does not exist, so this read
+  // always errors and this function always returns an empty list.
+  const { data, error } = await missingStatusHistoryTable(supabase)
     .from('checkout_lead_status_history')
     .select('*')
     .eq('checkout_lead_id', leadId)

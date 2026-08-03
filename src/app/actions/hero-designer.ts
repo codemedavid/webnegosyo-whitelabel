@@ -49,7 +49,10 @@ export async function saveHeroDesignAction(
     // Update database
     const { error } = await supabase
       .from('tenants')
-      .update({ hero_design: design as unknown as Record<string, unknown> })
+      // `hero_design` is a text column holding serialized JSON, not jsonb.
+      // supabase-js serializes the object on the way out, which is why this
+      // has always worked; the cast now says what the column actually is.
+      .update({ hero_design: design as unknown as string })
       .eq('id', tenantId)
       .select('id')
       .single()
