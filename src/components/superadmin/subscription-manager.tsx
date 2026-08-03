@@ -252,7 +252,11 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
                   <td className="px-4 py-3">
                     <div className="font-medium text-white">{row.name}</div>
                     <div className="text-xs text-white/45">
-                      <span>/{row.slug}</span>
+                      {/* The dim ink is named on the slug itself, not merely
+                          inherited: this row sits on a pure black shell, and a
+                          later refactor that lifts the span out of this div
+                          must not silently take its legibility with it. */}
+                      <span className="text-white/45">/{row.slug}</span>
                       {row.joinedDayKey && (
                         <span data-testid={`joined-${row.tenantId}`}>
                           {` · joined ${formatDayKey(row.joinedDayKey)}`}
