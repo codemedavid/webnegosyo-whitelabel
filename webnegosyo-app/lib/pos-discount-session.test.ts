@@ -175,10 +175,14 @@ describe("sessionDiscount", () => {
     expect(result.lines[0].label).toContain("Damaged item");
   });
 
-  it("counts the service charge as discountable, matching the web total", () => {
+  it("takes a percentage off the food, not off the service charge", () => {
+    // The engine computes a percent voucher from line subtotals only — it
+    // never reads `serviceCharge`. "10% off" is 10% off what was ordered, not
+    // off the shop's fee for serving it. Byte-identical to web, so a code is
+    // worth the same either way it is rung.
     const session = addSessionVoucher(EMPTY_POS_DISCOUNT_SESSION, tenPercent);
 
-    expect(sessionDiscount(session, [line("a", 200)], 100, NOW).total).toBe(30);
+    expect(sessionDiscount(session, [line("a", 200)], 100, NOW).total).toBe(20);
   });
 
   it("never discounts more than the sale is worth", () => {
