@@ -743,7 +743,10 @@ export function useCheckout(tenantSlug: string) {
         }
       }
 
-      const grandTotalForQr = total + serviceChargeAmount
+      // The same number the summary shows. Built separately it drifted: it
+      // omitted the delivery fee entirely, so a delivery order paid by QR
+      // asked for less than it billed, and it would have missed any discount.
+      const grandTotalForQr = grandTotal
 
       const payload: Omit<QrOrderPayloadV1, 'ck'> = {
         v: 1,
