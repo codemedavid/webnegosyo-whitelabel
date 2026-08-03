@@ -53,4 +53,21 @@ describe('voucher engine parity — web vs merchant app', () => {
 
     expect(appTypes).toContain('export interface OrderDiscountLine')
   })
+
+  it('keeps the order summary rows identical across both codebases', () => {
+    // Not part of the engine, but the same hazard: these rules decide what a
+    // merchant sees beneath an order's items, and the web admin and the
+    // merchant app both show the same sale. Two copies that drift would have
+    // one surface reconcile to the total and the other not.
+    //
+    // Pure and import-free, so verbatim copying costs nothing. If this fails,
+    // copy src/lib/order-summary-rows.ts over the app's.
+    const web = readFileSync(join(process.cwd(), 'src/lib/order-summary-rows.ts'), 'utf8')
+    const app = readFileSync(
+      join(process.cwd(), 'webnegosyo-app/lib/order-summary-rows.ts'),
+      'utf8',
+    )
+
+    expect(app).toBe(web)
+  })
 })
