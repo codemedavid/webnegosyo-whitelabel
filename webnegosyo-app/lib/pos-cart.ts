@@ -85,7 +85,8 @@ function sumDiscounts(discounts: readonly OrderDiscountLine[]): number {
   }, 0);
 }
 
-function round2(n: number): number {
+/** Centavo rounding. Exported so every money module rounds the same way. */
+export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
