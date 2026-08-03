@@ -33,6 +33,8 @@ import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
+import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
+import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
@@ -63,6 +65,8 @@ export default function PosTenderScreen() {
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
   const customerName = usePosCartStore((s) => s.customerName);
   const setCustomerName = usePosCartStore((s) => s.setCustomerName);
+  const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
+  const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
   const endEdit = usePosCartStore((s) => s.endEdit);
@@ -84,6 +88,7 @@ export default function PosTenderScreen() {
   const [reference, setReference] = useState("");
   const [proof, setProof] = useState<CapturedProof | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   /** Why the order was changed. Edit mode only; written to the audit row. */
   const [editReason, setEditReason] = useState("");
 
@@ -304,7 +309,10 @@ export default function PosTenderScreen() {
         orderType: orderTypeName ?? undefined,
         orderTypeId: orderTypeId ?? undefined,
         serviceCharge,
-        customerName,
+        // The attached guest's contact is what makes this sale land on their
+        // profile — `buildPosOrder` has always accepted `customerContact` and
+        // nothing ever passed it, so every counter sale went out anonymous.
+        ...posCustomerFields(attachedCustomer, customerName),
         cashierId: userId ?? undefined,
         // A counter sale belongs to the till that rang it, so the branch on
         // the session is stamped onto the order. Null for a single-location
@@ -410,6 +418,10 @@ export default function PosTenderScreen() {
     orderTypeId,
     serviceCharge,
     customerName,
+    // Without this the callback closes over the attachment as it was when the
+    // screen last rendered, so a guest picked and then immediately charged
+    // would ring up against whoever was attached before them.
+    attachedCustomer,
     userId,
     // The branch stamped onto the sale. Listed so a session whose branch
     // resolves after this callback is first built does not keep ringing sales
@@ -478,13 +490,32 @@ export default function PosTenderScreen() {
             onChangeText={setEditReason}
           />
         ) : (
-          <TextInput
-            style={styles.nameInput}
-            placeholder="Customer name (optional)"
-            placeholderTextColor={colors.textTertiary}
-            value={customerName}
-            onChangeText={setCustomerName}
-          />
+          <>
+            <TextInput
+              style={styles.nameInput}
+              placeholder="Customer name (optional)"
+              placeholderTextColor={colors.textTertiary}
+              value={customerName}
+              onChangeText={setCustomerName}
+              // An attached guest's name is what goes on the order, so leaving
+              // this editable would show the cashier a name the sale will not use.
+              editable={attachedCustomer === null}
+            />
+            <TouchableOpacity
+              style={styles.customerRow}
+              onPress={() => setIsPickerOpen(true)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.customerLabel}>Customer</Text>
+              <Text
+                style={
+                  attachedCustomer ? styles.customerValue : styles.customerValueMuted
+                }
+              >
+                {attachmentSummary(attachedCustomer)}
+              </Text>
+            </TouchableOpacity>
+          </>
         )}
 
         {isAlreadySettled ? null : (
@@ -608,6 +639,16 @@ export default function PosTenderScreen() {
           />
         )}
       </View>
+
+      <CustomerPickerSheet
+        visible={isPickerOpen}
+        tenantId={tenantId ?? ""}
+        onCancel={() => setIsPickerOpen(false)}
+        onPick={(customer) => {
+          setAttachedCustomer(customer);
+          setIsPickerOpen(false);
+        }}
+      />
     </View>
   );
 }
@@ -632,6 +673,22 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: spacing.sm,
   },
+  customerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+    gap: spacing.md,
+  },
+  customerLabel: { ...typography.caption, color: colors.textSecondary },
+  customerValue: { ...typography.body, color: colors.textPrimary, flexShrink: 1 },
+  customerValueMuted: { ...typography.body, color: colors.textTertiary, flexShrink: 1 },
   methodRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
   method: {
     paddingHorizontal: spacing.lg,

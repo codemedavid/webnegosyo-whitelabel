@@ -21,6 +21,10 @@ import {
   type ServiceCharge,
 } from "../lib/pos-cart";
 import type { EnteredEditMode, OrderEditContext } from "../lib/pos-edit-mode";
+import {
+  clearedSaleCustomer,
+  type AttachedCustomer,
+} from "../lib/customers/pos-attachment";
 
 interface PosCartState {
   lines: PosCartLine[];
@@ -41,6 +45,15 @@ interface PosCartState {
   serviceCharge: ServiceCharge | undefined;
   /** Optional name the cashier took for the customer. */
   customerName: string;
+  /**
+   * A known guest picked from the customer list, or null for a walk-in.
+   *
+   * Held alongside `customerName` rather than replacing it: most counter sales
+   * are anonymous and the free-text box stays the fast path. What the
+   * attachment adds is a *contact*, which is what makes the sale land on the
+   * guest's profile — see `lib/customers/pos-attachment.ts`.
+   */
+  attachedCustomer: AttachedCustomer | null;
 
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
@@ -52,6 +65,8 @@ interface PosCartState {
     serviceCharge: ServiceCharge | undefined,
   ) => void;
   setCustomerName: (name: string) => void;
+  /** Attach a guest to this sale, or pass null to make it a walk-in again. */
+  setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   totals: () => CartTotals;
 
   /** Load a placed order into the register. Replaces the cart wholesale. */
@@ -67,7 +82,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   orderTypeId: null,
   orderTypeName: null,
   serviceCharge: undefined,
-  customerName: "",
+  ...clearedSaleCustomer(),
 
   add: (input) => set((s) => ({ lines: addLine(s.lines, input) })),
   setQty: (key, quantity) => set((s) => ({ lines: updateQty(s.lines, key, quantity) })),
@@ -75,25 +90,32 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
 
   // Clears the sale but keeps the order type, so a cashier ringing up a queue
   // of dine-in customers does not re-pick it for every single sale.
-  reset: () => set({ lines: clearCart(), customerName: "", editContext: null, editWarnings: [] }),
+  reset: () =>
+    set({ lines: clearCart(), ...clearedSaleCustomer(), editContext: null, editWarnings: [] }),
 
   beginEdit: (entered) =>
     set({
       lines: entered.cart,
       editContext: entered.context,
       editWarnings: entered.warnings,
-      customerName: "",
+      ...clearedSaleCustomer(),
     }),
 
   // Leaves an empty register rather than restoring whatever preceded the edit:
   // `canEnterEditMode` only admits an edit onto an empty cart, so there is
   // never a counter sale underneath to restore.
-  endEdit: () => set({ lines: clearCart(), editContext: null, editWarnings: [] }),
+  // Clears the guest too. Leaving edit mode previously kept whatever name was
+  // in the box, which with an attachment would credit the next counter sale to
+  // the edited order's customer.
+  endEdit: () =>
+    set({ lines: clearCart(), ...clearedSaleCustomer(), editContext: null, editWarnings: [] }),
 
   setOrderType: (orderTypeId, orderTypeName, serviceCharge) =>
     set({ orderTypeId, orderTypeName, serviceCharge }),
 
   setCustomerName: (customerName) => set({ customerName }),
+
+  setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),
 
   totals: () => cartTotals(get().lines, get().serviceCharge),
 }));
