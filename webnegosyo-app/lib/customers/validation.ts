@@ -104,3 +104,28 @@ export function validateCustomerDraft(draft: CustomerDraft): CustomerDraftValida
     value: { name, phoneE164, email, notes: trimmedOrNull(draft.notes) },
   };
 }
+
+/**
+ * Turn a POS search query into a prefilled draft for "save as a new guest".
+ *
+ * At the counter the number comes first and the name later, if at all — so a
+ * phone-shaped query belongs in the phone field, not the name field, or the
+ * validator would reject a perfectly good number and read as the app being
+ * broken.
+ *
+ * Returns null when there is nothing worth creating: a blank query, or a
+ * placeholder like "walk-in" that names nobody. Offering to save that would
+ * invite the cashier to create the exact row {@link validateCustomerDraft}
+ * exists to reject.
+ */
+export function draftFromSearch(query: string): CustomerDraft | null {
+  const trimmed = query.trim();
+  if (trimmed === "") return null;
+  if (!isIdentifiableContact(trimmed)) return null;
+
+  const draft = emptyCustomerDraft();
+
+  if (normalizePhoneE164(trimmed) !== null) return { ...draft, phone: trimmed };
+  if (EMAIL_RE.test(trimmed.toLowerCase())) return { ...draft, email: trimmed };
+  return { ...draft, name: trimmed };
+}

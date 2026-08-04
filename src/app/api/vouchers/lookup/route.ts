@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
+import { normalizeVoucherCodes } from '@/lib/vouchers/resolve'
 
 /**
  * POST /api/vouchers/lookup
@@ -32,11 +33,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
   }
 
-  const codes = Array.isArray(body?.codes)
-    ? (body.codes as unknown[]).filter(
-        (code): code is string => typeof code === 'string' && code.trim() !== '',
-      )
-    : []
+  // Normalised through the same function `resolveVouchers` uses, not a copy of
+  // it. `findByCodes` matches `code` exactly while the unique index is on
+  // `lower(code)` — codes are case-insensitive by design. Passing the cashier's
+  // keystrokes through raw told them a code was not recognised while the web
+  // checkout, which normalises first, honoured the very same code.
+  const codes = normalizeVoucherCodes(Array.isArray(body?.codes) ? (body.codes as unknown[]) : [])
 
   if (codes.length === 0) {
     return NextResponse.json(

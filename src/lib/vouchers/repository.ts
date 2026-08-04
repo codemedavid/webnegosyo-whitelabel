@@ -117,7 +117,7 @@ export async function redeemVoucher(
   const outletId = input.outletId?.trim()
   const redeemedBy = input.redeemedBy?.trim()
 
-  const { error } = await client.rpc('redeem_voucher', {
+  const { data, error } = await client.rpc('redeem_voucher', {
     p_tenant_id: input.tenantId,
     p_voucher_id: input.voucherId,
     p_order_id: input.orderId,
@@ -132,5 +132,18 @@ export async function redeemVoucher(
   })
 
   if (error) return { redeemed: false, error: error.message }
+
+  // `redeem_voucher()` returns the new redemption's uuid, or NULL when its
+  // conditional UPDATE claimed nothing — usage limit reached, voucher
+  // deactivated, outside its date window, or a different tenant's row. None of
+  // those set `error`, so a null row is the ONLY signal that the burn was
+  // refused. Reading `error` alone reports success for every one of them.
+  if (data == null) {
+    return {
+      redeemed: false,
+      error: 'The database refused the redemption: the voucher is exhausted, inactive, outside its date window, or not this tenant’s.',
+    }
+  }
+
   return { redeemed: true }
 }

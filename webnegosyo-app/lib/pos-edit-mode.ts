@@ -311,6 +311,10 @@ export function editModeTotals(
     // The residue is whatever the placed bill carried beyond items and
     // delivery, which is the register's stand-in for a service charge here.
     serviceCharge: context.carriedCharges + context.deliveryFee,
+    // Passed separately as well, and NOT double-counted: above it is part of
+    // the chargeable cap, here it is the thing a free-delivery voucher
+    // discounts. A delivery order edited without it lost that voucher.
+    deliveryFee: context.deliveryFee,
     now: new Date(),
   });
 

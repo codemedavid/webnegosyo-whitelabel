@@ -2,8 +2,11 @@ import { cartTotals, round2, type PosCartLine } from "./pos-cart";
 import type { OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { applyPosVouchers, posDiscountContext } from "./pos-discount";
-import type { VoucherRejectionReason } from "./vouchers/types";
-import type { Voucher } from "./vouchers/types";
+import type {
+  DiscountContext,
+  Voucher,
+  VoucherRejectionReason,
+} from "./vouchers/types";
 
 /**
  * What happens to a discount when a placed order is edited.
@@ -38,6 +41,16 @@ export interface EditDiscountInput {
   vouchers: readonly Voucher[] | null;
   cart: readonly PosCartLine[];
   serviceCharge: number;
+  /**
+   * The order's own delivery fee, so a free-delivery voucher still has
+   * something to discount. Zero — the counter-sale default — makes the engine
+   * reject one as `no_delivery_fee`, which drops it.
+   *
+   * Deliberately NOT added to `serviceCharge`: that argument is the chargeable
+   * cap, and `editModeTotals` already folds delivery into it. Counting the fee
+   * twice would raise the cap and let a discount exceed the bill.
+   */
+  deliveryFee?: number;
   now: Date;
   outletId?: string | null;
 }
@@ -64,6 +77,29 @@ const CART_DEPENDENT_REASONS: readonly VoucherRejectionReason[] = [
 
 const EMPTY: EditDiscount = { lines: [], total: 0, isRepriced: false };
 
+/**
+ * Can the register actually judge this voucher's scope against this cart?
+ *
+ * A `no_matching_items` rejection is only a verdict when the register holds the
+ * facts the scope is written in. It holds menu item ids on every line, so a
+ * product-scoped voucher really can be judged. It holds no CATEGORY at all — a
+ * register cart line is item, options, price — so a category-scoped voucher is
+ * rejected for matching nothing regardless of what the cart contains.
+ *
+ * That is ignorance, not disqualification, and dropping the line on it re-bills
+ * a customer a discount they were legitimately given. So the placed bill is
+ * carried, which is the same direction the offline (`vouchers === null`) rule
+ * already takes when the register cannot answer the question.
+ *
+ * Written as a fact about the LINES rather than a blanket exemption for
+ * category vouchers: the day a register line carries its category, this tightens
+ * back into a real re-price on its own.
+ */
+function canJudgeScope(voucher: Voucher | undefined, context: DiscountContext): boolean {
+  if (!voucher || voucher.scope !== "categories") return true;
+  return context.lines.some((line) => line.categoryId != null);
+}
+
 function carryForward(stored: OrderDiscountPayload, chargeable: number): EditDiscount {
   const lines = stored.lines.filter(
     (line) => Number.isFinite(line.amount) && line.amount > 0,
@@ -77,7 +113,7 @@ function carryForward(stored: OrderDiscountPayload, chargeable: number): EditDis
 }
 
 export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
-  const { stored, vouchers, cart, serviceCharge, now, outletId } = input;
+  const { stored, vouchers, cart, serviceCharge, deliveryFee, now, outletId } = input;
 
   if (!stored || stored.lines.length === 0) return EMPTY;
 
@@ -93,7 +129,13 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
   // Could not ask. Carry the bill as placed rather than invent a new one.
   if (vouchers === null) return carryForward(stored, chargeable);
 
-  const context = posDiscountContext(cart, serviceCharge, now, outletId);
+  const context = posDiscountContext(
+    cart,
+    serviceCharge,
+    now,
+    outletId,
+    deliveryFee ?? 0,
+  );
   const application = applyPosVouchers(vouchers, context);
 
   const lines: OrderDiscountLine[] = [];
@@ -121,8 +163,17 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
 
     // Dropped only when the EDITED CART is what disqualified it. A lifecycle
     // rejection, or a voucher that can no longer be found, keeps the line the
-    // customer was originally given.
-    if (rejection && CART_DEPENDENT_REASONS.includes(rejection.reason)) continue;
+    // customer was originally given — and so does a scope the register has no
+    // facts to evaluate.
+    if (rejection && CART_DEPENDENT_REASONS.includes(rejection.reason)) {
+      const isBlind =
+        rejection.reason === "no_matching_items" &&
+        !canJudgeScope(
+          vouchers.find((voucher) => voucher.id === storedLine.voucherId),
+          context,
+        );
+      if (!isBlind) continue;
+    }
 
     lines.push({
       label: storedLine.label,

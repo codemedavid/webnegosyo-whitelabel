@@ -173,6 +173,20 @@ describe('redeemVoucher', () => {
     expect(result.error).toBe('voucher exhausted')
   })
 
+  it('reports failure when the conditional claim was refused without a database error', async () => {
+    // `redeem_voucher()` returns uuid and does `if v_claimed is not true then
+    // return null` — an exhausted, deactivated, expired or wrong-tenant
+    // voucher comes back as a null row with no error at all. Reading only
+    // `error` here would report a burn that never happened.
+    const { client } = makeClient({}, { data: null, error: null })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await redeemVoucher(client as any, input)
+
+    expect(result.redeemed).toBe(false)
+    expect(result.error).toBeTruthy()
+  })
+
   it('omits the customer key entirely for a guest rather than sending an empty one', async () => {
     const { client } = makeClient({}, { data: 'redemption-1', error: null })
 

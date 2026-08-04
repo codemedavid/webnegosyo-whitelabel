@@ -65,6 +65,27 @@ export function addSessionVoucher(
   return { ...session, vouchers: [...session.vouchers, voucher] };
 }
 
+/**
+ * What the sale is still holding after the cart changed.
+ *
+ * An emptied cart is the end of a sale, and its discounts end with it. The
+ * Clear button already knew that; the − stepper did not, because
+ * `updateQty(key, 0)` REMOVES the line, so the register reaches zero lines
+ * without anything having called `reset()`. A voucher surviving that is applied
+ * to the NEXT customer — money given to somebody who presented no code, shown
+ * only inside the cart sheet's collapsed totals as a quietly-low Charge.
+ *
+ * Returns the same session object untouched while the sale is still alive, so
+ * the store's state identity does not churn on every quantity tap.
+ */
+export function discountAfterCartChange(
+  session: PosDiscountSession,
+  cart: readonly PosCartLine[],
+): PosDiscountSession {
+  if (cart.length > 0) return session;
+  return EMPTY_POS_DISCOUNT_SESSION;
+}
+
 export function removeSessionVoucher(
   session: PosDiscountSession,
   code: string,

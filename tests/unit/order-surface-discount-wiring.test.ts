@@ -22,11 +22,13 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { orderSummaryRows } from '@/lib/order-summary-rows'
 
-/** Admin surfaces that state an order's total to a merchant. */
+/** Surfaces that state an order's total to a merchant. */
 const ORDER_SURFACES = [
   'src/components/admin/order-detail-dialog.tsx',
   'src/components/admin/order-card.tsx',
   'src/components/admin/convex-order-sheet.tsx',
+  // Not a screen, but the ticket most merchants actually read.
+  'src/lib/messenger-message-formatter.ts',
 ]
 
 function read(file: string): string {
@@ -53,8 +55,13 @@ describe('admin order surfaces show what was discounted', () => {
   it('never derives a subtotal by subtracting delivery from the total', () => {
     // `order.total` is stored net of the discount, so this derivation produces
     // a "subtotal" that contradicts the items listed above it.
+    //
+    // Both spellings, deliberately. The pattern was written against the dialog's
+    // `Number(order.total) - (Number(order.delivery_fee)` and so never matched
+    // the messenger formatter's `order.total - (order.delivery_fee || 0)` — the
+    // same bug, uncoerced, sat unflagged in the ticket merchants read most.
     const offenders = ORDER_SURFACES.filter((file) =>
-      /Number\(order\.total\)\s*-\s*\(?\s*Number\(order\.delivery_fee\)/.test(read(file)),
+      /order\.total\s*\)?\s*-\s*\(?\s*(?:Number\(\s*)?order\.delivery_fee/.test(read(file)),
     )
 
     expect(offenders).toEqual([])
