@@ -21,6 +21,7 @@ import {
   canEnterEditMode,
   editModeTotals,
   enterEditMode,
+  newDiscountLines,
   type OrderEditContext,
 } from "./pos-edit-mode";
 import type { ModifierCatalog } from "./order-edit-cart";
@@ -596,6 +597,8 @@ describe("editModeTotals with a discount added during the edit", () => {
       // ₱20 already given, carried forward because the lookup has not returned.
       storedDiscount: {
         total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
         lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
       },
       carriedCharges: 0,
@@ -620,6 +623,8 @@ describe("editModeTotals with a discount added during the edit", () => {
       payments: [{ kind: "charge", amount: 180 }],
       storedDiscount: {
         total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
         lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
       },
     };
@@ -636,6 +641,8 @@ describe("editModeTotals with a discount added during the edit", () => {
       ...plainContext(),
       storedDiscount: {
         total: 150,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
         lines: [{ label: "BIG", amount: 150, code: "BIG", voucherId: "v-big" }],
       },
     };
@@ -664,5 +671,51 @@ describe("editModeTotals with a discount added during the edit", () => {
     ]);
 
     expect(totals.canSave).toBe(false);
+  });
+});
+
+/**
+ * Which codes an edit has to burn.
+ *
+ * Enabling discounts during an edit introduced a way to give a single-use
+ * voucher away forever: the register burns redemptions on the counter-sale
+ * path only, so a code applied during an edit would price into the bill and
+ * never increment its usage count.
+ *
+ * Burning the whole discount is equally wrong in the other direction — the
+ * codes the order already carried were burned when it was placed, and burning
+ * them again on every edit would exhaust a customer's own allowance.
+ */
+describe("newDiscountLines", () => {
+  const carried = [
+    { label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" },
+  ];
+
+  it("returns the code applied during this edit", () => {
+    const fresh = newDiscountLines(
+      [{ label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" }],
+      carried,
+    );
+
+    expect(fresh.map((line) => line.code)).toEqual(["SAVE20"]);
+  });
+
+  it("leaves out a code the order already carried and already burned", () => {
+    expect(newDiscountLines(carried, carried)).toEqual([]);
+  });
+
+  it("returns nothing when the edit added no discount", () => {
+    expect(newDiscountLines([], carried)).toEqual([]);
+  });
+
+  /** A cashier's open discount has no code, so there is nothing to redeem. */
+  it("leaves out a manual discount, which has no voucher to burn", () => {
+    expect(newDiscountLines([{ label: "Goodwill", amount: 15 }], carried)).toEqual([]);
+  });
+
+  it("leaves out a line worth nothing", () => {
+    expect(
+      newDiscountLines([{ label: "ZERO", amount: 0, code: "ZERO", voucherId: "v-0" }], carried),
+    ).toEqual([]);
   });
 });
