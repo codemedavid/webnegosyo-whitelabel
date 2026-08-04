@@ -20,7 +20,7 @@
  */
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { CartSheet } from "./CartSheet";
 import { DiscountSheet } from "./DiscountSheet";
 import type { StaffPermissionHolder } from "../../lib/staff-permissions";
@@ -155,6 +155,26 @@ beforeEach(() => {
   useAuthStore.setState({ outletId: null });
 });
 
+/**
+ * Lets the browse-list fetch land inside `act`.
+ *
+ * The sheet reads the merchant's vouchers when it opens, so every test that
+ * finishes before that promise settles would otherwise resolve it during a
+ * later test — reported as an unwrapped state update, and exactly the warning
+ * that would hide a real one in this file.
+ */
+/**
+ * Lets the browse-list fetch land inside `act`.
+ *
+ * The sheet reads the merchant's vouchers when it opens. A test that asserts
+ * and ends before that promise settles resolves it outside React's control,
+ * which is reported as an unwrapped state update — noise that would hide a
+ * real one in this file.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {});
+}
+
 /** Types a code into the sheet and presses Apply. */
 async function enterCode(code: string): Promise<void> {
   fireEvent.changeText(screen.getByLabelText("Voucher code"), code);
@@ -261,8 +281,9 @@ describe("a code that is not found at all", () => {
 });
 
 describe("the manual open discount", () => {
-  it("is not reachable by a cashier without the vouchers permission", () => {
+  it("is not reachable by a cashier without the vouchers permission", async () => {
     render(<Register user={CASHIER} />);
+    await settle();
 
     // Not merely disabled — the whole section is absent, so there is no
     // amount box, no reason box and no button to press.
@@ -276,8 +297,9 @@ describe("the manual open discount", () => {
     expect(screen.getByLabelText("Voucher code")).toBeTruthy();
   });
 
-  it("requires a written reason before any money comes off", () => {
+  it("requires a written reason before any money comes off", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     fireEvent.changeText(screen.getByLabelText("Discount amount"), "50");
     fireEvent.press(screen.getByText("Apply discount"));
@@ -287,8 +309,9 @@ describe("the manual open discount", () => {
     expect(usePosCartStore.getState().discount.manual).toBeNull();
   });
 
-  it("refuses more than 100% rather than clamping it", () => {
+  it("refuses more than 100% rather than clamping it", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     // A cashier meaning 10.00 and typing 1000 must be stopped, not obeyed
     // with a free sale.
@@ -302,8 +325,9 @@ describe("the manual open discount", () => {
     expect(usePosCartStore.getState().discount.manual).toBeNull();
   });
 
-  it("applies a reasoned discount and prints the reason on the row", () => {
+  it("applies a reasoned discount and prints the reason on the row", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     fireEvent.changeText(screen.getByLabelText("Discount amount"), "50");
     fireEvent.changeText(screen.getByLabelText("Reason for discount"), "damaged cup");
