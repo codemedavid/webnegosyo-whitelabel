@@ -167,3 +167,89 @@ describe("lookupVouchers", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The lookup is the one part of register discounting that genuinely needs the
+ * network, and it runs behind a spinner the cashier watches. Every other
+ * failure — unknown code, refused request, no session — already answers, so
+ * the spinner ends and the sheet says something. A request that simply never
+ * answers had no such ending: the counter stopped while a customer waited, and
+ * the only way out was to force-quit the app.
+ *
+ * The deadline is what turns "never" into "no", which the sheet already knows
+ * how to render. Bounded here rather than in the sheet because the session read
+ * can hang too, and a deadline that starts after it is not a deadline.
+ */
+describe("lookupVouchers deadline", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-1" } },
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("gives up on a request that never answers, so the cashier is not left waiting", async () => {
+    // Arrange — a socket that opens and then says nothing, which is what a
+    // counter behind a captive portal or a dead uplink actually looks like.
+    global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+
+    // Act
+    const pending = lookupVouchers("t1", ["WELCOME10"], { timeoutMs: 8000 });
+    await jest.advanceTimersByTimeAsync(8000);
+
+    // Assert — fails closed, exactly as an unverifiable code does.
+    await expect(pending).resolves.toEqual([]);
+  });
+
+  it("releases the socket rather than leaving the request running", async () => {
+    // Arrange
+    let signal: AbortSignal | undefined;
+    global.fetch = jest.fn((_url: unknown, init: { signal?: AbortSignal }) => {
+      signal = init.signal;
+      return new Promise(() => {});
+    }) as unknown as typeof fetch;
+
+    // Act
+    const pending = lookupVouchers("t1", ["WELCOME10"], { timeoutMs: 8000 });
+    await jest.advanceTimersByTimeAsync(8000);
+    await pending;
+
+    // Assert
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("counts the session read against the same deadline", async () => {
+    // Arrange — reading the session can hang too, on a client mid token
+    // refresh with no signal. A deadline that only starts once it returns is
+    // not a deadline, and this is the hang that gets reported.
+    getSessionMock.mockReturnValue(new Promise(() => {}));
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    // Act
+    const pending = lookupVouchers("t1", ["WELCOME10"], { timeoutMs: 8000 });
+    await jest.advanceTimersByTimeAsync(8000);
+
+    // Assert
+    await expect(pending).resolves.toEqual([]);
+  });
+
+  it("answers immediately when the server does, without waiting out the deadline", async () => {
+    // Arrange
+    const voucher = { id: "v-1", code: "WELCOME10" };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ vouchers: [voucher] }),
+    }) as unknown as typeof fetch;
+
+    // Act
+    const result = await lookupVouchers("t1", ["WELCOME10"], { timeoutMs: 8000 });
+
+    // Assert
+    expect(result).toEqual([voucher]);
+  });
+});
