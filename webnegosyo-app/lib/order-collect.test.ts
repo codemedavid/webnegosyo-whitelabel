@@ -33,7 +33,7 @@ function request(overrides: Record<string, unknown> = {}) {
     backend: "platform" as const,
     user: OWNER,
     balance: 149,
-    isLedgerAvailable: true,
+    ledger: "available" as const,
     ...overrides,
   };
 }
@@ -79,10 +79,20 @@ describe("canCollectPayment", () => {
   it("refuses when the payment ledger could not be loaded", () => {
     // Without the ledger the balance shown is a guess, and collecting against
     // a guess double-charges a customer who already paid.
-    const gate = canCollectPayment(request({ isLedgerAvailable: false }));
+    const gate = canCollectPayment(request({ ledger: "unavailable" }));
 
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toMatch(/payment history|could not be loaded/i);
+  });
+
+  it("refuses on a store whose deployment has no ledger, and says why", () => {
+    // The ledger is empty rather than unknown here, but the mutation that
+    // records a payment is missing from that bundle too — so the honest answer
+    // is "this store needs updating", not "it could not be loaded".
+    const gate = canCollectPayment(request({ ledger: "absent" }));
+
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toMatch(/update/i);
   });
 
   it("refuses on a backend with no way to write a payment", () => {
