@@ -232,6 +232,12 @@ export default function PosTenderScreen() {
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),
+        // What the edit settled on, so the order's discount rows and its total
+        // stay reconcilable. Omitted entirely when the edit touched no
+        // discount — see `settledDiscount`.
+        ...(saved.settledDiscount !== undefined
+          ? { discount: saved.settledDiscount }
+          : {}),
       });
 
       // An edit that swapped one item for another of the same price is complete

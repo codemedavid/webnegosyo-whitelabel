@@ -16,6 +16,7 @@
  */
 
 import { revisedOrderTotal } from "../pos-cart";
+import type { OrderDiscountPayload } from "../order-discount";
 import type { OrderAddon, OrderVariationSelection } from "./supabase-orders";
 
 /** An item as the edit screen submits it. */
@@ -45,6 +46,22 @@ export interface ReviseOrderArgs {
   outletId?: string;
   /** ISO timestamp, supplied by the caller so retries stay idempotent. */
   editedAt?: string;
+  /**
+   * The discount this edit settled on, as a record of what was decided.
+   *
+   * Three distinct states, and they must stay distinct:
+   *   `undefined` — the edit did not touch the discount. The stored one is
+   *                 kept, because most edits do not touch it and blanking it
+   *                 on every save would erase the original.
+   *   a payload   — this is the discount now. Replaces the stored one.
+   *   `null`      — the edit settled on NO discount. Clears the stored one,
+   *                 so an order does not keep rows for a voucher that no
+   *                 longer applies.
+   *
+   * The TOTAL is still computed from `serviceChargeAmount`, never from this.
+   * Deducting it here as well would take the discount off twice.
+   */
+  discount?: OrderDiscountPayload | null;
 }
 
 /** The order as it stands before this edit. */
@@ -82,6 +99,8 @@ export interface OrderRevisionPatch {
   revision_number: number;
   edited_at: string | null;
   edited_by: string | null;
+  /** Present only when the edit settled a discount — see ReviseOrderArgs. */
+  discount_data?: OrderDiscountPayload | null;
 }
 
 export interface OrderItemRow {
@@ -207,6 +226,10 @@ export function buildRevisionRows(
       revision_number: revisionNumber,
       edited_at: args.editedAt ?? null,
       edited_by: args.revisedBy ?? null,
+      // Spread rather than set: the key must be ABSENT when the edit did not
+      // settle a discount, so the update leaves the stored one alone. Writing
+      // `undefined` would serialise as a blanking on some clients.
+      ...(args.discount !== undefined ? { discount_data: args.discount } : {}),
     },
     itemRows,
     revision: {

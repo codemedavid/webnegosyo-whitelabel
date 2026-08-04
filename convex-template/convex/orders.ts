@@ -14,6 +14,7 @@ import {
   countRevisedItems,
   normalizePaymentAmount,
   netAmountPaid,
+  mergeOrderDiscount,
 } from "./orderRevise";
 
 // --- MUTATIONS ---
@@ -190,6 +191,15 @@ export const reviseOrder = mutation({
     revisedBy: v.optional(v.string()),
     outletId: v.optional(v.string()),
     editedAt: v.optional(v.string()),
+    /**
+     * The discount this edit settled on. Omitted means "unchanged" — most
+     * edits do not touch it, and blanking it every save would erase the
+     * original. `null` means the edit settled on none.
+     *
+     * The TOTAL still comes from `serviceChargeAmount`; this is a record of
+     * what was decided, so the order's rows and its total can be reconciled.
+     */
+    discount: v.optional(v.union(v.any(), v.null())),
   },
   handler: async (ctx, args) => {
     const order = await ctx.db.get(args.orderId);
@@ -237,6 +247,12 @@ export const reviseOrder = mutation({
       revisionNumber,
       editedAt: args.editedAt,
       editedBy: args.revisedBy,
+      // Only when the edit settled one. `mergeOrderDiscount` replaces the one
+      // key and copies the rest of the blob through — the customer's name and
+      // contact live in there too.
+      ...(args.discount !== undefined
+        ? { customerData: mergeOrderDiscount(order.customerData, args.discount) }
+        : {}),
     });
 
     return args.orderId;

@@ -258,6 +258,21 @@ export interface EditModeTotals {
   intent: SettlementIntent;
   isDirty: boolean;
   canSave: boolean;
+  /**
+   * What to store as the order's discount, for the revise mutation.
+   *
+   * `undefined` — nothing to say; leave whatever is stored alone. That is the
+   * right default for the overwhelming majority of edits, which never touch a
+   * discount, and blanking it every save would erase an original this code
+   * never saw.
+   * a payload   — this is the discount now, rows and total together.
+   * `null`      — re-pricing dropped every line. Clear it, or the order shows
+   *               a discount it no longer has.
+   *
+   * Derived from the same lines as {@link carriedChargesForSave}, so the rows
+   * stored and the total stored can always be reconciled.
+   */
+  settledDiscount?: OrderDiscountPayload | null;
   /** Why saving is blocked, shown to the cashier verbatim. */
   blockedReason?: string;
 }
@@ -413,6 +428,16 @@ export function editModeTotals(
   // `revisedOrderTotal(items, delivery, carriedChargesForSave)` reproduces
   // `newTotal` exactly, which is what the revise mutation recomputes.
   const carriedChargesForSave = round2(context.carriedCharges - discountTotal);
+
+  const settledLines = [
+    ...discount.lines,
+    ...newDiscountLines(addedDiscountLines, discount.lines),
+  ];
+  const settledDiscount = settledDiscountOf(
+    settledLines,
+    discountTotal,
+    context.storedDiscount,
+  );
   const newTotal = revisedOrderTotal(
     itemsTotal,
     context.deliveryFee,
@@ -444,5 +469,37 @@ export function editModeTotals(
     isDirty,
     canSave: isDirty && !blockedReason,
     ...(blockedReason ? { blockedReason } : {}),
+    ...(settledDiscount !== undefined ? { settledDiscount } : {}),
+  };
+}
+
+/**
+ * Turn the settled lines into a payload to store — or into the decision not to.
+ *
+ * Silence (`undefined`) when there was nothing before and nothing now, so an
+ * ordinary edit does not write a discount key onto an order that never had one.
+ * `null` when the order HAD a discount and now has none, which is a real change
+ * and has to be distinguishable from silence.
+ */
+function settledDiscountOf(
+  lines: readonly OrderDiscountLine[],
+  total: number,
+  stored: OrderDiscountPayload | null,
+): OrderDiscountPayload | null | undefined {
+  if (lines.length === 0) return stored ? null : undefined;
+
+  return {
+    total,
+    // Delivery is discounted through a free-delivery voucher, which carries no
+    // line of its own; the register cannot attribute it, so it is not claimed.
+    deliveryDiscount: stored?.deliveryDiscount ?? 0,
+    lines: lines.map((line) => ({
+      label: line.label,
+      amount: line.amount,
+      ...(line.code != null ? { code: line.code } : {}),
+      ...(line.voucherId != null ? { voucherId: line.voucherId } : {}),
+    })),
+    // Per-line allocation is the checkout's; the register has no equivalent.
+    allocationsByLine: {},
   };
 }

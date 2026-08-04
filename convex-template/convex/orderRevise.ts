@@ -198,3 +198,43 @@ export function netAmountPaid(ledger: readonly LedgerRowLike[]): number {
 
   return round2(net);
 }
+
+/** The discount payload as it is stored, shaped loosely at the database edge. */
+export interface StoredDiscountLike {
+  total: number;
+  deliveryDiscount?: number;
+  lines?: unknown[];
+  allocationsByLine?: Record<string, unknown>;
+}
+
+/**
+ * Put the discount an edit settled on into the order's customer blob.
+ *
+ * Convex has no `discount_data` field — unlike the platform backend, the
+ * discount rides inside `customerData` next to the customer's name, contact,
+ * schedule and payment proof. So this replaces exactly one key and copies the
+ * rest through.
+ *
+ * A wholesale overwrite would erase the customer's own details on the first
+ * discounted edit, which is a far worse outcome than the stale discount row it
+ * set out to fix. `null` removes the key rather than storing a zeroed payload,
+ * which would otherwise render a discount heading with no rows beneath it.
+ *
+ * Returns a new object; the input is never mutated.
+ */
+export function mergeOrderDiscount(
+  customerData: unknown,
+  discount: StoredDiscountLike | null,
+): Record<string, unknown> {
+  const base =
+    typeof customerData === "object" && customerData !== null && !Array.isArray(customerData)
+      ? { ...(customerData as Record<string, unknown>) }
+      : {};
+
+  if (discount === null) {
+    delete base.discount;
+    return base;
+  }
+
+  return { ...base, discount };
+}
