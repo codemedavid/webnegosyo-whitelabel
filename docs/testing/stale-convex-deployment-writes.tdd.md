@@ -106,9 +106,10 @@ did not.
 - `components/pos/DiscountSheet.test.tsx` failed twice under full-suite load in one
   run and passed on three isolated repeats and on a clean `--ci` run. Pre-existing
   flake, untouched by this change, not investigated here.
-- `tests/unit/menu-engineering-classify.test.ts` fails to run — it imports
-  `@/lib/menu-engineering-classify`, which does not exist. Committed in `87e80d7`
-  and untouched here; it looks like another session's RED test left in the tree.
+- `tests/unit/menu-engineering-classify.test.ts` failed to run during this work —
+  it imported `@/lib/menu-engineering-classify` before that module existed. That
+  was another session's RED state (`87e80d7`), resolved by its own GREEN commit
+  (`6fc891e`); the suite passes 16/16 now. Nothing to do with this change.
 - The bulk-deploy fix is covered as a pure function. `bulkDeployConvexAction`
   itself (superadmin check, credential filter, per-tenant loop) still has no
   test — it needs a Supabase client double that does not exist in this suite.
