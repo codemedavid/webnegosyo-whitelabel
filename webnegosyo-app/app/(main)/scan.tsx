@@ -7,10 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Animated,
   Linking,
-  PanResponder,
-  type LayoutChangeEvent,
 } from "react-native";
 import {
   CameraView,
@@ -29,6 +26,7 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
+import { SlideAction } from "../../components/SlideAction";
 import {
   decodeQrToOrder,
   QR_SIZE_WARN_THRESHOLD,
@@ -464,7 +462,11 @@ function PreviewPanel({
       </ScrollView>
 
       <View style={styles.previewActions}>
-        <SlideToAccept onComplete={onAccept} isAccepting={isAccepting} />
+        <SlideAction
+          label="Slide to accept"
+          onComplete={onAccept}
+          isBusy={isAccepting}
+        />
         <TouchableOpacity
           style={styles.cancelButton}
           onPress={onReject}
@@ -474,97 +476,6 @@ function PreviewPanel({
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
       </View>
-    </View>
-  );
-}
-
-const SLIDE_HEIGHT = 60;
-const KNOB_SIZE = 52;
-const SLIDE_PADDING = 4;
-const COMPLETE_THRESHOLD = 0.85;
-
-function SlideToAccept({
-  onComplete,
-  isAccepting,
-}: {
-  onComplete: () => void;
-  isAccepting: boolean;
-}) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const completedRef = useRef(false);
-
-  const maxSlide = Math.max(0, trackWidth - KNOB_SIZE - SLIDE_PADDING * 2);
-
-  const handleLayout = useCallback((e: LayoutChangeEvent) => {
-    setTrackWidth(e.nativeEvent.layout.width);
-  }, []);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !isAccepting && !completedRef.current,
-        onMoveShouldSetPanResponder: () => !isAccepting && !completedRef.current,
-        onPanResponderMove: (_, gesture) => {
-          if (maxSlide <= 0) return;
-          const x = Math.min(Math.max(0, gesture.dx), maxSlide);
-          translateX.setValue(x);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (maxSlide <= 0) return;
-          const x = Math.min(Math.max(0, gesture.dx), maxSlide);
-          if (x >= maxSlide * COMPLETE_THRESHOLD) {
-            completedRef.current = true;
-            Animated.timing(translateX, {
-              toValue: maxSlide,
-              duration: 120,
-              // JS driver: the same value also drives `width`/opacity below,
-              // which the native driver cannot animate.
-              useNativeDriver: false,
-            }).start(() => onComplete());
-          } else {
-            Animated.spring(translateX, {
-              toValue: 0,
-              useNativeDriver: false,
-              bounciness: 0,
-            }).start();
-          }
-        },
-      }),
-    [maxSlide, isAccepting, onComplete, translateX]
-  );
-
-  // Track-fill width and label fade follow the knob position.
-  const fillWidth = translateX.interpolate({
-    inputRange: [0, Math.max(1, maxSlide)],
-    outputRange: [KNOB_SIZE + SLIDE_PADDING * 2, trackWidth || KNOB_SIZE],
-    extrapolate: "clamp",
-  });
-  const labelOpacity = translateX.interpolate({
-    inputRange: [0, Math.max(1, maxSlide) * 0.6],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
-
-  return (
-    <View style={styles.slideTrack} onLayout={handleLayout}>
-      <Animated.View style={[styles.slideFill, { width: fillWidth }]} pointerEvents="none" />
-      <Animated.Text
-        style={[styles.slideLabel, { opacity: labelOpacity }]}
-        pointerEvents="none"
-      >
-        Slide to accept
-      </Animated.Text>
-      <Animated.View
-        style={[styles.slideKnob, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
-      >
-        {isAccepting ? (
-          <ActivityIndicator color={colors.success} />
-        ) : (
-          <Text style={styles.slideKnobArrow}>›››</Text>
-        )}
-      </Animated.View>
     </View>
   );
 }
@@ -695,46 +606,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.separator,
     backgroundColor: colors.card,
     ...shadow.sm,
-  },
-  // Slide to accept
-  slideTrack: {
-    height: SLIDE_HEIGHT,
-    borderRadius: SLIDE_HEIGHT / 2,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  slideFill: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.success,
-    borderRadius: SLIDE_HEIGHT / 2,
-  },
-  slideLabel: {
-    ...typography.heading,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-  slideKnob: {
-    position: "absolute",
-    left: SLIDE_PADDING,
-    width: KNOB_SIZE,
-    height: KNOB_SIZE,
-    borderRadius: KNOB_SIZE / 2,
-    backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadow.sm,
-  },
-  slideKnobArrow: {
-    color: colors.success,
-    fontSize: 20,
-    fontWeight: "700",
-    letterSpacing: -2,
   },
   cancelButton: { alignItems: "center", paddingVertical: spacing.md },
   cancelText: { ...typography.body, color: colors.textSecondary, fontWeight: "500" },
