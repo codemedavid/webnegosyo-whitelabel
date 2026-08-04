@@ -39,6 +39,7 @@ describe("evaluatePickupTicket", () => {
     });
 
     expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
     expect(result.reason).toBe("wrong_tenant");
   });
 
@@ -50,6 +51,7 @@ describe("evaluatePickupTicket", () => {
     });
 
     expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
     expect(result.reason).toBe("cancelled");
   });
 
@@ -97,6 +99,7 @@ describe("evaluatePickupTicket", () => {
     });
 
     expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
     expect(result.reason).toBe("wrong_tenant");
   });
 
@@ -109,6 +112,7 @@ describe("evaluatePickupTicket", () => {
     });
 
     expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
     expect(result.reason).toBe("wrong_tenant");
   });
 });

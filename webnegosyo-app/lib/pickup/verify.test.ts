@@ -8,6 +8,13 @@
  * turn each HTTP outcome into something staff can act on.
  */
 
+// Native module: not transformable under jest, and every test below injects
+// its own webAppUrl anyway. Mirrors lib/customers/capture.test.ts.
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: { expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } } },
+}));
+
 import { verifyPickupTicket } from "./verify";
 
 const ticket = {
