@@ -154,6 +154,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               0,
             ),
             deliveryFee: Number(order.delivery_fee) || 0,
+            serviceCharge: Number(order.service_charge_amount) || 0,
             discount: readOrderDiscount(order),
             total: Number(order.total),
           }).map((row, index) => (
