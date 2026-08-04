@@ -328,6 +328,10 @@ describe("editModeTotals", () => {
       deliveryFee: 50,
       carriedCharges: 10,
       payments: [{ kind: "charge", amount: 260 }],
+      // No recorded breakdown: these cases predate discounts, and an order
+      // without one keeps its whole residue inside `carriedCharges`.
+      storedDiscount: null,
+      discountVouchers: null,
       originalItems: [
         {
           menuItemId: "item-latte",

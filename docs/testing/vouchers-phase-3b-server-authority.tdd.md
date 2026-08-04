@@ -1,0 +1,229 @@
+# TDD evidence — Vouchers Phase 3b: server authority
+
+**Source plan**: inline plan from `/ecc:plan` ("remaining tasks"), Phase 3b.
+**Depends on**: [Phase 3a persistence](./vouchers-phase-3-persistence.tdd.md).
+**Status**: three of five Phase 3b tasks done. See "What is NOT done".
+
+## User journeys
+
+1. As a developer, I want `.from('vouchers')` to typecheck, so the write path
+   can be built at all.
+2. As a merchant, I want the total in my order-notification email to match what
+   the customer was shown.
+3. As a customer, I want a mistyped code to tell me it was not recognised
+   rather than fail my checkout.
+4. As a customer, I want the same code entered twice to discount once.
+5. As a customer who has used a one-per-person voucher, I want it turned down.
+6. As a merchant, I do not want a visitor to be able to read my vouchers'
+   remaining redemptions or targeted products out of the checkout response.
+7. As a merchant, I do not want another merchant's code to work on my orders.
+
+## Task report
+
+| Task | RED | GREEN |
+|---|---|---|
+| Regenerate the database types | jest 7 failed / tsc TS2339 on `vouchers`, `voucher_targets`, `redeem_voucher` | 8 passed; `tsc` back to 0 errors under `src/` |
+| Merchant email total via `computeOrderTotals` | guardrail reported `src/app/actions/orders.ts:349` | 11 passed |
+| `resolveVouchers` (codes → priced discount) | `Cannot find module '@/lib/vouchers/resolve'` | 11 passed |
+| `createVoucherLookup` + `redeemVoucher` | `Cannot find module '@/lib/vouchers/repository'` | 8 passed |
+| `buildVoucherPreview` | `Cannot find module '@/lib/vouchers/preview'` | 5 passed |
+
+Validation actually run:
+
+```
+npx jest --config jest.config.cjs tests/unit/vouchers
+  -> Tests: 126 passed, 126 total (9 suites)
+npx jest --config jest.config.cjs
+  -> Tests: 4841 passed, 34 failed, 4875 total
+./node_modules/.bin/tsc --noEmit
+  -> 0 errors under src/; 62 total, all pre-existing, all in test files
+npx next lint --file <each changed src file>
+  -> No ESLint warnings or errors
+```
+
+The 34 failures are pre-existing and identical to `origin/main`
+(`cache`, `leads-analytics`, `leads-service`, `order-token`,
+`inventory-live-e2e`). They were verified against a clean `origin/main`
+worktree in an earlier session and are unrelated to this work.
+
+## The generated types had drifted, and were hiding four defects
+
+`src/types/supabase.ts` had been hand-patched rather than regenerated — its
+own annotations had slid onto the wrong tables (a comment naming
+`20260806120000_outlet_menu_overrides.sql` sat above `tenant_subscriptions`).
+Regenerating from the live schema via the Supabase MCP grew it from 3,535 to
+4,811 lines and surfaced:
+
+1. **`checkout_lead_status_history` does not exist in the database.** Confirmed
+   against `information_schema.columns`. Its inserts have always failed into a
+   swallowed `console.error`, and its reads have always returned `[]` — so the
+   superadmin lead-history panel has only ever rendered empty. Behaviour is
+   preserved verbatim behind a named seam (`missingStatusHistoryTable`) rather
+   than deleted, because the fix is a product decision: add the table, or drop
+   the panel. **This is unresolved and needs a decision.**
+2. **`checkout_leads.payment_term` is nullable**; the label helper returned the
+   raw value, so a null term would have rendered as the string `null`.
+3. **`tenants.hero_design` is `text` holding serialized JSON**, not `jsonb`.
+4. **`tenants.convex_schema_version` is `text`**, not an integer.
+
+(3) and (4) were type-only lies — Postgres coerced on the way in, so runtime
+was always correct. (1) and (2) were real.
+
+## Decisions the tests encode
+
+- **The preview is not authoritative.** It projects to four fields —
+  code, name, description, amount. Returning the voucher row would publish
+  remaining redemptions, per-customer caps, and targeted product ids to any
+  visitor. Enumerating codes is inherent to a coupon field; leaking a voucher's
+  internals is not.
+- **Tenant scoping lives in the query.** The lookup runs under the service-role
+  client, which bypasses RLS by design, so a post-hoc filter would still have
+  read another merchant's vouchers off the wire.
+- **A failed redemption is returned, never swallowed.** The conditional UPDATE
+  inside `redeem_voucher()` is the only thing preventing over-redemption.
+- **Optional RPC args are omitted, not blanked.** An empty `p_customer_key`
+  would group every guest into a single "customer" and trip per-customer limits
+  for people who had never used the code.
+- **Entry order survives the round trip.** Codes are normalized and de-duped
+  but not reordered, because a solo-only conflict is resolved
+  first-entered-wins and reordering silently gives someone a different deal.
+- **The per-customer limit is enforced in `resolveVouchers`, not the engine.**
+  `DiscountContext` carries one `customerUsageCount` for the whole evaluation
+  while the limit is per voucher; pre-filtering holds both without changing the
+  engine's tested contract.
+- **The guardrail grew a second pattern.** `deliveryFee + serviceCharge` is the
+  same offence as `total + deliveryFee` written from the other end, and the
+  original shape could not match `orders.ts`.
+
+## Test specification
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 1 | The generated types declare all three voucher tables and the RPC | `database-types.test.ts` | unit | PASS |
+| 2 | The mapper's row shapes stay assignable from the real generated rows | `database-types.test.ts` (compile-time) | type | PASS |
+| 3 | The merchant email total routes through `computeOrderTotals` | `order-totals-wiring.test.ts` | unit | PASS |
+| 4 | An unknown code is a rejection, not a throw | `resolve.test.ts:rejects an unknown code` | unit | PASS |
+| 5 | The same code twice discounts once | `resolve.test.ts:does not discount twice` | unit | PASS |
+| 6 | Entry order decides a solo-only conflict | `resolve.test.ts:preserves entry order` | unit | PASS |
+| 7 | A customer at their limit is turned down; under it, applied | `resolve.test.ts` → customer limit | unit | PASS |
+| 8 | No database round trip for zero or blank codes | `resolve.test.ts` → empty | unit | PASS |
+| 9 | The voucher query is tenant-scoped | `repository.test.ts:scopes the voucher query` | unit | PASS |
+| 10 | Universal-only results skip the targets round trip | `repository.test.ts:does not query targets` | unit | PASS |
+| 11 | A failed redemption reports failure | `repository.test.ts:reports failure` | unit | PASS |
+| 12 | A guest sends no customer key at all | `repository.test.ts:omits the customer key` | unit | PASS |
+| 13 | The preview leaks no counts, limits or targets | `preview.test.ts:never exposes usage counts` | unit | PASS |
+| 14 | A rejection carries an actionable message | `preview.test.ts:explains a rejection` | unit | PASS |
+| 15 | A missing payment term renders as nothing, not "null" | `checkout-lead-payment-term.test.ts` | unit | PASS |
+
+## Coverage
+
+`src/lib/vouchers/{resolve,repository,preview}.ts` are exercised by 24 new
+tests. The voucher modules remain at 100% statements/lines apart from the
+type-only `types.ts`, which has no runtime code.
+
+## Second pass: the write paths
+
+The guardrail had been extended to `src/app/actions/orders.ts` but still did
+not cover a single place where the total is **persisted**. Adding the three
+write paths to `MONEY_BEARING_FILES` failed immediately:
+
+```
+src/lib/orders-service.ts:517         (platform Supabase)
+src/lib/orders-service.ts:722         (Convex)
+src/lib/tenant-supabase-orders.ts:145 (per-tenant Supabase)
+```
+
+Three order backends, three private copies of `subtotal + deliveryFee +
+serviceCharge`. All three now go through `computeOrderTotals` and take an
+optional `discounts` list, so a voucher reaches the row that is actually
+billed rather than only the screen. Behaviour is unchanged today — nothing
+passes `discounts` yet.
+
+`priceOrderWithVouchers` (`src/lib/vouchers/order-pricing.ts`) is the
+authoritative pricing function, with 11 tests. It has **no parameter for a
+client-supplied discount amount**; it takes codes and recomputes, mirroring how
+`createOrderAction` already re-validates the delivery fee and outlet id. One
+test feeds it `discountTotal`, `discount_total` and `discount` fields set to
+the full order value and asserts they are ignored.
+
+`validateVoucherAction` (`src/app/actions/vouchers.ts`) is the read-only
+preview. It uses the **server** clock, so a browser with a shifted clock cannot
+revive an expired voucher, and reads through the service-role client because
+`vouchers` has no anon RLS policy by design.
+
+| Stage | Commit |
+|---|---|
+| RED — order pricing | `77862ec` |
+| GREEN — order pricing | `d6b39a9` |
+| RED — guardrail on the write paths | `2f31fde` |
+| GREEN — write paths + validateVoucherAction | `d604a78` |
+
+## What is NOT done (rest of Phase 3b)
+
+Nothing in this stage is reachable from the running product yet — no UI calls
+any of it, so the shipped behaviour is unchanged apart from the merchant email
+total and the payment-term label.
+
+## Third pass: the wiring
+
+`createOrderAction` now takes `voucherCodes` and applies them on all three
+order backends. 165 tests across the voucher and totals suites.
+
+`src/lib/vouchers/order-voucher-flow.ts` holds the two database chores that
+sit either side of pricing, kept out of the 640-line action so the rules that
+matter are testable alone:
+
+- **`burnRedemptions`** requires an order id it cannot invent, so a use is
+  never burned for an order that was never saved. A failed burn is collected,
+  not thrown — by that point the customer has paid and the kitchen has the
+  order, so losing a coupon count is the cheaper failure. It is logged.
+- **`loadCategoryMap`** returns an empty map on a failed query, which the
+  engine reads as "matches nothing". Widening a category voucher to the whole
+  cart because a lookup failed would discount items it was never meant to
+  touch. It is only queried when a code was actually presented, so an ordinary
+  order pays nothing for the feature.
+
+Ordering that the wiring guarantees:
+
+- the discount is priced **after** every line is re-priced and the delivery fee
+  is settled, so it is computed against numbers the browser could not influence;
+- `writeOrderDiscount` runs **before** any backend reads `customerData`, so the
+  breakdown reaches Convex tenants whose per-tenant schema has no column for it;
+- `burnFor(result.order.id)` runs **after** each insert returns, on all three
+  paths.
+
+Two guardrail assertions were corrected after GREEN. They had encoded named
+arguments and a direct `burnRedemptions` call, but the implementation passes the
+discount positionally to two of the three backends and burns through a local
+helper. The intent — all three backends receive it, every burn is keyed on a
+saved order id — is unchanged and is now asserted exactly.
+
+| Stage | Commit |
+|---|---|
+| RED — burn + category load | `def8594` |
+| GREEN — burn + category load | `e148ef7` |
+| RED — createOrderAction wiring | `7d62ee3` |
+| GREEN — createOrderAction wiring | `db97a75` |
+
+## What is NOT done
+
+Phase 3 is complete. No UI sends `voucherCodes` yet, so no customer can present
+one until Phase 5 — and no voucher rows exist until the Phase 4 admin UI.
+
+Still open and needing a decision: **`checkout_lead_status_history`** — add the
+table, or drop the superadmin panel that reads it.
+
+## Checkpoint commits
+
+| Stage | Commit |
+|---|---|
+| RED — types | `1a6da1e` |
+| GREEN — types + drift fixes | `a675afd` |
+| RED — guardrail on `orders.ts` | `801defe` |
+| GREEN — merchant email total | `d7deb87` |
+| RED — resolver | `2aa3eb5` |
+| GREEN — resolver | `c8061af` |
+| RED — repository | `d9fffb1` |
+| GREEN — repository | `ab9d67d` |
+| RED — preview | `eece902` |
+| GREEN — preview | `1f12460` |

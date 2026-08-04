@@ -5,6 +5,7 @@ import {
   type PosTender,
 } from "./pos-order";
 import { addLine, type PosCartLine } from "./pos-cart";
+import { readOrderDiscount } from "./order-discount";
 
 const cart: PosCartLine[] = addLine(
   addLine([], {
@@ -180,5 +181,75 @@ describe("readPosPayment", () => {
   it("returns null rather than throwing on a malformed blob", () => {
     expect(readPosPayment({ pos: "not-an-object" })).toBeNull();
     expect(readPosPayment("nonsense")).toBeNull();
+  });
+});
+
+/**
+ * A discounted counter sale.
+ *
+ * The register prices vouchers locally, so `buildPosOrder` is where a discount
+ * stops being a preview and becomes the amount a customer hands over. Two
+ * things must be true at once: the total must be NET, and the breakdown must
+ * be persisted — a receipt, a refund, and the merchant's books all need to
+ * know what was taken off.
+ */
+describe("buildPosOrder with a discount", () => {
+  // The fixture cart is 367.50.
+  const discounted = {
+    ...context,
+    discounts: [{ label: "WELCOME10", amount: 24, voucherId: "v-1", code: "WELCOME10" }],
+  };
+
+  it("bills the discounted total, not the full one", () => {
+    expect(buildPosOrder(discounted).total).toBe(343.5);
+  });
+
+  it("persists the breakdown where every backend can read it", () => {
+    const order = buildPosOrder(discounted);
+
+    expect(readOrderDiscount(order)).toEqual({
+      total: 24,
+      deliveryDiscount: 0,
+      lines: [{ label: "WELCOME10", amount: 24, voucherId: "v-1", code: "WELCOME10" }],
+      allocationsByLine: {},
+    });
+  });
+
+  it("keeps the POS payment payload alongside the discount", () => {
+    // Both ride in customerData; one must not overwrite the other.
+    const order = buildPosOrder(discounted);
+
+    expect(order.customerData.pos).toBeDefined();
+    expect(order.customerData.discount).toBeDefined();
+  });
+
+  it("checks cash against the DISCOUNTED total", () => {
+    // 343.50 due after the voucher. 350 covers it; refusing would send the
+    // customer away over money they do not owe.
+    const order = buildPosOrder({
+      ...discounted,
+      tender: { ...cashTender, cashTendered: 350 },
+    });
+
+    expect(order.total).toBe(343.5);
+  });
+
+  it("still refuses cash that does not cover the discounted total", () => {
+    expect(() =>
+      buildPosOrder({ ...discounted, tender: { ...cashTender, cashTendered: 100 } }),
+    ).toThrow(/insufficient/i);
+  });
+
+  it("writes no discount key on an ordinary sale", () => {
+    const order = buildPosOrder(context);
+
+    expect(order.customerData.discount).toBeUndefined();
+    expect(readOrderDiscount(order)).toBeNull();
+  });
+
+  it("writes no discount key when every line is worthless", () => {
+    const order = buildPosOrder({ ...context, discounts: [{ label: "EMPTY", amount: 0 }] });
+
+    expect(readOrderDiscount(order)).toBeNull();
   });
 });

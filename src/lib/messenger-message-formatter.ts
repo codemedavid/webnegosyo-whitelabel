@@ -7,6 +7,30 @@ import type { Order, Tenant } from '@/types/database'
 import { formatPrice } from './cart-utils'
 import { getOrderScheduledLabel } from './advance-order-utils'
 import { getOrderOutletLabel } from './outlets/order-outlet-display'
+import { readOrderDiscount } from './order-discount'
+import { orderSummaryRows, type OrderSummaryRow } from './order-summary-rows'
+
+/**
+ * The ticket's own wording for a money row.
+ *
+ * `orderSummaryRows` decides WHICH rows appear and what each is worth; the
+ * emoji and the capitalisation are this ticket's, unchanged from what merchants
+ * already read. A discount is a magnitude, so the minus sign is added here.
+ */
+function formatSummaryRow(row: OrderSummaryRow): string {
+  switch (row.kind) {
+    case 'subtotal':
+      return `💰 Subtotal: ${formatPrice(row.amount)}`
+    case 'discount':
+      return `🎟️ ${row.label}: -${formatPrice(row.amount)}`
+    case 'service':
+      return `🧾 Service Charge: ${formatPrice(row.amount)}`
+    case 'delivery':
+      return `🚚 Delivery Fee: ${formatPrice(row.amount)}`
+    case 'total':
+      return `💰 Total: ${formatPrice(row.amount)}`
+  }
+}
 
 /**
  * Format order details into a message for Messenger
@@ -111,12 +135,26 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
     })
   }
 
-  // Add totals
-  lines.push(`💰 Subtotal: ${formatPrice(order.total - (order.delivery_fee || 0))}`)
-  if (order.delivery_fee && order.delivery_fee > 0) {
-    lines.push(`🚚 Delivery Fee: ${formatPrice(order.delivery_fee)}`)
+  // Add totals.
+  //
+  // The subtotal is summed from the ITEMS, not derived as `total - delivery`.
+  // `order.total` is stored net of any discount, so that derivation printed a
+  // subtotal that contradicted the item lines directly above it, and no row
+  // named the voucher that explained the gap. Same rules as the admin surfaces.
+  const itemsSubtotal = (order.items ?? []).reduce(
+    (sum, item) => sum + (Number(item.subtotal) || 0),
+    0,
+  )
+
+  for (const row of orderSummaryRows({
+    subtotal: itemsSubtotal,
+    deliveryFee: Number(order.delivery_fee) || 0,
+    serviceCharge: Number(order.service_charge_amount) || 0,
+    discount: readOrderDiscount(order),
+    total: Number(order.total),
+  })) {
+    lines.push(formatSummaryRow(row))
   }
-  lines.push(`💰 Total: ${formatPrice(order.total)}`)
   lines.push('')
 
   // Add payment method information

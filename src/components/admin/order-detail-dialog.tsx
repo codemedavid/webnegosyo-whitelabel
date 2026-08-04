@@ -2,6 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { format, formatDistance } from 'date-fns'
+import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { readOrderDiscount } from '@/lib/order-discount'
 import {
   Package,
   UtensilsCrossed,
@@ -226,24 +228,50 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                 {/* Order Summary */}
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 rounded-lg">
                   <h3 className="text-lg font-semibold mb-4">Order Summary</h3>
+                  {/*
+                    The subtotal is summed from the ITEMS, not derived as
+                    `total - delivery`. That derivation was wrong the moment
+                    discounts existed: `order.total` is already net, so a
+                    discounted order showed a "Subtotal" that did not match the
+                    items listed above it and no row explained the difference.
+                  */}
                   <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal ({itemsCount} items)</span>
-                      <span className="font-medium">
-                        {formatPrice(Number(order.total) - (Number(order.delivery_fee) || 0))}
-                      </span>
-                    </div>
-                    {order.delivery_fee && Number(order.delivery_fee) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Delivery Fee</span>
-                        <span className="font-medium">{formatPrice(Number(order.delivery_fee))}</span>
-                      </div>
+                    {orderSummaryRows({
+                      subtotal: order.order_items.reduce(
+                        (sum, item) => sum + Number(item.subtotal ?? 0),
+                        0,
+                      ),
+                      deliveryFee: Number(order.delivery_fee) || 0,
+                      serviceCharge: Number(order.service_charge_amount) || 0,
+                      discount: readOrderDiscount(order),
+                      total: Number(order.total),
+                    }).map((row, index) =>
+                      row.kind === 'total' ? (
+                        <div key={`${row.kind}-${index}`}>
+                          <Separator />
+                          <div className="flex justify-between text-lg font-bold pt-3">
+                            <span>Total</span>
+                            <span>{formatPrice(row.amount)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={`${row.kind}-${index}`} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {row.kind === 'subtotal' ? `Subtotal (${itemsCount} items)` : row.label}
+                          </span>
+                          <span
+                            className={
+                              row.kind === 'discount'
+                                ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                                : 'font-medium'
+                            }
+                          >
+                            {row.kind === 'discount' ? '−' : ''}
+                            {formatPrice(row.amount)}
+                          </span>
+                        </div>
+                      ),
                     )}
-                    <Separator />
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total</span>
-                      <span>{formatPrice(Number(order.total))}</span>
-                    </div>
                   </div>
                 </div>
               </TabsContent>

@@ -15,6 +15,7 @@
  * module reading the clock, so a retry writes the same row.
  */
 
+import { revisedOrderTotal } from "../pos-cart";
 import type { OrderAddon, OrderVariationSelection } from "./supabase-orders";
 
 /** An item as the edit screen submits it. */
@@ -188,8 +189,13 @@ export function buildRevisionRows(
   const itemRows = args.items.map(toItemRow);
 
   const itemsTotal = itemRows.reduce((sum, row) => sum + row.subtotal, 0);
-  const total = round2(
-    itemsTotal + (args.deliveryFee ?? 0) + (args.serviceChargeAmount ?? 0),
+  // Shared with the was/now header the cashier just confirmed. `carriedCharges`
+  // arrives as `serviceChargeAmount` because that is the only argument the
+  // revise mutation has, but it also carries discounts — see revisedOrderTotal.
+  const total = revisedOrderTotal(
+    itemsTotal,
+    args.deliveryFee ?? 0,
+    args.serviceChargeAmount ?? 0,
   );
 
   const revisionNumber = previous.revisionNumber + 1;

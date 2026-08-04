@@ -1126,16 +1126,6 @@ export interface CheckoutLeadWithPaymentMethod extends CheckoutLead {
   platform_payment_methods: PlatformPaymentMethod | null
 }
 
-export interface CheckoutLeadStatusHistory {
-  id: string
-  checkout_lead_id: string
-  old_status: string | null
-  new_status: string
-  changed_by: string | null
-  note: string | null
-  created_at: string
-}
-
 export interface PlatformPaymentMethod {
   id: string
   name: string

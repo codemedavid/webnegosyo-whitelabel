@@ -132,8 +132,11 @@ export async function deployConvexToTenantAction(tenantId: string) {
   }
 
   // Update schema version and enable app
+  // `convex_schema_version` is a text column, not an integer one. Postgres
+  // coerced the number on the way in, so this always worked — the stale
+  // generated types simply never said so.
   const updatePayload = {
-    convex_schema_version: CURRENT_SCHEMA_VERSION,
+    convex_schema_version: String(CURRENT_SCHEMA_VERSION),
     app_enabled: true,
   };
   await supabase
