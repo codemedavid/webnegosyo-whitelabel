@@ -124,6 +124,32 @@ export interface EnterEditModeRequest {
 }
 
 /**
+ * Something the cashier can do, from this screen, about a refusal.
+ *
+ * Only refusals the person reading them can actually act on get one. A
+ * delivered order and a missing permission are facts about the world; an open
+ * counter sale is a state the same person can clear.
+ */
+export interface EditRemedy {
+  action: "clear_register";
+  /** Button copy. */
+  label: string;
+  /** Shown before acting — clearing discards a real customer's sale. */
+  confirm: string;
+}
+
+export interface EnterEditGate extends EditGate {
+  remedy?: EditRemedy;
+}
+
+const CLEAR_REGISTER_REMEDY: EditRemedy = {
+  action: "clear_register",
+  label: "Clear the register and edit",
+  confirm:
+    "The sale on the register will be discarded and this order opened for editing instead. This cannot be undone.",
+};
+
+/**
  * May the register open this order for editing right now?
  *
  * The status, permission, backend and branch rules are NOT re-implemented here.
@@ -146,7 +172,7 @@ export function canEnterEditMode({
   user,
   scope,
   order,
-}: EnterEditModeRequest): EditGate {
+}: EnterEditModeRequest): EnterEditGate {
   const gate = canEditOrder({ status, backend, user, scope, order });
   if (!gate.allowed) return gate;
 
@@ -155,6 +181,7 @@ export function canEnterEditMode({
       allowed: false,
       reason:
         "The register has a sale in progress. Finish or clear it before editing an order.",
+      remedy: CLEAR_REGISTER_REMEDY,
     };
   }
 

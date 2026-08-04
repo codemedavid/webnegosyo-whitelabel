@@ -373,6 +373,7 @@ export default function OrderDetailScreen() {
   const registerCart = usePosCartStore((s) => s.lines);
   const beginEdit = usePosCartStore((s) => s.beginEdit);
   const setEditVouchers = usePosCartStore((s) => s.setEditVouchers);
+  const resetRegister = usePosCartStore((s) => s.reset);
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const editGate = order
@@ -385,6 +386,29 @@ export default function OrderDetailScreen() {
         order,
       })
     : { allowed: false as const };
+
+  /**
+   * Discard the open counter sale, then open this order.
+   *
+   * Confirmed first: the sale being cleared is a real customer's food, and the
+   * register cart is not persisted, so there is nothing to restore it from.
+   */
+  function handleClearRegisterAndEdit() {
+    const remedy = editGate.remedy;
+    if (!remedy || isOpeningEdit) return;
+
+    Alert.alert("Clear the register?", remedy.confirm, [
+      { text: "Keep the sale", style: "cancel" },
+      {
+        text: "Clear and edit",
+        style: "destructive",
+        onPress: () => {
+          resetRegister();
+          void handleOpenInRegister();
+        },
+      },
+    ]);
+  }
 
   /**
    * Load the order into the register and switch to it.
@@ -715,7 +739,24 @@ export default function OrderDetailScreen() {
               </Text>
             </TouchableOpacity>
           ) : editGate.reason ? (
-            <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+            <>
+              <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+              {/*
+                A refusal the cashier can act on gets a button. Without it they
+                leave this screen, hunt for the sale, clear it, and navigate
+                back — and have to remember which order they were on.
+              */}
+              {editGate.remedy && (
+                <TouchableOpacity
+                  style={styles.remedyButton}
+                  onPress={handleClearRegisterAndEdit}
+                  disabled={isOpeningEdit}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.remedyButtonText}>{editGate.remedy.label}</Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : null}
           {nextStatus && (
             <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
@@ -799,6 +840,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: spacing.md,
   },
+  // Outlined rather than filled: it is the way out of a refusal, not the
+  // screen's main action, which stays the status advance below it.
+  remedyButton: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  remedyButtonText: { color: colors.textPrimary, ...typography.body, fontWeight: "700" },
   reprintButton: {
     borderWidth: 1,
     borderColor: colors.primary,
