@@ -1,4 +1,4 @@
-# TDD evidence — settlement math for the web admin
+# TDD evidence — settlement foundations for the web admin
 
 ## Source plan
 
@@ -6,9 +6,12 @@ No `*.plan.md`. This is **Phase 2, step 1** of the plan produced in the
 `/ecc:plan` run recorded in
 [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
 
+This is **Phase 2, steps 1–2** of the plan produced in the `/ecc:plan` run
+recorded in [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
+
 Phase 2's goal is: a merchant looking at a placed order in web orders
 management can attach a voucher, have the order re-priced, and have the
-outstanding balance drop accordingly. This cycle delivers the foundation that
+outstanding balance drop accordingly. These cycles deliver the foundation that
 every later step needs. **Phase 2 is not complete** — see Known gaps.
 
 ## What the investigation found
@@ -83,6 +86,37 @@ amount, many small charges, and a zero-amount row.
 
 GREEN: every parity case agrees.
 
+### 3. The settlement account a merchant reads (step 2)
+
+`computeBalance` answers one number; a screen needs the account behind it —
+charged, refunded, net, and which of collect / refund / settled to offer. This
+is the layer the attach-a-voucher flow reads: after a ₱40 code lands on a fully
+paid ₱250 order the merchant must be shown a refund of ₱40, which needs the
+charged and refunded halves kept apart rather than collapsed into a net.
+
+`src/lib/order-settlement.ts` ported from `summarizeSettlement` in
+`webnegosyo-app/lib/order-history-view.ts`.
+
+RED — `npx jest --config jest.config.cjs tests/unit/order-settlement-parity.test.ts`:
+
+```
+● Test suite failed to run
+  Cannot find module '@/lib/order-settlement' from 'tests/unit/order-settlement-parity.test.ts'
+```
+
+GREEN — same command: **13 passed, 13 total**.
+
+**Numbers only, deliberately.** The app's copy also returns a pre-formatted
+`balanceLabel` built from its own `formatPeso`; the web formats with
+`formatPrice` from `@/lib/cart-utils`. Porting the label would be a second
+money-formatting implementation with no caller. Parity therefore compares the
+five numeric/intent fields — which is all that can meaningfully drift — across
+8 ledgers × 5 totals.
+
+Callers must label the balance themselves, and must: `balance` is signed while
+the label is not. The screen says "Still owing" or "Refund due", so a minus sign
+in the figure would read as a negative refund.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -96,15 +130,22 @@ GREEN: every parity case agrees.
 | 7 | Sub-centavo float drift reads as square | `:treats sub-centavo drift as square` | unit | PASS |
 | 8 | A whole centavo does not read as square | `:does not treat a whole centavo as square` | unit | PASS |
 | 9 | Web and register agree on amount paid, balance, and intent across 9 ledgers × 5 totals | `:settlement parity — web vs merchant app` | unit (parity) | PASS |
+| 10 | An unpaid order owes its whole total | `order-settlement-parity.test.ts:reports an unpaid order as owing its whole total` | unit | PASS |
+| 11 | A fully paid order reads as settled | `:reports a fully paid order as settled` | unit | PASS |
+| 12 | A discount on a paid order reads as a refund due | `:turns a discount on a paid order into a refund due` | unit | PASS |
+| 13 | Charged and refunded are kept apart, not netted into one figure | `:keeps what was charged separate from what was given back` | unit | PASS |
+| 14 | A part payment reports the remainder still owed | `:reports what is still owed after a part payment` | unit | PASS |
+| 15 | Web and register agree on the whole account across 8 ledgers × 5 totals | `:settlement summary parity — web vs merchant app` | unit (parity) | PASS |
 
 ## Validation actually run
 
 | Command | Result |
 |---|---|
 | `npx jest --config jest.config.cjs tests/unit/order-balance-parity.test.ts` | 35 passed, 35 total |
-| `npx jest --config jest.config.cjs` (full web suite) | 449 passed, 1 skipped; 5,490 tests passed |
+| `npx jest --config jest.config.cjs tests/unit/order-settlement-parity.test.ts` | 13 passed, 13 total |
+| `npx jest --config jest.config.cjs` (full web suite, after step 2) | 450 passed, 1 skipped; 5,503 tests passed |
 | `npx tsc --noEmit` | 0 errors under `src/` |
-| `npx eslint src/lib/order-balance.ts tests/unit/order-balance-parity.test.ts` | clean, no output |
+| `npx eslint` on all four changed files | clean, no output |
 
 ## Coverage and known gaps
 
@@ -114,10 +155,17 @@ exercised by the 35 tests above.
 **Phase 2 is NOT complete.** What this cycle delivers is the arithmetic. What
 remains before a merchant can actually attach a voucher on the web:
 
-1. **A payments reader for a stored order.** The ledger rides inside the
-   free-form `customerData` blob (the same route discounts take, because the
-   Convex schema is deployed per tenant). `readOrderDiscount` has a web copy;
-   the payments equivalent does not.
+1. **A payments source for the web.** On the register the ledger is a separate
+   backend query (`getOrderPaymentsRef`), not a field on the order row — the web
+   has no equivalent query wired up. Along with it comes `order-ledger.ts`, which
+   makes a distinction that has already caused one production defect: a backend
+   with **no ledger function** means an EMPTY ledger, not an unreadable one, and
+   conflating the two "stopped merchants editing orders on every store still
+   running a bundle older than the ledger — most of them". Not ported here
+   because it depends on `stale-backend.ts`, whose error shapes are
+   Convex-query-specific and differ from the web's error surface. **This must be
+   ported before any web UI reads a balance**, or the web will repeat the defect:
+   an order with an unreadable ledger would render as fully unpaid.
 2. **New-vs-already-burned code selection.** The register has
    `newDiscountLines` in `pos-edit-mode.ts` — attaching a code already on the
    order must not burn a second redemption. Needs a web copy plus parity.
@@ -137,11 +185,21 @@ is the piece that can be proven without touching money on real orders.
 
 ## Merge evidence
 
-RED `b2a1fb0` → GREEN `36891ca`, both on `feat/android-sms-followups`.
+Four checkpoint commits, all on `feat/android-sms-followups`.
+
+**Step 1 — balance math.** RED `b2a1fb0` → GREEN `36891ca`.
 
 - RED: `test: add reproducer for settlement math missing on the web admin`
   — suite failed to run, module absent.
 - GREEN: `feat: give the web admin the settlement math for a placed order`
-  — 35/35 pass; full suite 5,490 pass; tsc clean under `src/`; eslint clean.
-- No refactor commit: the port is a straight transliteration with the module
-  docstring rewritten for its new context; nothing left to clean up.
+  — 35/35 pass.
+
+**Step 2 — settlement account.** RED `c7ad0cd` → GREEN `f4d2fa1`.
+
+- RED: `test: add reproducer for the settlement summary missing on the web admin`
+  — suite failed to run, module absent.
+- GREEN: `feat: give the web admin the settlement account for a placed order`
+  — 13/13 pass; full suite 5,503 pass; tsc clean under `src/`; eslint clean.
+
+No refactor commits: both ports are straight transliterations with their module
+docstrings rewritten for the new context; nothing left to clean up.
