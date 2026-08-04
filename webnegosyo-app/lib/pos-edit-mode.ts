@@ -31,6 +31,7 @@ import { diffOrderItems } from "./order-revision";
 
 import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
+import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
@@ -270,6 +271,60 @@ function itemsTotalOf(cart: readonly PosCartLine[]): number {
 }
 
 /**
+ * The discount lines this edit ADDED, beyond what the order already carries.
+ *
+ * Two callers, one rule. `editModeTotals` sums these to price the bill, and the
+ * tender screen burns them — and only them.
+ *
+ * A code already on the bill yields nothing either way. Re-entering one is an
+ * easy mistake at a counter (the customer hands the same voucher over twice, or
+ * the cashier does not recognise the label on the existing row): counting it
+ * again gives away one discount for a voucher presented once, and burning it
+ * again spends a second redemption from the customer's own allowance.
+ *
+ * A manual discount is excluded too — no code means nothing to redeem.
+ */
+export function newDiscountLines(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): OrderDiscountLine[] {
+  const alreadyOn = new Set(
+    carried.map((line) => line.code).filter((code): code is string => code != null),
+  );
+
+  return added.filter(
+    (line) =>
+      Number.isFinite(line.amount) &&
+      line.amount > 0 &&
+      line.code != null &&
+      !alreadyOn.has(line.code),
+  );
+}
+
+/**
+ * What this edit's own discount lines are worth.
+ *
+ * Manual lines are counted here but never burned: a cashier's open discount is
+ * real money off the bill with no voucher behind it.
+ */
+function addedDiscountsOf(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): number {
+  const alreadyOn = new Set(
+    carried.map((line) => line.code).filter((code): code is string => code != null),
+  );
+
+  return round2(
+    added.reduce((sum, line) => {
+      if (!Number.isFinite(line.amount) || line.amount <= 0) return sum;
+      if (line.code != null && alreadyOn.has(line.code)) return sum;
+      return sum + line.amount;
+    }, 0),
+  );
+}
+
+/**
  * The part of a placed bill that is neither its line items nor its delivery.
  *
  * Derived rather than read, because no backend stores it: the platform orders
@@ -323,6 +378,7 @@ export function withEditVouchers(
 export function editModeTotals(
   cart: readonly PosCartLine[],
   context: OrderEditContext,
+  addedDiscountLines: readonly OrderDiscountLine[] = [],
 ): EditModeTotals {
   const itemsTotal = itemsTotalOf(cart);
 
@@ -345,10 +401,18 @@ export function editModeTotals(
     now: new Date(),
   });
 
+  // A code the cashier applied during THIS edit, on top of whatever the order
+  // already carried. Capped against the two together rather than separately:
+  // two lines that each fit under the bill can still sum past it, and a
+  // negative total is money invented.
+  const chargeable = round2(itemsTotal + context.carriedCharges + context.deliveryFee);
+  const added = addedDiscountsOf(addedDiscountLines, discount.lines);
+  const discountTotal = Math.min(round2(discount.total + added), Math.max(chargeable, 0));
+
   // Folded once, here, so the shown total and the saved one cannot disagree:
   // `revisedOrderTotal(items, delivery, carriedChargesForSave)` reproduces
   // `newTotal` exactly, which is what the revise mutation recomputes.
-  const carriedChargesForSave = round2(context.carriedCharges - discount.total);
+  const carriedChargesForSave = round2(context.carriedCharges - discountTotal);
   const newTotal = revisedOrderTotal(
     itemsTotal,
     context.deliveryFee,
@@ -360,8 +424,11 @@ export function editModeTotals(
   // Same identity rule the revision diff uses, so "is this dirty?" and "what
   // changed?" can never disagree — an enabled Save button beside an empty
   // change list is a bug the cashier cannot explain.
+  // Applying a code moves no line, so the item diff alone would leave Save
+  // disabled on an edit whose only point was the discount.
   const isDirty =
-    diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0;
+    diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0 ||
+    added > 0;
 
   const blockedReason =
     cart.length === 0

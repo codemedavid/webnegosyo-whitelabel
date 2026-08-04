@@ -18,7 +18,6 @@ import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backen
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { listAllPaymentMethods, listPaymentMethods } from "../../lib/pos-catalog";
-import { editModeTotals } from "../../lib/pos-edit-mode";
 import { canIssueRefund } from "../../lib/order-edit-guards";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
@@ -35,6 +34,7 @@ import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { burnPosRedemptions } from "../../lib/voucher-service";
+import { newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
@@ -71,6 +71,7 @@ export default function PosTenderScreen() {
   const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
+  const discount = usePosCartStore((s) => s.discount);
   const endEdit = usePosCartStore((s) => s.endEdit);
 
   const role = useAuthStore((s) => s.role);
@@ -108,9 +109,12 @@ export default function PosTenderScreen() {
 
   // Editing a placed order: what it is now worth, and what still has to move.
   // Every part of that judgement lives in `pos-edit-mode.ts` and is tested.
+  // `discount` belongs in the deps: a code applied during the edit changes the
+  // balance to settle without touching a line.
   const edit = useMemo(
-    () => (editContext ? editModeTotals(lines, editContext) : null),
-    [lines, editContext],
+    () => usePosCartStore.getState().editTotals(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, editContext, discount],
   );
 
   const isRefund = edit?.intent === "refund";
@@ -214,7 +218,9 @@ export default function PosTenderScreen() {
       // NOT it: the re-priced discount has to be folded in, or a discounted
       // order would be saved at full price and the customer re-charged the
       // discount they were given.
-      const saved = editModeTotals(lines, editContext);
+      // Read back from the store, not recomputed: the figure saved must be the
+      // one the register showed, discounts applied during the edit included.
+      const saved = usePosCartStore.getState().editTotals()!;
 
       await reviseOrder({
         orderId: editContext.orderId,
@@ -259,6 +265,22 @@ export default function PosTenderScreen() {
           editContext.orderId,
           editContext.expectedRevisionNumber + 1,
           posStockRevision(editContext.originalStockItems, buildPosStockItems(lines)),
+        );
+      }
+
+      // Burn the codes THIS edit added. The order's own codes were burned when
+      // it was placed; burning them again would spend a second redemption from
+      // the customer's allowance on every subsequent edit. Never throws — the
+      // bill is already rewritten and the money settled by this point.
+      if (tenantId) {
+        await burnPosRedemptions(
+          tenantId,
+          editContext.orderId,
+          newDiscountLines(
+            usePosCartStore.getState().sessionDiscount().lines,
+            editContext.storedDiscount?.lines ?? [],
+          ),
+          outletId,
         );
       }
 
