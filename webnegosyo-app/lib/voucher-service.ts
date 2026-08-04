@@ -32,6 +32,21 @@ async function accessToken(): Promise<string | null> {
 }
 
 /**
+ * How long the counter waits for a code before deciding it cannot be verified.
+ *
+ * Short, because a cashier is standing in front of a customer while this runs
+ * and the fallback — "that code could not be applied" — is a fine answer. It is
+ * deliberately far below the 20s the stock write allows itself: that one may
+ * have landed on the server and must not be re-sent lightly, whereas a lookup
+ * reads and can simply be retried.
+ */
+const LOOKUP_TIMEOUT_MS = 8_000;
+
+export interface LookupOptions {
+  timeoutMs?: number;
+}
+
+/**
  * Fetches the vouchers behind the codes a cashier typed.
  *
  * Returns an empty list on any failure — an unverifiable code is worth zero,
@@ -43,28 +58,55 @@ async function accessToken(): Promise<string | null> {
 export async function lookupVouchers(
   tenantId: string,
   codes: readonly string[],
+  options: LookupOptions = {},
 ): Promise<Voucher[]> {
   if (codes.length === 0) return [];
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // Aborted AND raced, for the reason `inventory-movement-service` documents:
+  // the abort releases the socket, but React Native's fetch has not always
+  // propagated an abort as a rejection, and relying on it alone is how a
+  // spinner outlives the timeout meant to end it. The race is what guarantees
+  // this function returns.
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, options.timeoutMs ?? LOOKUP_TIMEOUT_MS);
+  });
+
   try {
-    const token = await accessToken();
+    // The session read is inside the deadline, not before it. A client midway
+    // through a token refresh with no signal hangs here rather than in fetch,
+    // and a deadline that only starts afterwards would never fire.
+    const token = await Promise.race([accessToken(), expiry]);
     if (!token) return [];
 
-    const response = await fetch(`${getWebAppUrl()}/api/vouchers/lookup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ tenantId, codes }),
-    });
+    const response = await Promise.race([
+      fetch(`${getWebAppUrl()}/api/vouchers/lookup`, {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tenantId, codes }),
+      }),
+      expiry,
+    ]);
 
     if (!response.ok) return [];
 
-    const body = await response.json();
+    const body = await Promise.race([response.json(), expiry]);
     return Array.isArray(body?.vouchers) ? (body.vouchers as Voucher[]) : [];
   } catch {
+    // A timeout lands here with every other failure, and belongs there: an
+    // unverifiable code is worth zero either way, which is the safe direction.
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 
