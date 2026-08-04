@@ -26,6 +26,7 @@ import {
   EMPTY_POS_DISCOUNT_SESSION,
   addSessionVoucher,
   clearSessionManualDiscount,
+  discountAfterCartChange,
   removeSessionVoucher,
   sessionDiscount,
   setSessionManualDiscount,
@@ -114,8 +115,20 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
   add: (input) => set((s) => ({ lines: addLine(s.lines, input) })),
-  setQty: (key, quantity) => set((s) => ({ lines: updateQty(s.lines, key, quantity) })),
-  remove: (key) => set((s) => ({ lines: removeLine(s.lines, key) })),
+  // Both of these can empty the cart — `updateQty(key, 0)` removes the line —
+  // and an emptied cart is the end of a sale. `discountAfterCartChange` decides
+  // whether the held discount survives, so a cashier stepping down to zero
+  // instead of pressing Clear cannot carry a voucher onto the next customer.
+  setQty: (key, quantity) =>
+    set((s) => {
+      const lines = updateQty(s.lines, key, quantity);
+      return { lines, discount: discountAfterCartChange(s.discount, lines) };
+    }),
+  remove: (key) =>
+    set((s) => {
+      const lines = removeLine(s.lines, key);
+      return { lines, discount: discountAfterCartChange(s.discount, lines) };
+    }),
 
   // Clears the sale but keeps the order type, so a cashier ringing up a queue
   // of dine-in customers does not re-pick it for every single sale.
@@ -132,12 +145,16 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       discount: EMPTY_POS_DISCOUNT_SESSION,
     }),
 
+  // The discount goes too. A voucher held for the abandoned counter sale would
+  // otherwise price itself onto somebody else's already-placed order and show
+  // the cashier a discount row nobody gave.
   beginEdit: (entered) =>
     set({
       lines: entered.cart,
       editContext: entered.context,
       editWarnings: entered.warnings,
       ...clearedSaleCustomer(),
+      discount: EMPTY_POS_DISCOUNT_SESSION,
     }),
 
   /**
