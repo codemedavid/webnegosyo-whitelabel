@@ -15,12 +15,20 @@
 import { describe, it, expect, jest } from '@jest/globals'
 import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 
-function makeClient(rpcResults: Array<{ error: unknown }>) {
+/**
+ * `redeem_voucher()` returns the new redemption's uuid, or null when the
+ * conditional claim was refused. The mock returns both fields for that reason:
+ * a stub that only carries `error` cannot express the refusal the database
+ * actually produces.
+ */
+function makeClient(rpcResults: Array<{ data?: unknown; error: unknown }>) {
   let call = 0
   return {
-    rpc: jest.fn(async () => rpcResults[call++] ?? { error: null }),
+    rpc: jest.fn(async () => rpcResults[call++] ?? { data: 'redemption-1', error: null }),
   }
 }
+
+const BURNED = { data: 'redemption-1', error: null }
 
 const REDEMPTIONS = [
   { voucherId: 'v-1', code: 'SAVE10', amount: 100 },
@@ -37,7 +45,7 @@ const BURN_INPUT = {
 
 describe('burnRedemptions', () => {
   it('burns one use per applied voucher, keyed on the saved order', async () => {
-    const client = makeClient([{ error: null }, { error: null }])
+    const client = makeClient([BURNED, BURNED])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await burnRedemptions(client as any, { ...BURN_INPUT, redemptions: REDEMPTIONS })
@@ -63,7 +71,20 @@ describe('burnRedemptions', () => {
   })
 
   it('reports a failed burn without throwing, so a saved order still succeeds', async () => {
-    const client = makeClient([{ error: { message: 'voucher exhausted' } }, { error: null }])
+    const client = makeClient([{ data: null, error: { message: 'voucher exhausted' } }, BURNED])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await burnRedemptions(client as any, { ...BURN_INPUT, redemptions: REDEMPTIONS })
+
+    expect(result.burned).toBe(1)
+    expect(result.failures).toEqual([expect.stringContaining('SAVE10')])
+  })
+
+  it('reports a refused claim the database returned without an error', async () => {
+    // An exhausted or out-of-window voucher comes back as a null row and no
+    // error. Counting that as burned is how a limited code stays honoured
+    // forever, with nothing in the log to say so.
+    const client = makeClient([{ data: null, error: null }, BURNED])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await burnRedemptions(client as any, { ...BURN_INPUT, redemptions: REDEMPTIONS })
@@ -73,7 +94,7 @@ describe('burnRedemptions', () => {
   })
 
   it('still burns the remaining vouchers after one fails', async () => {
-    const client = makeClient([{ error: { message: 'nope' } }, { error: null }])
+    const client = makeClient([{ data: null, error: { message: 'nope' } }, BURNED])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await burnRedemptions(client as any, { ...BURN_INPUT, redemptions: REDEMPTIONS })
