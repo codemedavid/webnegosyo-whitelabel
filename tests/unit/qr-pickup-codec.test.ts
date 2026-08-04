@@ -8,6 +8,7 @@
  * camera.
  */
 
+import { compressToEncodedURIComponent } from 'lz-string'
 import {
   encodePickupQr,
   decodePickupQr,
@@ -163,7 +164,5 @@ describe('pickup QR codec', () => {
  * payloads whose checksum does NOT match their contents.
  */
 function encodePickupQrWithChecksum(payload: QrPickupPayloadV1): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { compressToEncodedURIComponent } = require('lz-string')
   return compressToEncodedURIComponent(JSON.stringify(payload))
 }
