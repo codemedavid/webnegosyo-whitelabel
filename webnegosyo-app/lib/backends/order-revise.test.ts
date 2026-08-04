@@ -342,3 +342,74 @@ describe("buildPaymentRow", () => {
     expect(row.outlet_id).toBeNull();
   });
 });
+
+/**
+ * Recording WHICH discount an edit ended up with.
+ *
+ * `reviseOrder` had exactly one channel for everything that is neither a line
+ * item nor delivery: `serviceChargeAmount`. That was enough to make the TOTAL
+ * right, and it is how the re-priced discount has always travelled.
+ *
+ * It is not enough to keep the order HONEST. The stored discount payload is
+ * written once, at order creation, and never again — so an edit that re-priced
+ * a voucher, or applied a new one, left the order showing its original discount
+ * rows beside a total those rows no longer add up to. The merchant sees
+ * "20% off −₱40" on a bill that was actually discounted ₱60, and nothing on
+ * screen explains the difference.
+ *
+ * So the revise carries the payload it settled on. Omitted means "unchanged",
+ * because the overwhelming majority of edits do not touch the discount and
+ * blanking it on every save would erase the original.
+ */
+describe("buildRevisionRows discount payload", () => {
+  const DISCOUNT = {
+    total: 60,
+    deliveryDiscount: 0,
+    lines: [{ label: "20% off", amount: 60, code: "SAVE20", voucherId: "v-1" }],
+    allocationsByLine: {},
+  };
+
+  it("writes the settled discount onto the order", () => {
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ discount: DISCOUNT }),
+      previous(),
+    );
+
+    expect(orderPatch.discount_data).toEqual(DISCOUNT);
+  });
+
+  /** Most edits never touch the discount; blanking it would erase the original. */
+  it("leaves the stored discount alone when the edit did not settle one", () => {
+    const { orderPatch } = buildRevisionRows("tenant-1", reviseArgs({}), previous());
+
+    expect(orderPatch).not.toHaveProperty("discount_data");
+  });
+
+  /**
+   * Removing the last code IS a change, and has to be distinguishable from
+   * "did not touch it" — otherwise the order keeps discount rows for a voucher
+   * that no longer applies.
+   */
+  it("clears the stored discount when the edit settled on none", () => {
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ discount: null }),
+      previous(),
+    );
+
+    expect(orderPatch.discount_data).toBeNull();
+  });
+
+  it("still totals from serviceChargeAmount, not from the payload", () => {
+    // The payload is a RECORD of what was decided. Totalling from it as well
+    // would deduct the discount twice.
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ discount: DISCOUNT, serviceChargeAmount: -60 }),
+      previous(),
+    );
+
+    expect(orderPatch.total).toBe(140);
+  });
+});
