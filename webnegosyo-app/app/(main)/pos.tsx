@@ -550,6 +550,13 @@ export default function PosScreen() {
         onCheckVoucher={checkVoucher}
         onApplyVoucher={applyVoucher}
         onApplyManual={(manual) => setManualDiscount(manual, { role, isOwner, permissions })}
+        // From the session, not the priced lines: a voucher held but currently
+        // worth nothing is still applied, and offering it again would look
+        // like the register had forgotten it.
+        appliedCodes={discount.vouchers.map((held) => held.code)}
+        hasManualDiscount={discount.manual !== null}
+        onRemoveVoucher={removeVoucher}
+        onRemoveManual={clearManualDiscount}
       />
     </View>
   );
