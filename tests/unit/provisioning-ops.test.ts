@@ -24,7 +24,8 @@ jest.mock('@/lib/admin-service', () => ({
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
-jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn() }))
+jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn(), listAddonLibraryForProvisioning: jest.fn() }))
+jest.mock('@/lib/addon-bulk-attach', () => ({ __esModule: true, attachAddonEntriesToItems: jest.fn() }))
 jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn() }))
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
 jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
@@ -50,6 +51,8 @@ const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service'
 const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
 const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering-service') as any
 const { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } = jest.requireMock('@/lib/menu-arrangement') as any
+const { attachAddonEntriesToItems } = jest.requireMock('@/lib/addon-bulk-attach') as any
+const { listAddonLibraryForProvisioning } = jest.requireMock('@/lib/addon-library-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
@@ -86,6 +89,8 @@ beforeEach(() => {
   bulkUpdateBcgClassification.mockReset().mockResolvedValue([{ id: 'item_1', bcg_classification: 'star' }] as never)
   reorderCategoriesForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
   reorderMenuItemsForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
+  attachAddonEntriesToItems.mockReset().mockResolvedValue({ itemsUpdated: 2, addonsAttached: 1 } as never)
+  listAddonLibraryForProvisioning.mockReset().mockResolvedValue([{ id: 'e1', name: 'Extra Shot', price: 30 }] as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -499,5 +504,34 @@ describe('menu arrangement ops', () => {
     expect(Object.keys(PROVISIONING_OPS)).toEqual(
       expect.arrayContaining(['reorder_categories', 'reorder_menu_items']),
     )
+  })
+})
+
+describe('add-on ops', () => {
+  const OTHER = '33333333-3333-4333-8333-333333333333'
+
+  it('attach_addon_library_entries forwards items, entries and ctx', async () => {
+    const result = await executeOp('attach_addon_library_entries', ctx, {
+      tenantId: TENANT,
+      itemIds: [ITEM, OTHER],
+      entryIds: [ITEM],
+    })
+
+    expect(attachAddonEntriesToItems).toHaveBeenCalledWith(TENANT, [ITEM, OTHER], [ITEM], ctx)
+    expect(result).toMatchObject({ itemsUpdated: 2 })
+  })
+
+  it('rejects an empty attach at the schema, before a writer sees it', async () => {
+    await expect(
+      executeOp('attach_addon_library_entries', ctx, { tenantId: TENANT, itemIds: [], entryIds: [ITEM] }),
+    ).rejects.toThrow()
+    expect(attachAddonEntriesToItems).not.toHaveBeenCalled()
+  })
+
+  it('list_addon_library reads the tenant library so entries resolve by name', async () => {
+    const result = await executeOp('list_addon_library', ctx, { tenantId: TENANT }) as any
+
+    expect(listAddonLibraryForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ name: 'Extra Shot' })
   })
 })

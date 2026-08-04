@@ -11,7 +11,8 @@ import {
     listMenuItemsForProvisioning,
     listCategoriesForProvisioning,
 } from '@/lib/admin-service'
-import { createAddonLibraryEntry } from '@/lib/addon-library-service'
+import { createAddonLibraryEntry, listAddonLibraryForProvisioning } from '@/lib/addon-library-service'
+import { attachAddonEntriesToItems } from '@/lib/addon-bulk-attach'
 import { createUpsellPair, bulkUpdateBcgClassification } from '@/lib/menu-engineering-service'
 import { classifyMenu } from '@/lib/menu-engineering-classify'
 import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } from '@/lib/menu-arrangement'
@@ -267,6 +268,27 @@ const ops: ProvisioningOp<unknown>[] = [
             "List a tenant's menu categories (id, name, order, is_active) so a category_id can be resolved by name before adding or moving a menu item. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listCategoriesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'attach_addon_library_entries',
+        description:
+            "Attach reusable add-on library entries to MANY menu items at once — the fast way to give a whole category (or every upsell target) the same modifiers. Envelope: { tenantId, itemIds, entryIds }. Existing add-ons on each item are PRESERVED, and an entry already present by name is skipped, so calling this twice is safe. Resolve entryIds via list_addon_library and itemIds via list_menu_items. To REMOVE an add-on from an item, send the full replacement array via update_menu_item — this surface has no removal tool by design.",
+        input: z.object({
+            tenantId: UUID,
+            itemIds: z.array(UUID).min(1).describe('Menu items that should gain these add-ons'),
+            entryIds: z.array(UUID).min(1).describe('Add-on library entries to attach'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; itemIds: string[]; entryIds: string[] }
+            return attachAddonEntriesToItems(i.tenantId, i.itemIds, i.entryIds, ctx)
+        },
+    }),
+    op({
+        name: 'list_addon_library',
+        description:
+            "List a tenant's reusable add-on library (id, name, price) so an entry can be resolved by name before attaching it. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listAddonLibraryForProvisioning((input as { tenantId: string }).tenantId, ctx),
     }),
     op({
         name: 'reorder_categories',

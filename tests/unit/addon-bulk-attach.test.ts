@@ -23,13 +23,19 @@ interface FakeItem {
 function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string; price: number }>) {
   const writes: Array<{ id: string; addons: Array<{ name: string; price: number }> }> = []
 
-  const resolving = (rows: unknown[]) => {
+  // `.in()` is honoured: the writer only merges the entries it asked for, and a
+  // double that returned everything would hide a request-vs-response mismatch.
+  const resolving = (rows: Array<{ id: string }>) => {
     const b: Record<string, unknown> = {}
+    let filtered = rows
     Object.assign(b, {
       select: () => b,
       eq: () => b,
-      in: () => b,
-      then: (resolve: (v: unknown) => unknown) => resolve({ data: rows, error: null }),
+      in: (_col: string, ids: string[]) => {
+        filtered = rows.filter((r) => ids.includes(r.id))
+        return b
+      },
+      then: (resolve: (v: unknown) => unknown) => resolve({ data: filtered, error: null }),
     })
     return b
   }
