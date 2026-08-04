@@ -186,3 +186,64 @@ describe("orderSummaryRows", () => {
     ]);
   });
 });
+
+/**
+ * Naming the voucher, not just the amount.
+ *
+ * A discount row reads "20% off −₱60" — the voucher's NAME, because that is
+ * what `stacking.ts` puts in the label. Two vouchers can share a name, a
+ * merchant reconciling a day's takings needs the CODE, and a customer
+ * disputing a bill quotes the code rather than the name.
+ *
+ * The code is already stored on the line. It was simply never rendered.
+ */
+describe("naming the voucher on a discount row", () => {
+  it("carries the code alongside the label", () => {
+    const rows = orderSummaryRows({
+      subtotal: 200,
+      total: 140,
+      discount: {
+        total: 60,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "20% off", amount: 60, code: "SAVE20", voucherId: "v-1" }],
+      },
+    });
+
+    const discountRow = rows.find((row) => row.kind === "discount");
+    expect(discountRow?.code).toBe("SAVE20");
+  });
+
+  it("leaves the code off a cashier's open discount, which has none", () => {
+    const rows = orderSummaryRows({
+      subtotal: 200,
+      total: 185,
+      discount: {
+        total: 15,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "Goodwill", amount: 15 }],
+      },
+    });
+
+    expect(rows.find((row) => row.kind === "discount")?.code).toBeUndefined();
+  });
+
+  it("leaves the code off the unaccounted remainder, which belongs to no line", () => {
+    const rows = orderSummaryRows({
+      subtotal: 200,
+      total: 100,
+      deliveryFee: 50,
+      discount: {
+        total: 60,
+        deliveryDiscount: 50,
+        allocationsByLine: {},
+        lines: [{ label: "20% off", amount: 10, code: "SAVE20", voucherId: "v-1" }],
+      },
+    });
+
+    const remainder = rows.filter((row) => row.kind === "discount").at(-1);
+    expect(remainder?.label).toBe("Discount");
+    expect(remainder?.code).toBeUndefined();
+  });
+});
