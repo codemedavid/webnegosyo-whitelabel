@@ -2,7 +2,7 @@
 
 ## Source plan
 
-No `*.plan.md`. This is **Phase 2, steps 1–4** of the plan produced in the
+No `*.plan.md`. This is **Phase 2, steps 1–5 (step 5 partial)** of the plan produced in the
 `/ecc:plan` run recorded in
 [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
 
@@ -184,6 +184,37 @@ RED — `npx jest --config jest.config.cjs tests/unit/order-discount-attach-pari
 
 GREEN — same command: **22 passed, 22 total**, including 11 shared parity cases.
 
+### 6. Re-pricing a placed order on attach (step 5, core)
+
+`src/lib/order-attach-reprice.ts` — `repriceAttachedDiscount`.
+
+This is the arithmetic the three backend write paths will each persist,
+computed ONCE so Convex, the platform Postgres and a tenant's own Postgres
+cannot disagree about what the customer was charged. Each write path's job is
+to store this result, never to derive its own.
+
+**The invariant it rests on**, stated in `order-discount.ts` and true on every
+backend: an order's `total` is ALREADY net of its discount. The stored payload
+is the breakdown, never the source of the amount charged. So only the NEWLY
+attached lines are subtracted — subtracting the carried discount again would
+take the same money off twice and produce a bill nobody authorised.
+
+That is also why this is separate from the checkout's `priceOrderWithVouchers`,
+which prices a gross bill from scratch. A placed order is not a fresh one.
+
+The added discount is capped at the order's own total: two codes that each fit
+under the bill can still sum past it, and a negative total is money invented —
+downstream it would read as a refund owed on top of everything already returned.
+
+RED — `npx jest --config jest.config.cjs tests/unit/order-attach-reprice.test.ts`:
+
+```
+● Test suite failed to run
+  Cannot find module '@/lib/order-attach-reprice' from 'tests/unit/order-attach-reprice.test.ts'
+```
+
+GREEN — same command: **12 passed, 12 total**.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -219,6 +250,14 @@ GREEN — same command: **22 passed, 22 total**, including 11 shared parity case
 | 29 | A carried manual line does not suppress a new code | `:does not let a carried manual line suppress a new code` | unit | PASS |
 | 30 | The inputs are not mutated | `:does not mutate what it was given` | unit | PASS |
 | 31 | Web and register agree across 11 attach shapes | `:attach selection parity — web vs merchant app` | unit (parity) | PASS |
+| 32 | A newly attached code comes off the placed total | `order-attach-reprice.test.ts:takes the new discount off the placed total` | unit | PASS |
+| 33 | The discount the order was placed with is NOT subtracted again | `:does not subtract the discount the order was already placed with` | unit | PASS |
+| 34 | Re-entering the carried code changes nothing | `:ignores a code the order already carried` | unit | PASS |
+| 35 | An order is never priced below zero | `:never prices an order below nothing` | unit | PASS |
+| 36 | Two codes that individually fit but together exceed the bill are capped | `:caps two codes that individually fit but together exceed the bill` | unit | PASS |
+| 37 | A manual line is never applied by an attach | `:ignores a manual line, which carries no code to redeem` | unit | PASS |
+| 38 | Money is rounded to centavos, not carried as float drift | `:rounds to centavos rather than carrying float drift` | unit | PASS |
+| 39 | The new total reconciles from the figures reported alongside it | `:keeps the new total reconcilable from the figures it reports` | unit | PASS |
 
 ## Validation actually run
 
@@ -228,7 +267,8 @@ GREEN — same command: **22 passed, 22 total**, including 11 shared parity case
 | `npx jest --config jest.config.cjs tests/unit/order-settlement-parity.test.ts` | 13 passed, 13 total |
 | `npx jest --config jest.config.cjs tests/unit/order-ledger-parity.test.ts` | 25 passed, 25 total |
 | `npx jest --config jest.config.cjs tests/unit/order-discount-attach-parity.test.ts` | 22 passed, 22 total |
-| `npx jest --config jest.config.cjs` (full web suite, after step 4) | 452 passed, 1 skipped; 5,550 tests passed |
+| `npx jest --config jest.config.cjs tests/unit/order-attach-reprice.test.ts` | 12 passed, 12 total |
+| `npx jest --config jest.config.cjs` (full web suite, after step 5 core) | 453 passed, 1 skipped; 5,568 tests passed |
 | `npx tsc --noEmit` | 0 errors under `src/` |
 | `npx eslint` on all four changed files | clean, no output |
 
@@ -295,5 +335,12 @@ Four checkpoint commits, all on `feat/android-sms-followups`.
 - GREEN: `feat: let the web tell which codes an attach newly added`
   — 22/22 pass; full suite 5,550 pass; tsc clean under `src/`; eslint clean.
 
-No refactor commits: all four ports are straight transliterations with their
+**Step 5 (core) — re-price on attach.** RED `22c6cd6` → GREEN `fc03726`.
+
+- RED: `test: add reproducer for re-pricing an order when a code is attached`
+  — suite failed to run, module absent.
+- GREEN: `feat: re-price a placed order when a voucher is attached to it`
+  — 12/12 pass; full suite 5,568 pass; tsc clean under `src/`; eslint clean.
+
+No refactor commits: the four ports are straight transliterations with their
 module docstrings rewritten for the new context; nothing left to clean up.
