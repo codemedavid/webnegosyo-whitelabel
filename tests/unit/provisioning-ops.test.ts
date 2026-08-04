@@ -28,6 +28,7 @@ jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonL
 jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn() }))
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
 jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
+jest.mock('@/lib/menu-arrangement', () => ({ __esModule: true, reorderCategoriesForProvisioning: jest.fn(), reorderMenuItemsForProvisioning: jest.fn() }))
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 // The MCP SDK derives each tool's advertised JSON schema by first passing the
@@ -48,6 +49,7 @@ const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
 const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering-service') as any
+const { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } = jest.requireMock('@/lib/menu-arrangement') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
@@ -82,6 +84,8 @@ beforeEach(() => {
     coverage: { complete: true },
   } as never)
   bulkUpdateBcgClassification.mockReset().mockResolvedValue([{ id: 'item_1', bcg_classification: 'star' }] as never)
+  reorderCategoriesForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
+  reorderMenuItemsForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -458,5 +462,42 @@ describe('apply_menu_classification (write, only what was handed to it)', () => 
     await expect(
       executeOp('apply_menu_classification', ctx, { tenantId: TENANT, classifications: [] }),
     ).rejects.toThrow()
+  })
+})
+
+describe('menu arrangement ops', () => {
+  const OTHER = '33333333-3333-4333-8333-333333333333'
+
+  it('reorder_categories forwards the full ordering and ctx', async () => {
+    const result = await executeOp('reorder_categories', ctx, {
+      tenantId: TENANT,
+      categoryIds: [ITEM, OTHER],
+    })
+
+    expect(reorderCategoriesForProvisioning).toHaveBeenCalledWith(TENANT, [ITEM, OTHER], ctx)
+    expect(result).toMatchObject({ reordered: 2 })
+  })
+
+  it('reorder_menu_items scopes the ordering to one category', async () => {
+    await executeOp('reorder_menu_items', ctx, {
+      tenantId: TENANT,
+      categoryId: OTHER,
+      itemIds: [ITEM],
+    })
+
+    expect(reorderMenuItemsForProvisioning).toHaveBeenCalledWith(TENANT, OTHER, [ITEM], ctx)
+  })
+
+  it('rejects an empty ordering at the schema, before it reaches a writer', async () => {
+    await expect(
+      executeOp('reorder_categories', ctx, { tenantId: TENANT, categoryIds: [] }),
+    ).rejects.toThrow()
+    expect(reorderCategoriesForProvisioning).not.toHaveBeenCalled()
+  })
+
+  it('survives the destructive-name guardrail (reordering is not a deletion)', () => {
+    expect(Object.keys(PROVISIONING_OPS)).toEqual(
+      expect.arrayContaining(['reorder_categories', 'reorder_menu_items']),
+    )
   })
 })

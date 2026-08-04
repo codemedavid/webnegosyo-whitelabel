@@ -14,6 +14,7 @@ import {
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
 import { createUpsellPair, bulkUpdateBcgClassification } from '@/lib/menu-engineering-service'
 import { classifyMenu } from '@/lib/menu-engineering-classify'
+import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } from '@/lib/menu-arrangement'
 import { createBundle } from '@/lib/bundles-service'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
@@ -266,6 +267,39 @@ const ops: ProvisioningOp<unknown>[] = [
             "List a tenant's menu categories (id, name, order, is_active) so a category_id can be resolved by name before adding or moving a menu item. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listCategoriesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'reorder_categories',
+        description:
+            "Set the top-to-bottom order of a tenant's menu categories — the cheapest menu-engineering lever there is. Envelope: { tenantId, categoryIds }. categoryIds must list EVERY category exactly once, first shown first; a partial list is refused, because writing `order` rewrites the whole column and the omitted categories would keep stale positions and interleave. Call list_categories first to get the full set.",
+        input: z.object({
+            tenantId: UUID,
+            categoryIds: z
+                .array(UUID)
+                .min(1)
+                .describe('Every category id, in the order they should appear (first = top)'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; categoryIds: string[] }
+            return reorderCategoriesForProvisioning(i.tenantId, i.categoryIds, ctx)
+        },
+    }),
+    op({
+        name: 'reorder_menu_items',
+        description:
+            "Set the order of the items WITHIN one category — put the stars where guests look first. Envelope: { tenantId, categoryId, itemIds }. itemIds must list every item in that category exactly once, first shown first; a partial list is refused. Call list_menu_items first and filter by category_id to get the full set.",
+        input: z.object({
+            tenantId: UUID,
+            categoryId: UUID.describe('The category whose items are being ordered'),
+            itemIds: z
+                .array(UUID)
+                .min(1)
+                .describe('Every item id in that category, in the order they should appear'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; categoryId: string; itemIds: string[] }
+            return reorderMenuItemsForProvisioning(i.tenantId, i.categoryId, i.itemIds, ctx)
+        },
     }),
     op({
         name: 'classify_menu',
