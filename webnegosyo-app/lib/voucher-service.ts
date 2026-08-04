@@ -108,6 +108,59 @@ export async function lookupVouchers(
 }
 
 /**
+ * Every voucher the merchant is currently running, so the cashier can choose
+ * one instead of remembering its code.
+ *
+ * Fails to an empty list, like the lookup, and for a milder reason: this is a
+ * convenience on top of a path that still works. A counter with no signal gets
+ * no browse list and can still type a code the customer read off their phone.
+ *
+ * Shares the lookup's deadline. The sheet opens against a queue, and a list
+ * that has not arrived in eight seconds has missed the sale it was for.
+ */
+export async function listVouchers(
+  tenantId: string,
+  options: LookupOptions = {},
+): Promise<Voucher[]> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, options.timeoutMs ?? LOOKUP_TIMEOUT_MS);
+  });
+
+  try {
+    const token = await Promise.race([accessToken(), expiry]);
+    if (!token) return [];
+
+    const response = await Promise.race([
+      fetch(`${getWebAppUrl()}/api/vouchers/list`, {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tenantId }),
+      }),
+      expiry,
+    ]);
+
+    if (!response.ok) return [];
+
+    const body = await Promise.race([response.json(), expiry]);
+    return Array.isArray(body?.vouchers) ? (body.vouchers as Voucher[]) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Fire-and-forget: burn the redemptions a completed sale used.
  *
  * Never throws. By the time this runs the sale is rung up, tendered and saved;

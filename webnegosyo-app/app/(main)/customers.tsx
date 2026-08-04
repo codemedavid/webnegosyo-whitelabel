@@ -19,6 +19,7 @@ import {
   type CampaignDueState,
 } from "../../lib/sms/due-runs";
 import { syncDueCampaignAlerts } from "../../lib/sms/due-alerts";
+import { isSmsCampaignsAvailable } from "../../lib/sms/availability";
 import {
   lastRunAtByCampaign,
   listCampaignRows,
@@ -53,6 +54,11 @@ import { CampaignCard } from "../../components/sms/CampaignCard";
 
 type Section = "guests" | "campaigns";
 
+// Module scope, not a hook: the platform cannot change while the app is
+// running, and holding it in state would invite a render where the campaign UI
+// exists for a frame on a device that can never send.
+const canSendSms = isSmsCampaignsAvailable(Platform.OS);
+
 export default function CustomersScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
 
@@ -70,14 +76,23 @@ export default function CustomersScreen() {
     if (!tenantId) return;
     try {
       setError(null);
-      const [people, blocked, rows, lastRuns] = await Promise.all([
+      const [people, blocked] = await Promise.all([
         listCustomers(tenantId),
         listSuppressedPhones(tenantId),
-        listCampaignRows(tenantId),
-        lastRunAtByCampaign(tenantId),
       ]);
       setCustomers(people);
       setSuppressedPhones(blocked);
+
+      // On a platform with no send path there is nothing to show and nothing
+      // to remind anyone about, so the campaign reads never happen — two
+      // Supabase round trips on every focus, spent on a list the merchant
+      // cannot see.
+      if (!canSendSms) return;
+
+      const [rows, lastRuns] = await Promise.all([
+        listCampaignRows(tenantId),
+        lastRunAtByCampaign(tenantId),
+      ]);
       const states = computeCampaignDueStates(
         rows.map((row) => toScheduledCampaign(row, lastRuns[row.id] ?? null)),
         new Date()
@@ -194,24 +209,29 @@ export default function CustomersScreen() {
           between two halves of a screen is a segmented track; the filters
           below the reach bar are pills. Telling them apart is most of what
           made this screen confusing.
+
+          Absent entirely where sending is impossible: a lone "Campaigns" half
+          leading to a surface iOS can never use is the dead end #37 removed.
         */}
-        <SegmentedControl
-          options={[
-            { label: `Guests ${list.stats.total}`, value: "guests" as Section },
-            {
-              label: dueCount > 0
-                ? `Campaigns ${campaignStates.length} · ${dueCount} due`
-                : `Campaigns ${campaignStates.length}`,
-              value: "campaigns" as Section,
-            },
-          ]}
-          value={section}
-          onChange={setSection}
-          accessibilityPrefix="Show"
-        />
+        {canSendSms && (
+          <SegmentedControl
+            options={[
+              { label: `Guests ${list.stats.total}`, value: "guests" as Section },
+              {
+                label: dueCount > 0
+                  ? `Campaigns ${campaignStates.length} · ${dueCount} due`
+                  : `Campaigns ${campaignStates.length}`,
+                value: "campaigns" as Section,
+              },
+            ]}
+            value={section}
+            onChange={setSection}
+            accessibilityPrefix="Show"
+          />
+        )}
       </View>
 
-      {section === "campaigns" ? (
+      {canSendSms && section === "campaigns" ? (
         <CampaignsSection states={campaignStates} refreshControl={refreshControl} />
       ) : (
         <FlatList
@@ -227,11 +247,12 @@ export default function CustomersScreen() {
             <View style={styles.listHeader}>
               <ReachBar stats={list.stats} filter={filter} onFilter={setFilter} />
 
-              {Platform.OS !== "android" && (
-                <Notice text="Follow-up texts send from the Android app, using that phone's SIM. You can browse and manage your customer list here." />
-              )}
-
-              {list.stats.textable === 0 && list.stats.total > 0 && (
+              {/*
+                No "use the Android app instead" notice here. Pointing an iOS
+                merchant at a surface they cannot reach is the dead end #37
+                removed; the list itself is still useful, so it stays.
+              */}
+              {canSendSms && list.stats.textable === 0 && list.stats.total > 0 && (
                 <Notice text="Nobody can be texted yet. Guests opt in at online checkout — or ask at the counter and tap “They agreed to texts” on their row." />
               )}
 

@@ -10,12 +10,13 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { useAuthStore } from "../../../stores/auth-store";
 import { campaignHref } from "../../../lib/navigation";
+import { isSmsCampaignsAvailable } from "../../../lib/sms/availability";
 import {
   dateFieldToDate,
   dateToDateField,
@@ -100,7 +101,23 @@ const TOKENS = [
   { token: "{{lastOrderDate}}", label: "Last order" },
 ];
 
-export default function CampaignEditorScreen() {
+/**
+ * Route-level gate.
+ *
+ * Hiding the entry point on the Customers screen is not enough: this is a real
+ * route, still reachable by deep link, a notification tap, or a navigation
+ * state restored from a previous Android install. Hook rules forbid an early
+ * return inside the editor itself, so the gate is a wrapper around it.
+ */
+export default function CampaignEditorRoute() {
+  if (!isSmsCampaignsAvailable(Platform.OS)) {
+    return <Redirect href="/customers" />;
+  }
+
+  return <CampaignEditorScreen />;
+}
+
+function CampaignEditorScreen() {
   const { campaignId } = useLocalSearchParams<{ campaignId: string }>();
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantName = useAuthStore((s) => s.tenantName);

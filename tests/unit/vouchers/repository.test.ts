@@ -15,7 +15,7 @@
  * limited voucher.
  */
 import { describe, it, expect, jest } from '@jest/globals'
-import { createVoucherLookup, redeemVoucher } from '@/lib/vouchers/repository'
+import { createVoucherLookup, findActiveVouchers, redeemVoucher } from '@/lib/vouchers/repository'
 
 interface QueryCall {
   table: string
@@ -132,6 +132,46 @@ describe('createVoucherLookup', () => {
     expect(counts).toEqual({ 'v-1': 2, 'v-2': 1 })
     const query = calls.find((c) => c.table === 'voucher_redemptions')
     expect(query?.eq).toContainEqual(['customer_key', 'customer-1'])
+  })
+})
+
+describe('findActiveVouchers', () => {
+  it('scopes the browse list to the tenant and to codes that are switched on', async () => {
+    // The register's discount sheet lists these for a cashier to tap. This
+    // runs under the service-role client, so a missing tenant filter would
+    // offer another merchant's promotions at this counter.
+    const { client, calls } = makeClient({ vouchers: [VOUCHER_ROW], voucher_targets: [] })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await findActiveVouchers(client as any, 'tenant-1')
+
+    const query = calls.find((c) => c.table === 'vouchers')
+    expect(query?.eq).toContainEqual(['tenant_id', 'tenant-1'])
+    expect(query?.eq).toContainEqual(['is_active', true])
+  })
+
+  it('maps rows through the same domain mapper the typed-code path uses', async () => {
+    const { client } = makeClient({ vouchers: [VOUCHER_ROW], voucher_targets: [] })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const found = await findActiveVouchers(client as any, 'tenant-1')
+
+    expect(found).toHaveLength(1)
+    expect(found[0].discountValue).toBe(10)
+  })
+
+  it('offers nothing when the read fails, rather than an unusable list', async () => {
+    const client = {
+      from: () => ({
+        select: function () { return this },
+        eq: function () { return this },
+        then: (resolve: (r: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: { message: 'boom' } }).then(resolve),
+      }),
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(findActiveVouchers(client as any, 'tenant-1')).resolves.toEqual([])
   })
 })
 

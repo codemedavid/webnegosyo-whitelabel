@@ -10,7 +10,7 @@ jest.mock("./supabase", () => ({
   supabase: { auth: { getSession: getSessionMock } },
 }));
 
-import { burnPosRedemptions, lookupVouchers } from "./voucher-service";
+import { burnPosRedemptions, listVouchers, lookupVouchers } from "./voucher-service";
 import type { OrderDiscountLine } from "./order-totals";
 
 /**
@@ -252,5 +252,62 @@ describe("lookupVouchers deadline", () => {
 
     // Assert
     expect(result).toEqual([voucher]);
+  });
+});
+
+describe("listVouchers", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-1" } },
+    });
+  });
+
+  it("asks the web app for the merchant's vouchers with the cashier's own token", async () => {
+    // Arrange
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ vouchers: [{ id: "v-1", code: "SAVE20" }] }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // Act
+    const result = await listVouchers("t1");
+
+    // Assert
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://webnegosyo.com/api/vouchers/list");
+    expect(init.headers.Authorization).toBe("Bearer token-1");
+    expect(JSON.parse(init.body)).toEqual({ tenantId: "t1" });
+    expect(result).toEqual([{ id: "v-1", code: "SAVE20" }]);
+  });
+
+  it("shows nothing rather than an error when the counter has no signal", async () => {
+    // Arrange — the browse list is a convenience; the typed-code path still
+    // works. A thrown fetch must not take the discount sheet down with it.
+    global.fetch = jest.fn().mockRejectedValue(new Error("offline")) as unknown as typeof fetch;
+
+    // Act & Assert
+    await expect(listVouchers("t1")).resolves.toEqual([]);
+  });
+
+  it("shows nothing when the server refuses the read", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+
+    await expect(listVouchers("t1")).resolves.toEqual([]);
+  });
+
+  it("does not call out at all without a session", async () => {
+    // Arrange
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // Act
+    const result = await listVouchers("t1");
+
+    // Assert
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
   });
 });
