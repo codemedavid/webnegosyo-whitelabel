@@ -134,6 +134,25 @@ describe('scoped vouchers', () => {
     expect(screen.getByRole('checkbox', { name: /Chicken Adobo/i })).toBeInTheDocument()
   })
 
+  it('says so plainly when the products cannot be loaded', async () => {
+    ;(getMenuItemsAction as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'boom',
+    })
+    renderForm()
+    await chooseScope('Chosen products')
+
+    expect(await screen.findByText(/Could not load your products/i)).toBeInTheDocument()
+  })
+
+  it('points a merchant with an empty menu at the real problem', async () => {
+    ;(getCategoriesAction as jest.Mock).mockResolvedValueOnce({ success: true, data: [] })
+    renderForm()
+    await chooseScope('Chosen categories')
+
+    expect(await screen.findByText(/no categories yet/i)).toBeInTheDocument()
+  })
+
   it('no longer tells the merchant the pickers do not exist', async () => {
     renderForm()
     await chooseScope('Chosen products')
