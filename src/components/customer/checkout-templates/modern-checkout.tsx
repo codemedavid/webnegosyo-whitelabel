@@ -27,7 +27,7 @@ import {
 
 export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
-    router, tenant, branding, orderTypes, orderType, formFields, advanceConfig,
+    router, tenant, branding, orderType, formFields, advanceConfig,
   } = checkout
 
   if (!tenant) return null
@@ -48,7 +48,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     </span>
   )
 
-  const showOrderType = orderTypes.length > 0
+  const showOrderType = checkout.shouldAskFulfillment
   const showCustomerInfo = !!orderType && formFields.length > 0
 
   return (

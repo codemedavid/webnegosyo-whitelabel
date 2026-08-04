@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { resolveWizardSteps, type WizardStep } from '@/lib/checkout-wizard-steps'
 import {
   OrderTypeSelector,
   AdvanceOrderScheduler,
@@ -22,11 +23,9 @@ import {
   MinimumOrderNotice,
 } from './checkout-primitives'
 
-const STEPS = ['Receive', 'Details', 'Payment', 'Review'] as const
-
 export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
-    router, tenant, branding, orderTypes, orderType, formFields,
+    router, tenant, branding, orderType, formFields,
     advanceConfig, selectedOrderTypeData,
     customerData, paymentMethods, selectedPaymentMethod,
     scheduleMode, scheduledForLabel, isScheduleValid,
@@ -41,11 +40,20 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const accentText = palette.accentText
   const accentSoft = palette.accentSoft
 
-  const isFirstStep = step === 0
-  const isLastStep = step === STEPS.length - 1
+  // The walk itself, which is shorter when a question has no answer to give.
+  // Every per-step lookup below goes through `current` (a NAME) rather than the
+  // index, so a dropped screen can never leave the index pointing at the wrong
+  // one. Clamped because the list can shrink under a customer already standing
+  // on the last screen.
+  const steps = resolveWizardSteps({ shouldAskFulfillment: checkout.shouldAskFulfillment })
+  const stepIndex = Math.min(step, steps.length - 1)
+  const current: WizardStep = steps[stepIndex]
 
-  const goBack = () => setStep((s) => Math.max(0, s - 1))
-  const goNext = () => setStep((s) => Math.min(STEPS.length - 1, s + 1))
+  const isFirstStep = stepIndex === 0
+  const isLastStep = stepIndex === steps.length - 1
+
+  const goBack = () => setStep(() => Math.max(0, stepIndex - 1))
+  const goNext = () => setStep(() => Math.min(steps.length - 1, stepIndex + 1))
 
   // Per-step validation. The final CTA (handleProceedToPayment) lives on the
   // Review step; if the user could reach it with invalid earlier-step state, its
@@ -60,25 +68,29 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     (scheduleMode === 'scheduled' && !!scheduledForLabel && isScheduleValid)
   const detailsValid = !(orderType && formFields.length > 0) || requiredMissing.length === 0
   const paymentValid = !!tenant.qr_handoff_enabled || paymentMethods.length === 0 || !!selectedPaymentMethod
-  const stepValid = step === 0 ? receiveValid : step === 1 ? detailsValid : step === 2 ? paymentValid : true
+  const stepValid =
+    current === 'Receive' ? receiveValid
+    : current === 'Details' ? detailsValid
+    : current === 'Payment' ? paymentValid
+    : true
   const continueHint =
-    step === 0 && !receiveValid ? 'Please choose a date & time for your order'
-    : step === 1 && !detailsValid ? `Please fill in: ${requiredMissing.map((f) => f.field_label).join(', ')}`
-    : step === 2 && !paymentValid ? 'Please select a payment method to continue'
+    current === 'Receive' && !receiveValid ? 'Please choose a date & time for your order'
+    : current === 'Details' && !detailsValid ? `Please fill in: ${requiredMissing.map((f) => f.field_label).join(', ')}`
+    : current === 'Payment' && !paymentValid ? 'Please select a payment method to continue'
     : null
 
-  const stepTitles = [
-    'How would you like to receive your order?',
-    'Your information',
-    'How would you like to pay?',
-    'Review your order',
-  ]
-  const stepSubtitles = [
-    'Choose a fulfillment method' + (advanceConfig.enabled ? ' and when you want it.' : '.'),
-    'Tell us how to reach you.',
-    'Select a payment method to continue.',
-    'Make sure everything looks right before you place your order.',
-  ]
+  const stepTitles: Record<WizardStep, string> = {
+    Receive: 'How would you like to receive your order?',
+    Details: 'Your information',
+    Payment: 'How would you like to pay?',
+    Review: 'Review your order',
+  }
+  const stepSubtitles: Record<WizardStep, string> = {
+    Receive: 'Choose a fulfillment method' + (advanceConfig.enabled ? ' and when you want it.' : '.'),
+    Details: 'Tell us how to reach you.',
+    Payment: 'Select a payment method to continue.',
+    Review: 'Make sure everything looks right before you place your order.',
+  }
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
@@ -104,14 +116,14 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         {/* Progress stepper */}
         <nav aria-label="Checkout progress" className="mb-6 sm:mb-8">
           <ol className="flex items-center">
-            {STEPS.map((label, index) => {
-              const isComplete = index < step
-              const isActive = index === step
+            {steps.map((label, index) => {
+              const isComplete = index < stepIndex
+              const isActive = index === stepIndex
               const isDone = isComplete || isActive
               return (
                 <li
                   key={label}
-                  className={`flex items-center ${index < STEPS.length - 1 ? 'flex-1' : ''}`}
+                  className={`flex items-center ${index < steps.length - 1 ? 'flex-1' : ''}`}
                 >
                   <div className="flex flex-col items-center gap-1.5">
                     <span
@@ -133,12 +145,12 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                       {label}
                     </span>
                   </div>
-                  {index < STEPS.length - 1 && (
+                  {index < steps.length - 1 && (
                     <span className="relative mx-2 h-0.5 flex-1 rounded-full bg-gray-200">
                       <span
                         className="absolute inset-y-0 left-0 rounded-full transition-all"
                         style={{
-                          width: index < step ? '100%' : '0%',
+                          width: index < stepIndex ? '100%' : '0%',
                           backgroundColor: accent,
                         }}
                       />
@@ -157,10 +169,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         >
           <div className="mb-5 sm:mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
-              Step {step + 1} of {STEPS.length}
+              Step {stepIndex + 1} of {steps.length}
             </p>
-            <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl" style={{ color: palette.text }}>{stepTitles[step]}</h2>
-            <p className="mt-1 text-sm text-gray-500" style={{ color: palette.mutedText }}>{stepSubtitles[step]}</p>
+            <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl" style={{ color: palette.text }}>{stepTitles[current]}</h2>
+            <p className="mt-1 text-sm text-gray-500" style={{ color: palette.mutedText }}>{stepSubtitles[current]}</p>
           </div>
 
           {/*
@@ -170,18 +182,14 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             anchors, matching the classic conditional-rendering rules.
           */}
 
-          {/* Step 0 — Receive */}
-          <div className={STEPS[step] === 'Receive' ? 'space-y-6' : 'hidden'} aria-hidden={STEPS[step] !== 'Receive'}>
-            {orderTypes.length > 0 && (
-              <>
-                <OrderTypeSelector checkout={checkout} />
-                {advanceConfig.enabled && <AdvanceOrderScheduler checkout={checkout} />}
-              </>
-            )}
+          {/* Receive — present only while there is a fulfillment question. */}
+          <div className={current === 'Receive' ? 'space-y-6' : 'hidden'} aria-hidden={current !== 'Receive'}>
+            <OrderTypeSelector checkout={checkout} />
+            {advanceConfig.enabled && <AdvanceOrderScheduler checkout={checkout} />}
           </div>
 
           {/* Step 1 — Details */}
-          <div className={STEPS[step] === 'Details' ? '' : 'hidden'} aria-hidden={STEPS[step] !== 'Details'}>
+          <div className={current === 'Details' ? '' : 'hidden'} aria-hidden={current !== 'Details'}>
             {orderType && formFields.length > 0 ? (
               <CheckoutFields checkout={checkout} columns={1} />
             ) : (
@@ -190,12 +198,12 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           </div>
 
           {/* Step 2 — Payment */}
-          <div className={STEPS[step] === 'Payment' ? '' : 'hidden'} aria-hidden={STEPS[step] !== 'Payment'}>
+          <div className={current === 'Payment' ? '' : 'hidden'} aria-hidden={current !== 'Payment'}>
             <PaymentMethodList checkout={checkout} />
           </div>
 
           {/* Step 3 — Review */}
-          <div className={STEPS[step] === 'Review' ? 'space-y-5' : 'hidden'} aria-hidden={STEPS[step] !== 'Review'}>
+          <div className={current === 'Review' ? 'space-y-5' : 'hidden'} aria-hidden={current !== 'Review'}>
             {selectedOrderTypeData?.name && (
               <div
                 className="flex items-center justify-between rounded-xl px-4 py-3"

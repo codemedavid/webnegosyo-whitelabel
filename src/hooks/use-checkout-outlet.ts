@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchActiveOutlets } from '@/lib/outlets/outlets-client'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 import { readLinkedOutletSlug } from '@/lib/outlets/linked-outlet'
+import { matchOutletByLinkSlug } from '@/lib/outlets/link-slug-match'
 import { resolveModeForOrderType } from '@/lib/outlets/mode-order-type'
 import { resolveCheckoutOutletSelection } from '@/lib/outlets/checkout-outlet'
 import {
@@ -131,8 +132,7 @@ export function useCheckoutOutlet({
   const candidateOutletId = useMemo(() => {
     if (chosenOutletId !== undefined) return chosenOutletId
     if (linkedSlug === null) return null
-    const wanted = linkedSlug.trim().toLowerCase()
-    return outlets.find((outlet) => outlet.slug.toLowerCase() === wanted)?.id ?? null
+    return matchOutletByLinkSlug(outlets, linkedSlug)?.id ?? null
   }, [chosenOutletId, linkedSlug, outlets])
 
   const resolution = useMemo(

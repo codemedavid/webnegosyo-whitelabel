@@ -9,6 +9,7 @@
  * delivering, or a picker offered to a merchant with one shop.
  */
 
+import { matchOutletByLinkSlug } from '@/lib/outlets/link-slug-match'
 import type { OutletOrderMode } from '@/lib/outlets/nearest-outlet'
 
 export const OUTLET_SELECTION_KEY_PREFIX = 'selected_outlet_'
@@ -182,10 +183,11 @@ export function resolveOutletSelection(input: OutletSelectionInput): OutletSelec
   const confirmSwitch = (nextOutletId: string): boolean =>
     hasCartItems && previousOutletId !== null && previousOutletId !== nextOutletId
 
-  // The URL wins over anything stored.
+  // The URL wins over anything stored. Matched through `matchOutletByLinkSlug`
+  // rather than compared outright, so a link naming only the distinctive part
+  // of a slug still resolves — and an ambiguous one still asks.
   if (urlSlug !== null && urlSlug.trim() !== '') {
-    const wanted = urlSlug.trim().toLowerCase()
-    const linked = choices.find((outlet) => outlet.slug.toLowerCase() === wanted)
+    const linked = matchOutletByLinkSlug(choices, urlSlug)
 
     if (!linked) {
       // A dead or mistyped link falls back to the picker rather than erroring.

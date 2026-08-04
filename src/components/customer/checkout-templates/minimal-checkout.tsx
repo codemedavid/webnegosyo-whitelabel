@@ -27,7 +27,7 @@ import {
 
 export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
-    router, tenant, branding, orderTypes, orderType, formFields, advanceConfig,
+    router, tenant, branding, orderType, formFields, advanceConfig,
   } = checkout
 
   if (!tenant) return null
@@ -59,7 +59,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
         <div className="pb-32">
           {/* Receive — order type + (optional) advance-order scheduler */}
-          {orderTypes.length > 0 && (
+          {checkout.shouldAskFulfillment && (
             <section className="py-8 sm:py-10">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mb-1" style={{ color: palette.text }}>
                 How would you like it?

@@ -63,7 +63,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-4xl space-y-8">
           {/* Order Type + Advance Order Scheduling */}
-          {orderTypes.length > 0 && (
+          {checkout.shouldAskFulfillment && (
             <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <div className="mb-4 sm:mb-5">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900" style={{ color: palette.text }}>How would you like to receive your order?</h2>
