@@ -81,7 +81,7 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://expo.dev/artifacts/eas/aQ-igs_PAByk5K4yQfnLUnBK5dxcZlYKRWgBKB_YdFo.apk",
+    href: "https://expo.dev/artifacts/eas/dTKFzzHrE7qF_IIsnPorfz55mz_ELMe8fu0brfqHMvU.apk",
     available: true,
     version: "1.0.2",
     size: "107 MB",
