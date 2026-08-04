@@ -5,6 +5,7 @@ import {
   countRevisedItems,
   normalizePaymentAmount,
   netAmountPaid,
+  mergeOrderDiscount,
   type RevisableOrderLike,
   type RevisedItemLike,
   type LedgerRowLike,
@@ -322,5 +323,70 @@ describe("netAmountPaid", () => {
 
     // Assert
     expect(paid).toBe(100);
+  });
+});
+
+/**
+ * Recording WHICH discount an edit settled on, Convex-side.
+ *
+ * The platform backend has a `discount_data` COLUMN. Convex has no such field:
+ * the discount rides inside the order's `customerData` blob, alongside the
+ * customer's name, contact, schedule and payment proof.
+ *
+ * That is the whole difficulty. The patch has to replace ONE key of a blob
+ * without disturbing the rest — a wholesale overwrite would erase the
+ * customer's own details on the first discounted edit, which is a far worse
+ * outcome than the stale discount row it set out to fix.
+ */
+describe("mergeOrderDiscount", () => {
+  const CUSTOMER = {
+    customer_name: "Maria Santos",
+    customer_phone: "09171234567",
+    discount: { total: 20, lines: [{ label: "OLD", amount: 20 }] },
+  };
+
+  const SETTLED = {
+    total: 60,
+    deliveryDiscount: 0,
+    lines: [{ label: "20% off", amount: 60, code: "SAVE20", voucherId: "v-1" }],
+    allocationsByLine: {},
+  };
+
+  it("replaces the stored discount with the one the edit settled", () => {
+    const merged = mergeOrderDiscount(CUSTOMER, SETTLED);
+
+    expect(merged.discount).toEqual(SETTLED);
+  });
+
+  /** The failure that would be worse than the bug being fixed. */
+  it("keeps every other customer field untouched", () => {
+    const merged = mergeOrderDiscount(CUSTOMER, SETTLED);
+
+    expect(merged.customer_name).toBe("Maria Santos");
+    expect(merged.customer_phone).toBe("09171234567");
+  });
+
+  it("drops the discount key entirely when the edit settled on none", () => {
+    // Left as a zeroed payload it would still render a discount heading with
+    // no rows under it.
+    const merged = mergeOrderDiscount(CUSTOMER, null);
+
+    expect(merged).not.toHaveProperty("discount");
+    expect(merged.customer_name).toBe("Maria Santos");
+  });
+
+  it("works on an order that carried no customer data at all", () => {
+    expect(mergeOrderDiscount(undefined, SETTLED)).toEqual({ discount: SETTLED });
+  });
+
+  it("does not mutate the blob it was given", () => {
+    const original = { ...CUSTOMER };
+    mergeOrderDiscount(original, SETTLED);
+
+    expect(original.discount).toEqual(CUSTOMER.discount);
+  });
+
+  it("ignores a blob that is not an object", () => {
+    expect(mergeOrderDiscount("nonsense", SETTLED)).toEqual({ discount: SETTLED });
   });
 });
