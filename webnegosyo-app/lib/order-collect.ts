@@ -13,6 +13,7 @@
 
 import { isOrderInScope, type BranchScope, type ScopedOrderLike } from "./branch-scope";
 import type { OrderBackend } from "./order-backend";
+import type { LedgerState } from "./order-ledger";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
 
 export interface CollectGate {
@@ -43,8 +44,8 @@ export interface CollectRequest {
   user: StaffPermissionHolder;
   /** What the customer still owes. Negative means the merchant owes them. */
   balance: number;
-  /** False when the ledger query failed — the balance is then a guess. */
-  isLedgerAvailable: boolean;
+  /** How far the settlement ledger can be trusted. See `order-ledger`. */
+  ledger: LedgerState;
   scope?: BranchScope;
   order?: ScopedOrderLike;
 }
@@ -66,7 +67,7 @@ export function canCollectPayment({
   backend,
   user,
   balance,
-  isLedgerAvailable,
+  ledger,
   scope,
   order,
 }: CollectRequest): CollectGate {
@@ -79,11 +80,23 @@ export function canCollectPayment({
 
   // Without the ledger the balance on screen is a guess, and collecting against
   // a guess charges a customer who may have already paid.
-  if (!isLedgerAvailable) {
+  if (ledger === "unavailable") {
     return {
       allowed: false,
       reason:
         "This order's payment history could not be loaded, so no payment can be taken safely.",
+    };
+  }
+
+  // Here the balance IS trustworthy — nothing can have been paid through a
+  // deployment with no ledger. But the same bundle is missing the mutation that
+  // records the payment, so the block is about the store, not the order.
+  if (ledger === "absent") {
+    return {
+      allowed: false,
+      reason:
+        "This store needs a backend update before payments can be recorded here. " +
+        "Ask support to redeploy the store, then try again.",
     };
   }
 

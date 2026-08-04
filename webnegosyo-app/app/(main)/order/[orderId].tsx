@@ -21,6 +21,7 @@ import {
   type CollectedPayment,
 } from "../../../components/order/CollectPaymentSheet";
 import { canCollectPayment } from "../../../lib/order-collect";
+import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
 import { summarizeSettlement } from "../../../lib/order-history-view";
 import { listAllPaymentMethods } from "../../../lib/pos-catalog";
 import type { PosPaymentMethod } from "../../../lib/pos-payment-methods";
@@ -369,6 +370,12 @@ export default function OrderDetailScreen() {
     getOrderPaymentsRef,
     orderId ? { orderId } : "skip",
   );
+  // Most stores run a deployment older than the ledger itself, which answers
+  // that query with "no such function". That is an EMPTY ledger, not an unknown
+  // one — nothing can have been settled through a backend that cannot record a
+  // payment — and conflating the two used to refuse every edit on those stores.
+  const ledgerState = resolveLedgerState(paymentsError);
+
   const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(
     getOrderRevisionsRef,
     orderId ? { orderId } : "skip",
@@ -400,7 +407,7 @@ export default function OrderDetailScreen() {
         backend: orderBackend ?? "convex",
         user: { role, isOwner, permissions },
         balance: balanceDue,
-        isLedgerAvailable: !paymentsError,
+        ledger: ledgerState,
         scope,
         order,
       })
@@ -502,8 +509,9 @@ export default function OrderDetailScreen() {
     }
 
     // An order opened without its ledger looks unpaid, and the register would
-    // offer to collect a bill that was already settled.
-    if (paymentsError) {
+    // offer to collect a bill that was already settled. A store whose backend
+    // has no ledger is a different case and passes: see `order-ledger`.
+    if (!isLedgerSafeToEdit(ledgerState)) {
       Alert.alert(
         "Cannot edit this order",
         "Its payment history could not be loaded, so its bill cannot be edited safely.",
@@ -790,7 +798,7 @@ export default function OrderDetailScreen() {
       <SettlementCard
         total={order.total}
         payments={payments ?? []}
-        isLedgerAvailable={!paymentsError}
+        isLedgerAvailable={ledgerState === "available"}
       />
 
       {/*
