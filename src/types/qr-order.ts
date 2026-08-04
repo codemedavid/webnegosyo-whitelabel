@@ -49,3 +49,24 @@ export interface QrOrderPayloadV1 {
   scheduledForLabel?: string; // advance order: human label captured in customer's local time
   ck: string; // checksum (see codec)
 }
+
+/**
+ * Pickup-ticket payload. A SECOND QR kind that shares the cart-handoff
+ * envelope but carries no cart: it is a pointer to an order that already
+ * exists, shown by the customer at the counter so staff can confirm they are
+ * handing the bag to the right person.
+ *
+ * `token` is the order's HMAC tracking token. The merchant app cannot verify
+ * it locally (the secret lives on the web server), so it forwards the whole
+ * triple to /api/orders/track, which verifies timing-safely and returns the
+ * order. The checksum below remains a corruption guard only.
+ */
+export interface QrPickupPayloadV1 {
+  v: 1;
+  k: 'pickup'; // discriminator: absent on cart-handoff payloads
+  tenantId: string;
+  orderId: string;
+  token: string; // HMAC tracking token, verified server-side
+  t: number; // creation time in Unix epoch milliseconds
+  ck: string; // checksum (see codec)
+}

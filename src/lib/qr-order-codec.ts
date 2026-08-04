@@ -15,7 +15,9 @@ import {
   compressToEncodedURIComponent,
   decompressFromEncodedURIComponent,
 } from 'lz-string';
-import type { QrOrderPayloadV1 } from '@/types/qr-order';
+import type { QrOrderPayloadV1, QrPickupPayloadV1 } from '@/types/qr-order';
+
+export type { QrPickupPayloadV1 };
 
 export const QR_SCHEMA_VERSION = 1;
 
@@ -112,8 +114,103 @@ export function decodeQrToOrder(s: string): DecodeResult {
     return { ok: false, error: 'version' };
   }
 
+  // A pickup ticket rides the same envelope and would otherwise fall through
+  // to the checksum branch, which happens to reject it but only by accident.
+  // Reject it on the discriminator so the two kinds never depend on a hash
+  // collision to stay apart.
+  if ((parsed as { k?: string }).k !== undefined) {
+    return { ok: false, error: 'corrupt' };
+  }
+
   const { ck, ...rest } = parsed;
   const expected = computeChecksum(rest);
+  if (ck !== expected) {
+    return { ok: false, error: 'checksum' };
+  }
+
+  return { ok: true, payload: parsed };
+}
+
+// --- Pickup ticket ---------------------------------------------------------
+//
+// A second payload kind sharing the envelope above. It carries no cart: just
+// a pointer to an order that already exists, plus the order's HMAC tracking
+// token so the merchant app can have the web API verify it server-side.
+
+/**
+ * Canonical no-ck object for a pickup ticket, in fixed insertion order.
+ * Same rule as computeChecksum: order is load-bearing across web and RN.
+ */
+export function computePickupChecksum(
+  payload: Omit<QrPickupPayloadV1, 'ck'>
+): string {
+  const ordered: Omit<QrPickupPayloadV1, 'ck'> = {
+    v: payload.v,
+    k: payload.k,
+    tenantId: payload.tenantId,
+    orderId: payload.orderId,
+    token: payload.token,
+    t: payload.t,
+  };
+  return fnv1aHex(JSON.stringify(ordered));
+}
+
+/** Encode a pickup ticket (without ck) to a compressed, URL-safe QR string. */
+export function encodePickupQr(
+  payload: Omit<QrPickupPayloadV1, 'ck'>
+): string {
+  const ck = computePickupChecksum(payload);
+  const full: QrPickupPayloadV1 = { ...payload, ck };
+  return compressToEncodedURIComponent(JSON.stringify(full));
+}
+
+export type PickupDecodeResult =
+  | { ok: true; payload: QrPickupPayloadV1 }
+  | {
+      ok: false;
+      error: 'empty' | 'corrupt' | 'version' | 'checksum' | 'not_pickup';
+    };
+
+/**
+ * Decode a pickup ticket, validating integrity.
+ *
+ * Mirrors decodeQrToOrder's error vocabulary and adds 'not_pickup' for a
+ * well-formed payload of the other kind — the merchant app scans both with
+ * one camera, so "this is the wrong kind of code" must be distinguishable
+ * from "this code is damaged".
+ */
+export function decodePickupQr(s: string): PickupDecodeResult {
+  if (!s) {
+    return { ok: false, error: 'empty' };
+  }
+
+  let json: string | null;
+  try {
+    json = decompressFromEncodedURIComponent(s);
+  } catch {
+    return { ok: false, error: 'corrupt' };
+  }
+  if (json === null || json === '') {
+    return { ok: false, error: 'corrupt' };
+  }
+
+  let parsed: QrPickupPayloadV1;
+  try {
+    parsed = JSON.parse(json) as QrPickupPayloadV1;
+  } catch {
+    return { ok: false, error: 'corrupt' };
+  }
+
+  if (parsed.v !== QR_SCHEMA_VERSION) {
+    return { ok: false, error: 'version' };
+  }
+
+  if (parsed.k !== 'pickup') {
+    return { ok: false, error: 'not_pickup' };
+  }
+
+  const { ck, ...rest } = parsed;
+  const expected = computePickupChecksum(rest);
   if (ck !== expected) {
     return { ok: false, error: 'checksum' };
   }

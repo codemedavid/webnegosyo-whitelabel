@@ -7,10 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Animated,
   Linking,
-  PanResponder,
-  type LayoutChangeEvent,
 } from "react-native";
 import {
   CameraView,
@@ -29,17 +26,82 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
+import { SlideAction } from "../../components/SlideAction";
 import {
-  decodeQrToOrder,
   QR_SIZE_WARN_THRESHOLD,
   type DecodeResult,
   type QrOrderItemV1,
   type QrOrderPayloadV1,
+  type QrPickupPayloadV1,
 } from "../../lib/qr-order-codec";
+import { classifyScannedQr } from "../../lib/pickup/dispatch";
+import {
+  verifyPickupTicket,
+  type PickupVerifyError,
+  type VerifiedPickupOrder,
+} from "../../lib/pickup/verify";
+import {
+  evaluatePickupTicket,
+  type PickupBlockReason,
+  type PickupWarning,
+} from "../../lib/pickup/guards";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
+const updateOrderStatusRef =
+  "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+
+/**
+ * Collecting an order is recorded as `delivered` — the existing terminal
+ * "the customer has it" status. A separate `picked_up` value would have to be
+ * added to the Convex validators, the platform enum, every stepper and every
+ * rollup for a purely cosmetic gain. The UI says "pickup"; the store says
+ * delivered.
+ */
+const COLLECTED_STATUS = "delivered";
+
+const BADGE_STATUSES = [
+  "pending",
+  "confirmed",
+  "preparing",
+  "ready",
+  "delivered",
+  "cancelled",
+] as const;
+
+/**
+ * The verified order's status arrives over the wire as a plain string, so it
+ * is narrowed before it can colour a badge. An unrecognised status shows
+ * neutral rather than being coerced into a status that would misinform.
+ */
+function toBadgeVariant(
+  status: string
+): (typeof BADGE_STATUSES)[number] | "default" {
+  return BADGE_STATUSES.find((s) => s === status) ?? "default";
+}
 
 type DecodeError = Extract<DecodeResult, { ok: false }>["error"];
+
+const VERIFY_ERROR_MESSAGE: Record<PickupVerifyError, string> = {
+  invalid_token:
+    "This collection code did not check out. Do not hand over the order — ask the customer to reopen their order link.",
+  not_found: "No order matches this code in this store.",
+  rate_limited: "Too many scans just now. Wait a moment and scan again.",
+  offline:
+    "Could not reach the server to check this code. Check your connection and try again.",
+  unavailable: "The server could not confirm this code right now. Try again.",
+  not_configured:
+    "This app build is missing its server address, so codes cannot be checked. Contact support.",
+};
+
+const BLOCK_MESSAGE: Record<PickupBlockReason, string> = {
+  wrong_tenant: "This code belongs to a different store.",
+  cancelled: "This order was cancelled. Do not hand it over.",
+};
+
+const WARNING_MESSAGE: Record<PickupWarning, string> = {
+  not_ready:
+    "This order is not marked ready yet. Confirm only if it is actually packed and on the counter.",
+};
 
 const DECODE_ERROR_MESSAGE: Record<DecodeError, string> = {
   empty: "Nothing was scanned. Try again.",
@@ -58,7 +120,16 @@ type ScreenState =
       items: QrOrderItemV1[];
       total: number;
       pricesUpdated: boolean;
-    };
+    }
+  | { mode: "pickup-verifying"; ticket: QrPickupPayloadV1 }
+  | {
+      mode: "pickup-confirm";
+      ticket: QrPickupPayloadV1;
+      order: VerifiedPickupOrder;
+      warning: PickupWarning | null;
+    }
+  | { mode: "pickup-blocked"; message: string }
+  | { mode: "pickup-done"; order: VerifiedPickupOrder; wasAlready: boolean };
 
 const SCAN_DEBOUNCE_MS = 1500;
 
@@ -73,6 +144,7 @@ export default function ScanScreen() {
   const outletId = useAuthStore((s) => s.outletId);
   const outletName = useAuthStore((s) => s.outletName);
   const createOrder = useSafeMutation(createOrderRef);
+  const updateOrderStatus = useSafeMutation(updateOrderStatusRef);
 
   const [state, setState] = useState<ScreenState>({ mode: "scanning" });
   const [isAccepting, setIsAccepting] = useState(false);
@@ -126,6 +198,56 @@ export default function ScanScreen() {
     [tenantId]
   );
 
+  // Pickup ticket: the token in the QR is verified server-side (this app has
+  // no access to the signing secret), and the same call returns the order for
+  // staff to eyeball before they hand anything over.
+  const verifyAndPreviewPickup = useCallback(
+    async (ticket: QrPickupPayloadV1) => {
+      setState({ mode: "pickup-verifying", ticket });
+
+      const result = await verifyPickupTicket({
+        tenantId: ticket.tenantId,
+        orderId: ticket.orderId,
+        token: ticket.token,
+      });
+
+      if (!result.ok) {
+        setState({
+          mode: "pickup-blocked",
+          message: VERIFY_ERROR_MESSAGE[result.error],
+        });
+        return;
+      }
+
+      const verdict = evaluatePickupTicket({
+        scannedTenantId: ticket.tenantId,
+        sessionTenantId: tenantId,
+        order: result.order,
+      });
+
+      if (verdict.decision === "block") {
+        setState({
+          mode: "pickup-blocked",
+          message: BLOCK_MESSAGE[verdict.reason],
+        });
+        return;
+      }
+
+      if (verdict.decision === "already_collected") {
+        setState({ mode: "pickup-done", order: result.order, wasAlready: true });
+        return;
+      }
+
+      setState({
+        mode: "pickup-confirm",
+        ticket,
+        order: result.order,
+        warning: verdict.warning,
+      });
+    },
+    [tenantId]
+  );
+
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
       const now = Date.now();
@@ -139,14 +261,18 @@ export default function ScanScreen() {
         );
       }
 
-      const decoded = decodeQrToOrder(raw);
-      if (!decoded.ok) {
-        setState({ mode: "error", error: decoded.error });
+      const scanned = classifyScannedQr(raw);
+      if (scanned.kind === "unreadable") {
+        setState({ mode: "error", error: scanned.error });
         return;
       }
-      void validateAndPreview(decoded.payload);
+      if (scanned.kind === "pickup") {
+        void verifyAndPreviewPickup(scanned.payload);
+        return;
+      }
+      void validateAndPreview(scanned.payload);
     },
-    [validateAndPreview]
+    [validateAndPreview, verifyAndPreviewPickup]
   );
 
   const resetToScanning = useCallback(() => {
@@ -251,6 +377,30 @@ export default function ScanScreen() {
     }
   }, [state, isAccepting, convexUrl, createOrder, tenantId, outletId, outletName]);
 
+  const handleConfirmPickup = useCallback(async () => {
+    if (state.mode !== "pickup-confirm" || isAccepting) return;
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+
+    const { ticket, order } = state;
+    setIsAccepting(true);
+
+    try {
+      await updateOrderStatus({
+        orderId: ticket.orderId,
+        status: COLLECTED_STATUS,
+      });
+      setState({ mode: "pickup-done", order, wasAlready: false });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to confirm pickup.";
+      Alert.alert("Could not confirm pickup", msg, [{ text: "OK" }]);
+    } finally {
+      setIsAccepting(false);
+    }
+  }, [state, isAccepting, updateOrderStatus]);
+
   const handleReject = useCallback(() => {
     // Reject writes nothing. Return to the dashboard.
     router.back();
@@ -338,6 +488,67 @@ export default function ScanScreen() {
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.validatingText}>Checking prices…</Text>
         </View>
+      )}
+
+      {state.mode === "pickup-verifying" && (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.validatingText}>Checking this code…</Text>
+        </View>
+      )}
+
+      {state.mode === "pickup-blocked" && (
+        <View style={styles.center}>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorIcon}>⛔</Text>
+            <Text style={styles.errorTitle}>Do not hand over</Text>
+            <Text style={styles.errorText}>{state.message}</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={resetToScanning}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryButtonText}>Rescan</Text>
+            </TouchableOpacity>
+          </Card>
+        </View>
+      )}
+
+      {state.mode === "pickup-done" && (
+        <View style={styles.center}>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorIcon}>✅</Text>
+            <Text style={styles.errorTitle}>
+              {state.wasAlready ? "Already collected" : "Pickup confirmed"}
+            </Text>
+            <Text style={styles.errorText}>
+              {state.wasAlready
+                ? `This order was already handed over${
+                    state.order.customerName ? ` to ${state.order.customerName}` : ""
+                  }.`
+                : `Handed over${
+                    state.order.customerName ? ` to ${state.order.customerName}` : ""
+                  }.`}
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={resetToScanning}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryButtonText}>Scan next</Text>
+            </TouchableOpacity>
+          </Card>
+        </View>
+      )}
+
+      {state.mode === "pickup-confirm" && (
+        <PickupConfirmPanel
+          order={state.order}
+          warning={state.warning}
+          isConfirming={isAccepting}
+          onConfirm={handleConfirmPickup}
+          onCancel={resetToScanning}
+        />
       )}
 
       {state.mode === "preview" && (
@@ -464,7 +675,11 @@ function PreviewPanel({
       </ScrollView>
 
       <View style={styles.previewActions}>
-        <SlideToAccept onComplete={onAccept} isAccepting={isAccepting} />
+        <SlideAction
+          label="Slide to accept"
+          onComplete={onAccept}
+          isBusy={isAccepting}
+        />
         <TouchableOpacity
           style={styles.cancelButton}
           onPress={onReject}
@@ -478,93 +693,87 @@ function PreviewPanel({
   );
 }
 
-const SLIDE_HEIGHT = 60;
-const KNOB_SIZE = 52;
-const SLIDE_PADDING = 4;
-const COMPLETE_THRESHOLD = 0.85;
-
-function SlideToAccept({
-  onComplete,
-  isAccepting,
+/**
+ * What staff see before releasing an order: who it belongs to, what is in it,
+ * and where it sits in the queue. The confirmation is a slide rather than a
+ * tap because the write is awkward to walk back.
+ */
+function PickupConfirmPanel({
+  order,
+  warning,
+  isConfirming,
+  onConfirm,
+  onCancel,
 }: {
-  onComplete: () => void;
-  isAccepting: boolean;
+  order: VerifiedPickupOrder;
+  warning: PickupWarning | null;
+  isConfirming: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const completedRef = useRef(false);
-
-  const maxSlide = Math.max(0, trackWidth - KNOB_SIZE - SLIDE_PADDING * 2);
-
-  const handleLayout = useCallback((e: LayoutChangeEvent) => {
-    setTrackWidth(e.nativeEvent.layout.width);
-  }, []);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !isAccepting && !completedRef.current,
-        onMoveShouldSetPanResponder: () => !isAccepting && !completedRef.current,
-        onPanResponderMove: (_, gesture) => {
-          if (maxSlide <= 0) return;
-          const x = Math.min(Math.max(0, gesture.dx), maxSlide);
-          translateX.setValue(x);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (maxSlide <= 0) return;
-          const x = Math.min(Math.max(0, gesture.dx), maxSlide);
-          if (x >= maxSlide * COMPLETE_THRESHOLD) {
-            completedRef.current = true;
-            Animated.timing(translateX, {
-              toValue: maxSlide,
-              duration: 120,
-              // JS driver: the same value also drives `width`/opacity below,
-              // which the native driver cannot animate.
-              useNativeDriver: false,
-            }).start(() => onComplete());
-          } else {
-            Animated.spring(translateX, {
-              toValue: 0,
-              useNativeDriver: false,
-              bounciness: 0,
-            }).start();
-          }
-        },
-      }),
-    [maxSlide, isAccepting, onComplete, translateX]
+  const itemCount = useMemo(
+    () => order.items.reduce((sum, i) => sum + i.quantity, 0),
+    [order.items]
   );
 
-  // Track-fill width and label fade follow the knob position.
-  const fillWidth = translateX.interpolate({
-    inputRange: [0, Math.max(1, maxSlide)],
-    outputRange: [KNOB_SIZE + SLIDE_PADDING * 2, trackWidth || KNOB_SIZE],
-    extrapolate: "clamp",
-  });
-  const labelOpacity = translateX.interpolate({
-    inputRange: [0, Math.max(1, maxSlide) * 0.6],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
-
   return (
-    <View style={styles.slideTrack} onLayout={handleLayout}>
-      <Animated.View style={[styles.slideFill, { width: fillWidth }]} pointerEvents="none" />
-      <Animated.Text
-        style={[styles.slideLabel, { opacity: labelOpacity }]}
-        pointerEvents="none"
-      >
-        Slide to accept
-      </Animated.Text>
-      <Animated.View
-        style={[styles.slideKnob, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
-      >
-        {isAccepting ? (
-          <ActivityIndicator color={colors.success} />
-        ) : (
-          <Text style={styles.slideKnobArrow}>›››</Text>
-        )}
-      </Animated.View>
+    <View style={styles.previewWrap}>
+      <ScrollView contentContainerStyle={styles.previewContent}>
+        <View style={styles.previewTitleRow}>
+          <Text style={styles.previewTitle}>Confirm pickup</Text>
+          <Badge label={order.status} variant={toBadgeVariant(order.status)} />
+        </View>
+
+        <Card title="Collecting" style={styles.previewSection}>
+          <Text style={styles.value}>{order.customerName || "—"}</Text>
+          {order.orderType ? (
+            <Text style={styles.sub}>{order.orderType}</Text>
+          ) : null}
+        </Card>
+
+        {warning ? (
+          <View style={styles.noticeBanner}>
+            <Text style={styles.noticeText}>{WARNING_MESSAGE[warning]}</Text>
+          </View>
+        ) : null}
+
+        <Card title={`Items (${itemCount})`} style={styles.previewSection}>
+          {order.items.map((item, i) => (
+            <View
+              key={`${item.name}-${i}`}
+              style={[
+                styles.itemRow,
+                i < order.items.length - 1 && styles.itemBorder,
+              ]}
+            >
+              <Text style={[styles.itemName, { flex: 1 }]}>{item.name}</Text>
+              <Text style={styles.itemQty}>x{item.quantity}</Text>
+            </View>
+          ))}
+          {order.total !== undefined && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>₱{order.total.toFixed(2)}</Text>
+            </View>
+          )}
+        </Card>
+      </ScrollView>
+
+      <View style={styles.previewActions}>
+        <SlideAction
+          label="Slide to confirm pickup"
+          onComplete={onConfirm}
+          isBusy={isConfirming}
+        />
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={onCancel}
+          disabled={isConfirming}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -695,46 +904,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.separator,
     backgroundColor: colors.card,
     ...shadow.sm,
-  },
-  // Slide to accept
-  slideTrack: {
-    height: SLIDE_HEIGHT,
-    borderRadius: SLIDE_HEIGHT / 2,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  slideFill: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.success,
-    borderRadius: SLIDE_HEIGHT / 2,
-  },
-  slideLabel: {
-    ...typography.heading,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-  slideKnob: {
-    position: "absolute",
-    left: SLIDE_PADDING,
-    width: KNOB_SIZE,
-    height: KNOB_SIZE,
-    borderRadius: KNOB_SIZE / 2,
-    backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadow.sm,
-  },
-  slideKnobArrow: {
-    color: colors.success,
-    fontSize: 20,
-    fontWeight: "700",
-    letterSpacing: -2,
   },
   cancelButton: { alignItems: "center", paddingVertical: spacing.md },
   cancelText: { ...typography.body, color: colors.textSecondary, fontWeight: "500" },

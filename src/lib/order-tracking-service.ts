@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { resolveOrderTypeKind, type OrderTypeKind } from '@/lib/pickup-qr-gating'
 
 export interface TrackingOrderItem {
   name: string
@@ -24,6 +25,12 @@ export interface TrackingData {
   deliveryFee?: number
   serviceChargeAmount?: number
   orderType?: string
+  /**
+   * The order's fulfilment kind, resolved from the order-type row where
+   * possible. `orderType` above is a display label a merchant can rename, so
+   * it must not be used to make behavioural decisions. Null = unresolved.
+   */
+  orderTypeKind?: OrderTypeKind | null
   customerName?: string
   createdAt: string
   isTerminal: boolean
@@ -68,7 +75,9 @@ export async function fetchOrderTrackingData(
       result = await fetchFromConvex(
         config.convex_deployment_url,
         config.convex_deploy_key,
-        orderId
+        orderId,
+        supabaseAdmin,
+        tenantId
       )
     } else {
       result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId)
@@ -81,10 +90,41 @@ export async function fetchOrderTrackingData(
   }
 }
 
+/**
+ * Look up an order type's fixed kind by id.
+ *
+ * Order types live in the platform Supabase for every tenant, including
+ * Convex ones, so this is the single authority for both fetch paths. Returns
+ * null on any failure — the caller then falls back to the snapshot string,
+ * and an unresolved kind simply hides the pickup QR.
+ */
+async function fetchOrderTypeKind(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderTypeId: string | null | undefined,
+  tenantId: string
+): Promise<string | null> {
+  if (!orderTypeId) return null
+
+  try {
+    const { data } = await supabase
+      .from('order_types')
+      .select('type')
+      .eq('id', orderTypeId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    return (data as { type?: string } | null)?.type ?? null
+  } catch {
+    return null
+  }
+}
+
 async function fetchFromConvex(
   convexUrl: string,
   convexKey: string,
-  orderId: string
+  orderId: string,
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string
 ): Promise<TrackingData> {
   const convex = createConvexServerClient(convexUrl, convexKey)
 
@@ -94,6 +134,11 @@ async function fetchFromConvex(
   if (!order) throw new Error('Order not found in Convex')
 
   const isTerminal = order.status === 'delivered' || order.status === 'cancelled'
+  const orderTypeFromRow = await fetchOrderTypeKind(
+    supabase,
+    order.orderTypeId,
+    tenantId
+  )
 
   return {
     status: order.status,
@@ -110,6 +155,10 @@ async function fetchFromConvex(
     total: order.total,
     deliveryFee: order.deliveryFee,
     orderType: order.orderType,
+    orderTypeKind: resolveOrderTypeKind({
+      orderTypeFromRow,
+      orderTypeSnapshot: order.orderType ?? null,
+    }),
     customerName: order.customerName,
     createdAt: new Date(order._creationTime).toISOString(),
     isTerminal,
@@ -128,7 +177,7 @@ async function fetchFromSupabase(
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, status, total, delivery_fee, service_charge_amount, order_type, customer_name, created_at,
+      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, created_at,
       scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
@@ -141,6 +190,11 @@ async function fetchFromSupabase(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const o = order as any
   const isTerminal = o.status === 'delivered' || o.status === 'cancelled'
+  const orderTypeFromRow = await fetchOrderTypeKind(
+    supabase,
+    o.order_type_id,
+    tenantId
+  )
 
   return {
     status: o.status,
@@ -156,6 +210,10 @@ async function fetchFromSupabase(
     deliveryFee: o.delivery_fee,
     serviceChargeAmount: o.service_charge_amount,
     orderType: o.order_type,
+    orderTypeKind: resolveOrderTypeKind({
+      orderTypeFromRow,
+      orderTypeSnapshot: o.order_type ?? null,
+    }),
     customerName: o.customer_name,
     createdAt: o.created_at,
     isTerminal,
