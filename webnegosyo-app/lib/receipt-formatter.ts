@@ -1,5 +1,21 @@
 import { readOrderDiscount } from "./order-discount";
-import { orderSummaryRows } from "./order-summary-rows";
+import { orderSummaryRows, type OrderSummaryRowKind } from "./order-summary-rows";
+
+/**
+ * The receipt's own wording for each row kind.
+ *
+ * Keyed by the whole union rather than defaulted, so a kind added to
+ * `orderSummaryRows` later fails the type check here instead of silently
+ * printing under somebody else's label. `discount` and `total` are drawn by
+ * hand below and never read from this map.
+ */
+const RECEIPT_LABELS: Record<OrderSummaryRowKind, string> = {
+  subtotal: "Subtotal:",
+  discount: "Discount:",
+  service: "Service Charge:",
+  delivery: "Delivery Fee:",
+  total: "TOTAL:",
+};
 
 interface ReceiptOrderItem {
   menuItemName: string;
@@ -242,7 +258,7 @@ export function formatReceipt(order: ReceiptOrder, config: ReceiptConfig): strin
       continue;
     }
 
-    const label = row.kind === "delivery" ? "Delivery Fee:" : "Subtotal:";
+    const label = RECEIPT_LABELS[row.kind];
     lines.push(leftRight(label, `P${row.amount.toFixed(2)}`, w));
   }
 

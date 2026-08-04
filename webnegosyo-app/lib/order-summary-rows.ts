@@ -23,7 +23,12 @@ export interface SummarisableDiscount {
  * IS and leaves the minus sign to whoever draws it.
  */
 
-export type OrderSummaryRowKind = "subtotal" | "discount" | "delivery" | "total";
+export type OrderSummaryRowKind =
+  | "subtotal"
+  | "discount"
+  | "service"
+  | "delivery"
+  | "total";
 
 export interface OrderSummaryRow {
   kind: OrderSummaryRowKind;
@@ -35,6 +40,11 @@ export interface OrderSummaryRow {
 export interface OrderSummaryInput {
   subtotal: number;
   deliveryFee?: number | null;
+  /**
+   * The service charge already folded into `total` by `computeOrderTotals`.
+   * Omitted by the backends that never store the figure — see the guard below.
+   */
+  serviceCharge?: number | null;
   discount?: SummarisableDiscount | null;
   /** What was actually charged. Authoritative. */
   total: number;
@@ -49,6 +59,11 @@ export function orderSummaryRows(input: OrderSummaryInput): OrderSummaryRow[] {
   const deliveryFee = input.deliveryFee ?? 0;
   const hasDelivery = deliveryFee > 0;
 
+  // Guarded exactly like the delivery fee: shown only when it was actually
+  // charged, so a pickup order does not carry a ₱0.00 row of pure noise.
+  const serviceCharge = input.serviceCharge ?? 0;
+  const hasServiceCharge = serviceCharge > 0;
+
   // A corrupt amount is dropped rather than shown: a NaN or negative
   // "deduction" would read as the shop charging extra.
   const discountLines = (input.discount?.lines ?? []).filter(
@@ -59,7 +74,7 @@ export function orderSummaryRows(input: OrderSummaryInput): OrderSummaryRow[] {
   // A subtotal is shown only when something sits between the items and the
   // total. Otherwise it repeats a sum already on screen, and a discount would
   // be read with no stated starting point.
-  if (hasDelivery || hasDiscount) {
+  if (hasDelivery || hasServiceCharge || hasDiscount) {
     rows.push({ kind: "subtotal", label: "Subtotal", amount: input.subtotal });
   }
 
@@ -76,6 +91,15 @@ export function orderSummaryRows(input: OrderSummaryInput): OrderSummaryRow[] {
     if (unaccounted > EPSILON) {
       rows.push({ kind: "discount", label: "Discount", amount: unaccounted });
     }
+  }
+
+  // Both fees sit after the deductions, because they are additions: a bill
+  // reads down as goods, what came off, then what went on. The service charge
+  // comes first of the two — it is derived from the food itself, so it belongs
+  // beside the goods, while delivery is a separate carriage charge and reads
+  // as the last thing added before the total.
+  if (hasServiceCharge) {
+    rows.push({ kind: "service", label: "Service charge", amount: serviceCharge });
   }
 
   if (hasDelivery) {

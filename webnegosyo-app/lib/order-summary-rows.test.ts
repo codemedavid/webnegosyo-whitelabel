@@ -137,4 +137,52 @@ describe("orderSummaryRows", () => {
       { kind: "discount", label: "WELCOME10", amount: 20 },
     ]);
   });
+
+  it("names the service charge that `total` already includes", () => {
+    // Without this row a dine-in sale lists ₱600 of food, takes ₱100 off and
+    // charges ₱560, with nothing on screen explaining the other ₱60.
+    const rows = orderSummaryRows({
+      subtotal: 600,
+      serviceCharge: 60,
+      total: 560,
+      discount: { total: 100, lines: [{ label: "Hundred off", amount: 100 }] },
+    });
+
+    expect(rows).toContainEqual({ kind: "service", label: "Service charge", amount: 60 });
+  });
+
+  it("omits a service charge of zero rather than showing a free line", () => {
+    const rows = orderSummaryRows({ subtotal: 200, serviceCharge: 0, total: 200 });
+
+    expect(rows.some((r) => r.kind === "service")).toBe(false);
+  });
+
+  it("earns a subtotal on a service-charged order with no discount", () => {
+    // The charge sits between the items and the total, so the reader needs the
+    // starting point stated — the same reason a delivery fee earns one.
+    const rows = orderSummaryRows({ subtotal: 200, serviceCharge: 20, total: 220 });
+
+    expect(rows.map((r) => r.kind)).toEqual(["subtotal", "service", "total"]);
+  });
+
+  it("reads down as goods, deductions, then the fees that were added", () => {
+    // Order is the whole point of a bill. The service charge is derived from
+    // the food, so it sits beside it; delivery is separate carriage and comes
+    // last before the total.
+    const rows = orderSummaryRows({
+      subtotal: 600,
+      serviceCharge: 60,
+      deliveryFee: 50,
+      total: 610,
+      discount: { total: 100, lines: [{ label: "Hundred off", amount: 100 }] },
+    });
+
+    expect(rows.map((r) => r.kind)).toEqual([
+      "subtotal",
+      "discount",
+      "service",
+      "delivery",
+      "total",
+    ]);
+  });
 });

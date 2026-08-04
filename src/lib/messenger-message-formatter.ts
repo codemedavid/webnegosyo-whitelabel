@@ -23,6 +23,8 @@ function formatSummaryRow(row: OrderSummaryRow): string {
       return `💰 Subtotal: ${formatPrice(row.amount)}`
     case 'discount':
       return `🎟️ ${row.label}: -${formatPrice(row.amount)}`
+    case 'service':
+      return `🧾 Service Charge: ${formatPrice(row.amount)}`
     case 'delivery':
       return `🚚 Delivery Fee: ${formatPrice(row.amount)}`
     case 'total':
@@ -147,6 +149,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
   for (const row of orderSummaryRows({
     subtotal: itemsSubtotal,
     deliveryFee: Number(order.delivery_fee) || 0,
+    serviceCharge: Number(order.service_charge_amount) || 0,
     discount: readOrderDiscount(order),
     total: Number(order.total),
   })) {
