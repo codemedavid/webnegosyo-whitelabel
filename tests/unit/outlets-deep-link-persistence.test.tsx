@@ -54,6 +54,8 @@ const outlet = (id: string, slug: string, sortOrder: number): SelectableOutlet &
 
 const CAINTA = outlet('o-cainta', 'cainta', 0)
 const MAKATI = outlet('o-makati', 'makati', 1)
+/** A branch whose slug carries the store name, as production slugs tend to. */
+const CAINTA_MAIN = outlet('o-cainta-main', 'cainta-main', 0)
 
 const AFTER_TENANT = {
   id: 'tenant-1',
@@ -88,6 +90,22 @@ describe('the branch a QR link names is remembered', () => {
     await waitFor(() => expect(result.current.outlet?.id).toBe('o-cainta'))
     await waitFor(() =>
       expect(readLinkedOutletSlug(window.localStorage, 'acme', Date.now())).toBe('cainta')
+    )
+  })
+
+  it('resolves a link that names only the distinctive part of the slug', async () => {
+    // Arrange: the merchant printed /b/cainta for the branch `cainta-main`.
+    urlSlug = 'cainta'
+
+    // Act
+    const { result } = renderHook(() =>
+      useOutletSelection({ isEnabled: true, tenantSlug: 'acme', outlets: [CAINTA_MAIN, MAKATI] })
+    )
+
+    // Assert: the branch is served AND remembered, so checkout does not ask.
+    await waitFor(() => expect(result.current.outlet?.id).toBe('o-cainta-main'))
+    await waitFor(() =>
+      expect(readLinkedOutletSlug(window.localStorage, 'acme', Date.now())).toBe('cainta-main')
     )
   })
 
