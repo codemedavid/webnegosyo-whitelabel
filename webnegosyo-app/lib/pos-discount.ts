@@ -47,15 +47,20 @@ const MAX_PERCENT = 100;
 /**
  * Describes the register's cart in the engine's vocabulary.
  *
- * `deliveryFee` is always zero: a counter sale has no delivery, so a
+ * `deliveryFee` defaults to zero because a counter sale has no delivery, so a
  * free-delivery voucher correctly finds nothing to discount rather than being
- * special-cased away.
+ * special-cased away. It is a PARAMETER rather than a constant because the same
+ * builder also describes an EDITED order, which may well be a delivery with a
+ * real fee — see `pos-edit-discount.ts`. Hardcoding the zero there rejected
+ * every free-delivery voucher as `no_delivery_fee` and re-billed the customer
+ * the delivery they had been given free.
  */
 export function posDiscountContext(
   cart: readonly PosCartLine[],
   serviceCharge: number,
   now: Date,
   outletId?: string | null,
+  deliveryFee = 0,
 ): DiscountContext {
   return {
     lines: cart.map((line) => ({
@@ -64,7 +69,7 @@ export function posDiscountContext(
       quantity: line.quantity,
       subtotal: line.subtotal,
     })),
-    deliveryFee: 0,
+    deliveryFee,
     serviceCharge,
     channel: "pos",
     now,
