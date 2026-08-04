@@ -2,7 +2,7 @@
 
 ## Source plan
 
-No `*.plan.md`. This is **Phase 2, steps 1–3** of the plan produced in the
+No `*.plan.md`. This is **Phase 2, steps 1–4** of the plan produced in the
 `/ecc:plan` run recorded in
 [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
 
@@ -156,6 +156,34 @@ RED — `npx jest --config jest.config.cjs tests/unit/order-ledger-parity.test.t
 
 GREEN — same command: **25 passed, 25 total**.
 
+### 5. Which codes an attach newly added (step 4)
+
+`src/lib/order-discount-attach.ts`, ported from `newDiscountLines` in
+`webnegosyo-app/lib/pos-edit-mode.ts`.
+
+An order arriving in orders management already carries whatever discount it was
+placed with. When a merchant attaches another code, one question decides whether
+money and a redemption are given away twice: which lines are NEW?
+
+- Count a carried code again → one voucher takes its discount off twice.
+- Burn a carried code again → a second redemption is spent from the customer's
+  own allowance for a voucher presented once.
+
+Manual lines are excluded by design: real money off the bill with no voucher
+behind them, so nothing to redeem and nothing that could be redeemed twice. They
+must never reach a redemption call. Zero, `NaN` and negative amounts are excluded
+too — the payload is read from an untyped database edge, and a negative
+"discount" would add money to a bill.
+
+RED — `npx jest --config jest.config.cjs tests/unit/order-discount-attach-parity.test.ts`:
+
+```
+● Test suite failed to run
+  Cannot find module '@/lib/order-discount-attach' from 'tests/unit/order-discount-attach-parity.test.ts'
+```
+
+GREEN — same command: **22 passed, 22 total**, including 11 shared parity cases.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -184,6 +212,13 @@ GREEN — same command: **25 passed, 25 total**.
 | 22 | An unrecognisable error is `unavailable`, never `absent` | `:treats an unrecognisable error as unavailable, never as absent` | unit | PASS |
 | 23 | A bill may be changed against a loaded or absent ledger, never an unreadable one | `:what may be done against a ledger in each state` | unit | PASS |
 | 24 | Web and register classify the same 7 Convex messages identically | `:ledger-state parity — web vs merchant app` | unit (parity) | PASS |
+| 25 | A code the order did not carry is returned as newly added | `order-discount-attach-parity.test.ts:returns a code the order did not already carry` | unit | PASS |
+| 26 | A code the order already carried is not added again | `:leaves out a code the order already carried` | unit | PASS |
+| 27 | A manual line is never returned, so it can never be redeemed | `:leaves out a manual line, which has no code to redeem` | unit | PASS |
+| 28 | Zero, NaN and negative amounts are excluded | `:leaves out a line worth nothing` / `:leaves out a line whose amount is unreadable` / `:leaves out a negative line, which would add money to the bill` | unit | PASS |
+| 29 | A carried manual line does not suppress a new code | `:does not let a carried manual line suppress a new code` | unit | PASS |
+| 30 | The inputs are not mutated | `:does not mutate what it was given` | unit | PASS |
+| 31 | Web and register agree across 11 attach shapes | `:attach selection parity — web vs merchant app` | unit (parity) | PASS |
 
 ## Validation actually run
 
@@ -192,7 +227,8 @@ GREEN — same command: **25 passed, 25 total**.
 | `npx jest --config jest.config.cjs tests/unit/order-balance-parity.test.ts` | 35 passed, 35 total |
 | `npx jest --config jest.config.cjs tests/unit/order-settlement-parity.test.ts` | 13 passed, 13 total |
 | `npx jest --config jest.config.cjs tests/unit/order-ledger-parity.test.ts` | 25 passed, 25 total |
-| `npx jest --config jest.config.cjs` (full web suite, after step 3) | 451 passed, 1 skipped; 5,528 tests passed |
+| `npx jest --config jest.config.cjs tests/unit/order-discount-attach-parity.test.ts` | 22 passed, 22 total |
+| `npx jest --config jest.config.cjs` (full web suite, after step 4) | 452 passed, 1 skipped; 5,550 tests passed |
 | `npx tsc --noEmit` | 0 errors under `src/` |
 | `npx eslint` on all four changed files | clean, no output |
 
@@ -250,7 +286,14 @@ Four checkpoint commits, all on `feat/android-sms-followups`.
 - RED: `test: add reproducer for ledger-state classification missing on the web`
   — suite failed to run, module absent.
 - GREEN: `feat: let the web tell an absent settlement ledger from an unreadable one`
-  — 25/25 pass; full suite 5,528 pass; tsc clean under `src/`; eslint clean.
+  — 25/25 pass.
 
-No refactor commits: all three ports are straight transliterations with their
+**Step 4 — attach selection.** RED `a779da5` → GREEN `2ca642a`.
+
+- RED: `test: add reproducer for attach selection missing on the web`
+  — suite failed to run, module absent.
+- GREEN: `feat: let the web tell which codes an attach newly added`
+  — 22/22 pass; full suite 5,550 pass; tsc clean under `src/`; eslint clean.
+
+No refactor commits: all four ports are straight transliterations with their
 module docstrings rewritten for the new context; nothing left to clean up.
