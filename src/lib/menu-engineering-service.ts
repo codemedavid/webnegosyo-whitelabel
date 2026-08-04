@@ -65,13 +65,22 @@ export async function updateBcgClassification(
   return data
 }
 
+/**
+ * Write many BCG classifications at once.
+ *
+ * `ctx` is the provisioning (service-role) path used by the MCP, mirroring
+ * `createUpsellPair` below: when it is supplied the caller's authority was
+ * already established by the MCP's Bearer/OAuth check, so the tenant-permission
+ * lookup — which needs a cookie session that does not exist there — is skipped.
+ */
 export async function bulkUpdateBcgClassification(
   tenantId: string,
-  updates: { itemId: string; classification: BcgClassification }[]
+  updates: { itemId: string; classification: BcgClassification }[],
+  ctx?: ProvisioningCtx
 ) {
-  await verifyTenantPermission(tenantId, 'analytics')
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
   const results = await Promise.all(
     updates.map(({ itemId, classification }) => {
       bcgClassificationSchema.parse(classification)

@@ -12,7 +12,8 @@ import {
     listCategoriesForProvisioning,
 } from '@/lib/admin-service'
 import { createAddonLibraryEntry } from '@/lib/addon-library-service'
-import { createUpsellPair } from '@/lib/menu-engineering-service'
+import { createUpsellPair, bulkUpdateBcgClassification } from '@/lib/menu-engineering-service'
+import { classifyMenu } from '@/lib/menu-engineering-classify'
 import { createBundle } from '@/lib/bundles-service'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
@@ -265,6 +266,54 @@ const ops: ProvisioningOp<unknown>[] = [
             "List a tenant's menu categories (id, name, order, is_active) so a category_id can be resolved by name before adding or moving a menu item. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listCategoriesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'classify_menu',
+        description:
+            "PROPOSE a BCG menu-engineering classification (star / plowhorse / puzzle / dog) for every item, computed from the tenant's real sales. Writes NOTHING — review the proposal, then pass the ones you want to keep to apply_menu_classification. Envelope: { tenantId, days?, costs? }. `costs` maps itemId → unit cost; supply it for EVERY item to get true contribution margins, otherwise profitability falls back to a price proxy and `marginBasis` will say 'price_proxy'. When `canApply` is false the evidence was too weak (blind or thin sales read) and you must NOT write classifications or advise removing items — read the `warnings`.",
+        input: z.object({
+            tenantId: UUID,
+            days: z.number().int().min(1).max(365).optional().describe('Sales window in days (default 30)'),
+            costs: z
+                .record(z.string(), z.number())
+                .optional()
+                .describe('itemId → unit cost. Partial coverage is ignored; all-or-nothing.'),
+        }),
+        execute: async (ctx, input) => {
+            const i = input as { tenantId: string; days?: number; costs?: Record<string, number> }
+            const [menuItems, performance] = await Promise.all([
+                listMenuItemsForProvisioning(i.tenantId, ctx),
+                fetchMenuPerformanceForTenantId(i.tenantId, ctx, i.days ?? 30),
+            ])
+
+            const items = ((menuItems ?? []) as Array<{ id: string; name: string; price: number; category_id: string | null }>)
+                .map((m) => ({ id: m.id, name: m.name, price: Number(m.price), categoryId: m.category_id }))
+
+            return { ...classifyMenu({ items, performance, costs: i.costs }), performance }
+        },
+    }),
+    op({
+        name: 'apply_menu_classification',
+        description:
+            "WRITE the BCG classifications you decided on after reviewing classify_menu. Envelope: { tenantId, classifications: [{ itemId, classification }] }. Only the items you list are changed. Do not call this when classify_menu reported canApply: false. Note that classifications only reach customers when the tenant's menu_engineering_enabled flag is on.",
+        input: z.object({
+            tenantId: UUID,
+            classifications: z
+                .array(
+                    z.object({
+                        itemId: UUID,
+                        classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']),
+                    }),
+                )
+                .min(1, 'Pass at least one classification — an empty write is not a success.'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as {
+                tenantId: string
+                classifications: Array<{ itemId: string; classification: 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified' }>
+            }
+            return bulkUpdateBcgClassification(i.tenantId, i.classifications, ctx)
+        },
     }),
     op({
         name: 'get_menu_performance',

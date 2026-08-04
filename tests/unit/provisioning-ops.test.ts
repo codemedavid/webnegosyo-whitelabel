@@ -25,7 +25,7 @@ jest.mock('@/lib/admin-service', () => ({
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
 jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn() }))
-jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn() }))
+jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn() }))
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
 jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
 
@@ -47,6 +47,7 @@ const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFro
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
+const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
@@ -80,6 +81,7 @@ beforeEach(() => {
     items: [{ itemId: 'item_1', name: 'Sisig', units: 12, revenue: 2400, unitShare: 1, revenueShare: 1 }],
     coverage: { complete: true },
   } as never)
+  bulkUpdateBcgClassification.mockReset().mockResolvedValue([{ id: 'item_1', bcg_classification: 'star' }] as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -371,5 +373,90 @@ describe('get_menu_performance', () => {
   it('rejects a window outside the supported range instead of silently clamping it', async () => {
     await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 0 })).rejects.toThrow()
     await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 4000 })).rejects.toThrow()
+  })
+})
+
+describe('classify_menu (propose, never write)', () => {
+  beforeEach(() => {
+    // A priced menu, which the default fixture (name + image only) does not carry.
+    listMenuItemsForProvisioning.mockResolvedValue([
+      { id: 'item_1', name: 'Sisig', price: 300, category_id: 'cat_1' },
+      { id: 'item_2', name: 'Toast', price: 60, category_id: 'cat_1' },
+    ] as never)
+  })
+
+  it('is registered and writes nothing', async () => {
+    expect(Object.keys(PROVISIONING_OPS)).toContain('classify_menu')
+
+    await executeOp('classify_menu', ctx, { tenantId: TENANT })
+
+    expect(bulkUpdateBcgClassification).not.toHaveBeenCalled()
+    expect(updateMenuItemFields).not.toHaveBeenCalled()
+  })
+
+  it('classifies the live menu against the tenant\'s real sales', async () => {
+    fetchMenuPerformanceForTenantId.mockResolvedValue({
+      dataSource: 'platform', windowDays: 30, totalUnits: 100, totalRevenue: 20000,
+      items: [
+        { itemId: 'item_1', name: 'Sisig', units: 90, revenue: 19000, unitShare: 0.9, revenueShare: 0.95 },
+        { itemId: 'item_2', name: 'Toast', units: 10, revenue: 1000, unitShare: 0.1, revenueShare: 0.05 },
+      ],
+      coverage: { complete: true },
+    } as never)
+
+    const result = await executeOp('classify_menu', ctx, { tenantId: TENANT }) as any
+
+    expect(result.canApply).toBe(true)
+    expect(result.items.find((i: any) => i.itemId === 'item_1').classification).toBe('star')
+    expect(result.marginBasis).toBe('price_proxy')
+  })
+
+  it('refuses to propose anything when the sales read was blind', async () => {
+    fetchMenuPerformanceForTenantId.mockResolvedValue({
+      dataSource: 'convex', windowDays: 30, totalUnits: 0, totalRevenue: 0, items: [],
+      coverage: { complete: false, note: 'No order data in this window' },
+    } as never)
+
+    const result = await executeOp('classify_menu', ctx, { tenantId: TENANT }) as any
+
+    expect(result.canApply).toBe(false)
+    expect(result.items.every((i: any) => i.classification === 'unclassified')).toBe(true)
+  })
+})
+
+describe('apply_menu_classification (write, only what was handed to it)', () => {
+  it('writes exactly the classifications it was given', async () => {
+    await executeOp('apply_menu_classification', ctx, {
+      tenantId: TENANT,
+      classifications: [
+        { itemId: ITEM, classification: 'star' },
+        { itemId: TENANT, classification: 'dog' },
+      ],
+    })
+
+    expect(bulkUpdateBcgClassification).toHaveBeenCalledWith(
+      TENANT,
+      [
+        { itemId: ITEM, classification: 'star' },
+        { itemId: TENANT, classification: 'dog' },
+      ],
+      ctx,
+    )
+  })
+
+  it('rejects a classification value the schema does not know', async () => {
+    await expect(
+      executeOp('apply_menu_classification', ctx, {
+        tenantId: TENANT,
+        classifications: [{ itemId: ITEM, classification: 'superstar' }],
+      }),
+    ).rejects.toThrow()
+    expect(bulkUpdateBcgClassification).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty write instead of reporting a no-op as success', async () => {
+    await expect(
+      executeOp('apply_menu_classification', ctx, { tenantId: TENANT, classifications: [] }),
+    ).rejects.toThrow()
   })
 })
