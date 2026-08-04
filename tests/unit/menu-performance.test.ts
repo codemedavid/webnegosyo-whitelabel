@@ -10,7 +10,11 @@
  * Every dependency is injected, so these tests open no connections.
  */
 
-import { fetchMenuPerformance, fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
+import {
+  fetchMenuPerformance,
+  fetchMenuPerformanceForTenantId,
+  type MenuPerformanceTenant,
+} from '@/lib/queries/menu-performance'
 
 /** A chainable PostgREST double that records the filters it was given. */
 function fakeOrderItemsClient(rows: unknown[], calls: Record<string, unknown> = {}) {
@@ -30,16 +34,16 @@ function fakeOrderItemsClient(rows: unknown[], calls: Record<string, unknown> = 
   return { from: (table: string) => { calls.from = table; return builder } }
 }
 
-const CONVEX_TENANT = {
+const CONVEX_TENANT: MenuPerformanceTenant = {
   id: 't1',
   order_backend: 'convex',
   convex_deployment_url: 'https://x.convex.cloud',
   convex_deploy_key: 'key',
 }
 
-const PLATFORM_TENANT = { id: 't2', order_backend: 'platform' }
+const PLATFORM_TENANT: MenuPerformanceTenant = { id: 't2', order_backend: 'platform' }
 
-const TENANT_SUPABASE_TENANT = {
+const TENANT_SUPABASE_TENANT: MenuPerformanceTenant = {
   id: 't3',
   order_backend: 'supabase',
   supabase_order_url: 'https://tenant.supabase.co',
@@ -135,7 +139,7 @@ describe('fetchMenuPerformance backend routing', () => {
     // Falling back would answer the question from the WRONG database and look
     // authoritative doing it.
     const result = await fetchMenuPerformance(
-      { id: 't4', order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud' },
+      { id: 't4', order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud' } as MenuPerformanceTenant,
       { windowDays: 30, platformClient: fakeOrderItemsClient([]) as never },
     )
 
