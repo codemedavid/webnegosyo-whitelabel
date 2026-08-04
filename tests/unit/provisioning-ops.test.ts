@@ -27,6 +27,7 @@ jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaym
 jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn() }))
 jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn() }))
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
+jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 // The MCP SDK derives each tool's advertised JSON schema by first passing the
@@ -45,6 +46,7 @@ const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/t
 const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
+const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
@@ -70,6 +72,14 @@ beforeEach(() => {
   ] as never)
   saveBrandingAction.mockReset().mockResolvedValue({ success: true } as never)
   createPaymentMethod.mockReset().mockResolvedValue({ id: 'pm_1' } as never)
+  fetchMenuPerformanceForTenantId.mockReset().mockResolvedValue({
+    dataSource: 'convex',
+    windowDays: 30,
+    totalUnits: 12,
+    totalRevenue: 2400,
+    items: [{ itemId: 'item_1', name: 'Sisig', units: 12, revenue: 2400, unitShare: 1, revenueShare: 1 }],
+    coverage: { complete: true },
+  } as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -331,5 +341,35 @@ describe('tenant-deactivation guardrail', () => {
       lalamove_enabled: true,
     })
     expect(updateTenantSupabase).toHaveBeenCalledWith(TENANT, expect.objectContaining({ lalamove_enabled: true }), ctx)
+  })
+})
+
+describe('get_menu_performance', () => {
+  it('is registered so the model can see what actually sells before it advises', () => {
+    expect(Object.keys(PROVISIONING_OPS)).toContain('get_menu_performance')
+  })
+
+  it('reads through the tenant-routing helper, honouring the requested window', async () => {
+    const result = await executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 14 })
+
+    expect(fetchMenuPerformanceForTenantId).toHaveBeenCalledWith(TENANT, ctx, 14)
+    expect(result).toMatchObject({ dataSource: 'convex', totalUnits: 12 })
+  })
+
+  it('defaults to a 30-day window when none is given', async () => {
+    await executeOp('get_menu_performance', ctx, { tenantId: TENANT })
+
+    expect(fetchMenuPerformanceForTenantId).toHaveBeenCalledWith(TENANT, ctx, 30)
+  })
+
+  it('advertises tenantId and days so the model knows what it may ask for', () => {
+    const opSchema = (PROVISIONING_OPS as Record<string, { input: never }>)['get_menu_performance']
+    const normalized = normalizeObjectSchema(opSchema.input) as { shape?: Record<string, unknown> } | undefined
+    expect(Object.keys(normalized?.shape ?? {})).toEqual(expect.arrayContaining(['tenantId', 'days']))
+  })
+
+  it('rejects a window outside the supported range instead of silently clamping it', async () => {
+    await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 0 })).rejects.toThrow()
+    await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 4000 })).rejects.toThrow()
   })
 })

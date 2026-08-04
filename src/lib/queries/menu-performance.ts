@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import {
@@ -176,4 +177,38 @@ export async function fetchMenuPerformance(
     return unavailable('platform', windowDays, 'No platform database client was provided for this read.')
   }
   return fetchFromSupabase(platformClient, tenant.id, windowDays, 'platform')
+}
+
+/** Tenant columns needed to decide where the orders are and how to reach them. */
+const TENANT_ROUTING_SELECT =
+  'id, order_backend, convex_deployment_url, convex_deploy_key, ' +
+  'supabase_order_url, supabase_order_anon_key, supabase_order_service_key'
+
+/**
+ * Resolve a tenant by id through the service-role provisioning client, then read
+ * its per-item sales from whichever backend holds them.
+ *
+ * A missing tenant THROWS rather than returning an empty performance payload: an
+ * unknown tenant is a caller mistake, and rendering it as "this menu sold
+ * nothing" would invite the model to act on a restaurant that isn't there.
+ */
+export async function fetchMenuPerformanceForTenantId(
+  tenantId: string,
+  ctx: ProvisioningCtx,
+  windowDays: number = DEFAULT_WINDOW_DAYS,
+): Promise<MenuPerformance> {
+  const { data, error } = await ctx.client
+    .from('tenants')
+    .select(TENANT_ROUTING_SELECT)
+    .eq('id', tenantId)
+    .single()
+
+  if (error || !data) {
+    throw new Error(`Tenant ${tenantId} could not be loaded: ${error?.message ?? 'not found'}`)
+  }
+
+  return fetchMenuPerformance({ ...(data as unknown as MenuPerformanceTenant), id: tenantId }, {
+    windowDays,
+    platformClient: ctx.client as unknown as SupabaseClient,
+  })
 }

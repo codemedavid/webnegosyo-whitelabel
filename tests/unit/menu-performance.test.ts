@@ -10,7 +10,7 @@
  * Every dependency is injected, so these tests open no connections.
  */
 
-import { fetchMenuPerformance } from '@/lib/queries/menu-performance'
+import { fetchMenuPerformance, fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
 
 /** A chainable PostgREST double that records the filters it was given. */
 function fakeOrderItemsClient(rows: unknown[], calls: Record<string, unknown> = {}) {
@@ -157,5 +157,55 @@ describe('fetchMenuPerformance backend routing', () => {
 
     expect(result.coverage.complete).toBe(false)
     expect(result.coverage.note).toMatch(/partial|truncated/i)
+  })
+})
+
+describe('fetchMenuPerformanceForTenantId', () => {
+  /** A platform client that answers the tenant lookup, then the order query. */
+  function clientReturning(tenantRow: unknown, orderRows: unknown[] = []) {
+    return {
+      from: (table: string) => {
+        if (table === 'tenants') {
+          const b: Record<string, unknown> = {}
+          Object.assign(b, {
+            select: () => b,
+            eq: () => b,
+            single: () => Promise.resolve({ data: tenantRow, error: null }),
+          })
+          return b
+        }
+        return fakeOrderItemsClient(orderRows).from(table)
+      },
+    }
+  }
+
+  it('resolves the tenant, then reads through that tenant\'s own backend', async () => {
+    const client = clientReturning({ ...PLATFORM_TENANT }, [
+      { menu_item_id: 'z', menu_item_name: 'Halo-halo', quantity: 3, subtotal: '450.00' },
+    ])
+
+    const result = await fetchMenuPerformanceForTenantId('t2', { client: client as never }, 14)
+
+    expect(result.dataSource).toBe('platform')
+    expect(result.windowDays).toBe(14)
+    expect(result.items[0]).toMatchObject({ itemId: 'z', units: 3 })
+  })
+
+  it('throws when the tenant does not exist rather than reporting an empty menu', async () => {
+    const client = {
+      from: () => {
+        const b: Record<string, unknown> = {}
+        Object.assign(b, {
+          select: () => b,
+          eq: () => b,
+          single: () => Promise.resolve({ data: null, error: { message: 'no rows' } }),
+        })
+        return b
+      },
+    }
+
+    await expect(
+      fetchMenuPerformanceForTenantId('missing', { client: client as never }),
+    ).rejects.toThrow(/tenant/i)
   })
 })
