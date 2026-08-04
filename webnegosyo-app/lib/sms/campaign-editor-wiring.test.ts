@@ -133,6 +133,19 @@ describe("campaign editor — reaching the Send button at all", () => {
     expect(handler).toMatch(/campaignHref\(/);
   });
 
+  it("pins the send action outside the scroll, so it cannot be scrolled away from", () => {
+    // The strongest form of the guarantee the next test approximates. Send
+    // used to be a button partway down a form roughly three screens long; a
+    // merchant who never scrolled to it reported, correctly, that there was no
+    // send button. A bar rendered after `</ScrollView>` is always on screen.
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/styles\.actionBar/);
+    expect(source.indexOf("styles.actionBar")).toBeGreaterThan(
+      source.indexOf("</ScrollView>")
+    );
+  });
+
   it("puts sending above the schedule, not below every other setting", () => {
     // Send used to be the last thing on a long scroll, under status and quiet
     // hours. The one action the merchant came for should not be the one they
@@ -162,6 +175,27 @@ describe("campaign editor — saying why it will not send", () => {
 
     expect(source).toMatch(/no_audience/);
     expect(source).toMatch(/customers/i);
+  });
+});
+
+describe("campaign editor — showing the message before it is sent", () => {
+  it("renders the message as the guest will read it, placeholders filled in", () => {
+    // Placeholders are the one part of a campaign a merchant cannot check by
+    // reading what they typed: `{{frstName}}` looks fine and is delivered
+    // literally to everyone on the list.
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/buildMessagePreview/);
+    expect(source).toMatch(/<MessagePreview/);
+  });
+
+  it("keeps the cost attached to the message rather than in a box of its own", () => {
+    // Segments are a property of the exact text above them. Separated, a
+    // merchant edits the words and never sees the price double.
+    const source = readCode(...EDITOR);
+    const preview = source.slice(source.indexOf("<MessagePreview"));
+
+    expect(preview.slice(0, 300)).toMatch(/cost=\{cost\}/);
   });
 });
 
