@@ -26,6 +26,7 @@ jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingActio
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
 jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn(), listAddonLibraryForProvisioning: jest.fn() }))
 jest.mock('@/lib/addon-bulk-attach', () => ({ __esModule: true, attachAddonEntriesToItems: jest.fn() }))
+jest.mock('@/lib/sms-campaigns-service', () => ({ __esModule: true, createSmsCampaign: jest.fn(), listSmsCampaignsForProvisioning: jest.fn() }))
 jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn(), listUpsellPairsForProvisioning: jest.fn() }))
 jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn(), listBundlesForProvisioning: jest.fn() }))
 jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
@@ -53,6 +54,7 @@ const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering
 const { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } = jest.requireMock('@/lib/menu-arrangement') as any
 const { attachAddonEntriesToItems } = jest.requireMock('@/lib/addon-bulk-attach') as any
 const { createBundle, listBundlesForProvisioning } = jest.requireMock('@/lib/bundles-service') as any
+const { createSmsCampaign, listSmsCampaignsForProvisioning } = jest.requireMock('@/lib/sms-campaigns-service') as any
 const { createUpsellPair, listUpsellPairsForProvisioning } = jest.requireMock('@/lib/menu-engineering-service') as any
 const { listAddonLibraryForProvisioning } = jest.requireMock('@/lib/addon-library-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
@@ -97,6 +99,8 @@ beforeEach(() => {
   createUpsellPair.mockReset().mockResolvedValue({ id: 'pair_1' } as never)
   listBundlesForProvisioning.mockReset().mockResolvedValue([{ id: 'bundle_1', name: 'Meal Deal' }] as never)
   listUpsellPairsForProvisioning.mockReset().mockResolvedValue([{ id: 'pair_1', pair_type: 'complementary' }] as never)
+  createSmsCampaign.mockReset().mockResolvedValue({ id: 'camp_1', status: 'draft', notice: 'Saved as a DRAFT' } as never)
+  listSmsCampaignsForProvisioning.mockReset().mockResolvedValue([{ id: 'camp_1', name: 'Win-back' }] as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -606,5 +610,49 @@ describe('promo reads', () => {
 
     expect(listUpsellPairsForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
     expect(result[0]).toMatchObject({ pair_type: 'complementary' })
+  })
+})
+
+describe('SMS campaign ops', () => {
+  const DRAFT = {
+    name: 'Bundle launch',
+    message_template: 'Hi {{firstName}}, our new Meal Deal is live!',
+    schedule_kind: 'one_off',
+    schedule_date: '2026-09-01',
+  }
+
+  it('create_sms_campaign forwards the draft and ctx', async () => {
+    const result = await executeOp('create_sms_campaign', ctx, { tenantId: TENANT, ...DRAFT }) as WriteResult
+
+    expect(createSmsCampaign).toHaveBeenCalledWith(TENANT, expect.objectContaining({ name: 'Bundle launch' }), ctx)
+    expect(result.id).toBe('camp_1')
+  })
+
+  it('does not leak tenantId into the campaign payload', async () => {
+    await executeOp('create_sms_campaign', ctx, { tenantId: TENANT, ...DRAFT })
+
+    expect(createSmsCampaign.mock.calls[0][1]).not.toHaveProperty('tenantId')
+  })
+
+  it('advertises the fields a campaign needs so the model knows what to send', () => {
+    const opSchema = (PROVISIONING_OPS as Record<string, { input: never }>)['create_sms_campaign']
+    const normalized = normalizeObjectSchema(opSchema.input) as { shape?: Record<string, unknown> } | undefined
+    expect(Object.keys(normalized?.shape ?? {})).toEqual(
+      expect.arrayContaining(['tenantId', 'name', 'message_template', 'schedule_kind']),
+    )
+  })
+
+  it('list_sms_campaigns reads existing campaigns', async () => {
+    const result = await executeOp('list_sms_campaigns', ctx, { tenantId: TENANT }) as Array<Record<string, unknown>>
+
+    expect(listSmsCampaignsForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ name: 'Win-back' })
+  })
+
+  it('exposes no tool that could write consent, opt-out or a suppression', () => {
+    // Consent must be a real boolean the customer produced at checkout. If a
+    // provisioning tool could manufacture it, the opt-in record is decoration.
+    const names = (listOps() as Array<{ name: string }>).map((o) => o.name)
+    expect(names.filter((n) => /consent|opt_?out|suppress/i.test(n))).toEqual([])
   })
 })

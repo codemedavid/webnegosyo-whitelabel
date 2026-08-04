@@ -21,6 +21,7 @@ import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-f
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
 import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
+import { createSmsCampaign, listSmsCampaignsForProvisioning } from '@/lib/sms-campaigns-service'
 import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
 
 /**
@@ -279,7 +280,44 @@ const ops: ProvisioningOp<unknown>[] = [
             return updateTenantSupabase((input as { tenantId: string }).tenantId, payload as never, ctx)
         },
     }),
+    op({
+        name: 'create_sms_campaign',
+        description:
+            "Create an SMS follow-up campaign to announce a promo or bundle. Envelope: { tenantId, name, message_template, schedule_kind, ... }. message_template supports {{firstName}} placeholders. schedule_kind is 'one_off' (needs schedule_date), 'every_n_days' (needs schedule_interval_days) or 'weekly' (needs schedule_weekdays, ISO 1=Mon..7=Sun) — a kind missing its steering field is refused, because it would never become due. SAVED AS A DRAFT unless you explicitly pass status:'active'; a draft never sends until a staff member activates it in the merchant Android app. Sending is done by that handset, not by this tool, and only to customers who gave SMS consent at checkout — nothing here can create or change consent.",
+        input: tenantScoped({
+            name: z.string().min(1).describe('Campaign name, for the merchant to recognise it'),
+            message_template: z.string().min(1).describe('Message body; {{firstName}} is substituted per recipient'),
+            schedule_kind: z.enum(['one_off', 'every_n_days', 'weekly']).describe('How it recurs'),
+            schedule_date: z.string().optional().describe('one_off only: "YYYY-MM-DD"'),
+            schedule_interval_days: z.number().int().positive().optional().describe('every_n_days only'),
+            schedule_weekdays: z.array(z.number().int().min(1).max(7)).optional().describe('weekly only: ISO weekdays'),
+            schedule_time: z.string().optional().describe('Local Manila send time "HH:MM" (default 10:00)'),
+            audience: z
+                .object({
+                    lastOrderOlderThanDays: z.number().int().positive().optional(),
+                    lastOrderWithinDays: z.number().int().positive().optional(),
+                    minOrderCount: z.number().int().nonnegative().optional(),
+                    minTotalSpent: z.number().nonnegative().optional(),
+                    channels: z.array(z.string()).optional(),
+                })
+                .optional()
+                .describe('Recipient filter; all fields AND together'),
+            max_per_run: z.number().int().min(1).max(200).optional().describe('Messages per run (default 25)'),
+            status: z.enum(['draft', 'active', 'paused', 'archived']).optional().describe("Defaults to 'draft'"),
+        }),
+        execute: (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            return createSmsCampaign(tenantId, withoutTenantId(input as Record<string, unknown>), ctx)
+        },
+    }),
     // Reads
+    op({
+        name: 'list_sms_campaigns',
+        description:
+            "List a tenant's SMS campaigns (name, status, schedule, message) so you can see what is already running before creating another. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listSmsCampaignsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
     op({
         name: 'list_bundles',
         description:
