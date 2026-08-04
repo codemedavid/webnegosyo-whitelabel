@@ -1,6 +1,6 @@
 import { Tabs, router, type ErrorBoundaryProps } from "expo-router";
-import { Text } from "react-native";
 import { colors } from "../../theme/colors";
+import { TabIcon } from "../../components/Icon";
 import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
@@ -38,10 +38,6 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       onSignOut={handleSignOut}
     />
   );
-}
-
-function TabIcon({ symbol, color }: { symbol: string; color: string }) {
-  return <Text style={{ fontSize: 22, color }}>{symbol}</Text>;
 }
 
 export default function MainLayout() {
@@ -103,7 +99,7 @@ export default function MainLayout() {
         options={{
           href: show("dashboard"),
           tabBarLabel: "Home",
-          tabBarIcon: ({ color }) => <TabIcon symbol="⊞" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="dashboard" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -111,7 +107,7 @@ export default function MainLayout() {
         options={{
           href: show("orders"),
           tabBarLabel: "Orders",
-          tabBarIcon: ({ color }) => <TabIcon symbol="☰" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="orders" color={color} />,
         }}
       />
       {/* Register view */}
@@ -120,7 +116,7 @@ export default function MainLayout() {
         options={{
           href: show("pos"),
           tabBarLabel: "Register",
-          tabBarIcon: ({ color }) => <TabIcon symbol="◈" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="register" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -128,7 +124,7 @@ export default function MainLayout() {
         options={{
           href: show("pos-sales"),
           tabBarLabel: "Drawer",
-          tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="drawer" color={color} />,
         }}
       />
       {/* Insights view */}
@@ -137,7 +133,7 @@ export default function MainLayout() {
         options={{
           href: show("analytics"),
           tabBarLabel: "Analytics",
-          tabBarIcon: ({ color }) => <TabIcon symbol="◔" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="analytics" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -145,7 +141,7 @@ export default function MainLayout() {
         options={{
           href: show("growth"),
           tabBarLabel: "Growth",
-          tabBarIcon: ({ color }) => <TabIcon symbol="⇗" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="growth" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -154,7 +150,7 @@ export default function MainLayout() {
           href: show("customers"),
           title: "Customers",
           tabBarLabel: "Customers",
-          tabBarIcon: ({ color }) => <TabIcon symbol="☺" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="customers" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -162,7 +158,7 @@ export default function MainLayout() {
         options={{
           href: show("trends"),
           tabBarLabel: "Trends",
-          tabBarIcon: ({ color }) => <TabIcon symbol="⬈" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="trends" color={color} />,
         }}
       />
       {/* Products view */}
@@ -171,7 +167,7 @@ export default function MainLayout() {
         options={{
           href: show("product-analytics"),
           tabBarLabel: "Performance",
-          tabBarIcon: ({ color }) => <TabIcon symbol="▤" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="performance" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -180,7 +176,7 @@ export default function MainLayout() {
           href: show("product-management"),
           title: "Manage Products",
           tabBarLabel: "Manage",
-          tabBarIcon: ({ color }) => <TabIcon symbol="✎" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="manage" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -189,7 +185,7 @@ export default function MainLayout() {
           href: show("inventory"),
           title: "Inventory",
           tabBarLabel: "Stock",
-          tabBarIcon: ({ color }) => <TabIcon symbol="◫" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="stock" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -198,7 +194,7 @@ export default function MainLayout() {
           href: show("daily-report"),
           title: "Daily Report",
           tabBarLabel: "Report",
-          tabBarIcon: ({ color }) => <TabIcon symbol="◷" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="report" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -207,7 +203,7 @@ export default function MainLayout() {
           href: show("payments"),
           title: "Payment Methods",
           tabBarLabel: "Payments",
-          tabBarIcon: ({ color }) => <TabIcon symbol="₱" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="payments" color={color} />,
         }}
       />
       {/* Business view */}
@@ -217,7 +213,7 @@ export default function MainLayout() {
           href: show("portfolio"),
           title: "Your business",
           tabBarLabel: "Branches",
-          tabBarIcon: ({ color }) => <TabIcon symbol="⌂" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="storefront" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -226,7 +222,7 @@ export default function MainLayout() {
           href: show("branches"),
           title: "Branch performance",
           tabBarLabel: "Compare",
-          tabBarIcon: ({ color }) => <TabIcon symbol="⇅" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="compare" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -235,7 +231,7 @@ export default function MainLayout() {
           href: show("branch-menu"),
           title: "Branch products",
           tabBarLabel: "Products",
-          tabBarIcon: ({ color }) => <TabIcon symbol="☰" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="list" color={color} />,
         }}
       />
       {/* Detail/utility screens — never tabs */}

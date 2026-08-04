@@ -18,13 +18,10 @@
  * dish. A direct insert would skip all three and get the first one wrong.
  */
 
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 import type { MovementPayload } from "./inventory-movement";
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 export interface MovementResult {
   /** The on-hand quantity as the ledger settled it, in stock units. */

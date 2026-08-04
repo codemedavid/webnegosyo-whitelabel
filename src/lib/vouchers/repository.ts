@@ -84,6 +84,43 @@ export function createVoucherLookup(client: Client): VoucherLookup {
   }
 }
 
+/**
+ * Every voucher a merchant currently has switched on.
+ *
+ * Feeds the register's discount sheet, which lists them for a cashier to tap
+ * rather than making them remember a code. This is a browse, not a resolution,
+ * so it sits outside `VoucherLookup` — that interface is the contract the
+ * engine resolves codes through and has no business growing a list-everything
+ * method.
+ *
+ * Tenant-scoped in the query for the same reason `findByCodes` is: the caller
+ * holds the service-role client, so a filter applied afterwards would still
+ * have read another merchant's promotions off the wire.
+ *
+ * Channel is deliberately NOT filtered here. A null `channels` column means
+ * "every channel", so a `contains('channels', ['pos'])` would drop exactly the
+ * vouchers that ARE valid at the counter. The mapper resolves that null into
+ * the full list and the picker filters on the mapped value.
+ */
+export async function findActiveVouchers(
+  client: Client,
+  tenantId: string,
+): Promise<readonly Voucher[]> {
+  const { data, error } = await client
+    .from('vouchers')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+
+  if (error || !data || data.length === 0) return []
+
+  const rows = data as unknown as VoucherRow[]
+  const scoped = rows.filter((row) => row.scope !== 'universal')
+  const targets = scoped.length === 0 ? [] : await findTargets(client, scoped.map((r) => r.id))
+
+  return rows.map((row) => mapVoucherRow(row, targets))
+}
+
 async function findTargets(
   client: Client,
   voucherIds: readonly string[],

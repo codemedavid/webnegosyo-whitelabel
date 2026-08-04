@@ -65,13 +65,22 @@ export async function updateBcgClassification(
   return data
 }
 
+/**
+ * Write many BCG classifications at once.
+ *
+ * `ctx` is the provisioning (service-role) path used by the MCP, mirroring
+ * `createUpsellPair` below: when it is supplied the caller's authority was
+ * already established by the MCP's Bearer/OAuth check, so the tenant-permission
+ * lookup — which needs a cookie session that does not exist there — is skipped.
+ */
 export async function bulkUpdateBcgClassification(
   tenantId: string,
-  updates: { itemId: string; classification: BcgClassification }[]
+  updates: { itemId: string; classification: BcgClassification }[],
+  ctx?: ProvisioningCtx
 ) {
-  await verifyTenantPermission(tenantId, 'analytics')
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
   const results = await Promise.all(
     updates.map(({ itemId, classification }) => {
       bcgClassificationSchema.parse(classification)
@@ -830,4 +839,22 @@ export async function getRecommendedPlacement(
     placement: 'checkout_pick',
     reason: 'This standalone item works well as a last-chance checkout suggestion',
   }
+}
+
+/**
+ * List a tenant's upsell pairs for provisioning flows (the MCP), so the caller
+ * can see the pairs that already exist before proposing more. Uses the
+ * service-role `ctx` client when provided, like `createUpsellPair` above.
+ */
+export async function listUpsellPairsForProvisioning(tenantId: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? createAdminClient()
+
+  const { data, error } = await supabase
+    .from('upsell_pairs')
+    .select('id, source_item_id, target_item_id, pair_type, is_active, display_order, is_auto_generated')
+    .eq('tenant_id', tenantId)
+    .order('display_order', { ascending: true })
+
+  if (error) throw error
+  return data
 }

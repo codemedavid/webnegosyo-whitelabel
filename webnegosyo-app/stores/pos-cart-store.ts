@@ -20,7 +20,13 @@ import {
   type PosLineInput,
   type ServiceCharge,
 } from "../lib/pos-cart";
-import { withEditVouchers, type EnteredEditMode, type OrderEditContext } from "../lib/pos-edit-mode";
+import {
+  editModeTotals,
+  withEditVouchers,
+  type EditModeTotals,
+  type EnteredEditMode,
+  type OrderEditContext,
+} from "../lib/pos-edit-mode";
 import { useAuthStore } from "./auth-store";
 import {
   EMPTY_POS_DISCOUNT_SESSION,
@@ -96,12 +102,52 @@ interface PosCartState {
   /** Judges a code against this sale before it is accepted. */
   checkVoucher: (voucher: Voucher) => VoucherEntryVerdict;
 
+  /**
+   * What the order being edited is now worth, codes applied during the edit
+   * included. Null on an ordinary counter sale.
+   *
+   * Lives on the store rather than on each screen because the register and the
+   * tender screen both need it, and a figure computed twice is a figure that
+   * can disagree with itself — one shown to the cashier, the other saved.
+   */
+  editTotals: () => EditModeTotals | null;
+
   /** Load a placed order into the register. Replaces the cart wholesale. */
   beginEdit: (entered: EnteredEditMode) => void;
   /** Null means the lookup failed — the bill as placed is then carried. */
   setEditVouchers: (vouchers: Voucher[] | null) => void;
   /** Leave edit mode and clear the cart, saved or abandoned. */
   endEdit: () => void;
+}
+
+/**
+ * The bill a discount is judged and capped against.
+ *
+ * A COUNTER SALE is priced from the chosen order type: the service charge is
+ * whatever that type adds, and there is no delivery — the register has no
+ * concept of it.
+ *
+ * An EDITED ORDER is priced from the bill as placed. Its service charge is the
+ * residue the order carried beyond items and delivery, and its delivery fee is
+ * real. Judging one against the counter-sale basis is what rejected a
+ * free-delivery voucher on a delivery order as `no_delivery_fee`, and what
+ * capped a discount against the wrong bill.
+ *
+ * The two are folded here, once, so `sessionDiscount` and `checkVoucher` can
+ * never answer from different bills — an accepted code that then prices to
+ * nothing is the exact failure the sheet was built to stop.
+ */
+function discountBasis(state: PosCartState): { charge: number; deliveryFee: number } {
+  const { lines, serviceCharge, editContext } = state;
+
+  if (editContext) {
+    return {
+      charge: editContext.carriedCharges + editContext.deliveryFee,
+      deliveryFee: editContext.deliveryFee,
+    };
+  }
+
+  return { charge: cartTotals(lines, serviceCharge).serviceCharge, deliveryFee: 0 };
 }
 
 export const usePosCartStore = create<PosCartState>((set, get) => ({
@@ -202,18 +248,18 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
    * exactly what the money-wiring guardrail exists to prevent.
    */
   sessionDiscount: () => {
-    const { lines, serviceCharge, discount } = get();
-    const { serviceCharge: charge } = cartTotals(lines, serviceCharge);
+    const { lines, discount } = get();
+    const { charge, deliveryFee } = discountBasis(get());
     // The branch comes from the session, not a caller: `totals()` is read from
     // many places that have no reason to know about outlets, and a dropped
     // branch would silently honour a voucher locked to another shop.
     const outletId = useAuthStore.getState().outletId;
-    return sessionDiscount(discount, lines, charge, new Date(), outletId);
+    return sessionDiscount(discount, lines, charge, new Date(), outletId, deliveryFee);
   },
 
   checkVoucher: (voucher) => {
-    const { lines, serviceCharge, discount } = get();
-    const { serviceCharge: charge } = cartTotals(lines, serviceCharge);
+    const { lines, discount } = get();
+    const { charge, deliveryFee } = discountBasis(get());
     return previewSessionVoucher(
       discount,
       voucher,
@@ -221,7 +267,14 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       charge,
       new Date(),
       useAuthStore.getState().outletId,
+      deliveryFee,
     );
+  },
+
+  editTotals: () => {
+    const { lines, editContext } = get();
+    if (!editContext) return null;
+    return editModeTotals(lines, editContext, get().sessionDiscount().lines);
   },
 
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),

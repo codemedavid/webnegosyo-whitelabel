@@ -431,3 +431,21 @@ export async function getSlotItems(
 
   return { items: (items ?? []) as unknown as MenuItem[], category: category as unknown as Category }
 }
+
+/**
+ * List a tenant's bundles for provisioning flows (the MCP), so the caller can
+ * see what already exists before creating a near-duplicate. Uses the
+ * service-role `ctx` client when provided, like `createBundle` above.
+ */
+export async function listBundlesForProvisioning(tenantId: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? createAdminClient()
+
+  const { data, error } = await supabase
+    .from('bundles')
+    .select('id, name, description, pricing_type, price, discount_percentage, is_active, show_on_menu, show_as_upsell')
+    .eq('tenant_id', tenantId)
+    .order('display_order', { ascending: true })
+
+  if (error) throw error
+  return data
+}

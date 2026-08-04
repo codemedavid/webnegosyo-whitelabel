@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 import type { OrderDiscountLine } from "./order-totals";
 import type { Voucher } from "./vouchers/types";
@@ -22,13 +22,25 @@ import type { Voucher } from "./vouchers/types";
  * session token, exactly as `pos-stock-notify.ts` already does for stock.
  */
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 async function accessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
+}
+
+/**
+ * How long the counter waits for a code before deciding it cannot be verified.
+ *
+ * Short, because a cashier is standing in front of a customer while this runs
+ * and the fallback — "that code could not be applied" — is a fine answer. It is
+ * deliberately far below the 20s the stock write allows itself: that one may
+ * have landed on the server and must not be re-sent lightly, whereas a lookup
+ * reads and can simply be retried.
+ */
+const LOOKUP_TIMEOUT_MS = 8_000;
+
+export interface LookupOptions {
+  timeoutMs?: number;
 }
 
 /**
@@ -43,28 +55,108 @@ async function accessToken(): Promise<string | null> {
 export async function lookupVouchers(
   tenantId: string,
   codes: readonly string[],
+  options: LookupOptions = {},
 ): Promise<Voucher[]> {
   if (codes.length === 0) return [];
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // Aborted AND raced, for the reason `inventory-movement-service` documents:
+  // the abort releases the socket, but React Native's fetch has not always
+  // propagated an abort as a rejection, and relying on it alone is how a
+  // spinner outlives the timeout meant to end it. The race is what guarantees
+  // this function returns.
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, options.timeoutMs ?? LOOKUP_TIMEOUT_MS);
+  });
+
   try {
-    const token = await accessToken();
+    // The session read is inside the deadline, not before it. A client midway
+    // through a token refresh with no signal hangs here rather than in fetch,
+    // and a deadline that only starts afterwards would never fire.
+    const token = await Promise.race([accessToken(), expiry]);
     if (!token) return [];
 
-    const response = await fetch(`${getWebAppUrl()}/api/vouchers/lookup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ tenantId, codes }),
-    });
+    const response = await Promise.race([
+      fetch(`${getWebAppUrl()}/api/vouchers/lookup`, {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tenantId, codes }),
+      }),
+      expiry,
+    ]);
 
     if (!response.ok) return [];
 
-    const body = await response.json();
+    const body = await Promise.race([response.json(), expiry]);
+    return Array.isArray(body?.vouchers) ? (body.vouchers as Voucher[]) : [];
+  } catch {
+    // A timeout lands here with every other failure, and belongs there: an
+    // unverifiable code is worth zero either way, which is the safe direction.
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Every voucher the merchant is currently running, so the cashier can choose
+ * one instead of remembering its code.
+ *
+ * Fails to an empty list, like the lookup, and for a milder reason: this is a
+ * convenience on top of a path that still works. A counter with no signal gets
+ * no browse list and can still type a code the customer read off their phone.
+ *
+ * Shares the lookup's deadline. The sheet opens against a queue, and a list
+ * that has not arrived in eight seconds has missed the sale it was for.
+ */
+export async function listVouchers(
+  tenantId: string,
+  options: LookupOptions = {},
+): Promise<Voucher[]> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, options.timeoutMs ?? LOOKUP_TIMEOUT_MS);
+  });
+
+  try {
+    const token = await Promise.race([accessToken(), expiry]);
+    if (!token) return [];
+
+    const response = await Promise.race([
+      fetch(`${getWebAppUrl()}/api/vouchers/list`, {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tenantId }),
+      }),
+      expiry,
+    ]);
+
+    if (!response.ok) return [];
+
+    const body = await Promise.race([response.json(), expiry]);
     return Array.isArray(body?.vouchers) ? (body.vouchers as Voucher[]) : [];
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 

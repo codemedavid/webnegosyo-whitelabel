@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
+  type RefreshControlProps,
   Platform,
   Alert,
 } from "react-native";
@@ -27,8 +28,6 @@ import {
 import {
   buildCustomerList,
   type CustomerListFilter,
-  type CustomerRow,
-  type ReachabilityStatus,
 } from "../../lib/sms/customer-list";
 import {
   listCustomers,
@@ -43,39 +42,22 @@ import {
 } from "../../lib/sms/consent-actions";
 import type { SmsCustomer } from "../../lib/sms/types";
 import { colors, typography, spacing, radius } from "../../theme/colors";
+import { Icon } from "../../components/Icon";
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ReachBar } from "../../components/sms/ReachBar";
+import { GuestRow } from "../../components/sms/GuestRow";
+import { CampaignCard } from "../../components/sms/CampaignCard";
 
-/** Badge colours per reachability status. Green only for genuinely textable. */
+type Section = "guests" | "campaigns";
+
 // Module scope, not a hook: the platform cannot change while the app is
 // running, and holding it in state would invite a render where the campaign UI
 // exists for a frame on a device that can never send.
 const canSendSms = isSmsCampaignsAvailable(Platform.OS);
-
-const BADGE_STYLES: Record<ReachabilityStatus, { bg: string; fg: string }> = {
-  textable: { bg: colors.successLight, fg: colors.success },
-  no_consent: { bg: colors.infoLight, fg: colors.info },
-  opted_out: { bg: colors.dangerLight, fg: colors.danger },
-  suppressed: { bg: colors.dangerLight, fg: colors.danger },
-  no_phone: { bg: colors.primaryLight, fg: colors.textSecondary },
-};
-
-function peso(amount: number): string {
-  return `₱${Math.round(amount).toLocaleString("en-PH")}`;
-}
-
-function lastOrderLabel(iso: string | null): string {
-  if (!iso) return "No orders yet";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "No orders yet";
-  return `Last order ${date.toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}`;
-}
 
 export default function CustomersScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
@@ -87,7 +69,7 @@ export default function CustomersScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [section, setSection] = useState<"guests" | "campaigns">("guests");
+  const [section, setSection] = useState<Section>("guests");
   const [campaignStates, setCampaignStates] = useState<CampaignDueState[]>([]);
 
   const load = useCallback(async () => {
@@ -143,6 +125,8 @@ export default function CustomersScreen() {
     () => buildCustomerList(customers, { query, filter, suppressedPhones }),
     [customers, query, filter, suppressedPhones]
   );
+
+  const dueCount = campaignStates.filter((state) => state.isDue).length;
 
   const toggleOptOut = async (customer: SmsCustomer) => {
     const nextOptOut = !customer.sms_opt_out;
@@ -204,127 +188,122 @@ export default function CustomersScreen() {
   if (isLoading) return <LoadingState message="Loading customers…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        load();
+      }}
+    />
+  );
+
   return (
     <View style={styles.screen}>
       <WorkspaceSwitcher />
 
       <View style={styles.header}>
         <Text style={styles.title}>Customers</Text>
-        <Text style={styles.subtitle}>
-          {list.stats.total} {list.stats.total === 1 ? "guest" : "guests"}, captured
-          automatically from orders
-        </Text>
-      </View>
+        {/*
+          Two levels of navigation used to wear the same pill. The switch
+          between two halves of a screen is a segmented track; the filters
+          below the reach bar are pills. Telling them apart is most of what
+          made this screen confusing.
 
-      {/*
-        The reachable count is stated up front rather than discovered when a
-        campaign sends to nobody. It is the honest number, and the "Ask to opt
-        in" filter below is how the merchant moves it.
-      */}
-      <View style={styles.statsRow}>
-        <Stat label="Can text" value={list.stats.textable} tone={colors.success} />
-        <Stat label="Not opted in" value={list.stats.noConsent} tone={colors.info} />
-        <Stat label="Opted out" value={list.stats.optedOut} tone={colors.danger} />
-        <Stat label="No number" value={list.stats.noPhone} tone={colors.textSecondary} />
-      </View>
-
-      {canSendSms && list.stats.textable === 0 && list.stats.total > 0 && (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Nobody can be texted yet. Guests opt in at online checkout — or ask them at
-            the counter and tap &quot;They agreed to texts&quot; on their row.
-          </Text>
-        </View>
-      )}
-
-      {/*
-        No switcher at all when there is only one section to switch to — a lone
-        "Guests" chip reads as a filter that does nothing.
-      */}
-      {canSendSms && (
-        <View style={styles.controls}>
-          <View style={styles.filterRow}>
-            <FilterChip
-              label={`Guests (${list.stats.total})`}
-              isActive={section === "guests"}
-              onPress={() => setSection("guests")}
-            />
-            <FilterChip
-              label={`Campaigns (${campaignStates.length})`}
-              isActive={section === "campaigns"}
-              onPress={() => setSection("campaigns")}
-            />
-          </View>
-        </View>
-      )}
-
-      {canSendSms && section === "campaigns" ? (
-        <CampaignsSection states={campaignStates} />
-      ) : (
-        <>
-      <View style={styles.controls}>
-        <TextInput
-          style={styles.search}
-          placeholder="Search name or number"
-          placeholderTextColor={colors.textTertiary}
-          value={query}
-          onChangeText={setQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <View style={styles.filterRow}>
-          <FilterChip
-            label="All"
-            isActive={filter === "all"}
-            onPress={() => setFilter("all")}
-          />
-          <FilterChip
-            label="Can text"
-            isActive={filter === "textable"}
-            onPress={() => setFilter("textable")}
-          />
-          <FilterChip
-            label={`Ask to opt in (${list.stats.noConsent})`}
-            isActive={filter === "no_consent"}
-            onPress={() => setFilter("no_consent")}
-          />
-        </View>
-      </View>
-
-      <FlatList
-        data={list.rows}
-        keyExtractor={(row) => row.customer.id}
-        contentContainerStyle={list.rows.length === 0 ? styles.emptyWrap : styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              load();
-            }}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            message={
-              query
-                ? `Nothing matches "${query}".`
-                : "Customers appear here automatically once orders come in."
-            }
-            actionLabel={query ? "Clear search" : undefined}
-            onAction={query ? () => setQuery("") : undefined}
-          />
-        }
-        renderItem={({ item }) => (
-          <CustomerCard
-            row={item}
-            consentAction={consentActionFor(item.customer, suppressedPhones)}
-            onToggleOptOut={() => toggleOptOut(item.customer)}
-            onRecordConsent={(action) => recordConsent(item.customer, action)}
+          Absent entirely where sending is impossible: a lone "Campaigns" half
+          leading to a surface iOS can never use is the dead end #37 removed.
+        */}
+        {canSendSms && (
+          <SegmentedControl
+            options={[
+              { label: `Guests ${list.stats.total}`, value: "guests" as Section },
+              {
+                label: dueCount > 0
+                  ? `Campaigns ${campaignStates.length} · ${dueCount} due`
+                  : `Campaigns ${campaignStates.length}`,
+                value: "campaigns" as Section,
+              },
+            ]}
+            value={section}
+            onChange={setSection}
+            accessibilityPrefix="Show"
           />
         )}
-      />
-        </>
+      </View>
+
+      {canSendSms && section === "campaigns" ? (
+        <CampaignsSection states={campaignStates} refreshControl={refreshControl} />
+      ) : (
+        <FlatList
+          data={list.rows}
+          keyExtractor={(row) => row.customer.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          // Rows sit on one shared surface, separated by a hairline — a roster,
+          // not several hundred identical bordered cards on the canvas.
+          ItemSeparatorComponent={() => <View style={styles.divider} />}
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              <ReachBar stats={list.stats} filter={filter} onFilter={setFilter} />
+
+              {/*
+                No "use the Android app instead" notice here. Pointing an iOS
+                merchant at a surface they cannot reach is the dead end #37
+                removed; the list itself is still useful, so it stays.
+              */}
+              {canSendSms && list.stats.textable === 0 && list.stats.total > 0 && (
+                <Notice text="Nobody can be texted yet. Guests opt in at online checkout — or ask at the counter and tap “They agreed to texts” on their row." />
+              )}
+
+              <View style={styles.searchRow}>
+                <Icon name="search" color={colors.textTertiary} size={17} />
+                <TextInput
+                  style={styles.search}
+                  placeholder="Search name or number"
+                  placeholderTextColor={colors.textTertiary}
+                  value={query}
+                  onChangeText={setQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {query !== "" && (
+                  <TouchableOpacity
+                    onPress={() => setQuery("")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                  >
+                    <Text style={styles.clearSearch}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          }
+          ListEmptyComponent={
+            <EmptyState
+              message={
+                query
+                  ? `Nothing matches “${query}”.`
+                  : filter !== "all"
+                    ? "No guests in this group."
+                    : "Customers appear here automatically once orders come in."
+              }
+              actionLabel={query ? "Clear search" : filter !== "all" ? "Show everyone" : undefined}
+              onAction={
+                query ? () => setQuery("") : filter !== "all" ? () => setFilter("all") : undefined
+              }
+            />
+          }
+          renderItem={({ item }) => (
+            <GuestRow
+              row={item}
+              consentAction={consentActionFor(item.customer, suppressedPhones)}
+              onToggleOptOut={() => toggleOptOut(item.customer)}
+              onRecordConsent={(action) => recordConsent(item.customer, action)}
+            />
+          )}
+        />
       )}
     </View>
   );
@@ -335,278 +314,101 @@ export default function CustomersScreen() {
  * recomputed here, so what the merchant reads as "Ready to send" is the same
  * judgement the send path will make.
  */
-function CampaignsSection({ states }: { states: CampaignDueState[] }) {
+function CampaignsSection({
+  states,
+  refreshControl,
+}: {
+  states: CampaignDueState[];
+  refreshControl: React.ReactElement<RefreshControlProps>;
+}) {
   return (
     <FlatList
       data={states}
       keyExtractor={(state) => state.campaignId}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={styles.campaignContent}
+      refreshControl={refreshControl}
       ListHeaderComponent={
         <TouchableOpacity
-          style={styles.newCampaignButton}
+          style={styles.newCampaign}
           onPress={() => router.push(campaignHref(NEW_CAMPAIGN_ID))}
           accessibilityRole="button"
         >
-          <Text style={styles.newCampaignText}>+ New campaign</Text>
+          <Icon name="plus" color={colors.textOnDark} size={15} strokeWidth={2.25} />
+          <Text style={styles.newCampaignText}>New campaign</Text>
         </TouchableOpacity>
       }
       ListEmptyComponent={
-        <EmptyState message="No campaigns yet. Create one to start following up with guests." />
+        <EmptyState message="No campaigns yet. A campaign is one message, sent to the guests you choose, on a date you pick." />
       }
       renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.card}
+        <CampaignCard
+          state={item}
           onPress={() => router.push(campaignHref(item.campaignId))}
-          accessibilityRole="button"
-        >
-          <View style={styles.cardTop}>
-            <View style={styles.cardIdentity}>
-              <Text style={styles.cardName} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={styles.cardPhone}>
-                {item.isDue
-                  ? "Ready to send"
-                  : item.dueAt
-                    ? `Next ${item.dueAt.toLocaleDateString("en-PH", {
-                        month: "short",
-                        day: "numeric",
-                      })}`
-                    : "Not scheduled"}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: item.isDue ? colors.successLight : colors.primaryLight,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  { color: item.isDue ? colors.success : colors.textSecondary },
-                ]}
-              >
-                {item.isDue ? "Due" : item.status}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
+        />
       )}
     />
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
+function Notice({ text }: { text: string }) {
   return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, { color: tone }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function FilterChip({
-  label,
-  isActive,
-  onPress,
-}: {
-  label: string;
-  isActive: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.chip, isActive && styles.chipActive]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
-    >
-      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function CustomerCard({
-  row,
-  consentAction,
-  onToggleOptOut,
-  onRecordConsent,
-}: {
-  row: CustomerRow;
-  consentAction: ConsentAction;
-  onToggleOptOut: () => void;
-  onRecordConsent: (action: ConsentAction) => void;
-}) {
-  const { customer, reachability } = row;
-  const badge = BADGE_STYLES[reachability.status];
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <View style={styles.cardIdentity}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {customer.name?.trim() || "Unnamed guest"}
-          </Text>
-          <Text style={styles.cardPhone}>{customer.phone_e164 ?? "No phone number"}</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-          <Text style={[styles.badgeText, { color: badge.fg }]}>{reachability.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardMetrics}>
-        <Text style={styles.metric}>
-          {customer.order_count} {customer.order_count === 1 ? "order" : "orders"}
-        </Text>
-        <Text style={styles.metricDot}>·</Text>
-        <Text style={styles.metric}>{peso(customer.total_spent)}</Text>
-        <Text style={styles.metricDot}>·</Text>
-        <Text style={styles.metric}>{lastOrderLabel(customer.last_order_at)}</Text>
-      </View>
-
-      <View style={styles.cardActions}>
-        {consentAction.isEnabled && (
-          <TouchableOpacity
-            style={
-              consentAction.kind === "record"
-                ? styles.consentButton
-                : styles.consentButtonMuted
-            }
-            onPress={() => onRecordConsent(consentAction)}
-            accessibilityRole="button"
-          >
-            <Text
-              style={
-                consentAction.kind === "record"
-                  ? styles.consentText
-                  : styles.consentTextMuted
-              }
-            >
-              {consentAction.label}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {customer.phone_e164 && (
-          <TouchableOpacity
-            style={styles.optOutButton}
-            onPress={onToggleOptOut}
-            accessibilityRole="button"
-          >
-            <Text style={styles.optOutText}>
-              {customer.sms_opt_out ? "Allow texts again" : "Do not text"}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+    <View style={styles.notice}>
+      <Text style={styles.noticeText}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
   title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  statsRow: {
-    flexDirection: "row",
+  // Explicitly cream: the header lives inside the list's content container,
+  // which carries the roster's white surface, so without this the reach card
+  // and the search box would sit on white and the card would disappear into
+  // its own backdrop.
+  listHeader: {
+    backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
-  stat: {
-    flex: 1,
+  // The roster's surface. Rows carry their own padding so the divider can run
+  // the full width, which is what makes a list read as one object.
+  listContent: { paddingBottom: spacing.xxl, backgroundColor: colors.card },
+  divider: { height: 1, backgroundColor: colors.separator },
+  campaignContent: { padding: spacing.lg, gap: spacing.sm },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: "center",
     borderWidth: 1,
     borderColor: colors.separator,
+    paddingHorizontal: spacing.md,
   },
-  statValue: { ...typography.heading, fontWeight: "700" },
-  statLabel: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  search: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  clearSearch: { ...typography.caption, color: colors.accent, fontWeight: "700" },
   notice: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
     padding: spacing.md,
     backgroundColor: colors.warningLight,
     borderRadius: radius.md,
   },
   noticeText: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
-  controls: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  search: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  filterRow: { flexDirection: "row", gap: spacing.sm },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textSecondary },
-  chipTextActive: { color: colors.textOnDark, fontWeight: "600" },
-  listContent: { padding: spacing.lg, gap: spacing.sm },
-  emptyWrap: { flexGrow: 1, justifyContent: "center" },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  cardTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  cardIdentity: { flex: 1 },
-  cardName: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  cardPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
-  badgeText: { ...typography.small, fontWeight: "600" },
-  cardMetrics: {
+  newCampaign: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 4,
-    marginTop: spacing.sm,
-  },
-  metric: { ...typography.caption, color: colors.textSecondary },
-  metricDot: { ...typography.caption, color: colors.textTertiary },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  optOutButton: { alignSelf: "flex-start" },
-  optOutText: { ...typography.caption, color: colors.accent, fontWeight: "600" },
-  consentButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.successLight,
-  },
-  consentButtonMuted: { alignSelf: "flex-start" },
-  consentText: { ...typography.caption, color: colors.success, fontWeight: "700" },
-  consentTextMuted: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  newCampaignButton: {
+    justifyContent: "center",
+    gap: spacing.sm,
     backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
-    alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   newCampaignText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
 });

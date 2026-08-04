@@ -6,6 +6,7 @@ import {
   syncTenantConfig,
   CURRENT_SCHEMA_VERSION,
 } from "@/lib/convex-deploy";
+import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -166,17 +167,20 @@ export async function bulkDeployConvexAction() {
     .not("convex_deployment_url", "is", null)
     .not("convex_deploy_key", "is", null)
     .neq("convex_deployment_url", "")
-    .neq("convex_deploy_key", "")
-    // Include tenants that have never been deployed (null version) as well as
-    // those on an older schema. `NULL < N` is NULL in Postgres, so a plain
-    // `.lt` would silently skip freshly-configured tenants.
-    .or(
-      `convex_schema_version.is.null,convex_schema_version.lt.${CURRENT_SCHEMA_VERSION}`
-    );
+    .neq("convex_deploy_key", "");
 
-  const tenants = data as Array<{ id: string }> | null;
+  // Which of those are behind is decided here, not by the database. The column
+  // is TEXT, so `convex_schema_version.lt.18` compared lexically — and "5" and
+  // "9" are lexically GREATER than "18". Every store on a single-digit version
+  // dropped out of this query the moment head passed 10, and stayed out: the
+  // button said "0 updated" and the oldest deployments were never re-pushed.
+  // That is how tenants ended up stuck on v5 rejecting `source: "pos"`.
+  const tenants = tenantsNeedingDeploy(
+    (data ?? []) as Array<{ id: string; convex_schema_version?: string | null }>,
+    CURRENT_SCHEMA_VERSION
+  );
 
-  if (!tenants?.length) {
+  if (!tenants.length) {
     return { success: true, updated: 0, errors: [] as string[] };
   }
 

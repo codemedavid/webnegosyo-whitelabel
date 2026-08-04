@@ -18,22 +18,24 @@ import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backen
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { listAllPaymentMethods, listPaymentMethods } from "../../lib/pos-catalog";
-import { editModeTotals } from "../../lib/pos-edit-mode";
 import { canIssueRefund } from "../../lib/order-edit-guards";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
   isCashMethod,
+  isProofOutstanding,
   requiresProof,
   toTender,
   type PosPaymentMethod,
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import { staleBackendMessage } from "../../lib/stale-backend";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { burnPosRedemptions } from "../../lib/voucher-service";
+import { newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
@@ -70,6 +72,7 @@ export default function PosTenderScreen() {
   const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
+  const discount = usePosCartStore((s) => s.discount);
   const endEdit = usePosCartStore((s) => s.endEdit);
 
   const role = useAuthStore((s) => s.role);
@@ -107,9 +110,12 @@ export default function PosTenderScreen() {
 
   // Editing a placed order: what it is now worth, and what still has to move.
   // Every part of that judgement lives in `pos-edit-mode.ts` and is tested.
+  // `discount` belongs in the deps: a code applied during the edit changes the
+  // balance to settle without touching a line.
   const edit = useMemo(
-    () => (editContext ? editModeTotals(lines, editContext) : null),
-    [lines, editContext],
+    () => usePosCartStore.getState().editTotals(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, editContext, discount],
   );
 
   const isRefund = edit?.intent === "refund";
@@ -180,8 +186,13 @@ export default function PosTenderScreen() {
         ? "Choose a payment method"
         : wantsCashPad && !change.isSufficient
           ? "Enter the cash received"
-          : needsProof && !isRefund && !proof
-            ? "Photograph the payment confirmation first"
+          : !isRefund &&
+              method &&
+              isProofOutstanding(method, {
+                reference,
+                hasProof: proof !== null,
+              })
+            ? "Enter the reference number or photograph the confirmation"
             : undefined;
 
   /**
@@ -213,7 +224,9 @@ export default function PosTenderScreen() {
       // NOT it: the re-priced discount has to be folded in, or a discounted
       // order would be saved at full price and the customer re-charged the
       // discount they were given.
-      const saved = editModeTotals(lines, editContext);
+      // Read back from the store, not recomputed: the figure saved must be the
+      // one the register showed, discounts applied during the edit included.
+      const saved = usePosCartStore.getState().editTotals()!;
 
       await reviseOrder({
         orderId: editContext.orderId,
@@ -225,6 +238,12 @@ export default function PosTenderScreen() {
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),
+        // What the edit settled on, so the order's discount rows and its total
+        // stay reconcilable. Omitted entirely when the edit touched no
+        // discount — see `settledDiscount`.
+        ...(saved.settledDiscount !== undefined
+          ? { discount: saved.settledDiscount }
+          : {}),
       });
 
       // An edit that swapped one item for another of the same price is complete
@@ -258,6 +277,22 @@ export default function PosTenderScreen() {
           editContext.orderId,
           editContext.expectedRevisionNumber + 1,
           posStockRevision(editContext.originalStockItems, buildPosStockItems(lines)),
+        );
+      }
+
+      // Burn the codes THIS edit added. The order's own codes were burned when
+      // it was placed; burning them again would spend a second redemption from
+      // the customer's allowance on every subsequent edit. Never throws — the
+      // bill is already rewritten and the money settled by this point.
+      if (tenantId) {
+        await burnPosRedemptions(
+          tenantId,
+          editContext.orderId,
+          newDiscountLines(
+            usePosCartStore.getState().sessionDiscount().lines,
+            editContext.storedDiscount?.lines ?? [],
+          ),
+          outletId,
         );
       }
 
@@ -424,10 +459,10 @@ export default function PosTenderScreen() {
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
       goTo(router, "/(main)/pos-sales");
     } catch (err) {
-      Alert.alert(
-        "Could not complete the sale",
-        err instanceof Error ? err.message : "Please try again.",
-      );
+      // A store several bundles behind rejects `source: "pos"` outright — its
+      // validator predates counter sales. That is a deployment to update, not
+      // a sale to retry, and the raw validator dump means nothing at a till.
+      Alert.alert("Could not complete the sale", staleBackendMessage(err));
       setIsCompleting(false);
     }
   }, [
@@ -622,7 +657,11 @@ export default function PosTenderScreen() {
 
             <TextInput
               style={styles.nameInput}
-              placeholder="Reference number (optional)"
+              placeholder={
+                needsProof && !isRefund
+                  ? "Reference number"
+                  : "Reference number (optional)"
+              }
               placeholderTextColor={colors.textTertiary}
               value={reference}
               onChangeText={setReference}
@@ -633,13 +672,20 @@ export default function PosTenderScreen() {
 
         {/*
           Proof is the customer's confirmation that they paid. A refund moves
-          money the other way, so there is nothing for them to screenshot.
+          money the other way, so there is nothing for them to screenshot. The
+          camera stays offered once a reference is typed — a cashier who wants
+          the photo anyway should not have to clear the field to get it.
         */}
         {method && needsProof && !isRefund && (
           <ProofCapture
             proof={proof}
             onCaptured={setProof}
             onError={(message) => Alert.alert("Capture failed", message)}
+            hint={
+              reference.trim()
+                ? "Not needed — the reference number is enough"
+                : "Or type the reference number above"
+            }
           />
         )}
         </>

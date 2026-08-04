@@ -96,3 +96,25 @@ export async function deleteAddonLibraryEntry(entryId: string, tenantId: string)
 
   if (error) throw error
 }
+
+/**
+ * List a tenant's add-on library for provisioning flows (the MCP), so an entry
+ * can be resolved by name before it is attached to menu items. Uses the
+ * service-role `ctx` client when provided, mirroring the other provisioning
+ * reads in `admin-service.ts`.
+ */
+export async function listAddonLibraryForProvisioning(
+  tenantId: string,
+  ctx?: ProvisioningCtx,
+): Promise<AddonLibraryEntry[]> {
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('addon_library')
+    .select('id, name, price, display_order')
+    .eq('tenant_id', tenantId)
+    .order('display_order', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as unknown as AddonLibraryEntry[]
+}

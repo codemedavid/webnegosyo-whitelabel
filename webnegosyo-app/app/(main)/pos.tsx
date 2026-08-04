@@ -39,7 +39,6 @@ import {
   type ModifierSource,
 } from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
-import { editModeTotals } from "../../lib/pos-edit-mode";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
@@ -154,9 +153,12 @@ export default function PosScreen() {
   // Every judgement about the edit — what it now costs, what is owed, whether
   // it may be saved — comes from `pos-edit-mode.ts`, which is unit tested.
   // Nothing about the money is decided in this file.
+  // `discount` is a dependency because applying a code changes the edit's total
+  // without touching a line — leaving it out would show the undiscounted bill.
   const edit = useMemo(
-    () => (editContext ? editModeTotals(lines, editContext) : null),
-    [lines, editContext],
+    () => usePosCartStore.getState().editTotals(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, editContext, discount],
   );
 
   // The register rings up the branch it belongs to. A store-wide account (the
@@ -501,10 +503,12 @@ export default function PosScreen() {
         }}
         onCharge={() => router.push("/(main)/pos-tender")}
         discountLines={discountLines}
-        // Editing a placed order carries its original discount forward as an
-        // opaque charge nobody can recompute, so discounting is offered on new
-        // sales only.
-        onAddDiscount={edit ? undefined : () => setIsDiscountOpen(true)}
+        // Offered on an edit too. The order's own discount is re-priced by
+        // `repriceEditDiscount` and a code added here is a second line on top
+        // of it, capped against the bill by `editModeTotals` — so a customer
+        // who produces a voucher after ordering no longer needs the order
+        // cancelled and re-rung.
+        onAddDiscount={() => setIsDiscountOpen(true)}
         onRemoveDiscount={(line) => {
           if (line.code) removeVoucher(line.code);
           else clearManualDiscount();

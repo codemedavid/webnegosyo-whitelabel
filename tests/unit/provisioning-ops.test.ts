@@ -24,9 +24,13 @@ jest.mock('@/lib/admin-service', () => ({
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
-jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn() }))
-jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn() }))
-jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn() }))
+jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn(), listAddonLibraryForProvisioning: jest.fn() }))
+jest.mock('@/lib/addon-bulk-attach', () => ({ __esModule: true, attachAddonEntriesToItems: jest.fn() }))
+jest.mock('@/lib/sms-campaigns-service', () => ({ __esModule: true, createSmsCampaign: jest.fn(), listSmsCampaignsForProvisioning: jest.fn() }))
+jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn(), listUpsellPairsForProvisioning: jest.fn() }))
+jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn(), listBundlesForProvisioning: jest.fn() }))
+jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
+jest.mock('@/lib/menu-arrangement', () => ({ __esModule: true, reorderCategoriesForProvisioning: jest.fn(), reorderMenuItemsForProvisioning: jest.fn() }))
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 // The MCP SDK derives each tool's advertised JSON schema by first passing the
@@ -45,6 +49,14 @@ const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/t
 const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
+const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
+const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering-service') as any
+const { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } = jest.requireMock('@/lib/menu-arrangement') as any
+const { attachAddonEntriesToItems } = jest.requireMock('@/lib/addon-bulk-attach') as any
+const { createBundle, listBundlesForProvisioning } = jest.requireMock('@/lib/bundles-service') as any
+const { createSmsCampaign, listSmsCampaignsForProvisioning } = jest.requireMock('@/lib/sms-campaigns-service') as any
+const { createUpsellPair, listUpsellPairsForProvisioning } = jest.requireMock('@/lib/menu-engineering-service') as any
+const { listAddonLibraryForProvisioning } = jest.requireMock('@/lib/addon-library-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
 /* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 
@@ -70,6 +82,25 @@ beforeEach(() => {
   ] as never)
   saveBrandingAction.mockReset().mockResolvedValue({ success: true } as never)
   createPaymentMethod.mockReset().mockResolvedValue({ id: 'pm_1' } as never)
+  fetchMenuPerformanceForTenantId.mockReset().mockResolvedValue({
+    dataSource: 'convex',
+    windowDays: 30,
+    totalUnits: 12,
+    totalRevenue: 2400,
+    items: [{ itemId: 'item_1', name: 'Sisig', units: 12, revenue: 2400, unitShare: 1, revenueShare: 1 }],
+    coverage: { complete: true },
+  } as never)
+  bulkUpdateBcgClassification.mockReset().mockResolvedValue([{ id: 'item_1', bcg_classification: 'star' }] as never)
+  reorderCategoriesForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
+  reorderMenuItemsForProvisioning.mockReset().mockResolvedValue({ reordered: 2 } as never)
+  attachAddonEntriesToItems.mockReset().mockResolvedValue({ itemsUpdated: 2, addonsAttached: 1 } as never)
+  listAddonLibraryForProvisioning.mockReset().mockResolvedValue([{ id: 'e1', name: 'Extra Shot', price: 30 }] as never)
+  createBundle.mockReset().mockResolvedValue({ id: 'bundle_1', name: 'Meal Deal' } as never)
+  createUpsellPair.mockReset().mockResolvedValue({ id: 'pair_1' } as never)
+  listBundlesForProvisioning.mockReset().mockResolvedValue([{ id: 'bundle_1', name: 'Meal Deal' }] as never)
+  listUpsellPairsForProvisioning.mockReset().mockResolvedValue([{ id: 'pair_1', pair_type: 'complementary' }] as never)
+  createSmsCampaign.mockReset().mockResolvedValue({ id: 'camp_1', status: 'draft', notice: 'Saved as a DRAFT' } as never)
+  listSmsCampaignsForProvisioning.mockReset().mockResolvedValue([{ id: 'camp_1', name: 'Win-back' }] as never)
 })
 
 describe('provisioning ops registry', () => {
@@ -331,5 +362,297 @@ describe('tenant-deactivation guardrail', () => {
       lalamove_enabled: true,
     })
     expect(updateTenantSupabase).toHaveBeenCalledWith(TENANT, expect.objectContaining({ lalamove_enabled: true }), ctx)
+  })
+})
+
+describe('get_menu_performance', () => {
+  it('is registered so the model can see what actually sells before it advises', () => {
+    expect(Object.keys(PROVISIONING_OPS)).toContain('get_menu_performance')
+  })
+
+  it('reads through the tenant-routing helper, honouring the requested window', async () => {
+    const result = await executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 14 })
+
+    expect(fetchMenuPerformanceForTenantId).toHaveBeenCalledWith(TENANT, ctx, 14)
+    expect(result).toMatchObject({ dataSource: 'convex', totalUnits: 12 })
+  })
+
+  it('defaults to a 30-day window when none is given', async () => {
+    await executeOp('get_menu_performance', ctx, { tenantId: TENANT })
+
+    expect(fetchMenuPerformanceForTenantId).toHaveBeenCalledWith(TENANT, ctx, 30)
+  })
+
+  it('advertises tenantId and days so the model knows what it may ask for', () => {
+    const opSchema = (PROVISIONING_OPS as Record<string, { input: never }>)['get_menu_performance']
+    const normalized = normalizeObjectSchema(opSchema.input) as { shape?: Record<string, unknown> } | undefined
+    expect(Object.keys(normalized?.shape ?? {})).toEqual(expect.arrayContaining(['tenantId', 'days']))
+  })
+
+  it('rejects a window outside the supported range instead of silently clamping it', async () => {
+    await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 0 })).rejects.toThrow()
+    await expect(executeOp('get_menu_performance', ctx, { tenantId: TENANT, days: 4000 })).rejects.toThrow()
+  })
+})
+
+/** What classify_menu hands back, narrowed to what these tests assert on. */
+interface ClassifyResult {
+  canApply: boolean
+  marginBasis: string
+  items: Array<{ itemId: string; classification: string }>
+}
+
+describe('classify_menu (propose, never write)', () => {
+  beforeEach(() => {
+    // A priced menu, which the default fixture (name + image only) does not carry.
+    listMenuItemsForProvisioning.mockResolvedValue([
+      { id: 'item_1', name: 'Sisig', price: 300, category_id: 'cat_1' },
+      { id: 'item_2', name: 'Toast', price: 60, category_id: 'cat_1' },
+    ] as never)
+  })
+
+  it('is registered and writes nothing', async () => {
+    expect(Object.keys(PROVISIONING_OPS)).toContain('classify_menu')
+
+    await executeOp('classify_menu', ctx, { tenantId: TENANT })
+
+    expect(bulkUpdateBcgClassification).not.toHaveBeenCalled()
+    expect(updateMenuItemFields).not.toHaveBeenCalled()
+  })
+
+  it('classifies the live menu against the tenant\'s real sales', async () => {
+    fetchMenuPerformanceForTenantId.mockResolvedValue({
+      dataSource: 'platform', windowDays: 30, totalUnits: 100, totalRevenue: 20000,
+      items: [
+        { itemId: 'item_1', name: 'Sisig', units: 90, revenue: 19000, unitShare: 0.9, revenueShare: 0.95 },
+        { itemId: 'item_2', name: 'Toast', units: 10, revenue: 1000, unitShare: 0.1, revenueShare: 0.05 },
+      ],
+      coverage: { complete: true },
+    } as never)
+
+    const result = await executeOp('classify_menu', ctx, { tenantId: TENANT }) as ClassifyResult
+
+    expect(result.canApply).toBe(true)
+    expect(result.items.find((i) => i.itemId === 'item_1')?.classification).toBe('star')
+    expect(result.marginBasis).toBe('price_proxy')
+  })
+
+  it('refuses to propose anything when the sales read was blind', async () => {
+    fetchMenuPerformanceForTenantId.mockResolvedValue({
+      dataSource: 'convex', windowDays: 30, totalUnits: 0, totalRevenue: 0, items: [],
+      coverage: { complete: false, note: 'No order data in this window' },
+    } as never)
+
+    const result = await executeOp('classify_menu', ctx, { tenantId: TENANT }) as ClassifyResult
+
+    expect(result.canApply).toBe(false)
+    expect(result.items.every((i) => i.classification === 'unclassified')).toBe(true)
+  })
+})
+
+describe('apply_menu_classification (write, only what was handed to it)', () => {
+  it('writes exactly the classifications it was given', async () => {
+    await executeOp('apply_menu_classification', ctx, {
+      tenantId: TENANT,
+      classifications: [
+        { itemId: ITEM, classification: 'star' },
+        { itemId: TENANT, classification: 'dog' },
+      ],
+    })
+
+    expect(bulkUpdateBcgClassification).toHaveBeenCalledWith(
+      TENANT,
+      [
+        { itemId: ITEM, classification: 'star' },
+        { itemId: TENANT, classification: 'dog' },
+      ],
+      ctx,
+    )
+  })
+
+  it('rejects a classification value the schema does not know', async () => {
+    await expect(
+      executeOp('apply_menu_classification', ctx, {
+        tenantId: TENANT,
+        classifications: [{ itemId: ITEM, classification: 'superstar' }],
+      }),
+    ).rejects.toThrow()
+    expect(bulkUpdateBcgClassification).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty write instead of reporting a no-op as success', async () => {
+    await expect(
+      executeOp('apply_menu_classification', ctx, { tenantId: TENANT, classifications: [] }),
+    ).rejects.toThrow()
+  })
+})
+
+describe('menu arrangement ops', () => {
+  const OTHER = '33333333-3333-4333-8333-333333333333'
+
+  it('reorder_categories forwards the full ordering and ctx', async () => {
+    const result = await executeOp('reorder_categories', ctx, {
+      tenantId: TENANT,
+      categoryIds: [ITEM, OTHER],
+    })
+
+    expect(reorderCategoriesForProvisioning).toHaveBeenCalledWith(TENANT, [ITEM, OTHER], ctx)
+    expect(result).toMatchObject({ reordered: 2 })
+  })
+
+  it('reorder_menu_items scopes the ordering to one category', async () => {
+    await executeOp('reorder_menu_items', ctx, {
+      tenantId: TENANT,
+      categoryId: OTHER,
+      itemIds: [ITEM],
+    })
+
+    expect(reorderMenuItemsForProvisioning).toHaveBeenCalledWith(TENANT, OTHER, [ITEM], ctx)
+  })
+
+  it('rejects an empty ordering at the schema, before it reaches a writer', async () => {
+    await expect(
+      executeOp('reorder_categories', ctx, { tenantId: TENANT, categoryIds: [] }),
+    ).rejects.toThrow()
+    expect(reorderCategoriesForProvisioning).not.toHaveBeenCalled()
+  })
+
+  it('survives the destructive-name guardrail (reordering is not a deletion)', () => {
+    expect(Object.keys(PROVISIONING_OPS)).toEqual(
+      expect.arrayContaining(['reorder_categories', 'reorder_menu_items']),
+    )
+  })
+})
+
+describe('add-on ops', () => {
+  const OTHER = '33333333-3333-4333-8333-333333333333'
+
+  it('attach_addon_library_entries forwards items, entries and ctx', async () => {
+    const result = await executeOp('attach_addon_library_entries', ctx, {
+      tenantId: TENANT,
+      itemIds: [ITEM, OTHER],
+      entryIds: [ITEM],
+    })
+
+    expect(attachAddonEntriesToItems).toHaveBeenCalledWith(TENANT, [ITEM, OTHER], [ITEM], ctx)
+    expect(result).toMatchObject({ itemsUpdated: 2 })
+  })
+
+  it('rejects an empty attach at the schema, before a writer sees it', async () => {
+    await expect(
+      executeOp('attach_addon_library_entries', ctx, { tenantId: TENANT, itemIds: [], entryIds: [ITEM] }),
+    ).rejects.toThrow()
+    expect(attachAddonEntriesToItems).not.toHaveBeenCalled()
+  })
+
+  it('list_addon_library reads the tenant library so entries resolve by name', async () => {
+    const result = await executeOp('list_addon_library', ctx, { tenantId: TENANT }) as Array<Record<string, unknown>>
+
+    expect(listAddonLibraryForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ name: 'Extra Shot' })
+  })
+})
+
+/** A write result that may carry a feature-flag warning. */
+interface WriteResult {
+  id?: string
+  warning?: string
+}
+
+describe('feature-flag warnings on promo writes', () => {
+  /** ctx whose tenant read reports the given flags. */
+  function ctxWithFlags(flags: Record<string, boolean>) {
+    const builder: Record<string, unknown> = {}
+    Object.assign(builder, {
+      select: () => builder,
+      eq: () => builder,
+      single: () => Promise.resolve({ data: flags, error: null }),
+    })
+    return { client: { from: () => builder } as never } as ProvisioningCtx
+  }
+
+  it('warns that a bundle written with bundles_enabled off will not be seen', async () => {
+    const result = await executeOp('create_bundle', ctxWithFlags({ bundles_enabled: false }), {
+      tenantId: TENANT, name: 'Meal Deal',
+    }) as WriteResult
+
+    expect(result.id).toBe('bundle_1')
+    expect(result.warning).toMatch(/bundles_enabled/)
+  })
+
+  it('stays quiet when bundles are live', async () => {
+    const result = await executeOp('create_bundle', ctxWithFlags({ bundles_enabled: true }), {
+      tenantId: TENANT, name: 'Meal Deal',
+    }) as WriteResult
+
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('warns that an upsell pair written with menu engineering off is inert', async () => {
+    const result = await executeOp('create_upsell_pair', ctxWithFlags({ menu_engineering_enabled: false }), {
+      tenantId: TENANT, source_item_id: ITEM, target_item_id: ITEM, pair_type: 'complementary',
+    }) as WriteResult
+
+    expect(result.warning).toMatch(/menu_engineering_enabled/)
+  })
+})
+
+describe('promo reads', () => {
+  it('list_bundles reads existing bundles so the model does not duplicate them', async () => {
+    const result = await executeOp('list_bundles', ctx, { tenantId: TENANT }) as Array<Record<string, unknown>>
+
+    expect(listBundlesForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ name: 'Meal Deal' })
+  })
+
+  it('list_upsell_pairs reads existing pairs', async () => {
+    const result = await executeOp('list_upsell_pairs', ctx, { tenantId: TENANT }) as Array<Record<string, unknown>>
+
+    expect(listUpsellPairsForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ pair_type: 'complementary' })
+  })
+})
+
+describe('SMS campaign ops', () => {
+  const DRAFT = {
+    name: 'Bundle launch',
+    message_template: 'Hi {{firstName}}, our new Meal Deal is live!',
+    schedule_kind: 'one_off',
+    schedule_date: '2026-09-01',
+  }
+
+  it('create_sms_campaign forwards the draft and ctx', async () => {
+    const result = await executeOp('create_sms_campaign', ctx, { tenantId: TENANT, ...DRAFT }) as WriteResult
+
+    expect(createSmsCampaign).toHaveBeenCalledWith(TENANT, expect.objectContaining({ name: 'Bundle launch' }), ctx)
+    expect(result.id).toBe('camp_1')
+  })
+
+  it('does not leak tenantId into the campaign payload', async () => {
+    await executeOp('create_sms_campaign', ctx, { tenantId: TENANT, ...DRAFT })
+
+    expect(createSmsCampaign.mock.calls[0][1]).not.toHaveProperty('tenantId')
+  })
+
+  it('advertises the fields a campaign needs so the model knows what to send', () => {
+    const opSchema = (PROVISIONING_OPS as Record<string, { input: never }>)['create_sms_campaign']
+    const normalized = normalizeObjectSchema(opSchema.input) as { shape?: Record<string, unknown> } | undefined
+    expect(Object.keys(normalized?.shape ?? {})).toEqual(
+      expect.arrayContaining(['tenantId', 'name', 'message_template', 'schedule_kind']),
+    )
+  })
+
+  it('list_sms_campaigns reads existing campaigns', async () => {
+    const result = await executeOp('list_sms_campaigns', ctx, { tenantId: TENANT }) as Array<Record<string, unknown>>
+
+    expect(listSmsCampaignsForProvisioning).toHaveBeenCalledWith(TENANT, ctx)
+    expect(result[0]).toMatchObject({ name: 'Win-back' })
+  })
+
+  it('exposes no tool that could write consent, opt-out or a suppression', () => {
+    // Consent must be a real boolean the customer produced at checkout. If a
+    // provisioning tool could manufacture it, the opt-in record is decoration.
+    const names = (listOps() as Array<{ name: string }>).map((o) => o.name)
+    expect(names.filter((n) => /consent|opt_?out|suppress/i.test(n))).toEqual([])
   })
 })

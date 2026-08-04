@@ -47,7 +47,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
-    webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://webnegosyo.com",
+    // Left empty rather than defaulted, so `lib/web-app-url.ts` owns the
+    // canonical host in one place. Defaulting here would shadow it and put the
+    // redirecting apex domain back in front of every server call.
+    webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "",
     consultationUrl:
       process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ??
       "https://m.me/webnegosyoofficial",

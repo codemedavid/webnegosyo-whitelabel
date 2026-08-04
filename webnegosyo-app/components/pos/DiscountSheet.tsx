@@ -82,8 +82,17 @@ export function DiscountSheet({
     setIsLooking(true);
     setCodeError(null);
 
-    const vouchers = await lookupVouchers(tenantId, [entered]);
-    setIsLooking(false);
+    // Cleared in `finally`, never on the line after the await. The spinner also
+    // disables Apply, so a lookup that rejects would otherwise leave the
+    // register stuck on a code with no way back except killing the app.
+    let vouchers: Voucher[];
+    try {
+      vouchers = await lookupVouchers(tenantId, [entered]);
+    } catch {
+      vouchers = [];
+    } finally {
+      setIsLooking(false);
+    }
 
     // Fails closed: a code that could not be verified — unknown, or simply no
     // signal at the counter — is worth nothing rather than assumed valid.

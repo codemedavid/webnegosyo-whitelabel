@@ -21,6 +21,8 @@ interface ProofCaptureProps {
   proof: CapturedProof | null;
   onCaptured: (proof: CapturedProof) => void;
   onError: (message: string) => void;
+  /** Line under the capture button. Say whether the photo is still needed. */
+  hint?: string;
 }
 
 /**
@@ -31,7 +33,7 @@ interface ProofCaptureProps {
  * every build that ships this screen. Capture failures surface through
  * `onError` and leave the sale locked rather than silently completing.
  */
-export function ProofCapture({ proof, onCaptured, onError }: ProofCaptureProps) {
+export function ProofCapture({ proof, onCaptured, onError, hint }: ProofCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [isOpen, setIsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
@@ -88,7 +90,7 @@ export function ProofCapture({ proof, onCaptured, onError }: ProofCaptureProps) 
       ) : (
         <TouchableOpacity style={styles.captureButton} onPress={open}>
           <Text style={styles.captureText}>Photograph payment confirmation</Text>
-          <Text style={styles.captureHint}>Required before this sale can be completed</Text>
+          {hint ? <Text style={styles.captureHint}>{hint}</Text> : null}
         </TouchableOpacity>
       )}
 

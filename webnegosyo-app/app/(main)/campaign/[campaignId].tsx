@@ -57,14 +57,17 @@ import {
   CAMPAIGN_PRESETS,
   buildPresetDraft,
 } from "../../../lib/sms/campaign-presets";
+import { buildMessagePreview } from "../../../lib/sms/message-preview";
 import { planTestSend } from "../../../lib/sms/test-send";
 import { createSmsTransport } from "../../../lib/sms/transport";
 import { androidSmsPermissions } from "../../../lib/sms/android-permissions";
 import { SmsSenderModule } from "../../../modules/sms-sender";
 import { useSmsRun } from "../../../hooks/use-sms-run";
 import type { SmsCustomer, SmsNativeClient, ScheduleKind } from "../../../lib/sms/types";
-import { colors, typography, spacing, radius } from "../../../theme/colors";
+import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
+import { Icon } from "../../../components/Icon";
 import { LoadingState } from "../../../components/LoadingState";
+import { MessagePreview } from "../../../components/sms/MessagePreview";
 
 const NEW_CAMPAIGN_ID = "new";
 
@@ -82,6 +85,20 @@ const WEEKDAYS = [
   { iso: 5, label: "F" },
   { iso: 6, label: "S" },
   { iso: 7, label: "S" },
+];
+
+/**
+ * The placeholders, as things to tap rather than syntax to remember.
+ *
+ * A merchant who mistypes `{{frstName}}` gets that literal string delivered to
+ * several hundred people. Offering them as buttons removes the only spelling
+ * in this screen that has a bill attached to getting it wrong.
+ */
+const TOKENS = [
+  { token: "{{firstName}}", label: "First name" },
+  { token: "{{storeName}}", label: "Store" },
+  { token: "{{orderCount}}", label: "Orders" },
+  { token: "{{lastOrderDate}}", label: "Last order" },
 ];
 
 /**
@@ -162,6 +179,26 @@ function CampaignEditorScreen() {
     [draft.messageTemplate, audience.recipients.length]
   );
 
+  /**
+   * The sentence a guest will actually receive, filled in with a real
+   * recipient's details where there is one. Never throws — see
+   * `message-preview.ts`; the merchant is often mid-word.
+   */
+  const preview = useMemo(
+    () =>
+      buildMessagePreview(
+        draft.messageTemplate,
+        audience.recipients[0] ?? null,
+        tenantName ?? "our store"
+      ),
+    [draft.messageTemplate, audience.recipients, tenantName]
+  );
+
+  // Named here, beside the other derived values, because the action bar that
+  // carries it is pinned below the scroll view and must be the last thing
+  // painted.
+  const sendLabel = `Send now to ${audience.recipients.length} guests`;
+
   const load = useCallback(async () => {
     if (!tenantId) return;
     try {
@@ -239,10 +276,10 @@ function CampaignEditorScreen() {
    * Save, and stay on the campaign that was just saved.
    *
    * Going back to the list after a save is what made "Send now is not
-   * available" true: the whole Send block is gated on the campaign having an
+   * available" true: the whole Send action is gated on the campaign having an
    * id, so a merchant who created a campaign was returned to a list without
    * ever seeing the button. Replacing the route with the real id puts them on
-   * the saved campaign, with Send right there.
+   * the saved campaign, with Send right there in the bar.
    */
   const save = async () => {
     if (!tenantId || !validation.isValid) return;
@@ -398,382 +435,409 @@ function CampaignEditorScreen() {
   if (isLoading) return <LoadingState message="Loading campaign…" />;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{isNew ? "New campaign" : "Edit campaign"}</Text>
-
-      {/*
-        A blank draft is not saveable — a one-off with no date fails validation
-        the moment this screen opens. A preset is one tap to a campaign that is
-        already valid, which is the difference between "write six fields" and
-        "check these are right".
-      */}
-      {isNew && (
-        <View style={styles.presetBox}>
-          <Text style={styles.label}>Start from a ready-made campaign</Text>
-          {CAMPAIGN_PRESETS.map((preset) => (
-            <TouchableOpacity
-              key={preset.id}
-              style={styles.presetCard}
-              onPress={() => setDraft(buildPresetDraft(preset.id, today))}
-              accessibilityRole="button"
-            >
-              <Text style={styles.presetTitle}>{preset.title}</Text>
-              <Text style={styles.hint}>{preset.description}</Text>
-            </TouchableOpacity>
-          ))}
-          <Text style={styles.hint}>Or fill in the fields below yourself.</Text>
-        </View>
-      )}
-
-      <Field label="Campaign name" error={validation.errors.name}>
-        <TextInput
-          style={styles.input}
-          value={draft.name}
-          onChangeText={(name) => patch({ name })}
-          placeholder="Win back lapsed guests"
-          placeholderTextColor={colors.textTertiary}
-        />
-      </Field>
-
-      <Field label="Message" error={validation.errors.messageTemplate}>
-        <TextInput
-          style={[styles.input, styles.textarea]}
-          value={draft.messageTemplate}
-          onChangeText={(messageTemplate) => patch({ messageTemplate })}
-          placeholder="Hi {{firstName}}, we miss you at {{storeName}}!"
-          placeholderTextColor={colors.textTertiary}
-          multiline
-        />
-        <Text style={styles.hint}>
-          Use {"{{firstName}}"}, {"{{storeName}}"}, {"{{orderCount}}"}, {"{{lastOrderDate}}"}
-        </Text>
-      </Field>
-
-      {/*
-        Segment count is shown before sending, not discovered on the phone bill.
-        One curly apostrophe flips the whole blast to UCS-2 and more than doubles
-        the cost, which is invisible on screen.
-      */}
-      <View style={styles.costBox}>
-        <Text style={styles.costLine}>
-          {cost.segmentsPerMessage} SMS per message · {cost.encoding}
-        </Text>
-        <Text style={styles.costTotal}>
-          {audience.recipients.length} recipients → about {cost.totalSegments} SMS
-        </Text>
-        {cost.encoding === "UCS2" && (
-          <Text style={styles.costWarn}>
-            A special character made this message cost more. Plain letters are cheaper.
-          </Text>
-        )}
-      </View>
-
-      {/*
-        Sending sits here, above the audience and the schedule, because it is
-        the action the merchant opened this screen for. It used to be the very
-        last thing on a long scroll, under status and quiet hours — which is a
-        large part of why "the send now button is not available" was true.
-      */}
-      {!isNew && (
-        <View style={styles.sendBox}>
-          <Text style={styles.sectionTitle}>Send</Text>
-
-          <Text style={styles.hint}>
-            {dueAt
-              ? "This campaign is due now."
-              : "You can send this straight away — it does not have to wait for its schedule."}
-          </Text>
-
-          {run.isRunning && run.progress ? (
-            <View style={styles.progressRow}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.hint}>
-                Sending {run.progress.attempted} of {run.progress.total}…
-              </Text>
-              <TouchableOpacity onPress={run.cancel}>
-                <Text style={styles.cancelText}>Stop</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  !sendNowDecision.canSend && styles.buttonDisabled,
-                ]}
-                onPress={sendNow}
-                disabled={!sendNowDecision.canSend}
-                accessibilityRole="button"
-              >
-                <Text style={styles.primaryButtonText}>
-                  Send now to {audience.recipients.length} guests
-                </Text>
-              </TouchableOpacity>
-              {/*
-                Why the button is dead. This was grey hint text under a greyed
-                button, which reads as a broken app rather than an answer — so
-                it is a notice now, and the one blocker a merchant can actually
-                do something about gets a way through.
-              */}
-              {!sendNowDecision.canSend && (
-                <View style={styles.notice}>
-                  <Text style={styles.noticeText}>{sendNowDecision.message}</Text>
-                  {sendNowDecision.block === "no_audience" && (
-                    <TouchableOpacity
-                      onPress={() => router.push("/(main)/customers")}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.linkText}>
-                        Record who agreed to texts →
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </>
-          )}
-
-          {run.result && <RunSummary result={run.result} />}
-          {run.error && <Text style={styles.errorText}>{run.error}</Text>}
-        </View>
-      )}
-
-      {/*
-        Available on a brand-new, unsaved campaign on purpose. Everything below
-        this point — audience, schedule, activation — is guesswork until the
-        merchant has seen one of these messages land on a real handset.
-      */}
-      <View style={styles.testBox}>
-        <Text style={styles.label}>Send yourself a test</Text>
-        <Text style={styles.hint}>
-          One text to your own number, exactly as a guest would receive it. It is not
-          counted against the campaign.
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={testPhone}
-          onChangeText={setTestPhone}
-          keyboardType="phone-pad"
-          placeholder="0917 123 4567"
-          placeholderTextColor={colors.textTertiary}
-        />
-        {Platform.OS !== "android" ? (
-          <Text style={styles.hint}>
-            Test sending needs the Android app — it uses that phone&apos;s SIM.
-          </Text>
-        ) : (
-          <TouchableOpacity
-            style={[styles.secondaryButton, isTesting && styles.buttonDisabled]}
-            onPress={sendTest}
-            disabled={isTesting}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>
-              {isTesting ? "Sending…" : "Send test message"}
-            </Text>
-          </TouchableOpacity>
-        )}
-        {testOutcome && <Text style={styles.hint}>{testOutcome}</Text>}
-      </View>
-
-      <Text style={styles.sectionTitle}>Who gets it</Text>
-      <Field label="Haven't ordered in (days)">
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={
-            draft.audience.lastOrderOlderThanDays === undefined
-              ? ""
-              : String(draft.audience.lastOrderOlderThanDays)
-          }
-          onChangeText={(value) =>
-            patch({
-              audience: {
-                ...draft.audience,
-                lastOrderOlderThanDays: value === "" ? undefined : Number(value),
-              },
-            })
-          }
-          placeholder="Any"
-          placeholderTextColor={colors.textTertiary}
-        />
-      </Field>
-      <Field label="At least this many orders">
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={
-            draft.audience.minOrderCount === undefined
-              ? ""
-              : String(draft.audience.minOrderCount)
-          }
-          onChangeText={(value) =>
-            patch({
-              audience: {
-                ...draft.audience,
-                minOrderCount: value === "" ? undefined : Number(value),
-              },
-            })
-          }
-          placeholder="Any"
-          placeholderTextColor={colors.textTertiary}
-        />
-      </Field>
-
-      {audience.recipients.length === 0 && (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Nobody matches yet. {audience.summary.no_consent} guests have not agreed to SMS
-            updates, {audience.summary.no_phone} have no number on file.
-          </Text>
-        </View>
-      )}
-
-      <Text style={styles.sectionTitle}>When</Text>
-      <View style={styles.chipRow}>
-        {SCHEDULE_LABELS.map(({ kind, label }) => (
-          <Chip
-            key={kind}
-            label={label}
-            isActive={draft.scheduleKind === kind}
-            onPress={() => patch({ scheduleKind: kind })}
-          />
-        ))}
-      </View>
-
-      {draft.scheduleKind === "one_off" && (
-        <Field label="Date" error={validation.errors.scheduleDate}>
-          <PickerRow
-            value={draft.scheduleDate}
-            placeholder="Pick a date"
-            onPress={() => setOpenPicker("date")}
-          />
-        </Field>
-      )}
-
-      {draft.scheduleKind === "every_n_days" && (
-        <Field label="Repeat every (days)" error={validation.errors.scheduleIntervalDays}>
-          <TextInput
-            style={styles.input}
-            keyboardType="number-pad"
-            value={
-              draft.scheduleIntervalDays === null ? "" : String(draft.scheduleIntervalDays)
-            }
-            onChangeText={(value) =>
-              patch({ scheduleIntervalDays: value === "" ? null : Number(value) })
-            }
-            placeholder="14"
-            placeholderTextColor={colors.textTertiary}
-          />
-        </Field>
-      )}
-
-      {draft.scheduleKind === "weekly" && (
-        <Field label="Days" error={validation.errors.scheduleWeekdays}>
-          <View style={styles.chipRow}>
-            {WEEKDAYS.map(({ iso, label }) => (
-              <Chip
-                key={iso}
-                label={label}
-                isActive={draft.scheduleWeekdays.includes(iso)}
-                onPress={() =>
-                  patch({
-                    scheduleWeekdays: draft.scheduleWeekdays.includes(iso)
-                      ? draft.scheduleWeekdays.filter((d) => d !== iso)
-                      : [...draft.scheduleWeekdays, iso].sort(),
-                  })
-                }
-              />
-            ))}
-          </View>
-        </Field>
-      )}
-
-      <Field label="Send at" error={validation.errors.scheduleTime}>
-        <PickerRow
-          value={draft.scheduleTime}
-          placeholder="Pick a time"
-          onPress={() => setOpenPicker("time")}
-        />
-      </Field>
-
-      <Text style={styles.sectionTitle}>Quiet hours</Text>
-      <Text style={styles.hint}>
-        A SCHEDULED message landing inside these hours waits until morning. Sending by
-        hand is still your call — you will be told, not stopped.
-      </Text>
-      <View style={styles.quietRow}>
-        <View style={styles.quietCell}>
-        <Field label="From">
-          <PickerRow
-            value={draft.quietHoursStart}
-            placeholder="21:00"
-            onPress={() => setOpenPicker("quietStart")}
-          />
-        </Field>
-        </View>
-        <View style={styles.quietCell}>
-        <Field label="Until">
-          <PickerRow
-            value={draft.quietHoursEnd}
-            placeholder="08:00"
-            onPress={() => setOpenPicker("quietEnd")}
-          />
-        </Field>
-        </View>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.primaryButton, !validation.isValid && styles.buttonDisabled]}
-        onPress={save}
-        disabled={!validation.isValid || isSaving}
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.primaryButtonText}>
-          {isSaving ? "Saving…" : isNew ? "Create campaign" : "Save changes"}
-        </Text>
-      </TouchableOpacity>
-      {/*
-        A save used to be acknowledged only by the screen disappearing, which is
-        indistinguishable from a crash. Now it says so, on the screen you are
-        still standing on.
-      */}
-      {savedAt && !isSaving && (
-        <Text style={styles.savedText}>Saved at {savedAt}.</Text>
-      )}
+        <Text style={styles.title}>{isNew ? "New campaign" : draft.name || "Campaign"}</Text>
 
-      {!isNew && (
-        <View style={styles.sendBox}>
-          <Text style={styles.sectionTitle}>Status</Text>
-          <Text style={styles.hint}>
-            This campaign is {statusLabel(status)}.
-            {status !== "active"
-              ? " Only an active campaign becomes due and can send."
-              : ""}
-          </Text>
-          <View style={styles.chipRow}>
+        {/*
+          Status used to be the very last block on the screen, below the save
+          button — and it is the single fact that decides whether a campaign
+          ever fires. It is a line under the title now, with its actions on it.
+        */}
+        {!isNew && (
+          <View style={styles.statusStrip}>
+            <View style={[styles.statusDot, status === "active" && styles.statusDotLive]} />
+            <Text style={styles.statusText}>
+              {statusLabel(status)}
+              {status !== "active" && " — it will not send on its own"}
+            </Text>
             {statusActionsFor(status).map((action) => (
               <TouchableOpacity
                 key={action.next}
-                style={[
-                  styles.statusButton,
-                  action.isDestructive && styles.statusButtonDestructive,
-                ]}
                 onPress={() => changeStatus(action.next)}
                 accessibilityRole="button"
               >
                 <Text
-                  style={[
-                    styles.statusButtonText,
-                    action.isDestructive && styles.statusButtonTextDestructive,
-                  ]}
+                  style={action.isDestructive ? styles.statusActionQuiet : styles.statusAction}
                 >
                   {action.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+        )}
+
+        {/*
+          A blank draft is not saveable — a one-off with no date fails validation
+          the moment this screen opens. A preset is one tap to a campaign that is
+          already valid, which is the difference between "write six fields" and
+          "check these are right".
+        */}
+        {isNew && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Start from a ready-made campaign</Text>
+            <View style={styles.presetList}>
+              {CAMPAIGN_PRESETS.map((preset, index) => (
+                <TouchableOpacity
+                  key={preset.id}
+                  style={[styles.presetRow, index > 0 && styles.presetRowDivided]}
+                  onPress={() => setDraft(buildPresetDraft(preset.id, today))}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.presetCopy}>
+                    <Text style={styles.presetTitle}>{preset.title}</Text>
+                    <Text style={styles.hint}>{preset.description}</Text>
+                  </View>
+                  <Icon name="chevron" color={colors.textTertiary} size={14} strokeWidth={2} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.hint}>Or fill in the fields below yourself.</Text>
+          </View>
+        )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What it says</Text>
+
+          <Field label="Campaign name" error={validation.errors.name}>
+            <TextInput
+              style={styles.input}
+              value={draft.name}
+              onChangeText={(name) => patch({ name })}
+              placeholder="Win back lapsed guests"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </Field>
+
+          <Field label="Message" error={validation.errors.messageTemplate}>
+            <TextInput
+              style={[styles.input, styles.textarea]}
+              value={draft.messageTemplate}
+              onChangeText={(messageTemplate) => patch({ messageTemplate })}
+              placeholder="Hi {{firstName}}, we miss you at {{storeName}}!"
+              placeholderTextColor={colors.textTertiary}
+              multiline
+            />
+            <View style={styles.tokenRow}>
+              {TOKENS.map(({ token, label }) => (
+                <TouchableOpacity
+                  key={token}
+                  style={styles.token}
+                  onPress={() =>
+                    patch({ messageTemplate: `${draft.messageTemplate}${token}` })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${label}`}
+                >
+                  <Text style={styles.tokenText}>+ {label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Field>
+
+          <MessagePreview
+            preview={preview}
+            cost={cost}
+            recipientCount={audience.recipients.length}
+            recipientName={audience.recipients[0]?.name?.trim() ?? null}
+          />
         </View>
-      )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Who gets it</Text>
+          <View style={styles.pairRow}>
+            <View style={styles.pairCell}>
+              <Field label="Not ordered in (days)">
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  value={
+                    draft.audience.lastOrderOlderThanDays === undefined
+                      ? ""
+                      : String(draft.audience.lastOrderOlderThanDays)
+                  }
+                  onChangeText={(value) =>
+                    patch({
+                      audience: {
+                        ...draft.audience,
+                        lastOrderOlderThanDays: value === "" ? undefined : Number(value),
+                      },
+                    })
+                  }
+                  placeholder="Any"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </Field>
+            </View>
+            <View style={styles.pairCell}>
+              <Field label="At least this many orders">
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  value={
+                    draft.audience.minOrderCount === undefined
+                      ? ""
+                      : String(draft.audience.minOrderCount)
+                  }
+                  onChangeText={(value) =>
+                    patch({
+                      audience: {
+                        ...draft.audience,
+                        minOrderCount: value === "" ? undefined : Number(value),
+                      },
+                    })
+                  }
+                  placeholder="Any"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </Field>
+            </View>
+          </View>
+
+          {audience.recipients.length === 0 ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeText}>
+                Nobody matches yet. {audience.summary.no_consent} guests have not agreed to
+                SMS updates, {audience.summary.no_phone} have no number on file.
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(main)/customers")}
+                accessibilityRole="button"
+              >
+                <Text style={styles.linkText}>Record who agreed to texts →</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.matchLine}>
+              {audience.recipients.length}{" "}
+              {audience.recipients.length === 1 ? "guest matches" : "guests match"} and can be
+              texted.
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>When</Text>
+          <View style={styles.chipRow}>
+            {SCHEDULE_LABELS.map(({ kind, label }) => (
+              <Chip
+                key={kind}
+                label={label}
+                isActive={draft.scheduleKind === kind}
+                onPress={() => patch({ scheduleKind: kind })}
+              />
+            ))}
+          </View>
+
+          {draft.scheduleKind === "one_off" && (
+            <Field label="Date" error={validation.errors.scheduleDate}>
+              <PickerRow
+                icon="calendar"
+                value={draft.scheduleDate}
+                placeholder="Pick a date"
+                onPress={() => setOpenPicker("date")}
+              />
+            </Field>
+          )}
+
+          {draft.scheduleKind === "every_n_days" && (
+            <Field label="Repeat every (days)" error={validation.errors.scheduleIntervalDays}>
+              <TextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                value={
+                  draft.scheduleIntervalDays === null ? "" : String(draft.scheduleIntervalDays)
+                }
+                onChangeText={(value) =>
+                  patch({ scheduleIntervalDays: value === "" ? null : Number(value) })
+                }
+                placeholder="14"
+                placeholderTextColor={colors.textTertiary}
+              />
+            </Field>
+          )}
+
+          {draft.scheduleKind === "weekly" && (
+            <Field label="Days" error={validation.errors.scheduleWeekdays}>
+              <View style={styles.chipRow}>
+                {WEEKDAYS.map(({ iso, label }) => (
+                  <Chip
+                    key={iso}
+                    label={label}
+                    isActive={draft.scheduleWeekdays.includes(iso)}
+                    onPress={() =>
+                      patch({
+                        scheduleWeekdays: draft.scheduleWeekdays.includes(iso)
+                          ? draft.scheduleWeekdays.filter((d) => d !== iso)
+                          : [...draft.scheduleWeekdays, iso].sort(),
+                      })
+                    }
+                  />
+                ))}
+              </View>
+            </Field>
+          )}
+
+          <Field label="Send at" error={validation.errors.scheduleTime}>
+            <PickerRow
+              icon="clock"
+              value={draft.scheduleTime}
+              placeholder="Pick a time"
+              onPress={() => setOpenPicker("time")}
+            />
+          </Field>
+
+          <View style={styles.pairRow}>
+            <View style={styles.pairCell}>
+              <Field label="Quiet from">
+                <PickerRow
+                  icon="clock"
+                  value={draft.quietHoursStart}
+                  placeholder="21:00"
+                  onPress={() => setOpenPicker("quietStart")}
+                />
+              </Field>
+            </View>
+            <View style={styles.pairCell}>
+              <Field label="Quiet until">
+                <PickerRow
+                  icon="clock"
+                  value={draft.quietHoursEnd}
+                  placeholder="08:00"
+                  onPress={() => setOpenPicker("quietEnd")}
+                />
+              </Field>
+            </View>
+          </View>
+          <Text style={styles.hint}>
+            A scheduled message landing inside these hours waits until morning. Sending by
+            hand is still your call — you will be told, not stopped.
+          </Text>
+        </View>
+
+        {/*
+          Available on a brand-new, unsaved campaign on purpose. Everything on
+          this screen is guesswork until the merchant has seen one of these
+          messages land on a real handset.
+        */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Try it on your own phone</Text>
+          <Text style={styles.hint}>
+            One text to your own number, exactly as a guest receives it. It is not counted
+            against the campaign.
+          </Text>
+          <View style={styles.testRow}>
+            <TextInput
+              style={[styles.input, styles.testInput]}
+              value={testPhone}
+              onChangeText={setTestPhone}
+              keyboardType="phone-pad"
+              placeholder="0917 123 4567"
+              placeholderTextColor={colors.textTertiary}
+            />
+            {Platform.OS === "android" && (
+              <TouchableOpacity
+                style={[styles.secondaryButton, isTesting && styles.disabled]}
+                onPress={sendTest}
+                disabled={isTesting}
+                accessibilityRole="button"
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {isTesting ? "Sending…" : "Send test"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {Platform.OS !== "android" && (
+            <Text style={styles.hint}>
+              Test sending needs the Android app — it uses that phone&apos;s SIM.
+            </Text>
+          )}
+          {testOutcome && <Text style={styles.hint}>{testOutcome}</Text>}
+        </View>
+
+        {run.result && <RunSummary result={run.result} />}
+        {run.error && <Text style={styles.errorText}>{run.error}</Text>}
+      </ScrollView>
+
+      {/*
+        Pinned, not scrolled. Both of the merchant's reported problems — "it
+        does not let me send manually" and "the send now button is not
+        available" — were reachability, not logic: Send sat at the bottom of a
+        very long form, below status and quiet hours. Here it cannot be
+        scrolled away from.
+      */}
+      <View style={styles.actionBar}>
+        {run.isRunning && run.progress ? (
+          <View style={styles.progressRow}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.progressText}>
+              Sending {run.progress.attempted} of {run.progress.total}…
+            </Text>
+            <TouchableOpacity onPress={run.cancel} accessibilityRole="button">
+              <Text style={styles.cancelText}>Stop</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {!isNew && !sendNowDecision.canSend && (
+              <View style={styles.notice}>
+                <Text style={styles.noticeText}>{sendNowDecision.message}</Text>
+                {sendNowDecision.block === "no_audience" && (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(main)/customers")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.linkText}>Record who agreed to texts →</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {savedAt && !isSaving && (
+              <Text style={styles.savedText}>Saved at {savedAt}.</Text>
+            )}
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[
+                  isNew ? styles.primaryButton : styles.secondaryButton,
+                  styles.grow,
+                  !validation.isValid && styles.disabled,
+                ]}
+                onPress={save}
+                disabled={!validation.isValid || isSaving}
+                accessibilityRole="button"
+              >
+                <Text style={isNew ? styles.primaryButtonText : styles.secondaryButtonText}>
+                  {isSaving ? "Saving…" : isNew ? "Create campaign" : "Save changes"}
+                </Text>
+              </TouchableOpacity>
+
+              {!isNew && (
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    styles.grow,
+                    !sendNowDecision.canSend && styles.disabled,
+                  ]}
+                  onPress={sendNow}
+                  disabled={!sendNowDecision.canSend}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryButtonText} numberOfLines={1}>
+                    {sendLabel}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
+      </View>
 
       {openPicker === "date" && (
         <DateTimePicker
@@ -796,7 +860,7 @@ function CampaignEditorScreen() {
           onChange={applyPicked}
         />
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -854,23 +918,32 @@ type PickerField = "date" | "time" | "quietStart" | "quietEnd";
 /**
  * A field that opens a picker instead of asking for a typed string.
  *
- * Looks like the text inputs around it on purpose — the merchant should not
- * have to learn that two of these fields behave differently.
+ * Shaped like the text inputs around it, with an icon as the one signal that
+ * it behaves differently — the merchant should not have to learn that some of
+ * these fields want typing and others want tapping.
  */
 function PickerRow({
+  icon,
   value,
   placeholder,
   onPress,
 }: {
+  icon: "calendar" | "clock";
   value: string | null;
   placeholder: string;
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.input} onPress={onPress} accessibilityRole="button">
+    <TouchableOpacity
+      style={[styles.input, styles.pickerRow]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={value ?? placeholder}
+    >
       <Text style={value ? styles.pickerValue : styles.pickerPlaceholder}>
         {value || placeholder}
       </Text>
+      <Icon name={icon} color={colors.textSecondary} size={16} />
     </TouchableOpacity>
   );
 }
@@ -898,14 +971,33 @@ function Chip({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl * 2 },
+  scroll: { flex: 1 },
+  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxl },
   title: { ...typography.title, color: colors.textPrimary },
-  sectionTitle: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    marginTop: spacing.md,
+
+  statusStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: -spacing.sm,
   },
-  field: { gap: 4 },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.textTertiary,
+  },
+  statusDotLive: { backgroundColor: colors.success },
+  statusText: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },
+  statusAction: { ...typography.caption, color: colors.primary, fontWeight: "700" },
+  statusActionQuiet: { ...typography.caption, color: colors.danger, fontWeight: "700" },
+
+  // A section is a heading and its fields, separated by space rather than by
+  // being wrapped in yet another bordered box.
+  section: { gap: spacing.md },
+  sectionTitle: { ...typography.heading, color: colors.textPrimary },
+  field: { gap: 5 },
   label: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   input: {
     backgroundColor: colors.card,
@@ -913,46 +1005,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.separator,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     ...typography.body,
     color: colors.textPrimary,
   },
   textarea: { minHeight: 96, textAlignVertical: "top" },
   hint: { ...typography.small, color: colors.textSecondary, lineHeight: 17 },
+  matchLine: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
+
+  pickerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pickerValue: { ...typography.body, color: colors.textPrimary },
   pickerPlaceholder: { ...typography.body, color: colors.textTertiary },
-  quietRow: { flexDirection: "row", gap: spacing.md },
-  quietCell: { flex: 1 },
-  linkText: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: "700",
-    marginTop: 4,
+  pairRow: { flexDirection: "row", gap: spacing.md },
+  pairCell: { flex: 1 },
+
+  tokenRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: 2 },
+  token: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
   },
-  savedText: { ...typography.small, color: colors.success, fontWeight: "600" },
-  costBox: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
+  tokenText: { ...typography.small, color: colors.textPrimary, fontWeight: "600" },
+
+  presetList: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.separator,
+  },
+  presetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
     padding: spacing.md,
-    gap: 2,
   },
-  costLine: { ...typography.caption, color: colors.textSecondary },
-  costTotal: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  costWarn: { ...typography.small, color: colors.warning, marginTop: 4 },
+  presetRowDivided: { borderTopWidth: 1, borderTopColor: colors.separator },
+  presetCopy: { flex: 1, gap: 2 },
+  presetTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: radius.full,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.separator,
-    minWidth: 40,
+    minWidth: 42,
     alignItems: "center",
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textSecondary },
-  chipTextActive: { color: colors.textOnDark, fontWeight: "600" },
+  chipText: { ...typography.caption, color: colors.textPrimary },
+  chipTextActive: { color: colors.textOnDark, fontWeight: "700" },
+
   notice: {
     backgroundColor: colors.warningLight,
     borderRadius: radius.md,
@@ -960,66 +1066,49 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   noticeText: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
+  linkText: { ...typography.caption, color: colors.primary, fontWeight: "700" },
+  savedText: { ...typography.small, color: colors.success, fontWeight: "600" },
+  errorText: { ...typography.small, color: colors.danger },
+
+  testRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  testInput: { flex: 1 },
+
+  // The bar sits on its own surface with a hairline above it, so it reads as
+  // furniture rather than as the next thing in the scroll.
+  actionBar: {
+    backgroundColor: colors.card,
+    borderTopWidth: 1,
+    borderTopColor: colors.separator,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+    ...shadow.md,
+  },
+  buttonRow: { flexDirection: "row", gap: spacing.sm },
+  grow: { flex: 1 },
   primaryButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
-    marginTop: spacing.sm,
+    justifyContent: "center",
   },
-  buttonDisabled: { opacity: 0.4 },
+  primaryButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
   secondaryButton: {
     borderRadius: radius.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.primary,
   },
   secondaryButtonText: { ...typography.caption, color: colors.primary, fontWeight: "700" },
-  presetBox: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  presetCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    gap: 2,
-  },
-  presetTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
-  testBox: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  primaryButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
-  sendBox: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.separator,
-    gap: spacing.sm,
-  },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  disabled: { opacity: 0.4 },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  progressText: { ...typography.caption, color: colors.textPrimary, flex: 1 },
   cancelText: { ...typography.caption, color: colors.danger, fontWeight: "700" },
-  errorText: { ...typography.small, color: colors.danger },
-  statusButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  statusButtonDestructive: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.danger,
-  },
-  statusButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "700" },
-  statusButtonTextDestructive: { color: colors.danger },
 });

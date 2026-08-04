@@ -69,8 +69,18 @@ function resolveStatus(
  * `no_consent` is the merchant's working list: guests who could be reachable
  * and are not, which is where the consent button does its work. Doing that by
  * eye over hundreds of rows is why the audience stayed at zero.
+ *
+ * `opted_out` and `no_phone` are here so every band of the reach bar can be
+ * tapped. A readout whose parts are not reachable is a chart; one whose parts
+ * narrow the list is a control. `suppressed` is deliberately absent — it is a
+ * tenant-level block the merchant cannot act on from a row.
  */
-export type CustomerListFilter = "all" | "textable" | "no_consent";
+export type CustomerListFilter =
+  | "all"
+  | "textable"
+  | "no_consent"
+  | "opted_out"
+  | "no_phone";
 
 export interface CustomerListOptions {
   query: string;

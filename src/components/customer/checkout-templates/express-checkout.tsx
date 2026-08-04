@@ -53,7 +53,7 @@ function Section({
 }
 
 export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
-  const { router, tenant, orderTypes, orderType, formFields, advanceConfig } = checkout
+  const { router, tenant, orderType, formFields, advanceConfig } = checkout
 
   if (!tenant) return null
 
@@ -82,7 +82,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
       <main className="mx-auto max-w-lg px-4 pt-4 pb-32">
         <div className="space-y-4">
           {/* Order type + scheduling */}
-          {orderTypes.length > 0 && (
+          {checkout.shouldAskFulfillment && (
             <Section
               title="How do you want it?"
               subtitle={advanceConfig.enabled ? 'Pick a method and when' : 'Pick a fulfillment method'}

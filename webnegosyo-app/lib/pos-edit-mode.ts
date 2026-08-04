@@ -31,6 +31,7 @@ import { diffOrderItems } from "./order-revision";
 
 import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
+import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
@@ -124,6 +125,32 @@ export interface EnterEditModeRequest {
 }
 
 /**
+ * Something the cashier can do, from this screen, about a refusal.
+ *
+ * Only refusals the person reading them can actually act on get one. A
+ * delivered order and a missing permission are facts about the world; an open
+ * counter sale is a state the same person can clear.
+ */
+export interface EditRemedy {
+  action: "clear_register";
+  /** Button copy. */
+  label: string;
+  /** Shown before acting — clearing discards a real customer's sale. */
+  confirm: string;
+}
+
+export interface EnterEditGate extends EditGate {
+  remedy?: EditRemedy;
+}
+
+const CLEAR_REGISTER_REMEDY: EditRemedy = {
+  action: "clear_register",
+  label: "Clear the register and edit",
+  confirm:
+    "The sale on the register will be discarded and this order opened for editing instead. This cannot be undone.",
+};
+
+/**
  * May the register open this order for editing right now?
  *
  * The status, permission, backend and branch rules are NOT re-implemented here.
@@ -146,7 +173,7 @@ export function canEnterEditMode({
   user,
   scope,
   order,
-}: EnterEditModeRequest): EditGate {
+}: EnterEditModeRequest): EnterEditGate {
   const gate = canEditOrder({ status, backend, user, scope, order });
   if (!gate.allowed) return gate;
 
@@ -155,6 +182,7 @@ export function canEnterEditMode({
       allowed: false,
       reason:
         "The register has a sale in progress. Finish or clear it before editing an order.",
+      remedy: CLEAR_REGISTER_REMEDY,
     };
   }
 
@@ -230,6 +258,21 @@ export interface EditModeTotals {
   intent: SettlementIntent;
   isDirty: boolean;
   canSave: boolean;
+  /**
+   * What to store as the order's discount, for the revise mutation.
+   *
+   * `undefined` — nothing to say; leave whatever is stored alone. That is the
+   * right default for the overwhelming majority of edits, which never touch a
+   * discount, and blanking it every save would erase an original this code
+   * never saw.
+   * a payload   — this is the discount now, rows and total together.
+   * `null`      — re-pricing dropped every line. Clear it, or the order shows
+   *               a discount it no longer has.
+   *
+   * Derived from the same lines as {@link carriedChargesForSave}, so the rows
+   * stored and the total stored can always be reconciled.
+   */
+  settledDiscount?: OrderDiscountPayload | null;
   /** Why saving is blocked, shown to the cashier verbatim. */
   blockedReason?: string;
 }
@@ -240,6 +283,60 @@ function round2(n: number): number {
 
 function itemsTotalOf(cart: readonly PosCartLine[]): number {
   return round2(cart.reduce((sum, line) => sum + line.subtotal, 0));
+}
+
+/**
+ * The discount lines this edit ADDED, beyond what the order already carries.
+ *
+ * Two callers, one rule. `editModeTotals` sums these to price the bill, and the
+ * tender screen burns them — and only them.
+ *
+ * A code already on the bill yields nothing either way. Re-entering one is an
+ * easy mistake at a counter (the customer hands the same voucher over twice, or
+ * the cashier does not recognise the label on the existing row): counting it
+ * again gives away one discount for a voucher presented once, and burning it
+ * again spends a second redemption from the customer's own allowance.
+ *
+ * A manual discount is excluded too — no code means nothing to redeem.
+ */
+export function newDiscountLines(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): OrderDiscountLine[] {
+  const alreadyOn = new Set(
+    carried.map((line) => line.code).filter((code): code is string => code != null),
+  );
+
+  return added.filter(
+    (line) =>
+      Number.isFinite(line.amount) &&
+      line.amount > 0 &&
+      line.code != null &&
+      !alreadyOn.has(line.code),
+  );
+}
+
+/**
+ * What this edit's own discount lines are worth.
+ *
+ * Manual lines are counted here but never burned: a cashier's open discount is
+ * real money off the bill with no voucher behind it.
+ */
+function addedDiscountsOf(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): number {
+  const alreadyOn = new Set(
+    carried.map((line) => line.code).filter((code): code is string => code != null),
+  );
+
+  return round2(
+    added.reduce((sum, line) => {
+      if (!Number.isFinite(line.amount) || line.amount <= 0) return sum;
+      if (line.code != null && alreadyOn.has(line.code)) return sum;
+      return sum + line.amount;
+    }, 0),
+  );
 }
 
 /**
@@ -296,6 +393,7 @@ export function withEditVouchers(
 export function editModeTotals(
   cart: readonly PosCartLine[],
   context: OrderEditContext,
+  addedDiscountLines: readonly OrderDiscountLine[] = [],
 ): EditModeTotals {
   const itemsTotal = itemsTotalOf(cart);
 
@@ -318,10 +416,28 @@ export function editModeTotals(
     now: new Date(),
   });
 
+  // A code the cashier applied during THIS edit, on top of whatever the order
+  // already carried. Capped against the two together rather than separately:
+  // two lines that each fit under the bill can still sum past it, and a
+  // negative total is money invented.
+  const chargeable = round2(itemsTotal + context.carriedCharges + context.deliveryFee);
+  const added = addedDiscountsOf(addedDiscountLines, discount.lines);
+  const discountTotal = Math.min(round2(discount.total + added), Math.max(chargeable, 0));
+
   // Folded once, here, so the shown total and the saved one cannot disagree:
   // `revisedOrderTotal(items, delivery, carriedChargesForSave)` reproduces
   // `newTotal` exactly, which is what the revise mutation recomputes.
-  const carriedChargesForSave = round2(context.carriedCharges - discount.total);
+  const carriedChargesForSave = round2(context.carriedCharges - discountTotal);
+
+  const settledLines = [
+    ...discount.lines,
+    ...newDiscountLines(addedDiscountLines, discount.lines),
+  ];
+  const settledDiscount = settledDiscountOf(
+    settledLines,
+    discountTotal,
+    context.storedDiscount,
+  );
   const newTotal = revisedOrderTotal(
     itemsTotal,
     context.deliveryFee,
@@ -333,8 +449,11 @@ export function editModeTotals(
   // Same identity rule the revision diff uses, so "is this dirty?" and "what
   // changed?" can never disagree — an enabled Save button beside an empty
   // change list is a bug the cashier cannot explain.
+  // Applying a code moves no line, so the item diff alone would leave Save
+  // disabled on an edit whose only point was the discount.
   const isDirty =
-    diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0;
+    diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0 ||
+    added > 0;
 
   const blockedReason =
     cart.length === 0
@@ -350,5 +469,37 @@ export function editModeTotals(
     isDirty,
     canSave: isDirty && !blockedReason,
     ...(blockedReason ? { blockedReason } : {}),
+    ...(settledDiscount !== undefined ? { settledDiscount } : {}),
+  };
+}
+
+/**
+ * Turn the settled lines into a payload to store — or into the decision not to.
+ *
+ * Silence (`undefined`) when there was nothing before and nothing now, so an
+ * ordinary edit does not write a discount key onto an order that never had one.
+ * `null` when the order HAD a discount and now has none, which is a real change
+ * and has to be distinguishable from silence.
+ */
+function settledDiscountOf(
+  lines: readonly OrderDiscountLine[],
+  total: number,
+  stored: OrderDiscountPayload | null,
+): OrderDiscountPayload | null | undefined {
+  if (lines.length === 0) return stored ? null : undefined;
+
+  return {
+    total,
+    // Delivery is discounted through a free-delivery voucher, which carries no
+    // line of its own; the register cannot attribute it, so it is not claimed.
+    deliveryDiscount: stored?.deliveryDiscount ?? 0,
+    lines: lines.map((line) => ({
+      label: line.label,
+      amount: line.amount,
+      ...(line.code != null ? { code: line.code } : {}),
+      ...(line.voucherId != null ? { voucherId: line.voucherId } : {}),
+    })),
+    // Per-line allocation is the checkout's; the register has no equivalent.
+    allocationsByLine: {},
   };
 }

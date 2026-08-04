@@ -11,11 +11,17 @@ import {
     listMenuItemsForProvisioning,
     listCategoriesForProvisioning,
 } from '@/lib/admin-service'
-import { createAddonLibraryEntry } from '@/lib/addon-library-service'
-import { createUpsellPair } from '@/lib/menu-engineering-service'
-import { createBundle } from '@/lib/bundles-service'
+import { createAddonLibraryEntry, listAddonLibraryForProvisioning } from '@/lib/addon-library-service'
+import { attachAddonEntriesToItems } from '@/lib/addon-bulk-attach'
+import { createUpsellPair, bulkUpdateBcgClassification, listUpsellPairsForProvisioning } from '@/lib/menu-engineering-service'
+import { classifyMenu } from '@/lib/menu-engineering-classify'
+import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } from '@/lib/menu-arrangement'
+import { createBundle, listBundlesForProvisioning } from '@/lib/bundles-service'
+import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
+import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
+import { createSmsCampaign, listSmsCampaignsForProvisioning } from '@/lib/sms-campaigns-service'
 import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
 
 /**
@@ -76,6 +82,25 @@ function withoutTenantId(input: Record<string, unknown>): Record<string, unknown
     const rest = { ...input }
     delete rest.tenantId
     return rest
+}
+
+/**
+ * Read the per-tenant flags that gate bundles and upsells.
+ *
+ * A failed read reports every flag as absent, which `featureWarningFor` treats
+ * as OFF — so an unreadable tenant produces a warning rather than a confident
+ * silence. Warning about a live feature is a small annoyance; staying silent
+ * about a dead one is how a merchant ends up with promos nobody can see.
+ */
+async function readTenantFeatureFlags(tenantId: string, ctx: ProvisioningCtx): Promise<TenantFeatureFlags> {
+    const { data, error } = await ctx.client
+        .from('tenants')
+        .select('bundles_enabled, menu_engineering_enabled, checkout_upsell_enabled')
+        .eq('id', tenantId)
+        .single()
+
+    if (error || !data) return {}
+    return data as unknown as TenantFeatureFlags
 }
 
 // Erase the type parameter when storing in the heterogeneous registry. Each op
@@ -194,13 +219,27 @@ const ops: ProvisioningOp<unknown>[] = [
         name: 'create_upsell_pair',
         description: 'Create an upsell pair (complementary or upgrade) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
-        execute: (ctx, input) => createUpsellPair((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+        execute: async (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            const [pair, flags] = await Promise.all([
+                createUpsellPair(tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+                readTenantFeatureFlags(tenantId, ctx),
+            ])
+            return withFeatureWarning(pair, 'upsells', flags)
+        },
     }),
     op({
         name: 'create_bundle',
         description: 'Create a menu bundle (fixed or discount pricing) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
-        execute: (ctx, input) => createBundle((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+        execute: async (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            const [bundle, flags] = await Promise.all([
+                createBundle(tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+                readTenantFeatureFlags(tenantId, ctx),
+            ])
+            return withFeatureWarning(bundle, 'bundles', flags)
+        },
     }),
     op({
         name: 'add_payment_method',
@@ -241,7 +280,58 @@ const ops: ProvisioningOp<unknown>[] = [
             return updateTenantSupabase((input as { tenantId: string }).tenantId, payload as never, ctx)
         },
     }),
+    op({
+        name: 'create_sms_campaign',
+        description:
+            "Create an SMS follow-up campaign to announce a promo or bundle. Envelope: { tenantId, name, message_template, schedule_kind, ... }. message_template supports {{firstName}} placeholders. schedule_kind is 'one_off' (needs schedule_date), 'every_n_days' (needs schedule_interval_days) or 'weekly' (needs schedule_weekdays, ISO 1=Mon..7=Sun) — a kind missing its steering field is refused, because it would never become due. SAVED AS A DRAFT unless you explicitly pass status:'active'; a draft never sends until a staff member activates it in the merchant Android app. Sending is done by that handset, not by this tool, and only to customers who gave SMS consent at checkout — nothing here can create or change consent.",
+        input: tenantScoped({
+            name: z.string().min(1).describe('Campaign name, for the merchant to recognise it'),
+            message_template: z.string().min(1).describe('Message body; {{firstName}} is substituted per recipient'),
+            schedule_kind: z.enum(['one_off', 'every_n_days', 'weekly']).describe('How it recurs'),
+            schedule_date: z.string().optional().describe('one_off only: "YYYY-MM-DD"'),
+            schedule_interval_days: z.number().int().positive().optional().describe('every_n_days only'),
+            schedule_weekdays: z.array(z.number().int().min(1).max(7)).optional().describe('weekly only: ISO weekdays'),
+            schedule_time: z.string().optional().describe('Local Manila send time "HH:MM" (default 10:00)'),
+            audience: z
+                .object({
+                    lastOrderOlderThanDays: z.number().int().positive().optional(),
+                    lastOrderWithinDays: z.number().int().positive().optional(),
+                    minOrderCount: z.number().int().nonnegative().optional(),
+                    minTotalSpent: z.number().nonnegative().optional(),
+                    channels: z.array(z.string()).optional(),
+                })
+                .optional()
+                .describe('Recipient filter; all fields AND together'),
+            max_per_run: z.number().int().min(1).max(200).optional().describe('Messages per run (default 25)'),
+            status: z.enum(['draft', 'active', 'paused', 'archived']).optional().describe("Defaults to 'draft'"),
+        }),
+        execute: (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            return createSmsCampaign(tenantId, withoutTenantId(input as Record<string, unknown>), ctx)
+        },
+    }),
     // Reads
+    op({
+        name: 'list_sms_campaigns',
+        description:
+            "List a tenant's SMS campaigns (name, status, schedule, message) so you can see what is already running before creating another. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listSmsCampaignsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'list_bundles',
+        description:
+            "List a tenant's existing bundles (id, name, pricing, visibility flags) so you can see what is already built before creating a near-duplicate. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listBundlesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'list_upsell_pairs',
+        description:
+            "List a tenant's existing upsell pairs (source, target, type, active) so you can see current coverage before proposing more. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listUpsellPairsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
     op({
         name: 'list_tenants',
         description: 'List all tenants (id, name, slug). No input.',
@@ -264,6 +354,127 @@ const ops: ProvisioningOp<unknown>[] = [
             "List a tenant's menu categories (id, name, order, is_active) so a category_id can be resolved by name before adding or moving a menu item. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listCategoriesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'attach_addon_library_entries',
+        description:
+            "Attach reusable add-on library entries to MANY menu items at once — the fast way to give a whole category (or every upsell target) the same modifiers. Envelope: { tenantId, itemIds, entryIds }. Existing add-ons on each item are PRESERVED, and an entry already present by name is skipped, so calling this twice is safe. Resolve entryIds via list_addon_library and itemIds via list_menu_items. To REMOVE an add-on from an item, send the full replacement array via update_menu_item — this surface has no removal tool by design.",
+        input: z.object({
+            tenantId: UUID,
+            itemIds: z.array(UUID).min(1).describe('Menu items that should gain these add-ons'),
+            entryIds: z.array(UUID).min(1).describe('Add-on library entries to attach'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; itemIds: string[]; entryIds: string[] }
+            return attachAddonEntriesToItems(i.tenantId, i.itemIds, i.entryIds, ctx)
+        },
+    }),
+    op({
+        name: 'list_addon_library',
+        description:
+            "List a tenant's reusable add-on library (id, name, price) so an entry can be resolved by name before attaching it. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listAddonLibraryForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'reorder_categories',
+        description:
+            "Set the top-to-bottom order of a tenant's menu categories — the cheapest menu-engineering lever there is. Envelope: { tenantId, categoryIds }. categoryIds must list EVERY category exactly once, first shown first; a partial list is refused, because writing `order` rewrites the whole column and the omitted categories would keep stale positions and interleave. Call list_categories first to get the full set.",
+        input: z.object({
+            tenantId: UUID,
+            categoryIds: z
+                .array(UUID)
+                .min(1)
+                .describe('Every category id, in the order they should appear (first = top)'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; categoryIds: string[] }
+            return reorderCategoriesForProvisioning(i.tenantId, i.categoryIds, ctx)
+        },
+    }),
+    op({
+        name: 'reorder_menu_items',
+        description:
+            "Set the order of the items WITHIN one category — put the stars where guests look first. Envelope: { tenantId, categoryId, itemIds }. itemIds must list every item in that category exactly once, first shown first; a partial list is refused. Call list_menu_items first and filter by category_id to get the full set.",
+        input: z.object({
+            tenantId: UUID,
+            categoryId: UUID.describe('The category whose items are being ordered'),
+            itemIds: z
+                .array(UUID)
+                .min(1)
+                .describe('Every item id in that category, in the order they should appear'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; categoryId: string; itemIds: string[] }
+            return reorderMenuItemsForProvisioning(i.tenantId, i.categoryId, i.itemIds, ctx)
+        },
+    }),
+    op({
+        name: 'classify_menu',
+        description:
+            "PROPOSE a BCG menu-engineering classification (star / plowhorse / puzzle / dog) for every item, computed from the tenant's real sales. Writes NOTHING — review the proposal, then pass the ones you want to keep to apply_menu_classification. Envelope: { tenantId, days?, costs? }. `costs` maps itemId → unit cost; supply it for EVERY item to get true contribution margins, otherwise profitability falls back to a price proxy and `marginBasis` will say 'price_proxy'. When `canApply` is false the evidence was too weak (blind or thin sales read) and you must NOT write classifications or advise removing items — read the `warnings`.",
+        input: z.object({
+            tenantId: UUID,
+            days: z.number().int().min(1).max(365).optional().describe('Sales window in days (default 30)'),
+            costs: z
+                .record(z.string(), z.number())
+                .optional()
+                .describe('itemId → unit cost. Partial coverage is ignored; all-or-nothing.'),
+        }),
+        execute: async (ctx, input) => {
+            const i = input as { tenantId: string; days?: number; costs?: Record<string, number> }
+            const [menuItems, performance] = await Promise.all([
+                listMenuItemsForProvisioning(i.tenantId, ctx),
+                fetchMenuPerformanceForTenantId(i.tenantId, ctx, i.days ?? 30),
+            ])
+
+            const items = ((menuItems ?? []) as Array<{ id: string; name: string; price: number; category_id: string | null }>)
+                .map((m) => ({ id: m.id, name: m.name, price: Number(m.price), categoryId: m.category_id }))
+
+            return { ...classifyMenu({ items, performance, costs: i.costs }), performance }
+        },
+    }),
+    op({
+        name: 'apply_menu_classification',
+        description:
+            "WRITE the BCG classifications you decided on after reviewing classify_menu. Envelope: { tenantId, classifications: [{ itemId, classification }] }. Only the items you list are changed. Do not call this when classify_menu reported canApply: false. Note that classifications only reach customers when the tenant's menu_engineering_enabled flag is on.",
+        input: z.object({
+            tenantId: UUID,
+            classifications: z
+                .array(
+                    z.object({
+                        itemId: UUID,
+                        classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']),
+                    }),
+                )
+                .min(1, 'Pass at least one classification — an empty write is not a success.'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as {
+                tenantId: string
+                classifications: Array<{ itemId: string; classification: 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified' }>
+            }
+            return bulkUpdateBcgClassification(i.tenantId, i.classifications, ctx)
+        },
+    }),
+    op({
+        name: 'get_menu_performance',
+        description:
+            "What actually SELLS: per-item units, revenue and share over the trailing window, read from whichever backend holds this tenant's orders (platform Supabase, the tenant's own Supabase project, or its Convex deployment). Envelope: { tenantId, days? }. ALWAYS call this before classifying a menu, arranging it, or proposing bundles/upsells. Check `coverage` in the response: when `coverage.complete` is false the read saw no data or only part of it — that is an ABSENCE of evidence, not proof that items sold nothing, and you must not classify a menu or recommend removing items from it.",
+        input: z.object({
+            tenantId: UUID,
+            days: z
+                .number()
+                .int()
+                .min(1)
+                .max(365)
+                .optional()
+                .describe('Trailing window in days (default 30, max 365)'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; days?: number }
+            return fetchMenuPerformanceForTenantId(i.tenantId, ctx, i.days ?? 30)
+        },
     }),
     op({
         name: 'get_tenant',

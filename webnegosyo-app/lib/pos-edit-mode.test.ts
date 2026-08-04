@@ -21,6 +21,7 @@ import {
   canEnterEditMode,
   editModeTotals,
   enterEditMode,
+  newDiscountLines,
   type OrderEditContext,
 } from "./pos-edit-mode";
 import type { ModifierCatalog } from "./order-edit-cart";
@@ -113,6 +114,59 @@ describe("canEnterEditMode", () => {
 
     expect(gate.reason).toMatch(/finish|clear/i);
   });
+
+  /**
+   * Naming the way out is not the same as offering it. The order screen has no
+   * register on it, so a cashier reading "clear the register" has to leave,
+   * find the sale, clear it, navigate back, and remember which order they were
+   * on. The remedy is what lets the screen put that behind one button.
+   */
+  it("offers clearing the register as an action, not just as advice", () => {
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy?.action).toBe("clear_register");
+    expect(gate.remedy?.label).toMatch(/clear/i);
+  });
+
+  it("warns that clearing throws away the sale on the register", () => {
+    // Clearing discards a real customer's food. The confirmation is the only
+    // thing between a mis-tap and a re-rung order.
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy?.confirm).toMatch(/sale|lose|discard/i);
+  });
+
+  it("offers no remedy for a refusal clearing the register cannot fix", () => {
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "preparing",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy).toBeUndefined();
+  });
+
+  it("offers no remedy when nothing is blocking", () => {
+    const gate = canEnterEditMode({
+      cart: [],
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy).toBeUndefined();
+  })
 
   /**
    * The status, permission, backend and branch rules are NOT re-implemented
@@ -451,5 +505,339 @@ describe("editModeTotals", () => {
     );
 
     expect(totals.canSave).toBe(true);
+  });
+});
+
+/**
+ * Discounting an order that is already placed.
+ *
+ * Before this, a cashier editing an order could not apply a code at all: the
+ * register hid the discount button in edit mode, so a customer who produced a
+ * voucher after ordering had to have the order cancelled and re-rung.
+ *
+ * The danger being guarded is double-counting. The order already carries a
+ * re-priced stored discount, and a code added now is a SECOND line on top of
+ * it — so the fold has to cap the pair against what is actually chargeable and
+ * has to refuse a code that is already on the bill.
+ */
+describe("editModeTotals with a discount added during the edit", () => {
+  function plainContext(): OrderEditContext {
+    return {
+      orderId: "order-1",
+      expectedRevisionNumber: 0,
+      originalTotal: 200,
+      deliveryFee: 0,
+      carriedCharges: 0,
+      payments: [{ kind: "charge", amount: 200 }],
+      storedDiscount: null,
+      discountVouchers: null,
+      originalItems: [
+        {
+          menuItemId: "item-latte",
+          menuItemName: "item-latte",
+          quantity: 2,
+          price: 100,
+          subtotal: 200,
+        },
+      ],
+      originalStockItems: [{ menuItemId: "item-latte", quantity: 2, optionIds: [] }],
+    };
+  }
+
+  const cart = () => cartOf({ id: "item-latte", price: 100, qty: 2 });
+
+  it("takes a newly applied discount off the total", () => {
+    const totals = editModeTotals(cart(), plainContext(), [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.newTotal).toBe(160);
+  });
+
+  it("leaves the total alone when nothing was added", () => {
+    expect(editModeTotals(cart(), plainContext(), []).newTotal).toBe(200);
+  });
+
+  it("turns the discount into money owed back on an order already paid in full", () => {
+    const totals = editModeTotals(cart(), plainContext(), [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.intent).toBe("refund");
+    expect(totals.balance).toBe(-40);
+  });
+
+  /**
+   * The identity the save path depends on: what the screen shows and what the
+   * revise mutation recomputes must be the same number. `carriedChargesForSave`
+   * is the only channel a discount can travel through.
+   */
+  it("folds the new discount into the figure the revise mutation is sent", () => {
+    const totals = editModeTotals(cart(), plainContext(), [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.carriedChargesForSave).toBe(-40);
+    expect(200 + totals.carriedChargesForSave).toBe(totals.newTotal);
+  });
+
+  it("never discounts an order below zero", () => {
+    const totals = editModeTotals(cart(), plainContext(), [
+      { label: "HUGE", amount: 500, code: "HUGE", voucherId: "v-2" },
+    ]);
+
+    expect(totals.newTotal).toBe(0);
+  });
+
+  it("applies a new code on top of the discount the order already carried", () => {
+    const context: OrderEditContext = {
+      ...plainContext(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      // ₱20 already given, carried forward because the lookup has not returned.
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+      carriedCharges: 0,
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    // ₱200 of coffee, less the ₱20 carried and the ₱40 just added.
+    expect(totals.newTotal).toBe(140);
+  });
+
+  /**
+   * A cashier re-entering a code the order already has would otherwise get the
+   * discount twice, for one voucher the customer presented once.
+   */
+  it("ignores a code the order is already discounted by", () => {
+    const context: OrderEditContext = {
+      ...plainContext(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" },
+    ]);
+
+    expect(totals.newTotal).toBe(180);
+  });
+
+  it("caps the pair at the bill rather than letting them sum past it", () => {
+    const context: OrderEditContext = {
+      ...plainContext(),
+      storedDiscount: {
+        total: 150,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "BIG", amount: 150, code: "BIG", voucherId: "v-big" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "SAVE20", amount: 100, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.newTotal).toBe(0);
+    expect(totals.newTotal).toBeGreaterThanOrEqual(0);
+  });
+
+  /** Applying a code is a change worth saving even if no item moved. */
+  it("counts an added discount as a change worth saving", () => {
+    const totals = editModeTotals(cart(), plainContext(), [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.isDirty).toBe(true);
+    expect(totals.canSave).toBe(true);
+  });
+
+  it("still refuses to save an order emptied to nothing", () => {
+    const totals = editModeTotals([], plainContext(), [
+      { label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.canSave).toBe(false);
+  });
+});
+
+/**
+ * Which codes an edit has to burn.
+ *
+ * Enabling discounts during an edit introduced a way to give a single-use
+ * voucher away forever: the register burns redemptions on the counter-sale
+ * path only, so a code applied during an edit would price into the bill and
+ * never increment its usage count.
+ *
+ * Burning the whole discount is equally wrong in the other direction — the
+ * codes the order already carried were burned when it was placed, and burning
+ * them again on every edit would exhaust a customer's own allowance.
+ */
+describe("newDiscountLines", () => {
+  const carried = [
+    { label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" },
+  ];
+
+  it("returns the code applied during this edit", () => {
+    const fresh = newDiscountLines(
+      [{ label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" }],
+      carried,
+    );
+
+    expect(fresh.map((line: { code?: string }) => line.code)).toEqual(["SAVE20"]);
+  });
+
+  it("leaves out a code the order already carried and already burned", () => {
+    expect(newDiscountLines(carried, carried)).toEqual([]);
+  });
+
+  it("returns nothing when the edit added no discount", () => {
+    expect(newDiscountLines([], carried)).toEqual([]);
+  });
+
+  /** A cashier's open discount has no code, so there is nothing to redeem. */
+  it("leaves out a manual discount, which has no voucher to burn", () => {
+    expect(newDiscountLines([{ label: "Goodwill", amount: 15 }], carried)).toEqual([]);
+  });
+
+  it("leaves out a line worth nothing", () => {
+    expect(
+      newDiscountLines([{ label: "ZERO", amount: 0, code: "ZERO", voucherId: "v-0" }], carried),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * The discount an edit ends up with, as a record the order can store.
+ *
+ * `carriedChargesForSave` makes the TOTAL right and always has. It does not
+ * make the order HONEST: the stored discount payload was written once at order
+ * creation and never again, so an edit that re-priced a voucher or applied a
+ * new one left the order showing its ORIGINAL rows beside a total those rows no
+ * longer add up to.
+ *
+ * So the totals also report what to store, and the two are derived from the
+ * same lines — a payload that disagreed with `carriedChargesForSave` would be
+ * the same bug in a new place.
+ */
+describe("the discount an edit settles on", () => {
+  function plain(): OrderEditContext {
+    return {
+      orderId: "order-1",
+      expectedRevisionNumber: 0,
+      originalTotal: 200,
+      deliveryFee: 0,
+      carriedCharges: 0,
+      payments: [{ kind: "charge", amount: 200 }],
+      storedDiscount: null,
+      discountVouchers: null,
+      originalItems: [
+        {
+          menuItemId: "item-latte",
+          menuItemName: "item-latte",
+          quantity: 2,
+          price: 100,
+          subtotal: 200,
+        },
+      ],
+      originalStockItems: [{ menuItemId: "item-latte", quantity: 2, optionIds: [] }],
+    };
+  }
+
+  const cart = () => cartOf({ id: "item-latte", price: 100, qty: 2 });
+
+  it("reports nothing to store when the order never had a discount and none was added", () => {
+    // `undefined` is "do not touch what is stored", which is right: blanking
+    // it on every ordinary edit would erase an original this code never saw.
+    expect(editModeTotals(cart(), plain()).settledDiscount).toBeUndefined();
+  });
+
+  it("reports the code applied during the edit", () => {
+    const totals = editModeTotals(cart(), plain(), [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.settledDiscount?.total).toBe(40);
+    expect(totals.settledDiscount?.lines).toEqual([
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+  });
+
+  it("reports the carried discount and the new one together", () => {
+    const context: OrderEditContext = {
+      ...plain(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.settledDiscount?.total).toBe(60);
+    expect(totals.settledDiscount?.lines).toHaveLength(2);
+  });
+
+  /**
+   * The identity that keeps the stored rows reconcilable to the stored total.
+   * If these drift, the merchant sees rows that do not add up to the bill.
+   */
+  it("stores a total that matches what came off the bill", () => {
+    const context: OrderEditContext = {
+      ...plain(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(200 - totals.settledDiscount!.total).toBe(totals.newTotal);
+    expect(totals.carriedChargesForSave).toBe(-totals.settledDiscount!.total);
+  });
+
+  it("clears the stored discount when re-pricing dropped every line", () => {
+    // The voucher's item was removed, so it no longer applies. Leaving the row
+    // stored would show a discount on an order that no longer has one.
+    const context: OrderEditContext = {
+      ...plain(),
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+      // An empty voucher list is a successful lookup that found nothing, so
+      // re-pricing runs rather than carrying the bill as placed.
+      discountVouchers: [],
+    };
+
+    expect(editModeTotals([], context, []).settledDiscount).toBeNull();
   });
 });

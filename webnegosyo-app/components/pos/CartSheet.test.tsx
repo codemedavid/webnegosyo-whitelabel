@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { CartSheet } from "./CartSheet";
 import { addLine, cartTotals, type PosCartLine } from "../../lib/pos-cart";
 import { sessionDiscount, type PosDiscountSession } from "../../lib/pos-discount-session";
@@ -70,6 +70,27 @@ function renderSale(session: PosDiscountSession) {
       onCharge={() => {}}
       discountLines={discountLines}
       onAddDiscount={() => {}}
+    />,
+  );
+}
+
+/** The sheet with props under the test's control, for the affordance cases. */
+function renderSheet(overrides: Partial<React.ComponentProps<typeof CartSheet>> = {}) {
+  const lines = counterSale();
+  render(
+    <CartSheet
+      lines={lines}
+      totals={cartTotals(lines, SERVICE_CHARGE)}
+      orderTypes={[]}
+      orderTypeId={null}
+      isExpanded
+      onToggle={() => {}}
+      onSelectOrderType={() => {}}
+      onChangeQty={() => {}}
+      onClear={() => {}}
+      onCharge={() => {}}
+      onAddDiscount={() => {}}
+      {...overrides}
     />,
   );
 }
@@ -137,5 +158,59 @@ describe("a sale with two discounts on it", () => {
   it("charges net of both", () => {
     // ₱330 − ₱150 − ₱25.
     expect(screen.getByText("₱155.00")).toBeTruthy();
+  });
+});
+
+/**
+ * Finding the discount entry at all.
+ *
+ * The engine, the sheet and the store were all built and all worked — and a
+ * merchant still reported "I added an item and I don't see a damn thing about
+ * adding a voucher". They were right: "+ Add discount" rendered only inside the
+ * expanded cart, and the cart opens COLLAPSED. A cashier with a customer
+ * holding a code had to know to tap the item count first.
+ *
+ * A feature nobody can find is a feature that does not exist, so the affordance
+ * belongs where the cashier already is.
+ */
+describe("finding the discount entry", () => {
+  it("offers a discount without making the cashier expand the cart first", () => {
+    renderSheet({ isExpanded: false });
+
+    expect(screen.getByLabelText("Add a discount")).toBeTruthy();
+  });
+
+  it("opens the same discount sheet from the collapsed bar", () => {
+    const onAddDiscount = jest.fn();
+    renderSheet({ isExpanded: false, onAddDiscount });
+
+    fireEvent.press(screen.getByLabelText("Add a discount"));
+
+    expect(onAddDiscount).toHaveBeenCalled();
+  });
+
+  it("offers nothing to discount on an empty register", () => {
+    renderSheet({ isExpanded: false, lines: [] });
+
+    expect(screen.queryByLabelText("Add a discount")).toBeNull();
+  });
+
+  it("hides the affordance when the caller offers no discounting", () => {
+    // Kept honest rather than always-on: the caller decides whether this sale
+    // may be discounted at all.
+    renderSheet({ isExpanded: false, onAddDiscount: undefined });
+
+    expect(screen.queryByLabelText("Add a discount")).toBeNull();
+  });
+
+  it("shows an applied discount on the collapsed bar", () => {
+    // Otherwise a cashier who collapses the cart sees a total that does not
+    // match the items with nothing on screen explaining the difference.
+    renderSheet({
+      isExpanded: false,
+      discountLines: [{ label: "SAVE20", amount: 40, code: "SAVE20", voucherId: "v-1" }],
+    });
+
+    expect(screen.getByText(/SAVE20/)).toBeTruthy();
   });
 });

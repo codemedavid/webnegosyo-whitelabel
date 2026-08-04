@@ -16,6 +16,15 @@ import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
+import {
+  CollectPaymentSheet,
+  type CollectedPayment,
+} from "../../../components/order/CollectPaymentSheet";
+import { canCollectPayment } from "../../../lib/order-collect";
+import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
+import { summarizeSettlement } from "../../../lib/order-history-view";
+import { listAllPaymentMethods } from "../../../lib/pos-catalog";
+import type { PosPaymentMethod } from "../../../lib/pos-payment-methods";
 import { canEnterEditMode, enterEditMode } from "../../../lib/pos-edit-mode";
 import { usePosCartStore } from "../../../stores/pos-cart-store";
 import { listProducts } from "../../../lib/products";
@@ -29,11 +38,13 @@ import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 import { orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
+import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
 const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
+const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
 const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
@@ -139,25 +150,6 @@ const stepperStyles = StyleSheet.create({
   line: { position: "absolute", top: 5, left: "60%", right: "-40%", height: 2, backgroundColor: colors.separator },
   lineComplete: { backgroundColor: colors.success },
 });
-
-const HIDDEN_FIELDS = new Set([
-  'messenger_psid',
-  'delivery_lat',
-  'delivery_lng',
-  'customer_name',
-  'customer_phone',
-  'customer_contact',
-  // Payment proof is rendered explicitly in the Payment card, not as raw rows.
-  'payment_proof_reference',
-  'payment_proof_url',
-  'payment_proof_public_id',
-]);
-
-function formatFieldLabel(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function ItemThumb({ url, name }: { url?: string; name: string }) {
   if (url) {
@@ -360,6 +352,12 @@ export default function OrderDetailScreen() {
     getOrderPaymentsRef,
     orderId ? { orderId } : "skip",
   );
+  // Most stores run a deployment older than the ledger itself, which answers
+  // that query with "no such function". That is an EMPTY ledger, not an unknown
+  // one — nothing can have been settled through a backend that cannot record a
+  // payment — and conflating the two used to refuse every edit on those stores.
+  const ledgerState = resolveLedgerState(paymentsError);
+
   const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(
     getOrderRevisionsRef,
     orderId ? { orderId } : "skip",
@@ -373,6 +371,74 @@ export default function OrderDetailScreen() {
   const registerCart = usePosCartStore((s) => s.lines);
   const beginEdit = usePosCartStore((s) => s.beginEdit);
   const setEditVouchers = usePosCartStore((s) => s.setEditVouchers);
+  const resetRegister = usePosCartStore((s) => s.reset);
+
+  // Settling a bill that was rung up earlier. Deliberately NOT routed through
+  // an order edit, which was the only path before: re-tendering rewrites a bill
+  // nobody disputed just to record money changing hands.
+  const recordPayment = useSafeMutation(recordPaymentRef);
+  const [isCollectOpen, setIsCollectOpen] = useState(false);
+  const [collectMethods, setCollectMethods] = useState<PosPaymentMethod[]>([]);
+
+  // The same summary the card renders, so the figure the cashier is asked to
+  // collect and the figure they were shown as owing cannot disagree.
+  const balanceDue = order ? summarizeSettlement(order.total, payments ?? []).balance : 0;
+  const collectGate = order
+    ? canCollectPayment({
+        status: order.status,
+        backend: orderBackend ?? "convex",
+        user: { role, isOwner, permissions },
+        balance: balanceDue,
+        ledger: ledgerState,
+        scope,
+        order,
+      })
+    : { allowed: false as const };
+
+  /**
+   * Methods are fetched only once the cashier opens the sheet. Most visits to
+   * this screen never take a payment, and the list is the same one the register
+   * uses.
+   */
+  async function handleOpenCollect() {
+    if (!tenantId) return;
+    if (isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+
+    try {
+      setCollectMethods(await listAllPaymentMethods(tenantId));
+    } catch {
+      // A missing method list is not a reason to block the payment — cash with
+      // no method attached is still a truthful ledger row.
+      setCollectMethods([]);
+    }
+    setIsCollectOpen(true);
+  }
+
+  async function handleCollect(payment: CollectedPayment) {
+    if (!order) return;
+
+    try {
+      await recordPayment({
+        orderId: order._id,
+        kind: "charge",
+        amount: payment.amount,
+        paymentMethodId: payment.methodId,
+        paymentMethodName: payment.methodName,
+        reference: payment.reference,
+        recordedBy: useAuthStore.getState().userId ?? undefined,
+        outletId: scope.kind === "branch" ? scope.outletId : undefined,
+      });
+      setIsCollectOpen(false);
+    } catch (err) {
+      Alert.alert(
+        "Could not record the payment",
+        err instanceof Error ? err.message : "Nothing was recorded. Try again.",
+      );
+    }
+  }
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const editGate = order
@@ -385,6 +451,29 @@ export default function OrderDetailScreen() {
         order,
       })
     : { allowed: false as const };
+
+  /**
+   * Discard the open counter sale, then open this order.
+   *
+   * Confirmed first: the sale being cleared is a real customer's food, and the
+   * register cart is not persisted, so there is nothing to restore it from.
+   */
+  function handleClearRegisterAndEdit() {
+    const remedy = editGate.remedy;
+    if (!remedy || isOpeningEdit) return;
+
+    Alert.alert("Clear the register?", remedy.confirm, [
+      { text: "Keep the sale", style: "cancel" },
+      {
+        text: "Clear and edit",
+        style: "destructive",
+        onPress: () => {
+          resetRegister();
+          void handleOpenInRegister();
+        },
+      },
+    ]);
+  }
 
   /**
    * Load the order into the register and switch to it.
@@ -402,8 +491,9 @@ export default function OrderDetailScreen() {
     }
 
     // An order opened without its ledger looks unpaid, and the register would
-    // offer to collect a bill that was already settled.
-    if (paymentsError) {
+    // offer to collect a bill that was already settled. A store whose backend
+    // has no ledger is a different case and passes: see `order-ledger`.
+    if (!isLedgerSafeToEdit(ledgerState)) {
       Alert.alert(
         "Cannot edit this order",
         "Its payment history could not be loaded, so its bill cannot be edited safely.",
@@ -473,6 +563,7 @@ export default function OrderDetailScreen() {
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
   const { images: itemImages } = useOrderItemImages(itemImageIds);
+  const customerDetailRows = buildCustomerDetailRows(order?.customerData);
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
@@ -572,18 +663,14 @@ export default function OrderDetailScreen() {
         )}
       </Card>
 
-      {order.customerData && Object.keys(order.customerData).filter(
-        (k) => !HIDDEN_FIELDS.has(k) && order.customerData![k] != null && String(order.customerData![k]).trim() !== ''
-      ).length > 0 && (
+      {customerDetailRows.length > 0 && (
         <Card title="Customer Details" style={styles.section}>
-          {Object.entries(order.customerData)
-            .filter(([k, v]) => !HIDDEN_FIELDS.has(k) && v != null && String(v).trim() !== '')
-            .map(([key, value]) => (
-              <View key={key} style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{formatFieldLabel(key)}</Text>
-                <Text style={styles.detailValue}>{String(value)}</Text>
-              </View>
-            ))}
+          {customerDetailRows.map((row) => (
+            <View key={row.key} style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{row.label}</Text>
+              <Text style={styles.detailValue}>{row.value}</Text>
+            </View>
+          ))}
         </Card>
       )}
 
@@ -640,6 +727,12 @@ export default function OrderDetailScreen() {
           >
             <Text style={row.kind === "total" ? styles.totalLabel : styles.summaryLabel}>
               {row.label}
+              {/*
+                The label is the voucher's NAME, which two vouchers can share.
+                A merchant reconciling takings, and a customer disputing a
+                bill, both work from the code.
+              */}
+              {row.code ? <Text style={styles.summaryCode}>  {row.code}</Text> : null}
             </Text>
             <Text
               style={[
@@ -690,7 +783,32 @@ export default function OrderDetailScreen() {
       <SettlementCard
         total={order.total}
         payments={payments ?? []}
-        isLedgerAvailable={!paymentsError}
+        isLedgerAvailable={ledgerState === "available"}
+      />
+
+      {/*
+        Sits under the ledger it settles rather than with the status actions at
+        the foot of the screen: the cashier reading "Still owing ₱149.00" is
+        looking here, and the answer to it should be here too.
+      */}
+      {collectGate.allowed && (
+        <TouchableOpacity
+          style={styles.collectButton}
+          onPress={handleOpenCollect}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.collectButtonText}>
+            Collect ₱{balanceDue.toFixed(2)}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <CollectPaymentSheet
+        visible={isCollectOpen}
+        balanceDue={balanceDue}
+        methods={collectMethods}
+        onSubmit={handleCollect}
+        onClose={() => setIsCollectOpen(false)}
       />
 
       <RevisionHistoryCard revisions={revisions ?? []} />
@@ -715,7 +833,24 @@ export default function OrderDetailScreen() {
               </Text>
             </TouchableOpacity>
           ) : editGate.reason ? (
-            <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+            <>
+              <Text style={styles.editBlockedText}>{editGate.reason}</Text>
+              {/*
+                A refusal the cashier can act on gets a button. Without it they
+                leave this screen, hunt for the sale, clear it, and navigate
+                back — and have to remember which order they were on.
+              */}
+              {editGate.remedy && (
+                <TouchableOpacity
+                  style={styles.remedyButton}
+                  onPress={handleClearRegisterAndEdit}
+                  disabled={isOpeningEdit}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.remedyButtonText}>{editGate.remedy.label}</Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : null}
           {nextStatus && (
             <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
@@ -778,6 +913,7 @@ const styles = StyleSheet.create({
   summaryLabel: { ...typography.body, color: colors.textSecondary, flex: 1, marginRight: spacing.sm },
   summaryValue: { ...typography.body, color: colors.textPrimary },
   summaryDiscount: { color: colors.success },
+  summaryCode: { ...typography.small, color: colors.textSecondary, fontWeight: "600" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.separator },
   totalLabel: { ...typography.heading, color: colors.textPrimary },
   totalValue: { ...typography.heading, color: colors.primary },
@@ -799,6 +935,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: spacing.md,
   },
+  // Filled and in the danger tone the "Still owing" row uses, so the action and
+  // the figure it settles read as the same thing.
+  collectButton: {
+    backgroundColor: colors.danger,
+    borderRadius: radius.full,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  collectButtonText: { color: colors.textOnDark, ...typography.heading },
+  // Outlined rather than filled: it is the way out of a refusal, not the
+  // screen's main action, which stays the status advance below it.
+  remedyButton: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  remedyButtonText: { color: colors.textPrimary, ...typography.body, fontWeight: "700" },
   reprintButton: {
     borderWidth: 1,
     borderColor: colors.primary,

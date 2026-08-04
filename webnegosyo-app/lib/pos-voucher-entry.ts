@@ -37,6 +37,8 @@ export function previewSessionVoucher(
   serviceCharge: number,
   now: Date,
   outletId?: string | null,
+  /** Passed through so the preview judges the same bill the pricing will. */
+  deliveryFee = 0,
 ): VoucherEntryVerdict {
   // Adding a held code is a silent no-op, so it has to be caught here rather
   // than left to look like a voucher worth nothing.
@@ -45,7 +47,7 @@ export function previewSessionVoucher(
   }
 
   const candidate = addSessionVoucher(session, voucher);
-  const priced = sessionDiscount(candidate, cart, serviceCharge, now, outletId);
+  const priced = sessionDiscount(candidate, cart, serviceCharge, now, outletId, deliveryFee);
 
   const rejection = priced.rejected.find((entry) => entry.voucherId === voucher.id);
   if (rejection) {

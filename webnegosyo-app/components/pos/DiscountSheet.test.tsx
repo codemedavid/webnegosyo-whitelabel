@@ -302,3 +302,46 @@ describe("the manual open discount", () => {
     expect(screen.getByText("₱280.00")).toBeTruthy();
   });
 });
+
+/**
+ * The spinner is a promise to the cashier that an answer is coming. Every
+ * refusal path already keeps it — unknown code, engine rejection, worthless
+ * code — because each returns normally and the sheet re-renders with a reason.
+ *
+ * A THROWN lookup keeps nothing. `applyCode` clears the spinner on the line
+ * after the await, so a rejection skips it and the Apply button stays a
+ * spinner and stays disabled: the register is stuck until the app is killed,
+ * with a customer at the counter holding a code.
+ *
+ * `lookupVouchers` is written not to throw, and is now bounded so it cannot
+ * hang either. This is the belt to that braces — the sheet must not depend on
+ * a promise a module three files away happens to keep today.
+ */
+describe("a lookup that fails outright", () => {
+  it("stops the spinner and gives the cashier a way forward", async () => {
+    // Arrange
+    lookup.mockRejectedValue(new Error("network"));
+    render(<Register user={OWNER} />);
+
+    // Act
+    await enterCode("SAVE20");
+
+    // Assert — the button is offering "Apply" again, not spinning forever.
+    expect(await screen.findByText("Apply")).toBeTruthy();
+    expect(screen.getByText(/could not be applied/i)).toBeTruthy();
+  });
+
+  it("leaves the code retryable rather than swallowing the sale", async () => {
+    // Arrange — the connection comes back, as it does at a counter.
+    lookup.mockRejectedValueOnce(new Error("network")).mockResolvedValue([voucher({})]);
+    render(<Register user={OWNER} />);
+
+    // Act
+    await enterCode("SAVE20");
+    await screen.findByText("Apply");
+    fireEvent.press(screen.getByText("Apply"));
+
+    // Assert
+    expect(await screen.findByText("20% off")).toBeTruthy();
+  });
+});

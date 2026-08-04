@@ -52,6 +52,7 @@ import { useKioskMode } from '@/hooks/use-kiosk-mode'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
+import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
@@ -1370,6 +1371,10 @@ export function useCheckout(tenantSlug: string) {
     orderTypes,
     orderType,
     setOrderType,
+    // Whether the fulfillment section is a question at all. A sole order type
+    // is already selected below, so rendering it would be a step made of an
+    // answer — see lib/checkout-fulfillment-choice.
+    shouldAskFulfillment: shouldAskFulfillmentMethod(orderTypes),
     selectedOrderTypeData,
     messengerEnabled,
     // kiosk mode (counter tablet): no Messenger, auto-return to the menu

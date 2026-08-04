@@ -1,4 +1,5 @@
 jest.mock("expo-constants", () => ({
+  __esModule: true,
   default: {
     expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } },
   },

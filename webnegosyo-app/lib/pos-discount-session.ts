@@ -139,8 +139,18 @@ export function sessionDiscount(
   serviceCharge: number,
   now: Date,
   outletId?: string | null,
+  /**
+   * The order's own delivery fee, so a free-delivery code has something to
+   * discount. Zero — the counter-sale default — makes the engine reject one as
+   * `no_delivery_fee`, which is correct at a counter and wrong on an edit.
+   *
+   * Deliberately NOT added to `serviceCharge`: that argument is the chargeable
+   * cap, which already accounts for the fee. Counting it twice would raise the
+   * cap and let a discount exceed the bill.
+   */
+  deliveryFee = 0,
 ): PosSessionDiscount {
-  const context = posDiscountContext(cart, serviceCharge, now, outletId);
+  const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee);
   const application = applyPosVouchers(session.vouchers, context);
 
   const lines: OrderDiscountLine[] = [...application.discountLines];

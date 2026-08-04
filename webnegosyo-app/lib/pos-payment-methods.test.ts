@@ -1,5 +1,6 @@
 import {
   isCashMethod,
+  isProofOutstanding,
   requiresProof,
   toTender,
   type PosPaymentMethod,
@@ -50,6 +51,38 @@ describe("requiresProof", () => {
 
   it("still honours an explicit proof requirement on a cash method", () => {
     expect(requiresProof(method({ name: "Cash", require_payment_proof: true }))).toBe(true);
+  });
+});
+
+describe("isProofOutstanding", () => {
+  it("blocks a wallet sale that carries neither a reference nor a photo", () => {
+    expect(isProofOutstanding(method({ name: "GCash" }), {})).toBe(true);
+  });
+
+  it("accepts a typed reference number in place of a photo", () => {
+    expect(isProofOutstanding(method({ name: "GCash" }), { reference: "0027431188" })).toBe(
+      false,
+    );
+  });
+
+  it("still accepts a photo when no reference was typed", () => {
+    expect(isProofOutstanding(method({ name: "GCash" }), { hasProof: true })).toBe(false);
+  });
+
+  it("does not accept whitespace typed into the reference box", () => {
+    expect(isProofOutstanding(method({ name: "GCash" }), { reference: "   " })).toBe(true);
+  });
+
+  it("asks nothing of a cash sale", () => {
+    expect(isProofOutstanding(method({ name: "Cash" }), {})).toBe(false);
+  });
+
+  it("lets a reference satisfy a cash method the merchant flagged for proof", () => {
+    expect(
+      isProofOutstanding(method({ name: "Cash", require_payment_proof: true }), {
+        reference: "REF-9",
+      }),
+    ).toBe(false);
   });
 });
 
