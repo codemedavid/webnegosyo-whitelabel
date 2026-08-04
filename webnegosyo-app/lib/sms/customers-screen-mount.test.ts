@@ -65,12 +65,12 @@ describe("customers tab permissions", () => {
 });
 
 describe("customers screen wiring", () => {
-  it("gates the SMS surface on Android", () => {
+  it("gates the SMS surface on the shared availability predicate", () => {
     // iOS has no send path at all; showing the campaign UI there would be a
     // dead end, and an SMS surface is a liability in App Store review.
     const source = readCode("app", "(main)", "customers.tsx");
 
-    expect(source).toMatch(/Platform\.OS/);
+    expect(source).toMatch(/isSmsCampaignsAvailable/);
   });
 
   it("defers to the shared sms modules instead of querying Supabase beside the JSX", () => {
@@ -103,6 +103,69 @@ describe("customers screen wiring", () => {
     const source = readCode("app", "(main)", "customers.tsx");
 
     expect(source).not.toMatch(/sms_consent\s*&&/);
+  });
+});
+
+describe("the campaign surface is absent on iOS, not merely disabled", () => {
+  // Apple does not permit an app to send SMS on its own. Shipping a campaign
+  // surface that explains it cannot send is both a review liability and a dead
+  // end for the merchant, so on iOS none of it is rendered at all.
+  //
+  // These read the screen source rather than rendering it — this jest project
+  // only runs pure-logic roots. They prove the gate is wired, not that a
+  // rendered iOS screen is bare; the predicate's own behaviour is covered in
+  // availability.test.ts.
+
+  it("no longer offers the campaigns section on a platform that cannot send", () => {
+    const source = readCode("app", "(main)", "customers.tsx");
+
+    // The chip that switches into the campaign list must sit behind the gate.
+    expect(source).toMatch(/canSendSms|isSmsCampaignsAvailable/);
+    expect(source).not.toMatch(/Platform\.OS !== "android" && \(\s*<View style=\{styles\.notice\}/);
+  });
+
+  it("drops the notice that told an iOS merchant to use the Android app", () => {
+    // With the surface gone there is nothing left to explain; the notice would
+    // be advertising a feature the screen no longer shows.
+    const source = read("app", "(main)", "customers.tsx");
+
+    expect(source).not.toMatch(/send from the Android app|sends? from the Android app/i);
+  });
+
+  it("does not load campaigns on a platform that cannot send them", () => {
+    // Loading them would be a wasted Supabase round trip on every focus, and
+    // would light up the due-reminder scheduler for sends that cannot happen.
+    const source = readCode("app", "(main)", "customers.tsx");
+
+    expect(source).toMatch(/isSmsCampaignsAvailable\(Platform\.OS\)/);
+  });
+
+  it("refuses to open the campaign editor by deep link", () => {
+    // Hiding the entry point is not enough: `campaign/[campaignId]` is a real
+    // route, reachable from a notification tap or a restored navigation state.
+    const source = readCode("app", "(main)", "campaign", "[campaignId].tsx");
+
+    expect(source).toMatch(/isSmsCampaignsAvailable/);
+  });
+});
+
+describe("the iOS binary declares nothing about SMS", () => {
+  it("adds SEND_SMS through an Android-only config plugin", () => {
+    // `withAndroidManifest` never runs on the iOS prebuild, so this is
+    // structural rather than conditional — there is no iOS branch to get
+    // wrong. Locked down because switching to `withPlugins`/`withInfoPlist`
+    // here would silently put an SMS declaration in the iOS binary.
+    const plugin = readCode("plugins", "withSmsPermissions.js");
+
+    expect(plugin).toMatch(/withAndroidManifest/);
+    expect(plugin).not.toMatch(/withInfoPlist|withEntitlementsPlist/);
+  });
+
+  it("asks for no SMS permission beyond sending", () => {
+    const plugin = readCode("plugins", "withSmsPermissions.js");
+
+    expect(plugin).toMatch(/android\.permission\.SEND_SMS/);
+    expect(plugin).not.toMatch(/READ_SMS|RECEIVE_SMS/);
   });
 });
 
