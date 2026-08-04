@@ -5,9 +5,23 @@
  * function states its real requirement: a full payload satisfies it, and so
  * does anything else carrying a total and its lines.
  */
+/**
+ * Deliberately a structural subset of the stored payload, so both backends'
+ * shapes fit without this module depending on either. The extra keys the real
+ * payload carries are declared optional rather than omitted, so a caller can
+ * pass one as a literal.
+ */
 export interface SummarisableDiscount {
   total: number;
-  lines: readonly { label: string; amount: number }[];
+  lines: readonly {
+    label: string;
+    amount: number;
+    /** The voucher's code, when a voucher rather than an open discount. */
+    code?: string;
+    voucherId?: string;
+  }[];
+  deliveryDiscount?: number;
+  allocationsByLine?: Record<string, number>;
 }
 
 /**
@@ -35,6 +49,14 @@ export interface OrderSummaryRow {
   label: string;
   /** Always positive. `kind` carries the direction. */
   amount: number;
+  /**
+   * The voucher's code, on discount rows that came from one.
+   *
+   * The label is the voucher's NAME, which two vouchers can share. A merchant
+   * reconciling a day's takings, and a customer disputing a bill, both work
+   * from the code.
+   */
+  code?: string;
 }
 
 export interface OrderSummaryInput {
@@ -79,7 +101,12 @@ export function orderSummaryRows(input: OrderSummaryInput): OrderSummaryRow[] {
   }
 
   for (const line of discountLines) {
-    rows.push({ kind: "discount", label: line.label, amount: line.amount });
+    rows.push({
+      kind: "discount",
+      label: line.label,
+      amount: line.amount,
+      ...(line.code ? { code: line.code } : {}),
+    });
   }
 
   if (input.discount) {

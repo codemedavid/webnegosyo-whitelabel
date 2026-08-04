@@ -748,6 +748,12 @@ export default function OrderDetailScreen() {
           >
             <Text style={row.kind === "total" ? styles.totalLabel : styles.summaryLabel}>
               {row.label}
+              {/*
+                The label is the voucher's NAME, which two vouchers can share.
+                A merchant reconciling takings, and a customer disputing a
+                bill, both work from the code.
+              */}
+              {row.code ? <Text style={styles.summaryCode}>  {row.code}</Text> : null}
             </Text>
             <Text
               style={[
@@ -928,6 +934,7 @@ const styles = StyleSheet.create({
   summaryLabel: { ...typography.body, color: colors.textSecondary, flex: 1, marginRight: spacing.sm },
   summaryValue: { ...typography.body, color: colors.textPrimary },
   summaryDiscount: { color: colors.success },
+  summaryCode: { ...typography.small, color: colors.textSecondary, fontWeight: "600" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.separator },
   totalLabel: { ...typography.heading, color: colors.textPrimary },
   totalValue: { ...typography.heading, color: colors.primary },
