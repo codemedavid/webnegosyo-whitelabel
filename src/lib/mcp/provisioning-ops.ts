@@ -13,10 +13,11 @@ import {
 } from '@/lib/admin-service'
 import { createAddonLibraryEntry, listAddonLibraryForProvisioning } from '@/lib/addon-library-service'
 import { attachAddonEntriesToItems } from '@/lib/addon-bulk-attach'
-import { createUpsellPair, bulkUpdateBcgClassification } from '@/lib/menu-engineering-service'
+import { createUpsellPair, bulkUpdateBcgClassification, listUpsellPairsForProvisioning } from '@/lib/menu-engineering-service'
 import { classifyMenu } from '@/lib/menu-engineering-classify'
 import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } from '@/lib/menu-arrangement'
-import { createBundle } from '@/lib/bundles-service'
+import { createBundle, listBundlesForProvisioning } from '@/lib/bundles-service'
+import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
 import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
@@ -80,6 +81,25 @@ function withoutTenantId(input: Record<string, unknown>): Record<string, unknown
     const rest = { ...input }
     delete rest.tenantId
     return rest
+}
+
+/**
+ * Read the per-tenant flags that gate bundles and upsells.
+ *
+ * A failed read reports every flag as absent, which `featureWarningFor` treats
+ * as OFF — so an unreadable tenant produces a warning rather than a confident
+ * silence. Warning about a live feature is a small annoyance; staying silent
+ * about a dead one is how a merchant ends up with promos nobody can see.
+ */
+async function readTenantFeatureFlags(tenantId: string, ctx: ProvisioningCtx): Promise<TenantFeatureFlags> {
+    const { data, error } = await ctx.client
+        .from('tenants')
+        .select('bundles_enabled, menu_engineering_enabled, checkout_upsell_enabled')
+        .eq('id', tenantId)
+        .single()
+
+    if (error || !data) return {}
+    return data as unknown as TenantFeatureFlags
 }
 
 // Erase the type parameter when storing in the heterogeneous registry. Each op
@@ -198,13 +218,27 @@ const ops: ProvisioningOp<unknown>[] = [
         name: 'create_upsell_pair',
         description: 'Create an upsell pair (complementary or upgrade) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
-        execute: (ctx, input) => createUpsellPair((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+        execute: async (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            const [pair, flags] = await Promise.all([
+                createUpsellPair(tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+                readTenantFeatureFlags(tenantId, ctx),
+            ])
+            return withFeatureWarning(pair, 'upsells', flags)
+        },
     }),
     op({
         name: 'create_bundle',
         description: 'Create a menu bundle (fixed or discount pricing) for a tenant. Envelope: { tenantId, ... }.',
         input: tenantScoped(),
-        execute: (ctx, input) => createBundle((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+        execute: async (ctx, input) => {
+            const tenantId = (input as { tenantId: string }).tenantId
+            const [bundle, flags] = await Promise.all([
+                createBundle(tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
+                readTenantFeatureFlags(tenantId, ctx),
+            ])
+            return withFeatureWarning(bundle, 'bundles', flags)
+        },
     }),
     op({
         name: 'add_payment_method',
@@ -246,6 +280,20 @@ const ops: ProvisioningOp<unknown>[] = [
         },
     }),
     // Reads
+    op({
+        name: 'list_bundles',
+        description:
+            "List a tenant's existing bundles (id, name, pricing, visibility flags) so you can see what is already built before creating a near-duplicate. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listBundlesForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'list_upsell_pairs',
+        description:
+            "List a tenant's existing upsell pairs (source, target, type, active) so you can see current coverage before proposing more. Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listUpsellPairsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
     op({
         name: 'list_tenants',
         description: 'List all tenants (id, name, slug). No input.',

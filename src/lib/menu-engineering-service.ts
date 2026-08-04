@@ -840,3 +840,21 @@ export async function getRecommendedPlacement(
     reason: 'This standalone item works well as a last-chance checkout suggestion',
   }
 }
+
+/**
+ * List a tenant's upsell pairs for provisioning flows (the MCP), so the caller
+ * can see the pairs that already exist before proposing more. Uses the
+ * service-role `ctx` client when provided, like `createUpsellPair` above.
+ */
+export async function listUpsellPairsForProvisioning(tenantId: string, ctx?: ProvisioningCtx) {
+  const supabase = ctx?.client ?? createAdminClient()
+
+  const { data, error } = await supabase
+    .from('upsell_pairs')
+    .select('id, source_item_id, target_item_id, pair_type, is_active, display_order, is_auto_generated')
+    .eq('tenant_id', tenantId)
+    .order('display_order', { ascending: true })
+
+  if (error) throw error
+  return data
+}
