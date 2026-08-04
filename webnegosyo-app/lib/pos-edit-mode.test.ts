@@ -697,7 +697,7 @@ describe("newDiscountLines", () => {
       carried,
     );
 
-    expect(fresh.map((line) => line.code)).toEqual(["SAVE20"]);
+    expect(fresh.map((line: { code?: string }) => line.code)).toEqual(["SAVE20"]);
   });
 
   it("leaves out a code the order already carried and already burned", () => {
@@ -717,5 +717,127 @@ describe("newDiscountLines", () => {
     expect(
       newDiscountLines([{ label: "ZERO", amount: 0, code: "ZERO", voucherId: "v-0" }], carried),
     ).toEqual([]);
+  });
+});
+
+/**
+ * The discount an edit ends up with, as a record the order can store.
+ *
+ * `carriedChargesForSave` makes the TOTAL right and always has. It does not
+ * make the order HONEST: the stored discount payload was written once at order
+ * creation and never again, so an edit that re-priced a voucher or applied a
+ * new one left the order showing its ORIGINAL rows beside a total those rows no
+ * longer add up to.
+ *
+ * So the totals also report what to store, and the two are derived from the
+ * same lines — a payload that disagreed with `carriedChargesForSave` would be
+ * the same bug in a new place.
+ */
+describe("the discount an edit settles on", () => {
+  function plain(): OrderEditContext {
+    return {
+      orderId: "order-1",
+      expectedRevisionNumber: 0,
+      originalTotal: 200,
+      deliveryFee: 0,
+      carriedCharges: 0,
+      payments: [{ kind: "charge", amount: 200 }],
+      storedDiscount: null,
+      discountVouchers: null,
+      originalItems: [
+        {
+          menuItemId: "item-latte",
+          menuItemName: "item-latte",
+          quantity: 2,
+          price: 100,
+          subtotal: 200,
+        },
+      ],
+      originalStockItems: [{ menuItemId: "item-latte", quantity: 2, optionIds: [] }],
+    };
+  }
+
+  const cart = () => cartOf({ id: "item-latte", price: 100, qty: 2 });
+
+  it("reports nothing to store when the order never had a discount and none was added", () => {
+    // `undefined` is "do not touch what is stored", which is right: blanking
+    // it on every ordinary edit would erase an original this code never saw.
+    expect(editModeTotals(cart(), plain()).settledDiscount).toBeUndefined();
+  });
+
+  it("reports the code applied during the edit", () => {
+    const totals = editModeTotals(cart(), plain(), [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.settledDiscount?.total).toBe(40);
+    expect(totals.settledDiscount?.lines).toEqual([
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+  });
+
+  it("reports the carried discount and the new one together", () => {
+    const context: OrderEditContext = {
+      ...plain(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(totals.settledDiscount?.total).toBe(60);
+    expect(totals.settledDiscount?.lines).toHaveLength(2);
+  });
+
+  /**
+   * The identity that keeps the stored rows reconcilable to the stored total.
+   * If these drift, the merchant sees rows that do not add up to the bill.
+   */
+  it("stores a total that matches what came off the bill", () => {
+    const context: OrderEditContext = {
+      ...plain(),
+      originalTotal: 180,
+      payments: [{ kind: "charge", amount: 180 }],
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+    };
+
+    const totals = editModeTotals(cart(), context, [
+      { label: "20% off", amount: 40, code: "SAVE20", voucherId: "v-1" },
+    ]);
+
+    expect(200 - totals.settledDiscount!.total).toBe(totals.newTotal);
+    expect(totals.carriedChargesForSave).toBe(-totals.settledDiscount!.total);
+  });
+
+  it("clears the stored discount when re-pricing dropped every line", () => {
+    // The voucher's item was removed, so it no longer applies. Leaving the row
+    // stored would show a discount on an order that no longer has one.
+    const context: OrderEditContext = {
+      ...plain(),
+      storedDiscount: {
+        total: 20,
+        deliveryDiscount: 0,
+        allocationsByLine: {},
+        lines: [{ label: "FIRST20", amount: 20, code: "FIRST20", voucherId: "v-first" }],
+      },
+      // An empty voucher list is a successful lookup that found nothing, so
+      // re-pricing runs rather than carrying the bill as placed.
+      discountVouchers: [],
+    };
+
+    expect(editModeTotals([], context, []).settledDiscount).toBeNull();
   });
 });
