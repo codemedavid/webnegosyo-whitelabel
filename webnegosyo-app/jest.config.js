@@ -1,12 +1,20 @@
 /**
- * Jest config for pure-logic modules (lib/, theme/).
- * Component/UI tests are out of scope here — screens are exercised manually
- * via Expo; data shaping and design tokens are covered by these unit tests.
+ * Jest config for pure-logic modules (lib/, theme/, plugins/) and the Zustand
+ * stores in stores/.
+ *
+ * `stores/` was added because it is not presentation: the register's cart store
+ * is where a sale's money actually lives, and four voucher defects reached main
+ * through it while no test in either repo could even import the file. The
+ * stores are plain Zustand — no React renderer needed — so they run under the
+ * same `node` environment as lib/.
+ *
+ * Screens (app/, components/) remain out of scope and are exercised manually
+ * via Expo; anything in them that decides money belongs in lib/ or stores/.
  */
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  roots: ["<rootDir>/lib", "<rootDir>/theme", "<rootDir>/plugins"],
+  roots: ["<rootDir>/lib", "<rootDir>/theme", "<rootDir>/plugins", "<rootDir>/stores"],
   testMatch: ["**/*.test.ts"],
   transform: {
     "^.+\\.tsx?$": [
