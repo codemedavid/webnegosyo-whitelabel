@@ -38,6 +38,7 @@ import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 import { orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
+import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
@@ -149,25 +150,6 @@ const stepperStyles = StyleSheet.create({
   line: { position: "absolute", top: 5, left: "60%", right: "-40%", height: 2, backgroundColor: colors.separator },
   lineComplete: { backgroundColor: colors.success },
 });
-
-const HIDDEN_FIELDS = new Set([
-  'messenger_psid',
-  'delivery_lat',
-  'delivery_lng',
-  'customer_name',
-  'customer_phone',
-  'customer_contact',
-  // Payment proof is rendered explicitly in the Payment card, not as raw rows.
-  'payment_proof_reference',
-  'payment_proof_url',
-  'payment_proof_public_id',
-]);
-
-function formatFieldLabel(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function ItemThumb({ url, name }: { url?: string; name: string }) {
   if (url) {
@@ -581,6 +563,7 @@ export default function OrderDetailScreen() {
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
   const { images: itemImages } = useOrderItemImages(itemImageIds);
+  const customerDetailRows = buildCustomerDetailRows(order?.customerData);
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!order) return;
@@ -680,18 +663,14 @@ export default function OrderDetailScreen() {
         )}
       </Card>
 
-      {order.customerData && Object.keys(order.customerData).filter(
-        (k) => !HIDDEN_FIELDS.has(k) && order.customerData![k] != null && String(order.customerData![k]).trim() !== ''
-      ).length > 0 && (
+      {customerDetailRows.length > 0 && (
         <Card title="Customer Details" style={styles.section}>
-          {Object.entries(order.customerData)
-            .filter(([k, v]) => !HIDDEN_FIELDS.has(k) && v != null && String(v).trim() !== '')
-            .map(([key, value]) => (
-              <View key={key} style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{formatFieldLabel(key)}</Text>
-                <Text style={styles.detailValue}>{String(value)}</Text>
-              </View>
-            ))}
+          {customerDetailRows.map((row) => (
+            <View key={row.key} style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{row.label}</Text>
+              <Text style={styles.detailValue}>{row.value}</Text>
+            </View>
+          ))}
         </Card>
       )}
 
