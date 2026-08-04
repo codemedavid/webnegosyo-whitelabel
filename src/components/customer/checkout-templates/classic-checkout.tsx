@@ -16,6 +16,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import { SmsOptInCheckbox, MinimumOrderNotice } from './checkout-primitives'
+import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
@@ -36,6 +37,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
     isProcessing, handleProceedToPayment, messengerEnabled, orderMinimum,
+    voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
   } = checkout
 
   if (!tenant) return null
@@ -454,6 +456,38 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     <span className="font-semibold" style={{ color: palette.text }}>{formatPrice(serviceChargeAmount)}</span>
                   </div>
                   <Separator className="my-2" />
+                </>
+              )}
+
+              {/*
+                Voucher entry. Classic keeps its own summary markup rather than
+                delegating to `OrderSummaryLines`, because it must stay
+                pixel-identical to the pre-template checkout — so the shared
+                field is placed into that markup instead of the summary being
+                swapped wholesale.
+
+                It sits directly above the total: `grandTotal` is already net of
+                any accepted code, so the discount row and the figure it moved
+                read together.
+              */}
+              <VoucherField
+                codes={voucherCodes}
+                preview={voucherPreview}
+                isChecking={isCheckingVoucher}
+                onApply={applyVoucherCode}
+                onRemove={removeVoucherCode}
+                formatPrice={formatPrice}
+              />
+
+              {(voucherPreview?.accepted.length ?? 0) > 0 && (
+                <>
+                  <Separator className="my-2" />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Discount</span>
+                    <span className="font-semibold text-green-700">
+                      −{formatPrice(voucherPreview?.discountTotal ?? 0)}
+                    </span>
+                  </div>
                 </>
               )}
 

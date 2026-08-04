@@ -168,7 +168,13 @@ describe('classic checkout voucher entry', () => {
     )
 
     expect(screen.getByText('SAVE20')).toBeInTheDocument()
-    expect(screen.getByText(/−₱40\.00/)).toBeInTheDocument()
+
+    // Twice, deliberately, and the same way the shared `OrderSummaryLines`
+    // does it: once against the code itself, so a customer stacking two codes
+    // can see which one is earning its keep, and once as the summary's
+    // Discount row directly above the total it moved.
+    expect(screen.getAllByText(/−₱40\.00/)).toHaveLength(2)
+    expect(screen.getByText('Discount')).toBeInTheDocument()
   })
 
   /**
