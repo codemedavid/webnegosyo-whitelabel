@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,8 +11,10 @@ import {
 } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { validateManualDiscount, type ManualDiscount } from "../../lib/pos-discount";
+import { buildVoucherChoices } from "../../lib/pos-voucher-picker";
 import { hasPermission, type StaffPermissionHolder } from "../../lib/staff-permissions";
-import { lookupVouchers } from "../../lib/voucher-service";
+import { listVouchers, lookupVouchers } from "../../lib/voucher-service";
+import { VoucherChoiceRow } from "./VoucherChoiceRow";
 import type { VoucherEntryVerdict } from "../../lib/pos-voucher-entry";
 import type { Voucher } from "../../lib/vouchers/types";
 
@@ -24,6 +27,11 @@ interface DiscountSheetProps {
   onCheckVoucher: (voucher: Voucher) => VoucherEntryVerdict;
   onApplyVoucher: (voucher: Voucher) => void;
   onApplyManual: (manual: ManualDiscount) => void;
+  /** Codes already on this sale — from the session, not the priced lines. */
+  appliedCodes?: readonly string[];
+  hasManualDiscount?: boolean;
+  onRemoveVoucher?: (code: string) => void;
+  onRemoveManual?: () => void;
 }
 
 /**
@@ -49,10 +57,16 @@ export function DiscountSheet({
   onCheckVoucher,
   onApplyVoucher,
   onApplyManual,
+  appliedCodes = [],
+  hasManualDiscount = false,
+  onRemoveVoucher,
+  onRemoveManual,
 }: DiscountSheetProps) {
   const [code, setCode] = useState("");
   const [isLooking, setIsLooking] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [offers, setOffers] = useState<readonly Voucher[]>([]);
+  const [isBrowsing, setIsBrowsing] = useState(false);
 
   const [kind, setKind] = useState<ManualDiscount["kind"]>("fixed");
   const [amount, setAmount] = useState("");
@@ -60,6 +74,43 @@ export function DiscountSheet({
   const [manualError, setManualError] = useState<string | null>(null);
 
   const canDiscountManually = hasPermission(user, "vouchers");
+
+  // Fetched when the sheet opens, not once at mount: the owner edits
+  // promotions in the web admin while the shop is trading, and a list read at
+  // app launch would offer a code that ended hours ago.
+  useEffect(() => {
+    if (!visible || !tenantId) return;
+    let isCurrent = true;
+
+    setIsBrowsing(true);
+    listVouchers(tenantId)
+      .then((found) => {
+        if (isCurrent) setOffers(found);
+      })
+      .finally(() => {
+        if (isCurrent) setIsBrowsing(false);
+      });
+
+    // A sheet closed and reopened mid-flight must not have the older fetch
+    // land on top of the newer one.
+    return () => {
+      isCurrent = false;
+    };
+  }, [visible, tenantId]);
+
+  // Judged fresh on every render rather than memoised. The verdict depends on
+  // the cart, and a memo keyed on the voucher list alone would keep offering a
+  // code that stopped qualifying when a line was voided.
+  const choices = buildVoucherChoices(offers, appliedCodes, onCheckVoucher);
+
+  function chooseVoucher(voucher: Voucher) {
+    // Judged again on the tap, not trusted from the render that drew the row:
+    // the incoming-orders panel can re-price the sale underneath an open
+    // sheet, and this is the verdict the money is taken on.
+    const verdict = onCheckVoucher(voucher);
+    if (!verdict.isAccepted) return;
+    onApplyVoucher(voucher);
+  }
 
   function reset() {
     setCode("");
@@ -173,6 +224,42 @@ export function DiscountSheet({
             </TouchableOpacity>
           </View>
           {codeError && <Text style={styles.error}>{codeError}</Text>}
+
+          {isBrowsing && offers.length === 0 && (
+            <ActivityIndicator style={styles.browsing} color={colors.primary} />
+          )}
+
+          {choices.length > 0 && (
+            <>
+              <Text style={[styles.sectionLabel, styles.offersLabel]}>Available vouchers</Text>
+              {/* Bounded height: a merchant running twenty promotions must not
+                  push the manual-discount section off the bottom of a phone. */}
+              <ScrollView style={styles.offers} contentContainerStyle={styles.offersContent}>
+                {choices.map((choice) => (
+                  <VoucherChoiceRow
+                    key={choice.voucher.id}
+                    choice={choice}
+                    onApply={() => chooseVoucher(choice.voucher)}
+                    onRemove={() => onRemoveVoucher?.(choice.voucher.code)}
+                  />
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          {hasManualDiscount && onRemoveManual && (
+            // A manual discount has no code to find in the list above, so it
+            // needs its own way back off. Without one the only route was to
+            // clear the whole sale and ring it again.
+            <TouchableOpacity
+              style={styles.removeManual}
+              onPress={onRemoveManual}
+              accessibilityRole="button"
+              accessibilityLabel="Remove manual discount"
+            >
+              <Text style={styles.removeManualText}>Remove manual discount</Text>
+            </TouchableOpacity>
+          )}
 
           {canDiscountManually && (
             <>
@@ -295,6 +382,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   kindChipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  browsing: { paddingVertical: spacing.md },
+  offersLabel: { marginTop: spacing.md },
+  offers: { maxHeight: 260 },
+  offersContent: { gap: spacing.sm, paddingBottom: spacing.xs },
+  removeManual: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  removeManualText: { ...typography.body, fontWeight: "700", color: colors.danger },
   kindText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger },
 });

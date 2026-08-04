@@ -20,21 +20,23 @@
  */
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { CartSheet } from "./CartSheet";
 import { DiscountSheet } from "./DiscountSheet";
 import type { StaffPermissionHolder } from "../../lib/staff-permissions";
 import type { Voucher } from "../../lib/vouchers/types";
-import { lookupVouchers } from "../../lib/voucher-service";
+import { listVouchers, lookupVouchers } from "../../lib/voucher-service";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 
 jest.mock("../../lib/voucher-service", () => ({
   lookupVouchers: jest.fn(),
+  listVouchers: jest.fn(),
   burnPosRedemptions: jest.fn(),
 }));
 
 const lookup = lookupVouchers as jest.MockedFunction<typeof lookupVouchers>;
+const list = listVouchers as jest.MockedFunction<typeof listVouchers>;
 
 const voucher = (overrides: Partial<Voucher>): Voucher => ({
   id: "v-save20",
@@ -82,6 +84,8 @@ function Register({ user }: { user: StaffPermissionHolder }) {
     applyVoucher,
     checkVoucher,
     setManualDiscount,
+    clearManualDiscount,
+    removeVoucher,
     sessionDiscount,
     totals,
   } = usePosCartStore.getState();
@@ -115,6 +119,10 @@ function Register({ user }: { user: StaffPermissionHolder }) {
         onCheckVoucher={checkVoucher}
         onApplyVoucher={applyVoucher}
         onApplyManual={(manual) => setManualDiscount(manual, user)}
+        appliedCodes={discount.vouchers.map((held) => held.code)}
+        hasManualDiscount={discount.manual !== null}
+        onRemoveVoucher={removeVoucher}
+        onRemoveManual={clearManualDiscount}
       />
     </>
   );
@@ -139,9 +147,33 @@ function openRegister(): void {
 
 beforeEach(() => {
   lookup.mockReset();
+  list.mockReset();
+  // Most tests are about the typed-code path; the browse list stays empty
+  // unless a test supplies one.
+  list.mockResolvedValue([]);
   openRegister();
   useAuthStore.setState({ outletId: null });
 });
+
+/**
+ * Lets the browse-list fetch land inside `act`.
+ *
+ * The sheet reads the merchant's vouchers when it opens, so every test that
+ * finishes before that promise settles would otherwise resolve it during a
+ * later test — reported as an unwrapped state update, and exactly the warning
+ * that would hide a real one in this file.
+ */
+/**
+ * Lets the browse-list fetch land inside `act`.
+ *
+ * The sheet reads the merchant's vouchers when it opens. A test that asserts
+ * and ends before that promise settles resolves it outside React's control,
+ * which is reported as an unwrapped state update — noise that would hide a
+ * real one in this file.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {});
+}
 
 /** Types a code into the sheet and presses Apply. */
 async function enterCode(code: string): Promise<void> {
@@ -249,8 +281,9 @@ describe("a code that is not found at all", () => {
 });
 
 describe("the manual open discount", () => {
-  it("is not reachable by a cashier without the vouchers permission", () => {
+  it("is not reachable by a cashier without the vouchers permission", async () => {
     render(<Register user={CASHIER} />);
+    await settle();
 
     // Not merely disabled — the whole section is absent, so there is no
     // amount box, no reason box and no button to press.
@@ -264,8 +297,9 @@ describe("the manual open discount", () => {
     expect(screen.getByLabelText("Voucher code")).toBeTruthy();
   });
 
-  it("requires a written reason before any money comes off", () => {
+  it("requires a written reason before any money comes off", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     fireEvent.changeText(screen.getByLabelText("Discount amount"), "50");
     fireEvent.press(screen.getByText("Apply discount"));
@@ -275,8 +309,9 @@ describe("the manual open discount", () => {
     expect(usePosCartStore.getState().discount.manual).toBeNull();
   });
 
-  it("refuses more than 100% rather than clamping it", () => {
+  it("refuses more than 100% rather than clamping it", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     // A cashier meaning 10.00 and typing 1000 must be stopped, not obeyed
     // with a free sale.
@@ -290,8 +325,9 @@ describe("the manual open discount", () => {
     expect(usePosCartStore.getState().discount.manual).toBeNull();
   });
 
-  it("applies a reasoned discount and prints the reason on the row", () => {
+  it("applies a reasoned discount and prints the reason on the row", async () => {
     render(<Register user={OWNER} />);
+    await settle();
 
     fireEvent.changeText(screen.getByLabelText("Discount amount"), "50");
     fireEvent.changeText(screen.getByLabelText("Reason for discount"), "damaged cup");
@@ -343,5 +379,138 @@ describe("a lookup that fails outright", () => {
 
     // Assert
     expect(await screen.findByText("20% off")).toBeTruthy();
+  });
+});
+
+
+/**
+ * Choosing from what the shop is running, instead of remembering a code.
+ *
+ * The sheet only ever had a text box, which assumes the cashier knows the
+ * codes. They are written by the owner in the web admin, so "isn't there a
+ * student discount?" left the counter guessing at spellings — and a mistyped
+ * code is indistinguishable from an expired one.
+ */
+describe("browsing the merchant's vouchers", () => {
+  it("lists what each live code is worth", async () => {
+    // Arrange
+    list.mockResolvedValue([
+      voucher({ id: "v-1", code: "SAVE20", name: "20% off", discountValue: 20 }),
+      voucher({
+        id: "v-2",
+        code: "FIFTY",
+        name: "₱50 off",
+        discountType: "fixed",
+        discountValue: 50,
+      }),
+    ]);
+
+    // Act
+    render(<Register user={OWNER} />);
+
+    // Assert
+    expect(await screen.findByText("SAVE20")).toBeTruthy();
+    expect(screen.getByText("20% off")).toBeTruthy();
+    expect(screen.getByText("FIFTY")).toBeTruthy();
+    expect(screen.getByText("₱50.00 off")).toBeTruthy();
+  });
+
+  it("puts a chosen code on the sale for the right money, with nothing typed", async () => {
+    // Arrange
+    list.mockResolvedValue([voucher({})]);
+    render(<Register user={OWNER} />);
+    const row = await screen.findByLabelText("Apply voucher SAVE20");
+
+    // Act
+    fireEvent.press(row);
+
+    // Assert — 20% of ₱300 of coffee; the service charge is not discounted.
+    expect(await screen.findByText("−₱60.00")).toBeTruthy();
+    expect(screen.getByText("₱270.00")).toBeTruthy();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("says why a listed code cannot be used, rather than offering a dead tap", async () => {
+    // Arrange — a real promotion the cashier can see, and a sale that has not
+    // reached it. The cashier can act on this: one more item gets there.
+    list.mockResolvedValue([voucher({ code: "BIGSPEND", minOrderAmount: 500 })]);
+
+    // Act
+    render(<Register user={OWNER} />);
+
+    // Assert
+    expect(await screen.findByText("Add ₱200.00 more to use this voucher.")).toBeTruthy();
+  });
+
+  it("does not apply a code the engine refuses, however hard it is tapped", async () => {
+    // Arrange
+    list.mockResolvedValue([voucher({ code: "LASTWEEK", endsAt: "2020-01-01T00:00:00.000Z" })]);
+    render(<Register user={OWNER} />);
+    await screen.findByText("LASTWEEK");
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Apply voucher LASTWEEK"));
+
+    // Assert — the sale is still the undiscounted ₱330.
+    expect(screen.getByText("₱330.00")).toBeTruthy();
+  });
+
+  it("keeps the typed-code box working when the list cannot be fetched", async () => {
+    // The browse list is a convenience over a path that still works. A counter
+    // with no signal must not lose the ability to honour a code the customer
+    // reads off their phone.
+    list.mockResolvedValue([]);
+    lookup.mockResolvedValue([voucher({})]);
+    render(<Register user={OWNER} />);
+
+    await enterCode("SAVE20");
+
+    expect(await screen.findByText("−₱60.00")).toBeTruthy();
+  });
+});
+
+describe("taking a discount back off", () => {
+  it("removes an applied voucher and restores the full bill", async () => {
+    // Arrange — a code on the sale, priced.
+    list.mockResolvedValue([voucher({})]);
+    render(<Register user={OWNER} />);
+    fireEvent.press(await screen.findByLabelText("Apply voucher SAVE20"));
+    expect(await screen.findByText("₱270.00")).toBeTruthy();
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Remove voucher SAVE20"));
+
+    // Assert
+    await waitFor(() => expect(screen.getByText("₱330.00")).toBeTruthy());
+    expect(screen.queryByText("−₱60.00")).toBeNull();
+  });
+
+  it("offers the removed code again, so a mis-tap is not a dead end", async () => {
+    // Arrange
+    list.mockResolvedValue([voucher({})]);
+    render(<Register user={OWNER} />);
+    fireEvent.press(await screen.findByLabelText("Apply voucher SAVE20"));
+    await screen.findByLabelText("Remove voucher SAVE20");
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Remove voucher SAVE20"));
+
+    // Assert
+    await waitFor(() => expect(screen.getByLabelText("Apply voucher SAVE20")).toBeTruthy());
+  });
+
+  it("takes back a manual discount, which has no code to look up", async () => {
+    // Arrange — the cashier's own money off, the thing with no rule behind it.
+    render(<Register user={OWNER} />);
+    fireEvent.changeText(screen.getByLabelText("Discount amount"), "25");
+    fireEvent.changeText(screen.getByLabelText("Reason for discount"), "Spillage");
+    fireEvent.press(screen.getByText("Apply discount"));
+    await waitFor(() => expect(screen.getByText("₱305.00")).toBeTruthy());
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Remove manual discount"));
+
+    // Assert
+    await waitFor(() => expect(screen.getByText("₱330.00")).toBeTruthy());
   });
 });
