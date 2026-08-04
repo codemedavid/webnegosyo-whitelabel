@@ -13,6 +13,7 @@ import {
   type VoucherDraft,
 } from '@/lib/vouchers/admin-validation'
 import type { Voucher, VoucherChannel, VoucherDiscountType, VoucherScope } from '@/lib/vouchers/types'
+import { VoucherTargetPicker } from './voucher-target-picker'
 
 interface VoucherFormProps {
   tenantId: string
@@ -212,13 +213,14 @@ export function VoucherForm({ tenantId, voucher, onSaved, onCancel }: VoucherFor
         </div>
         <FieldError message={showError('targetIds')} />
         {draft.scope !== 'universal' && (
-          // Deliberately not a picker yet: the engine reads an empty target
-          // list as "matches nothing", and validation blocks saving one, so a
-          // half-built picker would be worse than none.
-          <p className="mt-2 text-sm text-gray-600">
-            Product and category pickers are not built yet — use a whole-order voucher
-            for now.
-          </p>
+          // Targets are cleared whenever the scope changes: a category id in a
+          // product-scoped voucher matches nothing, silently.
+          <VoucherTargetPicker
+            tenantId={tenantId}
+            mode={draft.scope}
+            selectedIds={draft.targetIds ?? []}
+            onChange={(targetIds) => update({ targetIds })}
+          />
         )}
       </fieldset>
 
