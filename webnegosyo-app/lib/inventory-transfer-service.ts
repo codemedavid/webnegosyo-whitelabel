@@ -18,13 +18,10 @@
  * somebody else's shrinkage.
  */
 
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 import type { TransferStatus, TransferSummary } from "./inventory-transfers";
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 /** One line of a draft, in stock units. */
 export interface TransferLineInput {

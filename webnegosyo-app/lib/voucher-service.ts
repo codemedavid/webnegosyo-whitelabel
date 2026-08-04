@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 import type { OrderDiscountLine } from "./order-totals";
 import type { Voucher } from "./vouchers/types";
@@ -22,9 +22,6 @@ import type { Voucher } from "./vouchers/types";
  * session token, exactly as `pos-stock-notify.ts` already does for stock.
  */
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 async function accessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();

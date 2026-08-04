@@ -1,9 +1,6 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 /**
  * Fire-and-forget: ask the web app to revalidate the public menu ISR cache

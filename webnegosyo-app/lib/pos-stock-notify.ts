@@ -1,10 +1,7 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
 import type { PosStockItem } from "./pos-stock";
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 /**
  * Fire-and-forget: ask the platform to spend a counter sale's ingredients.

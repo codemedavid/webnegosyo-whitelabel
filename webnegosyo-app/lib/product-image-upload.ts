@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 import { TENANT_LOGO_FOLDER } from "./tenant-logo";
 
 const IMAGEKIT_UPLOAD_ENDPOINT = "https://upload.imagekit.io/api/v1/files/upload";
@@ -22,9 +22,6 @@ interface PickedImage {
   mimeType: string;
 }
 
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 async function fetchUploadAuth(): Promise<UploadAuth> {
   const res = await fetch(`${getWebAppUrl()}/api/imagekit/auth`);

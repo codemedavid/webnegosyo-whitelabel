@@ -2,6 +2,7 @@ const mockConstants: { expoConfig: { extra: Record<string, unknown> } | null } =
   expoConfig: { extra: {} },
 };
 jest.mock("expo-constants", () => ({
+  __esModule: true,
   get default() {
     return mockConstants;
   },
