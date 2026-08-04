@@ -2,7 +2,7 @@
 
 ## Source plan
 
-No `*.plan.md`. This is **Phase 2, steps 1–2** of the plan produced in the
+No `*.plan.md`. This is **Phase 2, steps 1–3** of the plan produced in the
 `/ecc:plan` run recorded in
 [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
 
@@ -114,6 +114,48 @@ Callers must label the balance themselves, and must: `balance` is signed while
 the label is not. The screen says "Still owing" or "Refund due", so a minus sign
 in the figure would read as a negative refund.
 
+### 4. Absent ledger vs unreadable ledger (step 3)
+
+The blocker flagged at the end of step 2, resolved. `src/lib/order-ledger.ts`
+ported from `webnegosyo-app/lib/order-ledger.ts`.
+
+**The decision that was open, and how it resolved.** The question was whether to
+port `stale-backend.ts`'s Convex-specific matching or define the web's own
+classification. Reading `stale-backend.ts` settled it: the marker
+(`Could not find public function`) is **Convex's own wording, produced by the
+deployment rather than by any client**, so it matches identically on both sides.
+There was no client-specific error contract to reverse-engineer.
+
+What genuinely differs is the INPUT. The register reads `error?: string | null`
+out of `useSafeQuery`; the web's Convex client throws `Error` objects. The web
+copy therefore accepts `unknown` and normalizes — strictly wider than the app's,
+so it cannot classify a shared message differently, which the parity block pins.
+
+`stale-backend.ts` itself was deliberately **not** ported: it answers "was this
+WRITE rejected, and what do I tell the cashier?" and carries advice copy the web
+has no caller for. Only the read-trust half was needed.
+
+**The asymmetry that drove the implementation.** Both misreadings are bugs, but
+they are not equally expensive:
+
+- absent read as unavailable — merchants are blocked from editing. This already
+  happened, on most stores.
+- unavailable read as absent — a fully-paid order renders as owing its whole
+  total, and a merchant collects money the customer already handed over.
+
+So only the one marker that *proves* emptiness returns `absent`. Everything
+unrecognised — an argument rejection, a network failure, an object of an
+unexpected shape — falls to `unavailable`.
+
+RED — `npx jest --config jest.config.cjs tests/unit/order-ledger-parity.test.ts`:
+
+```
+● Test suite failed to run
+  Cannot find module '@/lib/order-ledger' from 'tests/unit/order-ledger-parity.test.ts'
+```
+
+GREEN — same command: **25 passed, 25 total**.
+
 ## Test specification
 
 | # | What is guaranteed | Test | Type | Result |
@@ -133,6 +175,15 @@ in the figure would read as a negative refund.
 | 13 | Charged and refunded are kept apart, not netted into one figure | `:keeps what was charged separate from what was given back` | unit | PASS |
 | 14 | A part payment reports the remainder still owed | `:reports what is still owed after a part payment` | unit | PASS |
 | 15 | Web and register agree on the whole account across 8 ledgers × 5 totals | `:settlement summary parity — web vs merchant app` | unit (parity) | PASS |
+| 16 | A clean read is `available` | `order-ledger-parity.test.ts:treats a clean read as available` | unit | PASS |
+| 17 | A missing ledger function is `absent`, not broken | `:treats a missing ledger function as an absent ledger, not a broken one` | unit | PASS |
+| 18 | A failed read is `unavailable` | `:treats a failed read as unavailable` | unit | PASS |
+| 19 | An argument rejection is NOT read as an absent ledger | `:does not treat an argument rejection as an absent ledger` | unit | PASS |
+| 20 | An `Error` object classifies as its message does | `:reads an Error the same way it reads the message inside it` | unit | PASS |
+| 21 | An empty error message reads as no error | `:treats an empty error message as no error` | unit | PASS |
+| 22 | An unrecognisable error is `unavailable`, never `absent` | `:treats an unrecognisable error as unavailable, never as absent` | unit | PASS |
+| 23 | A bill may be changed against a loaded or absent ledger, never an unreadable one | `:what may be done against a ledger in each state` | unit | PASS |
+| 24 | Web and register classify the same 7 Convex messages identically | `:ledger-state parity — web vs merchant app` | unit (parity) | PASS |
 
 ## Validation actually run
 
@@ -140,7 +191,8 @@ in the figure would read as a negative refund.
 |---|---|
 | `npx jest --config jest.config.cjs tests/unit/order-balance-parity.test.ts` | 35 passed, 35 total |
 | `npx jest --config jest.config.cjs tests/unit/order-settlement-parity.test.ts` | 13 passed, 13 total |
-| `npx jest --config jest.config.cjs` (full web suite, after step 2) | 450 passed, 1 skipped; 5,503 tests passed |
+| `npx jest --config jest.config.cjs tests/unit/order-ledger-parity.test.ts` | 25 passed, 25 total |
+| `npx jest --config jest.config.cjs` (full web suite, after step 3) | 451 passed, 1 skipped; 5,528 tests passed |
 | `npx tsc --noEmit` | 0 errors under `src/` |
 | `npx eslint` on all four changed files | clean, no output |
 
@@ -154,15 +206,10 @@ remains before a merchant can actually attach a voucher on the web:
 
 1. **A payments source for the web.** On the register the ledger is a separate
    backend query (`getOrderPaymentsRef`), not a field on the order row — the web
-   has no equivalent query wired up. Along with it comes `order-ledger.ts`, which
-   makes a distinction that has already caused one production defect: a backend
-   with **no ledger function** means an EMPTY ledger, not an unreadable one, and
-   conflating the two "stopped merchants editing orders on every store still
-   running a bundle older than the ledger — most of them". Not ported here
-   because it depends on `stale-backend.ts`, whose error shapes are
-   Convex-query-specific and differ from the web's error surface. **This must be
-   ported before any web UI reads a balance**, or the web will repeat the defect:
-   an order with an unreadable ledger would render as fully unpaid.
+   has no equivalent query wired up. The *classification* of that query's errors
+   now exists (step 3, `src/lib/order-ledger.ts`); the query itself does not.
+   Whoever wires it must pass the error through `resolveLedgerState` and refuse
+   to render a balance when the result is `unavailable`.
 2. **New-vs-already-burned code selection.** The register has
    `newDiscountLines` in `pos-edit-mode.ts` — attaching a code already on the
    order must not burn a second redemption. Needs a web copy plus parity.
@@ -196,7 +243,14 @@ Four checkpoint commits, all on `feat/android-sms-followups`.
 - RED: `test: add reproducer for the settlement summary missing on the web admin`
   — suite failed to run, module absent.
 - GREEN: `feat: give the web admin the settlement account for a placed order`
-  — 13/13 pass; full suite 5,503 pass; tsc clean under `src/`; eslint clean.
+  — 13/13 pass.
 
-No refactor commits: both ports are straight transliterations with their module
-docstrings rewritten for the new context; nothing left to clean up.
+**Step 3 — ledger trust.** RED `f03063d` → GREEN `636c9c8`.
+
+- RED: `test: add reproducer for ledger-state classification missing on the web`
+  — suite failed to run, module absent.
+- GREEN: `feat: let the web tell an absent settlement ledger from an unreadable one`
+  — 25/25 pass; full suite 5,528 pass; tsc clean under `src/`; eslint clean.
+
+No refactor commits: all three ports are straight transliterations with their
+module docstrings rewritten for the new context; nothing left to clean up.
