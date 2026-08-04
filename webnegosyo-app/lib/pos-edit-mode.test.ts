@@ -115,6 +115,59 @@ describe("canEnterEditMode", () => {
   });
 
   /**
+   * Naming the way out is not the same as offering it. The order screen has no
+   * register on it, so a cashier reading "clear the register" has to leave,
+   * find the sale, clear it, navigate back, and remember which order they were
+   * on. The remedy is what lets the screen put that behind one button.
+   */
+  it("offers clearing the register as an action, not just as advice", () => {
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy?.action).toBe("clear_register");
+    expect(gate.remedy?.label).toMatch(/clear/i);
+  });
+
+  it("warns that clearing throws away the sale on the register", () => {
+    // Clearing discards a real customer's food. The confirmation is the only
+    // thing between a mis-tap and a re-rung order.
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy?.confirm).toMatch(/sale|lose|discard/i);
+  });
+
+  it("offers no remedy for a refusal clearing the register cannot fix", () => {
+    const gate = canEnterEditMode({
+      cart: cartOf({ id: "item-bun", price: 60, qty: 1 }),
+      status: "preparing",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy).toBeUndefined();
+  });
+
+  it("offers no remedy when nothing is blocking", () => {
+    const gate = canEnterEditMode({
+      cart: [],
+      status: "confirmed",
+      backend: "platform",
+      user: OWNER,
+    });
+
+    expect(gate.remedy).toBeUndefined();
+  })
+
+  /**
    * The status, permission, backend and branch rules are NOT re-implemented
    * here — they are `canEditOrder`'s, and a second copy would drift from the
    * two write paths that enforce the same thing.
