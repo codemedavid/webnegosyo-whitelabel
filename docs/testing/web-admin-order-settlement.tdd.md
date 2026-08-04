@@ -2,12 +2,9 @@
 
 ## Source plan
 
-No `*.plan.md`. This is **Phase 2, step 1** of the plan produced in the
+No `*.plan.md`. This is **Phase 2, steps 1–2** of the plan produced in the
 `/ecc:plan` run recorded in
 [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
-
-This is **Phase 2, steps 1–2** of the plan produced in the `/ecc:plan` run
-recorded in [`classic-checkout-voucher.tdd.md`](./classic-checkout-voucher.tdd.md).
 
 Phase 2's goal is: a merchant looking at a placed order in web orders
 management can attach a voucher, have the order re-priced, and have the
