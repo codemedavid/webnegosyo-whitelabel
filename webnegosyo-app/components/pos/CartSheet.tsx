@@ -93,6 +93,39 @@ export function CartSheet({
         </TouchableOpacity>
       ) : null}
 
+      {/*
+        The discount entry, reachable without expanding the cart.
+        A merchant reported not finding vouchers at all: the only affordance
+        lived inside the expanded totals, and the sheet opens collapsed, so a
+        cashier had to know to tap the item count first. Any applied discount
+        rides here too — a collapsed cart otherwise shows a total that does not
+        match its items with nothing explaining the difference.
+      */}
+      {hasItems && !isExpanded && (onAddDiscount || discountLines.length > 0) ? (
+        <View style={styles.collapsedDiscount}>
+          {discountLines.length > 0 ? (
+            <Text style={styles.collapsedDiscountText} numberOfLines={1}>
+              {discountLines.map((line) => line.label).join(", ")} · −
+              {formatPeso(discountLines.reduce((sum, line) => sum + line.amount, 0))}
+            </Text>
+          ) : (
+            <Text style={styles.collapsedDiscountHint}>No discount on this sale</Text>
+          )}
+          {onAddDiscount && (
+            <TouchableOpacity
+              onPress={onAddDiscount}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Add a discount"
+            >
+              <Text style={styles.collapsedDiscountAction}>
+                {discountLines.length > 0 ? "Change" : "+ Discount"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
+
       {hasItems && isExpanded ? (
         <>
           <ScrollView style={styles.lines} contentContainerStyle={styles.linesContent}>
@@ -310,6 +343,26 @@ const styles = StyleSheet.create({
   totalValue: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
   discountLabel: { flex: 1, marginRight: spacing.sm },
   discountValue: { color: colors.success },
+  collapsedDiscount: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  collapsedDiscountText: {
+    ...typography.small,
+    color: colors.success,
+    fontWeight: "600",
+    flex: 1,
+  },
+  collapsedDiscountHint: { ...typography.small, color: colors.textSecondary, flex: 1 },
+  collapsedDiscountAction: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "700",
+  },
   addDiscount: { paddingTop: spacing.xs },
   addDiscountText: { ...typography.caption, fontWeight: "600", color: colors.primary },
   typeRow: { gap: spacing.sm, paddingVertical: spacing.sm },
