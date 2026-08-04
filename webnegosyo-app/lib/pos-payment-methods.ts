@@ -53,6 +53,28 @@ export function requiresProof(method: PosPaymentMethod): boolean {
   return !isCashMethod(method) || method.require_payment_proof;
 }
 
+/** What the cashier has entered so far to evidence a cashless payment. */
+export interface ProofEvidence {
+  reference?: string;
+  hasProof?: boolean;
+}
+
+/**
+ * Whether the sale is still waiting on evidence that the customer paid.
+ *
+ * A reference number and a photo are alternatives, not a pair: the wallet's
+ * transaction number identifies the payment on its own, so once it is typed
+ * there is nothing left for the camera to add. This matches online checkout,
+ * which has always taken a screenshot OR a reference.
+ */
+export function isProofOutstanding(
+  method: PosPaymentMethod,
+  evidence: ProofEvidence,
+): boolean {
+  if (!requiresProof(method)) return false;
+  return !evidence.hasProof && !evidence.reference?.trim();
+}
+
 /**
  * Build the tender record for a completed sale.
  *

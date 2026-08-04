@@ -22,6 +22,7 @@ import { canIssueRefund } from "../../lib/order-edit-guards";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
   isCashMethod,
+  isProofOutstanding,
   requiresProof,
   toTender,
   type PosPaymentMethod,
@@ -185,8 +186,13 @@ export default function PosTenderScreen() {
         ? "Choose a payment method"
         : wantsCashPad && !change.isSufficient
           ? "Enter the cash received"
-          : needsProof && !isRefund && !proof
-            ? "Photograph the payment confirmation first"
+          : !isRefund &&
+              method &&
+              isProofOutstanding(method, {
+                reference,
+                hasProof: proof !== null,
+              })
+            ? "Enter the reference number or photograph the confirmation"
             : undefined;
 
   /**
@@ -651,7 +657,11 @@ export default function PosTenderScreen() {
 
             <TextInput
               style={styles.nameInput}
-              placeholder="Reference number (optional)"
+              placeholder={
+                needsProof && !isRefund
+                  ? "Reference number"
+                  : "Reference number (optional)"
+              }
               placeholderTextColor={colors.textTertiary}
               value={reference}
               onChangeText={setReference}
@@ -662,13 +672,20 @@ export default function PosTenderScreen() {
 
         {/*
           Proof is the customer's confirmation that they paid. A refund moves
-          money the other way, so there is nothing for them to screenshot.
+          money the other way, so there is nothing for them to screenshot. The
+          camera stays offered once a reference is typed — a cashier who wants
+          the photo anyway should not have to clear the field to get it.
         */}
         {method && needsProof && !isRefund && (
           <ProofCapture
             proof={proof}
             onCaptured={setProof}
             onError={(message) => Alert.alert("Capture failed", message)}
+            hint={
+              reference.trim()
+                ? "Not needed — the reference number is enough"
+                : "Or type the reference number above"
+            }
           />
         )}
         </>
