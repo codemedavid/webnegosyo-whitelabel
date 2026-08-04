@@ -11,6 +11,8 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
+import { shouldShowPickupQr } from '@/lib/pickup-qr-gating'
+import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 
 interface OrderTrackingClientProps {
   orderId: string
@@ -115,6 +117,10 @@ export function OrderTrackingClient({
   const currentIndex = getStatusIndex(trackingData.status)
   const isCancelled = trackingData.status === 'cancelled'
   const shortId = orderId.slice(0, 8).toUpperCase()
+  const showPickupQr = shouldShowPickupQr({
+    kind: trackingData.orderTypeKind ?? null,
+    status: trackingData.status,
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/30 to-white">
@@ -155,6 +161,17 @@ export function OrderTrackingClient({
               </div>
             )}
           </div>
+
+          {/* Scan-to-collect code (pickup orders only) */}
+          {showPickupQr && (
+            <PickupQrCard
+              orderId={orderId}
+              tenantId={tenantId}
+              trackingToken={trackingToken}
+              shortId={shortId}
+              isReady={trackingData.status === 'ready'}
+            />
+          )}
 
           {/* Status Stepper */}
           <Card>
