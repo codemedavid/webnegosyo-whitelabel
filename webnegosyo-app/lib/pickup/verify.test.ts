@@ -175,4 +175,76 @@ describe("verifyPickupTicket", () => {
     if (result.ok) return;
     expect(result.error).toBe("unavailable");
   });
+
+  it("rejects a 200 response that is not an order", async () => {
+    // A proxy or captive portal answering 200 with something else must not
+    // put a confirm button in front of staff with nothing behind it.
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { hello: "world" }));
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("unavailable");
+  });
+
+  it("rejects a 200 response whose body is not JSON", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error("Unexpected token < in JSON");
+      },
+    } as unknown as Response);
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("unavailable");
+  });
+
+  it("defaults malformed item entries rather than dropping the order", async () => {
+    // Staff still need to see the order even if one line is odd; a missing
+    // quantity showing as blank would be worse than showing 1.
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(200, {
+        status: "ready",
+        items: [{ name: "Latte" }, { quantity: 3 }],
+      })
+    );
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.order.items).toEqual([
+      { name: "Latte", quantity: 1 },
+      { name: "Item", quantity: 3 },
+    ]);
+  });
+
+  it("tolerates a response with no items array", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { status: "ready" }));
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.order.items).toEqual([]);
+  });
 });
