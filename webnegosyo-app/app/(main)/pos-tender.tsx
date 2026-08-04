@@ -29,6 +29,7 @@ import {
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import { staleBackendMessage } from "../../lib/stale-backend";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
@@ -424,10 +425,10 @@ export default function PosTenderScreen() {
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
       goTo(router, "/(main)/pos-sales");
     } catch (err) {
-      Alert.alert(
-        "Could not complete the sale",
-        err instanceof Error ? err.message : "Please try again.",
-      );
+      // A store several bundles behind rejects `source: "pos"` outright — its
+      // validator predates counter sales. That is a deployment to update, not
+      // a sale to retry, and the raw validator dump means nothing at a till.
+      Alert.alert("Could not complete the sale", staleBackendMessage(err));
       setIsCompleting(false);
     }
   }, [

@@ -35,6 +35,7 @@ import {
   type QrPickupPayloadV1,
 } from "../../lib/qr-order-codec";
 import { classifyScannedQr } from "../../lib/pickup/dispatch";
+import { staleBackendMessage } from "../../lib/stale-backend";
 import {
   verifyPickupTicket,
   type PickupVerifyError,
@@ -371,8 +372,9 @@ export default function ScanScreen() {
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
       goTo(router, "/(main)/orders");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to accept the order.";
-      Alert.alert("Could not accept order", msg, [{ text: "OK" }]);
+      // Same exposure as the register: a deployment older than v7 has never
+      // heard of `source: "qr_handoff"` and rejects the scan by validator.
+      Alert.alert("Could not accept order", staleBackendMessage(e), [{ text: "OK" }]);
       setIsAccepting(false);
     }
   }, [state, isAccepting, convexUrl, createOrder, tenantId, outletId, outletName]);

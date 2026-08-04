@@ -3,6 +3,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { FunctionReference } from "convex/server";
 import { useAuthStore } from "../stores/auth-store";
 import { supabase } from "./supabase";
+import { isStaleBundleError } from "./stale-backend";
 import { resolveRefRoute } from "./backends/route";
 import {
   runPlatformQuery,
@@ -35,21 +36,12 @@ interface SafeQueryResult<T> {
   isMissingFunction: boolean;
 }
 
-const MISSING_FN_MARKER = "Could not find public function";
-
 // A tenant's Convex deployment can lag the app (older bundle). Besides a flat-out
 // missing function, that shows up as validator/argument drift. Treat all of these
 // as a recoverable "this store needs a backend update" state rather than a hard
 // error, so screens show their missing-section placeholder instead of an error.
-const STALE_BUNDLE_MARKERS = [
-  MISSING_FN_MARKER,
-  "ArgumentValidationError",
-  "is not in the validator",
-];
-
-function isStaleBundleError(msg: string): boolean {
-  return STALE_BUNDLE_MARKERS.some((m) => msg.includes(m));
-}
+// The write path (the register) reads the same markers — see stale-backend.ts.
+const MISSING_FN_MARKER = "Could not find public function";
 
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
 
