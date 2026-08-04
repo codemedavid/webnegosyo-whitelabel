@@ -92,8 +92,11 @@ describe("CollectPaymentSheet", () => {
 
     fireEvent.press(screen.getByText("Record payment"));
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    expect(onSubmit.mock.calls[0][0].reference).toBeUndefined();
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.not.objectContaining({ reference: expect.anything() }),
+      ),
+    );
   });
 
   /**

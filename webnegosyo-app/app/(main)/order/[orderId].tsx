@@ -16,6 +16,14 @@ import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
+import {
+  CollectPaymentSheet,
+  type CollectedPayment,
+} from "../../../components/order/CollectPaymentSheet";
+import { canCollectPayment } from "../../../lib/order-collect";
+import { summarizeSettlement } from "../../../lib/order-history-view";
+import { listAllPaymentMethods } from "../../../lib/pos-catalog";
+import type { PosPaymentMethod } from "../../../lib/pos-payment-methods";
 import { canEnterEditMode, enterEditMode } from "../../../lib/pos-edit-mode";
 import { usePosCartStore } from "../../../stores/pos-cart-store";
 import { listProducts } from "../../../lib/products";
@@ -34,6 +42,7 @@ import { lookupVouchers } from "../../../lib/voucher-service";
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
 const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
+const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
 const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
@@ -374,6 +383,73 @@ export default function OrderDetailScreen() {
   const beginEdit = usePosCartStore((s) => s.beginEdit);
   const setEditVouchers = usePosCartStore((s) => s.setEditVouchers);
   const resetRegister = usePosCartStore((s) => s.reset);
+
+  // Settling a bill that was rung up earlier. Deliberately NOT routed through
+  // an order edit, which was the only path before: re-tendering rewrites a bill
+  // nobody disputed just to record money changing hands.
+  const recordPayment = useSafeMutation(recordPaymentRef);
+  const [isCollectOpen, setIsCollectOpen] = useState(false);
+  const [collectMethods, setCollectMethods] = useState<PosPaymentMethod[]>([]);
+
+  // The same summary the card renders, so the figure the cashier is asked to
+  // collect and the figure they were shown as owing cannot disagree.
+  const balanceDue = order ? summarizeSettlement(order.total, payments ?? []).balance : 0;
+  const collectGate = order
+    ? canCollectPayment({
+        status: order.status,
+        backend: orderBackend ?? "convex",
+        user: { role, isOwner, permissions },
+        balance: balanceDue,
+        isLedgerAvailable: !paymentsError,
+        scope,
+        order,
+      })
+    : { allowed: false as const };
+
+  /**
+   * Methods are fetched only once the cashier opens the sheet. Most visits to
+   * this screen never take a payment, and the list is the same one the register
+   * uses.
+   */
+  async function handleOpenCollect() {
+    if (!tenantId) return;
+    if (isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+
+    try {
+      setCollectMethods(await listAllPaymentMethods(tenantId));
+    } catch {
+      // A missing method list is not a reason to block the payment — cash with
+      // no method attached is still a truthful ledger row.
+      setCollectMethods([]);
+    }
+    setIsCollectOpen(true);
+  }
+
+  async function handleCollect(payment: CollectedPayment) {
+    if (!order) return;
+
+    try {
+      await recordPayment({
+        orderId: order._id,
+        kind: "charge",
+        amount: payment.amount,
+        paymentMethodId: payment.methodId,
+        paymentMethodName: payment.methodName,
+        reference: payment.reference,
+        recordedBy: useAuthStore.getState().userId ?? undefined,
+        outletId: scope.kind === "branch" ? scope.outletId : undefined,
+      });
+      setIsCollectOpen(false);
+    } catch (err) {
+      Alert.alert(
+        "Could not record the payment",
+        err instanceof Error ? err.message : "Nothing was recorded. Try again.",
+      );
+    }
+  }
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const editGate = order
@@ -717,6 +793,31 @@ export default function OrderDetailScreen() {
         isLedgerAvailable={!paymentsError}
       />
 
+      {/*
+        Sits under the ledger it settles rather than with the status actions at
+        the foot of the screen: the cashier reading "Still owing ₱149.00" is
+        looking here, and the answer to it should be here too.
+      */}
+      {collectGate.allowed && (
+        <TouchableOpacity
+          style={styles.collectButton}
+          onPress={handleOpenCollect}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.collectButtonText}>
+            Collect ₱{balanceDue.toFixed(2)}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <CollectPaymentSheet
+        visible={isCollectOpen}
+        balanceDue={balanceDue}
+        methods={collectMethods}
+        onSubmit={handleCollect}
+        onClose={() => setIsCollectOpen(false)}
+      />
+
       <RevisionHistoryCard revisions={revisions ?? []} />
 
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
@@ -840,6 +941,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: spacing.md,
   },
+  // Filled and in the danger tone the "Still owing" row uses, so the action and
+  // the figure it settles read as the same thing.
+  collectButton: {
+    backgroundColor: colors.danger,
+    borderRadius: radius.full,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  collectButtonText: { color: colors.textOnDark, ...typography.heading },
   // Outlined rather than filled: it is the way out of a refusal, not the
   // screen's main action, which stays the status advance below it.
   remedyButton: {

@@ -144,8 +144,7 @@ describe("validateCollectAmount", () => {
   it("refuses an empty box", () => {
     const result = validateCollectAmount("", 149);
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/amount/i);
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/amount/i) });
   });
 
   it("refuses text that is not a number", () => {
@@ -155,8 +154,7 @@ describe("validateCollectAmount", () => {
   it("refuses zero", () => {
     const result = validateCollectAmount("0", 149);
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/more than zero/i);
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/more than zero/i) });
   });
 
   it("refuses a negative, which would be a refund in disguise", () => {
@@ -171,8 +169,7 @@ describe("validateCollectAmount", () => {
   it("refuses more than is owed", () => {
     const result = validateCollectAmount("200", 149);
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/149/);
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/149/) });
   });
 
   it("allows a centavo of float drift at the top of the range", () => {
