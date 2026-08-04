@@ -148,6 +148,33 @@ describe('POST /api/vouchers/lookup', () => {
     expect(res.status).toBe(200)
   })
 
+  test('upper-cases and trims a code the way the web checkout does', async () => {
+    // `findByCodes` does an exact `.in('code', …)`, while the unique index is
+    // on `lower(code)` — the codes are case-insensitive by design and
+    // `resolveVouchers` normalises before it queries. Passing the cashier's
+    // keystrokes through raw means a code typed `welcome10` is refused at the
+    // counter while the same code works on the web.
+    const { POST } = await import('@/app/api/vouchers/lookup/route')
+    await POST(makeRequest({ tenantId: 't1', codes: ['  welcome10  '] }, 'Bearer t'))
+
+    expect(findByCodesMock).toHaveBeenCalledWith('t1', ['WELCOME10'])
+  })
+
+  test('collapses codes that differ only by case into one query entry', async () => {
+    const { POST } = await import('@/app/api/vouchers/lookup/route')
+    await POST(makeRequest({ tenantId: 't1', codes: ['welcome10', 'WELCOME10'] }, 'Bearer t'))
+
+    expect(findByCodesMock).toHaveBeenCalledWith('t1', ['WELCOME10'])
+  })
+
+  test('rejects a request whose codes are all blank once trimmed', async () => {
+    const { POST } = await import('@/app/api/vouchers/lookup/route')
+    const res = await POST(makeRequest({ tenantId: 't1', codes: ['   '] }, 'Bearer t'))
+
+    expect(res.status).toBe(400)
+    expect(findByCodesMock).not.toHaveBeenCalled()
+  })
+
   test('drops non-string codes rather than querying with them', async () => {
     const { POST } = await import('@/app/api/vouchers/lookup/route')
     await POST(makeRequest({ tenantId: 't1', codes: ['GOOD', 42, null] }, 'Bearer t'))

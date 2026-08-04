@@ -56,8 +56,16 @@ const EMPTY_RESULT: ResolvedVouchers = {
 /**
  * Trim, upper-case, drop blanks, and collapse duplicates — while keeping the
  * customer's order of entry, which is what decides a solo-only conflict.
+ *
+ * Exported because the codes must be normalised the SAME way everywhere they
+ * reach the database: the unique index is on `(tenant_id, lower(code))`, so
+ * codes are case-insensitive by design, but `findByCodes` matches exactly. Any
+ * surface that queries with raw keystrokes refuses a code the web accepts.
+ *
+ * Takes `unknown[]` because the register's request body is untyped at the edge;
+ * a non-string entry is dropped rather than coerced into a code nobody typed.
  */
-function normalizeCodes(codes: readonly string[]): string[] {
+export function normalizeVoucherCodes(codes: readonly unknown[]): string[] {
   const seen = new Set<string>()
   const normalized: string[] = []
 
@@ -73,7 +81,7 @@ function normalizeCodes(codes: readonly string[]): string[] {
 }
 
 export async function resolveVouchers(input: ResolveVouchersInput): Promise<ResolvedVouchers> {
-  const codes = normalizeCodes(input.codes)
+  const codes = normalizeVoucherCodes(input.codes)
   if (codes.length === 0) return EMPTY_RESULT
 
   const found = await input.lookup.findByCodes(input.tenantId, codes)
