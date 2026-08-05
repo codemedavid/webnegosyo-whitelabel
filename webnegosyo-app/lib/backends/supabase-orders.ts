@@ -98,6 +98,20 @@ export interface PlatformOrderRow {
   payment_method_name: string | null;
   payment_method_details: string | null;
   delivery_fee: number | null;
+  delivery_address?: string | null;
+  /**
+   * Lalamove's booking trail. `lalamove_quotation_id` is written at checkout
+   * when the customer picks Lalamove delivery; the rest are written by
+   * whoever books the driver. The merchant app's delivery card is driven
+   * entirely by these six columns — drop them from the projection and a
+   * platform-backed store sees no Lalamove UI at all.
+   */
+  lalamove_quotation_id?: string | null;
+  lalamove_order_id?: string | null;
+  lalamove_status?: string | null;
+  lalamove_driver_name?: string | null;
+  lalamove_driver_phone?: string | null;
+  lalamove_tracking_url?: string | null;
   scheduled_for: string | null;
   client_order_id: string | null;
   /** Bumped by every saved edit; the optimistic lock is checked against it. */
@@ -176,6 +190,14 @@ export interface OrderDto {
   paymentMethod?: string;
   paymentMethodDetails?: string;
   deliveryFee?: number;
+  /** Where the driver is taking it. Also the address Lalamove books against. */
+  deliveryAddress?: string;
+  lalamoveQuotationId?: string;
+  lalamoveOrderId?: string;
+  lalamoveStatus?: string;
+  lalamoveDriverName?: string;
+  lalamoveDriverPhone?: string;
+  lalamoveTrackingUrl?: string;
   scheduledFor?: string;
   clientOrderId?: string;
   /**
@@ -343,6 +365,13 @@ export function toOrderDto(
     paymentMethod: optional(row.payment_method_name),
     paymentMethodDetails: optional(row.payment_method_details),
     deliveryFee: row.delivery_fee === null ? undefined : toNumber(row.delivery_fee),
+    deliveryAddress: optional(row.delivery_address),
+    lalamoveQuotationId: optional(row.lalamove_quotation_id),
+    lalamoveOrderId: optional(row.lalamove_order_id),
+    lalamoveStatus: optional(row.lalamove_status),
+    lalamoveDriverName: optional(row.lalamove_driver_name),
+    lalamoveDriverPhone: optional(row.lalamove_driver_phone),
+    lalamoveTrackingUrl: optional(row.lalamove_tracking_url),
     scheduledFor: optional(row.scheduled_for),
     clientOrderId: optional(row.client_order_id),
     revisionNumber: toNumber(row.revision_number),

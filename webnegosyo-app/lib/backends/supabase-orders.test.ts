@@ -112,6 +112,48 @@ describe("toOrderDto", () => {
     expect(dto.source).toBe("web");
   });
 
+  it("carries the delivery address and every Lalamove field onto the DTO", () => {
+    // Arrange: a delivery order that was quoted at checkout and later booked.
+    // `LalamoveDeliveryCard` renders off exactly these fields; a dropped
+    // projection leaves a platform-backed store with no Lalamove UI at all —
+    // no Book button, no status, no tracking link.
+    const row = orderRow({
+      delivery_address: "12 Mabini St, Quezon City",
+      lalamove_quotation_id: "quote-1",
+      lalamove_order_id: "lala-1",
+      lalamove_status: "ON_GOING",
+      lalamove_driver_name: "Rico",
+      lalamove_driver_phone: "09998887777",
+      lalamove_tracking_url: "https://share.lalamove.com/lala-1",
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.deliveryAddress).toBe("12 Mabini St, Quezon City");
+    expect(dto.lalamoveQuotationId).toBe("quote-1");
+    expect(dto.lalamoveOrderId).toBe("lala-1");
+    expect(dto.lalamoveStatus).toBe("ON_GOING");
+    expect(dto.lalamoveDriverName).toBe("Rico");
+    expect(dto.lalamoveDriverPhone).toBe("09998887777");
+    expect(dto.lalamoveTrackingUrl).toBe("https://share.lalamove.com/lala-1");
+  });
+
+  it("leaves the Lalamove fields undefined on an order that was never quoted", () => {
+    // Arrange: a counter sale. The card keys off these being absent to hide
+    // itself, so an empty string here would show a Lalamove panel on a walk-in.
+    const row = orderRow();
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.lalamoveQuotationId).toBeUndefined();
+    expect(dto.lalamoveOrderId).toBeUndefined();
+    expect(dto.deliveryAddress).toBeUndefined();
+  });
+
   it("coerces numeric columns that Postgres returns as strings", () => {
     // Arrange: `numeric` comes back as a string over PostgREST, which would
     // make totals concatenate instead of add.
