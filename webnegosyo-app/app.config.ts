@@ -12,9 +12,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // closed for new build submissions"), no matter how high the build number
   // goes. Shipping anything to iOS requires this to move on every release that
   // follows an approval. Note `runtimeVersion.policy` is "appVersion", so
-  // bumping it also starts a new OTA update lane — 1.0.1 installs will not
-  // receive 1.0.2 updates, which is the intended behaviour for a new binary.
-  version: "1.0.2",
+  // bumping it also starts a new OTA update lane — 1.0.2 installs will not
+  // receive 1.0.3 updates, which is the intended behaviour for a new binary.
+  //
+  // 1.0.2 was approved and released on 2026-08-01, which closed its train in
+  // turn: builds 28-35 all compiled fine and then failed at submission, since
+  // the binary is what carries the version and no build number can reopen a
+  // closed train. Hence 1.0.3 — bump this again after the next approval.
+  version: "1.0.3",
   orientation: "portrait",
   icon: "./assets/icon.png",
   splash: {
