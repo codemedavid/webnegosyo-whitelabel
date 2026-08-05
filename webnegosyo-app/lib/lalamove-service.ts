@@ -16,12 +16,10 @@
 
 import { supabase } from "./supabase";
 import { getWebAppUrl } from "./web-app-url";
-import type { OrderSessionFields } from "./order-backend";
+import { type LalamoveOp } from "./lalamove-transport";
 
-/** The four things a merchant can do to a delivery from the order screen. */
-export type LalamoveOp = "book" | "sync" | "cancel" | "priority_fee";
-
-export type LalamoveTransport = "convex" | "platform" | "unavailable";
+export { resolveLalamoveTransport } from "./lalamove-transport";
+export type { LalamoveOp, LalamoveTransport } from "./lalamove-transport";
 
 export interface LalamoveOpInput {
   op: LalamoveOp;
@@ -48,21 +46,6 @@ const DEFAULT_TIMEOUT_MS = 25000;
 
 const TIMEOUT_MESSAGE =
   "The request took too long. The delivery may have been booked — check before booking again.";
-
-/**
- * Which backend can serve this session's Lalamove operations.
- *
- * Mirrors `hasLiveOrderBackend`: `supabase` is a separate per-tenant project
- * the app ships no adapter for, and claiming a transport for it would send a
- * booking to the wrong database. A session whose `orderBackend` has not
- * resolved yet falls back to the historical rule — a deployment url means
- * Convex — so the card keeps working during the first render after login.
- */
-export function resolveLalamoveTransport(session: OrderSessionFields): LalamoveTransport {
-  if (session.orderBackend === "platform") return "platform";
-  if (session.orderBackend === "supabase") return "unavailable";
-  return session.convexUrl && session.convexUrl.trim() !== "" ? "convex" : "unavailable";
-}
 
 async function accessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();

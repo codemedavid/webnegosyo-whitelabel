@@ -4,6 +4,8 @@ import { FunctionReference } from "convex/server";
 import { useSafeAction } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../lib/demo";
+import { resolveLalamoveTransport, type LalamoveOp } from "../lib/lalamove-transport";
+import { runPlatformLalamoveOp } from "../lib/lalamove-service";
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
@@ -40,6 +42,11 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const addPriorityFee = useSafeAction(addPriorityFeeRef);
   const syncStatus = useSafeAction(syncStatusRef);
 
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const transport = resolveLalamoveTransport({ convexUrl, orderBackend });
+
   const [busy, setBusy] = React.useState<null | "book" | "sync" | "cancel" | "fee">(null);
 
   const hasQuotation = !!order.lalamoveQuotationId;
@@ -58,15 +65,42 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     return false;
   };
 
+  /** The Convex action for each operation, when the store has a deployment. */
+  const convexActionFor: Record<LalamoveOp, (args: Record<string, unknown>) => unknown> = {
+    book: bookLalamove,
+    sync: syncStatus,
+    cancel: cancelLalamove,
+    priority_fee: addPriorityFee,
+  };
+
+  /**
+   * Run one operation on whichever backend this store actually has.
+   *
+   * Convex stores keep calling their own deployment's actions. Platform stores
+   * have no deployment at all, so they go through the web route — which is the
+   * whole reason this card did nothing for them before.
+   */
+  const dispatch = async (op: LalamoveOp, amount?: string): Promise<ActionResult> => {
+    if (transport === "platform") {
+      if (!tenantId) return { success: false, error: "No store is selected" };
+      return runPlatformLalamoveOp({ op, tenantId, orderId: order._id, amount });
+    }
+    const args = amount === undefined
+      ? { orderId: order._id }
+      : { orderId: order._id, amount };
+    return (await convexActionFor[op](args)) as ActionResult;
+  };
+
   const run = async (
     kind: NonNullable<typeof busy>,
-    fn: () => Promise<ActionResult>,
-    successMessage: string
+    op: LalamoveOp,
+    successMessage: string,
+    amount?: string
   ) => {
     if (guardDemo()) return;
     setBusy(kind);
     try {
-      const result = await fn();
+      const result = await dispatch(op, amount);
       if (result?.success) {
         Alert.alert("Success", successMessage);
       } else {
@@ -80,10 +114,9 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   };
 
   const handleBook = () =>
-    run("book", () => bookLalamove({ orderId: order._id }) as Promise<ActionResult>, "Delivery booked. Searching for a driver…");
+    run("book", "book", "Delivery booked. Searching for a driver…");
 
-  const handleSync = () =>
-    run("sync", () => syncStatus({ orderId: order._id }) as Promise<ActionResult>, "Delivery status updated");
+  const handleSync = () => run("sync", "sync", "Delivery status updated");
 
   const handleCancel = () => {
     if (guardDemo()) return;
@@ -92,8 +125,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
       {
         text: "Yes, cancel",
         style: "destructive",
-        onPress: () =>
-          run("cancel", () => cancelLalamove({ orderId: order._id }) as Promise<ActionResult>, "Delivery cancelled"),
+        onPress: () => run("cancel", "cancel", "Delivery cancelled"),
       },
     ]);
   };
@@ -104,11 +136,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
       ...PRIORITY_FEE_OPTIONS.map((amount) => ({
         text: `₱${amount}`,
         onPress: () =>
-          run(
-            "fee",
-            () => addPriorityFee({ orderId: order._id, amount }) as Promise<ActionResult>,
-            `₱${amount} priority fee added`
-          ),
+          run("fee", "priority_fee", `₱${amount} priority fee added`, amount),
       })),
       { text: "Cancel", style: "cancel" as const },
     ]);
@@ -117,6 +145,30 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const handleTrack = () => {
     if (order.lalamoveTrackingUrl) Linking.openURL(order.lalamoveTrackingUrl);
   };
+
+  // No backend the app can reach — a per-tenant Supabase project, for which it
+  // ships no adapter. Show what is known and say where the merchant CAN act,
+  // rather than offering buttons that would fail on every tap.
+  if (transport === "unavailable") {
+    return (
+      <Card title="Lalamove Delivery" style={styles.card}>
+        {hasOrder ? (
+          <View style={styles.row}>
+            <Text style={styles.label}>Status</Text>
+            <Badge label={status || "Booked"} variant="confirmed" />
+          </View>
+        ) : null}
+        <Text style={styles.muted}>
+          Bookings for this store are managed from the web dashboard.
+        </Text>
+        {order.lalamoveTrackingUrl ? (
+          <TouchableOpacity style={styles.secondaryBtn} onPress={handleTrack}>
+            <Text style={styles.secondaryText}>Track</Text>
+          </TouchableOpacity>
+        ) : null}
+      </Card>
+    );
+  }
 
   return (
     <Card title="Lalamove Delivery" style={styles.card}>
