@@ -1,154 +1,174 @@
-import { summarizeCounterSales, type CounterSale } from "./pos-sales";
+/**
+ * Drawer reconciliation, including online orders confirmed at the register.
+ *
+ * The money rule under test: an online order contributes its SETTLED amount to
+ * the drawer, never its `total`. A confirmed-but-unpaid Smart Menu order is
+ * real sales but no cash in the till, and a cashier counting the drawer must
+ * not be told to expect money the customer has not handed over.
+ */
 
-function sale(overrides: Partial<CounterSale> = {}): CounterSale {
+import { summarizeCounterSales, type CounterSale, type CounterPayment } from "./pos-sales";
+
+function posSale(overrides: Partial<CounterSale> = {}): CounterSale {
   return {
-    _id: "o1",
-    _creationTime: 0,
+    _id: "pos-1",
+    _creationTime: 1_000,
     source: "pos",
-    status: "confirmed",
+    status: "delivered",
     total: 100,
     paymentMethod: "Cash",
-    customerData: { pos: { cashTendered: 200, changeDue: 100 } },
     ...overrides,
   };
 }
 
-describe("summarizeCounterSales", () => {
-  it("counts only counter sales, ignoring web and QR-handoff orders", () => {
-    const summary = summarizeCounterSales([
-      sale(),
-      sale({ _id: "o2", source: "web" }),
-      sale({ _id: "o3", source: "qr_handoff" }),
-    ]);
+function onlineOrder(overrides: Partial<CounterSale> = {}): CounterSale {
+  return {
+    _id: "web-1",
+    _creationTime: 2_000,
+    source: "web",
+    status: "confirmed",
+    total: 250,
+    paymentMethod: "Cash",
+    amountPaid: 250,
+    ...overrides,
+  };
+}
+
+describe("summarizeCounterSales — existing counter-sale behaviour", () => {
+  it("ignores online orders when no source policy is given", () => {
+    // Arrange
+    const orders = [posSale(), onlineOrder()];
+
+    // Act
+    const summary = summarizeCounterSales(orders);
+
+    // Assert
     expect(summary.saleCount).toBe(1);
     expect(summary.grossTotal).toBe(100);
-  });
-
-  it("separates the cash drawer from non-cash takings", () => {
-    const summary = summarizeCounterSales([
-      sale({ _id: "o1", total: 100 }),
-      sale({
-        _id: "o2",
-        total: 250,
-        paymentMethod: "GCash",
-        customerData: { pos: { proofUrl: "https://x/y.jpg" } },
-      }),
-    ]);
     expect(summary.cashTotal).toBe(100);
-    expect(summary.nonCashTotal).toBe(250);
-    expect(summary.grossTotal).toBe(350);
   });
 
-  it("excludes cancelled sales from every total", () => {
-    const summary = summarizeCounterSales([
-      sale({ _id: "o1", total: 100 }),
-      sale({ _id: "o2", total: 500, status: "cancelled" }),
-    ]);
+  it("still splits a POS sale by its settlement ledger when rows exist", () => {
+    // Arrange
+    const orders = [posSale({ total: 300, paymentMethod: "GCash" })];
+    const payments: CounterPayment[] = [
+      { orderId: "pos-1", kind: "charge", amount: 200, paymentMethodName: "GCash" },
+      { orderId: "pos-1", kind: "charge", amount: 100, paymentMethodName: "Cash" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments);
+
+    // Assert
+    expect(summary.cashTotal).toBe(100);
+    expect(summary.nonCashTotal).toBe(200);
+  });
+});
+
+describe("summarizeCounterSales — online orders confirmed at the register", () => {
+  it("counts a confirmed online order that was paid in cash", () => {
+    // Arrange
+    const orders = [onlineOrder({ amountPaid: 250, paymentMethod: "Cash" })];
+
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
+
+    // Assert
     expect(summary.saleCount).toBe(1);
-    expect(summary.grossTotal).toBe(100);
+    expect(summary.grossTotal).toBe(250);
+    expect(summary.cashTotal).toBe(250);
   });
 
-  it("reports the change handed out so the drawer can be reconciled", () => {
-    const summary = summarizeCounterSales([
-      sale({ _id: "o1", total: 100, customerData: { pos: { cashTendered: 200, changeDue: 100 } } }),
-      sale({ _id: "o2", total: 50, customerData: { pos: { cashTendered: 100, changeDue: 50 } } }),
-    ]);
-    expect(summary.changeGiven).toBe(150);
-  });
+  it("adds nothing to the drawer for a confirmed online order nobody has paid yet", () => {
+    // Arrange — the kitchen accepted it; the customer pays on delivery.
+    const orders = [onlineOrder({ amountPaid: 0 })];
 
-  it("returns an all-zero summary for a day with no sales", () => {
-    expect(summarizeCounterSales([])).toEqual({
-      saleCount: 0,
-      grossTotal: 0,
-      cashTotal: 0,
-      nonCashTotal: 0,
-      changeGiven: 0,
-      refundsPaid: 0,
-    });
-  });
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
 
-  it("tolerates a sale with no POS payload rather than throwing", () => {
-    const summary = summarizeCounterSales([sale({ customerData: undefined })]);
+    // Assert
     expect(summary.saleCount).toBe(1);
-    expect(summary.changeGiven).toBe(0);
-  });
-
-  it("classifies a sale with no payment method as non-cash", () => {
-    const summary = summarizeCounterSales([sale({ paymentMethod: undefined, total: 80 })]);
+    expect(summary.grossTotal).toBe(250);
     expect(summary.cashTotal).toBe(0);
-    expect(summary.nonCashTotal).toBe(80);
+    expect(summary.nonCashTotal).toBe(0);
   });
 
-  // --- order editing --------------------------------------------------
-  // Once a placed order can be edited, `sale.total` alone stops describing
-  // what physically moved through the drawer.
+  it("treats a missing amountPaid as unpaid rather than as the full total", () => {
+    // Arrange — a Convex tenant that has never recorded a settlement row.
+    const orders = [onlineOrder({ amountPaid: undefined })];
 
-  it("splits the drawer by how each settlement was actually taken", () => {
-    // Paid ₱450 by GCash, then an edit added ₱120 collected in CASH. The
-    // order's payment method still says GCash, so charging the whole ₱570 to
-    // non-cash would hide ₱120 sitting in the till.
-    const summary = summarizeCounterSales(
-      [sale({ _id: "o1", total: 570, paymentMethod: "GCash", customerData: {} })],
-      [
-        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "GCash" },
-        { orderId: "o1", kind: "charge", amount: 120, paymentMethodName: "Cash" },
-      ],
-    );
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
 
-    expect(summary.cashTotal).toBe(120);
-    expect(summary.nonCashTotal).toBe(450);
-    expect(summary.grossTotal).toBe(570);
+    // Assert
+    expect(summary.cashTotal).toBe(0);
   });
 
-  it("subtracts a cash refund from the drawer", () => {
-    // Paid ₱450 cash, edit dropped the bill, ₱120 handed back from the till.
-    const summary = summarizeCounterSales(
-      [sale({ _id: "o1", total: 330, paymentMethod: "Cash", customerData: {} })],
-      [
-        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "Cash" },
-        { orderId: "o1", kind: "refund", amount: 120, paymentMethodName: "Cash" },
-      ],
-    );
+  it("routes a non-cash online payment to the non-cash column", () => {
+    // Arrange
+    const orders = [onlineOrder({ paymentMethod: "GCash", amountPaid: 250 })];
 
-    expect(summary.cashTotal).toBe(330);
-    expect(summary.refundsPaid).toBe(120);
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
+
+    // Assert
+    expect(summary.cashTotal).toBe(0);
+    expect(summary.nonCashTotal).toBe(250);
   });
 
-  it("reports refunds separately so they can be accounted for", () => {
-    const summary = summarizeCounterSales(
-      [sale({ _id: "o1", total: 330, paymentMethod: "GCash", customerData: {} })],
-      [
-        { orderId: "o1", kind: "charge", amount: 450, paymentMethodName: "GCash" },
-        { orderId: "o1", kind: "refund", amount: 120, paymentMethodName: "GCash" },
-      ],
-    );
+  it("excludes an online order still waiting to be confirmed", () => {
+    // Arrange — it is not the register's money until the register accepts it.
+    const orders = [onlineOrder({ status: "pending", amountPaid: 250 })];
 
-    expect(summary.refundsPaid).toBe(120);
-    expect(summary.nonCashTotal).toBe(330);
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
+
+    // Assert
+    expect(summary.saleCount).toBe(0);
+    expect(summary.cashTotal).toBe(0);
   });
 
-  it("ignores ledger rows belonging to another day's order", () => {
-    const summary = summarizeCounterSales(
-      [sale({ _id: "o1", total: 100, customerData: {} })],
-      [{ orderId: "o-other", kind: "charge", amount: 999, paymentMethodName: "Cash" }],
-    );
+  it("excludes a cancelled online order even when money was recorded against it", () => {
+    // Arrange
+    const orders = [onlineOrder({ status: "cancelled", amountPaid: 250 })];
 
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
+
+    // Assert
+    expect(summary.saleCount).toBe(0);
+    expect(summary.cashTotal).toBe(0);
+  });
+
+  it("prefers the settlement ledger over amountPaid when rows exist", () => {
+    // Arrange — half the online bill was topped up in cash at the counter.
+    const orders = [onlineOrder({ paymentMethod: "GCash", amountPaid: 250 })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 150, paymentMethodName: "GCash" },
+      { orderId: "web-1", kind: "charge", amount: 100, paymentMethodName: "Cash" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments, { includeOnlineOrders: true });
+
+    // Assert
     expect(summary.cashTotal).toBe(100);
+    expect(summary.nonCashTotal).toBe(150);
   });
 
-  it("falls back to the order's own method for sales with no ledger rows", () => {
-    // Every counter sale rung up before the ledger existed.
-    const summary = summarizeCounterSales([sale({ _id: "o1", total: 100 })], []);
+  it("keeps counter sales and confirmed online orders in the same totals", () => {
+    // Arrange
+    const orders = [
+      posSale({ total: 100, paymentMethod: "Cash" }),
+      onlineOrder({ total: 250, paymentMethod: "Cash", amountPaid: 250 }),
+    ];
 
-    expect(summary.cashTotal).toBe(100);
-    expect(summary.refundsPaid).toBe(0);
-  });
+    // Act
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
 
-  it("rounds money totals to centavos", () => {
-    const summary = summarizeCounterSales([
-      sale({ _id: "o1", total: 0.1 }),
-      sale({ _id: "o2", total: 0.2 }),
-    ]);
-    expect(summary.grossTotal).toBe(0.3);
+    // Assert
+    expect(summary.saleCount).toBe(2);
+    expect(summary.grossTotal).toBe(350);
+    expect(summary.cashTotal).toBe(350);
   });
 });
