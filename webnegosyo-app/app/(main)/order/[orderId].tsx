@@ -25,7 +25,13 @@ import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledge
 import { summarizeSettlement } from "../../../lib/order-history-view";
 import { listAllPaymentMethods } from "../../../lib/pos-catalog";
 import type { PosPaymentMethod } from "../../../lib/pos-payment-methods";
-import { canEnterEditMode, enterEditMode } from "../../../lib/pos-edit-mode";
+import {
+  canEnterAppendMode,
+  canEnterEditMode,
+  enterAppendMode,
+  enterEditMode,
+  type OrderEditMode,
+} from "../../../lib/pos-edit-mode";
 import { usePosCartStore } from "../../../stores/pos-cart-store";
 import { listProducts } from "../../../lib/products";
 import {
@@ -450,16 +456,23 @@ export default function OrderDetailScreen() {
   }
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
-  const editGate = order
-    ? canEnterEditMode({
+  const gateRequest = order
+    ? {
         cart: registerCart,
         status: order.status,
         backend: orderBackend ?? "convex",
         user: { role, isOwner, permissions },
         scope,
         order,
-      })
-    : { allowed: false as const };
+      }
+    : null;
+
+  const editGate = gateRequest ? canEnterEditMode(gateRequest) : { allowed: false as const };
+
+  // Asked separately, because the two answer differently on purpose: a
+  // `preparing` order cannot be edited (the food is on the stove) but CAN be
+  // added to, which is the only moment a table ever asks for another round.
+  const appendGate = gateRequest ? canEnterAppendMode(gateRequest) : { allowed: false as const };
 
   /**
    * Discard the open counter sale, then open this order.
@@ -467,18 +480,18 @@ export default function OrderDetailScreen() {
    * Confirmed first: the sale being cleared is a real customer's food, and the
    * register cart is not persisted, so there is nothing to restore it from.
    */
-  function handleClearRegisterAndEdit() {
-    const remedy = editGate.remedy;
+  function handleClearRegisterAndEdit(mode: OrderEditMode = "revise") {
+    const remedy = (mode === "append" ? appendGate : editGate).remedy;
     if (!remedy || isOpeningEdit) return;
 
     Alert.alert("Clear the register?", remedy.confirm, [
       { text: "Keep the sale", style: "cancel" },
       {
-        text: "Clear and edit",
+        text: "Clear and continue",
         style: "destructive",
         onPress: () => {
           resetRegister();
-          void handleOpenInRegister();
+          void handleOpenInRegister(mode);
         },
       },
     ]);
@@ -491,7 +504,7 @@ export default function OrderDetailScreen() {
    * is only needed to recover the order's modifiers back to option ids and
    * most visits to this screen never edit anything.
    */
-  async function handleOpenInRegister() {
+  async function handleOpenInRegister(mode: OrderEditMode = "revise") {
     if (!order || !tenantId || isOpeningEdit) return;
 
     if (isDemo) {
@@ -521,8 +534,12 @@ export default function OrderDetailScreen() {
         {},
       );
 
+      // Same load either way; the mode decides only whether the order's lines
+      // land on the register or wait behind it.
+      const load = mode === "append" ? enterAppendMode : enterEditMode;
+
       beginEdit(
-        enterEditMode(
+        load(
           {
             _id: order._id,
             total: order.total,
@@ -834,7 +851,7 @@ export default function OrderDetailScreen() {
           {editGate.allowed ? (
             <TouchableOpacity
               style={styles.editButton}
-              onPress={handleOpenInRegister}
+              onPress={() => handleOpenInRegister("revise")}
               disabled={isOpeningEdit}
               activeOpacity={0.8}
             >
@@ -842,7 +859,7 @@ export default function OrderDetailScreen() {
                 {isOpeningEdit ? "Opening register..." : "Edit in register"}
               </Text>
             </TouchableOpacity>
-          ) : editGate.reason ? (
+          ) : editGate.reason && !appendGate.allowed ? (
             <>
               <Text style={styles.editBlockedText}>{editGate.reason}</Text>
               {/*
@@ -853,7 +870,7 @@ export default function OrderDetailScreen() {
               {editGate.remedy && (
                 <TouchableOpacity
                   style={styles.remedyButton}
-                  onPress={handleClearRegisterAndEdit}
+                  onPress={() => handleClearRegisterAndEdit("revise")}
                   disabled={isOpeningEdit}
                   activeOpacity={0.8}
                 >
@@ -861,6 +878,26 @@ export default function OrderDetailScreen() {
                 </TouchableOpacity>
               )}
             </>
+          ) : null}
+
+          {/*
+            Adding a round is its own action, not a variant of Edit. It opens
+            the register EMPTY, so the cashier rings up only what was just
+            asked for — and it stays available while the kitchen cooks, which
+            is exactly when a table asks. Shown whenever the two gates disagree
+            or alongside Edit when both allow it.
+          */}
+          {appendGate.allowed ? (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => handleOpenInRegister("append")}
+              disabled={isOpeningEdit}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.editButtonText}>
+                {isOpeningEdit ? "Opening register..." : "Add items to this order"}
+              </Text>
+            </TouchableOpacity>
           ) : null}
           {nextStatus && (
             <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>

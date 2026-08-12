@@ -377,6 +377,8 @@ describe("editModeTotals", () => {
   function contextWith(overrides: Partial<OrderEditContext> = {}): OrderEditContext {
     return {
       orderId: "order-1",
+      mode: "revise",
+      appendBaseCart: [],
       expectedRevisionNumber: 0,
       originalTotal: 260,
       deliveryFee: 50,
@@ -524,6 +526,8 @@ describe("editModeTotals with a discount added during the edit", () => {
   function plainContext(): OrderEditContext {
     return {
       orderId: "order-1",
+      mode: "revise",
+      appendBaseCart: [],
       expectedRevisionNumber: 0,
       originalTotal: 200,
       deliveryFee: 0,
@@ -737,6 +741,8 @@ describe("the discount an edit settles on", () => {
   function plain(): OrderEditContext {
     return {
       orderId: "order-1",
+      mode: "revise",
+      appendBaseCart: [],
       expectedRevisionNumber: 0,
       originalTotal: 200,
       deliveryFee: 0,

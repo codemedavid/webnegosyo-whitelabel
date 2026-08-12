@@ -43,6 +43,24 @@ const FINAL_STATUSES: Record<string, string> = {
 };
 
 /**
+ * Statuses past the point of ADDING to an order.
+ *
+ * Deliberately shorter than {@link FINAL_STATUSES}. The kitchen rule above
+ * exists because rewriting a line desynchronises the bill from food already on
+ * the stove — but appending changes nothing that is cooking. It adds a second
+ * ticket, which is exactly what a table asking for another round wants, and
+ * `preparing`/`ready` is the only window that request ever arrives in. Barring
+ * it there would bar the feature from its own use case.
+ *
+ * Handed over and cancelled still stand: there is no table left to serve.
+ */
+const UNAPPENDABLE_STATUSES: Record<string, string> = {
+  delivered:
+    "This order was already delivered, so nothing more can be added to it.",
+  cancelled: "This order was cancelled, so nothing more can be added to it.",
+};
+
+/**
  * Backends that can accept the revise mutation.
  *
  * Per-tenant Supabase projects are absent on purpose: that backend has no
@@ -75,14 +93,28 @@ export interface EditRequest {
  * by permission is barred at every branch, so that is the more useful thing to
  * be told.
  */
-export function canEditOrder({
-  status,
-  backend,
-  user,
-  scope,
-  order,
-}: EditRequest): EditGate {
-  const finalReason = FINAL_STATUSES[status];
+export function canEditOrder(request: EditRequest): EditGate {
+  return checkOrderWrite(request, FINAL_STATUSES);
+}
+
+/**
+ * May this person add a round to this order right now?
+ *
+ * Every rule {@link canEditOrder} applies except the status one, which is
+ * relaxed to {@link UNAPPENDABLE_STATUSES}. The permission is the same
+ * (`order_edit`), the backends are the same, and the branch check is the same —
+ * appending still rewrites a customer's bill, and a second set of write rules
+ * would be a second set to keep in step.
+ */
+export function canAppendToOrder(request: EditRequest): EditGate {
+  return checkOrderWrite(request, UNAPPENDABLE_STATUSES);
+}
+
+function checkOrderWrite(
+  { status, backend, user, scope, order }: EditRequest,
+  barredStatuses: Record<string, string>,
+): EditGate {
+  const finalReason = barredStatuses[status];
   if (finalReason) return { allowed: false, reason: finalReason };
 
   if (!EDITABLE_BACKENDS.includes(backend)) {

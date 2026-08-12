@@ -35,7 +35,7 @@ import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { burnPosRedemptions } from "../../lib/voucher-service";
-import { newDiscountLines } from "../../lib/pos-edit-mode";
+import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
@@ -228,10 +228,16 @@ export default function PosTenderScreen() {
       // one the register showed, discounts applied during the edit included.
       const saved = usePosCartStore.getState().editTotals()!;
 
+      // The ORDER's lines, which on an append are not the register's: the
+      // cashier rang up only the second round, and saving that alone would
+      // replace the table's whole bill with it. Same rule the totals used, so
+      // what is saved is what the cashier was shown.
+      const savedItems = effectiveEditCart(lines, editContext);
+
       await reviseOrder({
         orderId: editContext.orderId,
         expectedRevisionNumber: editContext.expectedRevisionNumber,
-        items: posCartToOrderItems(lines),
+        items: posCartToOrderItems(savedItems),
         deliveryFee: editContext.deliveryFee,
         // The only channel the mutation offers for the rest of the bill.
         serviceChargeAmount: saved.carriedChargesForSave,
@@ -276,7 +282,7 @@ export default function PosTenderScreen() {
           tenantId,
           editContext.orderId,
           editContext.expectedRevisionNumber + 1,
-          posStockRevision(editContext.originalStockItems, buildPosStockItems(lines)),
+          posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems)),
         );
       }
 

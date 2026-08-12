@@ -317,7 +317,11 @@ export default function PosScreen() {
       {edit && editContext && (
         <View style={styles.editBanner}>
           <View style={styles.editBannerMain}>
-            <Text style={styles.editBannerTitle}>Editing a placed order</Text>
+            <Text style={styles.editBannerTitle}>
+              {editContext.mode === "append"
+                ? "Adding to a placed order"
+                : "Editing a placed order"}
+            </Text>
             <Text style={styles.editBannerTotals}>
               {formatPeso(editContext.originalTotal)} → {formatPeso(edit.newTotal)}
             </Text>

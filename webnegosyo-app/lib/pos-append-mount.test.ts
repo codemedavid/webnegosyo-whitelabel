@@ -33,7 +33,9 @@ describe("tender screen", () => {
   });
 
   it("moves stock for the whole order too, so an append does not un-deplete it", () => {
-    expect(screen).not.toMatch(/buildPosStockItems\(lines\)/);
+    // Scoped to the revision call on purpose — the counter-sale path a few
+    // lines below legitimately depletes against the register's own cart.
+    expect(screen).toMatch(/posStockRevision\([^)]*buildPosStockItems\(savedItems\)/);
   });
 });
 
@@ -50,7 +52,8 @@ describe("order detail screen", () => {
 
   it("still offers an ordinary edit", () => {
     expect(screen).toMatch(/canEnterEditMode/);
-    expect(screen).toMatch(/enterEditMode\(/);
+    // Referenced rather than called: the two loaders are picked by mode.
+    expect(screen).toMatch(/: enterEditMode/);
   });
 });
 

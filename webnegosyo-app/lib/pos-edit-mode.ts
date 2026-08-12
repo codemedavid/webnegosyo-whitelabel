@@ -26,7 +26,7 @@ import {
   type HydratableOrderItem,
   type RevisedOrderItem,
 } from "./order-edit-cart";
-import { canEditOrder, type EditGate } from "./order-edit-guards";
+import { canAppendToOrder, canEditOrder, type EditGate } from "./order-edit-guards";
 import { diffOrderItems } from "./order-revision";
 
 import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
@@ -48,8 +48,32 @@ import type { BranchScope, ScopedOrderLike } from "./branch-scope";
  * from the chosen order type and has no concept of delivery at all. Rebuilding
  * the total from the cart alone would quietly drop both.
  */
+/**
+ * What the register is doing to a placed order.
+ *
+ * `revise` — the whole bill is on the register and the cashier is changing it.
+ * `append` — the register is empty and the cashier is ringing up a second round
+ *            on top of what the table already has.
+ *
+ * The distinction is the cart, not the arithmetic. Both price the same bill,
+ * carry the same delivery fee and re-price the same discount; append simply
+ * keeps the original lines behind the register instead of inside it, so a
+ * cashier taking "two more beers" rings up two beers and nothing else.
+ */
+export type OrderEditMode = "revise" | "append";
+
 export interface OrderEditContext {
   orderId: string;
+  /** See {@link OrderEditMode}. */
+  mode: OrderEditMode;
+  /**
+   * The order's existing lines, held out of the register while appending.
+   *
+   * Empty in `revise` mode, where the same lines ARE the cart. Kept as cart
+   * lines rather than order items because the totals, the discount re-pricing
+   * and the save all speak that shape — see {@link effectiveEditCart}.
+   */
+  appendBaseCart: PosCartLine[];
   /** Checked against the stored revision on save, to catch a concurrent edit. */
   expectedRevisionNumber: number;
   /** The bill as placed, for the was/now header. */
@@ -166,22 +190,32 @@ const CLEAR_REGISTER_REMEDY: EditRemedy = {
  * however tidy the register is, so asking the cashier to clear their sale would
  * waste the clearing.
  */
-export function canEnterEditMode({
-  cart,
-  status,
-  backend,
-  user,
-  scope,
-  order,
-}: EnterEditModeRequest): EnterEditGate {
-  const gate = canEditOrder({ status, backend, user, scope, order });
+export function canEnterEditMode(request: EnterEditModeRequest): EnterEditGate {
+  return checkRegisterFree(request, canEditOrder(request), "editing an order");
+}
+
+/**
+ * May the register open this order to add a round to it right now?
+ *
+ * The empty-register rule is the same and for the same reason: the cart is a
+ * single global store, so a counter sale left on it would be rung onto somebody
+ * else's table. Only the status rule differs — see {@link canAppendToOrder}.
+ */
+export function canEnterAppendMode(request: EnterEditModeRequest): EnterEditGate {
+  return checkRegisterFree(request, canAppendToOrder(request), "adding to an order");
+}
+
+function checkRegisterFree(
+  { cart }: EnterEditModeRequest,
+  gate: EditGate,
+  activity: string,
+): EnterEditGate {
   if (!gate.allowed) return gate;
 
   if (cart.length > 0) {
     return {
       allowed: false,
-      reason:
-        "The register has a sale in progress. Finish or clear it before editing an order.",
+      reason: `The register has a sale in progress. Finish or clear it before ${activity}.`,
       remedy: CLEAR_REGISTER_REMEDY,
     };
   }
@@ -209,6 +243,35 @@ export function enterEditMode(
   payments: readonly OrderPayment[],
   catalog: ModifierCatalog,
 ): EnteredEditMode {
+  return loadOrder(order, payments, catalog, "revise");
+}
+
+/**
+ * Open a placed order to add a round to it.
+ *
+ * Same load as {@link enterEditMode} in every respect that touches money — the
+ * carried charges are derived from the same hydrated lines, so the residue is
+ * identical — but the register is handed an EMPTY cart and the order's own
+ * lines are parked in `appendBaseCart`.
+ *
+ * That is the whole point: a cashier who opens an edit to add one item has to
+ * find their addition among twelve existing lines and can knock one out by
+ * accident. Here there is nothing on screen but what they just rang up.
+ */
+export function enterAppendMode(
+  order: EditableOrderLike,
+  payments: readonly OrderPayment[],
+  catalog: ModifierCatalog,
+): EnteredEditMode {
+  return loadOrder(order, payments, catalog, "append");
+}
+
+function loadOrder(
+  order: EditableOrderLike,
+  payments: readonly OrderPayment[],
+  catalog: ModifierCatalog,
+  mode: OrderEditMode,
+): EnteredEditMode {
   const { lines, unresolved } = hydratePosCart(order.items, catalog);
   // Zero, not undefined: `undefined + subtotal` is NaN, and the tender screen
   // would ask the cashier for "₱NaN".
@@ -216,9 +279,13 @@ export function enterEditMode(
   const storedDiscount = readOrderDiscount(order);
 
   return {
-    cart: lines,
+    // Appending opens on an empty register; the order's lines wait in the
+    // context and are folded back in by `effectiveEditCart` for every sum.
+    cart: mode === "append" ? [] : lines,
     context: {
       orderId: order._id,
+      mode,
+      appendBaseCart: mode === "append" ? lines : [],
       expectedRevisionNumber: order.revisionNumber ?? 0,
       originalTotal: order.total,
       originalItems: posCartToOrderItems(lines, catalog),
@@ -236,6 +303,39 @@ export function enterEditMode(
         : `${item.menuItemName} is no longer on the menu.`,
     ),
   };
+}
+
+/**
+ * The order's full line-up, however the register happens to be holding it.
+ *
+ * Every sum in this module — the items total, the discount re-pricing, the
+ * dirty check — and the save on the tender screen go through here, so revise
+ * and append can never price the same bill differently. In `revise` the cart
+ * already IS the order; in `append` the parked lines go back in front of it.
+ *
+ * Merged by line identity rather than concatenated: a table ordering a third
+ * Latte should see one line of 3, not two lines the kitchen has to add up, and
+ * `diffOrderItems` would otherwise report a line that was never removed.
+ *
+ * Pure — the parked lines are copied, never written through.
+ */
+export function effectiveEditCart(
+  cart: readonly PosCartLine[],
+  context: OrderEditContext,
+): PosCartLine[] {
+  if (context.mode !== "append") return [...cart];
+
+  return cart.reduce<PosCartLine[]>((lines, added) => {
+    const at = lines.findIndex((line) => line.key === added.key);
+    if (at === -1) return [...lines, added];
+
+    const merged = {
+      ...lines[at],
+      quantity: lines[at].quantity + added.quantity,
+      subtotal: round2(lines[at].subtotal + added.subtotal),
+    };
+    return [...lines.slice(0, at), merged, ...lines.slice(at + 1)];
+  }, [...context.appendBaseCart]);
 }
 
 export interface EditModeTotals {
@@ -391,10 +491,14 @@ export function withEditVouchers(
  * "what does this order cost now" rather than one per screen.
  */
 export function editModeTotals(
-  cart: readonly PosCartLine[],
+  registerCart: readonly PosCartLine[],
   context: OrderEditContext,
   addedDiscountLines: readonly OrderDiscountLine[] = [],
 ): EditModeTotals {
+  // Everything below prices the ORDER, not the register. While appending those
+  // are different lists, and using the register's would bill the table for the
+  // second round while forgetting the first.
+  const cart = effectiveEditCart(registerCart, context);
   const itemsTotal = itemsTotalOf(cart);
 
   // Re-priced against the edited cart, per the owner's decision: remove the
@@ -455,10 +559,11 @@ export function editModeTotals(
     diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0 ||
     added > 0;
 
-  const blockedReason =
-    cart.length === 0
-      ? "An order cannot be emptied by editing. Cancel it instead."
-      : undefined;
+  // Two different empties. A revise with nothing left is a cashier deleting an
+  // order through the back door; an append with nothing rung up has simply not
+  // started yet, and telling that cashier to cancel the order would be alarming
+  // advice about a bill they have not touched.
+  const blockedReason = blockedReasonFor(registerCart, cart, context.mode);
 
   return {
     itemsTotal,
@@ -481,6 +586,22 @@ export function editModeTotals(
  * `null` when the order HAD a discount and now has none, which is a real change
  * and has to be distinguishable from silence.
  */
+function blockedReasonFor(
+  registerCart: readonly PosCartLine[],
+  effectiveCart: readonly PosCartLine[],
+  mode: OrderEditMode,
+): string | undefined {
+  if (mode === "append") {
+    return registerCart.length === 0
+      ? "Add at least one item to put on this order."
+      : undefined;
+  }
+
+  return effectiveCart.length === 0
+    ? "An order cannot be emptied by editing. Cancel it instead."
+    : undefined;
+}
+
 function settledDiscountOf(
   lines: readonly OrderDiscountLine[],
   total: number,
