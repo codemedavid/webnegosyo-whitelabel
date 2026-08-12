@@ -83,7 +83,7 @@ export default function PosTenderScreen() {
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
   const reviseOrder = useSafeMutation(reviseOrderRef);
   const recordPayment = useSafeMutation(recordPaymentRef);
-  const { printOrder, hasPrinter } = useOrderPrint();
+  const { printOrder, shouldPrint } = useOrderPrint();
 
   const [methods, setMethods] = useState<PosPaymentMethod[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -428,7 +428,9 @@ export default function PosTenderScreen() {
         });
       }
 
-      if (hasPrinter) {
+      // A settled counter sale IS the bill-out moment, so it obeys the same
+      // setting as every other receipt rather than printing unconditionally.
+      if (shouldPrint("billout")) {
         await printOrder({
           _id: String(orderId),
           _creationTime: Date.now(),
@@ -497,7 +499,7 @@ export default function PosTenderScreen() {
     orderBackend,
     createOrder,
     updatePaymentStatus,
-    hasPrinter,
+    shouldPrint,
     printOrder,
     reset,
   ]);

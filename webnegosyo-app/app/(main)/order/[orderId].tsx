@@ -342,7 +342,7 @@ export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const { printOrder, autoPrint, hasPrinter } = useOrderPrint();
+  const { printOrder, printAt, shouldPrint, hasPrinter } = useOrderPrint();
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
@@ -432,6 +432,15 @@ export default function OrderDetailScreen() {
         outletId: scope.kind === "branch" ? scope.outletId : undefined,
       });
       setIsCollectOpen(false);
+
+      // Bill-out: the money is settled, so this is the customer's receipt.
+      // Fire-and-forget — the payment is already recorded, and a dead printer
+      // must not read as a failed collection.
+      void printAt("billout", {
+        ...order,
+        paymentMethod: payment.methodName ?? order.paymentMethod,
+        paymentReference: payment.reference,
+      });
     } catch (err) {
       Alert.alert(
         "Could not record the payment",
@@ -572,8 +581,9 @@ export default function OrderDetailScreen() {
       return;
     }
     try {
-      // When confirming with auto-print enabled, attempt print BEFORE updating status
-      if (newStatus === "confirmed" && autoPrint && hasPrinter) {
+      // When the merchant prints on confirmation, attempt it BEFORE updating
+      // status so a paper jam is noticed while the order is still in hand.
+      if (newStatus === "confirmed" && shouldPrint("confirmation")) {
         const printed = await printOrder(order);
         if (!printed) {
           Alert.alert("Print Warning", "Receipt could not be printed. Order will still be confirmed.");

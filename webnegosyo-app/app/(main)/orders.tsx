@@ -70,7 +70,7 @@ export default function OrdersScreen() {
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
   const scope = useBranchScope();
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const { autoPrint, hasPrinter } = useOrderPrint();
+  const { shouldPrint } = useOrderPrint();
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -121,7 +121,10 @@ export default function OrdersScreen() {
     }
     try {
       await updateStatus({ orderId, status: newStatus });
-      if (newStatus === "confirmed" && autoPrint && hasPrinter) {
+      // This list holds order rows without their line items, so printing here
+      // would emit a receipt with no items on it. Point at the screen that has
+      // them — but only when the merchant actually expects paper.
+      if (newStatus === "confirmed" && shouldPrint("confirmation")) {
         Alert.alert("Order Confirmed", "Open order details to print receipt.");
       }
     } catch {

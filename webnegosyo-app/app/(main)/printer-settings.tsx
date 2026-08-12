@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Switch,
+  TextInput, Alert, ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { usePrinterStore } from "../../stores/printer-store";
+import { type PrintTrigger } from "../../lib/print-trigger";
 import {
   discoverBluetoothPrinters,
   connectPrinter,
@@ -21,8 +22,24 @@ interface DiscoveredPrinter {
   address: string;
 }
 
+/** The four print moments, in the order a merchant reasons about them. */
+const PRINT_TRIGGER_OPTIONS: { value: PrintTrigger; label: string; hint: string }[] = [
+  {
+    value: "confirmation",
+    label: "On order confirmation",
+    hint: "Kitchen ticket — prints when you accept the order",
+  },
+  {
+    value: "billout",
+    label: "On bill out",
+    hint: "Customer receipt — prints when payment is settled",
+  },
+  { value: "both", label: "Both", hint: "A ticket on confirm and a receipt on payment" },
+  { value: "off", label: "Never", hint: "Only print when you tap Reprint Receipt" },
+];
+
 export default function PrinterSettingsScreen() {
-  const { printer, isConnected, autoPrint, setPrinter, setAutoPrint } = usePrinterStore();
+  const { printer, isConnected, printTrigger, setPrinter, setPrintTrigger } = usePrinterStore();
   const [tab, setTab] = useState<"bluetooth" | "network">(printer?.type ?? "bluetooth");
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredPrinter[]>([]);
@@ -136,17 +153,26 @@ export default function PrinterSettingsScreen() {
       </Card>
 
       <Card style={styles.section}>
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>Auto-Print on Confirm</Text>
-            <Text style={styles.toggleSub}>Print receipt when order is confirmed</Text>
-          </View>
-          <Switch
-            value={autoPrint}
-            onValueChange={setAutoPrint}
-            trackColor={{ true: colors.primary }}
-          />
-        </View>
+        <Text style={styles.toggleLabel}>When to print</Text>
+        <Text style={styles.toggleSub}>
+          Choose the moment a receipt comes out automatically
+        </Text>
+        {PRINT_TRIGGER_OPTIONS.map((option) => (
+          <TouchableOpacity
+            key={option.value}
+            style={[styles.triggerRow, printTrigger === option.value && styles.triggerRowActive]}
+            onPress={() => setPrintTrigger(option.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: printTrigger === option.value }}
+            accessibilityLabel={option.label}
+          >
+            <View style={styles.triggerText}>
+              <Text style={styles.triggerLabel}>{option.label}</Text>
+              <Text style={styles.toggleSub}>{option.hint}</Text>
+            </View>
+            {printTrigger === option.value && <Text style={styles.triggerCheck}>✓</Text>}
+          </TouchableOpacity>
+        ))}
       </Card>
 
       <View style={styles.tabRow}>
@@ -245,6 +271,22 @@ const styles = StyleSheet.create({
   smallButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   toggleLabel: { ...typography.heading, color: colors.textPrimary },
+  triggerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    gap: spacing.md,
+  },
+  triggerRowActive: { borderColor: colors.primary },
+  triggerText: { flex: 1 },
+  triggerLabel: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
+  triggerCheck: { ...typography.body, fontWeight: "800", color: colors.primary },
   toggleSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   tabRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
   tab: {

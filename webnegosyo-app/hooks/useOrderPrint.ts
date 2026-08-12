@@ -3,6 +3,7 @@ import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
 import { printReceipt } from "../lib/printer";
 import { formatReceipt } from "../lib/receipt-formatter";
+import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 
 interface PrintableOrder {
   _id: string;
@@ -35,7 +36,7 @@ interface PrintableOrder {
  */
 export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
-  const { autoPrint, printer } = usePrinterStore();
+  const { printTrigger, printer } = usePrinterStore();
   const [isPrinting, setIsPrinting] = useState(false);
 
   const printOrder = useCallback(
@@ -60,10 +61,33 @@ export function useOrderPrint() {
     [printer, tenantName]
   );
 
+  /**
+   * Should this moment print, given the merchant's setting and this device?
+   * A device with no printer never prints, whatever the setting says.
+   */
+  const shouldPrint = useCallback(
+    (moment: PrintMoment): boolean => !!printer && shouldPrintAt(moment, printTrigger),
+    [printer, printTrigger],
+  );
+
+  /**
+   * Print if this moment calls for it. Returns whether paper came out, so a
+   * caller can warn — never throws, so a dead printer cannot block a sale.
+   */
+  const printAt = useCallback(
+    async (moment: PrintMoment, order: PrintableOrder): Promise<boolean> => {
+      if (!shouldPrint(moment)) return false;
+      return printOrder(order);
+    },
+    [shouldPrint, printOrder],
+  );
+
   return {
     printOrder,
+    printAt,
+    shouldPrint,
     isPrinting,
-    autoPrint,
+    printTrigger,
     hasPrinter: !!printer,
   };
 }

@@ -10,7 +10,7 @@ import { canConfirmFromDrawer, selectDrawerIncoming } from "../../lib/drawer-int
 import { type IncomingOrder, type RealtimeQueue } from "../../lib/pos-incoming";
 import { describeIncomingOrder } from "../../lib/pos-incoming";
 import { useBranchScope } from "../../lib/use-branch-scope";
-import { filterQueueToScope } from "../../lib/branch-scope";
+import { filterQueueToScope } from "../../lib/branch-dashboard";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { readPosPayment } from "../../lib/pos-order";
 import { formatPeso } from "../../lib/format";
