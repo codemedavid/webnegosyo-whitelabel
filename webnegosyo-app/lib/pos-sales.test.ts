@@ -7,7 +7,12 @@
  * not be told to expect money the customer has not handed over.
  */
 
-import { summarizeCounterSales, type CounterSale, type CounterPayment } from "./pos-sales";
+import {
+  selectShiftSales,
+  summarizeCounterSales,
+  type CounterSale,
+  type CounterPayment,
+} from "./pos-sales";
 
 function posSale(overrides: Partial<CounterSale> = {}): CounterSale {
   return {
@@ -62,6 +67,38 @@ describe("summarizeCounterSales — existing counter-sale behaviour", () => {
     // Assert
     expect(summary.cashTotal).toBe(100);
     expect(summary.nonCashTotal).toBe(200);
+  });
+});
+
+describe("selectShiftSales", () => {
+  it("lists exactly the rows the summary counted", () => {
+    // Arrange — the list and the totals drift apart the moment they use two
+    // different rules, so they must come from the same predicate.
+    const orders = [
+      posSale({ _id: "a" }),
+      onlineOrder({ _id: "b", status: "confirmed" }),
+      onlineOrder({ _id: "c", status: "pending" }),
+      onlineOrder({ _id: "d", status: "cancelled" }),
+    ];
+
+    // Act
+    const listed = selectShiftSales(orders, { includeOnlineOrders: true });
+    const summary = summarizeCounterSales(orders, [], { includeOnlineOrders: true });
+
+    // Assert
+    expect(listed.map((order) => order._id)).toEqual(["a", "b"]);
+    expect(listed.length).toBe(summary.saleCount);
+  });
+
+  it("lists counter sales only when the merchant has not opted in", () => {
+    // Arrange
+    const orders = [posSale({ _id: "a" }), onlineOrder({ _id: "b" })];
+
+    // Act
+    const listed = selectShiftSales(orders);
+
+    // Assert
+    expect(listed.map((order) => order._id)).toEqual(["a"]);
   });
 });
 

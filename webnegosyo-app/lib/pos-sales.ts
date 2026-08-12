@@ -18,6 +18,21 @@ export interface CounterSale {
   total: number;
   paymentMethod?: string;
   customerData?: unknown;
+  /**
+   * Money actually settled against this order, from the trigger-maintained
+   * `amount_paid` cache (platform) or the patched `amountPaid` field (Convex).
+   * Absent on rows written before the ledger existed.
+   */
+  amountPaid?: number;
+}
+
+/** How the summary decides which orders belong to this shift's drawer. */
+export interface SourcePolicy {
+  /**
+   * Count online orders the register has confirmed. Off by default so every
+   * existing caller keeps counter-sale-only totals unchanged.
+   */
+  includeOnlineOrders?: boolean;
 }
 
 /**
@@ -112,7 +127,62 @@ function splitByLedger(rows: readonly CounterPayment[]): {
 }
 
 /**
- * Totals for the register's own sales, ignoring web / QR-handoff orders.
+ * Statuses an online order must have reached to belong to this shift's drawer.
+ * `pending` is deliberately absent: an order nobody has accepted yet is not the
+ * register's business, however much money is attached to it.
+ */
+const CONFIRMED_ONLINE_STATUSES: readonly string[] = [
+  "confirmed",
+  "preparing",
+  "ready",
+  "delivered",
+];
+
+/**
+ * Whether a row belongs in this shift's drawer at all.
+ *
+ * Counter sales qualify on source alone — the cashier rang them up. An online
+ * order qualifies only once the register has confirmed it, which is what turns
+ * a Smart Menu order into this shift's responsibility.
+ */
+function belongsToShift(order: CounterSale, policy: SourcePolicy): boolean {
+  if (order.status === "cancelled") return false;
+  if (order.source === "pos") return true;
+  if (!policy.includeOnlineOrders) return false;
+  return CONFIRMED_ONLINE_STATUSES.includes(order.status ?? "");
+}
+
+/**
+ * The rows that belong to this shift, in the order they were given.
+ *
+ * Exported so the Drawer's list and its totals are the same decision made once.
+ * A screen that filtered its own list would be free to show a row the totals
+ * ignored — which reads to a cashier as arithmetic that does not add up.
+ */
+export function selectShiftSales(
+  orders: readonly CounterSale[],
+  policy: SourcePolicy = {},
+): CounterSale[] {
+  return orders.filter((order) => belongsToShift(order, policy));
+}
+
+/**
+ * What an online order put in the drawer, absent a settlement ledger.
+ *
+ * Deliberately NOT `total`. A confirmed Smart Menu order is real sales, but the
+ * money only exists once someone has paid; counting the bill would tell a
+ * cashier to expect cash that is still in the customer's pocket. An unknown
+ * `amountPaid` reads as unpaid for the same reason the existing `isCashSale`
+ * rule treats an unrecorded method as non-cash — under-stating the drawer is
+ * safe, over-stating it is a shift that will not reconcile.
+ */
+function settledAmount(order: CounterSale): number {
+  return order.source === "pos" ? order.total : (order.amountPaid ?? 0);
+}
+
+/**
+ * Totals for the register's own sales, plus — when the policy allows it —
+ * online orders this register confirmed.
  *
  * When a sale has settlement rows, the drawer split comes from THEM — they
  * record how each peso was actually taken, which the order's single
@@ -126,10 +196,9 @@ function splitByLedger(rows: readonly CounterPayment[]): {
 export function summarizeCounterSales(
   orders: CounterSale[],
   payments: readonly CounterPayment[] = [],
+  policy: SourcePolicy = {},
 ): CounterSalesSummary {
-  const counterSales = orders.filter(
-    (order) => order.source === "pos" && order.status !== "cancelled",
-  );
+  const counterSales = selectShiftSales(orders, policy);
 
   const summary = counterSales.reduce<CounterSalesSummary>((acc, sale) => {
     const rows = payments.filter((payment) => payment.orderId === sale._id);
@@ -137,12 +206,15 @@ export function summarizeCounterSales(
 
     if (rows.length === 0) {
       const cash = isCashSale(sale);
+      const settled = settledAmount(sale);
       return {
         ...acc,
         saleCount: acc.saleCount + 1,
+        // Gross is what was sold; the drawer split is what was taken. They part
+        // company the moment an online order is confirmed before it is paid.
         grossTotal: acc.grossTotal + sale.total,
-        cashTotal: acc.cashTotal + (cash ? sale.total : 0),
-        nonCashTotal: acc.nonCashTotal + (cash ? 0 : sale.total),
+        cashTotal: acc.cashTotal + (cash ? settled : 0),
+        nonCashTotal: acc.nonCashTotal + (cash ? 0 : settled),
         changeGiven: acc.changeGiven + changeDue,
       };
     }

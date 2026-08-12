@@ -19,6 +19,7 @@ import {
   type TenantRow,
 } from "../lib/session-resolve";
 import { usePrinterStore } from "../stores/printer-store";
+import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
 import {
@@ -278,9 +279,10 @@ export default function RootLayout() {
   useAuthRedirect();
   usePushNotifications();
 
-  // Load saved printer config on app start
+  // Load saved device settings (printer config, register prefs) on app start
   useEffect(() => {
     usePrinterStore.getState().loadSaved();
+    useRegisterSettingsStore.getState().loadSaved();
   }, []);
 
   return (
