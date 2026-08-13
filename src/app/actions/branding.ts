@@ -6,15 +6,15 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
     writeBrandingWithClient,
-    type BrandingInput,
+    type BrandingPatchInput,
     type SaveBrandingResult,
 } from '@/lib/branding-service'
 
 // NOTE: Do not re-export these types from this 'use server' module. Turbopack's
 // server-action transform treats every export (including `export type`) as a
 // runtime server-action entry and wraps them in ensureServerEntryExports([...]),
-// which throws "BrandingInput is not defined" at page-data collection because
-// types are erased. Importers must pull BrandingInput/SaveBrandingResult straight
+// which throws "BrandingPatchInput is not defined" at page-data collection because
+// types are erased. Importers must pull BrandingPatchInput/SaveBrandingResult straight
 // from '@/lib/branding-service' instead.
 
 /**
@@ -30,7 +30,7 @@ import {
 export async function saveBrandingAction(
     tenantId: string,
     tenantSlug: string,
-    branding: BrandingInput,
+    branding: BrandingPatchInput,
     ctx?: ProvisioningCtx
 ): Promise<SaveBrandingResult> {
     try {

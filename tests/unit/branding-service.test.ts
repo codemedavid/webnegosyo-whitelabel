@@ -4,6 +4,7 @@ import {
   writeBrandingWithClient,
   brandingSchema,
   type BrandingInput,
+  type BrandingPatchInput,
 } from '@/lib/branding-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
@@ -58,6 +59,19 @@ describe('buildBrandingUpdatePayload', () => {
 })
 
 describe('writeBrandingWithClient', () => {
+  it('accepts a header-color-only patch without requiring unrelated core colors', async () => {
+    const { client, update } = makeUpdateStub()
+
+    const result = await writeBrandingWithClient(client, TENANT, {
+      header_color: '#8B1A1A',
+    } as BrandingPatchInput)
+
+    expect(result.success).toBe(true)
+    expect(update).toHaveBeenCalledWith({
+      header_color: '#8B1A1A',
+    })
+  })
+
   it('updates the tenants row via the injected client and reports success', async () => {
     const { client, from, update, eq } = makeUpdateStub()
     const result = await writeBrandingWithClient(client, TENANT, brandingInput())

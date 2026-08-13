@@ -231,6 +231,15 @@ export const brandingSchema = z.object({
 
 export type BrandingInput = z.infer<typeof brandingSchema>
 
+/**
+ * Branding writes are PATCH operations. The Branding Studio normally submits
+ * the complete draft, while API/MCP callers often update one surface at a time
+ * (for example only the hero or footer). Keep `brandingSchema` as the full-form
+ * contract, but validate persistence payloads against its partial equivalent.
+ */
+export const brandingPatchSchema = brandingSchema.partial()
+export type BrandingPatchInput = z.infer<typeof brandingPatchSchema>
+
 export type SaveBrandingResult = {
     success: boolean
     error?: string
@@ -348,13 +357,17 @@ function omitFields<T extends Record<string, unknown>>(payload: T, fields: reado
  * payload. Empty promotion_banners becomes []; empty hero uuid/url fields
  * become NULL so an "unset" value persists as NULL rather than ''.
  */
-export function buildBrandingUpdatePayload(parsed: BrandingInput): Record<string, unknown> {
+export function buildBrandingUpdatePayload(parsed: BrandingPatchInput): Record<string, unknown> {
     return {
         ...parsed,
-        promotion_banners:
-            parsed.promotion_banners === ''
-                ? ([] as PromotionBanner[])
-                : (parsed.promotion_banners as PromotionBanner[] | undefined),
+        ...(parsed.promotion_banners !== undefined
+            ? {
+                promotion_banners:
+                    parsed.promotion_banners === ''
+                        ? ([] as PromotionBanner[])
+                        : (parsed.promotion_banners as PromotionBanner[]),
+            }
+            : {}),
         ...(parsed.hero_featured_product_id === ''
             ? { hero_featured_product_id: null }
             : {}),
@@ -378,11 +391,11 @@ export function buildBrandingUpdatePayload(parsed: BrandingInput): Record<string
 export async function writeBrandingWithClient(
     client: SupabaseClient<Database>,
     tenantId: string,
-    branding: BrandingInput,
+    branding: BrandingPatchInput,
 ): Promise<SaveBrandingResult> {
-    let parsed: BrandingInput
+    let parsed: BrandingPatchInput
     try {
-        parsed = brandingSchema.parse(branding)
+        parsed = brandingPatchSchema.parse(branding)
     } catch (error) {
         if (error instanceof z.ZodError) {
             return { success: false, error: `Validation error: ${error.issues.map((e: z.ZodIssue) => e.message).join(', ')}` }

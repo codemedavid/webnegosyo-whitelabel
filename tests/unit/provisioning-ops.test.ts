@@ -40,6 +40,7 @@ import type { ProvisioningCtx } from '@/lib/provisioning/context'
 // — leaving the model unable to pass any fields (e.g. create_tenant name/slug).
 // We import the real SDK helper so this test reflects exactly what clients see.
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js'
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js'
 
 // Under next/jest (SWC), top-level ES imports run before the in-place jest.mock
 // registers, so a static `import` of the SUT would bind the real services.
@@ -143,6 +144,25 @@ describe('advertised MCP input schemas (client-visible)', () => {
     expect(normalized).toBeDefined()
     const keys = Object.keys(normalized?.shape ?? {})
     expect(keys).toEqual(expect.arrayContaining(['name', 'slug', 'primary_color', 'secondary_color']))
+  })
+
+  it('update_branding advertises the supported partial branding fields', () => {
+    const updateBranding = (PROVISIONING_OPS as Record<string, { input: never }>)['update_branding']
+    const normalized = normalizeObjectSchema(updateBranding.input)
+    expect(normalized).toBeDefined()
+
+    const jsonSchema = toJsonSchemaCompat(normalized!) as {
+      properties?: { branding?: { properties?: Record<string, unknown> } }
+    }
+    const brandingFields = Object.keys(jsonSchema.properties?.branding?.properties ?? {})
+
+    expect(brandingFields).toEqual(expect.arrayContaining([
+      'logo_url',
+      'header_color',
+      'hero_title',
+      'footer_address',
+      'footer_facebook_url',
+    ]))
   })
 })
 
@@ -296,16 +316,16 @@ describe('executeOp dispatch', () => {
     expect(updateMenuItemFields).not.toHaveBeenCalled()
   })
 
-  it('update_branding forwards tenantId, tenantSlug, branding and ctx', async () => {
+  it('update_branding accepts and forwards a single-field branding patch', async () => {
     await executeOp('update_branding', ctx, {
       tenantId: TENANT,
       tenantSlug: 'acme',
-      branding: { primary_color: '#111', secondary_color: '#222' },
+      branding: { header_color: '#8B1A1A' },
     })
     expect(saveBrandingAction).toHaveBeenCalledWith(
       TENANT,
       'acme',
-      expect.objectContaining({ primary_color: '#111' }),
+      { header_color: '#8B1A1A' },
       ctx,
     )
   })

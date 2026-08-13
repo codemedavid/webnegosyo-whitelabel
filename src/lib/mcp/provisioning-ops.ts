@@ -20,6 +20,7 @@ import { createBundle, listBundlesForProvisioning } from '@/lib/bundles-service'
 import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
+import { brandingPatchSchema, type BrandingPatchInput } from '@/lib/branding-service'
 import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
 import { createSmsCampaign, listSmsCampaignsForProvisioning } from '@/lib/sms-campaigns-service'
 import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
@@ -41,9 +42,6 @@ export interface ProvisioningOp<I = unknown> {
 }
 
 const UUID = z.string().uuid()
-
-/** Passthrough record for payloads whose deep shape a service validates. */
-const looseRecord = z.record(z.string(), z.unknown())
 
 /**
  * `{ tenantId, ...rest }` as a passthrough ZodObject. It MUST be a ZodObject (not
@@ -263,11 +261,11 @@ const ops: ProvisioningOp<unknown>[] = [
     }),
     op({
         name: 'update_branding',
-        description: 'Update a tenant\'s branding (colors, templates, hero, footer). Envelope: { tenantId, tenantSlug, branding: {...} }.',
-        input: z.object({ tenantId: UUID, tenantSlug: z.string().min(1), branding: looseRecord }),
+        description: 'Partially update a tenant\'s branding (logo, colors, templates, hero, footer). Only include fields that should change. Envelope: { tenantId, tenantSlug, branding: {...} }.',
+        input: z.object({ tenantId: UUID, tenantSlug: z.string().min(1), branding: brandingPatchSchema }),
         execute: (ctx, input) => {
-            const i = input as { tenantId: string; tenantSlug: string; branding: Record<string, unknown> }
-            return saveBrandingAction(i.tenantId, i.tenantSlug, i.branding as never, ctx)
+            const i = input as { tenantId: string; tenantSlug: string; branding: BrandingPatchInput }
+            return saveBrandingAction(i.tenantId, i.tenantSlug, i.branding, ctx)
         },
     }),
     op({
