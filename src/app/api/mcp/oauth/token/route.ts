@@ -5,7 +5,6 @@ import {
   REFRESH_TOKEN_TTL_SECONDS,
   OAUTH_CORS_HEADERS,
   OAUTH_PATHS,
-  getJwtSecret,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
 
@@ -43,13 +42,6 @@ export async function POST(req: Request): Promise<Response> {
     return oauthError('invalid_request', 'Unreadable request body', 400)
   }
 
-  let secret: string
-  try {
-    secret = getJwtSecret()
-  } catch {
-    return oauthError('server_error', 'OAuth signing secret is not configured', 500)
-  }
-
   const admin = createAdminClient()
   const grantType = params.grant_type
   const audience = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
@@ -72,10 +64,8 @@ export async function POST(req: Request): Promise<Response> {
           codeVerifier: params.code_verifier ?? '',
         },
         {
-          secret,
           accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
           refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
-          audience,
         },
       )
       return tokenResponse(tokens)
@@ -85,7 +75,10 @@ export async function POST(req: Request): Promise<Response> {
       const tokens = await refreshAccessToken(
         admin,
         { refreshToken: params.refresh_token ?? '', clientId: params.client_id ?? '' },
-        { secret, accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS, audience },
+        {
+          accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
+          refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
+        },
       )
       return tokenResponse(tokens)
     }

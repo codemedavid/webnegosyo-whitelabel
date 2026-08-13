@@ -42,12 +42,3 @@ export function getOrigin(req: Request): string {
   const proto = req.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')
   return `${proto}://${host}`
 }
-
-/** Returns the JWT signing secret or throws a clear configuration error. */
-export function getJwtSecret(): string {
-  const secret = process.env.MCP_OAUTH_JWT_SECRET
-  if (!secret) {
-    throw new Error('MCP_OAUTH_JWT_SECRET is not configured')
-  }
-  return secret
-}

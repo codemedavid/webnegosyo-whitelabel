@@ -3,8 +3,10 @@ import {
   hashApiKey,
   extractBearerToken,
   generateApiKey,
+  generateOAuthAccessKey,
   verifyMcpKey,
   MCP_KEY_PREFIX,
+  MCP_OAUTH_KEY_PREFIX,
 } from '@/lib/mcp-auth'
 
 /**
@@ -13,9 +15,9 @@ import {
  */
 function makeSupabaseStub(row: unknown, error: unknown = null) {
   const maybeSingle = jest.fn(async () => ({ data: row, error }))
-  const eq = jest.fn((_col: string, _val: unknown) => ({ maybeSingle }))
-  const select = jest.fn((_cols: string) => ({ eq }))
-  const from = jest.fn((_table: string) => ({ select }))
+  const eq = jest.fn(() => ({ maybeSingle }))
+  const select = jest.fn(() => ({ eq }))
+  const from = jest.fn(() => ({ select }))
   return { client: { from } as never, from, select, eq, maybeSingle }
 }
 
@@ -67,6 +69,17 @@ describe('generateApiKey', () => {
   })
 })
 
+describe('generateOAuthAccessKey', () => {
+  it('returns an opaque database-backed token carrying only its expiry', () => {
+    const now = 1_700_000_000_000
+    const key = generateOAuthAccessKey(3600, now)
+    expect(key.plaintext.startsWith(MCP_OAUTH_KEY_PREFIX)).toBe(true)
+    expect(key.hash).toBe(hashApiKey(key.plaintext))
+    expect(key.expiresAt).toBe(now + 3_600_000)
+    expect(key.plaintext).not.toContain('user_1')
+  })
+})
+
 describe('verifyMcpKey', () => {
   const activeRow = { id: 'key_1', scopes: ['superadmin'], revoked_at: null }
 
@@ -97,5 +110,24 @@ describe('verifyMcpKey', () => {
   it('throws when the database lookup errors', async () => {
     const { client } = makeSupabaseStub(null, { message: 'db down' })
     await expect(verifyMcpKey('Bearer smk_live_valid', client)).rejects.toThrow()
+  })
+
+  it('accepts an unexpired opaque OAuth access token', async () => {
+    const now = 1_700_000_000_000
+    const key = generateOAuthAccessKey(3600, now)
+    const { client } = makeSupabaseStub(activeRow)
+    await expect(verifyMcpKey(`Bearer ${key.plaintext}`, client, { now: () => now })).resolves.toEqual({
+      keyId: 'key_1',
+      scopes: ['superadmin'],
+    })
+  })
+
+  it('rejects an expired opaque OAuth access token even when its hash exists', async () => {
+    const now = 1_700_000_000_000
+    const key = generateOAuthAccessKey(60, now)
+    const { client } = makeSupabaseStub(activeRow)
+    await expect(
+      verifyMcpKey(`Bearer ${key.plaintext}`, client, { now: () => now + 61_000 }),
+    ).rejects.toThrow(/expired/i)
   })
 })

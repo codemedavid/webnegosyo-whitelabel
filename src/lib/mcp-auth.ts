@@ -13,6 +13,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** Prefix on every issued key; `live` marks a production (non-sandbox) key. */
 export const MCP_KEY_PREFIX = 'smk_live_'
+/** OAuth access tokens use the same hashed credential store as manual keys. */
+export const MCP_OAUTH_KEY_PREFIX = 'smk_oauth_'
 
 const KEY_RANDOM_BYTES = 24
 
@@ -23,6 +25,10 @@ export interface GeneratedApiKey {
   hash: string
   /** Non-secret prefix persisted for display (e.g. "smk_live_"). */
   prefix: string
+}
+
+export interface GeneratedOAuthAccessKey extends GeneratedApiKey {
+  expiresAt: number
 }
 
 export interface McpKeyContext {
@@ -63,6 +69,22 @@ export function generateApiKey(): GeneratedApiKey {
 }
 
 /**
+ * Mints an opaque OAuth access token. Its expiry is encoded as an unsigned
+ * base-36 timestamp, but the full token must still match its SHA-256 database
+ * record, so changing the timestamp invalidates the credential.
+ */
+export function generateOAuthAccessKey(ttlSeconds: number, now = Date.now()): GeneratedOAuthAccessKey {
+  const expiresAt = now + ttlSeconds * 1000
+  const plaintext = `${MCP_OAUTH_KEY_PREFIX}${Math.floor(expiresAt / 1000).toString(36)}_${randomBytes(KEY_RANDOM_BYTES).toString('base64url')}`
+  return {
+    plaintext,
+    hash: hashApiKey(plaintext),
+    prefix: MCP_OAUTH_KEY_PREFIX,
+    expiresAt,
+  }
+}
+
+/**
  * Verifies a Bearer-token MCP request against the `mcp_api_keys` table using a
  * service-role Supabase client (no cookies). Throws on any failure so callers
  * can map the error to HTTP 401. Never logs or returns the plaintext key.
@@ -70,6 +92,7 @@ export function generateApiKey(): GeneratedApiKey {
 export async function verifyMcpKey(
   authorizationHeader: string | null | undefined,
   client: SupabaseClient,
+  options: { now?: () => number } = {},
 ): Promise<McpKeyContext> {
   const token = extractBearerToken(authorizationHeader)
   if (!token) {
@@ -93,6 +116,15 @@ export async function verifyMcpKey(
 
   if (row.revoked_at) {
     throw new Error('Unauthorized: API key has been revoked')
+  }
+
+  if (token.startsWith(MCP_OAUTH_KEY_PREFIX)) {
+    const encodedExpiry = token.slice(MCP_OAUTH_KEY_PREFIX.length).split('_', 1)[0]
+    const expiresAtSeconds = Number.parseInt(encodedExpiry, 36)
+    const now = options.now?.() ?? Date.now()
+    if (!Number.isFinite(expiresAtSeconds) || now >= expiresAtSeconds * 1000) {
+      throw new Error('Unauthorized: OAuth access token expired')
+    }
   }
 
   return { keyId: row.id, scopes: row.scopes ?? [] }

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { signAccessToken } from '@/lib/mcp/oauth-jwt'
+import { generateOAuthAccessKey } from '@/lib/mcp-auth'
 
 /**
  * OAuth 2.1 authorization-server logic for the SmartMenu MCP, backing the
@@ -10,8 +10,9 @@ import { signAccessToken } from '@/lib/mcp/oauth-jwt'
  *
  * Design:
  * - Public clients + PKCE (no client secret), per the MCP OAuth spec.
- * - Authorization codes and refresh tokens are opaque; only their SHA-256 hash
- *   is stored. Access tokens are stateless HS256 JWTs (see oauth-jwt.ts).
+ * - Authorization codes, access tokens, and refresh tokens are opaque. Only
+ *   SHA-256 hashes are stored; access credentials share the same verifier and
+ *   revocation model as manually-issued MCP keys.
  * - All timestamps use the injected `now` so tests are deterministic.
  */
 
@@ -149,11 +150,8 @@ export interface ExchangeCodeInput {
 
 export interface ExchangeCodeOptions {
   now?: number
-  secret: string
   accessTtlSeconds: number
   refreshTtlSeconds: number
-  /** Canonical MCP resource URI from RFC 8707. */
-  audience: string
 }
 
 /**
@@ -213,10 +211,8 @@ export async function exchangeAuthorizationCode(
     subject: row.created_by,
     scope: row.scope,
     now,
-    secret: opts.secret,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
-    audience: opts.audience,
   })
 }
 
@@ -225,18 +221,24 @@ interface IssueTokensParams {
   subject: string
   scope: string
   now: number
-  secret: string
   accessTtlSeconds: number
   refreshTtlSeconds: number
-  audience: string
 }
 
 async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promise<TokenResponse> {
-  const accessToken = signAccessToken(
-    { sub: p.subject, scope: p.scope, client_id: p.clientId, aud: p.audience },
-    { secret: p.secret, expiresInSeconds: p.accessTtlSeconds, now: p.now },
-  )
+  const accessKey = generateOAuthAccessKey(p.accessTtlSeconds, p.now)
   const refreshToken = opaque(32)
+
+  const { error: accessError } = await client.from('mcp_api_keys').insert({
+    key_hash: accessKey.hash,
+    key_prefix: accessKey.prefix,
+    label: `OAuth access for ${p.clientId}`,
+    scopes: p.scope.split(' ').filter((scope) => scope !== 'offline_access'),
+    created_by: p.subject,
+  })
+  if (accessError) {
+    throw new Error(`Failed to persist access token: ${accessError.message}`)
+  }
 
   const { error } = await client.from('mcp_oauth_tokens').insert({
     token_hash: sha256Hex(refreshToken),
@@ -246,11 +248,15 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
     expires_at: new Date(p.now + p.refreshTtlSeconds * 1000).toISOString(),
   })
   if (error) {
+    await client
+      .from('mcp_api_keys')
+      .update({ revoked_at: new Date(p.now).toISOString() })
+      .eq('key_hash', accessKey.hash)
     throw new Error(`Failed to persist refresh token: ${error.message}`)
   }
 
   return {
-    access_token: accessToken,
+    access_token: accessKey.plaintext,
     token_type: 'Bearer',
     expires_in: p.accessTtlSeconds,
     refresh_token: refreshToken,
@@ -272,7 +278,7 @@ interface StoredTokenRow {
 export async function refreshAccessToken(
   client: SupabaseClient,
   input: { refreshToken: string; clientId: string },
-  opts: { now?: number; secret: string; accessTtlSeconds: number; audience: string },
+  opts: { now?: number; accessTtlSeconds: number; refreshTtlSeconds: number },
 ): Promise<TokenResponse> {
   const now = opts.now ?? Date.now()
 
@@ -299,16 +305,22 @@ export async function refreshAccessToken(
     throw new Error('invalid_grant: client mismatch')
   }
 
-  const accessToken = signAccessToken(
-    { sub: row.subject, scope: row.scope, client_id: row.client_id, aud: opts.audience },
-    { secret: opts.secret, expiresInSeconds: opts.accessTtlSeconds, now },
-  )
-  return {
-    access_token: accessToken,
-    token_type: 'Bearer',
-    expires_in: opts.accessTtlSeconds,
-    scope: row.scope,
+  const { error: revokeError } = await client
+    .from('mcp_oauth_tokens')
+    .update({ revoked_at: new Date(now).toISOString() })
+    .eq('id', row.id)
+  if (revokeError) {
+    throw new Error(`Failed to rotate refresh token: ${revokeError.message}`)
   }
+
+  return issueTokens(client, {
+    clientId: row.client_id,
+    subject: row.subject,
+    scope: row.scope,
+    now,
+    accessTtlSeconds: opts.accessTtlSeconds,
+    refreshTtlSeconds: opts.refreshTtlSeconds,
+  })
 }
 
 /** Revokes a refresh token by hash (idempotent). */

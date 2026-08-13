@@ -8,6 +8,7 @@ import {
   fetchAppUserScope,
   type AppUserScopeRow,
 } from '@/lib/queries/fetch-app-user-scope'
+import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -15,6 +16,14 @@ export async function middleware(request: NextRequest) {
   })
 
   const { pathname, search } = request.nextUrl
+
+  // MCP transport, OAuth, and discovery endpoints form a self-contained
+  // protocol boundary. They authenticate Bearer credentials or OAuth browser
+  // sessions in their route handlers and must not be rewritten, refreshed, or
+  // otherwise coupled to the tenant/application middleware.
+  if (isMcpProtocolRoute(pathname)) {
+    return supabaseResponse
+  }
 
   // Skip all middleware processing for webhook routes (Facebook webhooks don't need auth/tenant resolution)
   if (pathname.startsWith('/api/webhook')) {
@@ -229,4 +238,3 @@ export const config = {
     '/((?!monitoring|_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }
-

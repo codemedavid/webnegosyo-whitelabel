@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { createHash } from 'crypto'
-import { verifyAccessToken } from '@/lib/mcp/oauth-jwt'
+import { hashApiKey, MCP_OAUTH_KEY_PREFIX } from '@/lib/mcp-auth'
 import {
   verifyPkce,
   registerClient,
@@ -9,9 +9,7 @@ import {
   refreshAccessToken,
 } from '@/lib/mcp/oauth-service'
 
-const SECRET = 'oauth-test-secret-0123456789abcdef'
 const NOW = 1_700_000_000_000
-const RESOURCE = 'https://www.webnegosyo.com/api/mcp/mcp'
 
 /** Chainable Supabase stub with per-table terminal queues keyed by call order. */
 function makeClient() {
@@ -135,14 +133,20 @@ describe('exchangeAuthorizationCode', () => {
     const result = await exchangeAuthorizationCode(
       stub.client,
       { code: 'plaintext-code', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-      { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000, audience: RESOURCE },
+      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 },
     )
 
     expect(result.token_type).toBe('Bearer')
     expect(result.expires_in).toBe(3600)
     expect(result.refresh_token).toBeTruthy()
-    const decoded = verifyAccessToken(result.access_token, { secret: SECRET, now: NOW, audience: RESOURCE })
-    expect(decoded).toMatchObject({ sub: 'user_1', scope: 'superadmin', client_id: 'client_1', aud: RESOURCE })
+    expect(result.access_token.startsWith(MCP_OAUTH_KEY_PREFIX)).toBe(true)
+    const accessInsert = stub.inserts.find((i) => i.table === 'mcp_api_keys')
+    expect(accessInsert?.payload).toMatchObject({
+      key_hash: hashApiKey(result.access_token),
+      key_prefix: MCP_OAUTH_KEY_PREFIX,
+      scopes: ['superadmin'],
+      created_by: 'user_1',
+    })
     // the code is marked consumed and only the refresh token HASH is stored
     expect(stub.updates.some((u) => u.table === 'mcp_oauth_codes' && 'consumed_at' in u.payload)).toBe(true)
     const refreshInsert = stub.inserts.find((i) => i.table === 'mcp_oauth_tokens')
@@ -157,7 +161,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'nope', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 100, audience: RESOURCE },
+        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -169,7 +173,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 100, audience: RESOURCE },
+        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -181,7 +185,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 100, audience: RESOURCE },
+        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -193,7 +197,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: 'wrong'.repeat(16) },
-        { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 100, audience: RESOURCE },
+        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant|pkce/i)
   })
@@ -205,7 +209,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://evil.example/cb', codeVerifier: verifier },
-        { now: NOW, secret: SECRET, accessTtlSeconds: 3600, refreshTtlSeconds: 100, audience: RESOURCE },
+        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -229,12 +233,13 @@ describe('refreshAccessToken', () => {
     const result = await refreshAccessToken(
       stub.client,
       { refreshToken: 'refresh-plain', clientId: 'client_1' },
-      { now: NOW, secret: SECRET, accessTtlSeconds: 3600, audience: RESOURCE },
+      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 },
     )
 
-    const decoded = verifyAccessToken(result.access_token, { secret: SECRET, now: NOW, audience: RESOURCE })
-    expect(decoded).toMatchObject({ sub: 'user_1', client_id: 'client_1', aud: RESOURCE })
+    expect(result.access_token.startsWith(MCP_OAUTH_KEY_PREFIX)).toBe(true)
+    expect(result.refresh_token).toBeTruthy()
     expect(result.expires_in).toBe(3600)
+    expect(stub.updates.some((update) => update.table === 'mcp_oauth_tokens' && 'revoked_at' in update.payload)).toBe(true)
   })
 
   it('rejects a revoked refresh token', async () => {
@@ -244,7 +249,7 @@ describe('refreshAccessToken', () => {
       error: null,
     })
     await expect(
-      refreshAccessToken(stub.client, { refreshToken: 'r', clientId: 'client_1' }, { now: NOW, secret: SECRET, accessTtlSeconds: 3600, audience: RESOURCE }),
+      refreshAccessToken(stub.client, { refreshToken: 'r', clientId: 'client_1' }, { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 }),
     ).rejects.toThrow(/invalid_grant/i)
   })
 })
