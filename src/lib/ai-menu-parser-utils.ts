@@ -59,7 +59,8 @@ export function sanitizeParsedMenuItem(item: ParsedMenuItem): ParsedMenuItem {
         return item
     }
 
-    const { description: _redundantDescription, ...rest } = item
+    const rest = { ...item }
+    delete rest.description
     return rest
 }
 
@@ -228,7 +229,8 @@ function mergeGroupAddons(existing: ParsedAddon[] | undefined, groupAddons: Pars
  */
 export function applyAddonGroups(data: ParsedMenuData): ParsedMenuData {
     const groups = data.addonGroups ?? []
-    const { addonGroups: _consumed, ...rest } = data
+    const rest = { ...data }
+    delete rest.addonGroups
     if (groups.length === 0) {
         return rest
     }

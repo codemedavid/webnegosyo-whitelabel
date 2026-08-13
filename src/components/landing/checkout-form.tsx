@@ -42,8 +42,6 @@ const PAYMENT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: strin
   bank_transfer: Building2,
   other: CreditCard,
 }
-const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
-
 type CheckoutFormProps = {
   selectedPaymentTerm?: CheckoutPaymentTerm
   onPaymentTermChange?: (term: CheckoutPaymentTerm) => void

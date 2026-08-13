@@ -503,11 +503,12 @@ export function useCheckout(tenantSlug: string) {
 
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
+  const isCartEmpty = isCheckoutCartEmpty(items, bundleItems)
   useEffect(() => {
-    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && isCheckoutCartEmpty(items, bundleItems)) {
+    if (!isLoading && !isProcessing && !checkoutComplete && !checkoutCompleteRef.current && isCartEmpty) {
       router.push(`/${tenantSlug}/menu`)
     }
-  }, [items.length, bundleItems.length, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
+  }, [isCartEmpty, router, tenantSlug, isLoading, isProcessing, checkoutComplete])
 
   // Per-order-type toggle: when off, checkout never touches Messenger and the
   // CTA reads "Complete Order" instead of "Send Order via Messenger".
