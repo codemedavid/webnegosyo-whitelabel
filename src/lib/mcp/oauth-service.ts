@@ -152,6 +152,8 @@ export interface ExchangeCodeOptions {
   secret: string
   accessTtlSeconds: number
   refreshTtlSeconds: number
+  /** Canonical MCP resource URI from RFC 8707. */
+  audience: string
 }
 
 /**
@@ -214,6 +216,7 @@ export async function exchangeAuthorizationCode(
     secret: opts.secret,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
+    audience: opts.audience,
   })
 }
 
@@ -225,11 +228,12 @@ interface IssueTokensParams {
   secret: string
   accessTtlSeconds: number
   refreshTtlSeconds: number
+  audience: string
 }
 
 async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promise<TokenResponse> {
   const accessToken = signAccessToken(
-    { sub: p.subject, scope: p.scope, client_id: p.clientId },
+    { sub: p.subject, scope: p.scope, client_id: p.clientId, aud: p.audience },
     { secret: p.secret, expiresInSeconds: p.accessTtlSeconds, now: p.now },
   )
   const refreshToken = opaque(32)
@@ -268,7 +272,7 @@ interface StoredTokenRow {
 export async function refreshAccessToken(
   client: SupabaseClient,
   input: { refreshToken: string; clientId: string },
-  opts: { now?: number; secret: string; accessTtlSeconds: number },
+  opts: { now?: number; secret: string; accessTtlSeconds: number; audience: string },
 ): Promise<TokenResponse> {
   const now = opts.now ?? Date.now()
 
@@ -296,7 +300,7 @@ export async function refreshAccessToken(
   }
 
   const accessToken = signAccessToken(
-    { sub: row.subject, scope: row.scope, client_id: row.client_id },
+    { sub: row.subject, scope: row.scope, client_id: row.client_id, aud: opts.audience },
     { secret: opts.secret, expiresInSeconds: opts.accessTtlSeconds, now },
   )
   return {

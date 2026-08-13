@@ -1,4 +1,4 @@
-import { OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import { OAUTH_OFFLINE_SCOPE, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
 
 /**
  * Builders for the OAuth discovery documents. Kept separate from the route
@@ -49,6 +49,6 @@ export function buildAuthorizationServerMetadata(origin: string): AuthorizationS
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: [OAUTH_SCOPE],
+    scopes_supported: [OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
   }
 }

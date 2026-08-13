@@ -3,6 +3,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { Database } from '@/types/database'
 import { verifyMcpKey, MCP_KEY_PREFIX } from '@/lib/mcp-auth'
 import { verifyAccessToken } from '@/lib/mcp/oauth-jwt'
+import { getOrigin, OAUTH_PATHS } from '@/lib/mcp/oauth-config'
 
 /**
  * Builds a token verifier for `withMcpAuth`. It accepts EITHER:
@@ -49,7 +50,8 @@ export function createMcpTokenVerifier(
         // OAuth access-token (JWT) path.
         if (jwtSecret) {
             try {
-                const claims = verifyAccessToken(bearerToken, { secret: jwtSecret, now: now() })
+                const audience = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
+                const claims = verifyAccessToken(bearerToken, { secret: jwtSecret, now: now(), audience })
                 const scopes = claims.scope ? claims.scope.split(' ').filter(Boolean) : []
                 return { token: bearerToken, clientId: claims.client_id, scopes }
             } catch {

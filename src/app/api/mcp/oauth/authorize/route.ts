@@ -2,7 +2,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
-import { AUTH_CODE_TTL_SECONDS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import {
+  AUTH_CODE_TTL_SECONDS,
+  OAUTH_OFFLINE_SCOPE,
+  OAUTH_PATHS,
+  OAUTH_SCOPE,
+  getOrigin,
+} from '@/lib/mcp/oauth-config'
 
 // OAuth 2.1 authorization endpoint. The human-login gate: it verifies the
 // caller has a superadmin browser session (bouncing through /superadmin/login
@@ -28,6 +34,7 @@ export async function GET(req: Request): Promise<Response> {
   const codeChallengeMethod = (params.get('code_challenge_method') ?? 'S256') as PkceMethod
   const state = params.get('state')
   const scope = params.get('scope') ?? OAUTH_SCOPE
+  const resource = params.get('resource')
 
   // MCP OAuth tables aren't in the generated Database type; use an untyped view
   // (same convention as the MCP key service).
@@ -59,6 +66,15 @@ export async function GET(req: Request): Promise<Response> {
   }
   if (codeChallengeMethod !== 'S256' && codeChallengeMethod !== 'plain') {
     return redirectError(redirectUri, 'invalid_request', 'Unsupported code_challenge_method', state)
+  }
+  const expectedResource = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
+  if (resource && resource !== expectedResource) {
+    return redirectError(redirectUri, 'invalid_target', 'resource does not match the SmartMenu MCP endpoint', state)
+  }
+  const requestedScopes = scope.split(/\s+/).filter(Boolean)
+  const supportedScopes = new Set([OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
+  if (!requestedScopes.includes(OAUTH_SCOPE) || requestedScopes.some((item) => !supportedScopes.has(item))) {
+    return redirectError(redirectUri, 'invalid_scope', 'Unsupported or missing OAuth scope', state)
   }
 
   // Human-login gate: require a superadmin cookie session.

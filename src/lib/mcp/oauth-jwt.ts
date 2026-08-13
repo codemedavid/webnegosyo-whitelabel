@@ -17,6 +17,8 @@ export interface AccessTokenClaims {
   scope: string
   /** OAuth client id the token was issued to. */
   client_id: string
+  /** RFC 8707 audience — the canonical MCP resource URI. */
+  aud: string
 }
 
 export interface VerifiedAccessToken extends AccessTokenClaims {
@@ -33,6 +35,8 @@ interface SignOptions {
 
 interface VerifyOptions {
   secret: string
+  /** Canonical MCP resource URI this token must have been issued for. */
+  audience?: string
   /** Injectable clock in ms since epoch (defaults to Date.now()). */
   now?: number
 }
@@ -95,6 +99,9 @@ export function verifyAccessToken(token: string, opts: VerifyOptions): VerifiedA
   const nowSeconds = Math.floor((opts.now ?? Date.now()) / 1000)
   if (typeof payload.exp !== 'number' || nowSeconds >= payload.exp) {
     throw new Error('Invalid token: expired')
+  }
+  if (opts.audience && payload.aud !== opts.audience) {
+    throw new Error('Invalid token: audience mismatch')
   }
 
   return payload

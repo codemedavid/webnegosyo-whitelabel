@@ -63,5 +63,6 @@ describe('authorization-server metadata', () => {
     expect(body.code_challenge_methods_supported).toContain('S256')
     expect(body.grant_types_supported).toEqual(expect.arrayContaining(['authorization_code', 'refresh_token']))
     expect(body.token_endpoint_auth_methods_supported).toContain('none')
+    expect(body.scopes_supported).toEqual(expect.arrayContaining(['superadmin', 'offline_access']))
   })
 })

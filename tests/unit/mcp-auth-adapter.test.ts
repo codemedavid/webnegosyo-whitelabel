@@ -8,15 +8,18 @@ jest.mock('@/lib/mcp-auth', () => ({
   verifyMcpKey: jest.fn(),
 }))
 
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { verifyMcpKey } = jest.requireMock('@/lib/mcp-auth') as any
 const { createMcpTokenVerifier } = require('@/lib/mcp/auth-adapter')
 const { signAccessToken } = require('@/lib/mcp/oauth-jwt')
-/* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 const client = {} as never
-// The adapter ignores req; use a dummy (jsdom lacks a global Request).
-const req = {} as Request
+const RESOURCE = 'https://www.webnegosyo.com/api/mcp/mcp'
+const req = {
+  url: RESOURCE,
+  headers: new Headers({ host: 'www.webnegosyo.com' }),
+} as unknown as Request
 const JWT_SECRET = 'adapter-test-secret-0123456789'
 const NOW = 1_700_000_000_000
 
@@ -51,7 +54,7 @@ describe('createMcpTokenVerifier', () => {
 
   it('accepts a valid OAuth JWT without consulting the legacy key store', async () => {
     const token = signAccessToken(
-      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc' },
+      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc', aud: RESOURCE },
       { secret: JWT_SECRET, expiresInSeconds: 3600, now: NOW },
     )
     const verify = createMcpTokenVerifier(client, { jwtSecret: JWT_SECRET, now: () => NOW })
@@ -65,7 +68,7 @@ describe('createMcpTokenVerifier', () => {
 
   it('returns undefined for an expired OAuth JWT', async () => {
     const token = signAccessToken(
-      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc' },
+      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc', aud: RESOURCE },
       { secret: JWT_SECRET, expiresInSeconds: 60, now: NOW },
     )
     const verify = createMcpTokenVerifier(client, { jwtSecret: JWT_SECRET, now: () => NOW + 61_000 })
@@ -74,7 +77,7 @@ describe('createMcpTokenVerifier', () => {
 
   it('returns undefined for a JWT signed with the wrong secret', async () => {
     const token = signAccessToken(
-      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc' },
+      { sub: 'user_1', scope: 'superadmin', client_id: 'mcpc_abc', aud: RESOURCE },
       { secret: 'wrong-secret', expiresInSeconds: 3600, now: NOW },
     )
     const verify = createMcpTokenVerifier(client, { jwtSecret: JWT_SECRET, now: () => NOW })

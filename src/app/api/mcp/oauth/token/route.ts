@@ -4,7 +4,9 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
   OAUTH_CORS_HEADERS,
+  OAUTH_PATHS,
   getJwtSecret,
+  getOrigin,
 } from '@/lib/mcp/oauth-config'
 
 // OAuth 2.1 token endpoint. Exchanges an authorization code (with PKCE verifier)
@@ -50,6 +52,14 @@ export async function POST(req: Request): Promise<Response> {
 
   const admin = createAdminClient()
   const grantType = params.grant_type
+  const audience = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
+
+  // RFC 8707: when the client supplies a resource indicator it must target
+  // this MCP server. Missing is tolerated for older MCP clients, but every
+  // token is still audience-bound to the one canonical SmartMenu resource.
+  if (params.resource && params.resource !== audience) {
+    return oauthError('invalid_target', 'resource does not match the SmartMenu MCP endpoint', 400)
+  }
 
   try {
     if (grantType === 'authorization_code') {
@@ -65,6 +75,7 @@ export async function POST(req: Request): Promise<Response> {
           secret,
           accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
           refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
+          audience,
         },
       )
       return tokenResponse(tokens)
@@ -74,7 +85,7 @@ export async function POST(req: Request): Promise<Response> {
       const tokens = await refreshAccessToken(
         admin,
         { refreshToken: params.refresh_token ?? '', clientId: params.client_id ?? '' },
-        { secret, accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS },
+        { secret, accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS, audience },
       )
       return tokenResponse(tokens)
     }

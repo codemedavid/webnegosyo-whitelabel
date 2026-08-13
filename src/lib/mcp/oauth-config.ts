@@ -6,6 +6,8 @@
 
 /** The only scope this AS grants — superadmin authority over the admin API. */
 export const OAUTH_SCOPE = 'superadmin'
+/** Standard scope ChatGPT requests when refreshable access is advertised. */
+export const OAUTH_OFFLINE_SCOPE = 'offline_access'
 
 /** Authorization codes are single-use and short-lived. */
 export const AUTH_CODE_TTL_SECONDS = 600
