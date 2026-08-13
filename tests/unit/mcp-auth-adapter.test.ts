@@ -3,6 +3,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals'
 // OAuth and manually-created credentials intentionally share one verifier.
 jest.mock('@/lib/mcp-auth', () => ({
   __esModule: true,
+  hashApiKey: (value: string) => `fingerprint-${value.length}`,
   verifyMcpKey: jest.fn(),
 }))
 

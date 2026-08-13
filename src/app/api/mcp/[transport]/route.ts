@@ -1,9 +1,10 @@
-import { createMcpHandler, withMcpAuth } from 'mcp-handler'
+import { createMcpHandler } from 'mcp-handler'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { registerProvisioningTools } from '@/lib/mcp/register-tools'
 import { createMcpTokenVerifier } from '@/lib/mcp/auth-adapter'
 import { withCorsHeaders, corsPreflightResponse } from '@/lib/mcp/cors'
+import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
 
 // SmartMenu MCP — remote Streamable-HTTP MCP server for superadmin tenant/menu/
 // branding provisioning. One Bearer-keyed URL serves both Claude remote
@@ -34,9 +35,9 @@ const handler = createMcpHandler(
 // pointing at the protected-resource metadata, so an OAuth-capable client
 // (Claude/ChatGPT) can discover the authorization server and log in — no
 // copy-pasted key. Legacy `smk_live_` keys still work (verifier accepts both).
-const authHandler = withMcpAuth(handler, createMcpTokenVerifier(adminClient), {
-    required: true,
+const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createMcpTokenVerifier(adminClient), {
     resourceMetadataPath: '/.well-known/oauth-protected-resource',
+    requiredScope: 'superadmin',
 })
 
 // Browser-hosted MCP clients preflight before their first JSON-RPC message, and

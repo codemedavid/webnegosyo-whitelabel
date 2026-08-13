@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { Database } from '@/types/database'
-import { verifyMcpKey } from '@/lib/mcp-auth'
+import { hashApiKey, verifyMcpKey } from '@/lib/mcp-auth'
 
 /**
  * Builds a token verifier for `withMcpAuth`. It accepts EITHER:
@@ -34,8 +34,8 @@ export function createMcpTokenVerifier(
         try {
             const { keyId, scopes } = await verifyMcpKey(`Bearer ${bearerToken}`, client, { now })
             return { token: bearerToken, clientId: keyId, scopes }
-        } catch {
-            logAuthRejection(req, 'invalid_credential', bearerToken)
+        } catch (error) {
+            logAuthRejection(req, 'invalid_credential', bearerToken, error)
             return undefined
         }
     }
@@ -49,17 +49,24 @@ type AuthRejectionReason =
  * Emits enough production telemetry to distinguish a missing credential from
  * a rejected one without ever logging the credential itself.
  */
-function logAuthRejection(req: Request, reason: AuthRejectionReason, bearerToken?: string): void {
+function logAuthRejection(
+    req: Request,
+    reason: AuthRejectionReason,
+    bearerToken?: string,
+    error?: unknown,
+): void {
     const authorization = req.headers?.get('authorization') ?? null
     const scheme = authorization?.match(/^\s*([^\s]+)/)?.[1]?.toLowerCase() ?? null
 
-    console.warn('[SmartMenu MCP auth rejected]', {
+    console.error('[SmartMenu MCP auth rejected]', {
         reason,
         path: safePathname(req.url),
         authorizationPresent: authorization !== null,
         authorizationScheme: scheme,
         bearerTokenLength: bearerToken?.length ?? 0,
         bearerTokenSegments: bearerToken ? bearerToken.split('.').length : 0,
+        tokenFingerprint: bearerToken ? hashApiKey(bearerToken).slice(0, 12) : null,
+        verificationError: error instanceof Error ? error.message : null,
     })
 }
 
