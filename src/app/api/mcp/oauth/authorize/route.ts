@@ -44,16 +44,35 @@ export async function GET(req: Request): Promise<Response> {
   if (!clientId) {
     return badRequest('invalid_request', 'client_id is required')
   }
-  const { data: clientRow } = await admin
+  const { data: clientRow, error: clientLookupError } = await admin
     .from('mcp_oauth_clients')
     .select('client_id, redirect_uris')
     .eq('client_id', clientId)
     .maybeSingle()
+  if (clientLookupError) {
+    console.error('[SmartMenu OAuth] client lookup failed', {
+      clientId,
+      message: clientLookupError.message,
+    })
+    return badRequest('server_error', 'Failed to look up the registered OAuth client')
+  }
   const client = clientRow as RegisteredClientRow | null
   if (!client) {
     return badRequest('invalid_client', 'Unknown client_id')
   }
-  if (!redirectUri || !isAllowedRedirectUri(redirectUri, client.redirect_uris)) {
+  const redirectAllowed = redirectUri
+    ? isAllowedRedirectUri(redirectUri, client.redirect_uris)
+    : false
+  if (!redirectUri || !redirectAllowed) {
+    console.error('[SmartMenu OAuth] redirect mismatch', {
+      clientId,
+      requestedRedirect: redirectUri,
+      registeredRedirects: client.redirect_uris,
+      registeredRedirectsIsArray: Array.isArray(client.redirect_uris),
+      registeredRedirectsType: typeof client.redirect_uris,
+      exactMatch: Boolean(redirectUri && client.redirect_uris.includes(redirectUri)),
+      redirectAllowed,
+    })
     return badRequest('invalid_request', 'redirect_uri does not match a registered value')
   }
 
@@ -127,7 +146,10 @@ export async function GET(req: Request): Promise<Response> {
 }
 
 function badRequest(error: string, description: string): Response {
-  return Response.json({ error, error_description: description }, { status: 400 })
+  return Response.json(
+    { error, error_description: description },
+    { status: 400, headers: { 'X-SmartMenu-OAuth-Version': '2026-08-13.2' } },
+  )
 }
 
 function redirectError(redirectUri: string, error: string, description: string, state: string | null): Response {
