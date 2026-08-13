@@ -29,8 +29,11 @@ export function createMcpTokenVerifier(
     const jwtSecret = options.jwtSecret ?? process.env.MCP_OAUTH_JWT_SECRET
     const now = options.now ?? (() => Date.now())
 
-    return async (_req: Request, bearerToken?: string): Promise<AuthInfo | undefined> => {
-        if (!bearerToken) return undefined
+    return async (req: Request, bearerToken?: string): Promise<AuthInfo | undefined> => {
+        if (!bearerToken) {
+            logAuthRejection(req, 'missing_bearer')
+            return undefined
+        }
 
         // Legacy static key path.
         if (bearerToken.startsWith(MCP_KEY_PREFIX)) {
@@ -38,6 +41,7 @@ export function createMcpTokenVerifier(
                 const { keyId, scopes } = await verifyMcpKey(`Bearer ${bearerToken}`, client)
                 return { token: bearerToken, clientId: keyId, scopes }
             } catch {
+                logAuthRejection(req, 'invalid_static_key', bearerToken)
                 return undefined
             }
         }
@@ -49,10 +53,45 @@ export function createMcpTokenVerifier(
                 const scopes = claims.scope ? claims.scope.split(' ').filter(Boolean) : []
                 return { token: bearerToken, clientId: claims.client_id, scopes }
             } catch {
+                logAuthRejection(req, 'invalid_oauth_token', bearerToken)
                 return undefined
             }
         }
 
+        logAuthRejection(req, 'oauth_secret_missing', bearerToken)
         return undefined
+    }
+}
+
+type AuthRejectionReason =
+    | 'missing_bearer'
+    | 'invalid_static_key'
+    | 'invalid_oauth_token'
+    | 'oauth_secret_missing'
+
+/**
+ * Emits enough production telemetry to distinguish a missing credential from
+ * a rejected one without ever logging the credential itself.
+ */
+function logAuthRejection(req: Request, reason: AuthRejectionReason, bearerToken?: string): void {
+    const authorization = req.headers?.get('authorization') ?? null
+    const scheme = authorization?.match(/^\s*([^\s]+)/)?.[1]?.toLowerCase() ?? null
+
+    console.warn('[SmartMenu MCP auth rejected]', {
+        reason,
+        path: safePathname(req.url),
+        authorizationPresent: authorization !== null,
+        authorizationScheme: scheme,
+        bearerTokenLength: bearerToken?.length ?? 0,
+        bearerTokenSegments: bearerToken ? bearerToken.split('.').length : 0,
+    })
+}
+
+function safePathname(url: string | undefined): string {
+    if (!url) return '(unknown)'
+    try {
+        return new URL(url).pathname
+    } catch {
+        return '(invalid)'
     }
 }
