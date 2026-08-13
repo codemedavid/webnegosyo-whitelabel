@@ -46,7 +46,7 @@ import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-sc
 // registers, so a static `import` of the SUT would bind the real services.
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
-const { createTenantSupabase, updateTenantSupabase } = jest.requireMock('@/lib/tenants-service') as any
+const { createTenantSupabase, updateTenantSupabase, listTenantsSupabase } = jest.requireMock('@/lib/tenants-service') as any
 const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning } = jest.requireMock('@/lib/admin-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
@@ -68,6 +68,10 @@ const ITEM = '22222222-2222-4222-8222-222222222222'
 beforeEach(() => {
   createTenantSupabase.mockReset().mockResolvedValue({ id: 'tenant_1', slug: 'acme' } as never)
   updateTenantSupabase.mockReset().mockResolvedValue({ id: 'tenant_1' } as never)
+  listTenantsSupabase.mockReset().mockResolvedValue({
+    data: [{ id: 'tenant_1', name: 'Acme', slug: 'acme', domain: 'acme.example.com' }],
+    error: null,
+  } as never)
   createCategory.mockReset().mockResolvedValue({ id: 'cat_1' } as never)
   createMenuItem.mockReset().mockResolvedValue({ id: 'item_1' } as never)
   updateMenuItemImage.mockReset().mockResolvedValue({ id: 'item_1', image_url: 'https://cdn.example.com/biscoff.png' } as never)
@@ -124,6 +128,12 @@ describe('provisioning ops registry', () => {
 
   it('throws on an unknown op name', async () => {
     await expect(executeOp('does_not_exist', ctx, {})).rejects.toThrow(/unknown op/i)
+  })
+
+  it('returns a compact read-only tenant directory', async () => {
+    const result = await executeOp('list_tenants', ctx, {})
+    expect(result).toEqual([{ id: 'tenant_1', name: 'Acme', slug: 'acme' }])
+    expect((PROVISIONING_OPS as Record<string, { readOnly?: boolean }>).list_tenants.readOnly).toBe(true)
   })
 })
 

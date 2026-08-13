@@ -45,6 +45,9 @@ export function registerProvisioningTools(server: McpServer, ctx: ProvisioningCt
             {
                 description: op.description,
                 inputSchema: op.input,
+                annotations: op.readOnly
+                    ? { readOnlyHint: true, destructiveHint: false }
+                    : undefined,
                 _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
             },
             async (args: unknown, extra: ToolRequestExtra): Promise<CallToolResult> => {

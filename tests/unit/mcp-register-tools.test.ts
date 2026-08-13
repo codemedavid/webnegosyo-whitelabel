@@ -29,6 +29,7 @@ function makeServer() {
 const OPS = [
   { name: 'create_tenant', description: 'Create a tenant', input: { parse: (v: unknown) => v } },
   { name: 'add_category', description: 'Add a category', input: { parse: (v: unknown) => v } },
+  { name: 'list_tenants', description: 'List tenants', input: { parse: (v: unknown) => v }, readOnly: true },
 ]
 
 beforeEach(() => {
@@ -48,6 +49,11 @@ describe('registerProvisioningTools', () => {
     expect(create.config._meta.securitySchemes).toEqual([
       { type: 'oauth2', scopes: ['superadmin'] },
     ])
+    const listTenants = calls.find((c) => c.name === 'list_tenants')!
+    expect(listTenants.config.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    })
   })
 
   it('returns an OAuth challenge without executing an op when authorization is absent', async () => {

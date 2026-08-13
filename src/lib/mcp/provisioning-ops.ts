@@ -37,6 +37,7 @@ import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mc
 export interface ProvisioningOp<I = unknown> {
     name: string
     description: string
+    readOnly?: boolean
     input: z.ZodType<I>
     execute: (ctx: ProvisioningCtx, input: I) => Promise<unknown>
 }
@@ -333,11 +334,12 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'list_tenants',
         description: 'List all tenants (id, name, slug). No input.',
+        readOnly: true,
         input: z.object({}).passthrough(),
         execute: async () => {
             const { data, error } = await listTenantsSupabase()
             if (error) throw error
-            return data
+            return data.map(({ id, name, slug }) => ({ id, name, slug }))
         },
     }),
     op({
