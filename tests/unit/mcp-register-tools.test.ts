@@ -62,7 +62,9 @@ describe('registerProvisioningTools', () => {
 
     expect(result.isError).toBe(true)
     expect(result._meta?.['mcp/www_authenticate']).toEqual([
-      expect.stringContaining('resource_metadata="https://www.webnegosyo.com/.well-known/oauth-protected-resource"'),
+      expect.stringMatching(
+        /resource_metadata="https:\/\/www\.webnegosyo\.com\/\.well-known\/oauth-protected-resource".*error="invalid_token".*error_description="Authentication required"/,
+      ),
     ])
     expect(executeOp).not.toHaveBeenCalled()
   })

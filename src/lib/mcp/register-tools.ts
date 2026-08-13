@@ -25,7 +25,7 @@ function authenticationRequired(): CallToolResult {
         isError: true,
         _meta: {
             'mcp/www_authenticate': [
-                `Bearer resource_metadata="${resourceMetadata}", scope="${OAUTH_SCOPE}"`,
+                `Bearer resource_metadata="${resourceMetadata}", scope="${OAUTH_SCOPE}", error="invalid_token", error_description="Authentication required"`,
             ],
         },
     }

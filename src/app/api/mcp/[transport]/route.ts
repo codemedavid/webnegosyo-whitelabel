@@ -5,6 +5,7 @@ import { registerProvisioningTools } from '@/lib/mcp/register-tools'
 import { createMcpTokenVerifier } from '@/lib/mcp/auth-adapter'
 import { withCorsHeaders, corsPreflightResponse } from '@/lib/mcp/cors'
 import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
+import { withSmartMenuToolSecurity } from '@/lib/mcp/tool-discovery'
 
 // SmartMenu MCP — remote Streamable-HTTP MCP server for superadmin tenant/menu/
 // branding provisioning. One URL serves both Claude remote connectors and
@@ -46,8 +47,26 @@ const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, cre
 // resource_metadata discovery hint.
 type McpRouteHandler = (req: Request, ctx: unknown) => Promise<Response>
 
-const corsHandler: McpRouteHandler = async (req, ctx) =>
-    withCorsHeaders(await (authHandler as unknown as McpRouteHandler)(req, ctx))
+const corsHandler: McpRouteHandler = async (req, ctx) => {
+    // Clone before mcp-handler consumes the request body. Only tools/list needs
+    // the SDK compatibility adapter; normal tool responses remain streamed.
+    const isToolDiscovery = await isToolsListRequest(req)
+    const response = await (authHandler as unknown as McpRouteHandler)(req, ctx)
+    const securedResponse = isToolDiscovery
+        ? await withSmartMenuToolSecurity(response)
+        : response
+    return withCorsHeaders(securedResponse)
+}
+
+async function isToolsListRequest(req: Request): Promise<boolean> {
+    if (req.method !== 'POST') return false
+    try {
+        const payload = await req.clone().json() as { method?: unknown }
+        return payload.method === 'tools/list'
+    } catch {
+        return false
+    }
+}
 
 export function OPTIONS(): Response {
     return corsPreflightResponse()
