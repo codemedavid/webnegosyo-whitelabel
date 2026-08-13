@@ -64,6 +64,9 @@ export async function GET(req: Request): Promise<Response> {
     ? isAllowedRedirectUri(redirectUri, client.redirect_uris)
     : false
   if (!redirectUri || !redirectAllowed) {
+    const firstRegisteredRedirect = Array.isArray(client.redirect_uris)
+      ? client.redirect_uris[0]
+      : undefined
     console.error('[SmartMenu OAuth] redirect mismatch', {
       clientId,
       requestedRedirect: redirectUri,
@@ -73,7 +76,20 @@ export async function GET(req: Request): Promise<Response> {
       exactMatch: Boolean(redirectUri && client.redirect_uris.includes(redirectUri)),
       redirectAllowed,
     })
-    return badRequest('invalid_request', 'redirect_uri does not match a registered value')
+    return badRequest(
+      'invalid_request',
+      'redirect_uri does not match a registered value',
+      {
+        'X-SmartMenu-OAuth-Debug': [
+          `array=${Array.isArray(client.redirect_uris) ? 1 : 0}`,
+          `count=${Array.isArray(client.redirect_uris) ? client.redirect_uris.length : -1}`,
+          `requestedLength=${redirectUri?.length ?? -1}`,
+          `registeredLength=${firstRegisteredRedirect?.length ?? -1}`,
+          `exact=${redirectUri === firstRegisteredRedirect ? 1 : 0}`,
+          `allowed=${redirectAllowed ? 1 : 0}`,
+        ].join(';'),
+      },
+    )
   }
 
   // From here, errors are delivered to the (validated) redirect_uri per spec.
@@ -145,10 +161,13 @@ export async function GET(req: Request): Promise<Response> {
   }
 }
 
-function badRequest(error: string, description: string): Response {
+function badRequest(error: string, description: string, headers?: HeadersInit): Response {
   return Response.json(
     { error, error_description: description },
-    { status: 400, headers: { 'X-SmartMenu-OAuth-Version': '2026-08-13.2' } },
+    {
+      status: 400,
+      headers: { 'X-SmartMenu-OAuth-Version': '2026-08-13.3', ...headers },
+    },
   )
 }
 
