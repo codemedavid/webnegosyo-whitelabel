@@ -8,10 +8,10 @@ jest.mock('@/lib/mcp/provisioning-ops', () => ({
   executeOp: jest.fn(),
 }))
 
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { listOps, executeOp } = jest.requireMock('@/lib/mcp/provisioning-ops') as any
 const { registerProvisioningTools } = require('@/lib/mcp/register-tools')
-/* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
@@ -19,8 +19,8 @@ const ctx = { client: {} as never } as ProvisioningCtx
 
 // Minimal fake McpServer capturing registrations.
 function makeServer() {
-  const calls: Array<{ name: string; config: any; cb: (args: unknown) => Promise<unknown> }> = [] // eslint-disable-line @typescript-eslint/no-explicit-any
-  const registerTool = jest.fn((name: string, config: unknown, cb: (args: unknown) => Promise<unknown>) => {
+  const calls: Array<{ name: string; config: any; cb: (args: unknown, extra?: any) => Promise<unknown> }> = [] // eslint-disable-line @typescript-eslint/no-explicit-any
+  const registerTool = jest.fn((name: string, config: unknown, cb: (args: unknown, extra?: any) => Promise<unknown>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     calls.push({ name, config: config as never, cb })
   })
   return { server: { registerTool }, registerTool, calls }
@@ -45,6 +45,26 @@ describe('registerProvisioningTools', () => {
     const create = calls.find((c) => c.name === 'create_tenant')!
     expect(create.config).toMatchObject({ description: 'Create a tenant' })
     expect(create.config.inputSchema).toBe(OPS[0].input)
+    expect(create.config._meta.securitySchemes).toEqual([
+      { type: 'oauth2', scopes: ['superadmin'] },
+    ])
+  })
+
+  it('returns an OAuth challenge without executing an op when authorization is absent', async () => {
+    const { server, calls } = makeServer()
+    registerProvisioningTools(server, ctx)
+
+    const create = calls.find((c) => c.name === 'create_tenant')!
+    const result = (await create.cb({ name: 'Acme' }, {})) as {
+      isError?: boolean
+      _meta?: Record<string, unknown>
+    }
+
+    expect(result.isError).toBe(true)
+    expect(result._meta?.['mcp/www_authenticate']).toEqual([
+      expect.stringContaining('resource_metadata="https://www.webnegosyo.com/.well-known/oauth-protected-resource"'),
+    ])
+    expect(executeOp).not.toHaveBeenCalled()
   })
 
   it('dispatches a tool call through executeOp with the ctx and returns MCP text content', async () => {
@@ -52,7 +72,10 @@ describe('registerProvisioningTools', () => {
     registerProvisioningTools(server, ctx)
 
     const create = calls.find((c) => c.name === 'create_tenant')!
-    const result = (await create.cb({ name: 'Acme', slug: 'acme' })) as { content: Array<{ type: string; text: string }> }
+    const result = (await create.cb(
+      { name: 'Acme', slug: 'acme' },
+      { authInfo: { token: 'access-token', clientId: 'client_1', scopes: ['superadmin'] } },
+    )) as { content: Array<{ type: string; text: string }> }
 
     expect(executeOp).toHaveBeenCalledWith('create_tenant', ctx, { name: 'Acme', slug: 'acme' })
     expect(result.content[0]).toMatchObject({ type: 'text' })
@@ -65,7 +88,10 @@ describe('registerProvisioningTools', () => {
     registerProvisioningTools(server, ctx)
 
     const create = calls.find((c) => c.name === 'create_tenant')!
-    const result = (await create.cb({})) as { content: Array<{ type: string; text: string }>; isError?: boolean }
+    const result = (await create.cb(
+      {},
+      { authInfo: { token: 'access-token', clientId: 'client_1', scopes: ['superadmin'] } },
+    )) as { content: Array<{ type: string; text: string }>; isError?: boolean }
 
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('slug already taken')

@@ -8,6 +8,7 @@ type TokenVerifier = (req: Request, bearerToken?: string) => Promise<AuthInfo | 
 interface SmartMenuAuthOptions {
   resourceMetadataPath: string
   requiredScope?: string
+  required?: boolean
 }
 
 /**
@@ -26,6 +27,10 @@ export function withSmartMenuAuth(
 
   return async (req, ctx) => {
     const bearerToken = extractBearerToken(req.headers.get('authorization')) ?? undefined
+    if (!bearerToken && options.required === false) {
+      return handler(req, ctx)
+    }
+
     const authInfo = await verifyToken(req, bearerToken)
     const resourceMetadata = `${getOrigin(req)}${options.resourceMetadataPath}`
 

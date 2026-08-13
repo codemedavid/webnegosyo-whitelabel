@@ -5,6 +5,21 @@ import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
 const metadataPath = '/.well-known/oauth-protected-resource'
 
 describe('withSmartMenuAuth', () => {
+  it('allows an anonymous MCP handshake when transport authentication is optional', async () => {
+    const handler = jest.fn(async () => Response.json({ ok: true }))
+    const verify = jest.fn(async () => undefined)
+    const wrapped = withSmartMenuAuth(handler, verify, {
+      resourceMetadataPath: metadataPath,
+      required: false,
+    })
+
+    const response = await wrapped(new Request('https://example.com/api/mcp/mcp'), {})
+
+    expect(response.status).toBe(200)
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(verify).not.toHaveBeenCalled()
+  })
+
   it.each(['Bearer token-value', 'bearer   token-value', 'BEARER\ttoken-value'])(
     'accepts RFC-compatible authorization header %s',
     async (authorization) => {
@@ -30,6 +45,7 @@ describe('withSmartMenuAuth', () => {
     const handler = jest.fn(async () => new Response('unexpected'))
     const wrapped = withSmartMenuAuth(handler, async () => undefined, {
       resourceMetadataPath: metadataPath,
+      required: true,
     })
 
     const response = await wrapped(new Request('https://example.com/api/mcp/mcp'), {})

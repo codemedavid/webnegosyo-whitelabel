@@ -7,13 +7,12 @@ import { withCorsHeaders, corsPreflightResponse } from '@/lib/mcp/cors'
 import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
 
 // SmartMenu MCP — remote Streamable-HTTP MCP server for superadmin tenant/menu/
-// branding provisioning. One Bearer-keyed URL serves both Claude remote
-// connectors and ChatGPT custom connectors.
+// branding provisioning. One URL serves both Claude remote connectors and
+// ChatGPT custom connectors.
 //
-// Auth: withMcpAuth extracts the Bearer key and verifies it (verifyMcpKey,
-// service-role hash lookup) before any tool runs; an invalid/absent/revoked key
-// returns 401. Because the key already proves superadmin authority, the tools
-// operate through a service-role client (bypasses RLS) via ProvisioningCtx.
+// The MCP handshake and tool discovery remain available anonymously, as OAuth
+// MCP clients require them immediately after redirect. Every registered tool
+// advertises OAuth and checks the verified superadmin scope before dispatching.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -31,13 +30,13 @@ const handler = createMcpHandler(
     { basePath: '/api/mcp', maxDuration: 60, disableSse: true },
 )
 
-// `resourceMetadataPath` makes 401 responses carry a WWW-Authenticate header
-// pointing at the protected-resource metadata, so an OAuth-capable client
-// (Claude/ChatGPT) can discover the authorization server and log in — no
-// copy-pasted key. Legacy `smk_live_` keys still work (verifier accepts both).
+// A supplied credential is still verified at the transport boundary and added
+// to the MCP request context. Missing credentials are allowed through only so
+// initialize/tools/list can run; tool callbacks return the MCP OAuth challenge.
 const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createMcpTokenVerifier(adminClient), {
     resourceMetadataPath: '/.well-known/oauth-protected-resource',
     requiredScope: 'superadmin',
+    required: false,
 })
 
 // Browser-hosted MCP clients preflight before their first JSON-RPC message, and
