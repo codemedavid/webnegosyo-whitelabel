@@ -62,6 +62,18 @@ describe('committed convex push bundle', () => {
     // the source list — is what proves it actually shipped.
     expect(JSON.stringify(bundle)).toContain('recipientsForOutlet')
   })
+
+  it('lets a placed-order revision carry its settled discount', () => {
+    // The register sends this field only when an edit applies or clears a
+    // discount. If the committed artifact predates that validator argument,
+    // Convex rejects the whole save before the handler runs.
+    const ordersModule = bundle.appDefinition.changedModules.find(
+      (module) => module.path === 'orders.js'
+    )
+
+    expect(ordersModule?.source).toContain('discount: v.optional')
+    expect(ordersModule?.source).toContain('mergeOrderDiscount')
+  })
 })
 
 describe('the exclusion rule that keeps tests out of the bundle', () => {

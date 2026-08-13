@@ -72,7 +72,11 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // investigated. The argument is OPTIONAL and the client sends it only to
 // deployments recorded at >= 18 — a validator rejects arguments it does not
 // know, which surfaces as "this store needs a backend update".
-const CURRENT_SCHEMA_VERSION = 18;
+// v19 lets reviseOrder accept and persist the discount an edit settled on.
+// The register began sending this argument with voucher-enabled edits after
+// v18; without a version bump, bulk deploy considered every v18 tenant current
+// and left its validator rejecting the entire save as an extra field.
+const CURRENT_SCHEMA_VERSION = 19;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

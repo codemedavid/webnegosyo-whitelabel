@@ -15,8 +15,9 @@
  * The comparison therefore has to be numeric, which is what this covers.
  */
 import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
+import { CURRENT_SCHEMA_VERSION } from "@/lib/convex-deploy";
 
-const CURRENT = 18;
+const CURRENT = CURRENT_SCHEMA_VERSION;
 
 describe("tenantsNeedingDeploy", () => {
   it("selects a single-digit version that lexical comparison hid", () => {
@@ -43,15 +44,30 @@ describe("tenantsNeedingDeploy", () => {
     ]);
   });
 
+  it("re-deploys v18 tenants so order edits can carry discounts", () => {
+    expect(
+      tenantsNeedingDeploy(
+        [{ id: "needs-discount-validator", convex_schema_version: "18" }],
+        CURRENT,
+      ).map((tenant) => tenant.id),
+    ).toEqual(["needs-discount-validator"]);
+  });
+
   it("skips a tenant already on the current version", () => {
     expect(
-      tenantsNeedingDeploy([{ id: "current", convex_schema_version: "18" }], CURRENT),
+      tenantsNeedingDeploy(
+        [{ id: "current", convex_schema_version: String(CURRENT) }],
+        CURRENT,
+      ),
     ).toEqual([]);
   });
 
   it("skips a tenant ahead of this build, rather than pushing it backwards", () => {
     expect(
-      tenantsNeedingDeploy([{ id: "ahead", convex_schema_version: "19" }], CURRENT),
+      tenantsNeedingDeploy(
+        [{ id: "ahead", convex_schema_version: String(CURRENT + 1) }],
+        CURRENT,
+      ),
     ).toEqual([]);
   });
 
@@ -66,7 +82,7 @@ describe("tenantsNeedingDeploy", () => {
   it("accepts a numeric version, since the column's type is not guaranteed", () => {
     const rows = [
       { id: "num-old", convex_schema_version: 5 },
-      { id: "num-current", convex_schema_version: 18 },
+      { id: "num-current", convex_schema_version: CURRENT },
     ];
 
     expect(tenantsNeedingDeploy(rows, CURRENT).map((t) => t.id)).toEqual(["num-old"]);
@@ -75,7 +91,7 @@ describe("tenantsNeedingDeploy", () => {
   it("preserves input order, so a deploy run reads predictably", () => {
     const rows = [
       { id: "a", convex_schema_version: "5" },
-      { id: "b", convex_schema_version: "18" },
+      { id: "b", convex_schema_version: String(CURRENT) },
       { id: "c", convex_schema_version: null },
     ];
 
