@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
+import { isAllowedRedirectUri, issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
 import {
   AUTH_CODE_TTL_SECONDS,
   OAUTH_OFFLINE_SCOPE,
@@ -53,7 +53,7 @@ export async function GET(req: Request): Promise<Response> {
   if (!client) {
     return badRequest('invalid_client', 'Unknown client_id')
   }
-  if (!redirectUri || !client.redirect_uris.includes(redirectUri)) {
+  if (!redirectUri || !isAllowedRedirectUri(redirectUri, client.redirect_uris)) {
     return badRequest('invalid_request', 'redirect_uri does not match a registered value')
   }
 

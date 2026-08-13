@@ -48,6 +48,42 @@ export function verifyPkce(codeVerifier: string, codeChallenge: string, method: 
   return constantTimeEquals(derived, codeChallenge)
 }
 
+/**
+ * Validates an OAuth redirect URI. Native clients may bind a loopback callback
+ * to any available port, so RFC 8252 requires the authorization server to
+ * compare every component except the port for numeric loopback addresses.
+ */
+export function isAllowedRedirectUri(requested: string, registered: string[]): boolean {
+  if (registered.includes(requested)) return true
+
+  let requestedUrl: URL
+  try {
+    requestedUrl = new URL(requested)
+  } catch {
+    return false
+  }
+
+  const loopbackHosts = new Set(['127.0.0.1', '[::1]'])
+  if (requestedUrl.protocol !== 'http:' || !loopbackHosts.has(requestedUrl.hostname)) {
+    return false
+  }
+
+  return registered.some((candidate) => {
+    try {
+      const registeredUrl = new URL(candidate)
+      return registeredUrl.protocol === requestedUrl.protocol
+        && registeredUrl.hostname === requestedUrl.hostname
+        && registeredUrl.pathname === requestedUrl.pathname
+        && registeredUrl.search === requestedUrl.search
+        && registeredUrl.hash === requestedUrl.hash
+        && registeredUrl.username === requestedUrl.username
+        && registeredUrl.password === requestedUrl.password
+    } catch {
+      return false
+    }
+  })
+}
+
 // ---- Dynamic Client Registration ----
 
 export interface RegisterClientInput {

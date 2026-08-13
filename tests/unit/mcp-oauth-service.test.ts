@@ -7,6 +7,7 @@ import {
   issueAuthorizationCode,
   exchangeAuthorizationCode,
   refreshAccessToken,
+  isAllowedRedirectUri,
 } from '@/lib/mcp/oauth-service'
 
 const NOW = 1_700_000_000_000
@@ -49,6 +50,22 @@ describe('verifyPkce', () => {
   it('supports the plain method', () => {
     expect(verifyPkce('xyz', 'xyz', 'plain')).toBe(true)
     expect(verifyPkce('xyz', 'abc', 'plain')).toBe(false)
+  })
+})
+
+describe('isAllowedRedirectUri', () => {
+  it('allows a native loopback callback to use a different ephemeral port', () => {
+    expect(isAllowedRedirectUri(
+      'http://127.0.0.1:55614/callback/qKatMjK9qWdg',
+      ['http://127.0.0.1:55563/callback/qKatMjK9qWdg'],
+    )).toBe(true)
+  })
+
+  it('rejects a loopback callback whose path was not registered', () => {
+    expect(isAllowedRedirectUri(
+      'http://127.0.0.1:55614/callback/attacker',
+      ['http://127.0.0.1:55563/callback/qKatMjK9qWdg'],
+    )).toBe(false)
   })
 })
 
