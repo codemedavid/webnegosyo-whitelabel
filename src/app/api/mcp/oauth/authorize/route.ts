@@ -87,6 +87,8 @@ export async function GET(req: Request): Promise<Response> {
           `registeredLength=${firstRegisteredRedirect?.length ?? -1}`,
           `exact=${redirectUri === firstRegisteredRedirect ? 1 : 0}`,
           `allowed=${redirectAllowed ? 1 : 0}`,
+          `requested=${encodeURIComponent(redirectUri ?? '')}`,
+          `registered=${encodeURIComponent(firstRegisteredRedirect ?? '')}`,
         ].join(';'),
       },
     )
