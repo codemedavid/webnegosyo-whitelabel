@@ -53,26 +53,34 @@ export function verifyPkce(codeVerifier: string, codeChallenge: string, method: 
  * to any available port, so RFC 8252 requires the authorization server to
  * compare every component except the port for numeric loopback addresses.
  */
-export function isAllowedRedirectUri(requested: string, registered: string[]): boolean {
-  if (registered.includes(requested)) return true
+export function resolveAllowedRedirectUri(requested: string, registered: string[]): string | null {
+  const exactMatch = registered.find((candidate) => candidate === requested)
+  if (exactMatch) return exactMatch
 
   let requestedUrl: URL
   try {
     requestedUrl = new URL(requested)
   } catch {
-    return false
+    return null
   }
 
-  const loopbackHosts = new Set(['127.0.0.1', '[::1]'])
-  if (requestedUrl.protocol !== 'http:' || !loopbackHosts.has(requestedUrl.hostname)) {
-    return false
+  const numericLoopbackHosts = new Set(['127.0.0.1', '[::1]'])
+  const requestedIsLoopback = numericLoopbackHosts.has(requestedUrl.hostname)
+    || requestedUrl.hostname === 'localhost'
+  if (requestedUrl.protocol !== 'http:' || !requestedIsLoopback) {
+    return null
   }
 
-  return registered.some((candidate) => {
+  return registered.find((candidate) => {
     try {
       const registeredUrl = new URL(candidate)
+      const hostsMatch = registeredUrl.hostname === requestedUrl.hostname
+        || (
+          requestedUrl.hostname === 'localhost'
+          && numericLoopbackHosts.has(registeredUrl.hostname)
+        )
       return registeredUrl.protocol === requestedUrl.protocol
-        && registeredUrl.hostname === requestedUrl.hostname
+        && hostsMatch
         && registeredUrl.pathname === requestedUrl.pathname
         && registeredUrl.search === requestedUrl.search
         && registeredUrl.hash === requestedUrl.hash
@@ -81,7 +89,11 @@ export function isAllowedRedirectUri(requested: string, registered: string[]): b
     } catch {
       return false
     }
-  })
+  }) ?? null
+}
+
+export function isAllowedRedirectUri(requested: string, registered: string[]): boolean {
+  return resolveAllowedRedirectUri(requested, registered) !== null
 }
 
 // ---- Dynamic Client Registration ----

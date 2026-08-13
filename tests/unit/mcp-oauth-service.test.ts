@@ -8,6 +8,7 @@ import {
   exchangeAuthorizationCode,
   refreshAccessToken,
   isAllowedRedirectUri,
+  resolveAllowedRedirectUri,
 } from '@/lib/mcp/oauth-service'
 
 const NOW = 1_700_000_000_000
@@ -66,6 +67,13 @@ describe('isAllowedRedirectUri', () => {
       'http://127.0.0.1:55614/callback/attacker',
       ['http://127.0.0.1:55563/callback/qKatMjK9qWdg'],
     )).toBe(false)
+  })
+
+  it('resolves a framework-normalized localhost callback to its registered numeric loopback URI', () => {
+    expect(resolveAllowedRedirectUri(
+      'http://localhost:57810/callback/qKatMjK9qWdg',
+      ['http://127.0.0.1:57810/callback/qKatMjK9qWdg'],
+    )).toBe('http://127.0.0.1:57810/callback/qKatMjK9qWdg')
   })
 })
 

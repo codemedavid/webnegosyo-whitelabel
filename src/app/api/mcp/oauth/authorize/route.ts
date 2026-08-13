@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isAllowedRedirectUri, issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
+import { resolveAllowedRedirectUri, issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
 import {
   AUTH_CODE_TTL_SECONDS,
   OAUTH_OFFLINE_SCOPE,
@@ -60,58 +60,31 @@ export async function GET(req: Request): Promise<Response> {
   if (!client) {
     return badRequest('invalid_client', 'Unknown client_id')
   }
-  const redirectAllowed = redirectUri
-    ? isAllowedRedirectUri(redirectUri, client.redirect_uris)
-    : false
-  if (!redirectUri || !redirectAllowed) {
-    const firstRegisteredRedirect = Array.isArray(client.redirect_uris)
-      ? client.redirect_uris[0]
-      : undefined
-    console.error('[SmartMenu OAuth] redirect mismatch', {
-      clientId,
-      requestedRedirect: redirectUri,
-      registeredRedirects: client.redirect_uris,
-      registeredRedirectsIsArray: Array.isArray(client.redirect_uris),
-      registeredRedirectsType: typeof client.redirect_uris,
-      exactMatch: Boolean(redirectUri && client.redirect_uris.includes(redirectUri)),
-      redirectAllowed,
-    })
-    return badRequest(
-      'invalid_request',
-      'redirect_uri does not match a registered value',
-      {
-        'X-SmartMenu-OAuth-Debug': [
-          `array=${Array.isArray(client.redirect_uris) ? 1 : 0}`,
-          `count=${Array.isArray(client.redirect_uris) ? client.redirect_uris.length : -1}`,
-          `requestedLength=${redirectUri?.length ?? -1}`,
-          `registeredLength=${firstRegisteredRedirect?.length ?? -1}`,
-          `exact=${redirectUri === firstRegisteredRedirect ? 1 : 0}`,
-          `allowed=${redirectAllowed ? 1 : 0}`,
-          `requested=${encodeURIComponent(redirectUri ?? '')}`,
-          `registered=${encodeURIComponent(firstRegisteredRedirect ?? '')}`,
-        ].join(';'),
-      },
-    )
+  const validatedRedirectUri = redirectUri
+    ? resolveAllowedRedirectUri(redirectUri, client.redirect_uris)
+    : null
+  if (!validatedRedirectUri) {
+    return badRequest('invalid_request', 'redirect_uri does not match a registered value')
   }
 
   // From here, errors are delivered to the (validated) redirect_uri per spec.
   if (responseType !== 'code') {
-    return redirectError(redirectUri, 'unsupported_response_type', 'Only response_type=code is supported', state)
+    return redirectError(validatedRedirectUri, 'unsupported_response_type', 'Only response_type=code is supported', state)
   }
   if (!codeChallenge) {
-    return redirectError(redirectUri, 'invalid_request', 'code_challenge (PKCE) is required', state)
+    return redirectError(validatedRedirectUri, 'invalid_request', 'code_challenge (PKCE) is required', state)
   }
   if (codeChallengeMethod !== 'S256' && codeChallengeMethod !== 'plain') {
-    return redirectError(redirectUri, 'invalid_request', 'Unsupported code_challenge_method', state)
+    return redirectError(validatedRedirectUri, 'invalid_request', 'Unsupported code_challenge_method', state)
   }
   const expectedResource = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
   if (resource && resource !== expectedResource) {
-    return redirectError(redirectUri, 'invalid_target', 'resource does not match the SmartMenu MCP endpoint', state)
+    return redirectError(validatedRedirectUri, 'invalid_target', 'resource does not match the SmartMenu MCP endpoint', state)
   }
   const requestedScopes = scope.split(/\s+/).filter(Boolean)
   const supportedScopes = new Set([OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
   if (!requestedScopes.includes(OAUTH_SCOPE) || requestedScopes.some((item) => !supportedScopes.has(item))) {
-    return redirectError(redirectUri, 'invalid_scope', 'Unsupported or missing OAuth scope', state)
+    return redirectError(validatedRedirectUri, 'invalid_scope', 'Unsupported or missing OAuth scope', state)
   }
 
   // Human-login gate: require a superadmin cookie session.
@@ -145,7 +118,7 @@ export async function GET(req: Request): Promise<Response> {
       admin,
       {
         clientId,
-        redirectUri,
+        redirectUri: validatedRedirectUri,
         codeChallenge,
         codeChallengeMethod,
         scope,
@@ -154,23 +127,17 @@ export async function GET(req: Request): Promise<Response> {
       { ttlSeconds: AUTH_CODE_TTL_SECONDS },
     )
 
-    const target = new URL(redirectUri)
+    const target = new URL(validatedRedirectUri)
     target.searchParams.set('code', code)
     if (state) target.searchParams.set('state', state)
     return Response.redirect(target.toString(), 302)
   } catch {
-    return redirectError(redirectUri, 'server_error', 'Failed to issue authorization code', state)
+    return redirectError(validatedRedirectUri, 'server_error', 'Failed to issue authorization code', state)
   }
 }
 
-function badRequest(error: string, description: string, headers?: HeadersInit): Response {
-  return Response.json(
-    { error, error_description: description },
-    {
-      status: 400,
-      headers: { 'X-SmartMenu-OAuth-Version': '2026-08-13.3', ...headers },
-    },
-  )
+function badRequest(error: string, description: string): Response {
+  return Response.json({ error, error_description: description }, { status: 400 })
 }
 
 function redirectError(redirectUri: string, error: string, description: string, state: string | null): Response {
