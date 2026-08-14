@@ -4,9 +4,10 @@ const JSON_MEDIA_TYPE = 'application/json'
 const SSE_MEDIA_TYPE = 'text/event-stream'
 
 /**
- * Adds response types required by the current MCP Streamable HTTP SDK when a
- * client omits them. ChatGPT has sent JSON-only POST Accept headers, which the
- * SDK rejects with 406 even though the connector can consume MCP streams.
+ * Adds transport headers required by the current MCP Streamable HTTP SDK when
+ * a client omits them. ChatGPT has sent JSON-only Accept headers and JSON-RPC
+ * POST bodies without an application/json Content-Type; the SDK otherwise
+ * rejects those requests with 406 and 415 respectively.
  */
 export function normalizeMcpRequestHeaders(req: Request): Request {
   if (req.method !== 'POST' && req.method !== 'GET') return req
@@ -25,10 +26,13 @@ export function normalizeMcpRequestHeaders(req: Request): Request {
   }
 
   const normalizedAccept = mediaTypes.join(', ')
-  if (normalizedAccept === accept) return req
+  const contentType = req.headers.get('content-type') ?? ''
+  const needsJsonContentType = req.method === 'POST' && !contentType.includes(JSON_MEDIA_TYPE)
+  if (normalizedAccept === accept && !needsJsonContentType) return req
 
   const headers = new Headers(req.headers)
   headers.set('accept', normalizedAccept)
+  if (needsJsonContentType) headers.set('content-type', JSON_MEDIA_TYPE)
   return new Request(req, { headers })
 }
 

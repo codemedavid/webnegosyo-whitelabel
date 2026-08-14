@@ -4,6 +4,36 @@ import { createMcpHandler } from 'mcp-handler'
 import { withMcpAcceptCompatibility } from '@/lib/mcp/request-compatibility'
 
 describe('withMcpAcceptCompatibility', () => {
+  it('lets a valid JSON-RPC POST without Content-Type reach the MCP SDK', async () => {
+    const intervalSpy = jest.spyOn(global, 'setInterval')
+      .mockReturnValue({} as NodeJS.Timeout)
+    const sdkHandler = createMcpHandler(
+      () => undefined,
+      { serverInfo: { name: 'test-mcp', version: '1.0.0' } },
+      { basePath: '/api/mcp', disableSse: true },
+    )
+    const wrapped = withMcpAcceptCompatibility(sdkHandler as never)
+
+    const response = await wrapped(new Request('https://example.com/api/mcp/mcp', {
+      method: 'POST',
+      headers: { accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'chatgpt', version: '1.0.0' },
+        },
+      }),
+    }), {})
+
+    expect(response.status).toBe(200)
+    await expect(response.text()).resolves.toContain('"serverInfo":{"name":"test-mcp"')
+    intervalSpy.mockRestore()
+  })
+
   it('prevents the MCP SDK from returning 406 to a JSON-only initialize request', async () => {
     const intervalSpy = jest.spyOn(global, 'setInterval')
       .mockReturnValue({} as NodeJS.Timeout)
