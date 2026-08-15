@@ -34,6 +34,15 @@ type DeliveryFeeColumns = {
   delivery_radius_km?: number | null
 }
 
+// Same lag for the Loyverse integration migration (20260821120000).
+type LoyverseColumns = {
+  loyverse_enabled?: boolean
+  loyverse_access_token?: string | null
+  loyverse_store_id?: string | null
+  loyverse_payment_type_id?: string | null
+  loyverse_push_mode?: string
+}
+
 /**
  * Verify the current user is a superadmin
  * Throws an error if not authenticated or not a superadmin
@@ -92,7 +101,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: 'Slug is already taken' }
     }
 
-    const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn = {
+    const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn & LoyverseColumns = {
       name: parsed.name,
       slug: parsed.slug,
       domain: parsed.domain || undefined,
@@ -272,7 +281,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
 
   const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
 
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn & LoyverseColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain || undefined,
