@@ -53,7 +53,14 @@ interface MovementRow {
 function stubLedger(rows: MovementRow[], captured: unknown[][]) {
   return (table: string) => {
     if (table === 'order_stock_applications') {
+      // The reverse lists the order's claims first to pick its void revision.
+      const claimChain = {
+        eq: () => claimChain,
+        then: (resolve: (r: unknown) => unknown) =>
+          resolve({ data: [{ reason: 'sale', revision: 0 }], error: null }),
+      }
       return {
+        select: () => claimChain,
         insert: () => Promise.resolve({ data: null, error: null }),
         delete: () => ({
           eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),

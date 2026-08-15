@@ -180,8 +180,15 @@ describe('cancellation restore reaches the alert path', () => {
   function wireRestore(saleRows: unknown[], alreadyRestored = false) {
     from.mockImplementation((name: string) => {
       switch (name) {
-        case 'order_stock_applications':
+        case 'order_stock_applications': {
+          // The reverse lists the order's claims first to pick its void revision.
+          const claimChain = {
+            eq: () => claimChain,
+            then: (resolve: (r: unknown) => unknown) =>
+              resolve({ data: [{ reason: 'sale', revision: 0 }], error: null }),
+          }
           return {
+            select: () => claimChain,
             insert: () =>
               Promise.resolve({
                 data: null,
@@ -191,6 +198,7 @@ describe('cancellation restore reaches the alert path', () => {
               eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
             }),
           }
+        }
         case 'stock_movements':
           return table(saleRows)
         case 'inventory_items':

@@ -123,7 +123,14 @@ function wire(options: {
 
   from.mockImplementation((name: string) => {
     if (name === 'order_stock_applications') {
+      // Claims listing: the sale's cancel-wins guard and the reverse's void
+      // revision both read this. No claims yet — the happy path.
+      const claimChain = {
+        eq: () => claimChain,
+        then: (resolve: (r: unknown) => unknown) => resolve({ data: [], error: null }),
+      }
       return {
+        select: () => claimChain,
         insert: () =>
           Promise.resolve({
             data: null,
