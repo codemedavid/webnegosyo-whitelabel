@@ -171,6 +171,12 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       lalamove_service_type: parsed.lalamove_service_type || undefined,
       lalamove_sandbox: parsed.lalamove_sandbox,
       lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
+      // Loyverse POS integration
+      loyverse_enabled: parsed.loyverse_enabled,
+      loyverse_access_token: parsed.loyverse_access_token || undefined,
+      loyverse_store_id: parsed.loyverse_store_id || undefined,
+      loyverse_payment_type_id: parsed.loyverse_payment_type_id || undefined,
+      loyverse_push_mode: parsed.loyverse_push_mode,
       // Distance-based delivery fee
       distance_delivery_enabled: parsed.distance_delivery_enabled,
       delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
@@ -345,6 +351,12 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     lalamove_service_type: parsed.lalamove_service_type || undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
+    // Loyverse POS integration
+    loyverse_enabled: parsed.loyverse_enabled,
+    loyverse_access_token: parsed.loyverse_access_token || undefined,
+    loyverse_store_id: parsed.loyverse_store_id || undefined,
+    loyverse_payment_type_id: parsed.loyverse_payment_type_id || undefined,
+    loyverse_push_mode: parsed.loyverse_push_mode,
     // Distance-based delivery fee
     distance_delivery_enabled: parsed.distance_delivery_enabled,
     delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
