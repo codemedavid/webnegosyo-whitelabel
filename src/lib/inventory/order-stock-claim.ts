@@ -55,6 +55,95 @@ export async function claimOrderStockApplication(
   throw error
 }
 
+/** One claim row, as narrow as revision arithmetic needs it. */
+export interface OrderStockClaimRow {
+  reason: OrderStockDirection
+  revision: number
+}
+
+/**
+ * Every claim this order holds, in both directions.
+ *
+ * Cancel/un-cancel and the racing-cancel guard all need to see the whole
+ * picture at once: which revisions are burned decides both the next revision a
+ * re-depletion can mint and whether a cancellation has already spoken for the
+ * order's stock. Throws on a read error — guessing "no claims" during an
+ * outage would let a sale through a guard that exists to refuse it.
+ */
+export async function listOrderStockClaims(
+  supabase: ClaimClient,
+  tenantId: string,
+  orderId: string,
+): Promise<OrderStockClaimRow[]> {
+  const { data, error } = await supabase
+    .from('order_stock_applications')
+    .select('reason, revision')
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+  if (error) throw error
+
+  return ((data ?? []) as OrderStockClaimRow[]).map((row) => ({
+    reason: row.reason,
+    revision: Number(row.revision) || 0,
+  }))
+}
+
+/**
+ * The revision an un-cancel re-depletes at: one above every claim the order
+ * holds, in either direction.
+ *
+ * The original sale and its cancellation burned their revisions on the unique
+ * index; re-using any of them would make the re-depletion a silent no-op —
+ * which is exactly the defect this exists to fix. A fresh revision always has
+ * both directions free, so a later re-cancel can claim its void symmetrically.
+ */
+export function resolveRedepletionRevision(
+  claims: readonly OrderStockClaimRow[],
+): number {
+  if (claims.length === 0) return 0
+  return Math.max(...claims.map((claim) => claim.revision)) + 1
+}
+
+/**
+ * The revision a cancellation claims its void at: paired with the latest sale,
+ * skipping forward past any void an order edit already burned.
+ *
+ * Pairing with the latest sale keeps the plain order exactly as it was (sale@0
+ * cancels as void@0) and makes the racing-sale guard line up — a sale at
+ * revision r is blocked by a void at or above r. Skipping burned voids keeps a
+ * cancellation working on an edited order, whose swap edits claim voids of
+ * their own.
+ */
+export function resolveVoidClaimRevision(
+  claims: readonly OrderStockClaimRow[],
+): number {
+  const latestSaleRevision = claims
+    .filter((claim) => claim.reason === 'sale')
+    .reduce((max, claim) => Math.max(max, claim.revision), 0)
+  const burnedVoidRevisions = new Set(
+    claims.filter((claim) => claim.reason === 'void').map((claim) => claim.revision),
+  )
+
+  let revision = latestSaleRevision
+  while (burnedVoidRevisions.has(revision)) revision += 1
+  return revision
+}
+
+/**
+ * Whether a cancellation has already spoken for this order's stock at or above
+ * the given sale revision — in which case the sale must not apply (cancel
+ * wins). Strictly-below voids do NOT block: they belong to an earlier life of
+ * the order that an un-cancel has since re-opened.
+ */
+export function hasBlockingVoidClaim(
+  claims: readonly OrderStockClaimRow[],
+  revision: number,
+): boolean {
+  return claims.some(
+    (claim) => claim.reason === 'void' && claim.revision >= revision,
+  )
+}
+
 /**
  * Give the claim back after a depletion failed to write.
  *

@@ -22,7 +22,15 @@ import { resolveMovementOutletId } from '@/lib/inventory/stock-location'
 import {
   claimOrderStockApplication,
   releaseOrderStockApplication,
+  listOrderStockClaims,
+  resolveRedepletionRevision,
+  resolveVoidClaimRevision,
+  hasBlockingVoidClaim,
 } from '@/lib/inventory/order-stock-claim'
+import {
+  buildDepletionItemsFromOrderRows,
+  type OrderItemRow,
+} from '@/lib/inventory/customer-order-items'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 function toUnit(row: InventoryUnitRow): InventoryUnit {
@@ -125,6 +133,19 @@ export async function applyOrderStockMovements(
   // order permanently done with its stock still on the shelf — the failure mode
   // is silent, and worse than the double-deduction the claim exists to stop.
   try {
+    // Cancel wins. Depletion is fire-and-forget, so a fast cancellation can
+    // take its void claim before the sale's rows land. The reverse keeps that
+    // claim even when it found nothing to reverse — it is this guard — so a
+    // sale arriving afterwards must stand down, hand its claim back, and leave
+    // the cancelled order with no stock moved in either direction.
+    if (direction === 'sale') {
+      const claims = await listOrderStockClaims(supabase, tenantId, orderId)
+      if (hasBlockingVoidClaim(claims, revision)) {
+        await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
+        return EMPTY_RESULT
+      }
+    }
+
     const result = await depleteClaimedOrder(
       supabase,
       tenantId,
@@ -276,6 +297,23 @@ export async function reverseOrderStockMovements(
 ): Promise<OrderStockResult> {
   const supabase = createAdminClient()
 
+  // The void claim is taken at a revision that pairs with the order's latest
+  // sale, skipping any void an edit already burned — so a cancellation works
+  // on an edited order, and a second cancel after an un-cancel claims fresh.
+  const claims = await listOrderStockClaims(supabase, tenantId, orderId)
+  const voidRevision = resolveVoidClaimRevision(claims)
+
+  // Claim BEFORE reading movements — cancelling twice would put the stock back
+  // twice, and the database refusing the second caller is the guard. Claiming
+  // first also closes the race against the fire-and-forget depletion: a sale
+  // landing after this claim is seen by the read below and reversed, and a
+  // sale that has not landed yet finds this claim and stands down. Reading
+  // first (as this used to) returned EMPTY without any claim, and a sale
+  // landing a moment later was never reversed.
+  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision))) {
+    return EMPTY_RESULT
+  }
+
   // EVERY movement this order recorded, not just its sale.
   //
   // Filtering to `sale` was correct exactly as long as a sale was the only
@@ -288,7 +326,12 @@ export async function reverseOrderStockMovements(
     .select('inventory_item_id, outlet_id, quantity_delta, entered_quantity, entered_unit_id')
     .eq('tenant_id', tenantId)
     .eq('order_id', orderId)
-  if (movementError) throw movementError
+  if (movementError) {
+    // A claim outliving a read that never happened would leave the order
+    // permanently un-restorable; hand it back so the cancel can retry.
+    await releaseOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision)
+    throw movementError
+  }
 
   const movements = (movementRows ?? []) as unknown as Array<{
     inventory_item_id: string
@@ -297,14 +340,10 @@ export async function reverseOrderStockMovements(
     entered_quantity: number | null
     entered_unit_id: string | null
   }>
+  // Nothing recorded (yet). The claim is deliberately KEPT: it is the marker
+  // the sale path checks, so a depletion racing this cancellation no-ops
+  // instead of spending stock for an order that no longer exists.
   if (movements.length === 0) return EMPTY_RESULT
-
-  // Same claim, opposite direction: cancelling twice would put the stock back
-  // twice. The database refuses the second caller; the SELECT this replaces let
-  // every racing cancellation through.
-  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void'))) {
-    return EMPTY_RESULT
-  }
 
   // Read before writing, for the same reason depletion does: the alert path
   // compares these rows against the deltas about to be applied, and re-reading
@@ -381,7 +420,7 @@ export async function reverseOrderStockMovements(
   if (insertError) {
     // The claim outliving a reversal that never wrote would leave the order
     // permanently un-restorable, its ingredients still counted as sold.
-    await releaseOrderStockApplication(supabase, tenantId, orderId, 'void')
+    await releaseOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision)
     throw insertError
   }
 
@@ -406,6 +445,70 @@ export async function reverseOrderStockBestEffort(
     await reverseOrderStockMovements(tenantId, orderId)
   } catch (error) {
     console.error('[inventory] Failed to restore stock for order', orderId, error)
+  }
+}
+
+/**
+ * Spend an un-cancelled order's ingredients again.
+ *
+ * Cancelling restored the stock and burned the ('sale', 0) and ('void', 0)
+ * claims, so flipping the order back to an active status used to leave its
+ * ingredients on the shelf forever — no path could ever move stock for it
+ * again. This re-depletes at a FRESH revision (one above every claim the order
+ * holds), reusing the same machinery a saved edit does, so a second
+ * cancellation can claim its matching void and the pair never collides.
+ *
+ * Items come from the order's own saved lines, the same way the customer-app
+ * depletion route derives them — the caller supplies nothing steerable.
+ * Best-effort: a stock write must never make a status change fail.
+ */
+export async function redepleteOrderStockBestEffort(
+  tenantId: string,
+  orderId: string,
+): Promise<void> {
+  try {
+    const supabase = createAdminClient()
+
+    const { data: orderRow, error: orderError } = await supabase
+      .from('orders')
+      .select('id, outlet_id')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    if (orderError) throw orderError
+    if (!orderRow) return
+
+    const { data: itemRows, error: itemsError } = await supabase
+      .from('order_items')
+      .select('menu_item_id, quantity')
+      .eq('order_id', orderId)
+    if (itemsError) throw itemsError
+
+    const items = buildDepletionItemsFromOrderRows(
+      (itemRows ?? []) as unknown as OrderItemRow[],
+    )
+    if (items.length === 0) return
+
+    const claims = await listOrderStockClaims(supabase, tenantId, orderId)
+    const revision = resolveRedepletionRevision(claims)
+    const outletId = (orderRow as { outlet_id?: string | null }).outlet_id ?? null
+
+    const result = await applyOrderStockMovements(
+      tenantId,
+      orderId,
+      items,
+      'sale',
+      revision,
+      outletId,
+    )
+    if (result.skipped.length > 0) {
+      console.warn('[inventory] Skipped stock movements for un-cancelled order', {
+        orderId,
+        skipped: result.skipped,
+      })
+    }
+  } catch (error) {
+    console.error('[inventory] Re-depletion failed for un-cancelled order', orderId, error)
   }
 }
 
