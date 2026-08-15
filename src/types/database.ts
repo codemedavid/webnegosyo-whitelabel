@@ -130,6 +130,14 @@ export interface Tenant {
   lalamove_sandbox?: boolean;
   // Store pickup contact the driver calls; falls back to footer_phone when null
   lalamove_sender_phone?: string;
+  // Loyverse POS integration (migration 20260821120000). Catalog syncs in,
+  // orders push out as completed receipts. See src/lib/loyverse/config.ts.
+  loyverse_enabled?: boolean;
+  loyverse_access_token?: string | null;
+  loyverse_store_id?: string | null;
+  loyverse_payment_type_id?: string | null;
+  loyverse_push_mode?: string | null; // 'on_create' | 'on_confirm'; unknown coerces to 'on_confirm'
+  loyverse_last_synced_at?: string | null;
   // Restaurant address for delivery pickup
   restaurant_address?: string;
   restaurant_latitude?: number;
@@ -806,6 +814,12 @@ export interface Order {
   lalamove_driver_name?: string;
   lalamove_driver_phone?: string;
   lalamove_tracking_url?: string;
+  // Loyverse receipt push outcome (migration 20260821120000). Presence of a
+  // receipt number = already pushed; guards double-pushing.
+  loyverse_receipt_number?: string | null;
+  loyverse_push_status?: 'pending' | 'pushed' | 'failed' | 'skipped' | null;
+  loyverse_pushed_at?: string | null;
+  loyverse_push_error?: string | null;
   // Payment fields
   payment_method_id?: string;
   payment_method_name?: string;
@@ -904,6 +918,28 @@ export interface OutletMenuOverride {
   discount_cleared: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * One Loyverse catalog object's link to a local menu row (migration
+ * 20260821120000). 'variant' rows tie a Loyverse item variant to a menu_item
+ * (+ local variation key); 'modifier_option' rows tie a Loyverse modifier
+ * option to a local modifier/addon option key and carry no menu_item.
+ */
+export interface LoyverseItemMap {
+  id: string;
+  tenant_id: string;
+  kind: 'variant' | 'modifier_option';
+  menu_item_id: string | null;
+  /** Local variation/modifier option key inside the menu item JSON; '' = base variant. */
+  local_key: string;
+  loyverse_item_id: string | null;
+  loyverse_variant_id: string | null;
+  loyverse_modifier_id: string | null;
+  loyverse_modifier_option_id: string | null;
+  loyverse_sku: string | null;
+  last_synced_at: string;
+  created_at: string;
 }
 
 /** A single most-ordered item in a customer's derived profile. */
