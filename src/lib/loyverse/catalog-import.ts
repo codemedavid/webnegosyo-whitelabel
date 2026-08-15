@@ -20,8 +20,10 @@ import {
   type LoyverseCatalogCategory,
   type LoyverseCatalogItem,
   type LoyverseCatalogModifier,
+  type LoyverseCatalogStockLevel,
   type MappedLoyverseItem,
 } from '@/lib/loyverse/catalog-mapper'
+import { shouldMirrorLoyverseImage, mirrorLoyverseImage } from '@/lib/loyverse/image-mirror'
 
 export interface LoyverseSyncReport {
   success: boolean
@@ -106,18 +108,24 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
   let categories: LoyverseCatalogCategory[]
   let items: LoyverseCatalogItem[]
   let modifiers: LoyverseCatalogModifier[]
+  let inventoryLevels: LoyverseCatalogStockLevel[]
   try {
-    ;[categories, items, modifiers] = await Promise.all([
+    ;[categories, items, modifiers, inventoryLevels] = await Promise.all([
       loyverseListAll<LoyverseCatalogCategory>(accessToken, '/categories', 'categories'),
       loyverseListAll<LoyverseCatalogItem>(accessToken, '/items', 'items'),
       loyverseListAll<LoyverseCatalogModifier>(accessToken, '/modifiers', 'modifiers'),
+      // Levels feed initial availability so a dish that is already dry in
+      // Loyverse never shows orderable while waiting for its first webhook.
+      loyverseListAll<LoyverseCatalogStockLevel>(accessToken, '/inventory', 'inventory_levels', {
+        query: { store_ids: storeId },
+      }),
     ])
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch the Loyverse catalog'
     return emptyReport(message)
   }
 
-  const mapping = mapLoyverseCatalog({ storeId, categories, modifiers, items })
+  const mapping = mapLoyverseCatalog({ storeId, categories, modifiers, items, inventoryLevels })
   const report: LoyverseSyncReport = {
     ...emptyReport(),
     itemsSkipped: mapping.warnings.length,
@@ -160,10 +168,35 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     nextOrder++
   }
 
-  // Fallback bucket for items whose Loyverse category is missing/deleted.
-  const resolveCategoryId = (item: MappedLoyverseItem): string | null => {
+  // Fallback bucket for items whose Loyverse category is missing/deleted —
+  // every catalog item must land on the menu, so the answer to "no category"
+  // is a lazily created "Menu" category, never a skip.
+  const FALLBACK_CATEGORY_NAME = 'Menu'
+  const ensureFallbackCategoryId = async (): Promise<string | null> => {
+    const cached = categoryIdByName.get(FALLBACK_CATEGORY_NAME.toLowerCase())
+    if (cached) return cached
+    const { data: created, error: createError } = await supabase
+      .from('categories')
+      .insert({
+        tenant_id: tenant.id,
+        name: FALLBACK_CATEGORY_NAME,
+        is_active: true,
+        order: nextOrder,
+      } as never)
+      .select('id')
+      .single()
+    if (createError || !created) return null
+    nextOrder++
+    report.categoriesCreated++
+    const id = (created as ExistingCategoryRow).id
+    categoryIdByName.set(FALLBACK_CATEGORY_NAME.toLowerCase(), id)
+    return id
+  }
+
+  const resolveCategoryId = async (item: MappedLoyverseItem): Promise<string | null> => {
     const name = item.categoryLoyverseId ? mapping.categoryNames[item.categoryLoyverseId] : null
-    return name ? (categoryIdByName.get(name.toLowerCase()) ?? null) : null
+    const matched = name ? (categoryIdByName.get(name.toLowerCase()) ?? null) : null
+    return matched ?? (await ensureFallbackCategoryId())
   }
 
   // --- Existing links: loyverse item -> local menu item (from the map table).
@@ -185,9 +218,25 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     }
   }
 
+  // Current images for mapped items: the mirror decision needs to know
+  // whether the local photo is a merchant upload (kept) or a Loyverse
+  // hotlink / nothing (replaced by an ImageKit mirror).
+  const existingMenuItemIds = Object.values(menuItemIdByLoyverseId)
+  const imageByMenuItemId = new Map<string, string>()
+  if (existingMenuItemIds.length > 0) {
+    const { data: imageRows } = await supabase
+      .from('menu_items')
+      .select('id, image_url')
+      .eq('tenant_id', tenant.id)
+      .in('id', existingMenuItemIds)
+    for (const row of (imageRows ?? []) as Array<{ id: string; image_url: string | null }>) {
+      imageByMenuItemId.set(row.id, row.image_url ?? '')
+    }
+  }
+
   // --- Upsert menu items.
   for (const item of mapping.items) {
-    const categoryId = resolveCategoryId(item)
+    const categoryId = await resolveCategoryId(item)
     if (!categoryId) {
       report.warnings.push(`Skipped "${item.name}": no category available`)
       report.itemsSkipped++
@@ -195,6 +244,20 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     }
 
     const existingId = menuItemIdByLoyverseId[item.loyverseItemId]
+
+    // Re-host the Loyverse photo on ImageKit; fall back to the hotlink (kept
+    // renderable via next.config remotePatterns) when the mirror fails. A
+    // merchant-hosted image is never touched.
+    const currentImage = existingId ? (imageByMenuItemId.get(existingId) ?? '') : ''
+    let imageField: { image_url: string } | Record<string, never> = {}
+    if (shouldMirrorLoyverseImage(currentImage, item.imageUrl)) {
+      const mirrored = await mirrorLoyverseImage(tenant.id, item.imageUrl as string)
+      if (!mirrored) {
+        report.warnings.push(`Image for "${item.name}" could not be re-hosted; using the Loyverse link`)
+      }
+      imageField = { image_url: mirrored ?? (item.imageUrl as string) }
+    }
+
     const commonFields = {
       name: item.name,
       description: item.description,
@@ -202,9 +265,7 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       category_id: categoryId,
       modifier_groups: item.modifierGroups,
       is_available: item.isAvailable,
-      // Only overwrite the image when Loyverse has one — a merchant may have
-      // uploaded a nicer local photo for an item Loyverse never got one for.
-      ...(item.imageUrl ? { image_url: item.imageUrl } : {}),
+      ...imageField,
     }
 
     if (existingId) {
@@ -224,8 +285,8 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
         .from('menu_items')
         .insert({
           tenant_id: tenant.id,
+          image_url: '',
           ...commonFields,
-          image_url: item.imageUrl ?? '',
           variations: [],
           addons: [],
           order: 0,
