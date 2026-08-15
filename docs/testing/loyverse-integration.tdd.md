@@ -39,6 +39,20 @@ Intentional gaps / follow-ups:
 - Double-deduction: local inventory (`inventory_enabled`) and Loyverse stock are independent; a tenant should use one. Not enforced in code.
 - Pre-existing, unrelated failure left alone: `tests/unit/vouchers/engine-parity.test.ts` — `webnegosyo-app/lib/order-summary-rows.ts` drifted ahead of the web copy in PR #38 (commit 561c35f).
 
+## Round 2 (2026-08-15, same day): full auto-sync + image fix
+
+New guarantees, same RED→GREEN cadence (commit pairs on main):
+
+| # | What is guaranteed | Test file | Result |
+|---|---|---|---|
+| 10 | Stock-aware sync: tracked item 86'd at 0 stock, untracked never, missing level = in stock, other-store levels ignored, multi-variant all-out rule | `tests/unit/loyverse-catalog-mapper.test.ts` (+6) | PASS |
+| 11 | Image mirror decision: mirror onto ImageKit when local image empty or a Loyverse hotlink; never clobber a merchant-hosted image | `tests/unit/loyverse-image-mirror.test.ts` (5) | PASS |
+| 12 | Webhook planning: registers both events, idempotent on (type,url), re-enables DISABLED, ignores foreign URLs | `tests/unit/loyverse-webhooks.test.ts` (5) | PASS |
+
+Also shipped (glue, covered by the pure tests above): `GET /inventory` folded into every sync; fallback "Menu" category so no item is ever skipped for lacking one; `ensureLoyverseWebhooks` called from the sync action (origin from request headers, env fallback `PLATFORM_APP_URL` / `https://www.<PLATFORM_ROOT_DOMAIN>`); `GET /api/loyverse/reconcile?secret=<LOYVERSE_WEBHOOK_SECRET>` re-imports every Loyverse tenant and revives disabled webhooks — point a Vercel cron at it (~6h); `api.loyverse.com/image/**` added to next.config remotePatterns (fixes the next/image crash; also the fallback when an ImageKit mirror fails).
+
+Full suite after round 2: 5703 passed; the only failure remains the pre-existing `vouchers/engine-parity` drift from PR #38.
+
 ## Migration
 
 `supabase/migrations/20260821120000_loyverse_integration.sql` — APPLIED to the platform DB 2026-08-15 and probed (tenants ×6 cols, orders ×4 cols, `loyverse_item_map` + RLS).
