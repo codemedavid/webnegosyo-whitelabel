@@ -38,3 +38,39 @@ export function buildDepletionItemsFromOrderRows(
     return [{ menuItemId: row.menu_item_id, quantity }]
   })
 }
+
+/**
+ * The Convex-tenant twin of the above. Those tenants hold their orders in a
+ * per-tenant Convex deployment, not the platform `orders` table — but the trust
+ * boundary is identical: the caller still names only a tenant and an order, and
+ * the platform reads the lines back out of the deployment server-side with the
+ * deploy key only it holds.
+ *
+ * No name→id resolution is needed: every writer of Convex `orderItems` (web
+ * checkout, the branded app, POS) stamps `menuItemId` with the platform menu
+ * item id (`String(item.menu_item.id)`), so the stored id resolves against
+ * recipes directly. An id that resolves to nothing simply spends nothing.
+ *
+ * Rows are `unknown` on purpose — this is an HTTP response from an external
+ * deployment, and a malformed row must drop, never throw.
+ */
+export function buildDepletionItemsFromConvexOrderItems(
+  rows: readonly unknown[],
+): DepletionOrderItem[] {
+  // Lines are never merged, for the same reason as the platform path: two
+  // configurations of one dish spend different ingredients.
+  return rows.flatMap((row) => {
+    if (typeof row !== 'object' || row === null) return []
+
+    const { menuItemId, quantity: rawQuantity } = row as {
+      menuItemId?: unknown
+      quantity?: unknown
+    }
+    if (typeof menuItemId !== 'string' || menuItemId === '') return []
+
+    const quantity = Number(rawQuantity)
+    if (!Number.isFinite(quantity) || quantity <= 0) return []
+
+    return [{ menuItemId, quantity }]
+  })
+}
