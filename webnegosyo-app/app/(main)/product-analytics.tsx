@@ -14,6 +14,7 @@ import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { supabase } from "../../lib/supabase";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { formatPeso, formatCount } from "../../lib/format";
@@ -138,6 +139,8 @@ const BCG: Record<string, { label: string; color: string; bg: string }> = {
 
 export default function ProductAnalyticsScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
   const tenantId = useAuthStore((s) => s.tenantId);
 
   const [period, setPeriod] = useState("30d");
@@ -449,13 +452,13 @@ export default function ProductAnalyticsScreen() {
     }
   };
 
-  if (!convexUrl) {
+  if (!hasBackend) {
     return (
       <View style={styles.screen}>
         <View style={styles.headerWrap}>
           <Text style={styles.title}>Products</Text>
         </View>
-        <ErrorState message="Product analytics requires Convex to be configured for this store." />
+        <ErrorState message="Product analytics needs this store's order backend to be configured." />
       </View>
     );
   }

@@ -380,13 +380,28 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
 
 export function useSafeAction(ref: FunctionReference<"action">) {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const tenantId = useScopedTenantId();
 
+  const refName = String(ref);
+  const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
+
+  let convexAction: ((args?: unknown) => Promise<unknown>) | null = null;
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useAction(ref);
+    convexAction = useAction(ref) as unknown as (args?: unknown) => Promise<unknown>;
   } catch {
-    return async () => {
-      throw new Error(convexUrl ? "Convex action error" : "Convex not connected");
-    };
+    convexAction = null;
   }
+
+  if (route === "convex" && convexAction) return convexAction;
+
+  // The platform adapter ships no action runner: the only action with a
+  // platform equivalent (Lalamove) dispatches through its own transport before
+  // reaching this hook. Reporting the marker keeps callers on their existing
+  // "needs a backend update" handling instead of misdiagnosing a healthy
+  // platform tenant as a Convex outage.
+  return async () => {
+    throw new Error(MISSING_FN_MARKER);
+  };
 }
