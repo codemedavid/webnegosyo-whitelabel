@@ -8,11 +8,14 @@ import {
 
 const noSleep = async () => {}
 
+// jsdom does not provide the fetch Response class; the client only touches
+// ok/status/json, so a minimal shape is enough.
 function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
+  return {
+    ok: status >= 200 && status < 300,
     status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+    json: async () => body,
+  } as unknown as Response
 }
 
 describe('loyverseRequest', () => {
