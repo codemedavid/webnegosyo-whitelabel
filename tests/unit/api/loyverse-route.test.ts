@@ -34,7 +34,7 @@ jest.mock('@/lib/loyverse/push-service', () => ({
 }))
 
 const convexQuery = jest.fn()
-const createConvexServerClient = jest.fn(() => ({ query: convexQuery }))
+const createConvexServerClient = jest.fn((..._args: unknown[]) => ({ query: convexQuery }))
 jest.mock('@/lib/convex/server', () => ({
   createConvexServerClient: (...args: unknown[]) => createConvexServerClient(...args),
 }))

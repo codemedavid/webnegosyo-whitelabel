@@ -14,6 +14,7 @@ import { useBranchScope } from "../../lib/use-branch-scope";
 import { filterQueueToScope } from "../../lib/branch-dashboard";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { readPosPayment } from "../../lib/pos-order";
+import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { EmptyState } from "../../components/EmptyState";
@@ -94,6 +95,12 @@ export default function PosSalesScreen() {
     setConfirmingId(order._id);
     try {
       await updateStatus({ orderId: order._id, status: "confirmed" });
+
+      // Push the confirmed order into Loyverse. The drawer shows a total and an
+      // item count, never the dishes, so only the id travels and the server
+      // reads the lines back out of the order backend. Never throws, and
+      // no-ops for tenants without Loyverse.
+      await pushConfirmedOrderToLoyverse(String(order._id));
     } catch {
       Alert.alert("Error", "Failed to confirm this order. Check your connection and try again.");
     } finally {

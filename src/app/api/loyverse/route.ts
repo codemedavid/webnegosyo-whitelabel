@@ -1,8 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createConvexServerClient } from '@/lib/convex/server'
 import { pushOrderToLoyverseBestEffort } from '@/lib/loyverse/push-service'
+import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-order-lines'
 import type { OrderItem } from '@/types/database'
+
+/** Nothing was pushed, and that is not an error the merchant can act on. */
+function skipped(reason: string): NextResponse {
+  return NextResponse.json({
+    success: false,
+    skipped: true,
+    receiptNumber: null,
+    unmapped: [],
+    error: reason,
+  })
+}
+
+/**
+ * Reads a Convex-backend order's lines back out of the tenant's own deployment.
+ *
+ * Same trust boundary as `/api/inventory/customer-order-stock`: the caller
+ * names a tenant and an order, and every dish, quantity and price comes from
+ * the deployment, queried with the deploy key only the platform holds.
+ *
+ * Returns null for every "cannot read it" case — an unconfigured tenant, an
+ * unreachable deployment, an order that is in neither store. The confirm has
+ * already succeeded by the time this runs, so a missing receipt is reconcilable
+ * in Back Office; an error on the confirm screen is not.
+ */
+async function loadConvexOrderItems(
+  tenantId: string,
+  orderId: string,
+): Promise<OrderItem[] | null> {
+  const admin = createAdminClient()
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('convex_deployment_url, convex_deploy_key')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  const config = tenant as {
+    convex_deployment_url?: string | null
+    convex_deploy_key?: string | null
+  } | null
+  if (!config?.convex_deployment_url || !config?.convex_deploy_key) return null
+
+  try {
+    const convex = createConvexServerClient(
+      config.convex_deployment_url,
+      config.convex_deploy_key,
+    )
+    const order = await convex.query<{ items?: unknown[] } | null>(
+      'orders:getOrderById',
+      { orderId },
+    )
+    if (!order || !Array.isArray(order.items)) return null
+
+    const items = buildLoyverseOrderItemsFromConvexOrder(order.items)
+    return items.length > 0 ? items : null
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Convex read failed'
+    console.error('[Loyverse] could not read Convex order lines:', message)
+    return null
+  }
+}
 
 /**
  * POST /api/loyverse — merchant-app entry point for pushing an order into
@@ -70,9 +132,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let orderItems: OrderItem[]
   let platformOrderId: string | null = null
 
-  // The app sends whatever ids it has; a Convex order id has no platform row,
-  // so an unknown orderId falls back to the caller-supplied items instead of
-  // failing the push.
+  // The app sends whatever ids it has. Resolution runs platform row → caller-
+  // supplied items → the tenant's Convex deployment, so a surface that holds
+  // the lines spends no extra round trip and one that holds only an order id
+  // (the orders list, the register drawer) still pushes.
   if (typeof orderId === 'string') {
     const admin = createAdminClient()
     const { data: orderRow } = await admin
@@ -90,7 +153,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } else if (Array.isArray(items)) {
       orderItems = items as OrderItem[]
     } else {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      const convexItems = await loadConvexOrderItems(tenantId, orderId)
+      if (!convexItems) return skipped('Order lines could not be read')
+      orderItems = convexItems
     }
   } else {
     orderItems = items as OrderItem[]

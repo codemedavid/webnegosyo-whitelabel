@@ -15,6 +15,7 @@ import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
+import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -126,9 +127,17 @@ export default function OrdersScreen() {
       // detail screen runs. Never throws, so a stock write cannot make an
       // order un-cancellable from the queue.
       await restoreStockForStatusChange(newStatus, String(orderId));
-      // This list holds order rows without their line items, so printing here
-      // would emit a receipt with no items on it. Point at the screen that has
-      // them — but only when the merchant actually expects paper.
+
+      // Push the confirmed order into Loyverse — the same shared side-effect
+      // the detail screen runs. Only the id travels: this list holds no line
+      // items, so the server reads them back out of the order backend.
+      if (newStatus === "confirmed") {
+        await pushConfirmedOrderToLoyverse(String(orderId));
+      }
+
+      // Printing needs those same missing line items — a receipt emitted here
+      // would have nothing on it. Point at the screen that has them, but only
+      // when the merchant actually expects paper.
       if (newStatus === "confirmed" && shouldPrint("confirmation")) {
         Alert.alert("Order Confirmed", "Open order details to print receipt.");
       }
