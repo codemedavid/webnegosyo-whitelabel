@@ -240,6 +240,31 @@ async function readBranchOnHand(
   return (data as { current_qty: number } | null)?.current_qty ?? 0
 }
 
+/**
+ * Refuses an explicitly named outlet that is not this tenant's.
+ *
+ * `resolveMovementBranch` stops a MANAGER naming somebody else's shop, but a
+ * store-wide account may name any branch — and `stock_movements.outlet_id`
+ * references `outlets(id)` with no tenant scoping, so another tenant's outlet
+ * id would otherwise be written straight into this tenant's ledger. Only an
+ * explicitly requested outlet pays for the read: a branch resolved from the
+ * actor's own `app_users` row is already tenant-bound.
+ */
+async function assertOutletBelongsToTenant(
+  supabase: StockMovementClient,
+  tenantId: string,
+  outletId: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('outlets')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('id', outletId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('That branch does not belong to this store')
+}
+
 export async function recordStockMovementWith(
   supabase: StockMovementClient,
   tenantId: string,
@@ -257,6 +282,14 @@ export async function recordStockMovementWith(
     validated.outlet_id,
     actor?.scope ?? (await resolveActingBranchScope(supabase, tenantId)),
   )
+
+  // An explicit branch choice is honored, but only after it is proven to be
+  // one of this tenant's shelves — and before anything is read or written.
+  const wasOutletRequested =
+    typeof validated.outlet_id === 'string' && validated.outlet_id.trim() !== ''
+  if (wasOutletRequested && outletId !== null) {
+    await assertOutletBelongsToTenant(supabase, tenantId, outletId)
+  }
 
   const { data: itemRow, error: itemError } = await supabase
     .from('inventory_items')

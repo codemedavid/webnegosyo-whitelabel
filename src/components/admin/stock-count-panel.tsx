@@ -16,7 +16,20 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ClipboardList, Loader2, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { describeCountPanel } from '@/lib/inventory/count-panel'
+import {
+  movementOutletLabel,
+  resolveDefaultMovementOutlet,
+  STORE_POOL_LABEL,
+  type SelectableBranch,
+} from '@/lib/inventory/stock-outlet'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import {
   openStockCountAction,
@@ -32,6 +45,11 @@ interface StockCountPanelProps {
   countId: string | null
   /** How far the running count has got, or `null` when none is running. */
   progress: CountSessionProgress | null
+  /**
+   * Branches a store-wide admin may count. Empty for a single-shop store —
+   * the selector then never renders and the store pool is the only shelf.
+   */
+  branches?: readonly SelectableBranch[]
 }
 
 export function StockCountPanel({
@@ -40,12 +58,21 @@ export function StockCountPanel({
   outletId,
   countId,
   progress,
+  branches = [],
 }: StockCountPanelProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Which shelf the NEXT count opens on. Seeded from the running count's
+   * shelf when one is, otherwise the same default the stock dialog uses.
+   */
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
+    countId !== null ? outletId : (outletId ?? resolveDefaultMovementOutlet(branches)),
+  )
 
   const copy = describeCountPanel(progress)
+  const isCounting = countId !== null
 
   /**
    * A refusal is shown, never swallowed. A silent failure is the worst outcome
@@ -72,8 +99,13 @@ export function StockCountPanel({
       run(() => closeStockCountAction(tenantId, tenantSlug, countId))
       return
     }
-    run(() => openStockCountAction(tenantId, tenantSlug, { outletId }))
+    run(() => openStockCountAction(tenantId, tenantSlug, { outletId: selectedOutletId }))
   }
+
+  // The shelf must be named whenever there is more than one it could be:
+  // "Counting…" alone reads as the whole store, and a count is a statement
+  // about exactly one shelf.
+  const shelfLabel = isCounting ? movementOutletLabel(outletId, branches) : null
 
   return (
     <div className="rounded-xl border bg-card p-4">
@@ -83,6 +115,11 @@ export function StockCountPanel({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold">Stock count</h3>
+              {branches.length > 0 && shelfLabel && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                  {shelfLabel}
+                </span>
+              )}
               {copy.progressLabel && (
                 <span
                   data-testid="stock-count-progress"
@@ -98,10 +135,34 @@ export function StockCountPanel({
           </div>
         </div>
 
-        <Button onClick={handleClick} disabled={isPending} variant={copy.isCounting ? 'default' : 'outline'}>
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {copy.actionLabel}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Which shelf the count is about — chosen before it starts, fixed
+              once it has. */}
+          {!isCounting && branches.length > 0 && (
+            <Select
+              value={selectedOutletId ?? 'store-pool'}
+              onValueChange={(value) =>
+                setSelectedOutletId(value === 'store-pool' ? null : value)
+              }
+            >
+              <SelectTrigger className="w-40" aria-label="Shelf to count">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="store-pool">{STORE_POOL_LABEL}</SelectItem>
+                {branches.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button onClick={handleClick} disabled={isPending} variant={copy.isCounting ? 'default' : 'outline'}>
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {copy.actionLabel}
+          </Button>
+        </div>
       </div>
 
       {copy.closingWarning && (

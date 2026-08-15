@@ -17,7 +17,12 @@ import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
 import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
 import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
-import { getOpenCount, getCountProgress } from '@/lib/inventory/count-session-service'
+import {
+  getOpenCount,
+  getAnyOpenCount,
+  getCountProgress,
+} from '@/lib/inventory/count-session-service'
+import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
 import { resolveReportScope } from '@/lib/inventory/report-scope'
@@ -61,12 +66,29 @@ export default async function AdminInventoryPage({
   // count their shelf short against it.
   const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
-  const [units, ingredients, openAlerts, lastPurchaseByItemId] = await Promise.all([
+  const [units, ingredients, openAlerts, lastPurchaseByItemId, outlets] = await Promise.all([
     seedDefaultUnits(tenant.id),
     getScopedIngredients(tenant.id, scope),
     getOpenStockAlerts(tenant.id),
     getCachedLastPurchaseDates(tenant.id),
+    // Which branches a movement may be aimed at. A failed read degrades to the
+    // single-shelf dialog rather than taking the page down: recording to the
+    // store pool is the behaviour every tenant had until branches existed.
+    createSupabaseOutletRepository()
+      .listByTenant(tenant.id)
+      .catch((error) => {
+        console.error('[inventory] outlets read failed', { tenantId: tenant.id, error })
+        return []
+      }),
   ])
+
+  // Only a store-wide account chooses shelves; a branch account's movements are
+  // pinned to its own branch server-side, so offering a selector would only
+  // promise something `resolveMovementBranch` is going to refuse.
+  const branches =
+    scope.kind === 'all'
+      ? outlets.filter((outlet) => outlet.is_active).map((o) => ({ id: o.id, name: o.name }))
+      : []
 
   // The banner is scoped to match the quantities under it. `stock_alerts` rows
   // are raised store-wide and carry no branch, so a branch manager was shown
@@ -151,15 +173,20 @@ export default async function AdminInventoryPage({
   // to start a count, which is the honest fallback — it is what a merchant with
   // no count running sees, and starting a second one joins the first anyway.
   let openCountId: string | null = null
+  let openCountOutletId: string | null = null
   let countProgress: CountSessionProgress | null = null
   try {
-    // The count belongs to the same shelf the report reconciles. Until that
-    // read was branch-aware this had to be the store pool, because a
-    // branch-scoped count would have described a narrower shelf than the
-    // report did and reported coverage against the wrong denominator.
-    const openCount = await getOpenCount(tenant.id, reportScope.outletId)
+    // A branch account still reads its own shelf's count. A store-wide account
+    // reads ANY open count: it can now start one on a branch shelf, and a read
+    // pinned to the store pool would report "no count running" while one is —
+    // and offer to start a second.
+    const openCount =
+      scope.kind === 'all'
+        ? await getAnyOpenCount(tenant.id)
+        : await getOpenCount(tenant.id, reportScope.outletId)
     if (openCount) {
       openCountId = openCount.id
+      openCountOutletId = openCount.outletId
       countProgress = await getCountProgress(tenant.id, openCount.id)
     }
   } catch (error) {
@@ -204,6 +231,8 @@ export default async function AdminInventoryPage({
         stockReason={reason}
         openCountId={openCountId}
         countProgress={countProgress}
+        openCountOutletId={openCountOutletId}
+        branches={branches}
       />
     </div>
   )

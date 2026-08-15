@@ -78,6 +78,11 @@ import {
 } from '@/app/actions/inventory'
 import { BranchStockPanel } from '@/components/admin/branch-stock-panel'
 import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
+import {
+  resolveDefaultMovementOutlet,
+  STORE_POOL_LABEL,
+  type SelectableBranch,
+} from '@/lib/inventory/stock-outlet'
 
 /** Trims the trailing zeros a NUMERIC(16,4) round-trip leaves behind. */
 function formatQuantity(quantity: number): string {
@@ -181,6 +186,20 @@ interface InventoryManagerProps {
    */
   openCountId?: string | null
   countProgress?: CountSessionProgress | null
+  /**
+   * The shelf the running count is about. Meaningless without `openCountId`;
+   * `null` with one means the store pool, which is what every count was before
+   * branches could be counted.
+   */
+  openCountOutletId?: string | null
+  /**
+   * This tenant's active branches. Empty for a single-shop store, whose stock
+   * dialog and count panel then look exactly as they always have. With
+   * branches, every receive/waste/stocktake names the shelf it lands on —
+   * order depletion already writes to the order's branch, and a dialog that
+   * could only reach the store pool drifted the two apart.
+   */
+  branches?: SelectableBranch[]
   /** Which tab the URL asked for; an unknown value falls back to the default. */
   defaultTab?: string
   /**
@@ -226,6 +245,8 @@ export function InventoryManager({
   latestDayKey,
   openCountId = null,
   countProgress = null,
+  openCountOutletId = null,
+  branches = [],
   defaultTab,
   stockItemId,
   stockReason,
@@ -299,6 +320,8 @@ export function InventoryManager({
           stockReason={stockReason}
           openCountId={openCountId}
           countProgress={countProgress}
+          openCountOutletId={openCountOutletId}
+          branches={branches}
         />
       </TabsContent>
 
@@ -349,6 +372,8 @@ interface IngredientsTabProps {
   stockReason?: string
   openCountId: string | null
   countProgress: CountSessionProgress | null
+  openCountOutletId: string | null
+  branches: SelectableBranch[]
 }
 
 function IngredientsTab({
@@ -368,6 +393,8 @@ function IngredientsTab({
   stockReason,
   openCountId,
   countProgress,
+  openCountOutletId,
+  branches,
 }: IngredientsTabProps) {
   const router = useRouter()
   const [isUnitsOpen, setIsUnitsOpen] = useState(false)
@@ -396,10 +423,13 @@ function IngredientsTab({
       setStockDraft({
         ...EMPTY_STOCK_DRAFT,
         unit_id: item.stock_unit_id,
+        // A single-branch tenant's every shelf IS its branch; the store pool
+        // default would recreate the drift the selector exists to end.
+        outlet_id: resolveDefaultMovementOutlet(branches),
         ...(reason ? { reason } : {}),
       })
     },
-    [],
+    [branches],
   )
 
   /*
@@ -427,7 +457,9 @@ function IngredientsTab({
       // The open count is passed here rather than asked for on the form: a
       // merchant mid-count should not have to remember to tag each entry, and
       // `buildStockMovementInput` ignores it for every reason but `stocktake`.
-      input = buildStockMovementInput(stockDraft, stockItem.id, openCountId)
+      // The count's shelf comes too: a stocktake only files under the running
+      // count when it is about the same shelf the count is.
+      input = buildStockMovementInput(stockDraft, stockItem.id, openCountId, openCountOutletId)
     } catch (error) {
       setStockError(error instanceof Error ? error.message : 'Please check the form')
       return
@@ -591,9 +623,10 @@ function IngredientsTab({
       <StockCountPanel
         tenantId={tenantId}
         tenantSlug={tenantSlug}
-        outletId={null}
+        outletId={openCountId ? openCountOutletId : null}
         countId={openCountId}
         progress={countProgress}
+        branches={branches}
       />
 
       <InventoryTable
@@ -826,6 +859,42 @@ function IngredientsTab({
                     )
                   }}
                 />
+              )}
+
+              {/*
+                Which shelf this movement touches. Only rendered for a store
+                with branches — everyone else has one shelf, the store pool,
+                and the dialog reads exactly as it always has. Order depletion
+                already lands on the order's branch; without this the manual
+                half of the ledger could only reach the pool.
+              */}
+              {branches.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="stock-outlet">
+                    Applies to
+                  </Label>
+                  <Select
+                    value={stockDraft.outlet_id ?? 'store-pool'}
+                    onValueChange={(value) =>
+                      setStockDraft((d) => ({
+                        ...d,
+                        outlet_id: value === 'store-pool' ? null : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="stock-outlet">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="store-pool">{STORE_POOL_LABEL}</SelectItem>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
 
               <div className="space-y-1">

@@ -9,6 +9,7 @@ import { MenuItemsList } from '@/components/admin/menu-items-list'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { getLinkedMenuItemIds } from '@/lib/inventory/recipe-link-read'
 import { MenuSkeleton } from '@/components/admin/menu-skeleton'
 import type { Tenant } from '@/types/database'
 
@@ -16,20 +17,26 @@ async function MenuContent({
   tenantSlug,
   tenantId,
   isMultiBranch,
+  inventoryEnabled,
 }: {
   tenantSlug: string
   tenantId: string
   isMultiBranch: boolean
+  inventoryEnabled: boolean
 }) {
   // Branch data is only read for a store that has branches; every other store
-  // runs exactly the queries it ran before per-branch menus existed.
-  const [menuItems, categories, outlets, menuOverrides] = await Promise.all([
+  // runs exactly the queries it ran before per-branch menus existed. The same
+  // rule for recipes: only an inventory tenant pays for the link read.
+  const [menuItems, categories, outlets, menuOverrides, recipeLinks] = await Promise.all([
     getMenuItemsByTenant(tenantId),
     getCachedCategoriesByTenant(tenantId),
     isMultiBranch ? createSupabaseOutletRepository().listByTenant(tenantId) : Promise.resolve([]),
     isMultiBranch
       ? createSupabaseOutletMenuRepository().listByTenant(tenantId)
       : Promise.resolve([]),
+    inventoryEnabled
+      ? getLinkedMenuItemIds(tenantId)
+      : Promise.resolve({ linkedMenuItemIds: null }),
   ])
 
   return (
@@ -40,6 +47,8 @@ async function MenuContent({
       tenantId={tenantId}
       outlets={outlets.filter((outlet) => outlet.is_active).map((o) => ({ id: o.id, name: o.name }))}
       menuOverrides={menuOverrides}
+      inventoryEnabled={inventoryEnabled}
+      recipeLinkedItemIds={recipeLinks.linkedMenuItemIds}
     />
   )
 }
@@ -86,6 +95,7 @@ export default async function AdminMenuPage({
           tenantSlug={tenantSlug}
           tenantId={tenant.id}
           isMultiBranch={isMultiBranchEnabled(tenant)}
+          inventoryEnabled={Boolean(tenant.inventory_enabled)}
         />
       </Suspense>
     </div>

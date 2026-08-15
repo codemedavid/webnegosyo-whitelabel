@@ -18,6 +18,12 @@ export interface StockMovementDraft {
   unit_id: string
   unit_cost: string
   note: string
+  /**
+   * The shelf this movement lands on. `null` is the unbranched store pool — a
+   * real place, and the only one a tenant without branches has. See
+   * `stock-outlet.ts` for how the selector picks its default.
+   */
+  outlet_id: string | null
 }
 
 export const EMPTY_STOCK_DRAFT: StockMovementDraft = {
@@ -26,6 +32,7 @@ export const EMPTY_STOCK_DRAFT: StockMovementDraft = {
   unit_id: '',
   unit_cost: '',
   note: '',
+  outlet_id: null,
 }
 
 /**
@@ -63,14 +70,24 @@ function requiredNumber(value: string): number {
  * filed under one would raise coverage for an ingredient nobody counted; the
  * movement schema refuses it outright, so attaching indiscriminately here would
  * break the delivery form for the whole duration of a count.
+ *
+ * And only a stocktake on the count's OWN shelf joins. A count describes one
+ * shelf; a North stocktake filed under the store pool's count would raise that
+ * count's coverage for a shelf nobody counted. `openCountOutletId` defaults to
+ * the store pool because every count this dialog knew before branches existed
+ * was a store-pool count.
  */
 export function buildStockMovementInput(
   draft: StockMovementDraft,
   inventoryItemId: string,
   openCountId?: string | null,
+  openCountOutletId: string | null = null,
 ): StockMovementInput {
   const note = draft.note.trim()
-  const joinsCount = draft.reason === 'stocktake' && Boolean(openCountId)
+  const joinsCount =
+    draft.reason === 'stocktake' &&
+    Boolean(openCountId) &&
+    draft.outlet_id === openCountOutletId
 
   return stockMovementInputSchema.parse({
     inventory_item_id: inventoryItemId,
@@ -79,6 +96,7 @@ export function buildStockMovementInput(
     unit_id: draft.unit_id,
     unit_cost: optionalNumber(draft.unit_cost),
     note: note === '' ? undefined : note,
+    outlet_id: draft.outlet_id,
     inventory_count_id: joinsCount ? openCountId : undefined,
   })
 }
