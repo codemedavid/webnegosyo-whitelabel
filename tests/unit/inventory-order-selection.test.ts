@@ -12,8 +12,11 @@
  * option, so whichever target exists matches and the other finds nothing.
  */
 
-import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
-import type { CartItem } from '@/types/database'
+import {
+  extractSelectionIds,
+  extractBundleSlotSelectionIds,
+} from '@/lib/inventory/order-item-selection'
+import type { CartBundleSlotSelection, CartItem } from '@/types/database'
 
 const MENU_ITEM = { id: 'm1', name: 'Pizza' } as CartItem['menu_item']
 
@@ -90,5 +93,71 @@ describe('extractSelectionIds', () => {
     })
 
     expect(extractSelectionIds(item).optionIds).toEqual(['opt-large'])
+  })
+})
+
+/**
+ * Bundle slots capture the same selections through BundleCustomizationModal,
+ * but in camelCase fields. Dropping their ids on the way to the order was the
+ * defect: a bundled Large Pizza with Extra Cheese depleted only the base
+ * recipe.
+ */
+describe('extractBundleSlotSelectionIds', () => {
+  const slot = (over: Partial<CartBundleSlotSelection>): CartBundleSlotSelection =>
+    ({
+      slotId: 's1', slotName: 'Main', menuItemId: 'm1', menuItemName: 'Pizza',
+      menuItemImage: null, menuItemPrice: 250, quantity: 1, selectedAddons: [],
+      priceOverride: 250,
+      ...over,
+    }) as CartBundleSlotSelection
+
+  it('pulls ids out of grouped variation selections', () => {
+    const ids = extractBundleSlotSelectionIds(
+      slot({
+        selectedVariations: {
+          'type-size': { id: 'opt-large', name: 'Large', price_modifier: 50 },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      }),
+    )
+
+    expect(ids.optionIds).toEqual(['opt-large'])
+  })
+
+  it('pulls the id out of a legacy single variation', () => {
+    const ids = extractBundleSlotSelectionIds(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      slot({ selectedVariation: { id: 'var-small', name: 'Small', price_modifier: 0 } as any }),
+    )
+
+    expect(ids.optionIds).toEqual(['var-small'])
+  })
+
+  it('pulls addon ids', () => {
+    const ids = extractBundleSlotSelectionIds(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      slot({ selectedAddons: [{ id: 'add-cheese', name: 'Extra Cheese', price: 15 }] as any }),
+    )
+
+    expect(ids.addonIds).toEqual(['add-cheese'])
+  })
+
+  it('returns empty lists for a plain slot with no choices', () => {
+    expect(extractBundleSlotSelectionIds(slot({}))).toEqual({ optionIds: [], addonIds: [] })
+  })
+
+  it('prefers the grouped selections when both shapes are present', () => {
+    const ids = extractBundleSlotSelectionIds(
+      slot({
+        selectedVariations: {
+          'type-size': { id: 'opt-large', name: 'Large', price_modifier: 50 },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        selectedVariation: { id: 'var-stale', name: 'Stale', price_modifier: 0 } as any,
+      }),
+    )
+
+    expect(ids.optionIds).toEqual(['opt-large'])
   })
 })
