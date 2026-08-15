@@ -4,12 +4,17 @@ jest.mock("./web-app-url", () => ({
   __esModule: true,
   getWebAppUrl: () => "https://example.test",
 }));
+
+const getSession = jest.fn(async () => ({ data: { session: null as unknown } }));
 jest.mock("./supabase", () => ({
   __esModule: true,
-  supabase: { auth: { getSession: async () => ({ data: { session: null } }) } },
+  supabase: { auth: { getSession: () => getSession() } },
 }));
 
-import { posLinesToLoyverseOrderLines } from "./loyverse-notify";
+import {
+  posLinesToLoyverseOrderLines,
+  notifyLoyverseOrderConfirmed,
+} from "./loyverse-notify";
 
 describe("posLinesToLoyverseOrderLines", () => {
   it("routes selections by their synced option-id prefix", () => {
@@ -71,5 +76,57 @@ describe("posLinesToLoyverseOrderLines", () => {
     ]);
     expect(lines[0].variations).toBeUndefined();
     expect(lines[0].addons).toEqual([]);
+  });
+});
+
+/**
+ * The orders list and the register drawer confirm orders from rows that carry a
+ * total and an item COUNT, never the dishes. They can only name the order, so
+ * this call has to be legal with no items at all — the server reads the lines.
+ */
+describe("notifyLoyverseOrderConfirmed", () => {
+  const fetchMock = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    getSession.mockResolvedValue({ data: { session: { access_token: "tok" } } });
+  });
+
+  it("posts an order id alone, leaving the server to resolve the lines", async () => {
+    await notifyLoyverseOrderConfirmed("tenant-1", { orderId: "order-1" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://example.test/api/loyverse");
+    expect(JSON.parse(init.body)).toEqual({
+      tenantId: "tenant-1",
+      orderId: "order-1",
+      context: "order_confirm",
+    });
+  });
+
+  it("authenticates with the merchant's own session token", async () => {
+    await notifyLoyverseOrderConfirmed("tenant-1", { orderId: "order-1" });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.Authorization).toBe("Bearer tok");
+  });
+
+  it("sends nothing when the merchant has no session", async () => {
+    getSession.mockResolvedValue({ data: { session: null } });
+
+    await notifyLoyverseOrderConfirmed("tenant-1", { orderId: "order-1" });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never throws when the push fails, because the order is already confirmed", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+
+    await expect(
+      notifyLoyverseOrderConfirmed("tenant-1", { orderId: "order-1" }),
+    ).resolves.toBeUndefined();
   });
 });
