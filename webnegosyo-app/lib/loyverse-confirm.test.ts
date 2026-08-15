@@ -22,8 +22,21 @@ describe("pushConfirmedOrderToLoyverse", () => {
   it("names the order and lets the server resolve its lines", async () => {
     await pushConfirmedOrderToLoyverse("order-1");
 
-    expect(notifyLoyverseOrderConfirmed).toHaveBeenCalledWith("tenant-1", {
-      orderId: "order-1",
+    expect(notifyLoyverseOrderConfirmed).toHaveBeenCalledWith(
+      "tenant-1",
+      expect.objectContaining({ orderId: "order-1" }),
+    );
+  });
+
+  it("stamps the same short reference on the receipt from every surface", () => {
+    // Back Office shows this as the receipt's order ref. Deriving it here — not
+    // per screen — is what stops a drawer confirm and a detail confirm filing
+    // the same sale under two different references.
+    return pushConfirmedOrderToLoyverse("k57abcdef123456").then(() => {
+      expect(notifyLoyverseOrderConfirmed).toHaveBeenCalledWith(
+        "tenant-1",
+        expect.objectContaining({ orderNumber: "123456" }),
+      );
     });
   });
 
@@ -43,10 +56,10 @@ describe("pushConfirmedOrderToLoyverse", () => {
 
     await pushConfirmedOrderToLoyverse("order-1", items);
 
-    expect(notifyLoyverseOrderConfirmed).toHaveBeenCalledWith("tenant-1", {
-      orderId: "order-1",
-      items,
-    });
+    expect(notifyLoyverseOrderConfirmed).toHaveBeenCalledWith(
+      "tenant-1",
+      expect.objectContaining({ orderId: "order-1", items }),
+    );
   });
 
   it("does nothing when no tenant is resolved, rather than pushing to nowhere", async () => {
