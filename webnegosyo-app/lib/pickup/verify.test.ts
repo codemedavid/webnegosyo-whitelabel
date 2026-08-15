@@ -247,4 +247,59 @@ describe("verifyPickupTicket", () => {
     if (!result.ok) return;
     expect(result.order.items).toEqual([]);
   });
+
+  it("carries the store's scan setting through from the tracking payload", async () => {
+    // The app cannot read the tenants table; this response is the only place
+    // it can learn the store turned scan-to-collect off.
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(200, {
+        status: "ready",
+        items: [],
+        pickupScanEnabled: false,
+      })
+    );
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.order.scanEnabled).toBe(false);
+  });
+
+  it("leaves the scan setting undefined when the response omits it", async () => {
+    // An older web deploy has no such field. Undefined must not be read as
+    // false downstream, or every store stops scanning on deploy skew.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { status: "ready", items: [] }));
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.order.scanEnabled).toBeUndefined();
+  });
+
+  it("ignores a non-boolean scan setting rather than trusting it", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, { status: "ready", items: [], pickupScanEnabled: "false" })
+      );
+
+    const result = await verifyPickupTicket(ticket, {
+      webAppUrl: "https://webnegosyo.com",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.order.scanEnabled).toBeUndefined();
+  });
 });
