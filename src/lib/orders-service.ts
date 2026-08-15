@@ -303,6 +303,25 @@ export async function updateOrderStatus(
     }
   }
 
+  // Push the confirmed order into Loyverse as a sales receipt (async, best
+  // effort — the push service itself checks the tenant's flag, the
+  // on_confirm push mode, and the already-pushed idempotency guard).
+  if (status === 'confirmed' && existingOrder) {
+    import('@/lib/loyverse/push-service')
+      .then(({ pushOrderToLoyverseBestEffort }) =>
+        pushOrderToLoyverseBestEffort({
+          tenantId,
+          orderId,
+          // Platform orders keep lines in order_items; the service loads them.
+          items: [],
+          trigger: 'confirm',
+        })
+      )
+      .catch((error) => {
+        console.error('Error pushing order to Loyverse:', error)
+      })
+  }
+
   return data as unknown as Order
 }
 

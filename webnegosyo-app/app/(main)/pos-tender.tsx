@@ -33,6 +33,7 @@ import { staleBackendMessage } from "../../lib/stale-backend";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { notifyLoyversePosSale, posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { burnPosRedemptions } from "../../lib/voucher-service";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
@@ -395,6 +396,15 @@ export default function PosTenderScreen() {
           tenantId,
           String(orderId),
           buildPosStockItems(lines),
+        );
+
+        // Record the counter sale in Loyverse as a completed receipt. Fires
+        // once per tender; the server no-ops for non-Loyverse tenants. Never
+        // throws — a missing back-office receipt must not fail a paid sale.
+        await notifyLoyversePosSale(
+          tenantId,
+          String(orderId).slice(-6).toUpperCase(),
+          posLinesToLoyverseOrderLines(lines),
         );
 
         // Burn what this sale used. The register cannot call redeem_voucher()

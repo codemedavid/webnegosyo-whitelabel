@@ -36,6 +36,7 @@ import {
   type OutletMenuOverrideRow,
 } from '@/lib/outlets/outlet-menu-overrides'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
+import type { OrderItem } from '@/types/database'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -124,6 +125,33 @@ async function depleteStockForOrder(
     0,
     outletId,
   )
+}
+
+/**
+ * Loyverse twin of depleteStockForOrder: every backend branch funnels through
+ * here so an "on order placed" push behaves identically wherever the order
+ * row lives. The push service itself checks the tenant flag, the on_create
+ * push mode, and idempotency; platformOrderId is null for Convex and
+ * tenant-Supabase orders, whose receipt outcome has no platform row to land on.
+ *
+ * Best-effort by design: the order is already saved when this runs.
+ */
+async function pushLoyverseOnCreate(
+  tenantId: string,
+  platformOrderId: string | null,
+  items: OrderItem[],
+) {
+  try {
+    const { pushOrderToLoyverseBestEffort } = await import('@/lib/loyverse/push-service')
+    await pushOrderToLoyverseBestEffort({
+      tenantId,
+      orderId: platformOrderId,
+      items,
+      trigger: 'create',
+    })
+  } catch (error) {
+    console.error('[createOrderAction] Loyverse push failed:', error)
+  }
 }
 
 export async function createOrderAction(
@@ -615,6 +643,7 @@ export async function createOrderAction(
       })
 
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
+      await pushLoyverseOnCreate(tenantId, null, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -648,6 +677,7 @@ export async function createOrderAction(
       )
       await burnFor(result.order.id)
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
+      await pushLoyverseOnCreate(tenantId, null, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -678,6 +708,7 @@ export async function createOrderAction(
     await burnFor(result.order.id)
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
+    await pushLoyverseOnCreate(tenantId, result.order.id, items)
     await firePostHogNotification(result.order.id, items)
     let trackingToken: string | undefined
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
