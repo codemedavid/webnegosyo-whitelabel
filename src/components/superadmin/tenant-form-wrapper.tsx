@@ -2254,6 +2254,12 @@ export function TenantFormWrapper({
             isPending={isPending}
             tenant={tenant}
           />
+          <LoyverseSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+            tenantId={tenant?.id}
+          />
         </TabsContent>
 
         <TabsContent value="delivery" className="mt-6 space-y-6">
@@ -2266,12 +2272,6 @@ export function TenantFormWrapper({
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
-          />
-          <LoyverseSection
-            formData={formData}
-            setFormData={setFormData}
-            isPending={isPending}
-            tenantId={tenant?.id}
           />
           <DistanceDeliverySection
             formData={formData}
