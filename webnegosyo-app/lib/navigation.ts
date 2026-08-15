@@ -25,6 +25,15 @@ export function productHref(productId: string): `/(main)/product/${string}` {
   return `/(main)/product/${encodeURIComponent(productId)}`;
 }
 
+/**
+ * Build the href for a product's recipe (ingredients) editor.
+ *
+ * @param productId the menu item whose recipe is being edited.
+ */
+export function recipeHref(productId: string): `/(main)/product/recipe/${string}` {
+  return `/(main)/product/recipe/${encodeURIComponent(productId)}`;
+}
+
 /** Sentinel methodId that puts the payment method editor into create mode. */
 export const NEW_PAYMENT_METHOD_ID = "new" as const;
 

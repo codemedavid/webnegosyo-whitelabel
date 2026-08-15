@@ -35,7 +35,7 @@ import { ModifierGroupsEditor } from "../../../components/ModifierGroupsEditor";
 import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
-import { productHref } from "../../../lib/navigation";
+import { productHref, recipeHref } from "../../../lib/navigation";
 import { goTo } from "../../../lib/tab-navigation";
 import { pickProductImage } from "../../../lib/image-picker";
 import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
@@ -377,6 +377,20 @@ export default function ProductEditorScreen() {
       </Card>
 
       {!isNew && (
+        <Card title="Ingredients (Recipe)" style={styles.card}>
+          <Text style={styles.recipeHint}>
+            Wire this product to inventory so each sale deducts stock automatically.
+          </Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push(recipeHref(productId as string))}
+          >
+            <Text style={styles.secondaryButtonText}>Edit Ingredients</Text>
+          </TouchableOpacity>
+        </Card>
+      )}
+
+      {!isNew && (
         <Card title="Cost & Profit" style={styles.card}>
           <Text style={styles.label}>Cost Price (₱)</Text>
           <TextInput
@@ -426,6 +440,11 @@ export default function ProductEditorScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  recipeHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
   imagePicker: {
