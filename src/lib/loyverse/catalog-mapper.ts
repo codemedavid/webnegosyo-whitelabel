@@ -59,6 +59,7 @@ export interface LoyverseCatalogItem {
   category_id?: string | null
   image_url?: string | null
   sold_by_weight?: boolean
+  track_stock?: boolean
   modifiers_ids?: string[]
   option1_name?: string | null
   option2_name?: string | null
@@ -67,11 +68,23 @@ export interface LoyverseCatalogItem {
   deleted_at?: string | null
 }
 
+export interface LoyverseCatalogStockLevel {
+  variant_id: string
+  store_id: string
+  in_stock?: number | null
+}
+
 export interface LoyverseCatalogInput {
   storeId: string
   categories: LoyverseCatalogCategory[]
   modifiers: LoyverseCatalogModifier[]
   items: LoyverseCatalogItem[]
+  /**
+   * GET /inventory levels, so the very first sync 86es what is already dry
+   * instead of waiting for a webhook delta. Optional: absent means "no stock
+   * information", never "everything is out".
+   */
+  inventoryLevels?: LoyverseCatalogStockLevel[]
 }
 
 export interface LoyverseMapRow {
@@ -186,6 +199,20 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
 
   const modifiersById = new Map(input.modifiers.map((m) => [m.id, m]))
 
+  // Stock at the mapped store, by variant. A variant absent from the map has
+  // no reported level and is treated as in stock — false "sold out" hides
+  // revenue, false "available" merely fails at the register.
+  const stockByVariant = new Map<string, number>()
+  for (const level of input.inventoryLevels ?? []) {
+    if (level.store_id === input.storeId) {
+      stockByVariant.set(level.variant_id, level.in_stock ?? 0)
+    }
+  }
+  const isVariantOutOfStock = (variantId: string): boolean => {
+    const level = stockByVariant.get(variantId)
+    return level !== undefined && level <= 0
+  }
+
   for (const item of input.items) {
     if (item.deleted_at) continue
 
@@ -278,9 +305,13 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
       imageUrl: item.image_url ?? null,
       categoryLoyverseId: item.category_id ?? null,
       price: basePrice,
-      // Available when ANY variant is sellable at this store; per-variant
+      // Available when ANY variant is sellable at this store AND, for
+      // stock-tracked items, at least one variant still has stock. Per-variant
       // availability inside a combined group is a later refinement.
-      isAvailable: resolved.some((r) => r.isAvailable),
+      isAvailable:
+        resolved.some((r) => r.isAvailable) &&
+        (!item.track_stock ||
+          resolved.some((r) => !isVariantOutOfStock(r.variant.variant_id))),
       modifierGroups,
       mapRows,
     })
