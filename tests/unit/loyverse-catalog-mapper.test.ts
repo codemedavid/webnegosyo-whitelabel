@@ -198,6 +198,85 @@ describe('mapLoyverseCatalog — Loyverse modifiers', () => {
   })
 })
 
+describe('mapLoyverseCatalog — stock-aware availability', () => {
+  it('86es a tracked item whose only variant has zero stock at the store', () => {
+    const { items } = mapLoyverseCatalog(
+      baseInput({
+        items: [simpleItem({ track_stock: true })],
+        inventoryLevels: [{ variant_id: 'var_1', store_id: STORE, in_stock: 0 }],
+      })
+    )
+    expect(items[0].isAvailable).toBe(false)
+  })
+
+  it('keeps a tracked item orderable while stock remains', () => {
+    const { items } = mapLoyverseCatalog(
+      baseInput({
+        items: [simpleItem({ track_stock: true })],
+        inventoryLevels: [{ variant_id: 'var_1', store_id: STORE, in_stock: 7 }],
+      })
+    )
+    expect(items[0].isAvailable).toBe(true)
+  })
+
+  it('never 86es an untracked item from stock levels', () => {
+    const { items } = mapLoyverseCatalog(
+      baseInput({
+        items: [simpleItem({ track_stock: false })],
+        inventoryLevels: [{ variant_id: 'var_1', store_id: STORE, in_stock: 0 }],
+      })
+    )
+    expect(items[0].isAvailable).toBe(true)
+  })
+
+  it('treats a tracked variant with no reported level as in stock', () => {
+    const { items } = mapLoyverseCatalog(
+      baseInput({ items: [simpleItem({ track_stock: true })], inventoryLevels: [] })
+    )
+    expect(items[0].isAvailable).toBe(true)
+  })
+
+  it('ignores stock levels from other stores', () => {
+    const { items } = mapLoyverseCatalog(
+      baseInput({
+        items: [simpleItem({ track_stock: true })],
+        inventoryLevels: [{ variant_id: 'var_1', store_id: 'other', in_stock: 0 }],
+      })
+    )
+    expect(items[0].isAvailable).toBe(true)
+  })
+
+  it('86es a multi-variant tracked item only when every variant is out', () => {
+    const item = simpleItem({
+      track_stock: true,
+      option1_name: 'Size',
+      variants: [
+        { variant_id: 'var_s', item_id: 'item_1', option1_value: 'Small', default_pricing_type: 'FIXED', default_price: 100, stores: [] },
+        { variant_id: 'var_l', item_id: 'item_1', option1_value: 'Large', default_pricing_type: 'FIXED', default_price: 140, stores: [] },
+      ],
+    })
+
+    const oneOut = mapLoyverseCatalog(
+      baseInput({
+        items: [item],
+        inventoryLevels: [{ variant_id: 'var_s', store_id: STORE, in_stock: 0 }],
+      })
+    )
+    expect(oneOut.items[0].isAvailable).toBe(true)
+
+    const bothOut = mapLoyverseCatalog(
+      baseInput({
+        items: [item],
+        inventoryLevels: [
+          { variant_id: 'var_s', store_id: STORE, in_stock: 0 },
+          { variant_id: 'var_l', store_id: STORE, in_stock: -2 },
+        ],
+      })
+    )
+    expect(bothOut.items[0].isAvailable).toBe(false)
+  })
+})
+
 describe('mapLoyverseCatalog — unmappable items', () => {
   it('skips sold-by-weight items with a warning', () => {
     const { items, warnings } = mapLoyverseCatalog(
