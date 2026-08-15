@@ -26,7 +26,7 @@ import { TenantMonogram } from '@/components/superadmin/tenant-visuals'
 import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
-import { testLoyverseConnectionAction } from '@/app/actions/loyverse'
+import { testLoyverseConnectionAction, syncLoyverseCatalogAction } from '@/app/actions/loyverse'
 import type { LoyverseConnectionTest } from '@/lib/loyverse/client'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
@@ -1354,14 +1354,39 @@ function LalamoveSection({
 function LoyverseSection({
   formData,
   setFormData,
-  isPending
+  isPending,
+  tenantId
 }: {
   formData: TenantFormData
   setFormData: SetFormData
   isPending: boolean
+  tenantId?: string
 }) {
   const [isTesting, setIsTesting] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [connection, setConnection] = useState<LoyverseConnectionTest | null>(null)
+
+  const handleSyncNow = async () => {
+    if (!tenantId) return
+    setIsSyncing(true)
+    try {
+      const report = await syncLoyverseCatalogAction(tenantId)
+      if (report.success) {
+        toast.success(
+          `Catalog synced: ${report.itemsCreated} created, ${report.itemsUpdated} updated, ${report.itemsSkipped} skipped`
+        )
+        if (report.warnings.length > 0) {
+          toast.warning(`${report.warnings.length} warning(s) — first: ${report.warnings[0]}`)
+        }
+      } else {
+        toast.error(report.error || 'Catalog sync failed')
+      }
+    } catch {
+      toast.error('Catalog sync failed')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const handleTestConnection = async () => {
     setIsTesting(true)
@@ -1523,6 +1548,25 @@ function LoyverseSection({
                   Loyverse only accepts completed sales receipts — orders never appear on the Loyverse register screen.
                 </p>
               </div>
+
+              {tenantId && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Catalog sync</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Pull items, categories and modifiers from Loyverse into this menu. Save the token first.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSyncNow}
+                    disabled={isPending || isSyncing}
+                  >
+                    {isSyncing ? 'Syncing…' : 'Sync now'}
+                  </Button>
+                </div>
+              )}
 
               {connection?.success && (
                 <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
@@ -2227,6 +2271,7 @@ export function TenantFormWrapper({
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
+            tenantId={tenant?.id}
           />
           <DistanceDeliverySection
             formData={formData}
