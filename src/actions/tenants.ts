@@ -886,6 +886,46 @@ export async function updateOperatingHoursAction(
 }
 
 /**
+ * Turn the scan-to-collect pickup flow on or off for a store.
+ * Tenant-admin (or superadmin) only.
+ *
+ * Off hides the customer's collection QR AND makes the merchant app refuse
+ * tickets — a code screenshotted while the feature was on still decodes, so
+ * the app checks this same value on every scan (see the tracking payload's
+ * `pickupScanEnabled`).
+ */
+export async function updatePickupScanAction(
+  tenantId: string,
+  enabled: boolean
+): Promise<{ error?: string; success?: boolean; pickup_scan_enabled?: boolean }> {
+  const supabase = await createClient()
+
+  await verifyTenantAdmin(tenantId)
+
+  const { data, error } = await supabase
+    .from('tenants')
+    // Cast through unknown to satisfy strict generic constraints (column added via migration).
+    .update({ pickup_scan_enabled: enabled === true } as unknown as never)
+    .eq('id', tenantId)
+    .select('id, slug')
+    .single()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updated = data as any
+  if (updated?.slug) {
+    revalidatePath(`/${updated.slug}/admin/settings`)
+    // Every in-flight tracking page renders the QR from this value.
+    revalidatePath(`/${updated.slug}/order`, 'layout')
+  }
+
+  return { success: true, pickup_scan_enabled: enabled === true }
+}
+
+/**
  * Toggle a single tenant's active state. Superadmin-only.
  */
 export async function setTenantActiveAction(

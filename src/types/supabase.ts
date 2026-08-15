@@ -653,11 +653,13 @@ export type Database = {
           average_order_value: number | null
           channels_used: string[]
           created_at: string
+          created_source: string
           email: string | null
           first_order_at: string | null
           id: string
           last_order_at: string | null
           name: string | null
+          notes: string | null
           order_count: number
           phone_e164: string | null
           sms_consent: boolean
@@ -673,11 +675,13 @@ export type Database = {
           average_order_value?: number | null
           channels_used?: string[]
           created_at?: string
+          created_source?: string
           email?: string | null
           first_order_at?: string | null
           id?: string
           last_order_at?: string | null
           name?: string | null
+          notes?: string | null
           order_count?: number
           phone_e164?: string | null
           sms_consent?: boolean
@@ -693,11 +697,13 @@ export type Database = {
           average_order_value?: number | null
           channels_used?: string[]
           created_at?: string
+          created_source?: string
           email?: string | null
           first_order_at?: string | null
           id?: string
           last_order_at?: string | null
           name?: string | null
+          notes?: string | null
           order_count?: number
           phone_e164?: string | null
           sms_consent?: boolean
@@ -1783,6 +1789,7 @@ export type Database = {
           id: string
           is_enabled: boolean
           messenger_enabled: boolean
+          minimum_order_amount: number
           name: string
           note: string | null
           order_index: number
@@ -1804,6 +1811,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean
           messenger_enabled?: boolean
+          minimum_order_amount?: number
           name: string
           note?: string | null
           order_index?: number
@@ -1825,6 +1833,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean
           messenger_enabled?: boolean
+          minimum_order_amount?: number
           name?: string
           note?: string | null
           order_index?: number
@@ -3875,6 +3884,7 @@ export type Database = {
           outlet_selection_timing: string
           page_layout: string | null
           pairing_rules_enabled: boolean | null
+          pickup_scan_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
@@ -4113,6 +4123,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          pickup_scan_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -4351,6 +4362,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          pickup_scan_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null

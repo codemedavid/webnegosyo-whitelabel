@@ -11,7 +11,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
-import { shouldShowPickupQr } from '@/lib/pickup-qr-gating'
+import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 
 interface OrderTrackingClientProps {
@@ -120,6 +120,7 @@ export function OrderTrackingClient({
   const showPickupQr = shouldShowPickupQr({
     kind: trackingData.orderTypeKind ?? null,
     status: trackingData.status,
+    isScanEnabled: isPickupScanEnabled(trackingData.pickupScanEnabled),
   })
 
   return (

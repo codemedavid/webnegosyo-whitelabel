@@ -97,6 +97,8 @@ const VERIFY_ERROR_MESSAGE: Record<PickupVerifyError, string> = {
 const BLOCK_MESSAGE: Record<PickupBlockReason, string> = {
   wrong_tenant: "This code belongs to a different store.",
   cancelled: "This order was cancelled. Do not hand it over.",
+  scan_disabled:
+    "Scan to collect is turned off for this store. Hand the order over as usual, or switch it back on in Settings.",
 };
 
 const WARNING_MESSAGE: Record<PickupWarning, string> = {

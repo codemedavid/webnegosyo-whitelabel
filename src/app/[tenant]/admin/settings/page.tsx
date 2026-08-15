@@ -10,6 +10,7 @@ import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 import { FlashScreenCard } from '@/components/admin/flash-screen-card'
 import { FooterManagerCard } from '@/components/admin/footer/footer-manager-card'
 import { OperatingHoursCard } from '@/components/admin/operating-hours-card'
+import { PickupScanCard } from '@/components/admin/pickup-scan-card'
 import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
 import { StaffManagementCard } from '@/components/admin/staff-management-card'
 import { AccountSettingsCard } from '@/components/admin/account-settings-card'
@@ -168,6 +169,12 @@ export default async function SettingsPage({
             initialHours={tenant.operating_hours ?? null}
             initialTimezone={tenant.timezone ?? null}
             initialEnforce={tenant.enforce_operating_hours === true}
+          />
+
+          {/* Scan-to-collect pickup */}
+          <PickupScanCard
+            tenantId={tenant.id}
+            initialEnabled={tenant.pickup_scan_enabled !== false}
           />
 
           {/* Distance-Based Delivery Fee */}

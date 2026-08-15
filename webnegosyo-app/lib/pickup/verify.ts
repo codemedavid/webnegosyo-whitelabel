@@ -21,6 +21,12 @@ export interface VerifiedPickupOrder {
   items: { name: string; quantity: number }[];
   orderType?: string;
   createdAt?: string;
+  /**
+   * The store's scan-to-collect switch, as reported by the tracking API.
+   * Undefined when the web deploy predates the setting — that is NOT a
+   * refusal, see evaluatePickupTicket.
+   */
+  scanEnabled?: boolean;
 }
 
 export interface PickupTicketRef {
@@ -129,6 +135,12 @@ function toVerifiedOrder(body: unknown): VerifiedPickupOrder | null {
     total: typeof raw.total === "number" ? raw.total : undefined,
     orderType: typeof raw.orderType === "string" ? raw.orderType : undefined,
     createdAt: typeof raw.createdAt === "string" ? raw.createdAt : undefined,
+    // Only a real boolean counts. A string "false" is a payload bug, and
+    // coercing it either way would guess at a store's settings.
+    scanEnabled:
+      typeof raw.pickupScanEnabled === "boolean"
+        ? raw.pickupScanEnabled
+        : undefined,
     items,
   };
 }

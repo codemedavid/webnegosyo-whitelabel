@@ -8,7 +8,11 @@
 
 import type { VerifiedPickupOrder } from "./verify";
 
-export type PickupBlockReason = "wrong_tenant" | "cancelled";
+export type PickupBlockReason =
+  | "wrong_tenant"
+  | "cancelled"
+  /** The store's admin turned scan-to-collect off. */
+  | "scan_disabled";
 
 /** The order is not yet marked ready, but staff may still hand it over. */
 export type PickupWarning = "not_ready";
@@ -23,7 +27,7 @@ interface PickupTicketContext {
   scannedTenantId: string;
   /** Tenant the signed-in staff member is currently working in. */
   sessionTenantId: string | null;
-  order: Pick<VerifiedPickupOrder, "status">;
+  order: Pick<VerifiedPickupOrder, "status" | "scanEnabled">;
 }
 
 export function evaluatePickupTicket({
@@ -36,6 +40,17 @@ export function evaluatePickupTicket({
   // are not currently in — including a superadmin who has entered none.
   if (!sessionTenantId || sessionTenantId !== scannedTenantId) {
     return { decision: "block", reason: "wrong_tenant", warning: null };
+  }
+
+  // Also a store-level answer, and for the same reason it comes before any
+  // statement about the order: once the store is not scanning, the ticket's
+  // own state is not the reason staff are being refused. A code printed while
+  // the feature was on still decodes perfectly, so this check — not the
+  // hidden QR on the customer's page — is what makes the switch real.
+  //
+  // Undefined means the web deploy has no such setting yet, never "off".
+  if (order.scanEnabled === false) {
+    return { decision: "block", reason: "scan_disabled", warning: null };
   }
 
   if (order.status === "cancelled") {
