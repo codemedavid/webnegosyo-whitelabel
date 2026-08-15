@@ -28,6 +28,15 @@ type OutletTimingColumns = {
   outlet_selection_timing?: string
 }
 
+// Same lag for the Loyverse integration migration (20260821120000).
+type LoyverseColumns = {
+  loyverse_enabled?: boolean
+  loyverse_access_token?: string | null
+  loyverse_store_id?: string | null
+  loyverse_payment_type_id?: string | null
+  loyverse_push_mode?: string
+}
+
 // Domain validation: must be a valid domain format (not necessarily a URL)
 const domainSchema = z
   .union([
@@ -145,6 +154,13 @@ export const tenantSchema = z.object({
   lalamove_service_type: z.string().optional().or(z.literal('')).optional(),
   lalamove_sandbox: z.boolean().default(true),
   lalamove_sender_phone: z.string().optional().or(z.literal('')).optional(),
+  // Loyverse POS integration. Push mode is validated strictly at the write
+  // boundary (reads coerce leniently in src/lib/loyverse/config.ts).
+  loyverse_enabled: z.boolean().default(false),
+  loyverse_access_token: z.string().optional().or(z.literal('')).optional(),
+  loyverse_store_id: z.string().optional().or(z.literal('')).optional(),
+  loyverse_payment_type_id: z.string().optional().or(z.literal('')).optional(),
+  loyverse_push_mode: z.enum(['on_create', 'on_confirm']).default('on_confirm'),
   // Convex integration
   convex_deployment_url: z.string().url().optional().or(z.literal('')).optional(),
   convex_deploy_key: z.string().optional().or(z.literal('')).optional(),
@@ -169,6 +185,16 @@ export const tenantSchema = z.object({
   }
   if (val.restaurant_latitude == null || val.restaurant_longitude == null) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
+  }
+}).superRefine((val, ctx) => {
+  // Loyverse must be fully connected when enabled — a half-configured tenant
+  // would silently skip every catalog sync and receipt push.
+  if (!val.loyverse_enabled) return
+  if (!val.loyverse_access_token?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loyverse_access_token'], message: 'Loyverse access token is required when Loyverse is enabled' })
+  }
+  if (!val.loyverse_store_id?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loyverse_store_id'], message: 'Loyverse store is required when Loyverse is enabled' })
   }
 })
 
@@ -237,7 +263,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
   if (parsed.domain && (await isDomainTaken(parsed.domain, undefined, ctx))) {
     throw new Error('Domain is already taken')
   }
-  const insertPayload: TenantsInsert & DeliveryFeeColumns & OutletTimingColumns = {
+  const insertPayload: TenantsInsert & DeliveryFeeColumns & OutletTimingColumns & LoyverseColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -322,6 +348,12 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
+    // Loyverse configuration
+    loyverse_enabled: parsed.loyverse_enabled,
+    loyverse_access_token: parsed.loyverse_access_token ?? undefined,
+    loyverse_store_id: parsed.loyverse_store_id ?? undefined,
+    loyverse_payment_type_id: parsed.loyverse_payment_type_id ?? undefined,
+    loyverse_push_mode: parsed.loyverse_push_mode,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
@@ -371,7 +403,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   if (oldTenant?.domain) {
     clearDomainCache(oldTenant.domain)
   }
-  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OutletTimingColumns = {
+  const updatePayload: TenantsUpdate & DeliveryFeeColumns & OutletTimingColumns & LoyverseColumns = {
     name: parsed.name,
     slug: parsed.slug,
     domain: parsed.domain ?? undefined,
@@ -456,6 +488,12 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
+    // Loyverse configuration
+    loyverse_enabled: parsed.loyverse_enabled,
+    loyverse_access_token: parsed.loyverse_access_token ?? undefined,
+    loyverse_store_id: parsed.loyverse_store_id ?? undefined,
+    loyverse_payment_type_id: parsed.loyverse_payment_type_id ?? undefined,
+    loyverse_push_mode: parsed.loyverse_push_mode,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
