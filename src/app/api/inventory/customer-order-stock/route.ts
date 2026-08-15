@@ -6,6 +6,7 @@ import {
   buildDepletionItemsFromOrderRows,
 } from '@/lib/inventory/customer-order-items'
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 
 /**
  * POST /api/inventory/customer-order-stock
@@ -188,7 +189,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Reported as success on purpose. The order is placed; a diner has no way
     // to act on a stock error and no reason to be shown one. The ledger is
     // reconcilable by stocktake, a frightened customer is not.
-    console.error('[inventory] Customer order depletion failed', orderId, error)
+    //
+    // Failures inside `applyOrderStockBestEffort` never reach this catch — the
+    // wrapper swallows and reports them itself — so this covers only the
+    // route's own reads (tenant lookup, Convex query) without double-reporting.
+    reportStockFailure({ tenantId, orderId, operation: 'customer_order_stock_route' }, error)
     return NextResponse.json({ success: true, skipped: 'error' })
   }
 }

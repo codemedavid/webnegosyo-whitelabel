@@ -9,6 +9,8 @@ import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
+import { StockReconciliationBanner } from '@/components/admin/stock-reconciliation-banner'
+import { getStockReconciliationIssues } from '@/lib/inventory/reconciliation'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import { scopeStockAlerts } from '@/lib/inventory/stock-alerts-view'
 import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
@@ -96,6 +98,13 @@ export default async function AdminInventoryPage({
   // figures — two numbers on one screen disagreeing about the same shelf.
   // A store-wide account passes its own roll-up in and keeps every alert.
   const alerts = scopeStockAlerts(openAlerts, ingredients)
+
+  // Ledger self-check: does the store roll-up agree with the branch split the
+  // trigger maintains? Store-wide accounts only — a branch manager's RLS view
+  // of `inventory_stock` is partial, so their sums would cry drift that isn't.
+  // Never throws; null (read failed) and [] (healthy) both render nothing.
+  const reconciliationIssues =
+    scope.kind === 'all' ? await getStockReconciliationIssues(tenant.id) : null
 
   // Recipe coverage answers "which dishes are actually set up?" — the question
   // that had no surface at all, and the reason a tenant could switch inventory
@@ -208,6 +217,7 @@ export default async function AdminInventoryPage({
       </div>
 
       <StockAlertsBanner alerts={alerts} />
+      <StockReconciliationBanner issues={reconciliationIssues ?? []} />
 
       <InventoryManager
         tenantId={tenant.id}

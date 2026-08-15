@@ -31,6 +31,7 @@ import {
   buildDepletionItemsFromOrderRows,
   type OrderItemRow,
 } from '@/lib/inventory/customer-order-items'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 function toUnit(row: InventoryUnitRow): InventoryUnit {
@@ -444,7 +445,7 @@ export async function reverseOrderStockBestEffort(
   try {
     await reverseOrderStockMovements(tenantId, orderId)
   } catch (error) {
-    console.error('[inventory] Failed to restore stock for order', orderId, error)
+    reportStockFailure({ tenantId, orderId, operation: 'reverse_order_stock' }, error)
   }
 }
 
@@ -508,7 +509,7 @@ export async function redepleteOrderStockBestEffort(
       })
     }
   } catch (error) {
-    console.error('[inventory] Re-depletion failed for un-cancelled order', orderId, error)
+    reportStockFailure({ tenantId, orderId, operation: 'redeplete_order_stock' }, error)
   }
 }
 
@@ -543,7 +544,9 @@ export async function applyOrderStockBestEffort(
       })
     }
   } catch (error) {
-    console.error('[inventory] Stock depletion failed for order', orderId, error)
+    // `applyOrderRevisionStockBestEffort` funnels through here too, so the
+    // revision being saved rides along whenever the caller passed one.
+    reportStockFailure({ tenantId, orderId, operation: 'apply_order_stock', revision }, error)
   }
 }
 
