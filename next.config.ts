@@ -35,6 +35,15 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Loyverse catalog images. The sync mirrors them to ImageKit, but a
+      // failed mirror falls back to the Loyverse-hosted URL, which must render
+      // rather than crash the menu page.
+      {
+        protocol: 'https',
+        hostname: 'api.loyverse.com',
+        port: '',
+        pathname: '/image/**',
+      },
     ],
   },
 

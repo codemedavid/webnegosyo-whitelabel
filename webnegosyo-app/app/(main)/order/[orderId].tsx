@@ -14,6 +14,7 @@ import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
+import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
 import {
@@ -608,6 +609,39 @@ export default function OrderDetailScreen() {
       }
 
       await updateStatus({ orderId: order._id, status: newStatus });
+
+      // Push the confirmed order into Loyverse as a sales receipt. Fires once
+      // (confirm is a single transition); the server checks the tenant's flag
+      // and push mode, so this is a no-op for non-Loyverse tenants.
+      //
+      // This screen is the one confirm surface that already holds the dishes,
+      // so it passes them and saves the server a read back out of the order
+      // backend. The list and drawer surfaces pass only the id.
+      if (newStatus === "confirmed") {
+        await pushConfirmedOrderToLoyverse(
+          String(order._id),
+          // Screen-local item shape → platform OrderItem shape. Unit price is
+          // derived from the subtotal; lines without a menu item id cannot map
+          // to a Loyverse variant and are dropped here.
+          (order.items ?? [])
+            .filter((it): it is typeof it & { menuItemId: string } => Boolean(it.menuItemId))
+            .map((it) => ({
+              menu_item_id: it.menuItemId,
+              menu_item_name: it.menuItemName,
+              variation: it.variation,
+              variations: it.variationSelections
+                ? Object.fromEntries(
+                    it.variationSelections.map((s) => [s.typeName, s.optionName]),
+                  )
+                : undefined,
+              addons: (it.addons ?? []).map((addon) => addon.name),
+              quantity: it.quantity,
+              price: it.quantity > 0 ? it.subtotal / it.quantity : it.subtotal,
+              subtotal: it.subtotal,
+              special_instructions: it.specialInstructions,
+            })),
+        );
+      }
 
       // Put the ingredients back. This order lives in Convex, so cancelling it
       // never reaches the web app's updateOrderStatus where stock is restored.

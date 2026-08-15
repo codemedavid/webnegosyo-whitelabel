@@ -26,6 +26,8 @@ import { TenantMonogram } from '@/components/superadmin/tenant-visuals'
 import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview'
 import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
+import { testLoyverseConnectionAction, syncLoyverseCatalogAction } from '@/app/actions/loyverse'
+import type { LoyverseConnectionTest } from '@/lib/loyverse/client'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
@@ -122,6 +124,12 @@ interface TenantFormData {
   lalamove_service_type: string
   lalamove_sandbox: boolean
   lalamove_sender_phone: string
+  // Loyverse POS integration
+  loyverse_enabled: boolean
+  loyverse_access_token: string
+  loyverse_store_id: string
+  loyverse_payment_type_id: string
+  loyverse_push_mode: 'on_create' | 'on_confirm'
   // Distance-based delivery fee (non-Lalamove; Lalamove takes precedence when enabled)
   distance_delivery_enabled: boolean
   delivery_price_per_km: string
@@ -1340,6 +1348,245 @@ function LalamoveSection({
   )
 }
 
+// Loyverse POS Integration Section. Catalog syncs in from Loyverse; orders
+// push out as completed receipts (Loyverse has no open-ticket API, so the
+// incoming-order experience stays on our side).
+function LoyverseSection({
+  formData,
+  setFormData,
+  isPending,
+  tenantId
+}: {
+  formData: TenantFormData
+  setFormData: SetFormData
+  isPending: boolean
+  tenantId?: string
+}) {
+  const [isTesting, setIsTesting] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [connection, setConnection] = useState<LoyverseConnectionTest | null>(null)
+
+  const handleSyncNow = async () => {
+    if (!tenantId) return
+    setIsSyncing(true)
+    try {
+      const report = await syncLoyverseCatalogAction(tenantId)
+      if (report.success) {
+        const webhookNote = report.webhooks && !report.webhooks.error
+          ? ` — live updates ${report.webhooks.registered > 0 ? 'connected' : 'active'}`
+          : ''
+        toast.success(
+          `Catalog synced: ${report.itemsCreated} created, ${report.itemsUpdated} updated, ${report.itemsSkipped} skipped${webhookNote}`
+        )
+        if (report.warnings.length > 0) {
+          toast.warning(`${report.warnings.length} warning(s) — first: ${report.warnings[0]}`)
+        }
+      } else {
+        toast.error(report.error || 'Catalog sync failed')
+      }
+    } catch {
+      toast.error('Catalog sync failed')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    setIsTesting(true)
+    try {
+      const result = await testLoyverseConnectionAction(formData.loyverse_access_token)
+      setConnection(result)
+      if (result.success) {
+        toast.success(`Connected to ${result.merchant.business_name || 'Loyverse'}`)
+      } else {
+        toast.error(result.error)
+      }
+    } catch {
+      toast.error('Could not reach the Loyverse API')
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
+  const stores = connection?.success ? connection.stores : []
+  const paymentTypes = connection?.success ? connection.paymentTypes : []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Loyverse POS Integration</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="loyverse_enabled">Enable Loyverse</Label>
+            <p className="text-sm text-muted-foreground">
+              Sync the menu from Loyverse and push orders as sales receipts
+            </p>
+          </div>
+          <Switch
+            id="loyverse_enabled"
+            checked={formData.loyverse_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, loyverse_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
+
+        {formData.loyverse_enabled && (
+          <>
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="loyverse_access_token">Access Token *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="loyverse_access_token"
+                    type="password"
+                    value={formData.loyverse_access_token}
+                    onChange={(e) => setFormData({ ...formData, loyverse_access_token: e.target.value })}
+                    placeholder="Loyverse personal access token"
+                    disabled={isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTestConnection}
+                    disabled={isPending || isTesting || !formData.loyverse_access_token.trim()}
+                  >
+                    {isTesting ? 'Testing…' : 'Test connection'}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Back Office → Integrations → Access tokens. Test the connection to load stores and payment types.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="loyverse_store_id">Store *</Label>
+                  {stores.length > 0 ? (
+                    <select
+                      id="loyverse_store_id"
+                      value={formData.loyverse_store_id}
+                      onChange={(e) => setFormData({ ...formData, loyverse_store_id: e.target.value })}
+                      disabled={isPending}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="" className="bg-background text-foreground">Select a store…</option>
+                      {stores.map((store) => (
+                        <option key={store.id} value={store.id} className="bg-background text-foreground">
+                          {store.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="loyverse_store_id"
+                      value={formData.loyverse_store_id}
+                      onChange={(e) => setFormData({ ...formData, loyverse_store_id: e.target.value })}
+                      placeholder="Loyverse store ID"
+                      disabled={isPending}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Receipts are created in this store; its prices are used for the menu.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="loyverse_payment_type_id">Payment Type</Label>
+                  {paymentTypes.length > 0 ? (
+                    <select
+                      id="loyverse_payment_type_id"
+                      value={formData.loyverse_payment_type_id}
+                      onChange={(e) => setFormData({ ...formData, loyverse_payment_type_id: e.target.value })}
+                      disabled={isPending}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="" className="bg-background text-foreground">None (push unpaid)</option>
+                      {paymentTypes.map((pt) => (
+                        <option key={pt.id} value={pt.id} className="bg-background text-foreground">
+                          {pt.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="loyverse_payment_type_id"
+                      value={formData.loyverse_payment_type_id}
+                      onChange={(e) => setFormData({ ...formData, loyverse_payment_type_id: e.target.value })}
+                      placeholder="Payment type ID (optional)"
+                      disabled={isPending}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Recorded on pushed receipts. Leave empty to push without a payment line.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="loyverse_push_mode">When to push orders</Label>
+                <select
+                  id="loyverse_push_mode"
+                  value={formData.loyverse_push_mode}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      loyverse_push_mode: e.target.value === 'on_create' ? 'on_create' : 'on_confirm',
+                    })
+                  }
+                  disabled={isPending}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="on_confirm" className="bg-background text-foreground">
+                    After the order is confirmed (recommended)
+                  </option>
+                  <option value="on_create" className="bg-background text-foreground">
+                    Immediately when the order is placed
+                  </option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Loyverse only accepts completed sales receipts — orders never appear on the Loyverse register screen.
+                </p>
+              </div>
+
+              {tenantId && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Catalog sync</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Pull items, categories and modifiers from Loyverse into this menu. Save the token first.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSyncNow}
+                    disabled={isPending || isSyncing}
+                  >
+                    {isSyncing ? 'Syncing…' : 'Sync now'}
+                  </Button>
+                </div>
+              )}
+
+              {connection?.success && (
+                <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                  <p className="text-sm text-white/70">
+                    <strong className="text-emerald-400">Connected:</strong>{' '}
+                    {connection.merchant.business_name || 'Loyverse account'} — {stores.length} store{stores.length === 1 ? '' : 's'}, {paymentTypes.length} payment type{paymentTypes.length === 1 ? '' : 's'}.
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // Distance-Based Delivery Fee Section (non-Lalamove pricing path)
 function DistanceDeliverySection({
   formData,
@@ -1686,6 +1933,12 @@ export function TenantFormWrapper({
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
     lalamove_sender_phone: tenant?.lalamove_sender_phone || '',
+    // Loyverse POS integration
+    loyverse_enabled: tenant?.loyverse_enabled ?? false,
+    loyverse_access_token: tenant?.loyverse_access_token || '',
+    loyverse_store_id: tenant?.loyverse_store_id || '',
+    loyverse_payment_type_id: tenant?.loyverse_payment_type_id || '',
+    loyverse_push_mode: tenant?.loyverse_push_mode === 'on_create' ? 'on_create' : 'on_confirm',
     // Distance-based delivery fee
     distance_delivery_enabled: tenant?.distance_delivery_enabled ?? false,
     delivery_price_per_km: tenant?.delivery_price_per_km?.toString() || '',
@@ -1767,6 +2020,12 @@ export function TenantFormWrapper({
       lalamove_service_type: formData.lalamove_service_type || undefined,
       lalamove_sandbox: formData.lalamove_sandbox,
       lalamove_sender_phone: formData.lalamove_sender_phone || undefined,
+      // Loyverse POS integration
+      loyverse_enabled: formData.loyverse_enabled,
+      loyverse_access_token: formData.loyverse_access_token || undefined,
+      loyverse_store_id: formData.loyverse_store_id || undefined,
+      loyverse_payment_type_id: formData.loyverse_payment_type_id || undefined,
+      loyverse_push_mode: formData.loyverse_push_mode,
       // Distance-based delivery fee
       distance_delivery_enabled: formData.distance_delivery_enabled,
       delivery_price_per_km: formData.delivery_price_per_km ? parseFloat(formData.delivery_price_per_km) : null,
@@ -1997,6 +2256,12 @@ export function TenantFormWrapper({
             setFormData={setFormData}
             isPending={isPending}
             tenant={tenant}
+          />
+          <LoyverseSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+            tenantId={tenant?.id}
           />
         </TabsContent>
 
