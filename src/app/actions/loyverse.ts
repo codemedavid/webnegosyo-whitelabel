@@ -90,6 +90,25 @@ export async function syncLoyverseCatalogAction(tenantId: string): Promise<Loyve
   const tenantRow = tenant as unknown as Tenant
   const report = await importLoyverseCatalog(tenantRow)
 
+  // Wire continuous sync while we are here: idempotent, and a failure is a
+  // warning on the report rather than a failed sync.
+  if (report.success && tenantRow.loyverse_access_token) {
+    const { ensureLoyverseWebhooks } = await import('@/lib/loyverse/webhooks')
+    const { headers } = await import('next/headers')
+    const headerList = await headers()
+    const host = headerList.get('host')
+    const proto = headerList.get('x-forwarded-proto') || 'https'
+    const origin = host && proto === 'https' ? `https://${host}` : undefined
+    report.webhooks = await ensureLoyverseWebhooks(
+      tenantRow.loyverse_access_token,
+      tenantId,
+      origin
+    )
+    if (report.webhooks.error) {
+      report.warnings.push(`Webhooks: ${report.webhooks.error}`)
+    }
+  }
+
   if (report.success && tenantRow.slug) {
     revalidatePath(`/${tenantRow.slug}/menu`)
     revalidatePath(`/${tenantRow.slug}/admin/menu`)
