@@ -1372,8 +1372,11 @@ function LoyverseSection({
     try {
       const report = await syncLoyverseCatalogAction(tenantId)
       if (report.success) {
+        const webhookNote = report.webhooks && !report.webhooks.error
+          ? ` — live updates ${report.webhooks.registered > 0 ? 'connected' : 'active'}`
+          : ''
         toast.success(
-          `Catalog synced: ${report.itemsCreated} created, ${report.itemsUpdated} updated, ${report.itemsSkipped} skipped`
+          `Catalog synced: ${report.itemsCreated} created, ${report.itemsUpdated} updated, ${report.itemsSkipped} skipped${webhookNote}`
         )
         if (report.warnings.length > 0) {
           toast.warning(`${report.warnings.length} warning(s) — first: ${report.warnings[0]}`)

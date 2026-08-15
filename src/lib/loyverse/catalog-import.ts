@@ -33,6 +33,8 @@ export interface LoyverseSyncReport {
   itemsUpdated: number
   itemsSkipped: number
   warnings: string[]
+  /** Webhook auto-registration outcome; set by the sync action, not the import. */
+  webhooks?: { registered: number; alreadyActive: number; error?: string }
 }
 
 const emptyReport = (error?: string): LoyverseSyncReport => ({
