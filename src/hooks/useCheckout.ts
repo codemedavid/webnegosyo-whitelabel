@@ -54,6 +54,7 @@ import { createOrderAction } from '@/app/actions/orders'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
+import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
@@ -1169,6 +1170,8 @@ export function useCheckout(tenantSlug: string) {
           price: number
           subtotal: number
           special_instructions?: string
+          option_ids?: string[]
+          addon_ids?: string[]
           isUpsellItem?: boolean
           isBundleItem?: boolean
           bundleId?: string
@@ -1210,42 +1213,11 @@ export function useCheckout(tenantSlug: string) {
           }
         })
 
-        // Flatten bundle items into order items
-        for (const bundle of snapshotBundleItems) {
-          for (const slot of bundle.slots) {
-            let slotPrice = slot.priceOverride
-            let variationText = ''
-
-            if (slot.selectedVariation) {
-              slotPrice += slot.selectedVariation.price_modifier
-              variationText = slot.selectedVariation.name
-            } else if (slot.selectedVariations) {
-              const modifierSum = Object.values(slot.selectedVariations).reduce(
-                (sum, option) => sum + option.price_modifier, 0
-              )
-              slotPrice += modifierSum
-              variationText = Object.values(slot.selectedVariations).map(opt => opt.name).join(', ')
-            }
-
-            const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price, 0)
-            const itemTotal = (slotPrice + addonTotal) * slot.quantity * bundle.quantity
-
-            orderItems.push({
-              menu_item_id: slot.menuItemId,
-              menu_item_name: slot.menuItemName,
-              variation: variationText || undefined,
-              addons: slot.selectedAddons.map(a => a.name),
-              quantity: slot.quantity * bundle.quantity,
-              price: slotPrice + addonTotal,
-              subtotal: itemTotal,
-              special_instructions: undefined,
-              isBundleItem: true,
-              bundleId: bundle.bundleId,
-              bundleName: bundle.bundleName,
-              slotName: slot.slotName,
-            })
-          }
-        }
+        // Flatten bundle items into order items. Extracted to a pure helper so
+        // the payload — including the option/addon ids inventory depletion
+        // resolves recipes against, which this inline loop used to drop — is
+        // unit-testable. See src/lib/bundle-order-items.ts.
+        orderItems.push(...flattenBundleOrderItems(snapshotBundleItems))
 
         const customerInfo = {
           name: snapshotCustomerData.customer_name || undefined,

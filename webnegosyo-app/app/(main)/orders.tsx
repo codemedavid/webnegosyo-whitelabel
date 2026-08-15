@@ -14,6 +14,7 @@ import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../c
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
+import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -121,6 +122,10 @@ export default function OrdersScreen() {
     }
     try {
       await updateStatus({ orderId, status: newStatus });
+      // Put the ingredients back on a cancel — the same shared side-effect the
+      // detail screen runs. Never throws, so a stock write cannot make an
+      // order un-cancellable from the queue.
+      await restoreStockForStatusChange(newStatus, String(orderId));
       // This list holds order rows without their line items, so printing here
       // would emit a receipt with no items on it. Point at the screen that has
       // them — but only when the merchant actually expects paper.

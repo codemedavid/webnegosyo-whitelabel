@@ -37,6 +37,7 @@ interface OrderStockItemInput {
   menuItemId?: unknown
   quantity?: unknown
   optionIds?: unknown
+  addonIds?: unknown
 }
 
 function toStringArray(value: unknown): string[] {
@@ -66,7 +67,10 @@ function toDepletionItems(value: unknown) {
         // Mirrors `depleteStockForOrder` in src/app/actions/orders.ts.
         optionIds,
         modifierOptionIds: optionIds,
-        addonIds: [] as string[],
+        // Carried through so addon-targeted recipes deplete too. Hardcoding
+        // this empty was the defect that made counter sales base-recipe-only
+        // for add-ons while web checkout spent them.
+        addonIds: toStringArray(item.addonIds),
       }
     })
 }
