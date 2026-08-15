@@ -145,6 +145,9 @@ export function TenantForm({ tenant }: TenantFormProps) {
       // Distance-based delivery is configured via TenantFormWrapper (the live superadmin form);
       // this legacy form is unused but must satisfy the required schema field.
       distance_delivery_enabled: false,
+      // Loyverse is likewise wrapper-only; same reason.
+      loyverse_enabled: false,
+      loyverse_push_mode: 'on_confirm' as const,
       menu_engineering_enabled: formData.menu_engineering_enabled,
       checkout_upsell_enabled: formData.checkout_upsell_enabled,
       hide_currency_symbol: formData.hide_currency_symbol,
