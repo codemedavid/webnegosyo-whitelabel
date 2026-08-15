@@ -31,9 +31,11 @@ export async function POST(request: NextRequest) {
   }
 
   let eventType: string | undefined
+  let inventoryLevels: unknown
   try {
-    const body = (await request.json()) as { type?: string }
+    const body = (await request.json()) as { type?: string; inventory_levels?: unknown }
     eventType = body?.type
+    inventoryLevels = body?.inventory_levels
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
@@ -64,6 +66,21 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // inventory_levels.update lands here in Phase 4.
+  if (eventType === 'inventory_levels.update' && Array.isArray(inventoryLevels)) {
+    if (!tenantRow.loyverse_store_id) {
+      return NextResponse.json({ ignored: true, reason: 'no store mapped' })
+    }
+    const { applyLoyverseInventoryLevels } = await import('@/lib/loyverse/inventory-sync')
+    const outcome = await applyLoyverseInventoryLevels(
+      tenantId,
+      tenantRow.loyverse_store_id,
+      inventoryLevels.filter(
+        (level): level is { variant_id: string; store_id: string; in_stock?: number | null } =>
+          Boolean(level && typeof level === 'object' && 'variant_id' in level && 'store_id' in level)
+      )
+    )
+    return NextResponse.json({ ok: true, ...outcome })
+  }
+
   return NextResponse.json({ ignored: true, reason: `unhandled event ${eventType ?? 'unknown'}` })
 }
