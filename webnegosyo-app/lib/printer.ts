@@ -32,6 +32,32 @@ let printerAvailable: boolean | null = null;
 
 const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not available in Expo Go.";
 
+// iOS getDeviceList only fires its callback when a printer is discovered — if
+// none is in range the promise NEVER settles. connectPrinter can likewise fail
+// to call back. Without timeouts a scan or reconnect hangs the UI forever.
+const DISCOVERY_TIMEOUT_MS = 12_000;
+const CONNECT_TIMEOUT_MS = 10_000;
+
+/** Reject `promise` with a descriptive error if it hasn't settled within `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 /** Returns true when running inside the Expo Go client (no native module access). */
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -136,8 +162,13 @@ export async function discoverBluetoothPrinters(): Promise<Array<{ name: string;
   if (!mod) return [];
 
   try {
-    await mod.BLEPrinter.init();
-    const devices = await mod.BLEPrinter.getDeviceList();
+    await withTimeout(mod.BLEPrinter.init(), CONNECT_TIMEOUT_MS, "Bluetooth init");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const devices = await withTimeout<any[]>(
+      mod.BLEPrinter.getDeviceList(),
+      DISCOVERY_TIMEOUT_MS,
+      "Printer scan"
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (devices ?? []).map((d: any) => ({
       name: d.device_name || d.name || "Unknown Printer",
@@ -161,12 +192,24 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
 
   try {
     if (type === "bluetooth") {
-      await mod.BLEPrinter.init();
-      await mod.BLEPrinter.connectPrinter(address);
+      await withTimeout(mod.BLEPrinter.init(), CONNECT_TIMEOUT_MS, "Bluetooth init");
+      try {
+        await withTimeout(mod.BLEPrinter.connectPrinter(address), CONNECT_TIMEOUT_MS, "Printer connection");
+      } catch {
+        // iOS keeps its connect candidates only in memory: after an app
+        // relaunch a saved printer is unknown to the native side until a scan
+        // re-finds it. Rescan once, then retry the connection.
+        await withTimeout(mod.BLEPrinter.getDeviceList(), DISCOVERY_TIMEOUT_MS, "Printer scan");
+        await withTimeout(mod.BLEPrinter.connectPrinter(address), CONNECT_TIMEOUT_MS, "Printer connection");
+      }
     } else {
       const [ip, port] = address.split(":");
-      await mod.NetPrinter.init();
-      await mod.NetPrinter.connectPrinter(ip, parseInt(port || "9100", 10));
+      await withTimeout(mod.NetPrinter.init(), CONNECT_TIMEOUT_MS, "Network printer init");
+      await withTimeout(
+        mod.NetPrinter.connectPrinter(ip, parseInt(port || "9100", 10)),
+        CONNECT_TIMEOUT_MS,
+        "Printer connection"
+      );
     }
     usePrinterStore.getState().setConnected(true);
     return { success: true };
