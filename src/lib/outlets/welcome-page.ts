@@ -40,6 +40,8 @@ export interface WelcomeTenantFields {
   welcome_subheading_text?: string | null
   welcome_text_align?: string | null
   welcome_show_logo?: boolean | null
+  welcome_show_header?: boolean | null
+  welcome_show_copy?: boolean | null
   welcome_background_color?: string | null
   welcome_heading_color?: string | null
   welcome_subtext_color?: string | null
@@ -106,6 +108,28 @@ export function resolveWelcomeTextAlign(
 /** Whether the store logo sits above the heading. Off unless switched on. */
 export function shouldShowWelcomeLogo(tenant: WelcomeTenantFields | null | undefined): boolean {
   return tenant?.welcome_show_logo === true
+}
+
+/**
+ * Whether the page leads with a header at all.
+ *
+ * Unlike the logo, this one defaults ON: every tenant predating the column has
+ * a heading today, and the switch only ever takes something away.
+ */
+export function shouldShowWelcomeHeader(tenant: WelcomeTenantFields | null | undefined): boolean {
+  return tenant?.welcome_show_header !== false
+}
+
+/**
+ * Whether the heading and subheading are written out. Off leaves a logo-only
+ * header — the shape merchants want once the branding does the talking.
+ *
+ * The copy lives inside the header, so hiding the header hides the copy too:
+ * an on-copy/off-header row must not resurrect the heading.
+ */
+export function shouldShowWelcomeCopy(tenant: WelcomeTenantFields | null | undefined): boolean {
+  if (!shouldShowWelcomeHeader(tenant)) return false
+  return tenant?.welcome_show_copy !== false
 }
 
 function coerceFormat(value: unknown): WelcomeBannerFormat {

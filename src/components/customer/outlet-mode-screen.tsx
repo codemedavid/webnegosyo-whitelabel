@@ -8,6 +8,8 @@ import {
   resolveWelcomeTextAlign,
   resolveWelcomeTheme,
   shouldShowOrderTypeStep,
+  shouldShowWelcomeCopy,
+  shouldShowWelcomeHeader,
   shouldShowWelcomeLogo,
   type WelcomeTenantFields,
 } from '@/lib/outlets/welcome-page'
@@ -74,7 +76,9 @@ export function OutletModeScreen({
   const banners = normalizeWelcomeBanners(welcome?.welcome_page_banners)
   const showTiles = shouldShowOrderTypeStep(welcome)
   const isCentered = resolveWelcomeTextAlign(welcome) === 'center'
-  const showLogo = shouldShowWelcomeLogo(welcome)
+  const showHeader = shouldShowWelcomeHeader(welcome)
+  const showLogo = showHeader && shouldShowWelcomeLogo(welcome)
+  const showCopy = shouldShowWelcomeCopy(welcome)
 
   // Deliberately NOT falling back to the flash-screen headline: that field is
   // written for a loading splash ("Loading menu...") and reads as a broken page
@@ -89,29 +93,43 @@ export function OutletModeScreen({
       className="flex min-h-full w-full flex-col gap-6 px-5 py-7"
       style={{ backgroundColor: theme.backgroundColor ?? undefined }}
     >
-      <div
-        data-testid="welcome-header"
-        className={isCentered ? 'flex flex-col items-center text-center' : undefined}
-      >
-        {showLogo && logoUrl && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={logoUrl}
-            alt={tenantName}
-            className="mb-4 h-20 w-auto max-w-[60%] object-contain"
-          />
-        )}
-        <h1
-          className="text-2xl font-bold tracking-tight"
-          style={{ color: theme.headingColor ?? undefined }}
+      {(showLogo || showCopy) && (
+        <div
+          data-testid="welcome-header"
+          className={isCentered ? 'flex flex-col items-center text-center' : undefined}
         >
-          {heading}
-        </h1>
-        <p className="mt-1 text-muted-foreground" style={{ color: theme.subtextColor ?? undefined }}>
-          {subheading}
-        </p>
-        {message && <p className="mt-2 text-sm text-amber-600">{message}</p>}
-      </div>
+          {showLogo && logoUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={logoUrl}
+              alt={tenantName}
+              className={`h-20 w-auto max-w-[60%] object-contain ${showCopy ? 'mb-4' : ''}`}
+            />
+          )}
+          {showCopy && (
+            <>
+              <h1
+                className="text-2xl font-bold tracking-tight"
+                style={{ color: theme.headingColor ?? undefined }}
+              >
+                {heading}
+              </h1>
+              <p
+                className="mt-1 text-muted-foreground"
+                style={{ color: theme.subtextColor ?? undefined }}
+              >
+                {subheading}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* The reason we are asking again is not branding copy — it survives
+          every header switch, or the customer is left guessing. */}
+      {message && (
+        <p className={`text-sm text-amber-600 ${isCentered ? 'text-center' : ''}`}>{message}</p>
+      )}
 
       {banners.length > 0 ? (
         <WelcomeBannerSlideshow banners={banners} />

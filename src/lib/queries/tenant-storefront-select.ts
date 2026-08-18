@@ -25,7 +25,7 @@ export const TENANT_STOREFRONT_SELECT = `
   modifier_groups_enabled, multi_branch_enabled, outlet_selection_timing,
   welcome_entry_mode, welcome_show_order_types, welcome_cta_text,
   welcome_heading_text, welcome_subheading_text, welcome_page_banners,
-  welcome_text_align, welcome_show_logo,
+  welcome_text_align, welcome_show_logo, welcome_show_header, welcome_show_copy,
   welcome_background_color, welcome_heading_color, welcome_subtext_color,
   welcome_tile_background_color, welcome_tile_icon_color, welcome_tile_text_color,
   welcome_cta_background_color, welcome_cta_text_color,

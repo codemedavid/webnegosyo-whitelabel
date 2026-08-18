@@ -223,6 +223,8 @@ export interface Tenant {
   welcome_subheading_text?: string | null;
   welcome_text_align?: string | null;
   welcome_show_logo?: boolean | null;
+  welcome_show_header?: boolean | null;
+  welcome_show_copy?: boolean | null;
   welcome_page_banners?: WelcomeBanner[] | null;
   welcome_background_color?: string | null;
   welcome_heading_color?: string | null;

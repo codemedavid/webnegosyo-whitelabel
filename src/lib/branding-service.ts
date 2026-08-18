@@ -196,6 +196,8 @@ export const brandingSchema = z.object({
     welcome_subheading_text: z.string().max(300).optional().or(z.literal('')),
     welcome_text_align: z.enum(['left', 'center']).optional(),
     welcome_show_logo: z.boolean().optional(),
+    welcome_show_header: z.boolean().optional(),
+    welcome_show_copy: z.boolean().optional(),
     // '' accepted for the same "Reset section" reason as promotion_banners.
     welcome_page_banners: z.union([
         z.array(z.object({
