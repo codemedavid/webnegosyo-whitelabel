@@ -1,3 +1,10 @@
+// The share module reaches for the real expo natives at import time; every
+// test here injects its own `share`, so the default is stubbed out entirely.
+jest.mock("./share", () => ({
+  __esModule: true,
+  shareCsv: jest.fn(async () => "unused-default"),
+}));
+
 import { runCustomersExport, runOrdersExport, runSalesExport } from "./run-export";
 import type { ExportOrderInput, ExportOrderItemInput } from "./orders-export";
 
@@ -21,7 +28,7 @@ function order(overrides: Partial<ExportOrderInput> = {}): ExportOrderInput {
 
 describe("runOrdersExport", () => {
   it("shares a CSV named for the window and returns complete coverage", async () => {
-    const share = jest.fn(async () => "file:///cache/x.csv");
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "file:///cache/x.csv");
     const items: ExportOrderItemInput[] = [
       { orderId: "o1", menuItemName: "Burger", quantity: 1, subtotal: 100 },
     ];
@@ -37,13 +44,13 @@ describe("runOrdersExport", () => {
 
     expect(coverage.isComplete).toBe(true);
     expect(share).toHaveBeenCalledTimes(1);
-    const arg = share.mock.calls[0][0] as unknown as { fileName: string; csv: string };
+    const arg = share.mock.calls[0][0];
     expect(arg.fileName).toBe("orders_2026-08-12_2026-08-18.csv");
     expect(arg.csv).toContain("1x Burger");
   });
 
   it("narrows to one status when asked", async () => {
-    const share = jest.fn(async () => "uri");
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
 
     await runOrdersExport({
       orders: [order({ _id: "keep" }), order({ _id: "drop", status: "pending" })],
@@ -55,13 +62,13 @@ describe("runOrdersExport", () => {
       share,
     });
 
-    const arg = share.mock.calls[0][0] as unknown as { csv: string };
+    const arg = share.mock.calls[0][0];
     expect(arg.csv).toContain("keep");
     expect(arg.csv).not.toContain("drop");
   });
 
   it("reports truncated coverage when the fetch cap cut the window", async () => {
-    const share = jest.fn(async () => "uri");
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
     // Two "fetched" orders standing in for a full page whose oldest row is
     // inside the 7d window.
     const oldest = TODAY_START - 2 * DAY_MS;
@@ -81,7 +88,7 @@ describe("runOrdersExport", () => {
 
 describe("runSalesExport", () => {
   it("shares the daily sales CSV for the window", async () => {
-    const share = jest.fn(async () => "uri");
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
 
     await runSalesExport({
       orders: [order({ total: 350, itemCount: 2 })],
@@ -91,7 +98,7 @@ describe("runSalesExport", () => {
       share,
     });
 
-    const arg = share.mock.calls[0][0] as unknown as { fileName: string; csv: string };
+    const arg = share.mock.calls[0][0];
     expect(arg.fileName).toBe("sales_2026-08-18.csv");
     expect(arg.csv).toContain("2026-08-18,1,2,350,350");
     expect(arg.csv).toContain("TOTAL,1,2,350,350");
@@ -100,7 +107,7 @@ describe("runSalesExport", () => {
 
 describe("runCustomersExport", () => {
   it("shares the guest list dated today", async () => {
-    const share = jest.fn(async () => "uri");
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
 
     await runCustomersExport({
       customers: [
@@ -123,7 +130,7 @@ describe("runCustomersExport", () => {
       share,
     });
 
-    const arg = share.mock.calls[0][0] as unknown as { fileName: string; csv: string };
+    const arg = share.mock.calls[0][0];
     expect(arg.fileName).toBe("customers_2026-08-18.csv");
     expect(arg.csv).toContain("Maria");
   });
