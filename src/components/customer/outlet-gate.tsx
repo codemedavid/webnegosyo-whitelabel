@@ -19,7 +19,9 @@ import type { Outlet, Tenant } from '@/types/database'
  * full `Outlet` records straight from the query — so the cast re-widens them to
  * what the picker renders rather than converting anything.
  */
-type OutletSplashRankFor = (mode: OutletOrderMode) => { outlets: RankedOutlet<PickerOutlet>[] }
+type OutletSplashRankFor = (
+  mode: OutletOrderMode | null
+) => { outlets: RankedOutlet<PickerOutlet>[] }
 
 interface OutletGateProps {
   tenant: Tenant | null
@@ -81,12 +83,13 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
   /**
    * Record the branch, then carry the mode forward as the order type so
    * checkout does not ask the same question twice. No match simply leaves the
-   * order type unset, which is today's behaviour.
+   * order type unset, which is today's behaviour — as does a mode-less
+   * selection from the welcome page's single CTA, where checkout asks.
    */
   const handleSelect = useCallback(
-    (outletId: string, mode: OutletOrderMode) => {
+    (outletId: string, mode: OutletOrderMode | null) => {
       selection.select(outletId, mode)
-      const orderTypeId = resolveOrderTypeIdForMode(orderTypes, mode)
+      const orderTypeId = mode ? resolveOrderTypeIdForMode(orderTypes, mode) : null
       if (orderTypeId) setOrderType(orderTypeId)
     },
     [selection, orderTypes, setOrderType]
@@ -105,6 +108,7 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
       onLocate={selection.locate}
       rankFor={selection.rankFor as unknown as OutletSplashRankFor}
       onSelect={handleSelect}
+      welcome={tenant}
     />
   )
 }

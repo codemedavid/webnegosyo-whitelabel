@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { OutletModeScreen } from '@/components/customer/outlet-mode-screen'
 import { OutletPickerScreen, type PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { resolveAvailableModes } from '@/lib/outlets/outlet-modes'
+import { shouldShowOrderTypeStep, type WelcomeTenantFields } from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 
 interface OutletSplashProps {
@@ -17,8 +18,12 @@ interface OutletSplashProps {
   reason: string | null
   isLocating: boolean
   onLocate: () => void
-  rankFor: (mode: OutletOrderMode) => { outlets: RankedOutlet<PickerOutlet>[] }
-  onSelect: (outletId: string, mode: OutletOrderMode) => void
+  /** Mode null ranks every active branch (single-CTA entry). */
+  rankFor: (mode: OutletOrderMode | null) => { outlets: RankedOutlet<PickerOutlet>[] }
+  /** Mode null = the customer entered via the CTA; checkout asks the mode. */
+  onSelect: (outletId: string, mode: OutletOrderMode | null) => void
+  /** Welcome-page design columns; null/absent keeps the shipped screen. */
+  welcome?: WelcomeTenantFields | null
 }
 
 const REASON_MESSAGE: Record<string, string> = {
@@ -49,8 +54,13 @@ export function OutletSplash({
   onLocate,
   rankFor,
   onSelect,
+  welcome,
 }: OutletSplashProps) {
   const [mode, setMode] = useState<OutletOrderMode | null>(null)
+  // Single-CTA entry: the welcome page shows one button, and pressing it goes
+  // straight to the branch list with no mode chosen — checkout asks instead.
+  const showTiles = shouldShowOrderTypeStep(welcome)
+  const [hasStarted, setHasStarted] = useState(false)
 
   // Offer to locate once, in the background. Neither screen waits on it.
   useEffect(() => {
@@ -66,20 +76,24 @@ export function OutletSplash({
   // after hydration, so there is no server markup for it to contradict. Re-read
   // on each mode change so a long-idle tab does not show yesterday's status.
   const [now, setNow] = useState(() => new Date())
-  useEffect(() => setNow(new Date()), [mode])
+  useEffect(() => setNow(new Date()), [mode, hasStarted])
 
   // A tenant offering exactly one mode is not asking a question. Skip straight
   // to the branch list rather than showing a single tile that must be tapped —
-  // and then there is nothing to go back to.
-  const isModeForced = modes.length === 1
+  // and then there is nothing to go back to. The CTA entry never skips: the
+  // welcome page IS the merchant's branded front door.
+  const isModeForced = showTiles && modes.length === 1
   const effectiveMode = mode ?? (isModeForced ? modes[0] : null)
+
+  const isPickerOpen = showTiles ? effectiveMode !== null : hasStarted
+  const pickerMode = showTiles ? effectiveMode : null
 
   const message = reason ? REASON_MESSAGE[reason] : null
 
   return (
     <div className="fixed inset-0 z-[110] overflow-y-auto bg-background">
       <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-        {effectiveMode === null ? (
+        {!isPickerOpen ? (
           <OutletModeScreen
             tenantName={tenantName}
             promoImageUrl={promoImageUrl}
@@ -87,15 +101,23 @@ export function OutletSplash({
             modes={modes}
             message={message}
             onSelect={setMode}
+            welcome={welcome}
+            onStartOrdering={() => setHasStarted(true)}
           />
         ) : (
           <OutletPickerScreen
-            mode={effectiveMode}
-            ranked={rankFor(effectiveMode).outlets}
+            mode={pickerMode}
+            ranked={rankFor(pickerMode).outlets}
             isLocating={isLocating}
             onLocate={onLocate}
-            onBack={isModeForced ? null : () => setMode(null)}
-            onSelect={(outletId) => onSelect(outletId, effectiveMode)}
+            onBack={
+              showTiles
+                ? isModeForced
+                  ? null
+                  : () => setMode(null)
+                : () => setHasStarted(false)
+            }
+            onSelect={(outletId) => onSelect(outletId, pickerMode)}
             now={now}
           />
         )}

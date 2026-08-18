@@ -77,7 +77,7 @@ describe('mode-less stored selection (single-CTA entry)', () => {
   it('still drops a mode-less selection whose branch disappeared', () => {
     const resolution = resolveOutletSelection({
       isEnabled: true,
-      outlets: [outlet('b')],
+      outlets: [outlet('b'), outlet('c')],
       stored: { outletId: 'gone', mode: null },
       urlSlug: null,
     })
@@ -97,7 +97,8 @@ describe('rankOutlets with no mode (single-CTA branch list)', () => {
     const inactive = outlet('inactive', { is_active: false })
 
     const result = rankOutlets([pickupOnly, dineInOnly, inactive], { mode: null, origin: null })
-    expect(result.outlets.map((entry) => entry.outlet.id)).toEqual(['pickup-only', 'dine-in-only'])
+    // Unlocated branches fall back to manual order, then id — hence the sort.
+    expect(result.outlets.map((entry) => entry.outlet.id)).toEqual(['dine-in-only', 'pickup-only'])
   })
 
   it('never flags a mode-less branch as out of delivery range', () => {

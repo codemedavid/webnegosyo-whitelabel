@@ -59,7 +59,11 @@ export interface RankedOutlet<T extends OutletLocation = OutletLocation> {
 }
 
 export interface OutletRankingOptions {
-  mode: OutletOrderMode
+  /**
+   * Null when no mode has been chosen (the welcome page's single-CTA entry):
+   * every active branch is on offer and delivery coverage is not judged.
+   */
+  mode: OutletOrderMode | null
   /** Null/undefined when permission was denied, timed out, or never asked. */
   origin?: GeoOrigin | null
 }
@@ -121,7 +125,7 @@ function coversDistance(radiusKm: number | null | undefined, distanceKm: number)
  * covered only when a real distance was measured and the radius reaches it.
  */
 function resolveCoverage(
-  mode: OutletOrderMode,
+  mode: OutletOrderMode | null,
   radiusKm: number | null | undefined,
   distanceKm: number | null
 ): boolean {
@@ -159,7 +163,9 @@ export function rankOutlets<T extends OutletLocation>(
   const { mode } = options
   const origin = normalizeOrigin(options.origin)
 
-  const eligible = outlets.filter((outlet) => outlet.is_active && supportsMode(outlet, mode))
+  const eligible = outlets.filter(
+    (outlet) => outlet.is_active && (mode === null || supportsMode(outlet, mode))
+  )
 
   const ranked: RankedOutlet<T>[] = eligible.map((outlet) => {
     const coordinates = outletCoordinates(outlet)
@@ -204,7 +210,7 @@ export function rankOutlets<T extends OutletLocation>(
 
 function choosePreselection<T extends OutletLocation>(
   sorted: readonly RankedOutlet<T>[],
-  mode: OutletOrderMode
+  mode: OutletOrderMode | null
 ): string | null {
   if (sorted.length === 0) return null
   // A single option is preselected whatever we know about it — including an

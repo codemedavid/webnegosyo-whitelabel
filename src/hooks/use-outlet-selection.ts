@@ -78,7 +78,7 @@ export function useOutletSelection({
   }, [isHydrated, isEnabled, urlSlug, resolution.outlet, tenantSlug])
 
   const select = useCallback(
-    (outletId: string, mode: OutletOrderMode) => {
+    (outletId: string, mode: OutletOrderMode | null) => {
       const selection: StoredOutletSelection = { outletId, mode }
       if (typeof window !== 'undefined') {
         writeOutletSelection(window.localStorage, tenantSlug, selection, Date.now())
@@ -106,7 +106,7 @@ export function useOutletSelection({
 
   /** Branch list for a mode, ranked by distance when a location is known. */
   const rankFor = useCallback(
-    (mode: OutletOrderMode) =>
+    (mode: OutletOrderMode | null) =>
       rankOutlets(resolution.choices, { mode, origin: geo?.origin ?? null }),
     [resolution.choices, geo]
   )
