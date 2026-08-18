@@ -9,6 +9,8 @@ import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet
 
 interface OutletSplashProps {
   tenantName: string
+  /** Store logo for the welcome header, when the merchant enables it. */
+  logoUrl?: string | null
   /** Optional promo image shown above the choices; absent renders no gap. */
   promoImageUrl?: string | null
   promoHeadline?: string | null
@@ -46,6 +48,7 @@ const REASON_MESSAGE: Record<string, string> = {
  */
 export function OutletSplash({
   tenantName,
+  logoUrl,
   promoImageUrl,
   promoHeadline,
   outlets,
@@ -96,6 +99,7 @@ export function OutletSplash({
         {!isPickerOpen ? (
           <OutletModeScreen
             tenantName={tenantName}
+            logoUrl={logoUrl}
             promoImageUrl={promoImageUrl}
             promoHeadline={promoHeadline}
             modes={modes}

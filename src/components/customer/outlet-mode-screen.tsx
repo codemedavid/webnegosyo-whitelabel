@@ -5,8 +5,10 @@ import { WelcomeBannersRail } from '@/components/customer/welcome-banners-rail'
 import {
   normalizeWelcomeBanners,
   resolveWelcomeCtaText,
+  resolveWelcomeTextAlign,
   resolveWelcomeTheme,
   shouldShowOrderTypeStep,
+  shouldShowWelcomeLogo,
   type WelcomeTenantFields,
 } from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode } from '@/lib/outlets/nearest-outlet'
@@ -14,6 +16,8 @@ import { OUTLET_MODE_LABELS } from '@/lib/outlets/outlet-modes'
 
 interface OutletModeScreenProps {
   tenantName: string
+  /** Store logo, shown above the heading when the merchant switches it on. */
+  logoUrl?: string | null
   /** Legacy flash-screen promo, shown only when no welcome banners exist. */
   promoImageUrl?: string | null
   promoHeadline?: string | null
@@ -57,6 +61,7 @@ const MODE_BLURBS: Record<OutletOrderMode, string> = {
  */
 export function OutletModeScreen({
   tenantName,
+  logoUrl,
   promoImageUrl,
   promoHeadline,
   modes,
@@ -68,6 +73,8 @@ export function OutletModeScreen({
   const theme = resolveWelcomeTheme(welcome)
   const banners = normalizeWelcomeBanners(welcome?.welcome_page_banners)
   const showTiles = shouldShowOrderTypeStep(welcome)
+  const isCentered = resolveWelcomeTextAlign(welcome) === 'center'
+  const showLogo = shouldShowWelcomeLogo(welcome)
 
   // Deliberately NOT falling back to the flash-screen headline: that field is
   // written for a loading splash ("Loading menu...") and reads as a broken page
@@ -82,7 +89,18 @@ export function OutletModeScreen({
       className="flex min-h-full w-full flex-col gap-7 px-5 py-8"
       style={{ backgroundColor: theme.backgroundColor ?? undefined }}
     >
-      <div>
+      <div
+        data-testid="welcome-header"
+        className={isCentered ? 'flex flex-col items-center text-center' : undefined}
+      >
+        {showLogo && logoUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={logoUrl}
+            alt={tenantName}
+            className="mb-4 h-20 w-auto max-w-[60%] object-contain"
+          />
+        )}
         <h1
           className="text-2xl font-bold tracking-tight"
           style={{ color: theme.headingColor ?? undefined }}

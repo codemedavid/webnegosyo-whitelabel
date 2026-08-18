@@ -277,10 +277,12 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         ],
       },
       {
-        title: 'Copy',
+        title: 'Header',
         fields: [
           text('welcome_heading_text', 'Heading', 'Welcome to your store'),
           text('welcome_subheading_text', 'Subheading', 'How would you like your order?'),
+          select('welcome_text_align', 'Header alignment', ['left', 'center'], 'left'),
+          toggle('welcome_show_logo', 'Show store logo above the heading', false),
         ],
       },
       {

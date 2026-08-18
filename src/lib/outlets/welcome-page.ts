@@ -18,6 +18,9 @@ export type WelcomeEntryMode = 'order_types' | 'single_cta'
 
 export type WelcomeBannerFormat = 'landscape' | 'portrait' | 'square'
 
+/** How the welcome header (logo, heading, subheading) is aligned. */
+export type WelcomeTextAlign = 'left' | 'center'
+
 /** A promo banner on the welcome page — separate from menu `promotion_banners`. */
 export interface WelcomeBanner {
   id: string
@@ -35,6 +38,8 @@ export interface WelcomeTenantFields {
   welcome_page_banners?: unknown
   welcome_heading_text?: string | null
   welcome_subheading_text?: string | null
+  welcome_text_align?: string | null
+  welcome_show_logo?: boolean | null
   welcome_background_color?: string | null
   welcome_heading_color?: string | null
   welcome_subtext_color?: string | null
@@ -58,6 +63,7 @@ export interface WelcomeTheme {
 }
 
 export const DEFAULT_WELCOME_ENTRY_MODE: WelcomeEntryMode = 'order_types'
+export const DEFAULT_WELCOME_TEXT_ALIGN: WelcomeTextAlign = 'left'
 export const DEFAULT_WELCOME_CTA_TEXT = 'Start Ordering'
 
 const BANNER_FORMATS: readonly WelcomeBannerFormat[] = ['landscape', 'portrait', 'square']
@@ -85,6 +91,21 @@ export function shouldShowOrderTypeStep(tenant: WelcomeTenantFields | null | und
 export function resolveWelcomeCtaText(tenant: WelcomeTenantFields | null | undefined): string {
   const custom = tenant?.welcome_cta_text?.trim()
   return custom || DEFAULT_WELCOME_CTA_TEXT
+}
+
+/**
+ * Header alignment. Left is what shipped, so anything unset or unrecognised
+ * keeps it — centring is opt-in, like every other welcome-page column.
+ */
+export function resolveWelcomeTextAlign(
+  tenant: WelcomeTenantFields | null | undefined
+): WelcomeTextAlign {
+  return tenant?.welcome_text_align === 'center' ? 'center' : DEFAULT_WELCOME_TEXT_ALIGN
+}
+
+/** Whether the store logo sits above the heading. Off unless switched on. */
+export function shouldShowWelcomeLogo(tenant: WelcomeTenantFields | null | undefined): boolean {
+  return tenant?.welcome_show_logo === true
 }
 
 function coerceFormat(value: unknown): WelcomeBannerFormat {
