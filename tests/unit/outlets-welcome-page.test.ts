@@ -7,6 +7,8 @@ import {
   resolveWelcomeTextAlign,
   resolveWelcomeTheme,
   shouldShowOrderTypeStep,
+  shouldShowWelcomeCopy,
+  shouldShowWelcomeHeader,
   shouldShowWelcomeLogo,
   type WelcomeTenantFields,
 } from '@/lib/outlets/welcome-page'
@@ -195,5 +197,40 @@ describe('shouldShowWelcomeLogo', () => {
     expect(shouldShowWelcomeLogo({})).toBe(false)
     expect(shouldShowWelcomeLogo({ welcome_show_logo: false })).toBe(false)
     expect(shouldShowWelcomeLogo({ welcome_show_logo: true })).toBe(true)
+  })
+})
+
+/**
+ * The header is now something a merchant switches on and off as a whole, and
+ * its copy separately from its logo — a logo-only header is the shape merchants
+ * ask for once the branding is doing the talking. Both default ON so every
+ * tenant that predates the columns keeps today's heading and subheading.
+ */
+describe('shouldShowWelcomeHeader', () => {
+  it('shows the header for every tenant that never touched the switch', () => {
+    expect(shouldShowWelcomeHeader(null)).toBe(true)
+    expect(shouldShowWelcomeHeader({})).toBe(true)
+    expect(shouldShowWelcomeHeader({ welcome_show_header: true })).toBe(true)
+  })
+
+  it('hides the header only on an explicit false', () => {
+    expect(shouldShowWelcomeHeader({ welcome_show_header: false })).toBe(false)
+  })
+})
+
+describe('shouldShowWelcomeCopy', () => {
+  it('shows the heading and subheading unless the merchant turns the copy off', () => {
+    expect(shouldShowWelcomeCopy(null)).toBe(true)
+    expect(shouldShowWelcomeCopy({})).toBe(true)
+    expect(shouldShowWelcomeCopy({ welcome_show_copy: true })).toBe(true)
+    expect(shouldShowWelcomeCopy({ welcome_show_copy: false })).toBe(false)
+  })
+
+  it('reports no copy when the whole header is switched off', () => {
+    // The copy toggle lives inside the header, so an on-copy/off-header
+    // combination must not resurrect the heading.
+    expect(shouldShowWelcomeCopy({ welcome_show_header: false, welcome_show_copy: true })).toBe(
+      false
+    )
   })
 })

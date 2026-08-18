@@ -342,6 +342,72 @@ describe('OutletModeScreen — centred header and logo', () => {
   })
 })
 
+/**
+ * The header became switchable: a merchant can drop it entirely, or keep the
+ * centred logo and turn the copy off. Neither switch may disturb a tenant that
+ * never touched them.
+ */
+describe('OutletModeScreen — header on/off', () => {
+  it('keeps the header for a tenant that never touched the switch', () => {
+    render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={{}} />)
+    expect(screen.getByTestId('welcome-header')).toBeInTheDocument()
+    expect(screen.getByText('Welcome to Gungjeon')).toBeInTheDocument()
+  })
+
+  it('drops the whole header — logo and copy — when switched off', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        logoUrl="https://cdn.test/logo.png"
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_header: false, welcome_show_logo: true }}
+      />
+    )
+    expect(screen.queryByTestId('welcome-header')).not.toBeInTheDocument()
+    expect(screen.queryByText('Welcome to Gungjeon')).not.toBeInTheDocument()
+    expect(screen.queryByAltText('Gungjeon')).not.toBeInTheDocument()
+    // The page still works: the tiles are the point of the screen.
+    expect(screen.getByRole('button', { name: /pick.?up/i })).toBeInTheDocument()
+  })
+
+  it('keeps a centred logo-only header when the copy is switched off', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        logoUrl="https://cdn.test/logo.png"
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{
+          welcome_show_logo: true,
+          welcome_show_copy: false,
+          welcome_text_align: 'center',
+          welcome_heading_text: 'Kain na!',
+          welcome_subheading_text: 'Pick a branch',
+        }}
+      />
+    )
+    const header = screen.getByTestId('welcome-header')
+    expect(header.className).toContain('text-center')
+    expect(screen.getByAltText('Gungjeon')).toBeInTheDocument()
+    expect(screen.queryByText('Kain na!')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pick a branch')).not.toBeInTheDocument()
+  })
+
+  it('still tells the customer why they are being asked again with the copy off', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        modes={MODES}
+        onSelect={jest.fn()}
+        message="That branch is closed right now."
+        welcome={{ welcome_show_header: false }}
+      />
+    )
+    expect(screen.getByText('That branch is closed right now.')).toBeInTheDocument()
+  })
+})
+
 describe('OutletModeScreen — compact tiles', () => {
   it('keeps all three modes on a single row at every width', () => {
     render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={null} />)

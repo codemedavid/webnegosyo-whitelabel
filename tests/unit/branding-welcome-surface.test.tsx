@@ -172,4 +172,20 @@ describe('welcome header controls in the studio', () => {
     ).toBe(true)
     expect(brandingPatchSchema.safeParse({ welcome_text_align: 'justify' }).success).toBe(false)
   })
+
+  it('offers the header and copy switches as toggles', () => {
+    expect(BRANDING_FIELD_INDEX['welcome_show_header'].type).toBe('toggle')
+    expect(BRANDING_FIELD_INDEX['welcome_show_copy'].type).toBe('toggle')
+  })
+
+  it('defaults both switches on so an untouched tenant keeps its header', () => {
+    expect(BRANDING_FIELD_INDEX['welcome_show_header'].default).toBe(true)
+    expect(BRANDING_FIELD_INDEX['welcome_show_copy'].default).toBe(true)
+  })
+
+  it('accepts the switches in a branding patch', () => {
+    expect(
+      brandingPatchSchema.safeParse({ welcome_show_header: false, welcome_show_copy: false }).success
+    ).toBe(true)
+  })
 })
