@@ -110,6 +110,62 @@ describe("posStockRevision", () => {
     ]);
   });
 
+  it("treats lines that differ only by addons as different configurations", () => {
+    // An edit that swaps Extra Cheese for Bacon must move both addon recipes.
+    // If identity ignored addon ids the two lines would merge and net to
+    // zero — no ledger movement for a real ingredient swap.
+    const withCheese: PosStockItem = {
+      menuItemId: "item-pizza",
+      quantity: 1,
+      optionIds: [],
+      addonIds: ["add-cheese"],
+    };
+    const withBacon: PosStockItem = {
+      menuItemId: "item-pizza",
+      quantity: 1,
+      optionIds: [],
+      addonIds: ["add-bacon"],
+    };
+
+    const revision = posStockRevision([withCheese], [withBacon]);
+
+    expect(revision.restore).toEqual([withCheese]);
+    expect(revision.deplete).toEqual([withBacon]);
+  });
+
+  it("does not split a line because its addons were chosen in a different order", () => {
+    const before: PosStockItem = {
+      menuItemId: "item-pizza",
+      quantity: 1,
+      optionIds: [],
+      addonIds: ["add-cheese", "add-bacon"],
+    };
+    const after: PosStockItem = {
+      menuItemId: "item-pizza",
+      quantity: 1,
+      optionIds: [],
+      addonIds: ["add-bacon", "add-cheese"],
+    };
+
+    const revision = posStockRevision([before], [after]);
+
+    expect(revision.deplete).toEqual([]);
+    expect(revision.restore).toEqual([]);
+  });
+
+  it("carries addon ids through a movement so addon recipes still resolve", () => {
+    const withCheese: PosStockItem = {
+      menuItemId: "item-pizza",
+      quantity: 2,
+      optionIds: [],
+      addonIds: ["add-cheese"],
+    };
+
+    const revision = posStockRevision([], [withCheese]);
+
+    expect(revision.deplete[0].addonIds).toEqual(["add-cheese"]);
+  });
+
   it("ignores a line with no menu item rather than moving stock against nothing", () => {
     // A menu item deleted after the sale leaves nothing to resolve a recipe on.
     const orphan: PosStockItem = { menuItemId: "", quantity: 2, optionIds: [] };

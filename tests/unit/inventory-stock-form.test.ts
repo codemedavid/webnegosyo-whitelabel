@@ -183,4 +183,59 @@ describe('buildStockMovementInput — joining the open count', () => {
 
     expect(input.inventory_count_id).toBeUndefined()
   })
+
+  it('keeps a stocktake at another branch out of a count running on a different shelf', () => {
+    // The count describes ONE shelf. A North stocktake filed under the store
+    // pool's count would raise that count's coverage for a shelf nobody
+    // counted — the exact reassurance the session exists to withhold.
+    const NORTH = '44444444-4444-4444-8444-444444444444'
+    const input = buildStockMovementInput(
+      draft({ reason: 'stocktake', quantity: '900', outlet_id: NORTH }),
+      UUID_ITEM,
+      UUID_COUNT,
+      null, // the running count is on the store pool
+    )
+
+    expect(input.inventory_count_id).toBeUndefined()
+    expect(input.outlet_id).toBe(NORTH)
+  })
+
+  it('joins the count when the stocktake is on the same branch shelf', () => {
+    const NORTH = '44444444-4444-4444-8444-444444444444'
+    const input = buildStockMovementInput(
+      draft({ reason: 'stocktake', quantity: '900', outlet_id: NORTH }),
+      UUID_ITEM,
+      UUID_COUNT,
+      NORTH,
+    )
+
+    expect(input.inventory_count_id).toBe(UUID_COUNT)
+  })
+})
+
+/**
+ * Which shelf a movement lands on.
+ *
+ * The dialog used to send no branch at all, so every manual movement fell into
+ * the store pool while order depletion wrote to the order's branch — the two
+ * halves of the same ledger drifting apart on any multi-branch tenant.
+ */
+describe('buildStockMovementInput — naming the branch', () => {
+  const UUID_NORTH = '44444444-4444-4444-8444-444444444444'
+
+  it('threads the chosen branch through to the movement input', () => {
+    const input = buildStockMovementInput(draft({ outlet_id: UUID_NORTH }), UUID_ITEM)
+
+    expect(input.outlet_id).toBe(UUID_NORTH)
+  })
+
+  it('sends an explicit store pool when no branch is chosen — the behaviour every tenant has today', () => {
+    const input = buildStockMovementInput(draft({}), UUID_ITEM)
+
+    expect(input.outlet_id).toBeNull()
+  })
+
+  it('starts the empty draft on the store pool', () => {
+    expect(EMPTY_STOCK_DRAFT.outlet_id).toBeNull()
+  })
 })

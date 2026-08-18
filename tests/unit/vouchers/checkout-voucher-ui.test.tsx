@@ -409,8 +409,11 @@ describe('what leaves the browser', () => {
 
     await waitFor(() => expect(createOrderAction).toHaveBeenCalled())
 
+    // By identity, not by position: the codes used to be the last argument
+    // until the per-attempt client order id was appended after them, and what
+    // matters is that the CODES travel — not where in the list they sit.
     const args = createOrderAction.mock.calls[0]
-    expect(args[args.length - 1]).toEqual(['SAVE100'])
+    expect(args).toContainEqual(['SAVE100'])
 
     // No argument anywhere in the call carries the computed 100.
     const serialised = JSON.stringify(args)

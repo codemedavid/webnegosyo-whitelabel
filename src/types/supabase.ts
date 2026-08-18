@@ -653,11 +653,13 @@ export type Database = {
           average_order_value: number | null
           channels_used: string[]
           created_at: string
+          created_source: string
           email: string | null
           first_order_at: string | null
           id: string
           last_order_at: string | null
           name: string | null
+          notes: string | null
           order_count: number
           phone_e164: string | null
           sms_consent: boolean
@@ -673,11 +675,13 @@ export type Database = {
           average_order_value?: number | null
           channels_used?: string[]
           created_at?: string
+          created_source?: string
           email?: string | null
           first_order_at?: string | null
           id?: string
           last_order_at?: string | null
           name?: string | null
+          notes?: string | null
           order_count?: number
           phone_e164?: string | null
           sms_consent?: boolean
@@ -693,11 +697,13 @@ export type Database = {
           average_order_value?: number | null
           channels_used?: string[]
           created_at?: string
+          created_source?: string
           email?: string | null
           first_order_at?: string | null
           id?: string
           last_order_at?: string | null
           name?: string | null
+          notes?: string | null
           order_count?: number
           phone_e164?: string | null
           sms_consent?: boolean
@@ -1155,6 +1161,66 @@ export type Database = {
           {
             foreignKeyName: "leads_converted_tenant_id_fkey"
             columns: ["converted_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyverse_item_map: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          last_synced_at: string
+          local_key: string
+          loyverse_item_id: string | null
+          loyverse_modifier_id: string | null
+          loyverse_modifier_option_id: string | null
+          loyverse_sku: string | null
+          loyverse_variant_id: string | null
+          menu_item_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          last_synced_at?: string
+          local_key?: string
+          loyverse_item_id?: string | null
+          loyverse_modifier_id?: string | null
+          loyverse_modifier_option_id?: string | null
+          loyverse_sku?: string | null
+          loyverse_variant_id?: string | null
+          menu_item_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          last_synced_at?: string
+          local_key?: string
+          loyverse_item_id?: string | null
+          loyverse_modifier_id?: string | null
+          loyverse_modifier_option_id?: string | null
+          loyverse_sku?: string | null
+          loyverse_variant_id?: string | null
+          menu_item_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyverse_item_map_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyverse_item_map_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
@@ -1669,6 +1735,32 @@ export type Database = {
           },
         ]
       }
+      order_push_notifications: {
+        Row: {
+          created_at: string
+          order_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_push_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_revisions: {
         Row: {
           created_at: string
@@ -1783,6 +1875,7 @@ export type Database = {
           id: string
           is_enabled: boolean
           messenger_enabled: boolean
+          minimum_order_amount: number
           name: string
           note: string | null
           order_index: number
@@ -1804,6 +1897,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean
           messenger_enabled?: boolean
+          minimum_order_amount?: number
           name: string
           note?: string | null
           order_index?: number
@@ -1825,6 +1919,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean
           messenger_enabled?: boolean
+          minimum_order_amount?: number
           name?: string
           note?: string | null
           order_index?: number
@@ -1870,6 +1965,10 @@ export type Database = {
           lalamove_quotation_id: string | null
           lalamove_status: string | null
           lalamove_tracking_url: string | null
+          loyverse_push_error: string | null
+          loyverse_push_status: string | null
+          loyverse_pushed_at: string | null
+          loyverse_receipt_number: string | null
           order_token_expires_at: string | null
           order_token_hash: string | null
           order_type: string | null
@@ -1917,6 +2016,10 @@ export type Database = {
           lalamove_quotation_id?: string | null
           lalamove_status?: string | null
           lalamove_tracking_url?: string | null
+          loyverse_push_error?: string | null
+          loyverse_push_status?: string | null
+          loyverse_pushed_at?: string | null
+          loyverse_receipt_number?: string | null
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
@@ -1964,6 +2067,10 @@ export type Database = {
           lalamove_quotation_id?: string | null
           lalamove_status?: string | null
           lalamove_tracking_url?: string | null
+          loyverse_push_error?: string | null
+          loyverse_push_status?: string | null
+          loyverse_pushed_at?: string | null
+          loyverse_receipt_number?: string | null
           order_token_expires_at?: string | null
           order_token_hash?: string | null
           order_type?: string | null
@@ -2860,6 +2967,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          outlet_id: string | null
           platform: string
           tenant_id: string
           token: string
@@ -2869,6 +2977,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          outlet_id?: string | null
           platform: string
           tenant_id: string
           token: string
@@ -2878,6 +2987,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          outlet_id?: string | null
           platform?: string
           tenant_id?: string
           token?: string
@@ -2885,6 +2995,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "push_tokens_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "push_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3841,6 +3958,12 @@ export type Database = {
           link_color: string | null
           logo_url: string
           low_stock_alerts_enabled: boolean
+          loyverse_access_token: string | null
+          loyverse_enabled: boolean
+          loyverse_last_synced_at: string | null
+          loyverse_payment_type_id: string | null
+          loyverse_push_mode: string
+          loyverse_store_id: string | null
           mapbox_enabled: boolean | null
           max_outlets: number
           max_staff_per_branch: number
@@ -3875,6 +3998,7 @@ export type Database = {
           outlet_selection_timing: string
           page_layout: string | null
           pairing_rules_enabled: boolean | null
+          pickup_scan_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
@@ -4079,6 +4203,12 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           low_stock_alerts_enabled?: boolean
+          loyverse_access_token?: string | null
+          loyverse_enabled?: boolean
+          loyverse_last_synced_at?: string | null
+          loyverse_payment_type_id?: string | null
+          loyverse_push_mode?: string
+          loyverse_store_id?: string | null
           mapbox_enabled?: boolean | null
           max_outlets?: number
           max_staff_per_branch?: number
@@ -4113,6 +4243,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          pickup_scan_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -4317,6 +4448,12 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           low_stock_alerts_enabled?: boolean
+          loyverse_access_token?: string | null
+          loyverse_enabled?: boolean
+          loyverse_last_synced_at?: string | null
+          loyverse_payment_type_id?: string | null
+          loyverse_push_mode?: string
+          loyverse_store_id?: string | null
           mapbox_enabled?: boolean | null
           max_outlets?: number
           max_staff_per_branch?: number
@@ -4351,6 +4488,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          pickup_scan_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null

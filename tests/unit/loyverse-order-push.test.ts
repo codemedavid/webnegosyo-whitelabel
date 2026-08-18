@@ -113,13 +113,18 @@ describe('buildLoyverseReceipt', () => {
     expect(receipt.note).toMatch(/Local-only special/)
   })
 
-  it('omits payments when no payment type is configured', () => {
+  // Loyverse rejects a receipt without `payments` outright:
+  //   MISSING_REQUIRED_PARAMETER "Field must be set" field=object.payments
+  // Every receipt this builder produces is POSTed, so every receipt must carry
+  // one. Config resolution is what guarantees a payment type exists — see
+  // loyverse-config.test.ts.
+  it('always carries a payments line, because Loyverse requires the field', () => {
     const { receipt } = buildLoyverseReceipt(
-      { ...config, paymentTypeId: null },
+      config,
       { orderNumber: '#46', items: [orderItem()] },
       simpleCatalog
     )
-    expect(receipt.payments).toBeUndefined()
+    expect(receipt.payments).toEqual([{ payment_type_id: 'pay_1' }])
   })
 
   it('carries special instructions as a line note', () => {

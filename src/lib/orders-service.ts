@@ -22,6 +22,12 @@ import {
 } from '@/lib/order-stats'
 import type { Order } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
+import {
+  buildOrderParityColumns,
+  buildOrderItemParityColumns,
+  isDuplicateClientOrderId,
+} from '@/lib/order-parity'
+import type { OrderDiscountPayload } from '@/lib/order-discount'
 
 export interface OrderWithItems extends Order {
   order_items: Array<{
@@ -191,6 +197,24 @@ async function restoreStockForCancelledOrder(
   await reverseOrderStockBestEffort(tenantId, orderId)
 }
 
+/**
+ * The mirror of the restore above: an order leaving 'cancelled' for an active
+ * status spends its ingredients again.
+ *
+ * Without this, un-cancelling lost the deduction forever — the cancel had
+ * restored the stock and burned both revision-0 claims, so no later path could
+ * move stock for the order. The service re-depletes at a fresh revision (see
+ * `redepleteOrderStockBestEffort`), keeping a second cancellation symmetric.
+ * Best-effort, like every order-driven stock write.
+ */
+async function redepleteStockForUncancelledOrder(
+  orderId: string,
+  tenantId: string,
+): Promise<void> {
+  const { redepleteOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+  await redepleteOrderStockBestEffort(tenantId, orderId)
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
@@ -231,6 +255,13 @@ export async function updateOrderStatus(
   const previousStatus = (existingOrder as unknown as Order | null)?.status
   if (status === 'cancelled' && previousStatus !== 'cancelled') {
     await restoreStockForCancelledOrder(orderId, tenantId)
+  }
+
+  // And the reverse flip: leaving 'cancelled' for any active status deducts
+  // the order's ingredients again. Guarded on the KNOWN previous status — a
+  // missing pre-read must not be read as "was cancelled".
+  if (previousStatus === 'cancelled' && status !== 'cancelled') {
+    await redepleteStockForUncancelledOrder(orderId, tenantId)
   }
 
   // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
@@ -361,6 +392,11 @@ export async function createOrder(
     price: number
     subtotal: number
     special_instructions?: string
+    isUpsellItem?: boolean
+    isBundleItem?: boolean
+    bundleId?: string
+    bundleName?: string
+    slotName?: string
   }>,
   customerInfo?: {
     name?: string
@@ -391,7 +427,16 @@ export async function createOrder(
    * Discount lines already priced by the server from voucher CODES — see
    * `src/lib/vouchers/order-pricing.ts`. Never a client-supplied amount.
    */
-  discounts?: readonly OrderDiscountLine[]
+  discounts?: readonly OrderDiscountLine[],
+  /**
+   * Convex-parity extras: the checkout-generated id a retried submit dedupes
+   * on, and the discount breakdown for the reporting columns. Optional so the
+   * older callers (webhooks, scripts) keep their exact behavior.
+   */
+  parityOptions?: {
+    clientOrderId?: string | null
+    discountPayload?: OrderDiscountPayload | null
+  }
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
   if (!Array.isArray(items) || items.length === 0) {
@@ -591,12 +636,41 @@ export async function createOrder(
       // Spread rather than `outlet_id: outletId ?? null` so a single-location
       // tenant's INSERT is character-for-character the statement it is today.
       ...(outletId ? { outlet_id: outletId } : {}),
+      ...buildOrderParityColumns(items, parityOptions ?? {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
     .single()
 
-  if (orderError) throw orderError
+  if (orderError) {
+    // A retried submit that already landed: return the row the first attempt
+    // wrote instead of failing (or worse, double-charging). Read through the
+    // service role — checkout runs anonymous and RLS hides order rows from it.
+    if (isDuplicateClientOrderId(orderError, parityOptions?.clientOrderId)) {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { data: existing } = await createAdminClient()
+        .from('orders')
+        .select()
+        .eq('tenant_id', tenantId)
+        .eq('client_order_id', parityOptions!.clientOrderId!.trim())
+        .maybeSingle()
+      if (existing) {
+        let dedupedToken: string | undefined
+        try {
+          const { createOrderToken } = await import('@/lib/order-token')
+          dedupedToken = await createOrderToken((existing as { id: string }).id)
+        } catch {
+          // The order exists either way; the caller tolerates a missing token.
+        }
+        return {
+          order: existing as unknown as Order,
+          orderToken: dedupedToken,
+          deduped: true as const,
+        }
+      }
+    }
+    throw orderError
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderData = order as any
@@ -612,6 +686,7 @@ export async function createOrder(
     price: item.price,
     subtotal: item.subtotal,
     special_instructions: item.special_instructions,
+    ...buildOrderItemParityColumns(item),
   }))
 
   const { error: itemsError } = await supabase

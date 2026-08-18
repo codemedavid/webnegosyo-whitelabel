@@ -29,7 +29,14 @@ const ORDER = 'order-1'
  * read-then-write in application code — the thing that says no.
  */
 function stubClaim(alreadyApplied: boolean, onInsert?: (row: Record<string, unknown>) => void) {
+  // A winning sale claim is followed by a claims listing (the cancel-wins
+  // guard); no void claim exists here, so the sale proceeds.
+  const claimChain = {
+    eq: () => claimChain,
+    then: (resolve: (r: unknown) => unknown) => resolve({ data: [], error: null }),
+  }
   return {
+    select: () => claimChain,
     insert: (row: Record<string, unknown>) => {
       onInsert?.(row)
       return Promise.resolve({

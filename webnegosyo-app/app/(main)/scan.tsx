@@ -19,6 +19,7 @@ import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
@@ -97,6 +98,8 @@ const VERIFY_ERROR_MESSAGE: Record<PickupVerifyError, string> = {
 const BLOCK_MESSAGE: Record<PickupBlockReason, string> = {
   wrong_tenant: "This code belongs to a different store.",
   cancelled: "This order was cancelled. Do not hand it over.",
+  scan_disabled:
+    "Scan to collect is turned off for this store. Hand the order over as usual, or switch it back on in Settings.",
 };
 
 const WARNING_MESSAGE: Record<PickupWarning, string> = {
@@ -141,6 +144,8 @@ function round2(n: number): number {
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
   const tenantId = useAuthStore((s) => s.tenantId);
   const outletId = useAuthStore((s) => s.outletId);
   const outletName = useAuthStore((s) => s.outletName);
@@ -298,8 +303,8 @@ export default function ScanScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-    if (!convexUrl) {
-      Alert.alert("Not connected", "Convex is not configured for this tenant.");
+    if (!hasBackend) {
+      Alert.alert("Not connected", "This store's order backend is not configured yet.");
       return;
     }
 
@@ -377,7 +382,7 @@ export default function ScanScreen() {
       Alert.alert("Could not accept order", staleBackendMessage(e), [{ text: "OK" }]);
       setIsAccepting(false);
     }
-  }, [state, isAccepting, convexUrl, createOrder, tenantId, outletId, outletName]);
+  }, [state, isAccepting, hasBackend, createOrder, tenantId, outletId, outletName]);
 
   const handleConfirmPickup = useCallback(async () => {
     if (state.mode !== "pickup-confirm" || isAccepting) return;

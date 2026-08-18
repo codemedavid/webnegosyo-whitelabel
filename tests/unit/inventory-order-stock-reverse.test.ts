@@ -42,7 +42,15 @@ jest.mock('@/lib/inventory/stock-alerts-service', () => ({
 function stubLedger(saleRows: unknown[], captured: unknown[][], alreadyRestored = false) {
   return (table: string) => {
     if (table === 'order_stock_applications') {
+      // The reverse now lists the order's claims first, to pick the void
+      // revision that pairs with the latest sale.
+      const claimChain = {
+        eq: () => claimChain,
+        then: (resolve: (r: unknown) => unknown) =>
+          resolve({ data: [{ reason: 'sale', revision: 0 }], error: null }),
+      }
       return {
+        select: () => claimChain,
         insert: () =>
           Promise.resolve({
             data: null,

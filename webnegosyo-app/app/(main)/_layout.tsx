@@ -240,6 +240,10 @@ export default function MainLayout() {
         options={{ href: null, title: "Product" }}
       />
       <Tabs.Screen
+        name="product/recipe/[productId]"
+        options={{ href: null, title: "Recipe" }}
+      />
+      <Tabs.Screen
         name="payment/[methodId]"
         options={{ href: null, title: "Payment Method" }}
       />

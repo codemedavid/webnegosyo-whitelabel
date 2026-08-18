@@ -350,6 +350,16 @@ export default function CheckoutScreen() {
         const convexResult = await convexResponse.json()
         if (convexResult.status === 'success') {
           orderId = convexResult.value
+
+          // Spend the ingredients. Same call and same trust boundary as the
+          // Supabase branch below: no lines are sent — the platform reads the
+          // order's items back out of this tenant's Convex deployment
+          // server-side. The Convex id passes through as-is; the ledger's
+          // order_id is TEXT so it fits. Never throws, so a stock hiccup can
+          // never make a placed order look failed.
+          if (orderId) {
+            await notifyCustomerOrderStock(tenant.id, orderId)
+          }
         } else {
           console.warn('Convex order creation failed, proceeding to Messenger...', convexResult)
         }

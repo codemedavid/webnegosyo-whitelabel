@@ -76,6 +76,8 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems: store
   const isFlashPreview = previewDraft?.__previewSurface === 'flash'
   // Branding Studio "Cart" surface previews the real drawer over the menu.
   const isCartPreview = previewDraft?.__previewSurface === 'cart'
+  // Branding Studio "Welcome Page" surface forces the branch gate open.
+  const isWelcomePreview = previewDraft?.__previewSurface === 'welcome'
   const router = useRouter()
   const { addItem, item_count, setTenantContext } = useCart()
 
@@ -366,7 +368,7 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems: store
 
   return (
     <>
-    <OutletGate tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} />
+    <OutletGate tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} isPreview={isWelcomePreview} />
     <div
       ref={rootRef}
       data-branding-scope="global/palette"

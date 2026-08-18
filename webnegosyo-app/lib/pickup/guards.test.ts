@@ -103,6 +103,60 @@ describe("evaluatePickupTicket", () => {
     expect(result.reason).toBe("wrong_tenant");
   });
 
+  it("blocks a ticket when the store has turned scan-to-collect off", () => {
+    // The code was printed while the feature was on and still decodes. The
+    // switch is only real if a genuine, in-date ticket stops working.
+    const result = evaluatePickupTicket({
+      scannedTenantId: "tenant-abc",
+      sessionTenantId: "tenant-abc",
+      order: { ...order, scanEnabled: false },
+    });
+
+    expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
+    expect(result.reason).toBe("scan_disabled");
+  });
+
+  it("treats an absent scan setting as enabled", () => {
+    // An older web deploy omits the field entirely. Absence is not a refusal —
+    // it must keep behaving exactly as it does today.
+    const result = evaluatePickupTicket({
+      scannedTenantId: "tenant-abc",
+      sessionTenantId: "tenant-abc",
+      order: { ...order, scanEnabled: undefined },
+    });
+
+    expect(result.decision).toBe("confirm");
+  });
+
+  it("checks the store before the scan setting", () => {
+    // Same rule as the status check: a foreign ticket reveals nothing about
+    // the store that issued it, not even whether that store still scans.
+    const result = evaluatePickupTicket({
+      scannedTenantId: "tenant-other",
+      sessionTenantId: "tenant-abc",
+      order: { ...order, scanEnabled: false },
+    });
+
+    expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
+    expect(result.reason).toBe("wrong_tenant");
+  });
+
+  it("reports the disabled store rather than the order's own state", () => {
+    // scan_disabled is a store-level refusal, like the tenant check: once the
+    // store is not scanning, nothing about the ticket's status is relevant.
+    const result = evaluatePickupTicket({
+      scannedTenantId: "tenant-abc",
+      sessionTenantId: "tenant-abc",
+      order: { ...order, status: "delivered", scanEnabled: false },
+    });
+
+    expect(result.decision).toBe("block");
+    if (result.decision !== "block") return;
+    expect(result.reason).toBe("scan_disabled");
+  });
+
   it("blocks when the session has no store in scope", () => {
     // A superadmin who has not entered a store cannot release anyone's order.
     const result = evaluatePickupTicket({

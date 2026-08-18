@@ -9,6 +9,7 @@ import type { OrderType } from '@/types/database'
 import { OutletSplash } from '@/components/customer/outlet-splash'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { shouldGateMenuForOutlet } from '@/lib/outlets/selection-timing'
+import { rankOutlets } from '@/lib/outlets/nearest-outlet'
 import type { SelectableOutlet } from '@/lib/outlets/outlet-selection'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { Outlet, Tenant } from '@/types/database'
@@ -19,12 +20,20 @@ import type { Outlet, Tenant } from '@/types/database'
  * full `Outlet` records straight from the query — so the cast re-widens them to
  * what the picker renders rather than converting anything.
  */
-type OutletSplashRankFor = (mode: OutletOrderMode) => { outlets: RankedOutlet<PickerOutlet>[] }
+type OutletSplashRankFor = (
+  mode: OutletOrderMode | null
+) => { outlets: RankedOutlet<PickerOutlet>[] }
 
 interface OutletGateProps {
   tenant: Tenant | null
   tenantSlug: string
   outlets: Outlet[]
+  /**
+   * Branding Studio "Welcome Page" surface: force the splash open with inert
+   * handlers so the editor always sees the page — a remembered branch, a
+   * single-location tenant or the 'after' timing would otherwise hide it.
+   */
+  isPreview?: boolean
 }
 
 /**
@@ -36,13 +45,41 @@ interface OutletGateProps {
  * one that moved the question to checkout gets exactly today's storefront. The
  * menu itself is untouched; this sits over it and then gets out of the way.
  */
-export function OutletGate({ tenant, tenantSlug, outlets }: OutletGateProps) {
+export function OutletGate({ tenant, tenantSlug, outlets, isPreview }: OutletGateProps) {
+  if (isPreview) return <OutletGatePreview tenant={tenant} outlets={outlets} />
   if (!shouldGateMenuForOutlet(tenant, outlets)) return null
 
   return (
     <Suspense fallback={null}>
       <OutletGateInner tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} />
     </Suspense>
+  )
+}
+
+/**
+ * Studio preview: the real splash with real outlets but nothing persisted —
+ * selecting a branch or locating does nothing, ranking is manual order only.
+ */
+function OutletGatePreview({ tenant, outlets }: { tenant: Tenant | null; outlets: Outlet[] }) {
+  return (
+    <OutletSplash
+      tenantName={tenant?.name ?? ''}
+      tenant={tenant}
+      logoUrl={tenant?.logo_url ?? null}
+      promoImageUrl={tenant?.flash_screen_image_url ?? null}
+      promoHeadline={tenant?.flash_screen_title ?? null}
+      outlets={outlets as unknown as PickerOutlet[]}
+      reason={null}
+      isLocating={false}
+      onLocate={() => {}}
+      rankFor={((mode: OutletOrderMode | null) =>
+        rankOutlets(outlets as unknown as PickerOutlet[], {
+          mode,
+          origin: null,
+        })) as unknown as OutletSplashRankFor}
+      onSelect={() => {}}
+      welcome={tenant}
+    />
   )
 }
 
@@ -81,12 +118,13 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
   /**
    * Record the branch, then carry the mode forward as the order type so
    * checkout does not ask the same question twice. No match simply leaves the
-   * order type unset, which is today's behaviour.
+   * order type unset, which is today's behaviour — as does a mode-less
+   * selection from the welcome page's single CTA, where checkout asks.
    */
   const handleSelect = useCallback(
-    (outletId: string, mode: OutletOrderMode) => {
+    (outletId: string, mode: OutletOrderMode | null) => {
       selection.select(outletId, mode)
-      const orderTypeId = resolveOrderTypeIdForMode(orderTypes, mode)
+      const orderTypeId = mode ? resolveOrderTypeIdForMode(orderTypes, mode) : null
       if (orderTypeId) setOrderType(orderTypeId)
     },
     [selection, orderTypes, setOrderType]
@@ -97,6 +135,8 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
   return (
     <OutletSplash
       tenantName={tenant?.name ?? ''}
+      tenant={tenant}
+      logoUrl={tenant?.logo_url ?? null}
       promoImageUrl={tenant?.flash_screen_image_url ?? null}
       promoHeadline={tenant?.flash_screen_title ?? null}
       outlets={selection.choices as unknown as PickerOutlet[]}
@@ -105,6 +145,7 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
       onLocate={selection.locate}
       rankFor={selection.rankFor as unknown as OutletSplashRankFor}
       onSelect={handleSelect}
+      welcome={tenant}
     />
   )
 }

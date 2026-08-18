@@ -207,7 +207,15 @@ export async function createOrderAction(
    * way the delivery fee and the outlet id are re-validated rather than
    * trusted. A client-supplied amount would let anyone check out for nothing.
    */
-  voucherCodes?: string[]
+  voucherCodes?: string[],
+  /**
+   * One id per checkout attempt, minted by the client. A retry of the SAME
+   * attempt (flaky network, double tap) reuses it, so the insert's unique
+   * index turns the second write into a lookup of the first order instead of
+   * a duplicate sale. A fresh attempt mints a fresh id, so a customer who
+   * genuinely orders twice still gets two orders.
+   */
+  clientOrderId?: string
 ) {
   try {
     // Basic input sanity checks before hitting the database
@@ -703,8 +711,20 @@ export async function createOrderAction(
       // Only the platform database has an outlet_id column; the other two
       // backends carry the branch in customer_data (stamped above).
       resolvedOutlet?.id ?? null,
-      pricing.application.discountLines
+      pricing.application.discountLines,
+      {
+        clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
+        discountPayload: pricing.discountPayload,
+      }
     )
+    if (result.deduped) {
+      // The first attempt already burned vouchers, depleted stock, and pushed
+      // notifications for this exact order — running them again is the
+      // double-spend the dedupe exists to prevent.
+      let dedupedTrackingToken: string | undefined
+      try { dedupedTrackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: dedupedTrackingToken }
+    }
     await burnFor(result.order.id)
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)

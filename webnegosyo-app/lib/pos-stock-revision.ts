@@ -37,7 +37,12 @@ export interface PosStockRevision {
  * spent.
  */
 function configurationKey(item: PosStockItem): string {
-  return `${item.menuItemId}|${item.optionIds.slice().sort().join(",")}`;
+  const options = item.optionIds.slice().sort().join(",");
+  // Addons are part of what a configuration spends: two pizzas that differ
+  // only by Extra Cheese must not merge, or an addon swap nets to zero and
+  // moves no stock at all.
+  const addons = (item.addonIds ?? []).slice().sort().join(",");
+  return `${item.menuItemId}|${options}|${addons}`;
 }
 
 /** Units per configuration, collapsing lines that spend the same ingredients. */
@@ -96,6 +101,9 @@ export function posStockRevision(
       menuItemId: shape.menuItemId,
       quantity: Math.abs(delta),
       optionIds: [...shape.optionIds],
+      // Only emitted when the source carried them, so movements built from
+      // pre-addon items keep their exact old shape.
+      ...(shape.addonIds ? { addonIds: [...shape.addonIds] } : {}),
     };
 
     if (delta > 0) deplete.push(movement);

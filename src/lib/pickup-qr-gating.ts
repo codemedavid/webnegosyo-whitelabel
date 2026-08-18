@@ -61,9 +61,24 @@ function toOrderTypeKind(value: string | null): OrderTypeKind | null {
   return ORDER_TYPE_KINDS.find(kind => kind === normalized) ?? null
 }
 
+/**
+ * Read `tenants.pickup_scan_enabled` into a decision.
+ *
+ * The column is `NOT NULL DEFAULT true`, so the only ways to see a non-boolean
+ * here are an unapplied migration, an older payload, or a caller that never
+ * looked it up. None of those mean a merchant switched the feature off, and
+ * reading them as "off" would silently disable scan-to-collect for every store
+ * on any deploy skew. Absence is enabled; only an explicit false is off.
+ */
+export function isPickupScanEnabled(value: boolean | null | undefined): boolean {
+  return value !== false
+}
+
 interface PickupQrVisibility {
   kind: OrderTypeKind | null
   status: string
+  /** The store's `pickup_scan_enabled`, already read through isPickupScanEnabled. */
+  isScanEnabled: boolean
 }
 
 /**
@@ -72,8 +87,17 @@ interface PickupQrVisibility {
  * Shown for pickup orders that are still in flight — early enough that the
  * customer is not hunting for it at the counter, and gone once the order is
  * delivered or cancelled. Fails closed on an unresolved kind.
+ *
+ * The store's switch outranks the order: a merchant who turns scanning off
+ * must stop handing out codes on orders that are already in the kitchen, not
+ * only on the next one.
  */
-export function shouldShowPickupQr({ kind, status }: PickupQrVisibility): boolean {
+export function shouldShowPickupQr({
+  kind,
+  status,
+  isScanEnabled,
+}: PickupQrVisibility): boolean {
+  if (!isScanEnabled) return false
   if (kind !== 'pickup') return false
   return !TERMINAL_STATUSES.includes(status)
 }

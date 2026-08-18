@@ -69,11 +69,22 @@ describe('resolveLoyverseConfig', () => {
     })
   })
 
-  it('does not require a payment type — receipts can be pushed unpaid', () => {
+  // Loyverse rejects every receipt that arrives without `payments`:
+  //   MISSING_REQUIRED_PARAMETER "Field must be set" field=object.payments
+  // A tenant left without a payment type is therefore not "ready to push
+  // unpaid" — it is a tenant whose every push 400s forever, silently. Reporting
+  // it as incomplete surfaces the gap on the superadmin card, which already has
+  // a payment-type picker fed by the test-connection call.
+  it('requires a payment type, because Loyverse rejects a receipt without one', () => {
     const result = resolveLoyverseConfig({ ...readyTenant, loyverse_payment_type_id: null })
-    expect(result.status).toBe('ready')
-    if (result.status === 'ready') {
-      expect(result.config.paymentTypeId).toBeNull()
+    expect(result.status).toBe('incomplete')
+    if (result.status === 'incomplete') {
+      expect(result.missing).toEqual(['loyverse_payment_type_id'])
     }
+  })
+
+  it('treats a blank payment type as missing, like the other credentials', () => {
+    const result = resolveLoyverseConfig({ ...readyTenant, loyverse_payment_type_id: '   ' })
+    expect(result.status).toBe('incomplete')
   })
 })

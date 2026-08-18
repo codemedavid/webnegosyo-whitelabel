@@ -216,6 +216,28 @@ export async function getOpenCount(
   return findOpenCount(supabase, tenantId, outletId)
 }
 
+/**
+ * The count running ANYWHERE in this store right now, if any.
+ *
+ * A store-wide admin can now start a count on a branch shelf, so a read pinned
+ * to one shelf would report "no count running" while one is — and offer to
+ * start a second. Oldest first, so two shelves counting at once shows the one
+ * that has been waiting longest; the panel names whose shelf it is either way.
+ */
+export async function getAnyOpenCount(tenantId: string): Promise<CountSessionRecord | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('inventory_counts')
+    .select('id, tenant_id, outlet_id, business_day, status, expected_item_count, closed_at')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data ? toRecord(data as unknown as CountRow) : null
+}
+
 /** Every ingredient counted under a session, duplicates included. */
 async function loadCountedItemIds(
   supabase: CountClient,

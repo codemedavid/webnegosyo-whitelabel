@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } 
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { filterQueueToScope, deriveStatsForScope, type StatOrderLike } from "../../lib/branch-dashboard";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
@@ -122,7 +123,9 @@ export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
   const isDemo = useAuthStore((s) => s.isDemo);
+  const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
   const { isConnected, loadSaved } = usePrinterStore();
 
   const [period, setPeriod] = useState("today");
@@ -179,7 +182,7 @@ export default function DashboardScreen() {
 
   const error = statsError || queueError;
 
-  if (!convexUrl || error) {
+  if (!hasBackend || error) {
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
@@ -190,7 +193,7 @@ export default function DashboardScreen() {
           <HeaderActions isConnected={isConnected} />
         </View>
         <ErrorState
-          message={error ?? "Convex is not configured for this tenant. Please contact support."}
+          message={error ?? "This store's order backend is not configured yet. Please contact support."}
           onRetry={() => goTo(router, "/(main)/dashboard")}
         />
       </View>

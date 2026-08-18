@@ -7,6 +7,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
 import { selectShiftSales, summarizeCounterSales, type CounterSale } from "../../lib/pos-sales";
 import { canConfirmFromDrawer, selectDrawerIncoming } from "../../lib/drawer-intake";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { type IncomingOrder, type RealtimeQueue } from "../../lib/pos-incoming";
 import { describeIncomingOrder } from "../../lib/pos-incoming";
 import { useBranchScope } from "../../lib/use-branch-scope";
@@ -107,7 +108,7 @@ export default function PosSalesScreen() {
     }
   };
 
-  if (!convexUrl) {
+  if (!hasLiveOrderBackend({ convexUrl, orderBackend })) {
     return (
       <View style={styles.center}>
         <EmptyState message="POS is not available yet — this store's order backend is not configured." />

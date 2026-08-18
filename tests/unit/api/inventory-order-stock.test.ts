@@ -24,6 +24,7 @@ jest.mock('@supabase/supabase-js', () => ({
 jest.mock('@/lib/inventory/order-stock-service', () => ({
   applyOrderStockBestEffort: jest.fn(),
   reverseOrderStockBestEffort: jest.fn(),
+  applyOrderRevisionStockBestEffort: jest.fn(),
 }))
 
 const VALID_BODY = {
@@ -165,6 +166,65 @@ describe('POST /api/inventory/order-stock', () => {
     expect(applyMock).not.toHaveBeenCalled()
   })
 
+  test('carries the register-s addon ids through to the depletion resolver', async () => {
+    // The defect: this route hardcoded `addonIds: []`, so a counter sale never
+    // depleted an addon recipe even when the register named the addons. The
+    // web checkout path (actions/orders.ts) already carries them.
+    const body = {
+      ...VALID_BODY,
+      items: [
+        {
+          menuItemId: 'm-pizza',
+          quantity: 1,
+          optionIds: ['o-large'],
+          addonIds: ['add-cheese'],
+        },
+      ],
+    }
+
+    const { POST } = await import('@/app/api/inventory/order-stock/route')
+    const res = await POST(makeRequest(body, 'Bearer token-1'))
+
+    expect(res.status).toBe(200)
+    expect(applyMock).toHaveBeenCalledWith(
+      't1',
+      VALID_BODY.orderId,
+      [
+        {
+          menuItemId: 'm-pizza',
+          quantity: 1,
+          optionIds: ['o-large'],
+          modifierOptionIds: ['o-large'],
+          addonIds: ['add-cheese'],
+        },
+      ],
+      'sale',
+      0,
+      null,
+    )
+  })
+
+  test('drops non-string addon ids rather than passing garbage to the resolver', async () => {
+    const body = {
+      ...VALID_BODY,
+      items: [
+        { menuItemId: 'm-pizza', quantity: 1, optionIds: [], addonIds: ['add-cheese', 42, null] },
+      ],
+    }
+
+    const { POST } = await import('@/app/api/inventory/order-stock/route')
+    await POST(makeRequest(body, 'Bearer token-1'))
+
+    expect(applyMock).toHaveBeenCalledWith(
+      't1',
+      VALID_BODY.orderId,
+      [expect.objectContaining({ addonIds: ['add-cheese'] })],
+      'sale',
+      0,
+      null,
+    )
+  })
+
   test('rejects a body whose items are not a list', async () => {
     const { POST } = await import('@/app/api/inventory/order-stock/route')
     const res = await POST(
@@ -235,6 +295,41 @@ describe('POST /api/inventory/order-stock', () => {
       expect(res.status).toBe(200)
       expect(applyMock).toHaveBeenCalled()
       expect(reverseMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('revise action', () => {
+    test('carries addon ids through both directions of a saved edit', async () => {
+      // Revise funnels through the same item mapper as deplete, so dropping
+      // addon ids here would make an edit that swaps addons move nothing.
+      const body = {
+        tenantId: 't1',
+        orderId: 'jh7dm2p8qr3n5x9',
+        action: 'revise',
+        revision: 1,
+        deplete: [
+          { menuItemId: 'm-pizza', quantity: 1, optionIds: [], addonIds: ['add-bacon'] },
+        ],
+        restore: [
+          { menuItemId: 'm-pizza', quantity: 1, optionIds: [], addonIds: ['add-cheese'] },
+        ],
+      }
+
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const service = await import('@/lib/inventory/order-stock-service')
+      const reviseMock = service.applyOrderRevisionStockBestEffort as unknown as jest.Mock
+
+      const res = await POST(makeRequest(body, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(reviseMock).toHaveBeenCalledWith(
+        't1',
+        'jh7dm2p8qr3n5x9',
+        1,
+        [expect.objectContaining({ addonIds: ['add-bacon'] })],
+        [expect.objectContaining({ addonIds: ['add-cheese'] })],
+        null,
+      )
     })
   })
 

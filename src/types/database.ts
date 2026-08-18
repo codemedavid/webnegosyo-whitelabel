@@ -1,7 +1,9 @@
 // Database Types for Smart Restaurant Menu System
 // Re-export the auto-generated Database type used by Supabase client
 import type { Database as SupabaseDatabase } from './supabase'
+import type { WelcomeBanner } from '@/lib/outlets/welcome-page'
 export type { Database } from './supabase'
+export type { WelcomeBanner } from '@/lib/outlets/welcome-page'
 
 export type BcgClassification = 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified';
 
@@ -211,6 +213,27 @@ export interface Tenant {
   // 'after' (at checkout). Missing/null/unknown = 'before'; see
   // src/lib/outlets/selection-timing.ts (single source of truth).
   outlet_selection_timing?: string | null;
+  // Multi-branch welcome page (starter screen before the storefront).
+  // Missing/null/unknown = today's screen; see src/lib/outlets/welcome-page.ts
+  // (single source of truth for entry mode, banners and theme).
+  welcome_entry_mode?: string | null;
+  welcome_show_order_types?: boolean | null;
+  welcome_cta_text?: string | null;
+  welcome_heading_text?: string | null;
+  welcome_subheading_text?: string | null;
+  welcome_text_align?: string | null;
+  welcome_show_logo?: boolean | null;
+  welcome_show_header?: boolean | null;
+  welcome_show_copy?: boolean | null;
+  welcome_page_banners?: WelcomeBanner[] | null;
+  welcome_background_color?: string | null;
+  welcome_heading_color?: string | null;
+  welcome_subtext_color?: string | null;
+  welcome_tile_background_color?: string | null;
+  welcome_tile_icon_color?: string | null;
+  welcome_tile_text_color?: string | null;
+  welcome_cta_background_color?: string | null;
+  welcome_cta_text_color?: string | null;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen
@@ -287,6 +310,9 @@ export interface Tenant {
   // Opt-in: show a closed notice and refuse new orders outside operating_hours.
   // false (default) = hours only constrain advance-order slots. See src/lib/store-open-status.ts.
   enforce_operating_hours?: boolean | null;
+  // Tenant-admin switch for scan-to-collect pickup. Column defaults to true, so
+  // undefined/null must read as enabled. See src/lib/pickup-qr-gating.ts.
+  pickup_scan_enabled?: boolean | null;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)

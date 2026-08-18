@@ -13,7 +13,7 @@ import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
-import { notifyOrderStockRestore } from "../../../lib/pos-stock-notify";
+import { restoreStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
@@ -643,15 +643,10 @@ export default function OrderDetailScreen() {
         );
       }
 
-      // Put the ingredients back. This order lives in Convex, so cancelling it
-      // never reaches the web app's updateOrderStatus where stock is restored.
-      // Never throws — a stock write must not make an order un-cancellable.
-      if (newStatus === "cancelled") {
-        const tenantId = useAuthStore.getState().tenantId;
-        if (tenantId) {
-          await notifyOrderStockRestore(tenantId, String(order._id));
-        }
-      }
+      // Put the ingredients back on a cancel. This order lives in Convex, so
+      // cancelling it never reaches the web app's updateOrderStatus where
+      // stock is restored. Shared with the order list screen; never throws.
+      await restoreStockForStatusChange(newStatus, String(order._id));
     } catch {
       Alert.alert("Error", "Failed to update status");
     }

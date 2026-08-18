@@ -31,6 +31,15 @@ import { ProductCostFieldConvex } from '@/components/admin/product-cost-field-co
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
 import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { resolvePostSaveStep } from '@/lib/menu-item-save-flow'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -106,6 +115,13 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
   )
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  /**
+   * The freshly created item whose recipe step is open. Creating used to end by
+   * silently closing to the menu list — on an inventory tenant that was the
+   * moment the recipe was lost, and a dish with no recipe deducts nothing when
+   * it sells. See `resolvePostSaveStep`.
+   */
+  const [recipeStepItemId, setRecipeStepItemId] = useState<string | null>(null)
   const [useNewVariations, setUseNewVariations] = useState(
     (item?.variation_types && item.variation_types.length > 0) || false
   )
@@ -190,8 +206,19 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
 
       if (result.success) {
         toast.success(item ? 'Menu item updated!' : 'Menu item created!')
-        router.push(`/${tenantSlug}/admin/menu`)
-        router.refresh()
+        const step = resolvePostSaveStep({
+          isNewItem: !item,
+          inventoryEnabled: inventoryEnabled ?? false,
+          savedItemId: (result.data as { id?: string } | undefined)?.id,
+        })
+        if (step.kind === 'link-ingredients') {
+          // Hold the merchant here for the recipe instead of closing: until a
+          // dish has one, selling it deducts no stock.
+          setRecipeStepItemId(step.itemId)
+        } else {
+          router.push(`/${tenantSlug}/admin/menu`)
+          router.refresh()
+        }
       } else {
         // Handle server-side validation errors
         if (result.error) {
@@ -222,6 +249,12 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  /** Leaving the recipe step always lands on the menu list, recipe or not. */
+  const finishRecipeStep = () => {
+    router.push(`/${tenantSlug}/admin/menu`)
+    router.refresh()
   }
 
   const addVariation = () => {
@@ -483,8 +516,8 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
                   Base recipe (ingredients used per item)
                 </p>
                 <p className="mt-1">
-                  Save this item first, then reopen it to link the ingredients it uses. Until a
-                  dish has a recipe, selling it will not deduct any stock.
+                  You will be asked to link the ingredients this dish uses right after it is
+                  created. Until a dish has a recipe, selling it will not deduct any stock.
                 </p>
               </div>
             ))}
@@ -757,6 +790,44 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           {isSubmitting ? 'Saving...' : item ? 'Update Item' : 'Create Item'}
         </Button>
       </div>
+
+      {/*
+        The recipe step for a freshly created dish. Dismissing it in any way —
+        Done, Skip, the close button — lands on the menu list either way; the
+        dialog only decides whether the dish leaves linked to inventory.
+      */}
+      <Dialog open={recipeStepItemId !== null} onOpenChange={(open) => !open && finishRecipeStep()}>
+        <DialogContent className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Link ingredients now?</DialogTitle>
+            <DialogDescription>
+              {formData.name || 'This dish'} is saved. Until it has a recipe, selling it will not
+              deduct any stock from your inventory.
+            </DialogDescription>
+          </DialogHeader>
+          {recipeStepItemId && (
+            <RecipeEditor
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              target={{ type: 'menu_item', menuItemId: recipeStepItemId }}
+              label="Base recipe (ingredients used per item)"
+            />
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="max-sm:h-11"
+              onClick={finishRecipeStep}
+            >
+              Skip for now
+            </Button>
+            <Button type="button" className="max-sm:h-11" onClick={finishRecipeStep}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   )
 }

@@ -7,7 +7,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
-import { resolveOrderTypeKind, type OrderTypeKind } from '@/lib/pickup-qr-gating'
+import {
+  isPickupScanEnabled,
+  resolveOrderTypeKind,
+  type OrderTypeKind,
+} from '@/lib/pickup-qr-gating'
 
 export interface TrackingOrderItem {
   name: string
@@ -31,6 +35,12 @@ export interface TrackingData {
    * it must not be used to make behavioural decisions. Null = unresolved.
    */
   orderTypeKind?: OrderTypeKind | null
+  /**
+   * The store's scan-to-collect switch. Read by the customer page to decide
+   * whether to render the QR, and by the merchant app — which cannot query the
+   * tenants table — to decide whether to accept a scanned ticket at all.
+   */
+  pickupScanEnabled?: boolean
   customerName?: string
   createdAt: string
   isTerminal: boolean
@@ -83,7 +93,12 @@ export async function fetchOrderTrackingData(
       result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId)
     }
 
-    return { data: result, error: null }
+    // Read after the order, and separately, so the switch can never take the
+    // whole tracking page down with it. Both backends get the same answer
+    // because the flag lives on the platform tenants row either way.
+    const pickupScanEnabled = await fetchPickupScanEnabled(supabaseAdmin, tenantId)
+
+    return { data: { ...result, pickupScanEnabled }, error: null }
   } catch (err) {
     console.error('[Order Tracking] Error:', err instanceof Error ? err.message : err)
     return { data: null, error: 'Order not found' }
@@ -98,6 +113,34 @@ export async function fetchOrderTrackingData(
  * null on any failure — the caller then falls back to the snapshot string,
  * and an unresolved kind simply hides the pickup QR.
  */
+/**
+ * Read the store's scan-to-collect switch.
+ *
+ * Kept out of the tenant-config select on purpose: naming a column that a
+ * deployment has not migrated yet fails the whole query, and that query is
+ * what decides whether the order can be found at all. Here the worst case is
+ * an isolated failure that falls back to the column's own default — enabled,
+ * which is today's behaviour.
+ */
+async function fetchPickupScanEnabled(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('tenants')
+      .select('pickup_scan_enabled')
+      .eq('id', tenantId)
+      .maybeSingle()
+
+    return isPickupScanEnabled(
+      (data as { pickup_scan_enabled?: boolean | null } | null)?.pickup_scan_enabled
+    )
+  } catch {
+    return true
+  }
+}
+
 async function fetchOrderTypeKind(
   supabase: ReturnType<typeof createAdminClient>,
   orderTypeId: string | null | undefined,

@@ -362,7 +362,14 @@ describe("enterEditMode", () => {
     );
 
     expect(context.originalStockItems).toEqual([
-      { menuItemId: "item-latte", quantity: 2, optionIds: ["opt-large"] },
+      // The same id set feeds every recipe bucket (option, modifier, addon) —
+      // ids are unique per option, so whichever target exists matches.
+      {
+        menuItemId: "item-latte",
+        quantity: 2,
+        optionIds: ["opt-large"],
+        addonIds: ["opt-large"],
+      },
     ]);
   });
 

@@ -14,6 +14,7 @@ import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
+import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { supabase } from "../../lib/supabase";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { formatPeso, formatCount } from "../../lib/format";
@@ -26,6 +27,9 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { FilterChipsRow } from "../../components/FilterChipsRow";
 import { ProductFilterSheet } from "../../components/ProductFilterSheet";
 import { DailyProductBreakdown } from "../../components/DailyProductBreakdown";
+import { ExportSheet } from "../../components/ExportSheet";
+import { runSalesExport } from "../../lib/export/run-export";
+import { formatExportDay } from "../../lib/export/dates";
 import {
   buildProductAnalytics,
   computeProductDeltas,
@@ -75,6 +79,9 @@ interface BackendOrder {
   _creationTime: number;
   status: string;
   source?: string;
+  /** Present on both backends; the sales export sums them per day. */
+  total: number;
+  itemCount: number;
 }
 
 /** A raw line item as either backend returns it. */
@@ -138,6 +145,8 @@ const BCG: Record<string, { label: string; color: string; bg: string }> = {
 
 export default function ProductAnalyticsScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
   const tenantId = useAuthStore((s) => s.tenantId);
 
   const [period, setPeriod] = useState("30d");
@@ -158,6 +167,9 @@ export default function ProductAnalyticsScreen() {
   const [preset, setPreset] = useState<DateRangePreset>("7d");
   const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS);
   const [isFilterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [isExportOpen, setExportOpen] = useState(false);
+  const [isExporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const { selectedDay, metric, topN, search, categoryId, sources } = filters;
 
   /**
@@ -169,6 +181,30 @@ export default function ProductAnalyticsScreen() {
    * the input is still bound to the raw value.
    */
   const debouncedSearch = useDebouncedValue(search);
+
+  const handleSalesExport = async (exportPreset: DateRangePreset) => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const coverage = await runSalesExport({
+        orders: backendOrders ?? [],
+        preset: exportPreset,
+        nowMs: Date.now(),
+        fetchLimit: ORDER_FETCH_LIMIT,
+      });
+      setExportOpen(false);
+      if (!coverage.isComplete) {
+        Alert.alert(
+          "Export shared",
+          `Days before ${formatExportDay(coverage.effectiveStartMs)} exceed the fetch limit and are not in the file.`
+        );
+      }
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const updateFilters = useCallback(
     (patch: Partial<ProductFilterState>) =>
@@ -449,13 +485,13 @@ export default function ProductAnalyticsScreen() {
     }
   };
 
-  if (!convexUrl) {
+  if (!hasBackend) {
     return (
       <View style={styles.screen}>
         <View style={styles.headerWrap}>
           <Text style={styles.title}>Products</Text>
         </View>
-        <ErrorState message="Product analytics requires Convex to be configured for this store." />
+        <ErrorState message="Product analytics needs this store's order backend to be configured." />
       </View>
     );
   }
@@ -557,6 +593,19 @@ export default function ProductAnalyticsScreen() {
                     <Text style={styles.filterCountText}>{activeFilterCount}</Text>
                   </View>
                 )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => {
+                  setExportError(null);
+                  setExportOpen(true);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Export daily sales as CSV"
+              >
+                <Text style={styles.filterButtonText}>Export</Text>
               </TouchableOpacity>
             </View>
 
@@ -673,6 +722,15 @@ export default function ProductAnalyticsScreen() {
           </>
         )}
       </ScrollView>
+
+      <ExportSheet
+        visible={isExportOpen}
+        title="Export daily sales"
+        isBusy={isExporting}
+        errorMessage={exportError}
+        onExport={handleSalesExport}
+        onClose={() => setExportOpen(false)}
+      />
 
       <ProductFilterSheet
         visible={isFilterSheetOpen}

@@ -24,6 +24,15 @@ export interface PosStockItem {
    * unique per option, so whichever recipe exists matches.
    */
   optionIds: string[];
+  /**
+   * The same id set again, for the platform's ADDON recipe bucket. The
+   * register's unified selection model cannot tell an add-on-group option from
+   * a variation option, but the mirrored legacy `addons` share the option's
+   * own id — so a recipe attached to an addon matches here and every other id
+   * finds nothing, by the same uniqueness reasoning as `optionIds` above.
+   * Optional so items built before this field existed keep resolving.
+   */
+  addonIds?: string[];
 }
 
 /**
@@ -37,5 +46,6 @@ export function buildPosStockItems(cart: readonly PosCartLine[]): PosStockItem[]
     menuItemId: line.menuItemId,
     quantity: line.quantity,
     optionIds: line.selections.map((selection) => selection.optionId),
+    addonIds: line.selections.map((selection) => selection.optionId),
   }));
 }

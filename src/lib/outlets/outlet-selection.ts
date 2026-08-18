@@ -35,7 +35,12 @@ export interface SelectableOutlet {
 
 export interface StoredOutletSelection {
   outletId: string
-  mode: OutletOrderMode
+  /**
+   * Null when the customer entered through the welcome page's single CTA,
+   * which goes straight to the branch list — the order type is asked at
+   * checkout instead, exactly as the 'after' timing does.
+   */
+  mode: OutletOrderMode | null
 }
 
 /** The `Storage` surface this module uses; injectable so tests need no DOM. */
@@ -74,7 +79,12 @@ export function readOutletSelection(
     if (typeof parsed !== 'object' || parsed === null) return null
 
     const { outletId, mode, savedAt } = parsed as Record<string, unknown>
-    if (typeof outletId !== 'string' || !isMode(mode) || typeof savedAt !== 'number') {
+    // Mode null is a real selection (single-CTA entry); garbage is not.
+    if (
+      typeof outletId !== 'string' ||
+      (mode !== null && !isMode(mode)) ||
+      typeof savedAt !== 'number'
+    ) {
       return null
     }
 
@@ -233,7 +243,7 @@ export function resolveOutletSelection(input: OutletSelectionInput): OutletSelec
     }
   }
 
-  if (!supportsMode(remembered, stored.mode)) {
+  if (stored.mode !== null && !supportsMode(remembered, stored.mode)) {
     // The branch stopped offering what they picked; asking again is the only
     // way to avoid an order type the branch cannot fulfill.
     return {

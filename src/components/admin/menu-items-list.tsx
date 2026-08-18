@@ -50,9 +50,32 @@ interface MenuItemsListProps {
   /** Empty for a store without branches; the badge then never renders. */
   outlets?: readonly { id: string; name: string }[]
   menuOverrides?: readonly OutletMenuOverride[]
+  /** True when this tenant tracks inventory; the recipe badge is theirs alone. */
+  inventoryEnabled?: boolean
+  /**
+   * Ids of dishes whose sales actually deduct stock. `null` means the read
+   * failed — the verdict is withheld rather than accusing every dish, because
+   * an unknown must never render as "not linked".
+   */
+  recipeLinkedItemIds?: readonly string[] | null
 }
 
-export function MenuItemsList({ items, categories, tenantSlug, tenantId, outlets = [], menuOverrides = [] }: MenuItemsListProps) {
+export function MenuItemsList({
+  items,
+  categories,
+  tenantSlug,
+  tenantId,
+  outlets = [],
+  menuOverrides = [],
+  inventoryEnabled = false,
+  recipeLinkedItemIds = null,
+}: MenuItemsListProps) {
+  // A Set for the per-card lookup; the array form only exists to cross the
+  // server boundary.
+  const linkedRecipeIds = useMemo(
+    () => (recipeLinkedItemIds === null ? null : new Set(recipeLinkedItemIds)),
+    [recipeLinkedItemIds]
+  )
   // One index for the whole grid rather than one lookup per card: the owner's
   // "is this the same everywhere" answer comes from the same resolution the
   // customer's price does, so the badge can never disagree with the storefront.
@@ -213,6 +236,24 @@ export function MenuItemsList({ items, categories, tenantSlug, tenantId, outlets
                     </div>
                   )
                 })()}
+
+                {/*
+                  A dish with no recipe deducts nothing when it sells. The
+                  badge lives here, on the list the merchant actually visits,
+                  because the coverage view buried inside Inventory is the
+                  reason live stores have inventory on and zero recipes.
+                */}
+                {inventoryEnabled && linkedRecipeIds !== null && !linkedRecipeIds.has(item.id) && (
+                  <div className="mb-2">
+                    <Badge
+                      variant="outline"
+                      className="border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                      title="Selling this deducts no stock. Open the item and add its recipe to link it."
+                    >
+                      Not linked to inventory
+                    </Badge>
+                  </div>
+                )}
 
                 <div className="mb-3 flex items-center gap-2">
                   {item.discounted_price && (

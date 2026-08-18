@@ -11,12 +11,22 @@
 // Order alerts belong to the people who work the store. Pure predicates here so
 // the rule is testable without a device, a store, or a Convex deployment.
 
+import { hasLiveOrderBackend, type OrderBackend } from "./order-backend";
+
 /** The slice of auth state that decides push registration. */
 export interface PushRegistrationState {
   isAuthenticated: boolean;
   userId: string | null;
   /** The Convex deployment currently being viewed; null on the platform surface. */
   convexUrl: string | null;
+  /**
+   * The viewed tenant's order backend. Optional so older callers (and the
+   * Convex-era tests) keep their meaning: absent reads as the historical
+   * "Convex when there is a url" rule.
+   */
+  orderBackend?: OrderBackend | null;
+  /** The tenant in view; where a platform token is filed. */
+  tenantId?: string | null;
   isSuperadmin: boolean;
   /** Set while a superadmin is viewing someone else's store. */
   impersonatedTenantId: string | null;
@@ -48,8 +58,64 @@ function isImpersonating(state: PushRegistrationState): boolean {
  */
 export function shouldRegisterPushToken(state: PushRegistrationState): boolean {
   if (!state.isAuthenticated) return false;
-  if (!state.userId || !state.convexUrl) return false;
-  return !isImpersonating(state);
+  if (!state.userId) return false;
+  if (isImpersonating(state)) return false;
+  // Same availability rule the screens use: a Convex url, or the shared
+  // platform backend. The per-tenant-Supabase track has no send path, so
+  // registering there would promise alerts nothing will ever deliver.
+  return hasLiveOrderBackend({
+    convexUrl: state.convexUrl,
+    orderBackend: state.orderBackend ?? null,
+  });
+}
+
+/** Where a platform-backend device registers, or null when it must not. */
+export interface PlatformPushRegistration {
+  tenantId: string;
+  userId: string;
+  /** The branch this device is bound to; null rings store-wide. */
+  outletId: string | null;
+}
+
+/**
+ * The `public.push_tokens` row this session should write, or null when this
+ * session registers elsewhere (Convex) or not at all (impersonation, no
+ * tenant). The database trigger on `orders` fans new-order pushes out to
+ * whatever is registered here.
+ */
+export function platformPushRegistration(
+  state: PushRegistrationState
+): PlatformPushRegistration | null {
+  if (!shouldRegisterPushToken(state)) return null;
+  if (state.orderBackend !== "platform") return null;
+  if (!state.tenantId || !state.userId) return null;
+  return {
+    tenantId: state.tenantId,
+    userId: state.userId,
+    outletId: pushRegistrationOutletId(state) ?? null,
+  };
+}
+
+/** Platform-side rows to delete when a superadmin opens a store, or null. */
+export interface PlatformPushCleanup {
+  tenantId: string;
+  userId: string;
+}
+
+/**
+ * The platform twin of `pushTokenCleanup`: a superadmin entering a
+ * platform-backend store never subscribes, and any token an earlier build
+ * leaked into that tenant's rows is removed on entry instead of quietly
+ * ringing forever.
+ */
+export function platformPushCleanup(
+  state: PushRegistrationState
+): PlatformPushCleanup | null {
+  if (!isImpersonating(state)) return null;
+  if (!state.userId) return null;
+  if (state.orderBackend !== "platform") return null;
+  if (!state.impersonatedTenantId) return null;
+  return { tenantId: state.impersonatedTenantId, userId: state.userId };
 }
 
 /**

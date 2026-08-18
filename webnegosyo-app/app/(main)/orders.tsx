@@ -14,11 +14,21 @@ import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../c
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
+import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ExportSheet } from "../../components/ExportSheet";
+import { runOrdersExport } from "../../lib/export/run-export";
+import { formatExportDay } from "../../lib/export/dates";
+import type { ExportOrderItemInput } from "../../lib/export/orders-export";
+import type { DateRangePreset } from "../../lib/product-analytics-filters";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
+const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+
+/** Same bounded page the analytics reads use — getOrders defaults to 50. */
+const EXPORT_FETCH_LIMIT = 2000;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
 type FilterKey = OrderStatus | "all";
@@ -70,6 +80,21 @@ export default function OrdersScreen() {
   // every status pill can show a live count without extra round-trips.
   const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
   const scope = useBranchScope();
+
+  // Export state. The deeper reads (a 2000-order page plus every line item)
+  // are mounted only while the sheet is open, so the queue screen itself
+  // never pays for them.
+  const [isExportOpen, setExportOpen] = useState(false);
+  const [isExporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const { data: exportOrders } = useSafeQuery<ConvexOrder[]>(
+    getOrdersRef,
+    isExportOpen ? { limit: EXPORT_FETCH_LIMIT } : "skip"
+  );
+  const { data: exportItems } = useSafeQuery<ExportOrderItemInput[]>(
+    getAllOrderItemsRef,
+    isExportOpen ? {} : "skip"
+  );
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { shouldPrint } = useOrderPrint();
 
@@ -122,6 +147,11 @@ export default function OrdersScreen() {
     }
     try {
       await updateStatus({ orderId, status: newStatus });
+      // Put the ingredients back on a cancel — the same shared side-effect the
+      // detail screen runs. Never throws, so a stock write cannot make an
+      // order un-cancellable from the queue.
+      await restoreStockForStatusChange(newStatus, String(orderId));
+
       // Push the confirmed order into Loyverse — the same shared side-effect
       // the detail screen runs. Only the id travels: this list holds no line
       // items, so the server reads them back out of the order backend.
@@ -137,6 +167,35 @@ export default function OrdersScreen() {
       }
     } catch {
       Alert.alert("Error", "Failed to update order status");
+    }
+  };
+
+  const handleExport = async (preset: DateRangePreset) => {
+    // Prefer the deep export page; fall back to the queue's own page so the
+    // button still works while the bigger read is in flight.
+    const fetched = filterOrdersToScope(scope, exportOrders ?? orders ?? []) as ConvexOrder[];
+    setExporting(true);
+    setExportError(null);
+    try {
+      const coverage = await runOrdersExport({
+        orders: fetched,
+        items: exportItems ?? [],
+        preset,
+        status: filter === "all" ? undefined : filter,
+        nowMs: Date.now(),
+        fetchLimit: EXPORT_FETCH_LIMIT,
+      });
+      setExportOpen(false);
+      if (!coverage.isComplete) {
+        Alert.alert(
+          "Export shared",
+          `The file includes orders since ${formatExportDay(coverage.effectiveStartMs)} only — older orders exceed the fetch limit.`
+        );
+      }
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -164,6 +223,16 @@ export default function OrdersScreen() {
         </View>
         <View style={styles.headerActions}>
           <WorkspaceSwitcher />
+          <TouchableOpacity
+            onPress={() => {
+              setExportError(null);
+              setExportOpen(true);
+            }}
+            style={styles.exportButton}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.exportButtonText}>Export</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push("/(main)/scan")}
             style={styles.scanButton}
@@ -215,6 +284,15 @@ export default function OrdersScreen() {
           })
         )}
       </ScrollView>
+
+      <ExportSheet
+        visible={isExportOpen}
+        title={filter === "all" ? "Export orders" : `Export ${filter} orders`}
+        isBusy={isExporting}
+        errorMessage={exportError}
+        onExport={handleExport}
+        onClose={() => setExportOpen(false)}
+      />
     </View>
   );
 }
@@ -239,6 +317,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   scanButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
+  exportButton: {
+    borderColor: colors.separator,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.card,
+  },
+  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
   list: { flex: 1, marginTop: spacing.md },
   listContent: { padding: spacing.xl, paddingTop: spacing.sm },
 });

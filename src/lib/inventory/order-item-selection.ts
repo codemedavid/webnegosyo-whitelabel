@@ -8,7 +8,7 @@
  * ingredients an option actually adds.
  */
 
-import type { CartItem } from '@/types/database'
+import type { CartBundleSlotSelection, CartItem } from '@/types/database'
 
 export interface OrderSelectionIds {
   /**
@@ -41,5 +41,31 @@ export function extractSelectionIds(item: CartItem): OrderSelectionIds {
   return {
     optionIds: collectIds(optionSources),
     addonIds: collectIds(item.selected_addons ?? []),
+  }
+}
+
+/**
+ * The bundle twin of {@link extractSelectionIds}.
+ *
+ * `BundleCustomizationModal` captures the same per-item variation and addon
+ * selections, but a bundle slot carries them in camelCase fields rather than
+ * the cart item's snake_case ones. Same precedence: the grouped map is the
+ * current format and wins when both shapes are present.
+ */
+export function extractBundleSlotSelectionIds(
+  slot: Pick<
+    CartBundleSlotSelection,
+    'selectedVariations' | 'selectedVariation' | 'selectedAddons'
+  >,
+): OrderSelectionIds {
+  const optionSources = slot.selectedVariations
+    ? Object.values(slot.selectedVariations)
+    : slot.selectedVariation
+      ? [slot.selectedVariation]
+      : []
+
+  return {
+    optionIds: collectIds(optionSources),
+    addonIds: collectIds(slot.selectedAddons ?? []),
   }
 }

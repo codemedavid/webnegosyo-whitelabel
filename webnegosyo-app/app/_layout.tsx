@@ -26,6 +26,8 @@ import {
   shouldRegisterPushToken,
   pushRegistrationOutletId,
   pushTokenCleanup,
+  platformPushRegistration,
+  platformPushCleanup,
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
 
@@ -192,6 +194,7 @@ function useAuthRedirect() {
 function usePushNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
 
@@ -207,16 +210,31 @@ function usePushNotifications() {
       isAuthenticated,
       userId,
       convexUrl,
+      orderBackend,
       isSuperadmin,
       impersonatedTenantId,
-      // The account's branch, read fresh rather than subscribed: this effect
-      // only re-runs on the deps below, and the branch is fixed for a session.
+      // The account's branch and tenant, read fresh rather than subscribed:
+      // this effect only re-runs on the deps below, and both are fixed for a
+      // session (impersonation changes orderBackend/convexUrl, which are deps).
       outletId: useAuthStore.getState().outletId,
+      tenantId:
+        useAuthStore.getState().impersonatedTenantId ??
+        useAuthStore.getState().tenantId,
     };
 
     // A superadmin viewing someone else's store is a spectator: never subscribe
     // them to that store's order alerts, and drop any token an earlier build
     // left behind in that deployment.
+    const platformStale = platformPushCleanup(session);
+    if (platformStale) {
+      supabase
+        .from("push_tokens")
+        .delete()
+        .eq("tenant_id", platformStale.tenantId)
+        .eq("user_id", platformStale.userId)
+        .then(undefined, () => {});
+    }
+
     const stale = pushTokenCleanup(session);
     if (stale) {
       fetch(`${stale.convexUrl}/api/mutation`, {
@@ -230,7 +248,12 @@ function usePushNotifications() {
       }).catch(() => {});
     }
 
-    if (!shouldRegisterPushToken(session) || !userId || !convexUrl) return;
+    if (!shouldRegisterPushToken(session) || !userId) return;
+    // A platform-backend store files the token in the shared `push_tokens`
+    // table, where the orders trigger fans pushes out; everyone else keeps
+    // registering with their Convex deployment.
+    const platformTarget = platformPushRegistration(session);
+    if (!platformTarget && !convexUrl) return;
 
     // registerForPushNotifications() presents a native OS permission prompt
     // (UIAlertController on iOS). Firing it in the same tick as the
@@ -244,6 +267,24 @@ function usePushNotifications() {
     const task = InteractionManager.runAfterInteractions(() => {
       registerForPushNotifications().then(async (token) => {
         if (!token) return;
+        if (platformTarget) {
+          const { error } = await supabase.from("push_tokens").upsert(
+            {
+              tenant_id: platformTarget.tenantId,
+              user_id: platformTarget.userId,
+              token,
+              platform: Platform.OS === "ios" ? "ios" : "android",
+              outlet_id: platformTarget.outletId,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "tenant_id,token" }
+          );
+          if (error) {
+            console.warn("Failed to register push token:", error.message);
+          }
+          return;
+        }
+        if (!convexUrl) return;
         try {
           await fetch(`${convexUrl}/api/mutation`, {
             method: "POST",
@@ -270,7 +311,7 @@ function usePushNotifications() {
     });
 
     return () => task.cancel();
-  }, [isAuthenticated, convexUrl, isSuperadmin, impersonatedTenantId]);
+  }, [isAuthenticated, convexUrl, orderBackend, isSuperadmin, impersonatedTenantId]);
 }
 
 export default function RootLayout() {

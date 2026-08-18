@@ -78,7 +78,14 @@ function stubDepletion(captured: Captured, movements: unknown[] = []) {
 
   return (table: string) => {
     if (table === 'order_stock_applications') {
+      // Both directions now list the order's claims: the sale checks for a
+      // blocking void, the reverse picks its void revision.
+      const claimChain = {
+        eq: () => claimChain,
+        then: (resolve: (r: unknown) => unknown) => resolve({ data: [], error: null }),
+      }
       return {
+        select: () => claimChain,
         insert: () => Promise.resolve({ data: null, error: null }),
         delete: () => ({
           eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),

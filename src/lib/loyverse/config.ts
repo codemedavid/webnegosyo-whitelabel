@@ -21,8 +21,12 @@ export interface LoyverseTenantFields {
 export interface LoyverseConfig {
   accessToken: string
   storeId: string
-  /** Null = push receipts without a payment line; merchant settles in Loyverse. */
-  paymentTypeId: string | null
+  /**
+   * Required. Loyverse rejects any receipt that arrives without a `payments`
+   * field, so a tenant with no payment type cannot push at all — it is a
+   * credential, not a preference.
+   */
+  paymentTypeId: string
   pushMode: LoyversePushMode
 }
 
@@ -52,10 +56,12 @@ export function resolveLoyverseConfig(tenant: LoyverseTenantFields): LoyverseCon
 
   const accessToken = presence(tenant.loyverse_access_token)
   const storeId = presence(tenant.loyverse_store_id)
+  const paymentTypeId = presence(tenant.loyverse_payment_type_id)
 
   const missing: string[] = []
   if (!accessToken) missing.push('loyverse_access_token')
   if (!storeId) missing.push('loyverse_store_id')
+  if (!paymentTypeId) missing.push('loyverse_payment_type_id')
   if (missing.length > 0) return { status: 'incomplete', missing }
 
   return {
@@ -63,7 +69,7 @@ export function resolveLoyverseConfig(tenant: LoyverseTenantFields): LoyverseCon
     config: {
       accessToken: accessToken as string,
       storeId: storeId as string,
-      paymentTypeId: presence(tenant.loyverse_payment_type_id),
+      paymentTypeId: paymentTypeId as string,
       pushMode: resolveLoyversePushMode(tenant.loyverse_push_mode),
     },
   }

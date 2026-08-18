@@ -30,6 +30,11 @@ export interface BrandingField {
    * the storefront reads directly; routing them through overrides drops the save.
    */
   columnBacked?: boolean
+  /**
+   * Banners fields only: each banner also carries a landscape/portrait/square
+   * format the editor must expose (the welcome page renders by format).
+   */
+  bannerFormats?: boolean
   placeholder?: string
   min?: number
   max?: number
@@ -41,7 +46,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'storefront' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'storefront' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -68,7 +73,8 @@ const product = (id: string, label: string): BrandingField => ({ id, label, type
 // Always `columnBacked`: the value is an array, which the scalar-only
 // `mobile_overrides` map rejects — so it must edit its tenant column even on
 // the mobile tab. Banner content is shared across devices anyway.
-const banners = (id: string, label: string): BrandingField => ({ id, label, type: 'banners', columnBacked: true })
+const banners = (id: string, label: string, bannerFormats = false): BrandingField =>
+  ({ id, label, type: 'banners', columnBacked: true, ...(bannerFormats ? { bannerFormats } : {}) })
 // An image field: upload (ImageKit) or paste a URL. Stored value is the URL.
 const image = (id: string, label: string, placeholder = 'https://…/photo.jpg'): BrandingField =>
   ({ id, label, type: 'image', default: '', placeholder })
@@ -251,6 +257,57 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('modal_title_color', 'Title', null, 'text_primary_color'),
           color('modal_price_color', 'Price', null, 'primary_color'),
           color('modal_description_color', 'Description', null, 'text_secondary_color'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'welcome',
+    label: 'Welcome Page',
+    glyph: 'W',
+    description:
+      'Multi-branch starter page shown before the storefront — entry choice, promo banners and palette. Visible to customers only when the branch is picked before the menu.',
+    sections: [
+      {
+        title: 'Entry',
+        fields: [
+          select('welcome_entry_mode', 'Entry style', ['order_types', 'single_cta'], 'order_types'),
+          toggle('welcome_show_order_types', 'Show order-type tiles', true),
+          text('welcome_cta_text', 'Start button text', 'Start Ordering'),
+        ],
+      },
+      {
+        title: 'Header',
+        fields: [
+          toggle('welcome_show_header', 'Show store header (logo + name bar)', false),
+          toggle('welcome_show_copy', 'Show heading and subheading', true),
+          text('welcome_heading_text', 'Heading', 'Welcome to your store'),
+          text('welcome_subheading_text', 'Subheading', 'How would you like your order?'),
+          select('welcome_text_align', 'Header alignment', ['left', 'center'], 'left'),
+          toggle('welcome_show_logo', 'Show store logo above the heading', false),
+        ],
+      },
+      {
+        title: 'Promo banners',
+        fields: [
+          note(
+            'note_welcome_banners',
+            'These banners live on the welcome page only — separate from the menu promotion banners. Pick landscape, portrait or square per banner.'
+          ),
+          banners('welcome_page_banners', 'Welcome banners', true),
+        ],
+      },
+      {
+        title: 'Palette',
+        fields: [
+          color('welcome_background_color', 'Page background'),
+          color('welcome_heading_color', 'Heading'),
+          color('welcome_subtext_color', 'Subheading'),
+          color('welcome_tile_background_color', 'Tile background'),
+          color('welcome_tile_icon_color', 'Tile icon', null, 'primary_color'),
+          color('welcome_tile_text_color', 'Tile text'),
+          color('welcome_cta_background_color', 'Start button', null, 'primary_color'),
+          color('welcome_cta_text_color', 'Start button text'),
         ],
       },
     ],

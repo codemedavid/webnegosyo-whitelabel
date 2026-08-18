@@ -294,3 +294,66 @@ describe("updateCustomer", () => {
     ).rejects.toBeInstanceOf(DuplicateCustomerError);
   });
 });
+
+describe("fetchAllCustomersForExport", () => {
+  const { fetchAllCustomersForExport, EXPORT_PAGE_SIZE } = jest.requireActual("./repo");
+
+  function page(count: number, startId = 0): { data: unknown; error: unknown } {
+    return {
+      data: Array.from({ length: count }, (_, i) => ({ id: `c${startId + i}` })),
+      error: null,
+    };
+  }
+
+  it("returns a single short page as a complete list", async () => {
+    queued = [page(3)];
+
+    const result = await fetchAllCustomersForExport("t1");
+
+    expect(result.isComplete).toBe(true);
+    expect(result.customers.map((c: { id: string }) => c.id)).toEqual(["c0", "c1", "c2"]);
+    expect(argsFor("range")).toEqual([[0, EXPORT_PAGE_SIZE - 1]]);
+  });
+
+  it("pages forward until a short page and concatenates in order", async () => {
+    queued = [page(EXPORT_PAGE_SIZE, 0), page(2, EXPORT_PAGE_SIZE)];
+
+    const result = await fetchAllCustomersForExport("t1");
+
+    expect(result.isComplete).toBe(true);
+    expect(result.customers).toHaveLength(EXPORT_PAGE_SIZE + 2);
+    expect(argsFor("range")).toEqual([
+      [0, EXPORT_PAGE_SIZE - 1],
+      [EXPORT_PAGE_SIZE, 2 * EXPORT_PAGE_SIZE - 1],
+    ]);
+  });
+
+  it("writes the tenant filter explicitly on every page", async () => {
+    queued = [page(EXPORT_PAGE_SIZE), page(1)];
+
+    await fetchAllCustomersForExport("t9");
+
+    const tenantFilters = argsFor("eq").filter((a) => a[0] === "tenant_id");
+    expect(tenantFilters).toEqual([
+      ["tenant_id", "t9"],
+      ["tenant_id", "t9"],
+    ]);
+  });
+
+  it("stops at the page ceiling and admits the list is incomplete", async () => {
+    // Every page full: a pathological store must not loop forever, and the
+    // caller must know the export is a prefix, not the whole guest list.
+    queued = Array.from({ length: 50 }, () => page(EXPORT_PAGE_SIZE));
+
+    const result = await fetchAllCustomersForExport("t1");
+
+    expect(result.isComplete).toBe(false);
+    expect(argsFor("range").length).toBeLessThan(50);
+  });
+
+  it("throws when any page fails rather than exporting a partial list silently", async () => {
+    queued = [page(EXPORT_PAGE_SIZE), { data: null, error: { message: "boom" } }];
+
+    await expect(fetchAllCustomersForExport("t1")).rejects.toThrow("boom");
+  });
+});

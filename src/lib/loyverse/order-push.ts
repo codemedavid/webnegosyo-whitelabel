@@ -45,7 +45,8 @@ export interface LoyverseReceiptPayload {
   order?: string
   note?: string
   line_items: LoyverseReceiptLine[]
-  payments?: Array<{ payment_type_id: string }>
+  /** Required by Loyverse — a receipt without it is rejected outright. */
+  payments: Array<{ payment_type_id: string }>
 }
 
 export interface LoyverseOrderInput {
@@ -129,12 +130,10 @@ export function buildLoyverseReceipt(
     store_id: config.storeId,
     order: order.orderNumber,
     line_items: lines,
+    payments: [{ payment_type_id: config.paymentTypeId }],
   }
   if (unmapped.length > 0) {
     receipt.note = `Not in Loyverse catalog: ${unmapped.join(', ')}`
-  }
-  if (config.paymentTypeId) {
-    receipt.payments = [{ payment_type_id: config.paymentTypeId }]
   }
 
   return { receipt, unmapped }
