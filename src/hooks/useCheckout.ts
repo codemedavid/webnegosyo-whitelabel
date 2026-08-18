@@ -116,6 +116,14 @@ export function useCheckout(tenantSlug: string) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
   const checkoutCompleteRef = useRef(false) // Sync ref to prevent race with cart empty useEffect
+  /**
+   * One id per checkout attempt, so a retry of the SAME attempt — a double tap,
+   * a flaky network, a resubmit after an error — is deduped server-side into
+   * the order the first attempt already created instead of charging twice.
+   * Minted lazily and kept for the life of this checkout; a genuinely new
+   * order starts from a fresh mount and so a fresh id.
+   */
+  const clientOrderIdRef = useRef<string | null>(null)
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
@@ -1236,6 +1244,15 @@ export function useCheckout(tenantSlug: string) {
         const validDeliveryFeeForOrder = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
         const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
 
+        // Stable across retries of this attempt — see clientOrderIdRef.
+        if (!clientOrderIdRef.current) {
+          clientOrderIdRef.current =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        }
+        const clientOrderId = clientOrderIdRef.current
+
         // Fire-and-forget: save order + send proactive webhook
         createOrderAction(
           tenant.id, orderItems, customerInfo, orderType,
@@ -1264,7 +1281,8 @@ export function useCheckout(tenantSlug: string) {
             : undefined,
           selectedOutletId,
           // Codes, not amounts. The server recomputes the discount from these.
-          [...voucherState.codes]
+          [...voucherState.codes],
+          clientOrderId
         ).then(result => {
           if (result.success) {
             // Track upsell conversions
