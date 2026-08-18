@@ -142,6 +142,46 @@ export async function listCustomers(
   return (data ?? []).map((row) => toRecord(row as unknown as Record<string, unknown>));
 }
 
+/** One export page. Bigger than the screen's page: fewer round-trips, still bounded. */
+export const EXPORT_PAGE_SIZE = 200;
+
+/**
+ * Hard ceiling on export pages (25 × 200 = 5,000 guests). A store past it gets
+ * a truthful `isComplete: false` instead of an unbounded loop on a phone.
+ */
+const EXPORT_MAX_PAGES = 25;
+
+export interface AllCustomersResult {
+  customers: CustomerRecord[];
+  /** False when the page ceiling cut the list short. */
+  isComplete: boolean;
+}
+
+/**
+ * Every guest for the tenant, for CSV export. Pages `listCustomers` until a
+ * short page; any failed page throws (a partial list shared as "all customers"
+ * is a silent lie about the merchant's book).
+ */
+export async function fetchAllCustomersForExport(
+  tenantId: string
+): Promise<AllCustomersResult> {
+  const customers: CustomerRecord[] = [];
+
+  for (let pageIndex = 0; pageIndex < EXPORT_MAX_PAGES; pageIndex += 1) {
+    const page = await listCustomers(tenantId, {
+      limit: EXPORT_PAGE_SIZE,
+      offset: pageIndex * EXPORT_PAGE_SIZE,
+      sort: "recent",
+    });
+    customers.push(...page);
+    if (page.length < EXPORT_PAGE_SIZE) {
+      return { customers, isComplete: true };
+    }
+  }
+
+  return { customers, isComplete: false };
+}
+
 export async function getCustomer(
   tenantId: string,
   customerId: string
