@@ -188,6 +188,31 @@ export const brandingSchema = z.object({
         })),
         z.literal(''),
     ]).optional(),
+    // Welcome page (multi-branch starter screen)
+    welcome_entry_mode: z.enum(['order_types', 'single_cta']).optional(),
+    welcome_show_order_types: z.boolean().optional(),
+    welcome_cta_text: z.string().max(60).optional().or(z.literal('')),
+    welcome_heading_text: z.string().max(200).optional().or(z.literal('')),
+    welcome_subheading_text: z.string().max(300).optional().or(z.literal('')),
+    // '' accepted for the same "Reset section" reason as promotion_banners.
+    welcome_page_banners: z.union([
+        z.array(z.object({
+            id: z.string(),
+            imageUrl: z.string(),
+            format: z.enum(['landscape', 'portrait', 'square']),
+            title: z.string().optional(),
+            description: z.string().optional(),
+        })),
+        z.literal(''),
+    ]).optional(),
+    welcome_background_color: cssColorString().optional().or(z.literal('')),
+    welcome_heading_color: cssColorString().optional().or(z.literal('')),
+    welcome_subtext_color: cssColorString().optional().or(z.literal('')),
+    welcome_tile_background_color: cssColorString().optional().or(z.literal('')),
+    welcome_tile_icon_color: cssColorString().optional().or(z.literal('')),
+    welcome_tile_text_color: cssColorString().optional().or(z.literal('')),
+    welcome_cta_background_color: cssColorString().optional().or(z.literal('')),
+    welcome_cta_text_color: cssColorString().optional().or(z.literal('')),
     // Footer
     footer_enabled: z.boolean().optional(),
     footer_theme: z.enum(['auto', 'light', 'dark', 'brand', 'midnight', 'minimal', 'custom']).optional(),
@@ -366,6 +391,12 @@ export function buildBrandingUpdatePayload(parsed: BrandingPatchInput): Record<s
                     parsed.promotion_banners === ''
                         ? ([] as PromotionBanner[])
                         : (parsed.promotion_banners as PromotionBanner[]),
+            }
+            : {}),
+        ...(parsed.welcome_page_banners !== undefined
+            ? {
+                welcome_page_banners:
+                    parsed.welcome_page_banners === '' ? [] : parsed.welcome_page_banners,
             }
             : {}),
         ...(parsed.hero_featured_product_id === ''

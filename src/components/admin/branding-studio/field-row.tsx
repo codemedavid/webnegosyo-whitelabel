@@ -195,10 +195,14 @@ function newBannerId(): string {
  * Every mutation emits a brand-new array (immutable) so the parent draft, the
  * live preview, and publish all stay in sync.
  */
-function BannersRow({ field, value, onChange }: FieldRowProps) {
-  const list: PromotionBanner[] = Array.isArray(value) ? (value as PromotionBanner[]) : []
+/** Formats a welcome banner can take; menu promotion banners have none. */
+const BANNER_FORMAT_OPTIONS = ['landscape', 'portrait', 'square'] as const
+type EditableBanner = PromotionBanner & { format?: (typeof BANNER_FORMAT_OPTIONS)[number] }
 
-  const update = (index: number, patch: Partial<PromotionBanner>) => {
+function BannersRow({ field, value, onChange }: FieldRowProps) {
+  const list: EditableBanner[] = Array.isArray(value) ? (value as EditableBanner[]) : []
+
+  const update = (index: number, patch: Partial<EditableBanner>) => {
     onChange(list.map((banner, i) => (i === index ? { ...banner, ...patch } : banner)))
   }
   const remove = (index: number) => {
@@ -212,7 +216,10 @@ function BannersRow({ field, value, onChange }: FieldRowProps) {
     onChange(next)
   }
   const add = () => {
-    onChange([...list, { id: newBannerId(), imageUrl: '' }])
+    onChange([
+      ...list,
+      { id: newBannerId(), imageUrl: '', ...(field.bannerFormats ? { format: 'landscape' } : {}) },
+    ])
   }
 
   return (
@@ -271,6 +278,27 @@ function BannersRow({ field, value, onChange }: FieldRowProps) {
               aria-label={`Banner ${index + 1} description`}
               className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12.5px] outline-none focus:border-neutral-800"
             />
+            {field.bannerFormats && (
+              <div className="mt-2 flex gap-1" role="group" aria-label={`Banner ${index + 1} format`}>
+                {BANNER_FORMAT_OPTIONS.map((format) => {
+                  const isActive = (banner.format ?? 'landscape') === format
+                  return (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => update(index, { format })}
+                      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold capitalize transition-colors ${
+                        isActive
+                          ? 'bg-neutral-900 text-white'
+                          : 'bg-white text-neutral-500 hover:text-neutral-900 border border-neutral-200'
+                      }`}
+                    >
+                      {format}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         ))}
       </div>

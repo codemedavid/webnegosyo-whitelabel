@@ -9,6 +9,7 @@ import type { OrderType } from '@/types/database'
 import { OutletSplash } from '@/components/customer/outlet-splash'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { shouldGateMenuForOutlet } from '@/lib/outlets/selection-timing'
+import { rankOutlets } from '@/lib/outlets/nearest-outlet'
 import type { SelectableOutlet } from '@/lib/outlets/outlet-selection'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { Outlet, Tenant } from '@/types/database'
@@ -27,6 +28,12 @@ interface OutletGateProps {
   tenant: Tenant | null
   tenantSlug: string
   outlets: Outlet[]
+  /**
+   * Branding Studio "Welcome Page" surface: force the splash open with inert
+   * handlers so the editor always sees the page — a remembered branch, a
+   * single-location tenant or the 'after' timing would otherwise hide it.
+   */
+  isPreview?: boolean
 }
 
 /**
@@ -38,13 +45,39 @@ interface OutletGateProps {
  * one that moved the question to checkout gets exactly today's storefront. The
  * menu itself is untouched; this sits over it and then gets out of the way.
  */
-export function OutletGate({ tenant, tenantSlug, outlets }: OutletGateProps) {
+export function OutletGate({ tenant, tenantSlug, outlets, isPreview }: OutletGateProps) {
+  if (isPreview) return <OutletGatePreview tenant={tenant} outlets={outlets} />
   if (!shouldGateMenuForOutlet(tenant, outlets)) return null
 
   return (
     <Suspense fallback={null}>
       <OutletGateInner tenant={tenant} tenantSlug={tenantSlug} outlets={outlets} />
     </Suspense>
+  )
+}
+
+/**
+ * Studio preview: the real splash with real outlets but nothing persisted —
+ * selecting a branch or locating does nothing, ranking is manual order only.
+ */
+function OutletGatePreview({ tenant, outlets }: { tenant: Tenant | null; outlets: Outlet[] }) {
+  return (
+    <OutletSplash
+      tenantName={tenant?.name ?? ''}
+      promoImageUrl={tenant?.flash_screen_image_url ?? null}
+      promoHeadline={tenant?.flash_screen_title ?? null}
+      outlets={outlets as unknown as PickerOutlet[]}
+      reason={null}
+      isLocating={false}
+      onLocate={() => {}}
+      rankFor={((mode) =>
+        rankOutlets(outlets as unknown as PickerOutlet[], {
+          mode,
+          origin: null,
+        })) as unknown as OutletSplashRankFor}
+      onSelect={() => {}}
+      welcome={tenant}
+    />
   )
 }
 

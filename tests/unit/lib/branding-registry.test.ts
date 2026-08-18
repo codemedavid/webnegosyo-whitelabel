@@ -19,7 +19,7 @@ import {
 } from '@/lib/branding-registry'
 
 describe('branding registry structure', () => {
-  it('defines the eight editor surfaces in rail order', () => {
+  it('defines the nine editor surfaces in rail order', () => {
     // Arrange / Act
     const ids = BRANDING_SURFACES.map((s) => s.id)
 
@@ -27,6 +27,7 @@ describe('branding registry structure', () => {
     expect(ids).toEqual([
       'global',
       'storefront',
+      'welcome',
       'cart',
       'checkout',
       'upsell',
