@@ -86,6 +86,37 @@ DEFAULT false, plus the `tenants_welcome_text_align_ck` CHECK.
 Regression check: `npx jest tests/unit` → **5769 passed / 5771**, same 2 concurrent-session failures.
 Lint clean across all 7 changed source files.
 
+## Follow-up — full-width slideshow + compact tiles (2026-08-18)
+
+Merchant feedback on the mobile preview: the banners should be one full-screen-width
+slideshow, and the mode buttons should be much smaller (reference: the ZUS Coffee home
+screen — one big promo, small mode buttons under it).
+
+| Stage | Commit | Evidence |
+|---|---|---|
+| RED | `ac04f0c` | `npx jest tests/unit/welcome-screen.test.tsx` → suite failed to resolve `welcome-banner-slideshow` (compile-time RED) |
+| GREEN | `aaf9158` | same command → 22 passed |
+
+`welcome-banners-rail.tsx` is **replaced** by `welcome-banner-slideshow.tsx`; guarantee 11
+(landscape stacked / portrait+square railed) and guarantee 23 (solo banner block) are
+superseded by 26–29 below.
+
+| # | Guarantee | Test | Type | Result |
+|---|---|---|---|---|
+| 26 | Every banner, whatever its format, is a full-width slide in one deck | `welcome-screen.test.tsx` | unit | PASS |
+| 27 | One dot per slide; the viewed slide is `aria-current`, and clicking a dot moves to it | `welcome-screen.test.tsx` | unit | PASS |
+| 28 | A single banner shows no dots | `welcome-screen.test.tsx` | unit | PASS |
+| 29 | An empty banner list still renders nothing | `welcome-screen.test.tsx` | unit | PASS |
+| 30 | Three modes sit on one row at every width (compact tiles) | `welcome-screen.test.tsx` | unit | PASS |
+
+Behaviour not covered by jsdom: autoplay every 5s, pausing permanently on the first manual
+move, and native scroll-snap swiping. jsdom has no layout, so `clientWidth` is 0 and slide
+position cannot be asserted — `scrollToSlide` falls back to `scrollLeft` where `scrollTo`
+is unavailable (jsdom and older mobile browsers). Verify swipe/autoplay in a browser.
+
+Regression check: `npx jest tests/unit` → **5770 passed / 5772** (same 2 concurrent-session
+failures). Lint clean on both changed components.
+
 ## Validation commands
 
 - `npx jest tests/unit` → **5738 passed / 5741** (`Tests: 3 failed, 5738 passed`). The 3 failures (`order-create-parity`, `vouchers/engine-parity`) belong to a concurrent session's uncommitted order-parity work (`src/app/actions/orders.ts`, `src/lib/order-parity.ts`) — untouched by this feature.
