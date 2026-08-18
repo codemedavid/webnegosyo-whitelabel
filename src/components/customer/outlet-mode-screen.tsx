@@ -69,8 +69,10 @@ export function OutletModeScreen({
   const banners = normalizeWelcomeBanners(welcome?.welcome_page_banners)
   const showTiles = shouldShowOrderTypeStep(welcome)
 
-  const heading =
-    welcome?.welcome_heading_text?.trim() || promoHeadline || `Welcome to ${tenantName}`
+  // Deliberately NOT falling back to the flash-screen headline: that field is
+  // written for a loading splash ("Loading menu...") and reads as a broken page
+  // when it greets the customer.
+  const heading = welcome?.welcome_heading_text?.trim() || `Welcome to ${tenantName}`
   const subheading =
     welcome?.welcome_subheading_text?.trim() ||
     (showTiles ? 'How would you like your order?' : 'Find the branch nearest you')
@@ -105,11 +107,10 @@ export function OutletModeScreen({
       )}
 
       {showTiles ? (
-        <div
-          className={`grid gap-4 ${modes.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} ${
-            modes.length === 3 ? 'sm:grid-cols-3' : ''
-          }`}
-        >
+        // Wrapping flex rather than a grid: with three modes on a narrow screen
+        // the odd tile lands centred under the other two instead of hugging the
+        // left edge, and from `sm` up all three sit on one row.
+        <div className="flex flex-wrap justify-center gap-4" data-testid="welcome-mode-tiles">
           {modes.map((mode) => {
             const Icon = MODE_ICONS[mode]
             return (
@@ -117,7 +118,13 @@ export function OutletModeScreen({
                 key={mode}
                 type="button"
                 onClick={() => onSelect(mode)}
-                className="group flex flex-col items-center gap-3 rounded-2xl border-2 border-transparent bg-muted/60 px-4 py-7 transition-colors hover:border-primary hover:bg-muted"
+                className={`group flex flex-col items-center gap-3 rounded-2xl border-2 border-transparent bg-muted/60 px-4 py-7 transition-colors hover:border-primary hover:bg-muted ${
+                  modes.length === 1
+                    ? 'basis-full'
+                    : modes.length === 3
+                      ? 'basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.7rem)]'
+                      : 'basis-[calc(50%-0.5rem)]'
+                }`}
                 style={{ backgroundColor: theme.tileBackgroundColor ?? undefined }}
               >
                 <span className="flex h-20 w-20 items-center justify-center rounded-full bg-background shadow-sm">
