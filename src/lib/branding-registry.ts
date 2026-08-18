@@ -279,7 +279,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Header',
         fields: [
-          toggle('welcome_show_header', 'Show header', true),
+          toggle('welcome_show_header', 'Show store header (logo + name bar)', false),
           toggle('welcome_show_copy', 'Show heading and subheading', true),
           text('welcome_heading_text', 'Heading', 'Welcome to your store'),
           text('welcome_subheading_text', 'Subheading', 'How would you like your order?'),

@@ -6,9 +6,12 @@ import { OutletPickerScreen, type PickerOutlet } from '@/components/customer/out
 import { resolveAvailableModes } from '@/lib/outlets/outlet-modes'
 import { shouldShowOrderTypeStep, type WelcomeTenantFields } from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
+import type { Tenant } from '@/types/database'
 
 interface OutletSplashProps {
   tenantName: string
+  /** Full tenant row — feeds the branded store header on the welcome page. */
+  tenant?: Tenant | null
   /** Store logo for the welcome header, when the merchant enables it. */
   logoUrl?: string | null
   /** Optional promo image shown above the choices; absent renders no gap. */
@@ -48,6 +51,7 @@ const REASON_MESSAGE: Record<string, string> = {
  */
 export function OutletSplash({
   tenantName,
+  tenant,
   logoUrl,
   promoImageUrl,
   promoHeadline,
@@ -99,6 +103,7 @@ export function OutletSplash({
         {!isPickerOpen ? (
           <OutletModeScreen
             tenantName={tenantName}
+            tenant={tenant}
             logoUrl={logoUrl}
             promoImageUrl={promoImageUrl}
             promoHeadline={promoHeadline}

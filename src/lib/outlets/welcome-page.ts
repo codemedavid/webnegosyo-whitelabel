@@ -111,24 +111,24 @@ export function shouldShowWelcomeLogo(tenant: WelcomeTenantFields | null | undef
 }
 
 /**
- * Whether the page leads with a header at all.
+ * Whether the page leads with the STORE HEADER — the branded bar the menu page
+ * wears (logo, store name, tagline on the header colour), centred and without
+ * the cart.
  *
- * Unlike the logo, this one defaults ON: every tenant predating the column has
- * a heading today, and the switch only ever takes something away.
+ * Opt-in, like the logo: switching it on gives a tenant a bar it does not have
+ * today, so an untouched row must not grow one.
  */
 export function shouldShowWelcomeHeader(tenant: WelcomeTenantFields | null | undefined): boolean {
-  return tenant?.welcome_show_header !== false
+  return tenant?.welcome_show_header === true
 }
 
 /**
- * Whether the heading and subheading are written out. Off leaves a logo-only
- * header — the shape merchants want once the branding does the talking.
- *
- * The copy lives inside the header, so hiding the header hides the copy too:
- * an on-copy/off-header row must not resurrect the heading.
+ * Whether the heading and subheading are written out. Defaults on — every
+ * tenant predating the column has copy today and this switch only takes it
+ * away. Independent of the store header: the bar and the copy are separate
+ * rows, and a merchant may want either, both or neither.
  */
 export function shouldShowWelcomeCopy(tenant: WelcomeTenantFields | null | undefined): boolean {
-  if (!shouldShowWelcomeHeader(tenant)) return false
   return tenant?.welcome_show_copy !== false
 }
 

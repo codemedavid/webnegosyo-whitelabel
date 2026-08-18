@@ -64,6 +64,7 @@ function OutletGatePreview({ tenant, outlets }: { tenant: Tenant | null; outlets
   return (
     <OutletSplash
       tenantName={tenant?.name ?? ''}
+      tenant={tenant}
       logoUrl={tenant?.logo_url ?? null}
       promoImageUrl={tenant?.flash_screen_image_url ?? null}
       promoHeadline={tenant?.flash_screen_title ?? null}
@@ -134,6 +135,7 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
   return (
     <OutletSplash
       tenantName={tenant?.name ?? ''}
+      tenant={tenant}
       logoUrl={tenant?.logo_url ?? null}
       promoImageUrl={tenant?.flash_screen_image_url ?? null}
       promoHeadline={tenant?.flash_screen_title ?? null}

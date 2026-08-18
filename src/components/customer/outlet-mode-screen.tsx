@@ -15,9 +15,13 @@ import {
 } from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode } from '@/lib/outlets/nearest-outlet'
 import { OUTLET_MODE_LABELS } from '@/lib/outlets/outlet-modes'
+import { WelcomeStoreHeader } from '@/components/customer/welcome-store-header'
+import type { Tenant } from '@/types/database'
 
 interface OutletModeScreenProps {
   tenantName: string
+  /** Full tenant row — feeds the branded store header when it is switched on. */
+  tenant?: Tenant | null
   /** Store logo, shown above the heading when the merchant switches it on. */
   logoUrl?: string | null
   /** Legacy flash-screen promo, shown only when no welcome banners exist. */
@@ -63,6 +67,7 @@ const MODE_BLURBS: Record<OutletOrderMode, string> = {
  */
 export function OutletModeScreen({
   tenantName,
+  tenant,
   logoUrl,
   promoImageUrl,
   promoHeadline,
@@ -76,8 +81,8 @@ export function OutletModeScreen({
   const banners = normalizeWelcomeBanners(welcome?.welcome_page_banners)
   const showTiles = shouldShowOrderTypeStep(welcome)
   const isCentered = resolveWelcomeTextAlign(welcome) === 'center'
-  const showHeader = shouldShowWelcomeHeader(welcome)
-  const showLogo = showHeader && shouldShowWelcomeLogo(welcome)
+  const showStoreHeader = shouldShowWelcomeHeader(welcome)
+  const showLogo = shouldShowWelcomeLogo(welcome)
   const showCopy = shouldShowWelcomeCopy(welcome)
 
   // Deliberately NOT falling back to the flash-screen headline: that field is
@@ -93,6 +98,8 @@ export function OutletModeScreen({
       className="flex min-h-full w-full flex-col gap-6 px-5 py-7"
       style={{ backgroundColor: theme.backgroundColor ?? undefined }}
     >
+      {showStoreHeader && <WelcomeStoreHeader tenant={tenant ?? null} />}
+
       {(showLogo || showCopy) && (
         <div
           data-testid="welcome-header"
