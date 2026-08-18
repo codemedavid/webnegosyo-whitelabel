@@ -62,6 +62,30 @@ tiles wrapped 2 + 1 hard against the left edge.
 Regression check: `npx jest tests/unit` → **5742 passed / 5744**, the same 2 concurrent-session
 failures noted below and no new ones. `npx next lint --file src/components/customer/outlet-mode-screen.tsx` → clean.
 
+## Follow-up — centred header, logo, full-width solo banner (2026-08-18)
+
+| Stage | Commit | Evidence |
+|---|---|---|
+| RED | `f41cfc4` | welcome + resolver + studio + projection suites → 11 failed / 91 passed |
+| GREEN | `834e02c` | same four suites → 102 passed |
+
+| # | Guarantee | Test | Type | Result |
+|---|---|---|---|---|
+| 19 | `resolveWelcomeTextAlign` keeps `left` when unset/unknown; `center` only when asked | `outlets-welcome-page.test.ts` | unit | PASS |
+| 20 | `shouldShowWelcomeLogo` is off unless explicitly true | `outlets-welcome-page.test.ts` | unit | PASS |
+| 21 | Header renders left-aligned and logo-less by default even when a logo exists | `welcome-screen.test.tsx` | unit | PASS |
+| 22 | Centre alignment and the logo render when switched on; a missing logo degrades to text | `welcome-screen.test.tsx` | unit | PASS |
+| 23 | A lone portrait/square banner renders full-width and centred, not in the rail; two or more still rail | `welcome-screen.test.tsx` | unit | PASS |
+| 24 | Studio exposes `welcome_text_align` + `welcome_show_logo`; schema rejects an unknown alignment | `branding-welcome-surface.test.tsx` | unit | PASS |
+| 25 | All 16 `welcome_*` columns are in `TENANT_STOREFRONT_SELECT` (guarantee 5 was previously unbacked by a test) | `tenant-storefront-select.test.ts` | unit | PASS |
+
+Migration `20260824130000_welcome_page_header.sql` **applied via Supabase MCP 2026-08-18** and
+probed: `welcome_text_align` text NOT NULL DEFAULT `'left'`, `welcome_show_logo` boolean NOT NULL
+DEFAULT false, plus the `tenants_welcome_text_align_ck` CHECK.
+
+Regression check: `npx jest tests/unit` → **5769 passed / 5771**, same 2 concurrent-session failures.
+Lint clean across all 7 changed source files.
+
 ## Validation commands
 
 - `npx jest tests/unit` → **5738 passed / 5741** (`Tests: 3 failed, 5738 passed`). The 3 failures (`order-create-parity`, `vouchers/engine-parity`) belong to a concurrent session's uncommitted order-parity work (`src/app/actions/orders.ts`, `src/lib/order-parity.ts`) — untouched by this feature.
