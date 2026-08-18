@@ -2,7 +2,7 @@ import { describe, it, expect, jest } from '@jest/globals'
 import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { OutletModeScreen } from '@/components/customer/outlet-mode-screen'
-import { WelcomeBannersRail } from '@/components/customer/welcome-banners-rail'
+import { WelcomeBannerSlideshow } from '@/components/customer/welcome-banner-slideshow'
 import { OutletSplash } from '@/components/customer/outlet-splash'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import type { RankedOutlet } from '@/lib/outlets/nearest-outlet'
@@ -150,7 +150,7 @@ describe('OutletModeScreen — single CTA entry', () => {
   })
 })
 
-describe('WelcomeBannersRail', () => {
+describe('WelcomeBannerSlideshow', () => {
   const banner = (id: string, format: WelcomeBanner['format']): WelcomeBanner => ({
     id,
     imageUrl: `https://ik.example/${id}.jpg`,
@@ -159,21 +159,41 @@ describe('WelcomeBannersRail', () => {
   })
 
   it('renders nothing at all for an empty list', () => {
-    const { container } = render(<WelcomeBannersRail banners={[]} />)
+    const { container } = render(<WelcomeBannerSlideshow banners={[]} />)
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders landscape banners full-width and portrait/square in a scroll rail', () => {
+  it('puts every banner in one full-width deck regardless of format', () => {
     render(
-      <WelcomeBannersRail
+      <WelcomeBannerSlideshow
         banners={[banner('wide', 'landscape'), banner('tall', 'portrait'), banner('box', 'square')]}
       />
     )
-    expect(screen.getByRole('img', { name: 'wide' })).toBeInTheDocument()
-    const rail = screen.getByTestId('welcome-banners-rail')
-    expect(rail).toContainElement(screen.getByRole('img', { name: 'tall' }))
-    expect(rail).toContainElement(screen.getByRole('img', { name: 'box' }))
-    expect(rail).not.toContainElement(screen.getByRole('img', { name: 'wide' }))
+    const deck = screen.getByTestId('welcome-banner-slides')
+    for (const name of ['wide', 'tall', 'box']) {
+      expect(deck).toContainElement(screen.getByRole('img', { name }))
+    }
+    expect(deck.children).toHaveLength(3)
+    expect((deck.children[0] as HTMLElement).className).toContain('w-full')
+  })
+
+  it('offers one dot per slide and marks the one being viewed', () => {
+    render(
+      <WelcomeBannerSlideshow banners={[banner('one', 'square'), banner('two', 'square')]} />
+    )
+    const dots = screen.getAllByRole('button', { name: /slide \d/i })
+    expect(dots).toHaveLength(2)
+    expect(dots[0]).toHaveAttribute('aria-current', 'true')
+
+    fireEvent.click(dots[1])
+    expect(dots[1]).toHaveAttribute('aria-current', 'true')
+    expect(dots[0]).not.toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows no dots for a single banner — there is nothing to page through', () => {
+    render(<WelcomeBannerSlideshow banners={[banner('solo', 'portrait')]} />)
+    expect(screen.queryByRole('button', { name: /slide \d/i })).not.toBeInTheDocument()
+    expect(screen.getByTestId('welcome-banner-slides').children).toHaveLength(1)
   })
 })
 
@@ -322,24 +342,11 @@ describe('OutletModeScreen — centred header and logo', () => {
   })
 })
 
-describe('WelcomeBannersRail — a lone portrait/square banner fills the column', () => {
-  const solo: WelcomeBanner[] = [{ id: 'b1', imageUrl: 'https://cdn.test/square.png', format: 'square' }]
-
-  it('renders it full width and centred instead of a narrow rail card', () => {
-    render(<WelcomeBannersRail banners={solo} />)
-    expect(screen.queryByTestId('welcome-banners-rail')).not.toBeInTheDocument()
-    const figure = screen.getByTestId('welcome-banner-solo')
-    expect(figure.className).toContain('w-full')
-    expect(figure.className).toContain('mx-auto')
-  })
-
-  it('still uses the scrolling rail once there are two or more', () => {
-    render(
-      <WelcomeBannersRail
-        banners={[...solo, { id: 'b2', imageUrl: 'https://cdn.test/tall.png', format: 'portrait' }]}
-      />
-    )
-    expect(screen.getByTestId('welcome-banners-rail')).toBeInTheDocument()
-    expect(screen.queryByTestId('welcome-banner-solo')).not.toBeInTheDocument()
+describe('OutletModeScreen — compact tiles', () => {
+  it('keeps all three modes on a single row at every width', () => {
+    render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={null} />)
+    const tile = screen.getByTestId('welcome-mode-tiles').children[0] as HTMLElement
+    expect(tile.className).toContain('basis-[calc(33.333%')
+    expect(tile.className).not.toContain('basis-[calc(50%')
   })
 })
