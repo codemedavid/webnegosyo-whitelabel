@@ -7,6 +7,7 @@ import { OutletSplash } from '@/components/customer/outlet-splash'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import type { RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { WelcomeBanner } from '@/lib/outlets/welcome-page'
+import type { Tenant } from '@/types/database'
 
 /**
  * The multi-branch welcome page: branded starter screen with its own promo
@@ -343,55 +344,105 @@ describe('OutletModeScreen — centred header and logo', () => {
 })
 
 /**
- * The header became switchable: a merchant can drop it entirely, or keep the
- * centred logo and turn the copy off. Neither switch may disturb a tenant that
- * never touched them.
+ * The welcome page can now lead with the STORE HEADER — the same branded bar
+ * the menu page wears (logo, store name, tagline on the header colour) — but
+ * centred and with no cart: there is nothing in the cart to open from a page
+ * that comes before the menu.
+ *
+ * It is opt-in, and the heading/subheading copy is a separate switch.
  */
-describe('OutletModeScreen — header on/off', () => {
-  it('keeps the header for a tenant that never touched the switch', () => {
-    render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={{}} />)
-    expect(screen.getByTestId('welcome-header')).toBeInTheDocument()
-    expect(screen.getByText('Welcome to Gungjeon')).toBeInTheDocument()
-  })
+const STORE_TENANT = {
+  name: 'Above Sea Level',
+  logo_url: 'https://cdn.test/asl.png',
+  header_tagline: 'Home of the Giant Butterfly Squid',
+  header_color: '#1e4d8c',
+} as unknown as Tenant
 
-  it('drops the whole header — logo and copy — when switched off', () => {
+describe('OutletModeScreen — store header', () => {
+  it('adds no store header to a tenant that never asked for one', () => {
     render(
       <OutletModeScreen
-        tenantName="Gungjeon"
-        logoUrl="https://cdn.test/logo.png"
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
         modes={MODES}
         onSelect={jest.fn()}
-        welcome={{ welcome_show_header: false, welcome_show_logo: true }}
+        welcome={{}}
       />
     )
-    expect(screen.queryByTestId('welcome-header')).not.toBeInTheDocument()
-    expect(screen.queryByText('Welcome to Gungjeon')).not.toBeInTheDocument()
-    expect(screen.queryByAltText('Gungjeon')).not.toBeInTheDocument()
-    // The page still works: the tiles are the point of the screen.
-    expect(screen.getByRole('button', { name: /pick.?up/i })).toBeInTheDocument()
+    expect(screen.queryByTestId('welcome-store-header')).not.toBeInTheDocument()
   })
 
-  it('keeps a centred logo-only header when the copy is switched off', () => {
+  it('renders the branded bar with the logo, store name and tagline when switched on', () => {
     render(
       <OutletModeScreen
-        tenantName="Gungjeon"
-        logoUrl="https://cdn.test/logo.png"
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_header: true }}
+      />
+    )
+    const header = screen.getByTestId('welcome-store-header')
+    expect(header).toHaveTextContent('Above Sea Level')
+    expect(header).toHaveTextContent('Home of the Giant Butterfly Squid')
+    expect(header.querySelector('img')).toBeInTheDocument()
+  })
+
+  it('never offers a cart from the welcome page', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_header: true }}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /cart/i })).not.toBeInTheDocument()
+  })
+
+  it('centres the bar whatever the merchant chose for the copy alignment', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_header: true, welcome_text_align: 'left' }}
+      />
+    )
+    expect(screen.getByTestId('welcome-store-header').className).toContain('justify-center')
+  })
+
+  it('runs the bar and the copy as independent switches', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
         modes={MODES}
         onSelect={jest.fn()}
         welcome={{
-          welcome_show_logo: true,
+          welcome_show_header: true,
           welcome_show_copy: false,
-          welcome_text_align: 'center',
           welcome_heading_text: 'Kain na!',
-          welcome_subheading_text: 'Pick a branch',
         }}
       />
     )
-    const header = screen.getByTestId('welcome-header')
-    expect(header.className).toContain('text-center')
-    expect(screen.getByAltText('Gungjeon')).toBeInTheDocument()
+    expect(screen.getByTestId('welcome-store-header')).toBeInTheDocument()
     expect(screen.queryByText('Kain na!')).not.toBeInTheDocument()
-    expect(screen.queryByText('Pick a branch')).not.toBeInTheDocument()
+  })
+
+  it('keeps the copy for a tenant that only switched the bar on', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        tenant={STORE_TENANT}
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_header: true, welcome_heading_text: 'Kain na!' }}
+      />
+    )
+    expect(screen.getByText('Kain na!')).toBeInTheDocument()
   })
 
   it('still tells the customer why they are being asked again with the copy off', () => {
@@ -401,7 +452,7 @@ describe('OutletModeScreen — header on/off', () => {
         modes={MODES}
         onSelect={jest.fn()}
         message="That branch is closed right now."
-        welcome={{ welcome_show_header: false }}
+        welcome={{ welcome_show_copy: false }}
       />
     )
     expect(screen.getByText('That branch is closed right now.')).toBeInTheDocument()

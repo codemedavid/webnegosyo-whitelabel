@@ -178,8 +178,10 @@ describe('welcome header controls in the studio', () => {
     expect(BRANDING_FIELD_INDEX['welcome_show_copy'].type).toBe('toggle')
   })
 
-  it('defaults both switches on so an untouched tenant keeps its header', () => {
-    expect(BRANDING_FIELD_INDEX['welcome_show_header'].default).toBe(true)
+  it('leaves the store header off by default and the copy on', () => {
+    // The bar is additive — switching it on gives a tenant something it does
+    // not have today, so it cannot be the default.
+    expect(BRANDING_FIELD_INDEX['welcome_show_header'].default).toBe(false)
     expect(BRANDING_FIELD_INDEX['welcome_show_copy'].default).toBe(true)
   })
 

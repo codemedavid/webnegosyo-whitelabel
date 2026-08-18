@@ -201,20 +201,23 @@ describe('shouldShowWelcomeLogo', () => {
 })
 
 /**
- * The header is now something a merchant switches on and off as a whole, and
- * its copy separately from its logo — a logo-only header is the shape merchants
- * ask for once the branding is doing the talking. Both default ON so every
- * tenant that predates the columns keeps today's heading and subheading.
+ * "Header" means the branded store bar from the menu page — logo, store name
+ * and tagline on the header colour — brought to the welcome page, centred and
+ * without the cart. It is opt-in: switching it on ADDS a bar no tenant has
+ * today, so an untouched tenant must not grow one.
+ *
+ * The copy (heading + subheading) is a separate, independent switch: a merchant
+ * can run the bar alone, the copy alone, both, or neither.
  */
 describe('shouldShowWelcomeHeader', () => {
-  it('shows the header for every tenant that never touched the switch', () => {
-    expect(shouldShowWelcomeHeader(null)).toBe(true)
-    expect(shouldShowWelcomeHeader({})).toBe(true)
-    expect(shouldShowWelcomeHeader({ welcome_show_header: true })).toBe(true)
+  it('adds no store header to a tenant that never asked for one', () => {
+    expect(shouldShowWelcomeHeader(null)).toBe(false)
+    expect(shouldShowWelcomeHeader({})).toBe(false)
+    expect(shouldShowWelcomeHeader({ welcome_show_header: false })).toBe(false)
   })
 
-  it('hides the header only on an explicit false', () => {
-    expect(shouldShowWelcomeHeader({ welcome_show_header: false })).toBe(false)
+  it('shows the store header on an explicit true', () => {
+    expect(shouldShowWelcomeHeader({ welcome_show_header: true })).toBe(true)
   })
 })
 
@@ -226,11 +229,10 @@ describe('shouldShowWelcomeCopy', () => {
     expect(shouldShowWelcomeCopy({ welcome_show_copy: false })).toBe(false)
   })
 
-  it('reports no copy when the whole header is switched off', () => {
-    // The copy toggle lives inside the header, so an on-copy/off-header
-    // combination must not resurrect the heading.
-    expect(shouldShowWelcomeCopy({ welcome_show_header: false, welcome_show_copy: true })).toBe(
+  it('is independent of the store header — the bar and the copy are separate rows', () => {
+    expect(shouldShowWelcomeCopy({ welcome_show_header: true, welcome_show_copy: false })).toBe(
       false
     )
+    expect(shouldShowWelcomeCopy({ welcome_show_header: false, welcome_show_copy: true })).toBe(true)
   })
 })
