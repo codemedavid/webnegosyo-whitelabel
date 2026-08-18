@@ -51,6 +51,9 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ReachBar } from "../../components/sms/ReachBar";
 import { GuestRow } from "../../components/sms/GuestRow";
 import { CampaignCard } from "../../components/sms/CampaignCard";
+import { ExportSheet } from "../../components/ExportSheet";
+import { fetchAllCustomersForExport } from "../../lib/customers/repo";
+import { runCustomersExport } from "../../lib/export/run-export";
 
 type Section = "guests" | "campaigns";
 
@@ -71,6 +74,33 @@ export default function CustomersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [section, setSection] = useState<Section>("guests");
   const [campaignStates, setCampaignStates] = useState<CampaignDueState[]>([]);
+  const [isExportOpen, setExportOpen] = useState(false);
+  const [isExporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExport = async () => {
+    if (!tenantId) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      // The management read, not the SMS-shaped list on screen: the export
+      // carries spend and consent columns the campaign view never loads.
+      const { customers: allCustomers, isComplete } =
+        await fetchAllCustomersForExport(tenantId);
+      await runCustomersExport({ customers: allCustomers, nowMs: Date.now() });
+      setExportOpen(false);
+      if (!isComplete) {
+        Alert.alert(
+          "Export shared",
+          "Your guest list is larger than the export limit — the file holds the most recent guests only."
+        );
+      }
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -203,7 +233,19 @@ export default function CustomersScreen() {
       <WorkspaceSwitcher />
 
       <View style={styles.header}>
-        <Text style={styles.title}>Customers</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Customers</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setExportError(null);
+              setExportOpen(true);
+            }}
+            style={styles.exportButton}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.exportButtonText}>Export</Text>
+          </TouchableOpacity>
+        </View>
         {/*
           Two levels of navigation used to wear the same pill. The switch
           between two halves of a screen is a segmented track; the filters
@@ -305,6 +347,16 @@ export default function CustomersScreen() {
           )}
         />
       )}
+
+      <ExportSheet
+        visible={isExportOpen}
+        title="Export customers"
+        isBusy={isExporting}
+        errorMessage={exportError}
+        showPresets={false}
+        onExport={handleExport}
+        onClose={() => setExportOpen(false)}
+      />
     </View>
   );
 }
@@ -362,6 +414,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
   title: { ...typography.title, color: colors.textPrimary },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  exportButton: {
+    borderColor: colors.separator,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.card,
+  },
+  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
   // Explicitly cream: the header lives inside the list's content container,
   // which carries the roster's white surface, so without this the reach card
   // and the search box would sit on white and the card would disappear into
