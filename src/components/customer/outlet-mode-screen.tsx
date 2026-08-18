@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowRight, Bike, ShoppingBag, UtensilsCrossed } from 'lucide-react'
-import { WelcomeBannersRail } from '@/components/customer/welcome-banners-rail'
+import { WelcomeBannerSlideshow } from '@/components/customer/welcome-banner-slideshow'
 import {
   normalizeWelcomeBanners,
   resolveWelcomeCtaText,
@@ -86,7 +86,7 @@ export function OutletModeScreen({
 
   return (
     <div
-      className="flex min-h-full w-full flex-col gap-7 px-5 py-8"
+      className="flex min-h-full w-full flex-col gap-6 px-5 py-7"
       style={{ backgroundColor: theme.backgroundColor ?? undefined }}
     >
       <div
@@ -114,7 +114,7 @@ export function OutletModeScreen({
       </div>
 
       {banners.length > 0 ? (
-        <WelcomeBannersRail banners={banners} />
+        <WelcomeBannerSlideshow banners={banners} />
       ) : (
         promoImageUrl && (
           <div className="overflow-hidden rounded-2xl">
@@ -128,7 +128,7 @@ export function OutletModeScreen({
         // Wrapping flex rather than a grid: with three modes on a narrow screen
         // the odd tile lands centred under the other two instead of hugging the
         // left edge, and from `sm` up all three sit on one row.
-        <div className="flex flex-wrap justify-center gap-4" data-testid="welcome-mode-tiles">
+        <div className="flex flex-wrap justify-center gap-2.5" data-testid="welcome-mode-tiles">
           {modes.map((mode) => {
             const Icon = MODE_ICONS[mode]
             return (
@@ -136,27 +136,23 @@ export function OutletModeScreen({
                 key={mode}
                 type="button"
                 onClick={() => onSelect(mode)}
-                className={`group flex flex-col items-center gap-3 rounded-2xl border-2 border-transparent bg-muted/60 px-4 py-7 transition-colors hover:border-primary hover:bg-muted ${
-                  modes.length === 1
-                    ? 'basis-full'
-                    : modes.length === 3
-                      ? 'basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.7rem)]'
-                      : 'basis-[calc(50%-0.5rem)]'
+                className={`group flex flex-col items-center gap-2 rounded-2xl border-2 border-transparent bg-muted/60 px-2 py-4 transition-colors hover:border-primary hover:bg-muted ${
+                  modes.length === 1 ? 'basis-full' : 'basis-[calc(33.333%-0.55rem)]'
                 }`}
                 style={{ backgroundColor: theme.tileBackgroundColor ?? undefined }}
               >
-                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-background shadow-sm">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-background shadow-sm">
                   <Icon
-                    className="h-9 w-9 text-primary"
+                    className="h-6 w-6 text-primary"
                     strokeWidth={1.75}
                     style={{ color: theme.tileIconColor ?? undefined }}
                   />
                 </span>
                 <span className="text-center" style={{ color: theme.tileTextColor ?? undefined }}>
-                  <span className="block text-base font-bold uppercase tracking-wide">
+                  <span className="block text-[13px] font-bold uppercase tracking-wide">
                     {OUTLET_MODE_LABELS[mode]}
                   </span>
-                  <span className="block text-xs text-muted-foreground">{MODE_BLURBS[mode]}</span>
+                  <span className="block text-[11px] text-muted-foreground">{MODE_BLURBS[mode]}</span>
                 </span>
               </button>
             )
@@ -166,7 +162,7 @@ export function OutletModeScreen({
         <button
           type="button"
           onClick={onStartOrdering}
-          className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-primary px-6 py-6 text-lg font-bold text-primary-foreground shadow-md transition-transform active:scale-[0.98]"
+          className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground shadow-md transition-transform active:scale-[0.98]"
           style={{
             backgroundColor: theme.ctaBackgroundColor ?? undefined,
             color: theme.ctaTextColor ?? undefined,
