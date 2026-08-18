@@ -43,6 +43,25 @@
 | 14 | Banner editor shows the 3-format picker only for `bannerFormats` fields (menu banners unchanged) | `branding-welcome-surface.test.tsx` | unit | PASS |
 | 15 | `OutletGate isPreview` forces the welcome page open for the studio; renders nothing outside preview when gating rules say so | `branding-welcome-surface.test.tsx` | unit | PASS |
 
+## Follow-up fix — 2026-08-18 (live-tenant defects)
+
+Seen on a real multi-branch storefront: the heading read "Loading menu..." and three
+tiles wrapped 2 + 1 hard against the left edge.
+
+| Stage | Commit | Evidence |
+|---|---|---|
+| RED | `2c94d30` | `npx jest tests/unit/welcome-screen.test.tsx` → 2 failed / 13 passed (heading leaked, no tile container) |
+| GREEN | `2199072` | same command → 15 passed; welcome + entry + studio suites → 57 passed |
+
+| # | Guarantee | Test | Type | Result |
+|---|---|---|---|---|
+| 16 | The flash-screen headline never becomes the welcome heading; unset heading falls back to `Welcome to {tenant}` | `welcome-screen.test.tsx` | unit | PASS |
+| 17 | A merchant `welcome_heading_text` still wins over the tenant-name fallback | `welcome-screen.test.tsx` | unit | PASS |
+| 18 | Mode tiles sit in a centred wrapping row (odd third tile centres; all three on one row from `sm`) | `welcome-screen.test.tsx` | unit | PASS |
+
+Regression check: `npx jest tests/unit` → **5742 passed / 5744**, the same 2 concurrent-session
+failures noted below and no new ones. `npx next lint --file src/components/customer/outlet-mode-screen.tsx` → clean.
+
 ## Validation commands
 
 - `npx jest tests/unit` → **5738 passed / 5741** (`Tests: 3 failed, 5738 passed`). The 3 failures (`order-create-parity`, `vouchers/engine-parity`) belong to a concurrent session's uncommitted order-parity work (`src/app/actions/orders.ts`, `src/lib/order-parity.ts`) — untouched by this feature.
