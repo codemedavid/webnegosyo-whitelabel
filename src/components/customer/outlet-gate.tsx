@@ -72,7 +72,7 @@ function OutletGatePreview({ tenant, outlets }: { tenant: Tenant | null; outlets
       reason={null}
       isLocating={false}
       onLocate={() => {}}
-      rankFor={((mode) =>
+      rankFor={((mode: OutletOrderMode | null) =>
         rankOutlets(outlets as unknown as PickerOutlet[], {
           mode,
           origin: null,
