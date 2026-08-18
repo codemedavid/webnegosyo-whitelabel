@@ -158,3 +158,18 @@ describe('OutletGate preview forcing', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('welcome header controls in the studio', () => {
+  it('exposes the alignment and logo fields', () => {
+    expect(BRANDING_FIELD_INDEX['welcome_text_align']).toBeDefined()
+    expect(BRANDING_FIELD_INDEX['welcome_show_logo']).toBeDefined()
+    expect(BRANDING_FIELD_INDEX['welcome_show_logo'].type).toBe('toggle')
+  })
+
+  it('accepts them in a branding patch and rejects an unknown alignment', () => {
+    expect(
+      brandingPatchSchema.safeParse({ welcome_text_align: 'center', welcome_show_logo: true }).success
+    ).toBe(true)
+    expect(brandingPatchSchema.safeParse({ welcome_text_align: 'justify' }).success).toBe(false)
+  })
+})

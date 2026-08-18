@@ -4,8 +4,10 @@ import {
   normalizeWelcomeBanners,
   resolveWelcomeCtaText,
   resolveWelcomeEntryMode,
+  resolveWelcomeTextAlign,
   resolveWelcomeTheme,
   shouldShowOrderTypeStep,
+  shouldShowWelcomeLogo,
   type WelcomeTenantFields,
 } from '@/lib/outlets/welcome-page'
 
@@ -168,5 +170,30 @@ describe('resolveWelcomeTheme', () => {
 
   it('treats an empty-string column as unset, not as a colour', () => {
     expect(resolveWelcomeTheme({ welcome_background_color: '' }).backgroundColor).toBeNull()
+  })
+})
+
+/**
+ * Second design pass: merchants asked for a centred header (optionally with the
+ * store logo) instead of the left-aligned text-only heading.
+ */
+describe('resolveWelcomeTextAlign', () => {
+  it('keeps the shipped left alignment when unset or unknown', () => {
+    expect(resolveWelcomeTextAlign(null)).toBe('left')
+    expect(resolveWelcomeTextAlign({})).toBe('left')
+    expect(resolveWelcomeTextAlign({ welcome_text_align: 'diagonal' })).toBe('left')
+  })
+
+  it('centres the header when the merchant asks for it', () => {
+    expect(resolveWelcomeTextAlign({ welcome_text_align: 'center' })).toBe('center')
+  })
+})
+
+describe('shouldShowWelcomeLogo', () => {
+  it('is off unless the merchant turns it on', () => {
+    expect(shouldShowWelcomeLogo(null)).toBe(false)
+    expect(shouldShowWelcomeLogo({})).toBe(false)
+    expect(shouldShowWelcomeLogo({ welcome_show_logo: false })).toBe(false)
+    expect(shouldShowWelcomeLogo({ welcome_show_logo: true })).toBe(true)
   })
 })

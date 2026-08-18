@@ -266,3 +266,80 @@ describe('OutletModeScreen — tile layout', () => {
     expect(tiles.children).toHaveLength(3)
   })
 })
+
+describe('OutletModeScreen — centred header and logo', () => {
+  it('keeps the left-aligned text-only header by default', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        logoUrl="https://cdn.test/logo.png"
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={null}
+      />
+    )
+    expect(screen.getByTestId('welcome-header').className).not.toContain('text-center')
+    expect(screen.queryByAltText('Gungjeon')).not.toBeInTheDocument()
+  })
+
+  it('centres the header when the merchant asks for it', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_text_align: 'center' }}
+      />
+    )
+    expect(screen.getByTestId('welcome-header').className).toContain('text-center')
+  })
+
+  it('shows the store logo in the header when switched on', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        logoUrl="https://cdn.test/logo.png"
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_logo: true, welcome_text_align: 'center' }}
+      />
+    )
+    expect(screen.getByAltText('Gungjeon')).toHaveAttribute('src', 'https://cdn.test/logo.png')
+  })
+
+  it('does not break when the logo is switched on but the tenant has none', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Gungjeon"
+        logoUrl={null}
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_show_logo: true }}
+      />
+    )
+    expect(screen.queryByAltText('Gungjeon')).not.toBeInTheDocument()
+    expect(screen.getByText('Welcome to Gungjeon')).toBeInTheDocument()
+  })
+})
+
+describe('WelcomeBannersRail — a lone portrait/square banner fills the column', () => {
+  const solo: WelcomeBanner[] = [{ id: 'b1', imageUrl: 'https://cdn.test/square.png', format: 'square' }]
+
+  it('renders it full width and centred instead of a narrow rail card', () => {
+    render(<WelcomeBannersRail banners={solo} />)
+    expect(screen.queryByTestId('welcome-banners-rail')).not.toBeInTheDocument()
+    const figure = screen.getByTestId('welcome-banner-solo')
+    expect(figure.className).toContain('w-full')
+    expect(figure.className).toContain('mx-auto')
+  })
+
+  it('still uses the scrolling rail once there are two or more', () => {
+    render(
+      <WelcomeBannersRail
+        banners={[...solo, { id: 'b2', imageUrl: 'https://cdn.test/tall.png', format: 'portrait' }]}
+      />
+    )
+    expect(screen.getByTestId('welcome-banners-rail')).toBeInTheDocument()
+    expect(screen.queryByTestId('welcome-banner-solo')).not.toBeInTheDocument()
+  })
+})

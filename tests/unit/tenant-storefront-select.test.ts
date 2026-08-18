@@ -78,3 +78,35 @@ describe('TENANT_STOREFRONT_SELECT branding columns the menu page renders', () =
     expect(duplicates).toEqual([])
   })
 })
+
+/**
+ * The welcome page reads its design straight off the tenant row, so a column
+ * missing from this projection silently resolves to `undefined` and the live
+ * page ignores what the merchant published.
+ */
+describe('TENANT_STOREFRONT_SELECT welcome page columns', () => {
+  const tokens = TENANT_STOREFRONT_SELECT.split(/[\s,]+/).filter(Boolean)
+
+  const WELCOME_COLUMNS = [
+    'welcome_entry_mode',
+    'welcome_show_order_types',
+    'welcome_cta_text',
+    'welcome_heading_text',
+    'welcome_subheading_text',
+    'welcome_page_banners',
+    'welcome_text_align',
+    'welcome_show_logo',
+    'welcome_background_color',
+    'welcome_heading_color',
+    'welcome_subtext_color',
+    'welcome_tile_background_color',
+    'welcome_tile_icon_color',
+    'welcome_tile_text_color',
+    'welcome_cta_background_color',
+    'welcome_cta_text_color',
+  ]
+
+  it.each(WELCOME_COLUMNS)('projects %s', (column) => {
+    expect(tokens).toContain(column)
+  })
+})
