@@ -222,3 +222,47 @@ describe('OutletSplash — single CTA journey', () => {
     expect(onSelect).toHaveBeenCalledWith('cainta', 'pickup')
   })
 })
+
+/**
+ * Two fixes after seeing the page on a live multi-branch tenant:
+ * the flash-screen headline ("Loading menu...") was leaking into the welcome
+ * heading, and three tiles wrapped 2 + 1 hard against the left edge.
+ */
+describe('OutletModeScreen — heading source', () => {
+  it('never uses the flash-screen headline as the welcome heading', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        promoHeadline="Loading menu..."
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{}}
+      />
+    )
+    expect(screen.queryByText('Loading menu...')).not.toBeInTheDocument()
+    expect(screen.getByText('Welcome to Above Sea Level')).toBeInTheDocument()
+  })
+
+  it('still prefers the merchant welcome heading over the tenant name', () => {
+    render(
+      <OutletModeScreen
+        tenantName="Above Sea Level"
+        promoHeadline="Loading menu..."
+        modes={MODES}
+        onSelect={jest.fn()}
+        welcome={{ welcome_heading_text: 'Kain na!' }}
+      />
+    )
+    expect(screen.getByText('Kain na!')).toBeInTheDocument()
+  })
+})
+
+describe('OutletModeScreen — tile layout', () => {
+  it('lays the tiles out in a centred wrapping row so a lone third tile is not left-aligned', () => {
+    render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={null} />)
+    const tiles = screen.getByTestId('welcome-mode-tiles')
+    expect(tiles.className).toContain('flex-wrap')
+    expect(tiles.className).toContain('justify-center')
+    expect(tiles.children).toHaveLength(3)
+  })
+})
