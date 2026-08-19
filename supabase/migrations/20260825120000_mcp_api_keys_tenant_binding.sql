@@ -25,3 +25,16 @@ alter table public.mcp_api_keys
   ) not valid;
 
 alter table public.mcp_api_keys validate constraint mcp_api_keys_tenant_scope_check;
+
+-- The OAuth chain must carry the same pin: authorization codes and refresh
+-- tokens record the tenant so exchanged / rotated access keys stay bound.
+alter table public.mcp_oauth_codes
+  add column if not exists tenant_id uuid references public.tenants (id) on delete cascade;
+
+alter table public.mcp_oauth_tokens
+  add column if not exists tenant_id uuid references public.tenants (id) on delete cascade;
+
+comment on column public.mcp_oauth_codes.tenant_id is
+  'Tenant a tenant_admin authorization is pinned to. NULL for superadmin.';
+comment on column public.mcp_oauth_tokens.tenant_id is
+  'Tenant a tenant_admin refresh token is pinned to. NULL for superadmin.';

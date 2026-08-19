@@ -73,7 +73,7 @@ describe('listMerchantOps', () => {
 
 describe('executeMerchantOp', () => {
   it('injects the pinned tenantId into the underlying op payload', async () => {
-    const execute = jest.fn(async () => ({ ok: true }))
+    const execute = jest.fn(async (..._args: unknown[]) => ({ ok: true }))
 
     await executeMerchantOp('list_menu_items', ctx, PINNED_TENANT, {}, { execute })
 
@@ -81,7 +81,7 @@ describe('executeMerchantOp', () => {
   })
 
   it('overrides a smuggled tenantId with the pinned one', async () => {
-    const execute = jest.fn(async () => ({ ok: true }))
+    const execute = jest.fn(async (..._args: unknown[]) => ({ ok: true }))
 
     await executeMerchantOp(
       'update_menu_item',
@@ -99,7 +99,7 @@ describe('executeMerchantOp', () => {
   })
 
   it('refuses a superadmin-only op even when called directly', async () => {
-    const execute = jest.fn(async () => ({ ok: true }))
+    const execute = jest.fn(async (..._args: unknown[]) => ({ ok: true }))
 
     await expect(
       executeMerchantOp('create_tenant', ctx, PINNED_TENANT, { name: 'Evil Twin' }, { execute }),
@@ -108,7 +108,7 @@ describe('executeMerchantOp', () => {
   })
 
   it('refuses an unknown op', async () => {
-    const execute = jest.fn(async () => ({ ok: true }))
+    const execute = jest.fn(async (..._args: unknown[]) => ({ ok: true }))
 
     await expect(
       executeMerchantOp('delete_everything', ctx, PINNED_TENANT, {}, { execute }),

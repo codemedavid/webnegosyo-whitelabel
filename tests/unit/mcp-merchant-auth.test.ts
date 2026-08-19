@@ -14,8 +14,8 @@ import { createMcpTokenVerifier } from '@/lib/mcp/auth-adapter'
 
 function makeSupabaseStub(row: unknown, error: unknown = null) {
   const maybeSingle = jest.fn(async () => ({ data: row, error }))
-  const eq = jest.fn(() => ({ maybeSingle }))
-  const select = jest.fn(() => ({ eq }))
+  const eq = jest.fn((..._args: unknown[]) => ({ maybeSingle }))
+  const select = jest.fn((..._args: unknown[]) => ({ eq }))
   const from = jest.fn(() => ({ select }))
   return { client: { from } as never, from, select, eq, maybeSingle }
 }

@@ -146,6 +146,8 @@ export interface IssueCodeInput {
   codeChallengeMethod: PkceMethod
   scope: string
   userId: string
+  /** Tenant a tenant_admin authorization is pinned to; omit for superadmin. */
+  tenantId?: string | null
 }
 
 /** Persists a hashed authorization code and returns the one-time plaintext code. */
@@ -165,6 +167,7 @@ export async function issueAuthorizationCode(
     code_challenge_method: input.codeChallengeMethod,
     scope: input.scope,
     created_by: input.userId,
+    tenant_id: input.tenantId ?? null,
     expires_at: new Date(now + opts.ttlSeconds * 1000).toISOString(),
   })
 
@@ -187,6 +190,7 @@ interface StoredCodeRow {
   created_by: string
   consumed_at: string | null
   expires_at: string
+  tenant_id: string | null
 }
 
 export interface ExchangeCodeInput {
@@ -216,7 +220,7 @@ export async function exchangeAuthorizationCode(
 
   const { data, error } = await client
     .from('mcp_oauth_codes')
-    .select('id, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_by, consumed_at, expires_at')
+    .select('id, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_by, consumed_at, expires_at, tenant_id')
     .eq('code_hash', sha256Hex(input.code))
     .maybeSingle()
 
@@ -258,6 +262,7 @@ export async function exchangeAuthorizationCode(
     clientId: row.client_id,
     subject: row.created_by,
     scope: row.scope,
+    tenantId: row.tenant_id ?? null,
     now,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
@@ -268,6 +273,8 @@ interface IssueTokensParams {
   clientId: string
   subject: string
   scope: string
+  /** Tenant pin carried through the whole credential chain; null = superadmin. */
+  tenantId: string | null
   now: number
   accessTtlSeconds: number
   refreshTtlSeconds: number
@@ -283,6 +290,7 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
     label: `OAuth access for ${p.clientId}`,
     scopes: p.scope.split(' ').filter((scope) => scope !== 'offline_access'),
     created_by: p.subject,
+    tenant_id: p.tenantId,
   })
   if (accessError) {
     throw new Error(`Failed to persist access token: ${accessError.message}`)
@@ -293,6 +301,7 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
     client_id: p.clientId,
     subject: p.subject,
     scope: p.scope,
+    tenant_id: p.tenantId,
     expires_at: new Date(p.now + p.refreshTtlSeconds * 1000).toISOString(),
   })
   if (error) {
@@ -321,6 +330,7 @@ interface StoredTokenRow {
   scope: string
   revoked_at: string | null
   expires_at: string
+  tenant_id: string | null
 }
 
 export async function refreshAccessToken(
@@ -332,7 +342,7 @@ export async function refreshAccessToken(
 
   const { data, error } = await client
     .from('mcp_oauth_tokens')
-    .select('id, client_id, subject, scope, revoked_at, expires_at')
+    .select('id, client_id, subject, scope, revoked_at, expires_at, tenant_id')
     .eq('token_hash', sha256Hex(input.refreshToken))
     .maybeSingle()
 
@@ -365,6 +375,7 @@ export async function refreshAccessToken(
     clientId: row.client_id,
     subject: row.subject,
     scope: row.scope,
+    tenantId: row.tenant_id ?? null,
     now,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
