@@ -1,4 +1,5 @@
 import { OAUTH_OFFLINE_SCOPE, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
 
 /**
  * Builders for the OAuth discovery documents. Kept separate from the route
@@ -38,6 +39,16 @@ export function buildProtectedResourceMetadata(origin: string): ProtectedResourc
   }
 }
 
+/** RFC 9728 — the MERCHANT resource document: same AS, tenant_admin scope. */
+export function buildMerchantProtectedResourceMetadata(origin: string): ProtectedResourceMetadata {
+  return {
+    resource: `${origin}${MERCHANT_OAUTH_PATHS.mcp}`,
+    authorization_servers: [origin],
+    bearer_methods_supported: ['header'],
+    scopes_supported: [MERCHANT_OAUTH_SCOPE],
+  }
+}
+
 /** RFC 8414 — advertises the endpoints, grants, and PKCE support for self-configuration. */
 export function buildAuthorizationServerMetadata(origin: string): AuthorizationServerMetadata {
   return {
@@ -49,6 +60,6 @@ export function buildAuthorizationServerMetadata(origin: string): AuthorizationS
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: [OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
+    scopes_supported: [OAUTH_SCOPE, MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
   }
 }
