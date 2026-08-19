@@ -22,6 +22,14 @@ function makeSupabaseStub(row: unknown, error: unknown = null) {
 
 const TENANT_ID = '11111111-2222-3333-4444-555555555555'
 
+/** jsdom has no global Request; mirror the stub used by mcp-auth-adapter.test.ts. */
+function makeRequest(url: string): Request {
+  return {
+    url,
+    headers: new Headers({ host: 'www.webnegosyo.com' }),
+  } as unknown as Request
+}
+
 describe('verifyMcpKey — tenant binding', () => {
   it('resolves the bound tenantId for a tenant_admin key', async () => {
     const { client } = makeSupabaseStub({
@@ -87,7 +95,7 @@ describe('createMcpTokenVerifier — tenant binding', () => {
       tenant_id: TENANT_ID,
     })
     const verify = createMcpTokenVerifier(client as never)
-    const req = new Request('https://www.webnegosyo.com/api/mcp/merchant/mcp')
+    const req = makeRequest('https://www.webnegosyo.com/api/mcp/merchant/mcp')
 
     const authInfo = await verify(req, 'smk_live_merchant')
 
@@ -104,7 +112,7 @@ describe('createMcpTokenVerifier — tenant binding', () => {
       tenant_id: null,
     })
     const verify = createMcpTokenVerifier(client as never)
-    const req = new Request('https://www.webnegosyo.com/api/mcp/mcp')
+    const req = makeRequest('https://www.webnegosyo.com/api/mcp/mcp')
 
     const authInfo = await verify(req, 'smk_live_valid')
 
@@ -114,7 +122,7 @@ describe('createMcpTokenVerifier — tenant binding', () => {
   it('never resolves AuthInfo for an unknown credential (unchanged behavior)', async () => {
     const { client } = makeSupabaseStub(null)
     const verify = createMcpTokenVerifier(client as never)
-    const req = new Request('https://www.webnegosyo.com/api/mcp/merchant/mcp')
+    const req = makeRequest('https://www.webnegosyo.com/api/mcp/merchant/mcp')
 
     await expect(verify(req, 'smk_live_unknown')).resolves.toBeUndefined()
   })
@@ -127,7 +135,7 @@ describe('createMcpTokenVerifier — tenant binding', () => {
       tenant_id: TENANT_ID,
     })
     const verify = createMcpTokenVerifier(client as never)
-    const req = new Request('https://www.webnegosyo.com/api/mcp/merchant/mcp')
+    const req = makeRequest('https://www.webnegosyo.com/api/mcp/merchant/mcp')
 
     await verify(req, 'smk_live_merchant')
 

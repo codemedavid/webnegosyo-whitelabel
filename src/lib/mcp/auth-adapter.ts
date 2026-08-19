@@ -32,8 +32,8 @@ export function createMcpTokenVerifier(
         }
 
         try {
-            const { keyId, scopes } = await verifyMcpKey(`Bearer ${bearerToken}`, client, { now })
-            return { token: bearerToken, clientId: keyId, scopes }
+            const { keyId, scopes, tenantId } = await verifyMcpKey(`Bearer ${bearerToken}`, client, { now })
+            return { token: bearerToken, clientId: keyId, scopes, extra: { tenantId } }
         } catch (error) {
             logAuthRejection(req, 'invalid_credential', bearerToken, error)
             return undefined
