@@ -18,6 +18,8 @@ import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { HeatmapGrid } from "../../components/HeatmapGrid";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ExportSheet } from "../../components/ExportSheet";
+import { runAnalyticsExport } from "../../lib/export/run-export";
 
 const getUpsellAnalyticsRef = "analytics:getUpsellAnalytics" as unknown as FunctionReference<"query">;
 const getBundleAnalyticsRef = "analytics:getBundleAnalytics" as unknown as FunctionReference<"query">;
@@ -84,6 +86,9 @@ const FUNNEL_COLORS = [colors.primary, colors.warning, colors.accent];
 export default function AnalyticsScreen() {
   const [daysBack, setDaysBack] = useState(7);
   const [refreshing, setRefreshing] = useState(false);
+  const [isExportOpen, setExportOpen] = useState(false);
+  const [isExporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -108,6 +113,31 @@ export default function AnalyticsScreen() {
   // function (stale bundle), tell the merchant instead of silently hiding it.
   const anyMissing = salesMissing || paymentMissing || heatmapMissing || customerMissing;
 
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await runAnalyticsExport({
+        daysBack,
+        nowMs: Date.now(),
+        sales: salesAnalytics,
+        revenueBreakdown,
+        paymentAnalytics,
+        heatmap: heatmapData,
+        customerInsights,
+        upsellStats,
+        upsellTrends,
+        bundleStats,
+        topItems,
+      });
+      setExportOpen(false);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -118,8 +148,32 @@ export default function AnalyticsScreen() {
     >
       <View style={styles.titleRow}>
         <Text style={styles.title}>Analytics</Text>
-        <WorkspaceSwitcher />
+        <View style={styles.titleActions}>
+          <WorkspaceSwitcher />
+          <TouchableOpacity
+            onPress={() => {
+              setExportError(null);
+              setExportOpen(true);
+            }}
+            style={styles.exportButton}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Export analytics report as CSV"
+          >
+            <Text style={styles.exportButtonText}>Export</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <ExportSheet
+        visible={isExportOpen}
+        title={`Export analytics (last ${daysBack} days)`}
+        isBusy={isExporting}
+        errorMessage={exportError}
+        showPresets={false}
+        onExport={handleExport}
+        onClose={() => setExportOpen(false)}
+      />
 
       <View style={styles.periodRow}>
         {[7, 14, 30].map((d) => (
@@ -678,6 +732,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing.lg,
   },
+  titleActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  exportButton: {
+    borderColor: colors.separator,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.card,
+  },
+  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {
     paddingHorizontal: spacing.lg,
