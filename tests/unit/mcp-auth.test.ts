@@ -86,7 +86,7 @@ describe('verifyMcpKey', () => {
   it('resolves the key id and scopes for a valid, unrevoked key', async () => {
     const { client, eq } = makeSupabaseStub(activeRow)
     const result = await verifyMcpKey('Bearer smk_live_valid', client)
-    expect(result).toEqual({ keyId: 'key_1', scopes: ['superadmin'] })
+    expect(result).toEqual({ keyId: 'key_1', scopes: ['superadmin'], tenantId: null })
     // must look the key up by its hash, never by plaintext
     expect(eq).toHaveBeenCalledWith('key_hash', hashApiKey('smk_live_valid'))
   })
@@ -119,6 +119,7 @@ describe('verifyMcpKey', () => {
     await expect(verifyMcpKey(`Bearer ${key.plaintext}`, client, { now: () => now })).resolves.toEqual({
       keyId: 'key_1',
       scopes: ['superadmin'],
+      tenantId: null,
     })
   })
 
