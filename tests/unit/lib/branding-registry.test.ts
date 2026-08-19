@@ -19,7 +19,7 @@ import {
 } from '@/lib/branding-registry'
 
 describe('branding registry structure', () => {
-  it('defines the nine editor surfaces in rail order', () => {
+  it('defines the ten editor surfaces in rail order', () => {
     // Arrange / Act
     const ids = BRANDING_SURFACES.map((s) => s.id)
 
@@ -27,6 +27,7 @@ describe('branding registry structure', () => {
     expect(ids).toEqual([
       'global',
       'storefront',
+      'categories',
       'welcome',
       'cart',
       'checkout',
@@ -42,7 +43,11 @@ describe('branding registry structure', () => {
       expect(surface.label.length).toBeGreaterThan(0)
       expect(surface.glyph.length).toBeGreaterThan(0)
       expect(surface.description.length).toBeGreaterThan(0)
-      expect(surface.sections.length).toBeGreaterThan(0)
+      // 'categories' renders a custom panel (no registry fields) — every
+      // other surface must declare at least one section with fields.
+      if (surface.id !== 'categories') {
+        expect(surface.sections.length).toBeGreaterThan(0)
+      }
       for (const section of surface.sections) {
         expect(section.title.length).toBeGreaterThan(0)
         expect(section.fields.length).toBeGreaterThan(0)

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
+import { getCategoriesByTenant, getMenuItemsByTenant } from '@/lib/admin-service'
+import type { Category } from '@/types/database'
 import { getProductDetailSettings } from '@/app/actions/product-detail-settings'
 import { BrandingStudio } from '@/components/admin/branding-studio/branding-studio'
 
@@ -32,6 +33,15 @@ export default async function BrandingStudioPage({
     products = []
   }
 
+  // Categories feed the Menu Layout surface's arrangement panel.
+  // Non-critical: fall back to empty (panel shows its empty state) on failure.
+  let categories: Category[] = []
+  try {
+    categories = await getCategoriesByTenant(tenantData.id)
+  } catch {
+    categories = []
+  }
+
   // Saved product-detail settings seed the Product surface's fields.
   // Non-critical: fall back to null (registry defaults) if the lookup fails.
   const productResult = await getProductDetailSettings(tenantData.id)
@@ -44,6 +54,7 @@ export default async function BrandingStudioPage({
       sampleItemId={sampleItemId}
       productSettings={productSettings}
       products={products}
+      categories={categories}
     />
   )
 }

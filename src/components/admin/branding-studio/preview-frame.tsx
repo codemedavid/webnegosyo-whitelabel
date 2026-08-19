@@ -31,6 +31,8 @@ interface PreviewFrameProps {
   draft: BrandingPreviewDraft
   /** Product-detail store draft — streamed under __productDetailDraft. */
   productDraft?: BrandingPreviewDraft
+  /** Menu Layout surface category draft — streamed under __categoryDraft. */
+  categoryDraft?: BrandingPreviewDraft
   /** Merged tenant mobile overrides — applied on a mobile viewport. */
   mobileOverrides?: BrandingPreviewDraft
   /** Merged product-detail mobile overrides — applied on a mobile viewport. */
@@ -49,6 +51,7 @@ export function PreviewFrame({
   surfaceId,
   draft,
   productDraft,
+  categoryDraft,
   mobileOverrides,
   productMobileOverrides,
   device,
@@ -59,6 +62,7 @@ export function PreviewFrame({
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
   const productDraftRef = useRef(productDraft)
+  const categoryDraftRef = useRef(categoryDraft)
   const mobileOverridesRef = useRef(mobileOverrides)
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
@@ -80,6 +84,7 @@ export function PreviewFrame({
           ...draftRef.current,
           __previewSurface: surfaceRef.current,
           __productDetailDraft: productDraftRef.current ?? {},
+          __categoryDraft: categoryDraftRef.current ?? {},
           __mobileOverrides: mobileOverridesRef.current ?? {},
           __productMobileOverrides: productMobileOverridesRef.current ?? {},
         },
@@ -98,6 +103,7 @@ export function PreviewFrame({
   useEffect(() => {
     draftRef.current = draft
     productDraftRef.current = productDraft
+    categoryDraftRef.current = categoryDraft
     mobileOverridesRef.current = mobileOverrides
     productMobileOverridesRef.current = productMobileOverrides
     surfaceRef.current = surfaceId
@@ -106,7 +112,7 @@ export function PreviewFrame({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [draft, productDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
+  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
 
   // Push inspect-mode changes immediately (no debounce — it's a UI toggle).
   useEffect(() => {
