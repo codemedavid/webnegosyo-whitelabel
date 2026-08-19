@@ -8,7 +8,12 @@
  * at require time — modelled here with throwing mock factories. Importing
  * `./share` must therefore never load them eagerly, and pressing an export
  * button must fail with a merchant-readable message, not a red screen.
+ *
+ * `require()` is deliberate throughout: the modules under test must resolve
+ * AFTER the throwing mock factories are registered, which a static import
+ * cannot guarantee.
  */
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 jest.mock("expo-file-system/legacy", () => {
   throw new Error("Cannot find native module 'ExpoFileSystem'");
