@@ -46,7 +46,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'storefront' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -260,6 +260,17 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         ],
       },
     ],
+  },
+  {
+    // Custom panel surface: no registry fields — the studio renders its own
+    // category manager (drag order + per-category layout/card template) and
+    // publishes through the category actions, not the tenant columns.
+    id: 'categories',
+    label: 'Menu Layout',
+    glyph: '☰',
+    description:
+      'Arrange menu categories and style each one — order, grid vs horizontal scroll, and a per-category card template. Changes preview live before you publish.',
+    sections: [],
   },
   {
     id: 'welcome',

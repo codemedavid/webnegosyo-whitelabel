@@ -336,6 +336,8 @@ export interface Category {
   order: number;
   is_active: boolean;
   display_layout: 'grid' | 'horizontal_scroll' | 'horizontal_mobile_only' | 'horizontal_desktop_only';
+  /** Per-category card template override; null/undefined inherits the tenant's card_template. */
+  card_template?: string | null;
   default_addons?: Addon[];
   created_at: string;
   updated_at: string;

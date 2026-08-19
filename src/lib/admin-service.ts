@@ -33,6 +33,8 @@ export const categorySchema = z.object({
   order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
   display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).default('grid'),
+  // Per-category card template override; null clears back to the tenant template.
+  card_template: z.string().nullable().optional(),
   default_addons: z.array(z.object({
     id: z.string(),
     name: z.string().min(1, 'Add-on name is required'),
