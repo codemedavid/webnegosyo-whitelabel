@@ -42,7 +42,9 @@ interface OrderRow {
   id: string
   customer_name: string | null
   customer_contact: string | null
-  delivery_address: string | null
+  /** Platform orders keep the delivery address inside this JSON blob — there
+   * is no top-level delivery_address column on the orders table. */
+  customer_data: { delivery_address?: string | null } | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
@@ -147,7 +149,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: orderData } = await admin
     .from('orders')
     .select(
-      'id, customer_name, customer_contact, delivery_address, lalamove_quotation_id, lalamove_order_id, lalamove_status',
+      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status',
     )
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
@@ -171,7 +173,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!order.lalamove_quotation_id) {
         return fail('This order has no Lalamove quotation to book against')
       }
-      if (!order.delivery_address) {
+      const deliveryAddress = order.customer_data?.delivery_address
+      if (typeof deliveryAddress !== 'string' || deliveryAddress.trim() === '') {
         return fail('This order has no delivery address')
       }
 
