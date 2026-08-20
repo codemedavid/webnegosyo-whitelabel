@@ -467,3 +467,54 @@ describe('OutletModeScreen — compact tiles', () => {
     expect(tile.className).not.toContain('basis-[calc(50%')
   })
 })
+
+/**
+ * The welcome page is the merchant's front door, so its palette has to paint
+ * the whole screen. Two separate failures made the colour stop partway down:
+ * the page panel only grew as tall as its content, and the fixed surface it
+ * scrolls inside stayed the default background either side of the column.
+ */
+describe('Welcome page — the background fills the screen', () => {
+  const BLUE = { welcome_background_color: '#1145d3' }
+
+  it('grows the welcome panel to fill the scroll surface, not just its content', () => {
+    render(<OutletModeScreen tenantName="Gungjeon" modes={MODES} onSelect={jest.fn()} welcome={BLUE} />)
+    const page = screen.getByTestId('welcome-page')
+    expect(page).toHaveStyle({ backgroundColor: '#1145d3' })
+    expect(page.className).toContain('flex-1')
+  })
+
+  it('paints the full-screen surface behind the centred column', () => {
+    render(
+      <OutletSplash
+        tenantName="Gungjeon"
+        outlets={[makePickerOutlet({ id: 'a' }), makePickerOutlet({ id: 'b' })]}
+        reason={null}
+        isLocating={false}
+        onLocate={jest.fn()}
+        rankFor={() => ({ outlets: rankAll([makePickerOutlet({ id: 'a' })]) })}
+        onSelect={jest.fn()}
+        welcome={BLUE}
+      />
+    )
+    expect(screen.getByTestId('welcome-surface')).toHaveStyle({ backgroundColor: '#1145d3' })
+  })
+
+  it('leaves an unconfigured tenant on the default surface background', () => {
+    render(
+      <OutletSplash
+        tenantName="Gungjeon"
+        outlets={[makePickerOutlet({ id: 'a' }), makePickerOutlet({ id: 'b' })]}
+        reason={null}
+        isLocating={false}
+        onLocate={jest.fn()}
+        rankFor={() => ({ outlets: rankAll([makePickerOutlet({ id: 'a' })]) })}
+        onSelect={jest.fn()}
+        welcome={null}
+      />
+    )
+    const surface = screen.getByTestId('welcome-surface')
+    expect(surface.style.backgroundColor).toBe('')
+    expect(surface.className).toContain('bg-background')
+  })
+})
