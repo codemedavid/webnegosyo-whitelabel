@@ -196,6 +196,11 @@ export function PaymentMethodsList({
                     {!paymentMethod.is_active && (
                       <Badge variant="secondary">Inactive</Badge>
                     )}
+                    {paymentMethod.loyverse_payment_type_id && (
+                      <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                        Loyverse
+                      </Badge>
+                    )}
                   </div>
                   
                   {paymentMethod.details && (

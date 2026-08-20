@@ -39,6 +39,7 @@ type FormErrors = {
 
 export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantSlug, onSuccess }: PaymentMethodFormProps) {
   const router = useRouter()
+  const isLoyverseSynced = Boolean(paymentMethod?.loyverse_payment_type_id)
   const [formData, setFormData] = useState({
     name: paymentMethod?.name || '',
     details: paymentMethod?.details || '',
@@ -221,7 +222,14 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g., GCash, PayMaya, Bank Transfer"
               className={errors.name ? 'border-red-500' : ''}
+              disabled={isLoyverseSynced}
             />
+            {isLoyverseSynced && (
+              <p className="text-sm text-gray-500">
+                This method is synced from Loyverse — its name updates on sync. Add your
+                instructions, QR code, and proof settings below.
+              </p>
+            )}
             {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
           </div>
 

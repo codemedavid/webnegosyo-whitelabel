@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentMethodForm } from '@/components/admin/payment-method-form'
 import { PaymentMethodsList } from '@/components/admin/payment-methods-list'
-import { getPaymentMethodsAction } from '@/app/actions/payment-methods'
+import { getPaymentMethodsAction, syncLoyversePaymentMethodsAction } from '@/app/actions/payment-methods'
 import { getEnabledOrderTypesByTenantClient } from '@/lib/order-types-client'
 import type { PaymentMethodWithOrderTypes } from '@/lib/payment-methods-service'
 import type { OrderType } from '@/types/database'
@@ -17,9 +17,10 @@ import { toast } from 'sonner'
 interface PaymentMethodsManagementProps {
   tenantId: string
   tenantSlug: string
+  isLoyverseConnected?: boolean
 }
 
-export function PaymentMethodsManagement({ tenantId, tenantSlug }: PaymentMethodsManagementProps) {
+export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConnected = false }: PaymentMethodsManagementProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodWithOrderTypes[]>([])
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,6 +29,7 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug }: PaymentMethod
   const [formDialogOpen, setFormDialogOpen] = useState(false)
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodWithOrderTypes | undefined>()
   const [activeTab, setActiveTab] = useState('all')
+  const [isSyncing, setIsSyncing] = useState(false)
 
   const loadData = async () => {
     try {
@@ -81,6 +83,29 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug }: PaymentMethod
     }
     setSelectedMethod(method)
     setFormDialogOpen(true)
+  }
+
+  const handleLoyverseSync = async () => {
+    setIsSyncing(true)
+    try {
+      const report = await syncLoyversePaymentMethodsAction(tenantId, tenantSlug)
+      if (!report.success) {
+        toast.error(report.error || 'Failed to sync payment methods from Loyverse')
+        return
+      }
+      const changes = report.created + report.renamed + report.reactivated + report.deactivated
+      toast.success(
+        changes === 0
+          ? 'Payment methods already match Loyverse'
+          : `Loyverse sync: ${report.created} added, ${report.renamed} renamed, ${report.reactivated} reactivated, ${report.deactivated} deactivated`
+      )
+      report.warnings.forEach((warning) => toast.warning(warning))
+      await loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to sync payment methods from Loyverse')
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   const handleFormSuccess = () => {
@@ -147,10 +172,18 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug }: PaymentMethod
           </TabsList>
         </Tabs>
         
-        <Button onClick={handleAddNew} disabled={hasError}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Payment Method
-        </Button>
+        <div className="flex items-center gap-2">
+          {isLoyverseConnected && (
+            <Button variant="outline" onClick={handleLoyverseSync} disabled={hasError || isSyncing}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing…' : 'Sync from Loyverse'}
+            </Button>
+          )}
+          <Button onClick={handleAddNew} disabled={hasError}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Payment Method
+          </Button>
+        </div>
       </div>
 
       {/* Payment Methods List */}
