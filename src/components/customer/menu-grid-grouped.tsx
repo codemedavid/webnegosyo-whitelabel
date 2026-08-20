@@ -9,6 +9,7 @@ import type { MenuItem, Category } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
+import { resolveCategoryCardTemplate } from '@/lib/category-card-template'
 import { HorizontalScrollSection } from './horizontal-scroll-section'
 import { ResponsiveCategorySection } from './responsive-category-section'
 
@@ -61,7 +62,9 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
 
   return (
     <div className="space-y-12" data-branding-scope="storefront/cards">
-      {groupedItems.map(({ category, items: categoryItems }) => (
+      {groupedItems.map(({ category, items: categoryItems }) => {
+        const categoryTemplate = resolveCategoryCardTemplate(category, template)
+        return (
         <section
           key={category.id}
           id={`category-${category.id}`}
@@ -115,7 +118,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
                 items={categoryItems}
                 onItemSelect={onItemSelect}
                 branding={branding}
-                template={template}
+                template={categoryTemplate}
                 menuEngineeringEnabled={menuEngineeringEnabled}
                 hideCurrencySymbol={hideCurrencySymbol}
               />
@@ -128,7 +131,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
                     item={item}
                     onSelect={onItemSelect}
                     branding={branding}
-                    template={template}
+                    template={categoryTemplate}
                     menuEngineeringEnabled={menuEngineeringEnabled}
                     hideCurrencySymbol={hideCurrencySymbol}
                   />
@@ -137,7 +140,8 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
             }
           />
         </section>
-      ))}
+        )
+      })}
     </div>
   )
 })

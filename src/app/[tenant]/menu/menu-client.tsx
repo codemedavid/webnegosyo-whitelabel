@@ -30,6 +30,7 @@ import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant, useMobileOverrides } from '@/hooks/use-branding-preview'
+import { applyCategoryDraft, type CategoryStudioDraft } from '@/lib/category-studio'
 import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
@@ -128,10 +129,22 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems: store
     selectedOutletId: branchSelection.outlet?.id ?? null,
   })
 
+  // Branding Studio "Menu Layout" surface: unsaved category arrangement and
+  // per-category style edits stream in under __categoryDraft — apply them over
+  // the server rows so the preview rearranges live.
+  const previewedCategories = useMemo(
+    () =>
+      applyCategoryDraft(
+        categories,
+        (previewDraft?.__categoryDraft ?? null) as CategoryStudioDraft | null
+      ),
+    [categories, previewDraft]
+  )
+
   // Virtual "Bundles" category + adapted bundle items
   const { categoriesWithBundles, allItemsWithBundles } = useMemo(() => {
     if (bundles.length === 0) {
-      return { categoriesWithBundles: categories, allItemsWithBundles: allMenuItems }
+      return { categoriesWithBundles: previewedCategories, allItemsWithBundles: allMenuItems }
     }
 
     const bundleCategory: Category = {
@@ -149,10 +162,10 @@ export function MenuClient({ tenant: tenantProp, categories, allMenuItems: store
     const bundleMenuItems = bundles.map((b) => bundleToMenuItem(b, allMenuItems))
 
     return {
-      categoriesWithBundles: [bundleCategory, ...categories],
+      categoriesWithBundles: [bundleCategory, ...previewedCategories],
       allItemsWithBundles: [...bundleMenuItems, ...allMenuItems],
     }
-  }, [bundles, categories, allMenuItems, tenant?.id])
+  }, [bundles, previewedCategories, allMenuItems, tenant?.id])
 
   const filteredItems = useMemo(() => {
     const query = debouncedSearchQuery.trim().toLowerCase()

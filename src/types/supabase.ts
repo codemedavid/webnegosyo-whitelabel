@@ -347,6 +347,7 @@ export type Database = {
           created_at: string
           default_addons: Json | null
           description: string | null
+          card_template: string | null
           display_layout: string | null
           icon: string | null
           icon_color: string | null
@@ -361,6 +362,7 @@ export type Database = {
           created_at?: string
           default_addons?: Json | null
           description?: string | null
+          card_template?: string | null
           display_layout?: string | null
           icon?: string | null
           icon_color?: string | null
@@ -375,6 +377,7 @@ export type Database = {
           created_at?: string
           default_addons?: Json | null
           description?: string | null
+          card_template?: string | null
           display_layout?: string | null
           icon?: string | null
           icon_color?: string | null
