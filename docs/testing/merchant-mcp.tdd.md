@@ -52,7 +52,7 @@ Lint: `npx eslint` over every touched file → 0 errors, 6 warnings (unused `_ar
 ## Known gaps & deliberate deviations from the plan
 
 - **No `delete_*` ops**: `op-safety.ts` fails closed on destructive op names at import AND dispatch. "Remove item" is served by `update_menu_item { is_available: false }`. Adding true deletes means deliberately relaxing that guardrail — deferred as a product decision.
-- **Migration `20260825120000_mcp_api_keys_tenant_binding.sql` is NOT applied** (adds `tenant_id` to `mcp_api_keys`, `mcp_oauth_codes`, `mcp_oauth_tokens` + scope↔tenant CHECK). Until applied, the merchant surface is inert (no credential can carry a binding) and superadmin behavior is unchanged.
+- **Migration `20260825120000_mcp_api_keys_tenant_binding.sql` APPLIED to production 2026-08-20** via Supabase MCP (`tenant_id` columns on all three tables + validated scope↔tenant CHECK verified post-apply). Superadmin keys are untouched (`tenant_id` NULL). The merchant surface goes live once this branch deploys.
 - **Staff gating is coarse**: any `app_users` row with `role='admin'` + `tenant_id` can authorize; per-feature staff permissions (staff-permissions registry) not consulted yet.
 - **Merchant login bounce goes to apex `/login`** — merchants who only ever log in on their subdomain won't have an apex session cookie; UX to be validated in phase 6 (connect-URL + admin UI, not yet built).
 - Phases 4–6 (merchant analytics reads, `launch_product` composite, admin key-management UI + `mcp_enabled` flag) are not started.
