@@ -22,6 +22,8 @@ import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
 import { brandingPatchSchema, type BrandingPatchInput } from '@/lib/branding-service'
 import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
+import { fetchSalesSummaryForTenantId } from '@/lib/queries/sales-summary'
+import { fetchUpsellPerformanceForTenantId } from '@/lib/queries/upsell-performance'
 import { createSmsCampaign, listSmsCampaignsForProvisioning } from '@/lib/sms-campaigns-service'
 import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
 
@@ -474,6 +476,44 @@ const ops: ProvisioningOp<unknown>[] = [
         execute: (ctx, input) => {
             const i = input as { tenantId: string; days?: number }
             return fetchMenuPerformanceForTenantId(i.tenantId, ctx, i.days ?? 30)
+        },
+    }),
+    op({
+        name: 'get_sales_summary',
+        description:
+            "How the store is doing overall: order count, revenue, average order value and a per-day series over the trailing window, read from whichever backend holds this tenant's orders. Envelope: { tenantId, days? }. Check `coverage`: when `coverage.complete` is false the read saw no data or only part of it — treat that as an ABSENCE of evidence, not as a slow store.",
+        input: z.object({
+            tenantId: UUID,
+            days: z
+                .number()
+                .int()
+                .min(1)
+                .max(365)
+                .optional()
+                .describe('Trailing window in days (default 30, max 365)'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; days?: number }
+            return fetchSalesSummaryForTenantId(i.tenantId, ctx, i.days ?? 30)
+        },
+    }),
+    op({
+        name: 'get_upsell_performance',
+        description:
+            'The upsell funnel (shown → clicked → converted, with rates) over the trailing window, read from the tenant\'s Convex analytics deployment. Envelope: { tenantId, days? }. When `available` is false the tenant has no reachable analytics deployment — that is an absence of tracking, NOT proof upsells perform at zero.',
+        input: z.object({
+            tenantId: UUID,
+            days: z
+                .number()
+                .int()
+                .min(1)
+                .max(365)
+                .optional()
+                .describe('Trailing window in days (default 30, max 365)'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; days?: number }
+            return fetchUpsellPerformanceForTenantId(i.tenantId, ctx, i.days ?? 30)
         },
     }),
     op({
