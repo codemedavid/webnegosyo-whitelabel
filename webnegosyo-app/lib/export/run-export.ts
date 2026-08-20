@@ -5,6 +5,10 @@
  */
 
 import { resolveDateWindow, type DateRangePreset } from "../product-analytics-filters";
+import {
+  buildAnalyticsReportCsv,
+  type AnalyticsReportInput,
+} from "./analytics-export";
 import { buildCustomersCsv, type ExportCustomerInput } from "./customers-export";
 import { exportFileName, formatExportDay } from "./dates";
 import {
@@ -101,4 +105,19 @@ export async function runCustomersExport({
 }: RunCustomersExportInput): Promise<void> {
   const csv = buildCustomersCsv(customers);
   await share({ fileName: `customers_${formatExportDay(nowMs)}.csv`, csv });
+}
+
+export interface RunAnalyticsExportInput extends AnalyticsReportInput {
+  share?: ShareFn;
+}
+
+export async function runAnalyticsExport({
+  share = shareCsv,
+  ...report
+}: RunAnalyticsExportInput): Promise<void> {
+  const csv = buildAnalyticsReportCsv(report);
+  await share({
+    fileName: `analytics_${report.daysBack}d_${formatExportDay(report.nowMs)}.csv`,
+    csv,
+  });
 }
