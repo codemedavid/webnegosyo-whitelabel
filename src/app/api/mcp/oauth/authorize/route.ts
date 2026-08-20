@@ -10,6 +10,7 @@ import {
   getOrigin,
 } from '@/lib/mcp/oauth-config'
 import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { isMerchantAuthorized, isTenantMcpEnabled } from '@/lib/mcp/merchant-gate'
 
 // OAuth 2.1 authorization endpoint. The human-login gate: it verifies the
 // caller has a Supabase browser session matching the requested scope, then
@@ -116,8 +117,12 @@ export async function GET(req: Request): Promise<Response> {
       .maybeSingle()
     const appUser = roleRow as { role: string; tenant_id: string | null } | null
     if (wantsMerchant) {
-      // A tenant admin's authority is their own store, pinned via tenant_id.
-      isAuthorized = appUser?.role === 'admin' && !!appUser.tenant_id
+      // A tenant admin's authority is their own store, pinned via tenant_id —
+      // and only while superadmin has the store's `mcp_enabled` switch on. The
+      // flag is read here, before any code is issued, so a disabled store can
+      // never complete the flow. It is re-checked on every dispatch too.
+      const mcpEnabled = appUser?.tenant_id ? await isTenantMcpEnabled(appUser.tenant_id) : false
+      isAuthorized = isMerchantAuthorized(appUser, mcpEnabled)
       tenantId = isAuthorized ? appUser!.tenant_id : null
     } else {
       isAuthorized = appUser?.role === 'superadmin'

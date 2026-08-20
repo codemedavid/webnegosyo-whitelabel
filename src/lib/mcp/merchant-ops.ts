@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { listOps, executeOp, type ProvisioningOp } from '@/lib/mcp/provisioning-ops'
+import { isTenantMcpEnabled } from '@/lib/mcp/merchant-gate'
 
 /**
  * Merchant-side MCP ops registry — the provisioning registry, tenant-pinned.
@@ -64,12 +65,19 @@ const merchantOpNames = new Set(merchantOps.map((op) => op.name))
 export interface ExecuteMerchantOpDeps {
   /** Injectable dispatch for tests; defaults to the real executeOp. */
   execute?: typeof executeOp
+  /** Injectable kill-switch read for tests; defaults to the live flag. */
+  isEnabled?: (tenantId: string) => Promise<boolean>
 }
 
 /**
  * Executes a merchant tool call with the credential-bound tenant injected into
  * the payload. The pinned tenantId ALWAYS wins over anything in `rawInput`.
  * Refuses excluded and unknown ops before touching the registry.
+ *
+ * The tenant's `mcp_enabled` flag is re-read on EVERY dispatch, against the
+ * pinned tenant, before the op runs. That is what makes the superadmin kill
+ * switch real: flipping it off revokes credentials that were already issued, on
+ * their very next call, rather than only blocking new ones.
  */
 export async function executeMerchantOp(
   name: string,
@@ -83,6 +91,11 @@ export async function executeMerchantOp(
   }
   if (!merchantOpNames.has(name)) {
     throw new Error(`Unknown op: ${name}`)
+  }
+
+  const isEnabled = deps.isEnabled ?? isTenantMcpEnabled
+  if (!(await isEnabled(pinnedTenantId))) {
+    throw new Error('The AI connection is not enabled for this store')
   }
 
   const input =

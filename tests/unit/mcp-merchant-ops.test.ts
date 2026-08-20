@@ -72,10 +72,13 @@ describe('listMerchantOps', () => {
 })
 
 describe('executeMerchantOp', () => {
+  /** These cases are about tenant injection, so the store's kill switch is on. */
+  const isEnabled = async () => true
+
   it('injects the pinned tenantId into the underlying op payload', async () => {
     const execute = jest.fn(async (..._args: unknown[]) => ({ ok: true }))
 
-    await executeMerchantOp('list_menu_items', ctx, PINNED_TENANT, {}, { execute })
+    await executeMerchantOp('list_menu_items', ctx, PINNED_TENANT, {}, { execute, isEnabled })
 
     expect(execute).toHaveBeenCalledWith('list_menu_items', ctx, { tenantId: PINNED_TENANT })
   })
@@ -88,7 +91,7 @@ describe('executeMerchantOp', () => {
       ctx,
       PINNED_TENANT,
       { tenantId: SMUGGLED_TENANT, itemId: 'item_1', price: 99 },
-      { execute },
+      { execute, isEnabled },
     )
 
     expect(execute).toHaveBeenCalledWith('update_menu_item', ctx, {
