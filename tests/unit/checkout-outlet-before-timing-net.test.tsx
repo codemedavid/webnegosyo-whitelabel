@@ -125,7 +125,7 @@ describe('useCheckoutOutlet — before-timing safety net', () => {
     expect(result.current.isMissingRequiredSelection).toBe(false)
   })
 
-  it('still trusts a stored splash choice without fetching anything', async () => {
+  it('keeps a stored splash choice, without ever blocking the customer', async () => {
     window.localStorage.setItem(
       'selected_outlet_acme',
       JSON.stringify({ outletId: 'o-makati', mode: 'delivery', savedAt: Date.now() })
@@ -135,7 +135,29 @@ describe('useCheckoutOutlet — before-timing safety net', () => {
 
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-makati'))
     expect(result.current.isMissingRequiredSelection).toBe(false)
-    expect(fetchActiveOutlets).not.toHaveBeenCalled()
+
+    // The choice survives the background validation too.
+    await waitFor(() => expect(fetchActiveOutlets).toHaveBeenCalled())
+    expect(result.current.selectedOutletId).toBe('o-makati')
+    expect(result.current.isMissingRequiredSelection).toBe(false)
+  })
+
+  it('drops a stored branch the merchant has since deactivated and asks again', async () => {
+    // Arrange: the splash stored a branch that no longer exists in the live
+    // list — deactivated or deleted after the customer chose it.
+    window.localStorage.setItem(
+      'selected_outlet_acme',
+      JSON.stringify({ outletId: 'o-ghost', mode: 'delivery', savedAt: Date.now() })
+    )
+
+    const { result } = renderBeforeTimingCheckout()
+
+    // Assert: the dead branch must not take the order; the customer is asked.
+    await waitFor(() => expect(result.current.isMissingRequiredSelection).toBe(true))
+    await waitFor(() =>
+      expect(result.current.choices.map((c) => c.outlet.id)).toEqual(['o-cainta', 'o-makati'])
+    )
+    expect(result.current.selectedOutletId).not.toBe('o-ghost')
   })
 
   it('degrades to a branchless checkout for a tenant with no branches yet', async () => {
