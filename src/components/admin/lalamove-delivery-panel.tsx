@@ -13,7 +13,16 @@ import {
   addPriorityFeeAction
 } from '@/app/actions/lalamove'
 import { toast } from 'sonner'
+import { isLalamoveFinal, lalamoveStatusTone, type LalamoveStatusTone } from '@/lib/lalamove-status'
 import type { OrderWithItems } from '@/lib/orders-service'
+
+const STATUS_BADGE_CLASSES: Record<LalamoveStatusTone, string> = {
+  searching: 'bg-orange-100 text-orange-800 border-orange-300',
+  active: 'bg-blue-100 text-blue-800 border-blue-300',
+  done: 'bg-green-100 text-green-800 border-green-300',
+  cancelled: 'bg-red-100 text-red-800 border-red-300',
+  unknown: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+}
 
 interface LalamoveDeliveryPanelProps {
   order: OrderWithItems
@@ -166,19 +175,9 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                 <div className="grid grid-cols-2 gap-1 sm:gap-2 items-center">
                   <span className="text-muted-foreground text-xs">Status:</span>
                   <div className="text-right">
-                    <Badge 
+                    <Badge
                       variant="outline"
-                      className={`text-[10px] sm:text-xs ${
-                        order.lalamove_status === 'ASSIGNING' || order.lalamove_status === 'ASSIGNED'
-                          ? 'bg-green-100 text-green-800 border-green-300'
-                          : order.lalamove_status === 'PICKED_UP' || order.lalamove_status === 'IN_TRANSIT'
-                          ? 'bg-blue-100 text-blue-800 border-blue-300'
-                          : order.lalamove_status === 'DELIVERED'
-                          ? 'bg-gray-100 text-gray-800 border-gray-300'
-                          : order.lalamove_status === 'CANCELLED'
-                          ? 'bg-red-100 text-red-800 border-red-300'
-                          : 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                      }`}
+                      className={`text-[10px] sm:text-xs ${STATUS_BADGE_CLASSES[lalamoveStatusTone(order.lalamove_status)]}`}
                     >
                       {order.lalamove_status}
                     </Badge>
@@ -198,7 +197,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     <span className="font-medium text-right text-xs sm:text-sm break-words">{order.lalamove_driver_name}</span>
                   </div>
                 </>
-              ) : order.lalamove_status === 'ASSIGNING' || order.lalamove_status === 'ASSIGNING_DRIVER' ? (
+              ) : lalamoveStatusTone(order.lalamove_status) === 'searching' ? (
                 <div className="grid grid-cols-2 gap-1 sm:gap-2 items-center">
                   <span className="text-muted-foreground text-xs">Driver:</span>
                   <span className="text-[10px] sm:text-xs italic text-orange-600 text-right">Searching...</span>
@@ -255,7 +254,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     </>
                   )}
                 </Button>
-                {order.lalamove_status !== 'CANCELLED' && order.lalamove_status !== 'DELIVERED' && (
+                {!isLalamoveFinal(order.lalamove_status) && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -273,7 +272,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     )}
                   </Button>
                 )}
-                {order.lalamove_status !== 'CANCELLED' && (
+                {!isLalamoveFinal(order.lalamove_status) && (
                   <Button
                     size="sm"
                     variant="destructive"

@@ -8,6 +8,8 @@ import {
   addLalamovePriorityFee,
 } from '@/lib/lalamove-service'
 import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { resolveLalamoveSender } from '@/lib/lalamove-sender'
+import { isLalamoveFinal } from '@/lib/lalamove-status'
 import type { Tenant } from '@/types/database'
 
 /**
@@ -35,9 +37,6 @@ type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee'
 
 const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee']
 
-/** Statuses Lalamove reports for a delivery that is over, one way or another. */
-const FINAL_STATUSES = new Set(['DELIVERED', 'CANCELED', 'CANCELLED', 'COMPLETED', 'EXPIRED'])
-
 interface OrderRow {
   id: string
   customer_name: string | null
@@ -52,23 +51,6 @@ interface OrderRow {
 
 function fail(error: string, status = 200): NextResponse {
   return NextResponse.json({ success: false, error }, { status })
-}
-
-/**
- * The store's pickup contact.
- *
- * The driver calls the SENDER to coordinate pickup, so it must be the store's
- * number and never the customer's — the same resolution the web server action
- * uses, kept identical here so a booking made from the app behaves exactly like
- * one made from the dashboard.
- */
-function resolveSender(tenant: Tenant): { name: string; phone: string | undefined } {
-  const phone =
-    tenant.lalamove_sender_phone || tenant.footer_phone || tenant.footer_whatsapp || undefined
-  return {
-    name: tenant.name || tenant.footer_business_name || 'Restaurant',
-    phone: normalizeLalamovePhone(phone, tenant.lalamove_market),
-  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -178,7 +160,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return fail('This order has no delivery address')
       }
 
-      const sender = resolveSender(tenant)
+      const sender = resolveLalamoveSender(tenant)
       if (!sender.phone) {
         return fail('Your store pickup phone is not set. Add it in delivery settings.')
       }
@@ -240,7 +222,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (op === 'cancel') {
-      if (order.lalamove_status && FINAL_STATUSES.has(order.lalamove_status.toUpperCase())) {
+      if (isLalamoveFinal(order.lalamove_status)) {
         return fail('This delivery has already finished and cannot be cancelled')
       }
 

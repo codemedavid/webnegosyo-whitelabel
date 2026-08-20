@@ -98,7 +98,7 @@ export async function createLalamoveQuotation(
 }> {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
     const service = serviceType || tenant.lalamove_service_type || 'MOTORCYCLE'
 
     if (process.env.NODE_ENV === 'development') {
@@ -171,6 +171,28 @@ export async function createLalamoveQuotation(
 }
 
 /**
+ * Retrieve a quotation (used to check expiry before booking).
+ */
+export async function retrieveLalamoveQuotation(
+  tenant: Tenant,
+  quotationId: string
+): Promise<{ expiresAt: string; stops: Array<{ id?: string }> }> {
+  try {
+    const client = await initLalamoveClient(tenant)
+    const market = tenant.lalamove_market || 'PH'
+    const quotation = await client.Quotation.retrieve(market, quotationId)
+    return quotation as unknown as { expiresAt: string; stops: Array<{ id?: string }> }
+  } catch (error) {
+    console.error('Lalamove quotation retrieval error:', error)
+    throw new Error(
+      error instanceof Error
+        ? `Failed to retrieve quotation: ${error.message}`
+        : 'Failed to retrieve quotation'
+    )
+  }
+}
+
+/**
  * Create a Lalamove order from a quotation
  */
 export async function createLalamoveOrder(
@@ -189,7 +211,7 @@ export async function createLalamoveOrder(
 }> {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
 
     // Retrieve quotation to get stop IDs
     const quotation = await client.Quotation.retrieve(
@@ -247,7 +269,7 @@ export async function getLalamoveDriver(
 ) {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
 
     const driver = await client.Driver.retrieve(
       market,
@@ -275,7 +297,7 @@ export async function getLalamoveOrder(
 ) {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
 
     const order = await client.Order.retrieve(market, orderId)
 
@@ -302,7 +324,7 @@ export async function addLalamovePriorityFee(
 ) {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
 
     return await client.Order.addPriorityFee(market, orderId, amount)
   } catch (error) {
@@ -324,7 +346,7 @@ export async function cancelLalamoveOrder(
 ): Promise<boolean> {
   try {
     const client = await initLalamoveClient(tenant)
-    const market = tenant.lalamove_market || 'HK'
+    const market = tenant.lalamove_market || 'PH'
 
     await client.Order.cancel(market, orderId)
 

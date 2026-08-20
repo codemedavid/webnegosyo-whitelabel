@@ -277,20 +277,11 @@ export async function updateOrderStatus(
     // Get delivery address from customer data
     const deliveryAddress = customerData.delivery_address as string
 
-    // Get tenant info for sender details
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('name')
-      .eq('id', tenantId)
-      .single()
-
-    const tenantName = (tenant as { name?: string } | null)?.name || 'Restaurant'
-    // Use customer contact as sender phone for now (tenant phone should be added to tenant table)
-    const senderPhone = customerContact || ''
-
-    // Only create if we have the necessary info
+    // Sender (pickup) contact is resolved inside createLalamoveOrderAction
+    // from the tenant record — the driver must call the STORE for pickup,
+    // never the customer. Only the recipient details come from the order.
     // Double-check the database to ensure no other process created it while we were processing
-    if (order.lalamove_quotation_id && customerContact && deliveryAddress && senderPhone) {
+    if (order.lalamove_quotation_id && customerContact && deliveryAddress) {
       // Check database one more time before creating (race condition prevention)
       const { data: currentOrder } = await supabase
         .from('orders')
@@ -314,8 +305,8 @@ export async function updateOrderStatus(
             tenantId,
             orderId,
             order.lalamove_quotation_id!,
-            tenantName,
-            senderPhone,
+            '',
+            '',
             customerName,
             customerContact,
             { orderId, tenantId }

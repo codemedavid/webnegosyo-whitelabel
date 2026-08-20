@@ -1251,7 +1251,7 @@ function LalamoveSection({
                   type="password"
                   value={formData.lalamove_api_key}
                   onChange={(e) => setFormData({ ...formData, lalamove_api_key: e.target.value })}
-                  placeholder="Your Lalamove API key"
+                  placeholder="Enter new API key (blank keeps the existing one)"
                   disabled={isPending}
                 />
               </div>
@@ -1263,7 +1263,7 @@ function LalamoveSection({
                   type="password"
                   value={formData.lalamove_secret_key}
                   onChange={(e) => setFormData({ ...formData, lalamove_secret_key: e.target.value })}
-                  placeholder="Your Lalamove secret key"
+                  placeholder="Enter new secret key (blank keeps the existing one)"
                   disabled={isPending}
                 />
               </div>
@@ -1927,8 +1927,11 @@ export function TenantFormWrapper({
     restaurant_longitude: tenant?.restaurant_longitude?.toString() || '',
     // Lalamove configuration
     lalamove_enabled: tenant?.lalamove_enabled ?? false,
-    lalamove_api_key: tenant?.lalamove_api_key || '',
-    lalamove_secret_key: tenant?.lalamove_secret_key || '',
+    // Never prefill the Lalamove credentials — that ships the tenant's
+    // secret key to the browser on every edit. Blank means "keep existing":
+    // the submit path drops empty values so the stored keys survive.
+    lalamove_api_key: '',
+    lalamove_secret_key: '',
     lalamove_market: tenant?.lalamove_market || 'HK',
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
