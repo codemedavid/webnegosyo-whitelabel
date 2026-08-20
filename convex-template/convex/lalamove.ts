@@ -24,6 +24,9 @@ interface LalamoveConfig {
   isSandbox: boolean;
   senderName: string;
   senderPhone: string;
+  pickupAddress: string;
+  pickupLatitude: string;
+  pickupLongitude: string;
 }
 
 interface LalamoveResponse {
@@ -42,7 +45,21 @@ const CONFIG_KEYS = [
   "lalamove_sandbox",
   "lalamove_sender_phone",
   "restaurant_name",
+  "restaurant_address",
+  "restaurant_latitude",
+  "restaurant_longitude",
 ];
+
+/** Mirrors getLanguageForMarket in src/lib/lalamove-service.ts. */
+const MARKET_LANGUAGES: Record<string, string> = {
+  HK: "en_HK",
+  SG: "en_SG",
+  TH: "th_TH",
+  PH: "en_PH",
+  TW: "zh_TW",
+  MY: "ms_MY",
+  VN: "vi_VN",
+};
 
 /**
  * Normalize a phone to E.164. PH is the primary market; other markets fall
@@ -175,7 +192,17 @@ async function loadConfig(
     isSandbox: map.get("lalamove_sandbox") === "true",
     senderName: (map.get("restaurant_name") as string) ?? "Restaurant",
     senderPhone: normalizePhone(map.get("lalamove_sender_phone") as string, market),
+    pickupAddress: (map.get("restaurant_address") as string) ?? "",
+    pickupLatitude: (map.get("restaurant_latitude") as string) ?? "",
+    pickupLongitude: (map.get("restaurant_longitude") as string) ?? "",
   };
+}
+
+/** A usable coordinate string: parses to a finite, non-zero number. The web
+ * app syncs "0" when the pin was never set, so zero means "missing". */
+function isUsableCoordinate(value: string): boolean {
+  const parsed = Number(value);
+  return value.trim() !== "" && Number.isFinite(parsed) && parsed !== 0;
 }
 
 /**
@@ -256,6 +283,89 @@ export const bookLalamove = action({
     });
 
     return { success: true, lalamoveOrderId: placed.data.orderId };
+  },
+});
+
+/**
+ * Replace an expired quotation with a fresh one so the order can be booked.
+ *
+ * Quotations expire ~5 minutes after checkout; a merchant confirming later
+ * than that used to be stuck with an unbookable order. The new quote runs
+ * store pin → the order's stored delivery coordinates. The customer's
+ * deliveryFee is deliberately NOT changed — the price was agreed at checkout.
+ */
+export const requoteLalamove = action({
+  args: { orderId: v.id("orders") },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ success: boolean; error?: string; quotationId?: string; price?: string }> => {
+    const order = await ctx.runQuery(api.orders.getOrderById, {
+      orderId: args.orderId,
+    });
+    if (!order) {
+      return { success: false, error: "Order not found" };
+    }
+    if (order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "") {
+      return {
+        success: false,
+        error: "A delivery is already booked for this order — cancel it before re-quoting",
+      };
+    }
+    if (
+      !order.deliveryAddress ||
+      order.deliveryLatitude === undefined ||
+      order.deliveryLongitude === undefined
+    ) {
+      return { success: false, error: "This order has no delivery coordinates to quote against" };
+    }
+
+    const config = await loadConfig(ctx);
+    if (!config) {
+      return { success: false, error: "Lalamove not configured" };
+    }
+    if (
+      !config.pickupAddress ||
+      !isUsableCoordinate(config.pickupLatitude) ||
+      !isUsableCoordinate(config.pickupLongitude)
+    ) {
+      return {
+        success: false,
+        error: "Your store pickup address and map pin are not set. Add them in delivery settings.",
+      };
+    }
+
+    const quote = await callLalamove(config, "POST", "/v3/quotations", {
+      serviceType: config.serviceType,
+      language: MARKET_LANGUAGES[config.market.toUpperCase()] ?? "en_US",
+      stops: [
+        {
+          coordinates: { lat: config.pickupLatitude, lng: config.pickupLongitude },
+          address: config.pickupAddress,
+        },
+        {
+          coordinates: {
+            lat: String(order.deliveryLatitude),
+            lng: String(order.deliveryLongitude),
+          },
+          address: order.deliveryAddress,
+        },
+      ],
+    });
+    if (!quote.ok) {
+      return { success: false, error: quote.error ?? "Failed to create quotation" };
+    }
+
+    await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
+      orderId: args.orderId,
+      lalamoveQuotationId: quote.data.quotationId,
+    });
+
+    return {
+      success: true,
+      quotationId: quote.data.quotationId,
+      price: quote.data.priceBreakdown?.total,
+    };
   },
 });
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Truck, RefreshCw, X, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -10,11 +10,23 @@ import {
   cancelLalamoveOrderAction,
   syncLalamoveOrderAction,
   createLalamoveOrderAction,
-  addPriorityFeeAction
+  addPriorityFeeAction,
+  requoteLalamoveAction
 } from '@/app/actions/lalamove'
 import { toast } from 'sonner'
-import { isLalamoveFinal, lalamoveStatusTone, type LalamoveStatusTone } from '@/lib/lalamove-status'
+import {
+  isActiveLalamoveDelivery,
+  isLalamoveFinal,
+  lalamoveStatusTone,
+  type LalamoveStatusTone,
+} from '@/lib/lalamove-status'
 import type { OrderWithItems } from '@/lib/orders-service'
+
+/**
+ * How often a live delivery is re-polled. Statuses used to update only when a
+ * human pressed "Sync Status" — driver assignment was invisible until then.
+ */
+const AUTO_SYNC_INTERVAL_MS = 45_000
 
 const STATUS_BADGE_CLASSES: Record<LalamoveStatusTone, string> = {
   searching: 'bg-orange-100 text-orange-800 border-orange-300',
@@ -35,6 +47,42 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
   const [syncingLalamove, setSyncingLalamove] = useState(false)
   const [creatingLalamove, setCreatingLalamove] = useState(false)
   const [addingPriorityFee, setAddingPriorityFee] = useState(false)
+  const [requoting, setRequoting] = useState(false)
+
+  const lalamoveOrderId = order.lalamove_order_id
+  const lalamoveStatus = order.lalamove_status
+
+  // Auto-refresh a live delivery so driver assignment and progress show up
+  // without anyone pressing Sync. Stops by itself once the status is final.
+  useEffect(() => {
+    if (!lalamoveOrderId || !isActiveLalamoveDelivery(lalamoveStatus)) return
+
+    let isCancelled = false
+    const tick = async () => {
+      const result = await syncLalamoveOrderAction(tenantId, order.id, lalamoveOrderId)
+      if (!isCancelled && result.success) {
+        router.refresh()
+      }
+    }
+
+    const intervalId = setInterval(tick, AUTO_SYNC_INTERVAL_MS)
+    return () => {
+      isCancelled = true
+      clearInterval(intervalId)
+    }
+  }, [order.id, lalamoveOrderId, lalamoveStatus, tenantId, router])
+
+  const handleRequote = async () => {
+    setRequoting(true)
+    const result = await requoteLalamoveAction(tenantId, order.id)
+    if (result.success) {
+      toast.success('New quotation created — you can book the delivery now')
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to create a new quotation')
+    }
+    setRequoting(false)
+  }
 
   const handleAddPriorityFee = async () => {
     if (!order.lalamove_order_id) return
@@ -326,6 +374,26 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
               {!order.customer_contact && (
                 <p className="text-[10px] sm:text-xs text-red-600">Customer contact information is required</p>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRequote}
+                disabled={requoting}
+                className="w-full text-xs sm:text-sm h-8 sm:h-9"
+              >
+                {requoting ? (
+                  <>
+                    <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                    <span>Getting new quote…</span>
+                  </>
+                ) : (
+                  <span>Get New Quote</span>
+                )}
+              </Button>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                Quotations expire after ~5 minutes. If booking fails with an expired quotation,
+                get a new quote first.
+              </p>
             </div>
           )}
         </div>

@@ -6,8 +6,10 @@ import {
   getLalamoveOrder,
   cancelLalamoveOrder,
   addLalamovePriorityFee,
+  createLalamoveQuotation,
 } from '@/lib/lalamove-service'
 import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
 import type { Tenant } from '@/types/database'
@@ -33,17 +35,21 @@ import type { Tenant } from '@/types/database'
  * the service key and that read bypasses RLS entirely.
  */
 
-type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee'
+type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee' | 'requote'
 
-const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee']
+const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee', 'requote']
 
 interface OrderRow {
   id: string
   customer_name: string | null
   customer_contact: string | null
-  /** Platform orders keep the delivery address inside this JSON blob — there
+  /** Platform orders keep the delivery details inside this JSON blob — there
    * is no top-level delivery_address column on the orders table. */
-  customer_data: { delivery_address?: string | null } | null
+  customer_data: {
+    delivery_address?: string | null
+    delivery_lat?: number | string | null
+    delivery_lng?: number | string | null
+  } | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
@@ -192,6 +198,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .is('lalamove_order_id', null)
 
       return NextResponse.json({ success: true, lalamoveOrderId: placed.orderId })
+    }
+
+    if (op === 'requote') {
+      // Quotations expire ~5 minutes after checkout. A fresh quote makes a
+      // stale order bookable again; the customer's delivery_fee is left
+      // untouched — the price was agreed at checkout and any fare difference
+      // is the merchant's call, never a silent rebill.
+      if (bookedId) {
+        return fail('A delivery is already booked for this order — cancel it before re-quoting')
+      }
+
+      const deliveryAddress = order.customer_data?.delivery_address
+      const deliveryLat = toFiniteNumber(order.customer_data?.delivery_lat)
+      const deliveryLng = toFiniteNumber(order.customer_data?.delivery_lng)
+      if (
+        typeof deliveryAddress !== 'string' ||
+        deliveryAddress.trim() === '' ||
+        deliveryLat === undefined ||
+        deliveryLng === undefined
+      ) {
+        return fail('This order has no delivery coordinates to quote against')
+      }
+
+      const pickupAddress = tenant.restaurant_address
+      const pickupLat = toFiniteNumber(tenant.restaurant_latitude)
+      const pickupLng = toFiniteNumber(tenant.restaurant_longitude)
+      if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+        return fail('Your store pickup address and map pin are not set. Add them in delivery settings.')
+      }
+
+      const quotation = await createLalamoveQuotation(
+        tenant,
+        pickupAddress,
+        { lat: pickupLat, lng: pickupLng },
+        deliveryAddress,
+        { lat: deliveryLat, lng: deliveryLng },
+      )
+
+      // Guarded on the booking still being absent so a booking racing this
+      // requote cannot end up referencing a quotation it was not made from.
+      await admin
+        .from('orders')
+        .update({ lalamove_quotation_id: quotation.quotationId })
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId)
+        .is('lalamove_order_id', null)
+
+      return NextResponse.json({
+        success: true,
+        quotationId: quotation.quotationId,
+        price: quotation.price,
+        currency: quotation.currency,
+      })
     }
 
     if (!bookedId) {

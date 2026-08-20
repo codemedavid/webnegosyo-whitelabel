@@ -12,6 +12,7 @@ import {
   retrieveLalamoveQuotation,
 } from '@/lib/lalamove-service'
 import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -281,6 +282,114 @@ export async function createLalamoveOrderAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create Lalamove order',
+    }
+  }
+}
+
+/**
+ * Replace an expired quotation with a fresh one so the order can be booked.
+ *
+ * Quotations expire ~5 minutes after checkout; any order confirmed later than
+ * that used to be stuck — no path anywhere to get a bookable quotation again.
+ * The new quote runs store pin → the order's stored delivery coordinates.
+ * The customer's delivery_fee is deliberately NOT changed: the price was
+ * agreed at checkout, and a fare difference is the merchant's to absorb or
+ * chase — never silently rebilled.
+ */
+export async function requoteLalamoveAction(tenantId: string, orderId: string) {
+  try {
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
+
+    const supabase = await createClient()
+
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
+      .eq('id', tenantId)
+      .single()
+
+    if (!tenant) {
+      return { success: false, error: 'Tenant not found' }
+    }
+    const tenantTyped = tenant as unknown as Tenant
+    if (!tenantTyped.lalamove_enabled) {
+      return { success: false, error: 'Lalamove delivery is not enabled' }
+    }
+
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('id, customer_data, lalamove_order_id')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    const order = orderData as unknown as {
+      customer_data: {
+        delivery_address?: string | null
+        delivery_lat?: number | string | null
+        delivery_lng?: number | string | null
+      } | null
+      lalamove_order_id: string | null
+    } | null
+
+    if (!order) {
+      return { success: false, error: 'Order not found' }
+    }
+    if (order.lalamove_order_id && String(order.lalamove_order_id).trim() !== '') {
+      return {
+        success: false,
+        error: 'A delivery is already booked for this order — cancel it before re-quoting',
+      }
+    }
+
+    const deliveryAddress = order.customer_data?.delivery_address
+    const deliveryLat = toFiniteNumber(order.customer_data?.delivery_lat)
+    const deliveryLng = toFiniteNumber(order.customer_data?.delivery_lng)
+    if (!deliveryAddress || deliveryLat === undefined || deliveryLng === undefined) {
+      return { success: false, error: 'This order has no delivery coordinates to quote against' }
+    }
+
+    const pickupAddress = tenantTyped.restaurant_address
+    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
+    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
+    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+      return {
+        success: false,
+        error: 'Your store pickup address and map pin are not set. Add them in delivery settings.',
+      }
+    }
+
+    const quotation = await createLalamoveQuotation(
+      tenantTyped,
+      pickupAddress,
+      { lat: pickupLat, lng: pickupLng },
+      deliveryAddress,
+      { lat: deliveryLat, lng: deliveryLng },
+    )
+
+    // Guarded on the booking still being absent so a booking racing this
+    // requote cannot end up referencing a quotation it was not made from.
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ lalamove_quotation_id: quotation.quotationId })
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .is('lalamove_order_id', null)
+
+    if (updateError) {
+      throw updateError
+    }
+
+    return {
+      success: true,
+      data: { quotationId: quotation.quotationId, price: quotation.price, currency: quotation.currency },
+    }
+  } catch (error) {
+    console.error('Lalamove requote error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create a new quotation',
     }
   }
 }

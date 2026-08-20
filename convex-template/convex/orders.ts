@@ -322,6 +322,7 @@ export const getOrderRevisions = query({
 export const updateLalamoveDetails = mutation({
   args: {
     orderId: v.id("orders"),
+    lalamoveQuotationId: v.optional(v.string()),
     lalamoveOrderId: v.optional(v.string()),
     lalamoveStatus: v.optional(v.string()),
     lalamoveDriverName: v.optional(v.string()),
@@ -343,6 +344,7 @@ export const updateLalamoveDetails = mutation({
 export const updateLalamoveDetailsInternal = internalMutation({
   args: {
     orderId: v.id("orders"),
+    lalamoveQuotationId: v.optional(v.string()),
     lalamoveOrderId: v.optional(v.string()),
     lalamoveStatus: v.optional(v.string()),
     lalamoveDriverName: v.optional(v.string()),
