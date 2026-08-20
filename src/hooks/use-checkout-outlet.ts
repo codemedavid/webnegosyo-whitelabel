@@ -116,9 +116,11 @@ export function useCheckoutOutlet({
   }, [isMultiBranch, tenantSlug])
 
   // Whether checkout itself must resolve the branch: always under `after`, and
-  // under `before` exactly when the splash's stored answer turned out missing.
-  const needsCheckoutResolution =
-    isMultiBranch && (isAfterTiming || (isStorageHydrated && storedOutletId === null))
+  // under `before` as soon as storage has been read — even a stored answer is
+  // only trusted provisionally, because the merchant may have deactivated that
+  // branch since the splash stored it. Validation happens in the background:
+  // the customer is never held waiting on it while a stored choice exists.
+  const needsCheckoutResolution = isMultiBranch && (isAfterTiming || isStorageHydrated)
 
   useEffect(() => {
     if (!needsCheckoutResolution || !tenant?.id) return
@@ -154,9 +156,10 @@ export function useCheckoutOutlet({
    */
   const candidateOutletId = useMemo(() => {
     if (chosenOutletId !== undefined) return chosenOutletId
+    if (storedOutletId !== null) return storedOutletId
     if (linkedSlug === null) return null
     return matchOutletByLinkSlug(outlets, linkedSlug)?.id ?? null
-  }, [chosenOutletId, linkedSlug, outlets])
+  }, [chosenOutletId, storedOutletId, linkedSlug, outlets])
 
   const resolution = useMemo(
     () => resolveCheckoutOutletSelection({ outlets, mode, selectedOutletId: candidateOutletId }),
@@ -190,9 +193,14 @@ export function useCheckoutOutlet({
    * branchless checkout.
    */
   const isAwaitingStoredChoice = isMultiBranch && !isAfterTiming && !isStorageHydrated
+  // While the list is in flight, only a checkout with NO stored answer blocks —
+  // a stored choice is honored provisionally rather than making every returning
+  // customer watch the validation. Once the list is in hand, resolution rules.
   const isMissingRequiredSelection =
     isAwaitingStoredChoice ||
-    (needsCheckoutResolution && (isLoading || (outlets.length > 0 && resolvedOutletId === null)))
+    (needsCheckoutResolution &&
+      ((isLoading && storedOutletId === null) ||
+        (outlets.length > 0 && resolvedOutletId === null)))
 
   // The customer tapped a branch and no longer has it — only ever because the
   // order type changed under them, since nothing else clears a live choice.
@@ -204,9 +212,10 @@ export function useCheckoutOutlet({
   return {
     isPickerVisible,
     choices: resolution.choices,
-    // Under `before` the splash's stored choice wins; the resolved id is the
-    // fallback net's answer (QR link, auto-pick, or the checkout picker).
-    selectedOutletId: isAfterTiming ? resolvedOutletId : (storedOutletId ?? resolvedOutletId),
+    // Once the live list is in hand, only a branch that survived resolution can
+    // take the order. Before that, a stored splash choice stands in — trusted
+    // provisionally so a returning customer is never held for the validation.
+    selectedOutletId: isAfterTiming || hasLoadedOutlets ? resolvedOutletId : storedOutletId,
     select: useCallback((outletId: string) => setChosenOutletId(outletId), []),
     clearSelection: useCallback(() => setChosenOutletId(null), []),
     mode,

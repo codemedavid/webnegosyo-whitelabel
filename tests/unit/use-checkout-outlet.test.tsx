@@ -184,7 +184,10 @@ describe('useCheckoutOutlet', () => {
 
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-makati'))
     expect(result.current.isPickerVisible).toBe(false)
-    expect(fetchActiveOutlets).not.toHaveBeenCalled()
+
+    // The list is fetched to validate the stored choice, but the choice holds.
+    await waitFor(() => expect(fetchActiveOutlets).toHaveBeenCalled())
+    expect(result.current.selectedOutletId).toBe('o-makati')
   })
 
   it('leaves single-location tenants with no branch on the order', async () => {
