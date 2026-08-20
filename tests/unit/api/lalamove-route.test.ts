@@ -33,6 +33,7 @@ jest.mock('@/lib/lalamove-service', () => ({
   getLalamoveOrder: jest.fn(),
   cancelLalamoveOrder: jest.fn(),
   addLalamovePriorityFee: jest.fn(),
+  createLalamoveQuotation: jest.fn(),
 }))
 
 const TENANT = {
@@ -43,6 +44,9 @@ const TENANT = {
   lalamove_secret_key: 'secret',
   lalamove_market: 'PH',
   lalamove_sender_phone: '09170000000',
+  restaurant_address: '88 Retiro St, QC',
+  restaurant_latitude: 14.62,
+  restaurant_longitude: 121.0,
 }
 
 // The platform `orders` table has NO `delivery_address` column — the address
@@ -54,7 +58,7 @@ const ORDER = {
   tenant_id: 't1',
   customer_name: 'Ana',
   customer_contact: '09171234567',
-  customer_data: { delivery_address: '12 Mabini St' },
+  customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
   lalamove_quotation_id: 'quote-1',
   lalamove_order_id: null,
   lalamove_status: null,
@@ -191,6 +195,14 @@ describe('POST /api/lalamove', () => {
     })
     ;(service.cancelLalamoveOrder as unknown as jest.Mock).mockResolvedValue(true)
     ;(service.addLalamovePriorityFee as unknown as jest.Mock).mockResolvedValue({})
+    ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+      quotationId: 'quote-new',
+      price: 89,
+      currency: 'PHP',
+      expiresAt: new Date('2099-01-01T00:00:00Z'),
+      distance: '0 km',
+      duration: '0 min',
+    })
   })
 
   test('refuses an unauthenticated caller', async () => {
@@ -311,6 +323,61 @@ describe('POST /api/lalamove', () => {
 
     const body = (await res.json()) as { success: boolean; error?: string }
     expect(body.success).toBe(false)
+  })
+
+  test('re-quotes an expired quotation from the store pin and the order address', async () => {
+    // Quotations expire in ~5 minutes. If the merchant confirms later than
+    // that, the only recovery used to be the web dashboard — requote makes an
+    // expired order bookable again from wherever the merchant is.
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ success: true, quotationId: 'quote-new' })
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1' }),
+      '88 Retiro St, QC',
+      { lat: 14.62, lng: 121.0 },
+      '12 Mabini St',
+      { lat: 14.7, lng: 121.05 },
+    )
+
+    const [, patch] = adminUpdateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
+    expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
+  })
+
+  test('refuses to re-quote once a delivery is booked', async () => {
+    // Swapping the quotation under a live booking would desync the order from
+    // the rider already on the road.
+    orderRow = { ...ORDER, lalamove_order_id: 'lala-1' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+  })
+
+  test('refuses to re-quote when the store has no pickup pin', async () => {
+    tenantRow = { ...TENANT, restaurant_latitude: null, restaurant_longitude: null }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+    expect(body.error).toMatch(/pickup|store/i)
   })
 
   test('syncs the live driver details onto the order', async () => {

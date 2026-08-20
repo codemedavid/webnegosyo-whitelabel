@@ -44,6 +44,9 @@ const TENANT = {
   lalamove_market: 'PH',
   lalamove_sandbox: false,
   lalamove_sender_phone: '09170000000',
+  restaurant_address: '88 Retiro St, QC',
+  restaurant_latitude: 14.62,
+  restaurant_longitude: 121.0,
 }
 
 describe('lalamove server actions', () => {
@@ -148,6 +151,69 @@ describe('lalamove server actions', () => {
 
       expect(result.success).toBe(true)
       expect(service.cancelLalamoveOrder).toHaveBeenCalled()
+    })
+  })
+
+  describe('requoteLalamoveAction', () => {
+    test('builds a fresh quotation from the store pin and the order coordinates', async () => {
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: null,
+        customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
+      }
+      const service = await import('@/lib/lalamove-service')
+      ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+        quotationId: 'quote-new',
+        price: 89,
+        currency: 'PHP',
+        expiresAt: new Date('2099-01-01T00:00:00Z'),
+        distance: '0 km',
+        duration: '0 min',
+      })
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(true)
+      expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 't1' }),
+        '88 Retiro St, QC',
+        { lat: 14.62, lng: 121.0 },
+        '12 Mabini St',
+        { lat: 14.7, lng: 121.05 },
+      )
+      const [, patch] = updateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
+      expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
+    })
+
+    test('refuses once a delivery is already booked', async () => {
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: 'lala-1',
+        customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
+      }
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
+    test('refuses when the order has no delivery coordinates', async () => {
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: null,
+        customer_data: { delivery_address: '12 Mabini St' },
+      }
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
     })
   })
 
