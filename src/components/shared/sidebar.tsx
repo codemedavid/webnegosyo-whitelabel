@@ -23,6 +23,7 @@ import {
   Ticket,
   Menu,
   MapPin,
+  KeyRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -670,6 +671,7 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard },
       { label: 'Branding Studio', href: '/admin/branding', icon: Paintbrush },
       { label: 'Hero Designer', href: '/admin/hero-designer', icon: Paintbrush },
+      { label: 'Connect AI', href: '/admin/mcp', icon: KeyRound },
     ],
   },
   {

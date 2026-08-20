@@ -118,5 +118,93 @@ export async function revokeMcpKey(client: SupabaseClient, id: string): Promise<
   return toSummary(data as McpKeyRow)
 }
 
+// ── Merchant (tenant_admin) keys ─────────────────────────────────────────────
+// Every operation below is pinned to ONE tenant at this layer. The DB CHECK
+// (`mcp_api_keys_tenant_scope_check`) independently rejects a tenant_admin key
+// without a tenant, but the tenant filters here are what stop a buggy caller
+// from listing or revoking another store's credentials.
+
+/** Lists a single tenant's merchant keys newest-first as non-secret summaries. */
+export async function listMerchantMcpKeys(
+  client: SupabaseClient,
+  tenantId: string,
+): Promise<McpKeySummary[]> {
+  const { data, error } = await client
+    .from('mcp_api_keys')
+    .select(SUMMARY_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw new Error(`Failed to list merchant MCP keys: ${error.message}`)
+  }
+
+  return ((data ?? []) as McpKeyRow[]).map(toSummary)
+}
+
+/**
+ * Mints a merchant key: scope `tenant_admin`, pinned to `tenantId`. Returns the
+ * plaintext once; only the hash is stored.
+ */
+export async function createMerchantMcpKey(
+  client: SupabaseClient,
+  tenantId: string,
+  label: string,
+  createdBy?: string,
+): Promise<CreatedMcpKey> {
+  if (!tenantId?.trim()) {
+    throw new Error('A tenant id is required to create a merchant MCP key')
+  }
+  const trimmed = label?.trim()
+  if (!trimmed) {
+    throw new Error('A non-empty label is required to create an MCP key')
+  }
+
+  const { plaintext, hash, prefix } = generateApiKey()
+
+  const { data, error } = await client
+    .from('mcp_api_keys')
+    .insert({
+      key_hash: hash,
+      key_prefix: prefix,
+      label: trimmed,
+      scopes: ['tenant_admin'],
+      tenant_id: tenantId,
+      ...(createdBy ? { created_by: createdBy } : {}),
+    })
+    .select(SUMMARY_COLUMNS)
+    .single()
+
+  if (error) {
+    throw new Error(`Failed to create merchant MCP key: ${error.message}`)
+  }
+
+  return { plaintext, key: toSummary(data as McpKeyRow) }
+}
+
+/**
+ * Revokes a merchant key, filtered by BOTH the key id and the tenant — a key
+ * belonging to another store is unreachable through this path and throws.
+ */
+export async function revokeMerchantMcpKey(
+  client: SupabaseClient,
+  tenantId: string,
+  id: string,
+): Promise<McpKeySummary> {
+  const { data, error } = await client
+    .from('mcp_api_keys')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .select(SUMMARY_COLUMNS)
+    .single()
+
+  if (error || !data) {
+    throw new Error(`Failed to revoke merchant MCP key: ${error?.message ?? 'key not found for this tenant'}`)
+  }
+
+  return toSummary(data as McpKeyRow)
+}
+
 /** Re-exported so callers can hash without importing mcp-auth directly. */
 export { hashApiKey }

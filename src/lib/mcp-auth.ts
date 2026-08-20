@@ -34,12 +34,15 @@ export interface GeneratedOAuthAccessKey extends GeneratedApiKey {
 export interface McpKeyContext {
   keyId: string
   scopes: string[]
+  /** Tenant the key is bound to (`tenant_admin` scope); null for superadmin keys. */
+  tenantId: string | null
 }
 
 interface McpKeyRow {
   id: string
   scopes: string[] | null
   revoked_at: string | null
+  tenant_id: string | null
 }
 
 /** SHA-256 hex digest of a plaintext key. Deterministic and pure. */
@@ -101,7 +104,7 @@ export async function verifyMcpKey(
 
   const { data, error } = await client
     .from('mcp_api_keys')
-    .select('id, scopes, revoked_at')
+    .select('id, scopes, revoked_at, tenant_id')
     .eq('key_hash', hashApiKey(token))
     .maybeSingle()
 
@@ -127,5 +130,5 @@ export async function verifyMcpKey(
     }
   }
 
-  return { keyId: row.id, scopes: row.scopes ?? [] }
+  return { keyId: row.id, scopes: row.scopes ?? [], tenantId: row.tenant_id ?? null }
 }

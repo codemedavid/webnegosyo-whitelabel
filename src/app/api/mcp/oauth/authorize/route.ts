@@ -9,11 +9,16 @@ import {
   OAUTH_SCOPE,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
+import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { isMerchantAuthorized, isTenantMcpEnabled } from '@/lib/mcp/merchant-gate'
 
 // OAuth 2.1 authorization endpoint. The human-login gate: it verifies the
-// caller has a superadmin browser session (bouncing through /superadmin/login
-// if not), then mints a PKCE-bound authorization code and redirects back to the
-// connector. Logging in AS superadmin is the consent.
+// caller has a Supabase browser session matching the requested scope, then
+// mints a PKCE-bound authorization code and redirects back to the connector.
+// Logging in is the consent. Two audiences share this endpoint:
+// - scope `superadmin` → requires a superadmin session (bounce: /superadmin/login)
+// - scope `tenant_admin` → requires a tenant admin session (bounce: /login);
+//   the admin's app_users.tenant_id becomes the code's tenant pin.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -77,38 +82,59 @@ export async function GET(req: Request): Promise<Response> {
   if (codeChallengeMethod !== 'S256' && codeChallengeMethod !== 'plain') {
     return redirectError(validatedRedirectUri, 'invalid_request', 'Unsupported code_challenge_method', state)
   }
-  const expectedResource = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
-  if (resource && resource !== expectedResource) {
-    return redirectError(validatedRedirectUri, 'invalid_target', 'resource does not match the SmartMenu MCP endpoint', state)
-  }
   const requestedScopes = scope.split(/\s+/).filter(Boolean)
-  const supportedScopes = new Set([OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
-  if (!requestedScopes.includes(OAUTH_SCOPE) || requestedScopes.some((item) => !supportedScopes.has(item))) {
+  const supportedScopes = new Set([OAUTH_SCOPE, MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
+  const wantsSuperadmin = requestedScopes.includes(OAUTH_SCOPE)
+  const wantsMerchant = requestedScopes.includes(MERCHANT_OAUTH_SCOPE)
+  if (
+    wantsSuperadmin === wantsMerchant || // neither, or both — ambiguous authority
+    requestedScopes.some((item) => !supportedScopes.has(item))
+  ) {
     return redirectError(validatedRedirectUri, 'invalid_scope', 'Unsupported or missing OAuth scope', state)
   }
 
-  // Human-login gate: require a superadmin cookie session.
+  const origin = getOrigin(req)
+  const expectedResource = wantsMerchant
+    ? `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
+    : `${origin}${OAUTH_PATHS.mcp}`
+  if (resource && resource !== expectedResource) {
+    return redirectError(validatedRedirectUri, 'invalid_target', 'resource does not match the SmartMenu MCP endpoint', state)
+  }
+
+  // Human-login gate: require a cookie session whose role matches the scope.
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  let isSuperadmin = false
+  let isAuthorized = false
+  let tenantId: string | null = null
   if (user) {
     const { data: roleRow } = await supabase
       .from('app_users')
-      .select('role')
+      .select('role, tenant_id')
       .eq('user_id', user.id)
       .maybeSingle()
-    isSuperadmin = (roleRow as { role: string } | null)?.role === 'superadmin'
+    const appUser = roleRow as { role: string; tenant_id: string | null } | null
+    if (wantsMerchant) {
+      // A tenant admin's authority is their own store, pinned via tenant_id —
+      // and only while superadmin has the store's `mcp_enabled` switch on. The
+      // flag is read here, before any code is issued, so a disabled store can
+      // never complete the flow. It is re-checked on every dispatch too.
+      const mcpEnabled = appUser?.tenant_id ? await isTenantMcpEnabled(appUser.tenant_id) : false
+      isAuthorized = isMerchantAuthorized(appUser, mcpEnabled)
+      tenantId = isAuthorized ? appUser!.tenant_id : null
+    } else {
+      isAuthorized = appUser?.role === 'superadmin'
+    }
   }
 
-  if (!user || !isSuperadmin) {
+  if (!user || !isAuthorized) {
     // Send the operator to log in, then return to this exact authorize request.
     const returnTo = `${url.pathname}${url.search}`
-    const loginUrl = new URL('/superadmin/login', url.origin)
+    const loginUrl = new URL(wantsMerchant ? '/login' : '/superadmin/login', url.origin)
     loginUrl.searchParams.set('redirect', returnTo)
-    if (user && !isSuperadmin) loginUrl.searchParams.set('unauthorized', '1')
+    if (user && !isAuthorized) loginUrl.searchParams.set('unauthorized', '1')
     return Response.redirect(loginUrl.toString(), 302)
   }
 
@@ -123,6 +149,7 @@ export async function GET(req: Request): Promise<Response> {
         codeChallengeMethod,
         scope,
         userId: user.id,
+        tenantId,
       },
       { ttlSeconds: AUTH_CODE_TTL_SECONDS },
     )

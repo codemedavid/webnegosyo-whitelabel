@@ -1,0 +1,78 @@
+import { createMcpHandler } from 'mcp-handler'
+import { createAdminClient } from '@/lib/supabase/admin'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
+import { registerMerchantTools } from '@/lib/mcp/register-merchant-tools'
+import { createMcpTokenVerifier } from '@/lib/mcp/auth-adapter'
+import { withCorsHeaders, corsPreflightResponse } from '@/lib/mcp/cors'
+import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
+import { withSmartMenuToolSecurity } from '@/lib/mcp/tool-discovery'
+import { withMcpAcceptCompatibility } from '@/lib/mcp/request-compatibility'
+import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+
+// SmartMenu Merchant MCP — remote Streamable-HTTP MCP server for TENANT ADMINS.
+// A merchant credential carries the `tenant_admin` scope and is pinned to one
+// tenant; every tool call is executed with that tenant injected server-side
+// (see merchant-ops.ts), so the model never chooses a tenantId.
+//
+// The MCP handshake and tool discovery remain available anonymously, as OAuth
+// MCP clients require them immediately after redirect. Every registered tool
+// advertises OAuth and checks the verified tenant_admin scope + tenant binding
+// before dispatching.
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+// Service-role client is stable across requests; per-request authorization is
+// enforced by withSmartMenuAuth + the tenant pin, not by this client.
+const adminClient = createAdminClient()
+const ctx: ProvisioningCtx = { client: adminClient }
+
+const handler = createMcpHandler(
+    (server) => {
+        registerMerchantTools(server, ctx)
+    },
+    { serverInfo: { name: 'smartmenu-merchant-mcp', version: '0.1.0' } },
+    { basePath: '/api/mcp/merchant', maxDuration: 60, disableSse: true },
+)
+
+type McpRouteHandler = (req: Request, ctx: unknown) => Promise<Response>
+
+// A supplied credential is still verified at the transport boundary and added
+// to the MCP request context. Missing credentials are allowed through only so
+// initialize/tools/list can run; tool callbacks return the MCP OAuth challenge.
+const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createMcpTokenVerifier(adminClient), {
+    resourceMetadataPath: MERCHANT_OAUTH_PATHS.protectedResourceMetadata,
+    requiredScope: MERCHANT_OAUTH_SCOPE,
+    required: false,
+})
+const compatibleAuthHandler = withMcpAcceptCompatibility(authHandler as unknown as McpRouteHandler)
+
+// Browser-hosted MCP clients preflight before their first JSON-RPC message, and
+// Next's implicit OPTIONS response carries no Access-Control-* headers — so the
+// transport must answer preflight and echo CORS on every response itself.
+const corsHandler: McpRouteHandler = async (req, routeCtx) => {
+    // Clone before mcp-handler consumes the request body. Only tools/list needs
+    // the SDK compatibility adapter; normal tool responses remain streamed.
+    const isToolDiscovery = await isToolsListRequest(req)
+    const response = await compatibleAuthHandler(req, routeCtx)
+    const securedResponse = isToolDiscovery
+        ? await withSmartMenuToolSecurity(response)
+        : response
+    return withCorsHeaders(securedResponse)
+}
+
+async function isToolsListRequest(req: Request): Promise<boolean> {
+    if (req.method !== 'POST') return false
+    try {
+        const payload = await req.clone().json() as { method?: unknown }
+        return payload.method === 'tools/list'
+    } catch {
+        return false
+    }
+}
+
+export function OPTIONS(): Response {
+    return corsPreflightResponse()
+}
+
+export { corsHandler as GET, corsHandler as POST, corsHandler as DELETE }

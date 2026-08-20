@@ -1,4 +1,5 @@
 const MCP_TRANSPORT_PATH = '/api/mcp/mcp'
+const MERCHANT_MCP_TRANSPORT_PATH = '/api/mcp/merchant/mcp'
 
 interface McpConnectUrlEnv {
   NEXT_PUBLIC_APP_URL?: string
@@ -14,18 +15,27 @@ interface McpConnectUrlEnv {
  * transport URL so discovery and JSON-RPC use the same origin.
  */
 export function resolveMcpConnectUrl(env: McpConnectUrlEnv): string {
+  return resolveTransportUrl(env, MCP_TRANSPORT_PATH)
+}
+
+/** The public MERCHANT (tenant admin) MCP endpoint shown on the admin page. */
+export function resolveMerchantMcpConnectUrl(env: McpConnectUrlEnv): string {
+  return resolveTransportUrl(env, MERCHANT_MCP_TRANSPORT_PATH)
+}
+
+function resolveTransportUrl(env: McpConnectUrlEnv, transportPath: string): string {
   const configuredBase =
     env.NEXT_PUBLIC_APP_URL ??
     env.NEXT_PUBLIC_SITE_URL ??
     (env.PLATFORM_ROOT_DOMAIN ? `https://${env.PLATFORM_ROOT_DOMAIN}` : '')
 
-  if (!configuredBase) return MCP_TRANSPORT_PATH
+  if (!configuredBase) return transportPath
 
   const url = new URL(configuredBase)
   if (url.hostname === 'webnegosyo.com') {
     url.hostname = 'www.webnegosyo.com'
   }
-  url.pathname = MCP_TRANSPORT_PATH
+  url.pathname = transportPath
   url.search = ''
   url.hash = ''
   return url.toString().replace(/\/$/, '')
