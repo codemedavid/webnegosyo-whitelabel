@@ -3,7 +3,17 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import {
+  loyverseListAll,
+  LoyverseApiError,
+  type LoyversePaymentType,
+} from '@/lib/loyverse/client'
+import {
+  planPaymentMethodSync,
+  type SyncablePaymentMethod,
+} from '@/lib/loyverse/payment-methods-sync'
 import type { PaymentMethod } from '@/types/database'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 
@@ -300,3 +310,127 @@ export async function validatePaymentMethod(paymentMethodId: string, tenantId: s
   return true
 }
 
+
+// ============================================
+// Loyverse Payment-Type Sync
+// ============================================
+
+export interface LoyversePaymentMethodSyncReport {
+  success: boolean
+  error?: string
+  created: number
+  renamed: number
+  reactivated: number
+  deactivated: number
+  warnings: string[]
+}
+
+const EMPTY_SYNC_COUNTS = {
+  created: 0,
+  renamed: 0,
+  reactivated: 0,
+  deactivated: 0,
+  warnings: [] as string[],
+}
+
+function syncFailure(error: string): LoyversePaymentMethodSyncReport {
+  return { success: false, error, ...EMPTY_SYNC_COUNTS }
+}
+
+/**
+ * Pulls the tenant's Loyverse payment types and materializes them as
+ * payment_methods rows. Sync owns only name + liveness; merchant-authored
+ * instructions (details, QR, proof requirement, order types) are untouched,
+ * so merchants add those in Payment Settings after syncing.
+ *
+ * The Loyverse access token is a tenant secret, so it is read with the
+ * service-role client after the caller's store_setup permission is verified.
+ */
+export async function syncPaymentMethodsFromLoyverse(
+  tenantId: string
+): Promise<LoyversePaymentMethodSyncReport> {
+  await verifyTenantPermission(tenantId, 'store_setup')
+
+  const admin = createAdminClient()
+  const { data: tenant, error: tenantError } = await admin
+    .from('tenants')
+    .select('loyverse_enabled, loyverse_access_token')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  if (tenantError || !tenant) return syncFailure('Tenant not found')
+
+  const tenantRow = tenant as { loyverse_enabled: boolean | null; loyverse_access_token: string | null }
+  const accessToken = tenantRow.loyverse_access_token?.trim()
+  if (!tenantRow.loyverse_enabled || !accessToken) {
+    return syncFailure('Loyverse is not connected for this store')
+  }
+
+  let paymentTypes: LoyversePaymentType[]
+  try {
+    paymentTypes = await loyverseListAll<LoyversePaymentType>(
+      accessToken,
+      '/payment_types',
+      'payment_types'
+    )
+  } catch (error: unknown) {
+    if (error instanceof LoyverseApiError) {
+      if (error.status === 401) return syncFailure('Loyverse rejected the access token (unauthorized)')
+      if (error.status === 402) return syncFailure('The Loyverse subscription for this store has lapsed')
+      return syncFailure(`Loyverse API error: ${error.message}`)
+    }
+    return syncFailure('Could not reach Loyverse')
+  }
+
+  const supabase = await createClient()
+  const { data: existingRows, error: existingError } = await supabase
+    .from('payment_methods')
+    .select('id, name, is_active, order_index, loyverse_payment_type_id')
+    .eq('tenant_id', tenantId)
+
+  if (existingError) return syncFailure('Failed to read existing payment methods')
+
+  const existing = (existingRows ?? []) as unknown as SyncablePaymentMethod[]
+  const plan = planPaymentMethodSync(paymentTypes, existing)
+
+  if (plan.creates.length > 0) {
+    const rows = plan.creates.map((create) => ({ tenant_id: tenantId, ...create }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabase.from('payment_methods').insert(rows as any)
+    if (error) return syncFailure(`Failed to create payment methods: ${error.message}`)
+  }
+
+  for (const rename of plan.renames) {
+    const { error } = await supabase
+      .from('payment_methods')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update({ name: rename.name, updated_at: new Date().toISOString() } as any)
+      .eq('id', rename.id)
+      .eq('tenant_id', tenantId)
+    if (error) return syncFailure(`Failed to rename payment method: ${error.message}`)
+  }
+
+  const liveness: Array<{ ids: string[]; is_active: boolean }> = [
+    { ids: plan.reactivates, is_active: true },
+    { ids: plan.deactivates, is_active: false },
+  ]
+  for (const { ids, is_active } of liveness) {
+    if (ids.length === 0) continue
+    const { error } = await supabase
+      .from('payment_methods')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update({ is_active, updated_at: new Date().toISOString() } as any)
+      .in('id', ids)
+      .eq('tenant_id', tenantId)
+    if (error) return syncFailure(`Failed to update payment method status: ${error.message}`)
+  }
+
+  return {
+    success: true,
+    created: plan.creates.length,
+    renamed: plan.renames.length,
+    reactivated: plan.reactivates.length,
+    deactivated: plan.deactivates.length,
+    warnings: plan.warnings,
+  }
+}
