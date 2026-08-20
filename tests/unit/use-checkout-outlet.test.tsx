@@ -85,22 +85,10 @@ describe('useCheckoutOutlet', () => {
     expect(result.current.isMissingRequiredSelection).toBe(true)
   })
 
-  it('does not fetch branches at all when the tenant asks before the menu', async () => {
-    const { result } = renderHook(() =>
-      useCheckoutOutlet({
-        tenant: tenantWith({
-          multi_branch_enabled: true,
-          outlet_selection_timing: 'before',
-        } as Partial<Tenant>),
-        tenantSlug: 'acme',
-        orderTypes: ORDER_TYPES,
-        orderTypeId: 'ot-delivery',
-      })
-    )
-
-    await waitFor(() => expect(result.current.isPickerVisible).toBe(false))
-    expect(fetchActiveOutlets).not.toHaveBeenCalled()
-  })
+  // A `before`-timing tenant whose splash choice went missing falls back to the
+  // checkout net — covered in checkout-outlet-before-timing-net.test.tsx. The
+  // no-network fast path only holds while the stored choice exists, which is
+  // pinned by "reuses the branch the customer already picked" below.
 
   it('does not fetch branches when the tenant has multi-branch turned off', async () => {
     const { result } = renderHook(() =>
