@@ -797,6 +797,8 @@ export interface PaymentMethod {
   order_index: number;
   /** When true, checkout blocks until the customer provides a screenshot or reference number. */
   require_payment_proof?: boolean;
+  /** Non-null marks the method as synced from a Loyverse payment type; name is Loyverse-owned. */
+  loyverse_payment_type_id?: string | null;
   created_at: string;
   updated_at: string;
 }
