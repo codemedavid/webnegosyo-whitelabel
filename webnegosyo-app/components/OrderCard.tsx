@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
+import { lalamoveStatusLabel } from "../lib/lalamove-status";
 import {
   getInitials,
   getAvatarColor,
@@ -23,6 +24,9 @@ export interface OrderCardOrder {
   status: string;
   source?: string;
   paymentStatus?: string;
+  /** Raw Lalamove delivery status — shows a rider chip so deliveries needing
+   * attention are visible without opening each order. */
+  lalamoveStatus?: string;
 }
 
 interface OrderCardProps {
@@ -103,6 +107,11 @@ export function OrderCard({
         {isUnpaid ? (
           <View style={styles.unpaidChip}>
             <Text style={styles.unpaidText}>Unpaid</Text>
+          </View>
+        ) : null}
+        {order.lalamoveStatus ? (
+          <View style={styles.riderChip}>
+            <Text style={styles.riderText}>🛵 {lalamoveStatusLabel(order.lalamoveStatus)}</Text>
           </View>
         ) : null}
       </View>
@@ -207,6 +216,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerLight,
   },
   unpaidText: { ...typography.small, color: colors.danger, fontWeight: "700" },
+  riderChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentLight,
+    borderWidth: 1,
+    borderColor: colors.separator,
+  },
+  riderText: { ...typography.small, color: colors.textSecondary, fontWeight: "700" },
   thumbRow: { flexDirection: "row", gap: spacing.xs, marginTop: spacing.md },
   thumb: {
     width: THUMB_SIZE,

@@ -10,8 +10,9 @@
 
 import type { OrderSessionFields } from "./order-backend";
 
-/** The four things a merchant can do to a delivery from the order screen. */
-export type LalamoveOp = "book" | "sync" | "cancel" | "priority_fee";
+/** The five things a merchant can do to a delivery from the order screen.
+ * `requote` replaces an expired quotation so the order becomes bookable. */
+export type LalamoveOp = "book" | "sync" | "cancel" | "priority_fee" | "requote";
 
 export type LalamoveTransport = "convex" | "platform" | "unavailable";
 

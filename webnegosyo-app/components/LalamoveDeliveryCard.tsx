@@ -6,6 +6,12 @@ import { useAuthStore } from "../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../lib/demo";
 import { resolveLalamoveTransport, type LalamoveOp } from "../lib/lalamove-transport";
 import { runPlatformLalamoveOp } from "../lib/lalamove-service";
+import {
+  isActiveLalamoveDelivery,
+  isLalamoveFinal,
+  lalamoveBadgeVariant,
+  lalamoveStatusLabel,
+} from "../lib/lalamove-status";
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
@@ -14,11 +20,14 @@ const bookLalamoveRef = "lalamove:bookLalamove" as unknown as FunctionReference<
 const cancelLalamoveRef = "lalamove:cancelLalamove" as unknown as FunctionReference<"action">;
 const addPriorityFeeRef = "lalamove:addLalamovePriorityFee" as unknown as FunctionReference<"action">;
 const syncStatusRef = "lalamove:syncLalamoveStatus" as unknown as FunctionReference<"action">;
+const requoteLalamoveRef = "lalamove:requoteLalamove" as unknown as FunctionReference<"action">;
 
 /** Preset priority-fee amounts (PHP) — keeps the picker cross-platform. */
 const PRIORITY_FEE_OPTIONS = ["20", "50", "100"];
 
-const FINAL_STATUSES = new Set(["DELIVERED", "CANCELLED", "COMPLETED", "EXPIRED"]);
+/** How often an active delivery re-polls itself. Driver assignment used to be
+ * invisible until someone tapped Sync. */
+const AUTO_SYNC_INTERVAL_MS = 45_000;
 
 interface LalamoveOrderFields {
   _id: string;
@@ -41,21 +50,40 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const cancelLalamove = useSafeAction(cancelLalamoveRef);
   const addPriorityFee = useSafeAction(addPriorityFeeRef);
   const syncStatus = useSafeAction(syncStatusRef);
+  const requoteLalamove = useSafeAction(requoteLalamoveRef);
 
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const transport = resolveLalamoveTransport({ convexUrl, orderBackend });
 
-  const [busy, setBusy] = React.useState<null | "book" | "sync" | "cancel" | "fee">(null);
+  const [busy, setBusy] = React.useState<null | "book" | "sync" | "cancel" | "fee" | "requote">(
+    null,
+  );
 
   const hasQuotation = !!order.lalamoveQuotationId;
   const hasOrder = !!order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "";
   const status = order.lalamoveStatus ?? "";
-  const isFinal = FINAL_STATUSES.has(status.toUpperCase());
+  const isFinal = isLalamoveFinal(status);
+  const shouldAutoSync =
+    hasOrder && isActiveLalamoveDelivery(status) && transport !== "unavailable";
 
-  // Nothing to show if this order never had a Lalamove quotation.
-  if (!hasQuotation && !hasOrder) return null;
+  // Auto-refresh a live delivery so driver assignment and progress show up on
+  // the phone without anyone pressing Sync. Persisting the sync updates the
+  // order row/doc, and the screen's reactive order query re-renders this card.
+  // Stops by itself once the status is final.
+  React.useEffect(() => {
+    if (!shouldAutoSync) return;
+    if (useAuthStore.getState().isDemo) return;
+
+    const intervalId = setInterval(() => {
+      void dispatch("sync").catch(() => {
+        // A missed poll self-heals on the next tick; alerting would nag.
+      });
+    }, AUTO_SYNC_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoSync, order._id, transport, tenantId]);
 
   const guardDemo = (): boolean => {
     if (useAuthStore.getState().isDemo) {
@@ -71,6 +99,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     sync: syncStatus,
     cancel: cancelLalamove,
     priority_fee: addPriorityFee,
+    requote: requoteLalamove,
   };
 
   /**
@@ -113,8 +142,48 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     }
   };
 
-  const handleBook = () =>
-    run("book", "book", "Delivery booked. Searching for a driver…");
+  const handleRequote = () => run("requote", "requote", "New quotation created — you can book the delivery now.");
+
+  /**
+   * Book, with the expired-quotation recovery folded into the failure alert:
+   * the quotation dies ~5 minutes after checkout, and sending the merchant to
+   * hunt for a separate button at that moment loses them.
+   */
+  const runBook = async () => {
+    setBusy("book");
+    try {
+      const result = await dispatch("book");
+      if (result?.success) {
+        Alert.alert("Success", "Delivery booked. Searching for a driver…");
+      } else if (result?.error && /expired|quotation/i.test(result.error)) {
+        Alert.alert("Lalamove", result.error, [
+          { text: "Close", style: "cancel" },
+          {
+            text: "Get New Quote",
+            onPress: () => {
+              void run("requote", "requote", "New quotation created — book the delivery now.");
+            },
+          },
+        ]);
+      } else {
+        Alert.alert("Lalamove", result?.error ?? "Something went wrong");
+      }
+    } catch {
+      Alert.alert("Lalamove", "Failed to reach the delivery service");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleBook = () => {
+    if (guardDemo()) return;
+    // Booking dispatches a real rider and bills the store's Lalamove account —
+    // one accidental tap must not do that.
+    Alert.alert("Book delivery", "Book a Lalamove rider for this order now?", [
+      { text: "Not yet", style: "cancel" },
+      { text: "Book", onPress: () => void runBook() },
+    ]);
+  };
 
   const handleSync = () => run("sync", "sync", "Delivery status updated");
 
@@ -146,6 +215,9 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     if (order.lalamoveTrackingUrl) Linking.openURL(order.lalamoveTrackingUrl);
   };
 
+  // Nothing to show if this order never had a Lalamove quotation.
+  if (!hasQuotation && !hasOrder) return null;
+
   // No backend the app can reach — a per-tenant Supabase project, for which it
   // ships no adapter. Show what is known and say where the merchant CAN act,
   // rather than offering buttons that would fail on every tap.
@@ -155,7 +227,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
         {hasOrder ? (
           <View style={styles.row}>
             <Text style={styles.label}>Status</Text>
-            <Badge label={status || "Booked"} variant="confirmed" />
+            <Badge label={lalamoveStatusLabel(status)} variant={lalamoveBadgeVariant(status)} />
           </View>
         ) : null}
         <Text style={styles.muted}>
@@ -176,7 +248,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
         <>
           <View style={styles.row}>
             <Text style={styles.label}>Status</Text>
-            <Badge label={status || "Booked"} variant="confirmed" />
+            <Badge label={lalamoveStatusLabel(status)} variant={lalamoveBadgeVariant(status)} />
           </View>
           {order.lalamoveDriverName ? (
             <View style={styles.row}>
@@ -232,6 +304,21 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
               <Text style={styles.primaryText}>Book Lalamove Delivery</Text>
             )}
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, styles.requoteBtn]}
+            onPress={handleRequote}
+            disabled={!!busy}
+          >
+            {busy === "requote" ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={styles.secondaryText}>Get New Quote</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.hint}>
+            Quotes expire after ~5 minutes. If booking fails with an expired quotation, get a
+            new quote first.
+          </Text>
         </>
       )}
     </Card>
@@ -273,6 +360,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryText: { color: colors.primary, ...typography.body, fontWeight: "600" },
+  requoteBtn: { marginTop: spacing.sm },
+  hint: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.sm },
   dangerBtn: {
     borderWidth: 1,
     borderColor: colors.danger,
