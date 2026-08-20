@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { OutletModeScreen } from '@/components/customer/outlet-mode-screen'
 import { OutletPickerScreen, type PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { resolveAvailableModes } from '@/lib/outlets/outlet-modes'
-import { shouldShowOrderTypeStep, type WelcomeTenantFields } from '@/lib/outlets/welcome-page'
+import {
+  resolveWelcomeTheme,
+  shouldShowOrderTypeStep,
+  type WelcomeTenantFields,
+} from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
 import type { Tenant } from '@/types/database'
 
@@ -96,9 +100,18 @@ export function OutletSplash({
   const pickerMode = showTiles ? effectiveMode : null
 
   const message = reason ? REASON_MESSAGE[reason] : null
+  const surfaceColor = resolveWelcomeTheme(welcome).backgroundColor
 
   return (
-    <div className="fixed inset-0 z-[110] overflow-y-auto bg-background">
+    <div
+      data-testid="welcome-surface"
+      className="fixed inset-0 z-[110] overflow-y-auto bg-background"
+      // The welcome page is capped at a readable column width, so on anything
+      // wider than that the merchant's colour has to be painted behind it too —
+      // otherwise the brand ends at the column edge. The branch picker keeps
+      // the default surface: that palette belongs to the welcome page only.
+      style={{ backgroundColor: (isPickerOpen ? null : surfaceColor) ?? undefined }}
+    >
       <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
         {!isPickerOpen ? (
           <OutletModeScreen

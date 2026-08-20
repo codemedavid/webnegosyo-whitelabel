@@ -95,7 +95,11 @@ export function OutletModeScreen({
 
   return (
     <div
-      className="flex min-h-full w-full flex-col gap-6 px-5 py-7"
+      data-testid="welcome-page"
+      // `flex-1`, not `min-h-full`: a percentage min-height resolves against a
+      // parent with an auto height, so the panel only grew as tall as its own
+      // content and the merchant's colour stopped mid-screen.
+      className="flex w-full flex-1 flex-col gap-6 px-5 py-7"
       style={{ backgroundColor: theme.backgroundColor ?? undefined }}
     >
       {showStoreHeader && <WelcomeStoreHeader tenant={tenant ?? null} />}
