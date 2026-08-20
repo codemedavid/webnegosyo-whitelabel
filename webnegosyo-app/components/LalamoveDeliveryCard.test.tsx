@@ -58,13 +58,30 @@ beforeEach(() => {
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
+/** Press a button on the most recent alert that has one matching `matcher`. */
+function pressAlertButton(matcher: RegExp) {
+  const calls = (Alert.alert as jest.Mock).mock.calls;
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const buttons = calls[i][2] as Array<{ text?: string; onPress?: () => void }> | undefined;
+    const button = buttons?.find((b) => b.text && matcher.test(b.text));
+    if (button?.onPress) {
+      button.onPress();
+      return;
+    }
+  }
+  throw new Error(`No alert button matching ${matcher}`);
+}
+
 describe("a store with no Convex deployment", () => {
   it("books through the web route instead of a Convex action", async () => {
     // Arrange
     render(<LalamoveDeliveryCard order={QUOTED} />);
 
-    // Act
+    // Act — booking costs real money, so a confirmation stands between the
+    // tap and the rider.
     fireEvent.press(screen.getByText(/Book Lalamove Delivery/i));
+    expect(mockRunPlatformLalamoveOp).not.toHaveBeenCalled();
+    pressAlertButton(/book/i);
 
     // Assert
     await waitFor(() => expect(mockRunPlatformLalamoveOp).toHaveBeenCalled());
@@ -97,11 +114,96 @@ describe("a store with no Convex deployment", () => {
 
     // Act
     fireEvent.press(screen.getByText(/Book Lalamove Delivery/i));
+    pressAlertButton(/book/i);
 
     // Assert
     await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith("Lalamove", "Quotation expired"),
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Lalamove",
+        "Quotation expired",
+        expect.anything(),
+      ),
     );
+  });
+
+  it("offers a fresh quote right from the expired-booking failure", async () => {
+    // Arrange: the quotation died at checkout + 5 minutes. The failure alert
+    // itself must carry the recovery — sending the merchant to hunt for a
+    // separate button loses them.
+    mockRunPlatformLalamoveOp.mockResolvedValueOnce({
+      success: false,
+      error: "Quotation expired",
+    });
+    render(<LalamoveDeliveryCard order={QUOTED} />);
+    fireEvent.press(screen.getByText(/Book Lalamove Delivery/i));
+    pressAlertButton(/book/i);
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith("Lalamove", "Quotation expired", expect.anything()),
+    );
+
+    // Act
+    mockRunPlatformLalamoveOp.mockResolvedValue({ success: true });
+    pressAlertButton(/new quote/i);
+
+    // Assert
+    await waitFor(() =>
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "requote", orderId: "o1" }),
+      ),
+    );
+  });
+
+  it("has a Get New Quote action on the unbooked card", async () => {
+    // Arrange
+    render(<LalamoveDeliveryCard order={QUOTED} />);
+
+    // Act
+    fireEvent.press(screen.getByText(/Get New Quote/i));
+
+    // Assert
+    await waitFor(() =>
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "requote", orderId: "o1" }),
+      ),
+    );
+  });
+
+  it("auto-syncs an active delivery without anyone pressing Sync", async () => {
+    // Arrange: driver assignment used to be invisible until a human tapped
+    // Sync. An active delivery now re-polls itself.
+    jest.useFakeTimers();
+    try {
+      render(<LalamoveDeliveryCard order={BOOKED} />);
+      expect(mockRunPlatformLalamoveOp).not.toHaveBeenCalled();
+
+      // Act
+      await jest.advanceTimersByTimeAsync(46_000);
+
+      // Assert
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "sync", orderId: "o1" }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not poll a delivery that has already finished", async () => {
+    // Arrange
+    jest.useFakeTimers();
+    try {
+      render(
+        <LalamoveDeliveryCard order={{ ...BOOKED, lalamoveStatus: "COMPLETED" }} />,
+      );
+
+      // Act
+      await jest.advanceTimersByTimeAsync(120_000);
+
+      // Assert
+      expect(mockRunPlatformLalamoveOp).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -118,6 +220,7 @@ describe("a store on its own Convex deployment", () => {
 
     // Act
     fireEvent.press(screen.getByText(/Book Lalamove Delivery/i));
+    pressAlertButton(/book/i);
 
     // Assert
     await waitFor(() => expect(mockConvexAction).toHaveBeenCalledWith({ orderId: "o1" }));
@@ -130,8 +233,9 @@ describe("what the merchant can see", () => {
     // Arrange + Act
     render(<LalamoveDeliveryCard order={BOOKED} />);
 
-    // Assert
-    expect(screen.getByText("ON_GOING")).toBeTruthy();
+    // Assert — the raw API status ("ON_GOING") reads as jargon; the merchant
+    // sees words.
+    expect(screen.getByText("Driver assigned")).toBeTruthy();
     expect(screen.getByText("Track")).toBeTruthy();
   });
 
