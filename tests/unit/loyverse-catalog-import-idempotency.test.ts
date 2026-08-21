@@ -108,7 +108,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
     }
     if (this.op === 'insert') {
       const incoming = Array.isArray(this.payload) ? this.payload : [this.payload as Row]
-      const created = incoming.map((row) => ({ id: this.db.nextId(), ...row }))
+      const created: Row[] = incoming.map((row) => ({ id: this.db.nextId(), ...row }))
       // Enforce the partial-unique identity the migration adds, so a test can
       // never "pass" by writing two rows the database would have rejected.
       if (this.table === 'menu_items') {

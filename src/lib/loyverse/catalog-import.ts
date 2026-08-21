@@ -7,8 +7,11 @@
  * Writes use the service-role client: sync runs from superadmin actions and
  * webhooks where no tenant-admin session exists.
  *
- * The map table is derived data — each sync deletes the tenant's rows and
- * re-inserts, which keeps it exactly in step with the menu JSON it describes.
+ * Identity lives on menu_items.loyverse_item_id (migration 20260828130000),
+ * NOT in the map table. The map is derived data, rebuilt per item as the loop
+ * goes; identity has to outlive it, because a sync interrupted mid-loop used
+ * to leave dishes created with no map rows — and the next sync then inserted
+ * the whole catalog a second time.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -215,7 +218,7 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
   // derived data rebuilt on every sync; identity has to outlive it, or an
   // interrupted sync (which leaves dishes created and the map unwritten)
   // makes the next sync duplicate the entire catalog. See migration
-  // 20260828120000.
+  // 20260828130000.
   const { data: identifiedRows, error: identityError } = await supabase
     .from('menu_items')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
