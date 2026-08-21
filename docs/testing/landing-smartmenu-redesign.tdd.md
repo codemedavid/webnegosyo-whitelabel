@@ -55,6 +55,23 @@ footer policy links, stats, demo video + disclaimer, narrative section order.
   progressive enhancement — not unit-testable in jsdom; verified visually.
 - Photos are Unsplash-license stock; swap for real merchant photography when available.
 
+## Follow-up run — offer change + 4 Mores (2026-08-22)
+
+New suite `tests/unit/landing-offer.test.tsx` (O1–O4), written RED-first (commit `84d299a`,
+failed on missing `four-mores` module / `MONTHLY_PRICE_LABEL`), implemented in `0814a56`:
+
+| # | What is guaranteed | Result |
+|---|---|---|
+| 1 | `PRICE_LABEL` is ₱3,499 (setup) and `MONTHLY_PRICE_LABEL` is ₱649; both on the pricing card with "buwan" | PASS |
+| 2 | No content constant still claims "walang monthly fee" / "no monthly" / ₱3,899; the monthly FAQ states ₱649 | PASS |
+| 3 | `FOUR_MORES` names the four Mores exactly; `FourMoresSection` renders all with bodies, positioned between `#problem` and `#what-you-get` | PASS |
+| 4 | Capability wall covers SMS, POS, inventory, analytics | PASS |
+
+Full landing run after the change: `npx jest --config jest.config.cjs tests/unit/landing` →
+**98 passed**. `next build` compiled successfully. Browser-verified: 4 Mores band, two-figure
+pricing card, new hero trust marks; hydration errors seen in dev were stale-SSR HMR lag (diff
+matched the just-made edit each time) and cleared on hard reload with zero console errors.
+
 ## Merge evidence
 
 RED `0468d62` → fix `0c46cf3` (pre-existing build blocker) → GREEN `05f75ed` → refactor
