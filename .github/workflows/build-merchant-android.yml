@@ -109,6 +109,14 @@ jobs:
           # Absolute: app.config.ts is evaluated from varying working
           # directories during prebuild, so a relative path can miss.
           GOOGLE_SERVICES_JSON: ${{ github.workspace }}/webnegosyo-app/google-services.json
+          # Run 32449205534 died after 11m at
+          # `:expo-dev-launcher:lintVitalAnalyzeRelease` with a bare "Metaspace"
+          # error: AGP's lint worker inherits the daemon's default 512m
+          # MaxMetaspaceSize, and this dependency graph exceeds it. Set here
+          # rather than in gradle.properties via a config plugin so the change
+          # stays scoped to CI and cannot alter EAS cloud builds. The runner has
+          # 16 GB, so 6g heap is comfortably within budget.
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError"
         run: |
           eas build \
             --platform android \
