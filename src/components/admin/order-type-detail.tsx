@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle, ReceiptText } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -84,6 +84,8 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     // 0 (the column default) means "no minimum" — an order type saved before the
     // column existed arrives undefined and must behave the same way.
     minimum_order_amount: orderType.minimum_order_amount ?? 0,
+    // Opt-in: rows saved before the column existed arrive undefined and stay off.
+    after_billing_payment_enabled: orderType.after_billing_payment_enabled ?? false,
     advance_order_enabled: advanceConfig.enabled,
     advance_order_allow_asap: advanceConfig.allowAsap,
     advance_order_lead_time_minutes: advanceConfig.leadTimeMinutes,
@@ -116,6 +118,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           // Guard the same way the advance-order fields do, so a blank or negative
           // field never produces a cryptic Zod save error.
           minimum_order_amount: Math.max(0, Number(formData.minimum_order_amount) || 0),
+          after_billing_payment_enabled: formData.after_billing_payment_enabled,
           advance_order_enabled: formData.advance_order_enabled,
           advance_order_allow_asap: formData.advance_order_allow_asap,
           // Clamp to the Zod-accepted ranges so a blank/out-of-range field never produces a cryptic save error.
@@ -288,6 +291,26 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                 id="messenger_enabled"
                 checked={formData.messenger_enabled}
                 onCheckedChange={(checked) => setFormData({ ...formData, messenger_enabled: checked })}
+              />
+            </div>
+
+            {/* Pay After Billing */}
+            <div className="flex items-center justify-between border-t pt-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="after_billing_payment_enabled" className="flex items-center gap-2">
+                  <ReceiptText className="h-4 w-4" />
+                  Pay after billing
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.after_billing_payment_enabled
+                    ? 'Customers pick a payment method and order right away — payment details are skipped; the bill is settled after service'
+                    : 'Customers see payment details (account numbers, QR, proof) before placing the order'}
+                </p>
+              </div>
+              <Switch
+                id="after_billing_payment_enabled"
+                checked={formData.after_billing_payment_enabled}
+                onCheckedChange={(checked) => setFormData({ ...formData, after_billing_payment_enabled: checked })}
               />
             </div>
 

@@ -56,6 +56,7 @@ import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError } from '@/lib/payment-proof'
+import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
@@ -990,8 +991,17 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
-    // Validate payment method selection (only if payment methods are configured)
-    if (paymentMethods.length > 0 && !selectedPaymentMethod) {
+    // One decision: block until a method is chosen, open the payment-details
+    // step, or submit directly (no methods configured, or the order type is
+    // pay-after-billing — nothing is paid at checkout, so there are no
+    // account details or proof to collect).
+    const submitPlan = resolvePaymentSubmitPlan({
+      hasPaymentMethods: paymentMethods.length > 0,
+      hasSelectedPaymentMethod: !!selectedPaymentMethod,
+      isAfterBillingPayment: isAfterBillingPaymentEnabled(selectedOrderTypeData),
+    })
+
+    if (submitPlan === 'blocked-no-method') {
       toast.error('Please select a payment method before proceeding')
       // Scroll to payment methods section
       const paymentSection = document.querySelector('[data-payment-methods]')
@@ -1001,13 +1011,11 @@ export function useCheckout(tenantSlug: string) {
       return
     }
 
-    // If payment methods are configured, show payment details page
-    if (paymentMethods.length > 0 && selectedPaymentMethod) {
+    if (submitPlan === 'payment-details') {
       setShowPaymentDetails(true)
       return
     }
 
-    // Otherwise proceed directly to messenger
     handleCheckout()
   }
 
@@ -1044,14 +1052,19 @@ export function useCheckout(tenantSlug: string) {
     if (isOrderingClosed()) return
 
     // Enforce per-method payment-proof requirement (screenshot OR reference).
-    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
-    const proofError = getPaymentProofError(selectedMethodForProof, {
-      screenshotUrl: paymentProofUrl,
-      reference: paymentProofReference,
-    })
-    if (proofError) {
-      toast.error(proofError)
-      return
+    // Never for pay-after-billing: nothing has been paid yet, and the proof UI
+    // lives on the payment-details step this flow skips — enforcing it would
+    // make checkout impossible to complete.
+    if (!isAfterBillingPaymentEnabled(selectedOrderTypeData)) {
+      const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
+      const proofError = getPaymentProofError(selectedMethodForProof, {
+        screenshotUrl: paymentProofUrl,
+        reference: paymentProofReference,
+      })
+      if (proofError) {
+        toast.error(proofError)
+        return
+      }
     }
 
     setIsProcessing(true)
