@@ -94,9 +94,11 @@ interface ExistingCategoryRow {
   name: string
 }
 
-interface ExistingMapRow {
-  menu_item_id: string | null
+/** A local dish that already carries its Loyverse identity. */
+interface ExistingIdentityRow {
+  id: string
   loyverse_item_id: string | null
+  image_url: string | null
 }
 
 export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyncReport> {
@@ -201,39 +203,34 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     return matched ?? (await ensureFallbackCategoryId())
   }
 
-  // --- Existing links: loyverse item -> local menu item (from the map table).
   // The generated Supabase types lag new migrations (loyverse_item_map is not
   // in src/types/supabase.ts yet), so these queries go through `any` the same
   // way bulk-menu-import does.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapTable = () => (supabase as any).from('loyverse_item_map')
-  const { data: existingMapRows, error: mapReadError } = await mapTable()
-    .select('menu_item_id, loyverse_item_id')
+
+  // --- Existing links: loyverse item -> local menu item.
+  //
+  // Read from menu_items.loyverse_item_id, NOT from the map table. The map is
+  // derived data rebuilt on every sync; identity has to outlive it, or an
+  // interrupted sync (which leaves dishes created and the map unwritten)
+  // makes the next sync duplicate the entire catalog. See migration
+  // 20260828120000.
+  const { data: identifiedRows, error: identityError } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select('id, loyverse_item_id, image_url' as any)
     .eq('tenant_id', tenant.id)
-    .eq('kind', 'variant')
-  if (mapReadError) return emptyReport(`Failed to read item map: ${mapReadError.message}`)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .not('loyverse_item_id' as any, 'is', null)
+  if (identityError) return emptyReport(`Failed to read menu items: ${identityError.message}`)
 
   const menuItemIdByLoyverseId: Record<string, string> = {}
-  for (const row of (existingMapRows ?? []) as ExistingMapRow[]) {
-    if (row.loyverse_item_id && row.menu_item_id) {
-      menuItemIdByLoyverseId[row.loyverse_item_id] = row.menu_item_id
-    }
-  }
-
-  // Current images for mapped items: the mirror decision needs to know
-  // whether the local photo is a merchant upload (kept) or a Loyverse
-  // hotlink / nothing (replaced by an ImageKit mirror).
-  const existingMenuItemIds = Object.values(menuItemIdByLoyverseId)
   const imageByMenuItemId = new Map<string, string>()
-  if (existingMenuItemIds.length > 0) {
-    const { data: imageRows } = await supabase
-      .from('menu_items')
-      .select('id, image_url')
-      .eq('tenant_id', tenant.id)
-      .in('id', existingMenuItemIds)
-    for (const row of (imageRows ?? []) as Array<{ id: string; image_url: string | null }>) {
-      imageByMenuItemId.set(row.id, row.image_url ?? '')
-    }
+  for (const row of (identifiedRows ?? []) as unknown as ExistingIdentityRow[]) {
+    if (!row.loyverse_item_id || !row.id) continue
+    menuItemIdByLoyverseId[row.loyverse_item_id] = row.id
+    imageByMenuItemId.set(row.id, row.image_url ?? '')
   }
 
   // --- Upsert menu items.
@@ -289,6 +286,9 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
           tenant_id: tenant.id,
           image_url: '',
           ...commonFields,
+          // The match key, written in the same statement that creates the
+          // dish — so an interrupted sync leaves nothing unmatchable.
+          loyverse_item_id: item.loyverseItemId,
           variations: [],
           addons: [],
           order: 0,
@@ -303,17 +303,44 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       menuItemIdByLoyverseId[item.loyverseItemId] = (created as { id: string }).id
       report.itemsCreated++
     }
+
+    // --- Map rows for THIS item, written now rather than after every item.
+    // Scoped to the item's own variant rows, so an interrupted sync leaves a
+    // partial-but-correct map instead of an empty one.
+    const itemMapRows = buildMapRowInserts(tenant.id, [item], menuItemIdByLoyverseId).filter(
+      (row) => row.kind === 'variant'
+    )
+    const { error: clearItemMapError } = await mapTable()
+      .delete()
+      .eq('tenant_id', tenant.id)
+      .eq('kind', 'variant')
+      .eq('loyverse_item_id', item.loyverseItemId)
+    if (clearItemMapError) {
+      report.warnings.push(`Failed to clear item map for "${item.name}": ${clearItemMapError.message}`)
+    } else if (itemMapRows.length > 0) {
+      const { error: insertItemMapError } = await mapTable().insert(itemMapRows)
+      if (insertItemMapError) {
+        report.warnings.push(`Failed to write item map for "${item.name}": ${insertItemMapError.message}`)
+      }
+    }
   }
 
-  // --- Rebuild the map table for this tenant.
-  const mapRows = buildMapRowInserts(tenant.id, mapping.items, menuItemIdByLoyverseId)
-  const { error: deleteError } = await mapTable().delete().eq('tenant_id', tenant.id)
+  // --- Shared modifier-option rows: tenant-wide, not per item, so they are
+  // rebuilt once at the end. Losing these mid-run no longer costs identity —
+  // only receipt-line resolution for modifiers, which the next sync repairs.
+  const modifierMapRows = buildMapRowInserts(tenant.id, mapping.items, menuItemIdByLoyverseId).filter(
+    (row) => row.kind === 'modifier_option'
+  )
+  const { error: deleteError } = await mapTable()
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('kind', 'modifier_option')
   if (deleteError) {
-    report.warnings.push(`Failed to clear item map: ${deleteError.message}`)
-  } else if (mapRows.length > 0) {
-    const { error: insertMapError } = await mapTable().insert(mapRows)
+    report.warnings.push(`Failed to clear modifier map: ${deleteError.message}`)
+  } else if (modifierMapRows.length > 0) {
+    const { error: insertMapError } = await mapTable().insert(modifierMapRows)
     if (insertMapError) {
-      report.warnings.push(`Failed to write item map: ${insertMapError.message}`)
+      report.warnings.push(`Failed to write modifier map: ${insertMapError.message}`)
     }
   }
 
