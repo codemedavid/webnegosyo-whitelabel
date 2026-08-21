@@ -22,8 +22,6 @@ every decisive claim was re-verified by direct reading before any code changed.
   on my storefront, so that I never have to cancel an order I cannot fulfil.
 - As a merchant, I want stock to stay correct even if the webhook connection
   silently dies, so that the integration does not quietly rot.
-- As a merchant, I want the duplicates already in my live menu identified before
-  anything is deleted, so that I do not lose order history.
 
 ## Root causes (verified, not assumed)
 
@@ -78,10 +76,9 @@ The write path was already right: `applyLoyverseInventoryLevels` really does set
 | Multi-variant stock decision | `npx jest tests/unit/loyverse-inventory` | 3 failed, 16 passed, 19 total | 19 passed |
 | Live stock check at checkout | `npx jest tests/unit/loyverse-checkout-stock-guard.test.ts` | Cannot find module `@/lib/loyverse/stock-check` | 9 passed |
 | Reconcile cron authorization | `npx jest tests/unit/loyverse-reconcile-auth.test.ts` | Cannot find module `@/lib/loyverse/reconcile-auth` | 8 passed |
-| Duplicate-cleanup planner | `npx jest tests/unit/loyverse-dedupe-plan.test.ts` | Cannot find module `@/lib/loyverse/dedupe-plan` | 8 passed |
 
 RED for the first two was **runtime** RED (suite compiled, tests ran, failed for
-the intended reason). RED for the last three was **compile-time** RED: the test
+the intended reason). RED for the last two was **compile-time** RED: the test
 newly referenced a module that did not exist.
 
 Note on the first task: the "clean re-sync" case **passed before the fix**. Only
@@ -108,9 +105,6 @@ reproduced in testing and only bit a live merchant.
 | 14 | A negative Loyverse level counts as empty | `loyverse-checkout-stock-guard.test.ts` | unit | PASS |
 | 15 | An unset secret can never authorize the reconcile cron | `loyverse-reconcile-auth.test.ts` | unit | PASS |
 | 16 | Both `?secret=` and `Bearer $CRON_SECRET` authorize | `loyverse-reconcile-auth.test.ts` | unit | PASS |
-| 17 | Dedupe keeps the row carrying the Loyverse identity | `loyverse-dedupe-plan.test.ts` | unit | PASS |
-| 18 | Dedupe never groups across tenants or categories | `loyverse-dedupe-plan.test.ts` | unit | PASS |
-| 19 | Two rows that both carry an identity are never nominated | `loyverse-dedupe-plan.test.ts` | unit | PASS |
 
 ## Coverage and known gaps
 
@@ -120,10 +114,10 @@ npx jest tests/unit --testPathIgnorePatterns "/.claude/worktrees/"
   Tests:       5993 passed, 5993 total
 
 npx jest tests/unit/loyverse --coverage --collectCoverageFrom="src/lib/loyverse/**/*.ts"
-  All files  78.6 % stmts | 84.29 % branch | 82.22 % funcs
-    dedupe-plan.ts          100 %      reconcile-auth.ts       100 %
-    config.ts               100 %      payment-methods-sync.ts 100 %
-    catalog-import.ts     85.43 %      catalog-mapper.ts     98.13 %
+  All files  77.92 % stmts | 84.17 % branch | 81.39 % funcs
+    reconcile-auth.ts       100 %      config.ts               100 %
+    payment-methods-sync.ts 100 %      convex-order-lines.ts   100 %
+    catalog-mapper.ts     98.13 %      catalog-import.ts     85.43 %
     stock-check.ts        71.42 %      inventory-sync.ts     69.67 %
     push-service.ts           0 %  (pre-existing, untouched)
 ```
@@ -145,8 +139,6 @@ fix.
 
 - The end-to-end webhook → 86 path against a real Loyverse account. Still the
   outstanding live verification from the original integration.
-- `scripts/loyverse-dedupe.ts` I/O glue (report-only by default; the nomination
-  logic it depends on is at 100 %).
 - The full `next build` could not be used as a gate this session: it fails in
   `src/components/admin/order-type-detail.tsx` on `after_billing_payment_enabled`,
   from commit `3a23d7c` — a **concurrent session's** work on this shared tree,
@@ -166,7 +158,8 @@ Checkpoint commits on `lalamove-overhaul`, oldest first:
 | `415c5dc` | RED — spec for live checkout stock verification (module missing) |
 | `4de3836` | GREEN — `stock-check.ts` + wired into `createOrderAction` (200 passed) |
 | `d6a1119` | GREEN — reconcile cron scheduled + header auth (208 passed) |
-| `8e4699d` | GREEN + refactor — dedupe planner, script, stale header comment (216 passed) |
+| `8e4699d` | GREEN + refactor — stale header comment (216 passed) |
+| `<this>` | Removed the dedupe planner/script at the user's request |
 
 ## Deployment steps (code alone does not finish this)
 
@@ -177,4 +170,15 @@ Checkpoint commits on `lalamove-overhaul`, oldest first:
 4. Deploy, so `vercel.json` registers the 6-hourly reconcile cron.
 5. Re-run the superadmin Loyverse sync per tenant to register webhooks and
    backfill `loyverse_item_id` for anything the migration could not claim.
-6. Run `npm run db:loyverse-dedupe` (report-only) and review before `--execute`.
+
+## Known gap: duplicates already in live menus
+
+The fix stops NEW duplicates. It does not clean up rows the old sync already
+created. A duplicate-cleanup script was built and then removed at the user's
+request, so retiring existing duplicates is a manual admin-UI task.
+
+The migration's backfill is safe regardless: where several menu rows compete
+for one Loyverse id, `DISTINCT ON` claims only the earliest-created row and
+leaves the rest with `loyverse_item_id` NULL, which never violates the partial
+unique index. Those NULL rows keep working as ordinary local dishes; they
+simply stop being touched by the sync.

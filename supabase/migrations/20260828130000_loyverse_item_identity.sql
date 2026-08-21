@@ -33,8 +33,8 @@ COMMENT ON COLUMN public.menu_items.loyverse_item_id IS
 -- DISTINCT ON guards the one case that would abort the migration: a tenant
 -- whose menu already contains duplicates has several menu rows competing for
 -- one Loyverse id. Only the earliest-created row is claimed; the duplicates
--- keep loyverse_item_id NULL and are left for scripts/loyverse-dedupe.ts to
--- report on. A NULL never violates the partial index below.
+-- keep loyverse_item_id NULL and are left in place for the merchant to retire
+-- by hand. A NULL never violates the partial index below.
 UPDATE public.menu_items AS mi
 SET loyverse_item_id = claim.loyverse_item_id
 FROM (

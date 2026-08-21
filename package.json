@@ -18,7 +18,6 @@
     "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
     "db:backfill-customers": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers.ts",
     "db:backfill-customers-convex": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers-convex.ts",
-    "db:loyverse-dedupe": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/loyverse-dedupe.ts",
     "convex:prebundle": "node scripts/prebundle-convex.mjs",
     "test:e2e": "playwright test"
   },
