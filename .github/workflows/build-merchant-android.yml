@@ -31,7 +31,11 @@ jobs:
   build:
     name: Android ${{ inputs.profile }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Free-plan Android builds queue behind paid ones and the wait alone can run
+    # well past an hour. The job timeout has to cover queue + build, or CI kills
+    # a run whose build is actually still healthy on EAS. Set `wait: false` to
+    # fire-and-forget instead of paying for the idle minutes.
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -59,7 +63,7 @@ jobs:
         working-directory: webnegosyo-app
         run: |
           set -o pipefail
-          npx eas-cli build \
+          eas build \
             --platform android \
             --profile "${{ inputs.profile }}" \
             --non-interactive \
@@ -70,7 +74,7 @@ jobs:
         if: ${{ !inputs.wait }}
         working-directory: webnegosyo-app
         run: |
-          npx eas-cli build \
+          eas build \
             --platform android \
             --profile "${{ inputs.profile }}" \
             --non-interactive \
@@ -80,9 +84,23 @@ jobs:
         if: ${{ inputs.wait }}
         working-directory: webnegosyo-app
         run: |
-          # --json emits an array of builds; a single-platform build has one entry.
-          APK_URL=$(node -e "const b=require('./build.json')[0]||{};process.stdout.write(b.artifacts?.buildUrl||'')")
-          BUILD_PAGE=$(node -e "const b=require('./build.json')[0]||{};process.stdout.write(b.id?'https://expo.dev/accounts/itscodemedavid/projects/webnegosyo-app/builds/'+b.id:'')")
+          # --json writes the build array to stdout and all progress logs to
+          # stderr, so build.json is clean JSON. Parse defensively anyway: a
+          # throw here would fail the step and hide an otherwise-good build.
+          read -r APK_URL BUILD_PAGE <<<"$(node -e "
+            let b = {};
+            try { b = require('./build.json')[0] || {}; } catch (e) {}
+            const url = b.artifacts?.buildUrl || '-';
+            const page = b.id
+              ? 'https://expo.dev/accounts/itscodemedavid/projects/webnegosyo-app/builds/' + b.id
+              : '-';
+            process.stdout.write(url + ' ' + page);
+          ")"
+          # Steps run under `bash -e`, so every conditional here is a full `if`.
+          # A trailing `cmd && echo ...` returns 1 whenever the test is false and
+          # would kill the step on the success path.
+          if [ "$APK_URL" = "-" ]; then APK_URL=""; fi
+          if [ "$BUILD_PAGE" = "-" ]; then BUILD_PAGE=""; fi
           {
             echo "## Android APK"
             echo ""
@@ -91,7 +109,9 @@ jobs:
             else
               echo "- **Download:** not available — check the build page for the failure reason."
             fi
-            [ -n "$BUILD_PAGE" ] && echo "- **Build page:** $BUILD_PAGE"
+            if [ -n "$BUILD_PAGE" ]; then
+              echo "- **Build page:** $BUILD_PAGE"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build metadata
