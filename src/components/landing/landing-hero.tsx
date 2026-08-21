@@ -1,25 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CheckMark, CourtButton } from './court'
 import { prefersReducedMotion } from './motion'
-import { SegmentDisplay } from './segment-display'
+import { BrandButton, CheckIcon, Photo } from './landing-ui'
 import {
-  COURT,
+  CHECKOUT_URL,
   DEMO_ORDER,
   DEMO_ORDER_TOTAL,
   HERO_TRUST_POINTS,
+  LANDING_PHOTOS,
   PRICE_LABEL,
   PRODUCT_ONE_LINER,
+  SMARTMENU,
 } from './landing-theme'
 
 const PESO = new Intl.NumberFormat('en-PH')
 const PLAY_INTERVAL_MS = 900
 
 /**
- * The board's one authored moment: the order is played out once. The base
- * order lands, then each upsell lights and the figure climbs. The whole
- * product argument, performed before a single word of copy.
+ * The hero's one authored moment: a single order plays out on the receipt.
+ * The base order prints, then each upsell line joins and the total climbs —
+ * the whole product argument, performed before a single word of copy.
  */
 function useOrderRun() {
   const [playsLit, setPlaysLit] = useState<number>(DEMO_ORDER.plays.length)
@@ -41,149 +42,66 @@ function useOrderRun() {
   return { playsLit, total }
 }
 
-function RailLabel({
-  children,
-  color = COURT.laneDim,
-}: {
-  children: React.ReactNode
-  color?: string
-}) {
-  return (
-    <span className="text-[10px] font-bold uppercase leading-none tracking-[0.2em]" style={{ color }}>
-      {children}
-    </span>
-  )
-}
-
-function ScoreColumn({
-  side,
-  name,
-  value,
-  color,
-  note,
-}: {
-  side: string
-  name: string
-  value: string
-  color: string
-  note: string
-}) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col items-center px-3 py-4 text-center md:px-5 md:py-7">
-      <RailLabel>{side}</RailLabel>
-      <p
-        className="mt-2 font-display text-[13px] uppercase leading-none tracking-[0.06em] md:text-base"
-        style={{ color: COURT.lane }}
-      >
-        {name}
-      </p>
-      <div className="mt-4 flex items-end justify-center md:mt-5">
-        <SegmentDisplay
-          value={value}
-          color={color}
-          height="clamp(2.6rem, 10vw, 4.5rem)"
-          label={`₱${value}`}
-        />
-      </div>
-      <p className="mt-4 text-[11px] leading-snug" style={{ color: COURT.laneDim }}>
-        {note}
-      </p>
-    </div>
-  )
-}
-
-function Scoreboard() {
+/** A till receipt, printed in the serif of the brand. */
+function ReceiptCard() {
   const { playsLit, total } = useOrderRun()
 
   return (
     <div
-      className="relative w-full max-w-[560px]"
+      className="w-full max-w-[340px] rotate-1 px-6 py-6 shadow-2xl"
       style={{
-        backgroundColor: COURT.steel,
-        boxShadow:
-          '0 34px 70px rgba(0,0,0,0.62), inset 0 1px 0 rgba(237,232,218,0.12), inset 0 -2px 0 rgba(0,0,0,0.5)',
-        border: '1px solid rgba(237,232,218,0.1)',
+        backgroundColor: '#FFFDF6',
+        color: SMARTMENU.ink,
+        borderRadius: 6,
+        boxShadow: '0 30px 60px -18px rgba(0,0,0,0.65)',
       }}
     >
-      <div
-        className="flex items-center justify-between gap-4 px-4 py-2.5"
-        style={{ backgroundColor: '#070A08', borderBottom: '1px solid rgba(237,232,218,0.09)' }}
-      >
-        <RailLabel>Isang order</RailLabel>
-        <span className="flex items-center gap-2">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: COURT.ledGreen, boxShadow: `0 0 7px ${COURT.ledGreen}` }}
-          />
-          <RailLabel color={COURT.ledGreen}>Smart Menu on</RailLabel>
-        </span>
-      </div>
+      <p className="font-display text-center text-sm font-bold uppercase tracking-[0.18em]">
+        Smart<span style={{ color: SMARTMENU.red }}>Menu</span> · Order #042
+      </p>
+      <p className="mt-1 text-center text-[10px] uppercase tracking-[0.14em] opacity-50">
+        Isang order, kusang lumalaki
+      </p>
+      <div aria-hidden className="my-4 border-t border-dashed" style={{ borderColor: `${SMARTMENU.ink}44` }} />
 
-      <div
-        className="flex items-stretch"
-        style={{ background: 'linear-gradient(180deg, #0C110E, #070A08)' }}
-      >
-        <ScoreColumn
-          side="Home"
-          name="Menu mo"
-          value={PESO.format(total)}
-          color={COURT.ledGreen}
-          note="Sa link mo, sa presyo mo"
-        />
-        <div aria-hidden style={{ width: 1, backgroundColor: 'rgba(237,232,218,0.1)' }} />
-        <ScoreColumn
-          side="Away"
-          name="Komisyon"
-          value="0"
-          color={COURT.ledRed}
-          note="Walang kinukuha kahit ilang order"
-        />
-      </div>
-
-      {/* The plays. Each lamp fires as its upsell joins the running order. */}
-      <div
-        className="grid grid-cols-3 gap-px"
-        style={{
-          backgroundColor: 'rgba(237,232,218,0.1)',
-          borderTop: '1px solid rgba(237,232,218,0.1)',
-        }}
-      >
+      <dl className="space-y-2.5 text-[13px]">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="font-semibold">Burger Meal</dt>
+          <dd className="tabular-nums">₱{DEMO_ORDER.base}</dd>
+        </div>
         {DEMO_ORDER.plays.map((play, i) => {
           const isLit = i < playsLit
           return (
             <div
               key={play.label}
-              className="flex flex-col items-center gap-1.5 px-2 py-3.5 transition-colors duration-500"
-              style={{ backgroundColor: isLit ? '#141B16' : '#080B09' }}
+              className="flex items-baseline justify-between gap-3 transition-opacity duration-500"
+              style={{ opacity: isLit ? 1 : 0.22 }}
             >
-              <span
-                className="h-2 w-2 rounded-full transition-all duration-500"
-                style={{
-                  backgroundColor: isLit ? COURT.ledAmber : 'rgba(237,232,218,0.13)',
-                  boxShadow: isLit ? `0 0 10px ${COURT.ledAmber}` : 'none',
-                }}
-              />
-              <span
-                className="font-display text-[11px] uppercase leading-none tracking-[0.1em] transition-colors duration-500 md:text-xs"
-                style={{ color: isLit ? COURT.lane : 'rgba(237,232,218,0.32)' }}
-              >
-                {play.label}
-              </span>
-              <span
-                className="text-[11px] font-bold leading-none transition-colors duration-500"
-                style={{ color: isLit ? COURT.ledAmber : 'rgba(237,232,218,0.22)' }}
-              >
+              <dt className="flex items-center gap-2">
+                <span
+                  className="font-display rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+                  style={{ backgroundColor: `${SMARTMENU.amber}33`, color: '#8A5B00' }}
+                >
+                  {play.label}
+                </span>
+                {play.detail}
+              </dt>
+              <dd className="tabular-nums font-semibold" style={{ color: SMARTMENU.green }}>
                 +₱{play.amount}
-              </span>
+              </dd>
             </div>
           )
         })}
-      </div>
+      </dl>
 
-      <p
-        className="px-4 py-2.5 text-center text-[10px] leading-snug"
-        style={{ color: COURT.laneDim, backgroundColor: '#070A08' }}
-      >
+      <div aria-hidden className="my-4 border-t border-dashed" style={{ borderColor: `${SMARTMENU.ink}44` }} />
+      <div className="flex items-baseline justify-between">
+        <span className="font-display text-xs font-bold uppercase tracking-[0.16em]">Total</span>
+        <span className="font-serif text-3xl font-semibold tabular-nums" style={{ color: SMARTMENU.red }}>
+          ₱{PESO.format(total)}
+        </span>
+      </div>
+      <p className="mt-3 text-center text-[10px] leading-snug opacity-60">
         Halimbawang order — ₱{DEMO_ORDER.base} na naging ₱{DEMO_ORDER_TOTAL} sa tatlong automatic na
         suggestion.
       </p>
@@ -191,52 +109,69 @@ function Scoreboard() {
   )
 }
 
+/** Scattered plates around the copy — larger below, smaller on top, and a
+ *  margin of safety always kept around the text. */
+function ScatteredPlates() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 hidden lg:block">
+      <div className="photo-zoom absolute -left-10 bottom-[8%] h-44 w-56 -rotate-6 overflow-hidden rounded-xl border-4 border-white/90 shadow-2xl">
+        <Photo photo={LANDING_PHOTOS.burger} decorative sizes="14rem" />
+      </div>
+      <div className="photo-zoom absolute right-[30%] top-[6%] h-28 w-36 rotate-3 overflow-hidden rounded-xl border-4 border-white/90 shadow-xl">
+        <Photo photo={LANDING_PHOTOS.plated} decorative sizes="9rem" />
+      </div>
+    </div>
+  )
+}
+
 export function LandingHero() {
   return (
-    <section className="landing-hero-section relative overflow-hidden px-5 md:px-8">
-      {/* Floodlight pool and the painted centre arc — the court, drawn in CSS. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(ellipse 88% 60% at 50% 18%, #18211C 0%, #121915 42%, transparent 76%)',
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-[62%] hidden h-[520px] w-[940px] -translate-x-1/2 rounded-[50%] border-[3px] lg:block"
-        style={{ borderColor: 'rgba(237,232,218,0.17)', filter: 'blur(0.5px)' }}
-      />
+    <section
+      className="noise vignette relative overflow-hidden px-5 md:px-8"
+      style={{ backgroundColor: SMARTMENU.night }}
+    >
+      {/* The room itself: a candlelit service, darkened until the type reads. */}
+      <div className="absolute inset-0">
+        <Photo photo={LANDING_PHOTOS.heroTable} priority sizes="100vw" className="opacity-45" />
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(180deg, ${SMARTMENU.night}CC 0%, ${SMARTMENU.night}66 40%, ${SMARTMENU.night}E6 100%)`,
+          }}
+        />
+      </div>
 
-      <div className="landing-hero-grid relative mx-auto grid max-w-6xl items-center gap-12 lg:gap-16">
-        {/* The board leads: first in the document, so on a phone it is the
-            first thing on the screen. The desktop grid puts it back on the
-            right without depending on an order utility. */}
-        <div className="landing-hero-board flex justify-center">
-          <Scoreboard />
-        </div>
+      <ScatteredPlates />
 
-        <div className="landing-hero-copy">
-          <h1
-            className="font-display t-hero uppercase leading-[0.88] tracking-[-0.03em]"
-            style={{ color: COURT.lane, textWrap: 'balance' }}
+      <div className="hero-recede relative mx-auto grid max-w-6xl items-center gap-12 py-20 md:py-28 lg:grid-cols-[1.2fr_0.8fr] lg:gap-16">
+        <div>
+          <p
+            className="font-display mb-5 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em]"
+            style={{ backgroundColor: `${SMARTMENU.amber}26`, color: SMARTMENU.amber, border: `1px solid ${SMARTMENU.amber}55` }}
           >
-            Ang menu mo, <span style={{ color: COURT.ledAmber }}>dapat nagbebenta</span> para sa iyo.
+            ✺ Para sa food business mo
+          </p>
+
+          <h1 className="font-display t-hero leading-[1.02] text-white" style={{ textWrap: 'balance' }}>
+            Ang menu mo, dapat{' '}
+            <span className="font-serif italic" style={{ color: SMARTMENU.amber }}>
+              nagbebenta
+            </span>{' '}
+            para sa iyo.
           </h1>
 
-          <p
-            className="mt-6 max-w-[52ch] t-lead leading-relaxed"
-            style={{ color: COURT.laneDim }}
-          >
+          <p className="t-lead mt-6 max-w-[52ch] leading-relaxed" style={{ color: SMARTMENU.parchment }}>
             {PRODUCT_ONE_LINER}
           </p>
 
           <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <CourtButton size="large">Kunin — {PRICE_LABEL}</CourtButton>
-            <CourtButton size="large" tone="chalk" href="#what-you-get">
+            <BrandButton size="large" href={CHECKOUT_URL}>
+              Kunin — {PRICE_LABEL}
+            </BrandButton>
+            <BrandButton size="large" tone="ghost-dark" href="#what-you-get">
               Ano ang kasama?
-            </CourtButton>
+            </BrandButton>
           </div>
 
           <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -244,13 +179,17 @@ export function LandingHero() {
               <li
                 key={point}
                 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.13em]"
-                style={{ color: COURT.laneDim }}
+                style={{ color: SMARTMENU.parchment }}
               >
-                <CheckMark size={13} className="shrink-0" />
+                <CheckIcon color={SMARTMENU.amber} size={13} />
                 {point}
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="flex justify-center lg:justify-end">
+          <ReceiptCard />
         </div>
       </div>
     </section>

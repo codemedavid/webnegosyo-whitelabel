@@ -1,55 +1,124 @@
-import { CourtButton, SectionTitle, StencilMark, TarpPanel } from './court'
-import { CAPABILITIES, PRICE_LABEL, TARP } from './landing-theme'
+import { Eyebrow } from './landing-ui'
+import { CAPABILITIES, SMARTMENU, type CapabilityIcon } from './landing-theme'
 
-/**
- * The sponsor wall. Eight printed tarpaulins hung on the court fence at the
- * sizes a real wall has — never eight identical cards. This is the page's
- * bright register, and it is where the offer is spelled out in full.
- */
+/** The brand icon set — two-tone strokes in the logo's red and amber. */
+function BrandIcon({ icon }: { icon: CapabilityIcon }) {
+  const paths: Record<CapabilityIcon, React.ReactNode> = {
+    store: (
+      <>
+        <path d="M4 10v9h16v-9" />
+        <path d="M3 6l1.5-3h15L21 6c0 1.7-1.3 3-3 3s-2.6-1.3-3-2c-.4.7-1.3 2-3 2s-2.6-1.3-3-2c-.4.7-1.3 2-3 2S3 7.7 3 6Z" stroke={SMARTMENU.amber} />
+        <path d="M10 19v-5h4v5" />
+      </>
+    ),
+    sparkles: (
+      <>
+        <path d="M12 4l1.8 4.6L18 10l-4.2 1.4L12 16l-1.8-4.6L6 10l4.2-1.4L12 4Z" />
+        <path d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    layers: (
+      <>
+        <path d="M12 3 3 8l9 5 9-5-9-5Z" />
+        <path d="M3 12l9 5 9-5" stroke={SMARTMENU.amber} />
+        <path d="M3 16l9 5 9-5" />
+      </>
+    ),
+    truck: (
+      <>
+        <path d="M2 7h11v10H2z" />
+        <path d="M13 11h5l3 3v3h-8" stroke={SMARTMENU.amber} />
+        <circle cx="7" cy="17" r="1.8" />
+        <circle cx="17" cy="17" r="1.8" />
+      </>
+    ),
+    gauge: (
+      <>
+        <path d="M4 14a8 8 0 1 1 16 0" />
+        <path d="M12 14l4-4" stroke={SMARTMENU.amber} />
+        <path d="M2 18h20" />
+      </>
+    ),
+    palette: (
+      <>
+        <path d="M12 3a9 9 0 1 0 0 18c1.6 0 2-1 1.4-2-.8-1.4.2-3 1.6-3H17a4 4 0 0 0 4-4c0-5-4-9-9-9Z" />
+        <circle cx="8" cy="10" r="1" stroke={SMARTMENU.amber} />
+        <circle cx="12" cy="7.5" r="1" stroke={SMARTMENU.amber} />
+        <circle cx="16" cy="10" r="1" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    wallet: (
+      <>
+        <path d="M3 7a2 2 0 0 1 2-2h13v3" />
+        <rect x="3" y="8" width="18" height="11" rx="2" />
+        <circle cx="16.5" cy="13.5" r="1.2" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    phone: (
+      <>
+        <rect x="7" y="3" width="10" height="18" rx="2" />
+        <path d="M11 18h2" stroke={SMARTMENU.amber} />
+        <path d="M10 7c1.5 1.2 2.5 1.2 4 0" stroke={SMARTMENU.amber} />
+      </>
+    ),
+  }
+
+  return (
+    <svg
+      aria-hidden
+      width="30"
+      height="30"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={SMARTMENU.red}
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths[icon]}
+    </svg>
+  )
+}
+
+/** The "here is literally what you get" wall on clean cream and graph paper. */
 export function CapabilitiesSection() {
   return (
     <section
       id="what-you-get"
-      className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32"
-      style={{ backgroundColor: TARP.vinyl }}
+      className="graph-paper scroll-mt-24 px-5 py-20 md:px-8 md:py-28"
+      style={{ backgroundColor: SMARTMENU.cream }}
     >
-      <div className="mx-auto max-w-6xl">
-        <SectionTitle
-          tone="vinyl"
-          body="Hindi lang ito website builder. Ito ang buong sistema ng pag-order ng food business mo — mula sa unang tingin ng customer hanggang sa order na dumating sa kusina mo."
-        >
-          Lahat ng ito, isang bayad lang.
-        </SectionTitle>
+      <div className="rise mx-auto max-w-6xl">
+        <Eyebrow>Ano ang kasama</Eyebrow>
+        <h2 className="font-display t-display max-w-[24ch] leading-tight" style={{ color: SMARTMENU.ink }}>
+          Isang bayad,{' '}
+          <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
+            buong sistema
+          </span>{' '}
+          ng pagbebenta.
+        </h2>
 
-        <ul className="landing-tarp-wall mt-14 grid gap-3.5 sm:grid-cols-2 md:mt-16 lg:grid-cols-3">
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {CAPABILITIES.map((capability) => (
-            <li key={capability.title} data-span={capability.span}>
-              <TarpPanel ink={capability.ink} className="flex h-full flex-col">
-                <StencilMark icon={capability.icon} size={30} className="opacity-90" />
-                <h3
-                  className="mt-5 font-display t-tarp uppercase leading-[1.05] tracking-[-0.015em]"
-                  style={{
-                    textShadow:
-                      capability.ink === 'vinyl' || capability.ink === 'yellow'
-                        ? '2px 2px 0 rgba(0,0,0,0.14)'
-                        : '2px 2px 0 rgba(0,0,0,0.28)',
-                  }}
-                >
-                  {capability.title}
-                </h3>
-                <p className="mt-3 max-w-[46ch] text-[13.5px] leading-relaxed">
-                  {capability.body}
-                </p>
-              </TarpPanel>
-            </li>
+            <article
+              key={capability.title}
+              className="rounded-2xl bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+              style={{ border: `1px solid ${SMARTMENU.ink}12` }}
+            >
+              <span
+                className="inline-flex h-12 w-12 items-center justify-center rounded-xl"
+                style={{ backgroundColor: `${SMARTMENU.red}0F` }}
+              >
+                <BrandIcon icon={capability.icon} />
+              </span>
+              <h3 className="font-display mt-4 text-base font-bold leading-snug" style={{ color: SMARTMENU.ink }}>
+                {capability.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
+                {capability.body}
+              </p>
+            </article>
           ))}
-        </ul>
-
-        <div className="mt-14 text-center">
-          <CourtButton size="large">Kunin lahat — {PRICE_LABEL}</CourtButton>
-          <p className="mt-4 text-[13px]" style={{ color: '#5A5A50' }}>
-            Walang add-on, walang tier. Buo agad ang system pagka-live mo.
-          </p>
         </div>
       </div>
     </section>

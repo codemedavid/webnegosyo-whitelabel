@@ -1,140 +1,94 @@
-import { COURT } from './landing-theme'
-
 /**
- * The court's stylesheet. It lives with the surface rather than in globals.css
- * so a marketing-only world never ships inside every tenant storefront's CSS,
- * and every rule is namespaced under `.landing-world`.
- *
- * The type scale is here rather than in Tailwind arbitrary values because
- * Tailwind v4 cannot type-infer `text-[clamp(...)]` and silently emits nothing
- * for it — a class it drops is a heading that renders at 16px.
+ * The landing surface's own stylesheet: brand voices, photographic textures
+ * and the two motion motifs. Scoped under .landing-world so none of it leaks
+ * into tenant storefronts.
  */
 export const LANDING_STYLES = `
 .landing-world {
-  font-family: var(--font-landing-text), ui-sans-serif, system-ui, sans-serif;
-  color-scheme: dark;
-  background-color: ${COURT.ground};
+  font-family: var(--font-landing-text), 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
-
 .landing-world .font-display {
-  font-family: var(--font-landing-display), ui-sans-serif, system-ui, sans-serif;
-  font-weight: 400;
+  font-family: var(--font-landing-display), 'Segoe UI', system-ui, sans-serif;
+}
+.landing-world .font-serif {
+  font-family: var(--font-landing-serif), Georgia, serif;
 }
 
-/* Display scale. Every step is a clamp so the page never needs a breakpoint
-   just to keep a headline off four lines. */
-.landing-world .t-hero      { font-size: clamp(2.7rem, 8.4vw, 4.6rem); }
-.landing-world .t-close     { font-size: clamp(2.2rem, 7vw, 4rem); }
-.landing-world .t-section   { font-size: clamp(2rem, 5.4vw, 3.4rem); }
-.landing-world .t-leak      { font-size: clamp(1.55rem, 4.2vw, 2.4rem); }
-.landing-world .t-play      { font-size: clamp(1.55rem, 3.6vw, 2.2rem); }
-.landing-world .t-verdict   { font-size: clamp(1.2rem, 2.8vw, 1.75rem); }
-.landing-world .t-step      { font-size: clamp(1.2rem, 2.5vw, 1.55rem); }
-.landing-world .t-leaktitle { font-size: clamp(1.1rem, 2.3vw, 1.5rem); }
-.landing-world .t-tarp      { font-size: clamp(1.02rem, 1.9vw, 1.3rem); }
-.landing-world .t-lead      { font-size: clamp(1rem, 1.9vw, 1.15rem); }
+/* Type scale */
+.landing-world .t-hero { font-size: clamp(2.5rem, 6.4vw, 4.6rem); }
+.landing-world .t-display { font-size: clamp(1.9rem, 4vw, 3rem); }
+.landing-world .t-lead { font-size: clamp(1.02rem, 1.6vw, 1.2rem); }
 
-/* The nav is fixed, so the hero owns its own clearance rather than trusting a
-   utility to survive a scan. */
-.landing-world .landing-hero-section {
-  padding-top: 5.5rem;
-  padding-bottom: 3.5rem;
-}
-
-@media (min-width: 768px) {
-  .landing-world .landing-hero-section {
-    padding-top: 9.5rem;
-    padding-bottom: 6rem;
-  }
-}
-
-/* Grid templates Tailwind cannot express as arbitrary values (commas). */
-@media (min-width: 1024px) {
-  .landing-world .landing-hero-grid {
-    grid-template-columns: 1fr minmax(0, 520px);
-  }
-  .landing-world .landing-hero-copy  { grid-column: 1; grid-row: 1; }
-  .landing-world .landing-hero-board { grid-column: 2; grid-row: 1; }
-}
-
-@media (min-width: 768px) {
-  .landing-world .landing-leak-row {
-    grid-template-columns: minmax(0, 14rem) 1fr;
-  }
-}
-
-/* The chalk plate: a clipped outline layer with the court showing through an
-   inset fill, because a clip-path cuts a real border into open corners. */
-.landing-world .landing-chalk-fill {
+/* Film grain over darkened photography — texture and text contrast in one. */
+.landing-world .noise::after {
+  content: '';
   position: absolute;
-  inset: 2px;
-  transition: background-color 150ms ease-out;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
 }
 
-.landing-world .landing-chalk:hover .landing-chalk-fill,
-.landing-world .landing-chalk:focus-visible .landing-chalk-fill {
-  background-color: ${COURT.groundLit};
-}
-
-/* On vinyl the plate brightens toward the print, not toward the court. */
-.landing-world .landing-tarpghost:hover .landing-chalk-fill,
-.landing-world .landing-tarpghost:focus-visible .landing-chalk-fill {
-  background-color: rgba(255, 255, 255, 0.16);
-}
-
-.landing-world .landing-grommet {
+/* Darkened edges pull the eye to the center of a photo section. */
+.landing-world .vignette::after {
+  content: '';
   position: absolute;
-  width: 13px;
-  height: 13px;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 35% 30%, #F2F2EE, #7C7C74 55%, #35352F 100%);
-  box-shadow: inset 0 0 0 2.5px rgba(0, 0, 0, 0.5);
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 90% 72% at 50% 42%, transparent 52%, rgba(10, 7, 5, 0.72) 100%);
 }
 
-.landing-world .landing-grommet.g-panel { --g: 10px; }
-.landing-world .landing-grommet.g-wide  { --g: 16px; }
-.landing-world .landing-grommet.g-tl { top: var(--g); left: var(--g); }
-.landing-world .landing-grommet.g-tr { top: var(--g); right: var(--g); }
-.landing-world .landing-grommet.g-bl { bottom: var(--g); left: var(--g); }
-.landing-world .landing-grommet.g-br { bottom: var(--g); right: var(--g); }
-
-/* A real tarp wall is not eight identical banners. */
-@media (min-width: 640px) {
-  .landing-world .landing-tarp-wall > li[data-span='wide'] { grid-column: span 2; }
-  .landing-world .landing-tarp-wall > li[data-span='tall'] { grid-row: span 2; }
+/* Graph-paper texture for the clean cream software sections. */
+.landing-world .graph-paper {
+  background-image:
+    linear-gradient(rgba(28, 22, 19, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 22, 19, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
-/* The plate depresses onto its own shadow rather than lifting. */
-.landing-world .landing-plate:active {
-  box-shadow: 0 2px 0 0 ${COURT.plateRedDeep};
-}
-
-.landing-world .landing-navlink {
-  color: ${COURT.laneDim};
-  transition: color 150ms ease-out;
-}
-
-.landing-world .landing-navlink:hover,
-.landing-world .landing-navlink:focus-visible {
-  color: ${COURT.lane};
-}
-
-.landing-world :focus-visible {
-  outline: 2px solid ${COURT.ledAmber};
-  outline-offset: 3px;
-}
-
-@keyframes landing-strip {
+/* Capability ribbon */
+@keyframes landing-marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
-
-.landing-world .landing-strip {
-  animation: landing-strip 34s linear infinite;
+.landing-world .marquee-track {
+  animation: landing-marquee 36s linear infinite;
+  will-change: transform;
 }
 
+/* Motif B: photographs breathe on hover. */
+.landing-world .photo-zoom img {
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.landing-world .photo-zoom:hover img { transform: scale(1.05); }
+
+/* Motif A: sections slide over the hero; the hero recedes like a set piece,
+   and content rises as it enters. Progressive enhancement only. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    @keyframes landing-recede {
+      to { transform: scale(0.94) translateY(-4%); filter: blur(6px); opacity: 0.35; }
+    }
+    .landing-world .hero-recede {
+      animation: landing-recede linear both;
+      animation-timeline: view();
+      animation-range: exit 0% exit 90%;
+    }
+    @keyframes landing-rise {
+      from { transform: translateY(46px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .landing-world .rise {
+      animation: landing-rise 1ms linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 42%;
+    }
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .landing-world .landing-strip { animation: none; }
-  .landing-world * { transition-duration: 1ms !important; }
+  .landing-world .marquee-track { animation: none; }
+  .landing-world .photo-zoom img { transition: none; }
 }
 `

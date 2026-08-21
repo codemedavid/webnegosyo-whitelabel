@@ -1,95 +1,67 @@
 'use client'
 
 import { useState } from 'react'
-import { ChalkRule, CheckMark, CourtButton, CrossMark, Lit, SectionTitle } from './court'
-import { SegmentDisplay } from './segment-display'
-import { COURT, EXCLUSIONS, FAQ_ITEMS, PRICE_DIGITS, PRICE_LABEL, PRICING_FEATURES } from './landing-theme'
+import { BrandButton, CheckIcon, Eyebrow } from './landing-ui'
+import {
+  CHECKOUT_URL,
+  EXCLUSIONS,
+  FAQ_ITEMS,
+  PRICE_LABEL,
+  PRICING_FEATURES,
+  SMARTMENU,
+} from './landing-theme'
 
-/** The final score: one figure, in segments, at the size the board runs it. */
-function FinalScore() {
+/** The offer, set like a printed menu: serif price, dotted leaders, no noise. */
+function MenuCard() {
   return (
     <div
-      className="mx-auto mt-14 max-w-xl"
-      style={{
-        backgroundColor: COURT.steel,
-        border: '1px solid rgba(237,232,218,0.14)',
-        boxShadow: '0 34px 76px rgba(0,0,0,0.62), inset 0 1px 0 rgba(237,232,218,0.12)',
-      }}
+      className="mx-auto mt-12 max-w-xl rounded-3xl bg-white px-7 py-10 shadow-xl md:px-10"
+      style={{ border: `1px solid ${SMARTMENU.ink}14` }}
     >
-      <div
-        className="flex items-center justify-between px-5 py-3"
-        style={{ backgroundColor: '#070A08', borderBottom: '1px solid rgba(237,232,218,0.1)' }}
-      >
-        <span
-          className="font-display text-xs uppercase leading-none tracking-[0.12em]"
-          style={{ color: COURT.lane }}
-        >
-          Smart Menu System
-        </span>
-        <span
-          className="text-[10px] font-bold uppercase tracking-[0.18em]"
-          style={{ color: COURT.laneDim }}
-        >
-          Final
-        </span>
+      <p className="font-display text-center text-xs font-bold uppercase tracking-[0.22em]" style={{ color: SMARTMENU.cocoa }}>
+        Smart Menu System · One-time
+      </p>
+      <p className="font-serif mt-3 text-center text-6xl font-semibold" style={{ color: SMARTMENU.red }}>
+        {PRICE_LABEL}
+      </p>
+      <p className="mt-2 text-center text-[13px]" style={{ color: SMARTMENU.cocoa }}>
+        Lifetime access • Walang renewal
+      </p>
+
+      <div aria-hidden className="my-7 border-t border-dashed" style={{ borderColor: `${SMARTMENU.ink}33` }} />
+
+      <ul className="text-left">
+        {PRICING_FEATURES.map((feature) => (
+          <li
+            key={feature}
+            className="flex items-start gap-3 py-2.5 text-[13.5px] leading-snug"
+            style={{ color: SMARTMENU.ink, borderBottom: `1px dashed ${SMARTMENU.ink}1A` }}
+          >
+            <span className="mt-0.5">
+              <CheckIcon size={14} />
+            </span>
+            {feature}
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-8 flex flex-col items-stretch">
+        <BrandButton size="large" href={CHECKOUT_URL}>
+          Kunin ang Smart Menu
+        </BrandButton>
       </div>
 
-      <div
-        className="px-5 py-9 text-center"
-        style={{ background: 'linear-gradient(180deg, #0C110E, #070A08)' }}
-      >
-        <div className="flex items-end justify-center">
-          <SegmentDisplay
-            value={`₱${PRICE_DIGITS}`}
-            color={COURT.ledAmber}
-            height="clamp(2.9rem, 9.5vw, 5rem)"
-            label={PRICE_LABEL}
-          />
-        </div>
-        <p
-          className="mt-5 font-display text-sm uppercase tracking-[0.1em]"
-          style={{ color: COURT.lane }}
-        >
-          One-time
-        </p>
-        <p className="mt-1.5 text-[13px]" style={{ color: COURT.laneDim }}>
-          Lifetime access • Walang renewal
-        </p>
-      </div>
-
-      <div className="px-6 pb-8 pt-2 md:px-8">
-        <ul className="text-left">
-          {PRICING_FEATURES.map((feature) => (
-            <li
-              key={feature}
-              className="flex items-start gap-3 py-2.5 text-[13.5px] leading-snug"
-              style={{ color: '#C6CCC5', borderBottom: '1px solid rgba(237,232,218,0.08)' }}
-            >
-              <CheckMark size={14} className="mt-0.5 shrink-0" />
-              {feature}
-            </li>
-          ))}
-        </ul>
-
-        <div className="mt-8">
-          <CourtButton fullWidth size="large">
-            Kunin ang Smart Menu
-          </CourtButton>
-        </div>
-
-        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
-          {EXCLUSIONS.map((item) => (
-            <li
-              key={item}
-              className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
-              style={{ color: COURT.laneDim }}
-            >
-              <CrossMark size={12} className="shrink-0" />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
+        {EXCLUSIONS.map((item) => (
+          <li
+            key={item}
+            className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] line-through decoration-2"
+            style={{ color: SMARTMENU.cocoa, textDecorationColor: SMARTMENU.red, opacity: 0.75 }}
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -98,14 +70,21 @@ export function PricingSection() {
   return (
     <section
       id="pricing"
-      className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32"
-      style={{ backgroundColor: COURT.groundLit }}
+      className="scroll-mt-24 px-5 py-20 md:px-8 md:py-28"
+      style={{ backgroundColor: SMARTMENU.creamDeep }}
     >
-      <div className="mx-auto max-w-4xl">
-        <SectionTitle body="Walang monthly fees, walang hidden charges, walang commission kada order. Isang bayad lang — lifetime access sa buong Smart Menu system.">
-          Isang bayad. <Lit>Buo ang system.</Lit>
-        </SectionTitle>
-        <FinalScore />
+      <div className="rise mx-auto max-w-4xl text-center">
+        <h2 className="font-display t-display mx-auto max-w-[22ch] leading-tight" style={{ color: SMARTMENU.ink }}>
+          Isang bayad.{' '}
+          <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
+            Buo ang system.
+          </span>
+        </h2>
+        <p className="mx-auto mt-4 max-w-[56ch] text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
+          Walang monthly fees, walang hidden charges, walang commission kada order. Isang bayad lang —
+          lifetime access sa buong Smart Menu system.
+        </p>
+        <MenuCard />
       </div>
     </section>
   )
@@ -115,8 +94,7 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div>
-      <ChalkRule />
+    <div style={{ borderBottom: `1px dashed ${SMARTMENU.ink}26` }}>
       <h3>
         <button
           type="button"
@@ -124,32 +102,26 @@ function FAQItem({ q, a }: { q: string; a: string }) {
           aria-expanded={isOpen}
           className="flex w-full items-center justify-between gap-5 py-5 text-left"
         >
-          <span
-            className="font-display text-[15px] uppercase leading-snug tracking-[-0.005em] md:text-[17px]"
-            style={{ color: COURT.lane }}
-          >
+          <span className="font-display text-[15px] font-bold leading-snug md:text-[17px]" style={{ color: SMARTMENU.ink }}>
             {q}
           </span>
           <span
             aria-hidden
-            className="flex h-7 w-7 shrink-0 items-center justify-center"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors"
             style={{
-              border: `2px solid ${isOpen ? COURT.ledAmber : 'rgba(237,232,218,0.28)'}`,
-              color: isOpen ? COURT.ledAmber : COURT.laneDim,
+              border: `2px solid ${isOpen ? SMARTMENU.red : `${SMARTMENU.ink}33`}`,
+              color: isOpen ? SMARTMENU.red : SMARTMENU.cocoa,
             }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-              <path d="M4 12h16" strokeLinecap="square" />
-              {!isOpen && <path d="M12 4v16" strokeLinecap="square" />}
+              <path d="M4 12h16" strokeLinecap="round" />
+              {!isOpen && <path d="M12 4v16" strokeLinecap="round" />}
             </svg>
           </span>
         </button>
       </h3>
       {isOpen && (
-        <p
-          className="max-w-[68ch] pb-6 pr-10 text-[14.5px] leading-relaxed"
-          style={{ color: COURT.laneDim }}
-        >
+        <p className="max-w-[68ch] pb-6 pr-10 text-[14.5px] leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
           {a}
         </p>
       )}
@@ -159,19 +131,28 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 
 export function FAQSection() {
   return (
-    <section id="faq" className="relative z-10 scroll-mt-16 px-5 py-24 md:px-8 md:py-32">
-      <div className="mx-auto max-w-3xl">
-        <SectionTitle align="left">Mga madalas itanong</SectionTitle>
+    <section
+      id="faq"
+      className="scroll-mt-24 px-5 py-20 md:px-8 md:py-28"
+      style={{ backgroundColor: SMARTMENU.cream }}
+    >
+      <div className="rise mx-auto max-w-3xl">
+        <Eyebrow>Mga madalas itanong</Eyebrow>
+        <h2 className="font-display t-display leading-tight" style={{ color: SMARTMENU.ink }}>
+          May{' '}
+          <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
+            tanong?
+          </span>
+        </h2>
 
-        <div className="mt-12">
+        <div className="mt-10" style={{ borderTop: `1px dashed ${SMARTMENU.ink}26` }}>
           {FAQ_ITEMS.map((item) => (
             <FAQItem key={item.q} q={item.q} a={item.a} />
           ))}
-          <ChalkRule />
         </div>
 
         <div className="mt-12">
-          <CourtButton>Kunin — {PRICE_LABEL}</CourtButton>
+          <BrandButton href={CHECKOUT_URL}>Kunin — {PRICE_LABEL}</BrandButton>
         </div>
       </div>
     </section>
