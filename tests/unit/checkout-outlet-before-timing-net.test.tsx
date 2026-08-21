@@ -125,7 +125,7 @@ describe('useCheckoutOutlet — before-timing safety net', () => {
     expect(result.current.isMissingRequiredSelection).toBe(false)
   })
 
-  it('keeps a stored splash choice, without ever blocking the customer', async () => {
+  it('keeps a stored splash choice once it has been validated', async () => {
     window.localStorage.setItem(
       'selected_outlet_acme',
       JSON.stringify({ outletId: 'o-makati', mode: 'delivery', savedAt: Date.now() })
@@ -133,12 +133,72 @@ describe('useCheckoutOutlet — before-timing safety net', () => {
 
     const { result } = renderBeforeTimingCheckout()
 
+    // The choice survives the validation, and nothing is asked of the customer.
     await waitFor(() => expect(result.current.selectedOutletId).toBe('o-makati'))
     expect(result.current.isMissingRequiredSelection).toBe(false)
+    expect(fetchActiveOutlets).toHaveBeenCalled()
+  })
 
-    // The choice survives the background validation too.
-    await waitFor(() => expect(fetchActiveOutlets).toHaveBeenCalled())
-    expect(result.current.selectedOutletId).toBe('o-makati')
+  /**
+   * A stored branch is a claim from a previous visit, not a fact. Until the live
+   * list has come back there is no evidence it still exists, so honouring it
+   * "provisionally" means a branch the merchant deleted can be submitted by a
+   * customer who taps through faster than the network — landing the order on a
+   * branch the server cannot resolve, i.e. Unassigned. The very thing this
+   * safety net exists to prevent, through a narrower door.
+   */
+  it('will not submit a stored branch while it is still unvalidated', async () => {
+    window.localStorage.setItem(
+      'selected_outlet_acme',
+      JSON.stringify({ outletId: 'o-ghost', mode: 'delivery', savedAt: Date.now() })
+    )
+
+    // Arrange: hold the branch list in flight so the pre-validation render is
+    // observable, exactly as a slow mobile connection would leave it.
+    let releaseOutlets: (rows: Outlet[]) => void = () => {}
+    fetchActiveOutlets.mockReturnValue(
+      new Promise<Outlet[]>((resolve) => {
+        releaseOutlets = resolve
+      })
+    )
+
+    const { result } = renderBeforeTimingCheckout()
+
+    // Assert: mid-flight, the order must be held rather than carry the claim.
+    await waitFor(() => expect(fetchActiveOutlets).toHaveBeenCalledWith('tenant-1'))
+    expect(result.current.isLoading).toBe(true)
+    expect(result.current.selectedOutletId).toBeNull()
+    expect(result.current.isMissingRequiredSelection).toBe(true)
+
+    // And once the list lands, the dead branch is refused for good.
+    await act(async () => {
+      releaseOutlets([CAINTA, MAKATI])
+    })
+
+    expect(result.current.selectedOutletId).not.toBe('o-ghost')
+    expect(result.current.isMissingRequiredSelection).toBe(true)
+  })
+
+  /**
+   * The menu already ruled on this: "the URL wins over anything stored". It
+   * resolves a `/b/{slug}` arrival to the branch the link named and pointedly
+   * does NOT overwrite the older stored choice. If checkout then prefers the
+   * stored one, the customer browses and is priced at one branch and the order
+   * is placed at another — per-branch pricing makes that a money bug.
+   */
+  it('prefers the branch a QR link named over an older stored choice', async () => {
+    window.localStorage.setItem(
+      'selected_outlet_acme',
+      JSON.stringify({ outletId: 'o-cainta', mode: 'delivery', savedAt: Date.now() })
+    )
+    window.localStorage.setItem(
+      'linked_outlet_acme',
+      JSON.stringify({ slug: 'makati', savedAt: Date.now() })
+    )
+
+    const { result } = renderBeforeTimingCheckout()
+
+    await waitFor(() => expect(result.current.selectedOutletId).toBe('o-makati'))
     expect(result.current.isMissingRequiredSelection).toBe(false)
   })
 
