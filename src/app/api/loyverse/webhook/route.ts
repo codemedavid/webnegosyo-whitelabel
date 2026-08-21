@@ -79,6 +79,13 @@ export async function POST(request: NextRequest) {
           Boolean(level && typeof level === 'object' && 'variant_id' in level && 'store_id' in level)
       )
     )
+    // The menu is ISR (revalidate = 300), so without this a dish stays
+    // orderable for up to five minutes after Loyverse says it is dry.
+    if ((outcome.disabled > 0 || outcome.restored > 0) && tenantRow.slug) {
+      const { revalidatePath } = await import('next/cache')
+      revalidatePath(`/${tenantRow.slug}/menu`)
+      revalidatePath(`/${tenantRow.slug}/admin/menu`)
+    }
     return NextResponse.json({ ok: true, ...outcome })
   }
 

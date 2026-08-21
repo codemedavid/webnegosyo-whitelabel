@@ -27,11 +27,20 @@ export interface AvailabilityMapRow {
   local_key: string
   menu_item_id: string | null
   loyverse_variant_id: string | null
+  /** Last known level at the mapped store; null/absent = unknown, not zero. */
+  in_stock?: number | null
+}
+
+/** A remembered level to write back, so the next delta has full state. */
+export interface VariantStockUpdate {
+  variant_id: string
+  in_stock: number
 }
 
 export interface AvailabilityChanges {
   makeUnavailable: string[]
   makeAvailable: string[]
+  stockUpdates: VariantStockUpdate[]
 }
 
 export function partitionAvailabilityChanges(
@@ -48,34 +57,47 @@ export function partitionAvailabilityChanges(
     variantsByMenuItem.set(row.menu_item_id, [...list, row.loyverse_variant_id])
   }
 
-  const outVariants = new Set<string>()
-  const backVariants = new Set<string>()
+  // Last known level per variant, from the map. `undefined` = unknown.
+  const knownStock = new Map<string, number | undefined>()
+  for (const row of mapRows) {
+    if (row.kind !== 'variant' || !row.loyverse_variant_id) continue
+    knownStock.set(row.loyverse_variant_id, row.in_stock ?? undefined)
+  }
+
+  // Merge this batch over remembered state. Loyverse sends one delta per
+  // variant, so the batch alone can never describe a whole dish — deciding
+  // from it in isolation is what left multi-variant dishes permanently
+  // orderable.
+  const stockUpdates: VariantStockUpdate[] = []
+  const touchedMenuItems = new Set<string>()
   for (const level of levels) {
     if (level.store_id !== storeId) continue
-    if (!menuItemByVariant.has(level.variant_id)) continue
-    if ((level.in_stock ?? 0) > 0) backVariants.add(level.variant_id)
-    else outVariants.add(level.variant_id)
+    const menuItemId = menuItemByVariant.get(level.variant_id)
+    if (!menuItemId) continue
+    const inStock = level.in_stock ?? 0
+    knownStock.set(level.variant_id, inStock)
+    stockUpdates.push({ variant_id: level.variant_id, in_stock: inStock })
+    touchedMenuItems.add(menuItemId)
   }
 
   const makeAvailable = new Set<string>()
-  for (const variantId of backVariants) {
-    makeAvailable.add(menuItemByVariant.get(variantId) as string)
-  }
-
   const makeUnavailable = new Set<string>()
-  for (const variantId of outVariants) {
-    const menuItemId = menuItemByVariant.get(variantId) as string
-    if (makeAvailable.has(menuItemId)) continue
+  for (const menuItemId of touchedMenuItems) {
     const allVariants = variantsByMenuItem.get(menuItemId) ?? []
-    // 86 only when every variant of the dish present in THIS batch is out.
-    // Variants absent from the batch are assumed unchanged-and-in-stock.
-    const everyVariantOut = allVariants.every((v) => outVariants.has(v))
-    if (everyVariantOut) makeUnavailable.add(menuItemId)
+    // Unknown counts as sellable: a dish stuck invisible because Loyverse
+    // never reported a variant is a worse failure than one oversold.
+    const anySellable = allVariants.some((variantId) => {
+      const stock = knownStock.get(variantId)
+      return stock === undefined || stock > 0
+    })
+    if (anySellable) makeAvailable.add(menuItemId)
+    else makeUnavailable.add(menuItemId)
   }
 
   return {
     makeUnavailable: [...makeUnavailable],
     makeAvailable: [...makeAvailable],
+    stockUpdates,
   }
 }
 
@@ -92,7 +114,7 @@ export async function applyLoyverseInventoryLevels(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: mapRows } = await (admin as any)
     .from('loyverse_item_map')
-    .select('kind, local_key, menu_item_id, loyverse_variant_id')
+    .select('kind, local_key, menu_item_id, loyverse_variant_id, in_stock')
     .eq('tenant_id', tenantId)
     .eq('kind', 'variant')
 
@@ -115,6 +137,18 @@ export async function applyLoyverseInventoryLevels(
       .update({ is_available: true } as never)
       .eq('tenant_id', tenantId)
       .in('id', changes.makeAvailable)
+  }
+
+  // Remember the levels so the NEXT single-variant delta can reason about the
+  // whole dish. Without this the merge above has nothing to merge over.
+  for (const update of changes.stockUpdates) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from('loyverse_item_map')
+      .update({ in_stock: update.in_stock })
+      .eq('tenant_id', tenantId)
+      .eq('kind', 'variant')
+      .eq('loyverse_variant_id', update.variant_id)
   }
 
   return { disabled: changes.makeUnavailable.length, restored: changes.makeAvailable.length }
