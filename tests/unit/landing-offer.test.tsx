@@ -86,8 +86,14 @@ describe('O3 — the 4 Mores answer the problems before the feature wall', () =>
   it('renders every More with its explanation', () => {
     render(<FourMoresSection />)
 
+    // The serif "More" accent splits the heading across elements, so match
+    // the heading's full accessible text instead of a single text node.
+    const headings = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent?.replace(/\s+/g, ' ').trim())
+
     FOUR_MORES.forEach((more) => {
-      expect(screen.getByText(more.title)).toBeInTheDocument()
+      expect(headings).toContain(more.title)
       expect(screen.getByText(more.body)).toBeInTheDocument()
     })
   })

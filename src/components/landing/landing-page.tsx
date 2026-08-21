@@ -2,6 +2,7 @@ import { CapabilitiesSection } from './capabilities-section'
 import { FAQSection, PricingSection } from './pricing-faq'
 import { FeatureJourney } from './feature-journey'
 import { FinalCTASection } from './final-cta'
+import { FourMoresSection } from './four-mores'
 import { HowItWorksSection } from './how-it-works'
 import { LandingFooter, LandingNav, SponsorStrip } from './landing-chrome'
 import { LandingHero } from './landing-hero'
@@ -34,6 +35,7 @@ export function LandingPage() {
         <LandingHero />
         <SponsorStrip />
         <ProblemSection />
+        <FourMoresSection />
         <CapabilitiesSection />
         <HowItWorksSection />
         <FeatureJourney />

@@ -9,7 +9,7 @@ export const revalidate = 0
 
 const TITLE = 'SmartMenu by WebNegosyo — Online Ordering Website na Kusang Nag-a-upsell'
 const DESCRIPTION =
-  'Sarili mong online ordering website para sa food business — SmartMenu ang nag-a-automate ng upsells, bundles, at upgrades. Dine-in, pick-up at delivery. One-time ₱3,899, walang monthly fee, live in 48 hours. Growing restaurants, together.'
+  'Buong sistema para sa food business — SmartMenu ordering website na kusang nag-uupsell, POS, inventory, SMS marketing, at AI analytics. ₱3,499 one-time setup + ₱649/buwan, live in 48 hours. Growing restaurants, together.'
 
 export const metadata: Metadata = {
   title: TITLE,

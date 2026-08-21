@@ -6,6 +6,7 @@ import {
   CHECKOUT_URL,
   EXCLUSIONS,
   FAQ_ITEMS,
+  MONTHLY_PRICE_LABEL,
   PRICE_LABEL,
   PRICING_FEATURES,
   SMARTMENU,
@@ -19,13 +20,32 @@ function MenuCard() {
       style={{ border: `1px solid ${SMARTMENU.ink}14` }}
     >
       <p className="font-display text-center text-xs font-bold uppercase tracking-[0.22em]" style={{ color: SMARTMENU.cocoa }}>
-        Smart Menu System · One-time
+        Smart Menu System
       </p>
-      <p className="font-serif mt-3 text-center text-6xl font-semibold" style={{ color: SMARTMENU.red }}>
-        {PRICE_LABEL}
-      </p>
-      <p className="mt-2 text-center text-[13px]" style={{ color: SMARTMENU.cocoa }}>
-        Lifetime access • Walang renewal
+      <div className="mt-4 flex items-center justify-center gap-6">
+        <div className="text-center">
+          <p className="font-serif text-5xl font-semibold" style={{ color: SMARTMENU.ink }}>
+            {PRICE_LABEL}
+          </p>
+          <p className="font-display mt-1 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: SMARTMENU.cocoa }}>
+            One-time setup
+          </p>
+        </div>
+        <span aria-hidden className="font-serif text-3xl italic" style={{ color: SMARTMENU.amber }}>
+          +
+        </span>
+        <div className="text-center">
+          <p className="font-serif text-5xl font-semibold" style={{ color: SMARTMENU.red }}>
+            {MONTHLY_PRICE_LABEL}
+            <span className="text-2xl">/buwan</span>
+          </p>
+          <p className="font-display mt-1 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: SMARTMENU.cocoa }}>
+            Buong system, lahat kasama
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-center text-[13px]" style={{ color: SMARTMENU.cocoa }}>
+        Walang commission kada order • Cancel anytime
       </p>
 
       <div aria-hidden className="my-7 border-t border-dashed" style={{ borderColor: `${SMARTMENU.ink}33` }} />
@@ -75,14 +95,15 @@ export function PricingSection() {
     >
       <div className="rise mx-auto max-w-4xl text-center">
         <h2 className="font-display t-display mx-auto max-w-[22ch] leading-tight" style={{ color: SMARTMENU.ink }}>
-          Isang bayad.{' '}
+          Isang plan.{' '}
           <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
             Buo ang system.
           </span>
         </h2>
         <p className="mx-auto mt-4 max-w-[56ch] text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
-          Walang monthly fees, walang hidden charges, walang commission kada order. Isang bayad lang —
-          lifetime access sa buong Smart Menu system.
+          Walang hidden charges, walang commission kada order. {PRICE_LABEL} one-time setup, tapos{' '}
+          {MONTHLY_PRICE_LABEL} kada buwan para sa buong Smart Menu system — website, POS, inventory,
+          SMS marketing, at AI analytics.
         </p>
         <MenuCard />
       </div>

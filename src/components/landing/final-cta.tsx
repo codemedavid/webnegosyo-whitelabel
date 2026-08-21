@@ -1,5 +1,5 @@
 import { BrandButton, Photo } from './landing-ui'
-import { CHECKOUT_URL, LANDING_PHOTOS, PRICE_LABEL, SMARTMENU } from './landing-theme'
+import { CHECKOUT_URL, LANDING_PHOTOS, MONTHLY_PRICE_LABEL, PRICE_LABEL, SMARTMENU } from './landing-theme'
 
 /**
  * The close: heavy bold type, left-aligned, over the dining room the owner is
@@ -28,7 +28,8 @@ export function FinalCTASection() {
           </span>
         </h2>
         <p className="t-lead mt-6 max-w-[46ch] leading-relaxed" style={{ color: SMARTMENU.parchment }}>
-          One-time {PRICE_LABEL}, live within 48 hours, at kusang nag-uupsell mula sa unang order.
+          {PRICE_LABEL} setup + {MONTHLY_PRICE_LABEL}/buwan, live within 48 hours, at kusang
+          nag-uupsell mula sa unang order.
         </p>
         <div className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
           <BrandButton size="large" href={CHECKOUT_URL}>

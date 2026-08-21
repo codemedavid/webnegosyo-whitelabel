@@ -93,7 +93,10 @@ export const LANDING_PHOTOS = {
   },
 } as const satisfies Record<string, LandingPhoto>
 
-export const PRICE_LABEL = '₱3,899'
+/** One-time done-for-you setup. */
+export const PRICE_LABEL = '₱3,499'
+/** The subscription that keeps the whole system running. */
+export const MONTHLY_PRICE_LABEL = '₱649'
 
 /** One-sentence answer to "ano ba talaga ito?" — used in the hero and the meta description. */
 export const PRODUCT_ONE_LINER =
@@ -139,6 +142,39 @@ export const PROBLEMS: readonly ProblemCard[] = [
   },
 ] as const
 
+export interface MoreCard {
+  n: string
+  title: string
+  body: string
+}
+
+/**
+ * The four ways SmartMenu grows a business — the page's promise, answering
+ * the three leaks before the feature wall itemizes the tools.
+ */
+export const FOUR_MORES: readonly MoreCard[] = [
+  {
+    n: '01',
+    title: 'More Better Ordering Experience',
+    body: 'Mabilis, malinaw, at branded ordering — sa web, sa app, sa QR sa mesa, o sa POS sa counter.',
+  },
+  {
+    n: '02',
+    title: 'More Bigger Orders',
+    body: 'Automatic upsells, meal upgrades, at bundles na nagpapalaki ng bawat order — kusa.',
+  },
+  {
+    n: '03',
+    title: 'More Customer Retention',
+    body: 'SMS marketing at customer history para bumalik-balik ang suki mo, hindi lang isang beses.',
+  },
+  {
+    n: '04',
+    title: 'More Confident Decision Making',
+    body: 'Analytics at AI insights para alam mo kung ano ang bumebenta, saan ka nalulugi, at ano ang susunod.',
+  },
+] as const
+
 export type CapabilityIcon =
   | 'store'
   | 'sparkles'
@@ -148,6 +184,10 @@ export type CapabilityIcon =
   | 'palette'
   | 'wallet'
   | 'phone'
+  | 'pos'
+  | 'boxes'
+  | 'message'
+  | 'chart'
 
 export interface Capability {
   icon: CapabilityIcon
@@ -179,8 +219,28 @@ export const CAPABILITIES: readonly Capability[] = [
   },
   {
     icon: 'gauge',
-    title: 'Live order dashboard',
+    title: 'Live order dashboard + app',
     body: 'Real-time order queue na may tunog at notification, order status, at daily sales — sa web at sa merchant mobile app.',
+  },
+  {
+    icon: 'pos',
+    title: 'POS para sa counter',
+    body: 'I-ring ang walk-in at counter sales sa parehong system — isang menu, isang presyo, isang kita.',
+  },
+  {
+    icon: 'boxes',
+    title: 'Inventory at stock tracking',
+    body: 'Recipes, deductions, at daily reports. Kusang nagma-mark na out of stock ang item bago pa ma-disappoint ang customer.',
+  },
+  {
+    icon: 'message',
+    title: 'SMS marketing',
+    body: 'Text campaigns sa mga suki mo — promo, bagong menu, o balik-customer offers, diretso sa phone nila.',
+  },
+  {
+    icon: 'chart',
+    title: 'Analytics na may AI insights',
+    body: 'Bestsellers, trends, at AI growth coach na nagsasabi kung ano ang gawin next — hindi ka na manghuhula.',
   },
   {
     icon: 'palette',
@@ -233,24 +293,27 @@ export const PRICING_FEATURES = [
   'Bundles at combo builder',
   'Dine-in QR, pick-up at delivery',
   'Live order dashboard + merchant app',
+  'POS para sa counter sales',
+  'Inventory at stock tracking',
+  'SMS marketing campaigns',
+  'Analytics na may AI insights',
   'Menu at product management system',
   'Custom branding at 12 menu templates',
   'Messenger order forwarding',
   'Done-for-you setup within 48 hours',
-  'Lifetime updates — walang monthly fee',
+  'Lahat ng updates at bagong features, kasama na',
 ] as const
 
 export const EXCLUSIONS = [
-  'Monthly subscription',
   'Commission kada order',
-  'Setup fee',
+  'Hidden charges',
   'Lock-in contract',
 ] as const
 
 export const FAQ_ITEMS = [
   {
     q: 'Ano ba talaga ang binibili ko?',
-    a: 'Isang buong online ordering website para sa food business mo — kasama ang smart menu na nag-a-automate ng upsells, bundles, at upgrades, plus ang admin dashboard para sa orders at menu. One-time payment, sa iyo na habambuhay.',
+    a: 'Isang buong sistema para sa food business mo — ordering website na kusang nag-uupsell, POS, inventory, SMS marketing, at analytics na may AI insights, plus ang admin dashboard at merchant app. ₱3,499 one-time setup, tapos ₱649 kada buwan para sa buong system.',
   },
   {
     q: 'Kailangan ko ba ng technical skills?',
@@ -258,7 +321,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: 'May monthly fee o commission ba kada order?',
-    a: 'Wala. One-time ₱3,899 lang, walang commission kahit ilan ang orders mo. Kasama na ang lifetime updates at lahat ng features.',
+    a: 'May subscription na ₱649 kada buwan pagkatapos ng ₱3,499 setup — pero walang commission kahit ilan ang orders mo. Kasama na sa monthly ang lahat ng features, updates, at suporta.',
   },
   {
     q: 'Gaano kabilis ma-setup?',
@@ -343,14 +406,14 @@ export const STATS = [
   { value: '100+', label: 'Restaurants onboard' },
   { value: '48', unit: 'HRS', label: 'Payment to live' },
   { value: '0', unit: '%', label: 'Commission kada order' },
-  { value: '0', unit: '₱/BUWAN', label: 'Monthly fees, forever' },
+  { value: '8+', label: 'Tools sa isang system' },
 ] as const
 
 export const HERO_TRUST_POINTS = [
-  'One-time payment',
+  '₱3,499 setup + ₱649/buwan',
   'Walang commission',
   'Done-for-you setup',
-  'Lifetime updates',
+  'Cancel anytime',
 ] as const
 
 /** Printed down the capability ribbon under the hero. */
@@ -363,8 +426,11 @@ export const SPONSOR_STRIP = [
   'Pick-up',
   'Delivery',
   'Live Order Dashboard',
+  'POS',
+  'Inventory',
+  'SMS Marketing',
+  'AI Analytics',
   'Messenger Orders',
-  'No Monthly Fees',
   '48-Hour Setup',
 ] as const
 

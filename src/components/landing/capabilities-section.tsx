@@ -61,6 +61,33 @@ function BrandIcon({ icon }: { icon: CapabilityIcon }) {
         <path d="M10 7c1.5 1.2 2.5 1.2 4 0" stroke={SMARTMENU.amber} />
       </>
     ),
+    pos: (
+      <>
+        <rect x="4" y="10" width="16" height="9" rx="1.5" />
+        <path d="M7 10V5h10v5" />
+        <path d="M9 7.5h6" stroke={SMARTMENU.amber} />
+        <path d="M8 14h3" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    boxes: (
+      <>
+        <path d="M4 13h7v7H4zM13 13h7v7h-7z" />
+        <path d="M8.5 4h7v7h-7z" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    message: (
+      <>
+        <path d="M4 5h16v11H9l-5 4V5Z" />
+        <path d="M8 9h8M8 12h5" stroke={SMARTMENU.amber} />
+      </>
+    ),
+    chart: (
+      <>
+        <path d="M4 4v16h16" />
+        <path d="M8 15v-4M12 15V8M16 15v-7" stroke={SMARTMENU.amber} />
+        <circle cx="19" cy="5.5" r="1.5" stroke={SMARTMENU.amber} />
+      </>
+    ),
   }
 
   return (
