@@ -24,7 +24,7 @@ export interface LalamoveDeliveryArgs {
  * or a number into a finite number, returning `undefined` for anything that
  * does not parse cleanly.
  */
-function toFiniteNumber(value: unknown): number | undefined {
+export function toFiniteNumber(value: unknown): number | undefined {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : undefined
   }

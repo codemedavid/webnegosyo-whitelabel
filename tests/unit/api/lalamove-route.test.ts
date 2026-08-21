@@ -33,6 +33,7 @@ jest.mock('@/lib/lalamove-service', () => ({
   getLalamoveOrder: jest.fn(),
   cancelLalamoveOrder: jest.fn(),
   addLalamovePriorityFee: jest.fn(),
+  createLalamoveQuotation: jest.fn(),
 }))
 
 const TENANT = {
@@ -43,17 +44,56 @@ const TENANT = {
   lalamove_secret_key: 'secret',
   lalamove_market: 'PH',
   lalamove_sender_phone: '09170000000',
+  restaurant_address: '88 Retiro St, QC',
+  restaurant_latitude: 14.62,
+  restaurant_longitude: 121.0,
 }
 
+// The platform `orders` table has NO `delivery_address` column — the address
+// lives inside the `customer_data` JSON blob (see orders-service.ts, which
+// reads customer_data.delivery_address). The fixture mirrors the real row
+// shape so a select against a nonexistent column cannot pass silently.
 const ORDER = {
   id: 'order-1',
   tenant_id: 't1',
   customer_name: 'Ana',
   customer_contact: '09171234567',
-  delivery_address: '12 Mabini St',
+  customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
   lalamove_quotation_id: 'quote-1',
   lalamove_order_id: null,
   lalamove_status: null,
+}
+
+/**
+ * Columns that actually exist on the platform `orders` table (the subset this
+ * route could plausibly ask for). PostgREST rejects a select naming any other
+ * column with a 42703 error and no data — which is exactly how the real
+ * delivery_address bug manifested: every op returned "Order not found".
+ */
+const PLATFORM_ORDER_COLUMNS = new Set([
+  'id',
+  'tenant_id',
+  'status',
+  'total',
+  'customer_name',
+  'customer_contact',
+  'customer_data',
+  'delivery_fee',
+  'lalamove_quotation_id',
+  'lalamove_order_id',
+  'lalamove_status',
+  'lalamove_driver_id',
+  'lalamove_driver_name',
+  'lalamove_driver_phone',
+  'lalamove_tracking_url',
+])
+
+function unknownOrderColumn(select: string): string | null {
+  for (const raw of select.split(',')) {
+    const column = raw.trim()
+    if (column && !PLATFORM_ORDER_COLUMNS.has(column)) return column
+  }
+  return null
 }
 
 function makeRequest(body: unknown, authHeader?: string): NextRequest {
@@ -107,17 +147,34 @@ describe('POST /api/lalamove', () => {
     ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
       from: jest.fn((table: string) => {
         const builder: Record<string, unknown> = {}
-        builder.select = jest.fn(() => builder)
+        let selectedColumns: string | null = null
+        builder.select = jest.fn((columns?: string) => {
+          selectedColumns = typeof columns === 'string' ? columns : null
+          return builder
+        })
         builder.eq = jest.fn(() => builder)
         builder.is = jest.fn(() => builder)
         builder.update = jest.fn((patch: unknown) => {
           adminUpdateMock(table, patch)
           return builder
         })
-        builder.maybeSingle = jest.fn(async () => ({
-          data: table === 'tenants' ? tenantRow : orderRow,
-          error: null,
-        }))
+        builder.maybeSingle = jest.fn(async () => {
+          // Emulate PostgREST: selecting a column the table does not have
+          // yields an error and no row — it never resolves to data.
+          if (table === 'orders' && selectedColumns && selectedColumns !== '*') {
+            const missing = unknownOrderColumn(selectedColumns)
+            if (missing) {
+              return {
+                data: null,
+                error: { code: '42703', message: `column orders.${missing} does not exist` },
+              }
+            }
+          }
+          return {
+            data: table === 'tenants' ? tenantRow : orderRow,
+            error: null,
+          }
+        })
         builder.single = builder.maybeSingle
         // An update chain is awaited directly rather than read back.
         builder.then = (resolve: (v: unknown) => unknown) => resolve({ data: null, error: null })
@@ -138,6 +195,14 @@ describe('POST /api/lalamove', () => {
     })
     ;(service.cancelLalamoveOrder as unknown as jest.Mock).mockResolvedValue(true)
     ;(service.addLalamovePriorityFee as unknown as jest.Mock).mockResolvedValue({})
+    ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+      quotationId: 'quote-new',
+      price: 89,
+      currency: 'PHP',
+      expiresAt: new Date('2099-01-01T00:00:00Z'),
+      distance: '0 km',
+      duration: '0 min',
+    })
   })
 
   test('refuses an unauthenticated caller', async () => {
@@ -190,6 +255,35 @@ describe('POST /api/lalamove', () => {
     })
   })
 
+  test('reads the delivery address from customer_data, not a nonexistent column', async () => {
+    // The platform orders table has no delivery_address column; selecting one
+    // makes PostgREST error, the row comes back null, and every op — book,
+    // sync, cancel, priority fee — dies with "Order not found".
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ success: true })
+  })
+
+  test('refuses to book when customer_data carries no delivery address', async () => {
+    orderRow = { ...ORDER, customer_data: {} }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+    expect(body.error).toMatch(/address/i)
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+  })
+
   test('refuses to book a second rider for an order that already has one', async () => {
     // Double booking sends two riders and bills the merchant twice.
     orderRow = { ...ORDER, lalamove_order_id: 'lala-existing' }
@@ -229,6 +323,61 @@ describe('POST /api/lalamove', () => {
 
     const body = (await res.json()) as { success: boolean; error?: string }
     expect(body.success).toBe(false)
+  })
+
+  test('re-quotes an expired quotation from the store pin and the order address', async () => {
+    // Quotations expire in ~5 minutes. If the merchant confirms later than
+    // that, the only recovery used to be the web dashboard — requote makes an
+    // expired order bookable again from wherever the merchant is.
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ success: true, quotationId: 'quote-new' })
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1' }),
+      '88 Retiro St, QC',
+      { lat: 14.62, lng: 121.0 },
+      '12 Mabini St',
+      { lat: 14.7, lng: 121.05 },
+    )
+
+    const [, patch] = adminUpdateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
+    expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
+  })
+
+  test('refuses to re-quote once a delivery is booked', async () => {
+    // Swapping the quotation under a live booking would desync the order from
+    // the rider already on the road.
+    orderRow = { ...ORDER, lalamove_order_id: 'lala-1' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+  })
+
+  test('refuses to re-quote when the store has no pickup pin', async () => {
+    tenantRow = { ...TENANT, restaurant_latitude: null, restaurant_longitude: null }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+    expect(body.error).toMatch(/pickup|store/i)
   })
 
   test('syncs the live driver details onto the order', async () => {

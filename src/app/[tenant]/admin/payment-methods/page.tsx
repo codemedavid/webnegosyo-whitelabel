@@ -30,7 +30,11 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
           </div>
         }
       >
-        <PaymentMethodsManagement tenantId={tenant.id} tenantSlug={tenantSlug} />
+        <PaymentMethodsManagement
+          tenantId={tenant.id}
+          tenantSlug={tenantSlug}
+          isLoyverseConnected={Boolean(tenant.loyverse_enabled && tenant.loyverse_access_token)}
+        />
       </Suspense>
     </div>
   )

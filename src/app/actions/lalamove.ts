@@ -8,29 +8,34 @@ import { createClient } from '@/lib/supabase/server'
 import {
   createLalamoveQuotation,
   createLalamoveOrder,
-  cancelLalamoveOrder
+  cancelLalamoveOrder,
+  retrieveLalamoveQuotation,
 } from '@/lib/lalamove-service'
 import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { toFiniteNumber } from '@/lib/lalamove-order-details'
+import { resolveLalamoveSender } from '@/lib/lalamove-sender'
+import { isLalamoveFinal } from '@/lib/lalamove-status'
+import { checkRateLimit } from '@/lib/rate-limit'
 import type { Tenant } from '@/types/database'
 
 /**
- * Resolve the Lalamove sender (pickup) contact from the tenant record.
- *
- * The driver calls the SENDER number to coordinate pickup at the store, so it
- * must be the store's number — never the customer's. We prefer the explicit
- * lalamove_sender_phone, then footer_phone / footer_whatsapp.
+ * The tenant columns Lalamove work actually needs. Several of these actions
+ * are reachable from anonymous checkout traffic, so the row must be named
+ * column by column — a select('*') drags every secret on the tenants table
+ * into an anon-reachable code path.
  */
-function resolveSender(tenant: Tenant): { name: string; phone: string | undefined } {
-  const phone =
-    tenant.lalamove_sender_phone ||
-    tenant.footer_phone ||
-    tenant.footer_whatsapp ||
-    undefined
-  return {
-    name: tenant.name || tenant.footer_business_name || 'Restaurant',
-    phone: normalizeLalamovePhone(phone, tenant.lalamove_market),
-  }
-}
+const LALAMOVE_TENANT_COLUMNS =
+  'id, name, footer_business_name, footer_phone, footer_whatsapp, ' +
+  'lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, ' +
+  'lalamove_service_type, lalamove_sandbox, lalamove_sender_phone'
+
+/**
+ * Quotations are billable calls against the tenant's own Lalamove account and
+ * the action is deliberately anonymous (customers quote at checkout). The cap
+ * is per tenant: high enough for a busy dinner rush, low enough that a
+ * scripted visitor cannot burn a merchant's account.
+ */
+const QUOTATION_RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 }
 
 /**
  * Create a Lalamove quotation for delivery
@@ -46,11 +51,19 @@ export async function createQuotationAction(
   serviceType?: string
 ) {
   try {
+    const rate = checkRateLimit(`lalamove-quote:${tenantId}`, QUOTATION_RATE_LIMIT)
+    if (!rate.allowed) {
+      return {
+        success: false,
+        error: 'Too many delivery quotes requested. Please try again in a moment.',
+      }
+    }
+
     // Get tenant data
     const supabase = await createClient()
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -88,41 +101,6 @@ export async function createQuotationAction(
 }
 
 /**
- * Validate delivery address coordinates
- */
-export async function validateDeliveryAddress(
-  deliveryAddress: string,
-  deliveryLat: string,
-  deliveryLng: string
-) {
-  if (!deliveryAddress || !deliveryLat || !deliveryLng) {
-    return {
-      success: false,
-      error: 'Delivery address and coordinates are required',
-    }
-  }
-
-  const lat = parseFloat(deliveryLat)
-  const lng = parseFloat(deliveryLng)
-
-  if (isNaN(lat) || isNaN(lng)) {
-    return {
-      success: false,
-      error: 'Invalid coordinates',
-    }
-  }
-
-  return {
-    success: true,
-    data: {
-      address: deliveryAddress,
-      lat,
-      lng,
-    },
-  }
-}
-
-/**
  * Check if quotation is still valid (not expired)
  * Quotations are valid for 5 minutes per Lalamove documentation
  */
@@ -134,7 +112,7 @@ export async function checkQuotationValidity(
     const supabase = await createClient()
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -142,20 +120,7 @@ export async function checkQuotationValidity(
       return { valid: false, error: 'Lalamove not enabled' }
     }
 
-    // Retrieve quotation from Lalamove to check expiry
-    const SDKClient = await import('@lalamove/lalamove-js')
-    const environment = (tenant as unknown as Tenant).lalamove_sandbox ? 'sandbox' : 'production'
-    const market = (tenant as unknown as Tenant).lalamove_market || 'HK'
-
-    const client = new SDKClient.ClientModule(
-      new SDKClient.Config(
-        (tenant as unknown as Tenant).lalamove_api_key!,
-        (tenant as unknown as Tenant).lalamove_secret_key!,
-        environment
-      )
-    )
-
-    const quotation = await client.Quotation.retrieve(market, quotationId)
+    const quotation = await retrieveLalamoveQuotation(tenant as unknown as Tenant, quotationId)
     const expiresAt = new Date(quotation.expiresAt)
     const now = new Date()
     const valid = expiresAt > now
@@ -217,7 +182,7 @@ export async function createLalamoveOrderAction(
     // Get tenant data
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -273,7 +238,7 @@ export async function createLalamoveOrderAction(
     // customer's. The senderName/senderPhone params are ignored in favor of the
     // authoritative tenant record to prevent the historical "driver calls
     // customer for pickup" bug.
-    const sender = resolveSender(tenantTyped)
+    const sender = resolveLalamoveSender(tenantTyped)
     const normalizedRecipientPhone = normalizeLalamovePhone(recipientPhone, tenantTyped.lalamove_market)
 
     // Create Lalamove order
@@ -322,6 +287,114 @@ export async function createLalamoveOrderAction(
 }
 
 /**
+ * Replace an expired quotation with a fresh one so the order can be booked.
+ *
+ * Quotations expire ~5 minutes after checkout; any order confirmed later than
+ * that used to be stuck — no path anywhere to get a bookable quotation again.
+ * The new quote runs store pin → the order's stored delivery coordinates.
+ * The customer's delivery_fee is deliberately NOT changed: the price was
+ * agreed at checkout, and a fare difference is the merchant's to absorb or
+ * chase — never silently rebilled.
+ */
+export async function requoteLalamoveAction(tenantId: string, orderId: string) {
+  try {
+    const { verifyTenantPermission } = await import('@/lib/admin-service')
+    await verifyTenantPermission(tenantId, 'orders')
+
+    const supabase = await createClient()
+
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
+      .eq('id', tenantId)
+      .single()
+
+    if (!tenant) {
+      return { success: false, error: 'Tenant not found' }
+    }
+    const tenantTyped = tenant as unknown as Tenant
+    if (!tenantTyped.lalamove_enabled) {
+      return { success: false, error: 'Lalamove delivery is not enabled' }
+    }
+
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('id, customer_data, lalamove_order_id')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    const order = orderData as unknown as {
+      customer_data: {
+        delivery_address?: string | null
+        delivery_lat?: number | string | null
+        delivery_lng?: number | string | null
+      } | null
+      lalamove_order_id: string | null
+    } | null
+
+    if (!order) {
+      return { success: false, error: 'Order not found' }
+    }
+    if (order.lalamove_order_id && String(order.lalamove_order_id).trim() !== '') {
+      return {
+        success: false,
+        error: 'A delivery is already booked for this order — cancel it before re-quoting',
+      }
+    }
+
+    const deliveryAddress = order.customer_data?.delivery_address
+    const deliveryLat = toFiniteNumber(order.customer_data?.delivery_lat)
+    const deliveryLng = toFiniteNumber(order.customer_data?.delivery_lng)
+    if (!deliveryAddress || deliveryLat === undefined || deliveryLng === undefined) {
+      return { success: false, error: 'This order has no delivery coordinates to quote against' }
+    }
+
+    const pickupAddress = tenantTyped.restaurant_address
+    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
+    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
+    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+      return {
+        success: false,
+        error: 'Your store pickup address and map pin are not set. Add them in delivery settings.',
+      }
+    }
+
+    const quotation = await createLalamoveQuotation(
+      tenantTyped,
+      pickupAddress,
+      { lat: pickupLat, lng: pickupLng },
+      deliveryAddress,
+      { lat: deliveryLat, lng: deliveryLng },
+    )
+
+    // Guarded on the booking still being absent so a booking racing this
+    // requote cannot end up referencing a quotation it was not made from.
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ lalamove_quotation_id: quotation.quotationId })
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .is('lalamove_order_id', null)
+
+    if (updateError) {
+      throw updateError
+    }
+
+    return {
+      success: true,
+      data: { quotationId: quotation.quotationId, price: quotation.price, currency: quotation.currency },
+    }
+  } catch (error) {
+    console.error('Lalamove requote error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create a new quotation',
+    }
+  }
+}
+
+/**
  * Get Lalamove order details and sync with database
  */
 export async function syncLalamoveOrderAction(
@@ -338,7 +411,7 @@ export async function syncLalamoveOrderAction(
     // Get tenant data
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -353,41 +426,54 @@ export async function syncLalamoveOrderAction(
 
     // Get order from Lalamove
     const { getLalamoveOrder } = await import('@/lib/lalamove-service')
-    const lalamoveOrder = await getLalamoveOrder(tenantTyped, lalamoveOrderId)
-
-    // Update order in database
-    // The SDK returns an order object with status, shareLink, driverId, etc.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lalamoveOrderData = lalamoveOrder as any
-    const updateData: Record<string, unknown> = {
-      lalamove_status: lalamoveOrderData.status || null,
-      lalamove_tracking_url: lalamoveOrderData.shareLink || null,
+    const lalamoveOrder = (await getLalamoveOrder(tenantTyped, lalamoveOrderId)) as {
+      status?: string
+      shareLink?: string
+      driverId?: string
+      driver?: { id?: string; name?: string; phone?: string }
     }
 
-    // Update driver info if available
-    const driverId = lalamoveOrderData.driverId
-    if (driverId) {
+    // Only fields Lalamove actually returned are written. Blanking a tracking
+    // url or driver name because one poll came back thin would wipe details a
+    // merchant needs for a delivery already on the road.
+    const updateData: Record<string, unknown> = {}
+    if (lalamoveOrder?.status) updateData.lalamove_status = lalamoveOrder.status
+    if (lalamoveOrder?.shareLink) updateData.lalamove_tracking_url = lalamoveOrder.shareLink
+
+    // The driver arrives in one of two shapes depending on API/SDK version:
+    // embedded on the order payload, or as a driverId to fetch separately.
+    if (lalamoveOrder?.driver?.name) updateData.lalamove_driver_name = lalamoveOrder.driver.name
+    if (lalamoveOrder?.driver?.phone) updateData.lalamove_driver_phone = lalamoveOrder.driver.phone
+    if (lalamoveOrder?.driver?.id) updateData.lalamove_driver_id = lalamoveOrder.driver.id
+
+    const driverId = lalamoveOrder?.driverId
+    if (driverId && !lalamoveOrder?.driver) {
       const { getLalamoveDriver } = await import('@/lib/lalamove-service')
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const driver = await getLalamoveDriver(tenantTyped, lalamoveOrderId, driverId) as any
+        const driver = (await getLalamoveDriver(tenantTyped, lalamoveOrderId, driverId)) as {
+          id?: string
+          name?: string
+          phone?: string
+        }
         updateData.lalamove_driver_id = driver.id || driverId
-        updateData.lalamove_driver_name = driver.name || null
-        updateData.lalamove_driver_phone = driver.phone || null
+        if (driver.name) updateData.lalamove_driver_name = driver.name
+        if (driver.phone) updateData.lalamove_driver_phone = driver.phone
       } catch (driverError) {
         console.error('Failed to get driver info:', driverError)
         // Continue without driver info
       }
     }
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId)
-      .eq('tenant_id', tenantId)
+    if (Object.keys(updateData).length > 0) {
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId)
 
-    if (updateError) {
-      throw updateError
+      if (updateError) {
+        throw updateError
+      }
     }
 
     return {
@@ -426,7 +512,7 @@ export async function addPriorityFeeAction(
     const supabase = await createClient()
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -469,7 +555,7 @@ export async function cancelLalamoveOrderAction(
     // Get tenant data
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('*')
+      .select(LALAMOVE_TENANT_COLUMNS)
       .eq('id', tenantId)
       .single()
 
@@ -480,6 +566,24 @@ export async function cancelLalamoveOrderAction(
     const tenantTyped = tenant as unknown as Tenant
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
+    }
+
+    // A finished delivery cannot be cancelled — Lalamove would reject it, and
+    // blindly stamping CANCELLED over DELIVERED rewrites what actually
+    // happened to the order.
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('lalamove_status')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    const currentStatus = (existing as { lalamove_status?: string | null } | null)?.lalamove_status
+    if (isLalamoveFinal(currentStatus)) {
+      return {
+        success: false,
+        error: 'This delivery has already finished and cannot be cancelled',
+      }
     }
 
     // Cancel order in Lalamove

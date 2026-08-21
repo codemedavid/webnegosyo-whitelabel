@@ -6,8 +6,12 @@ import {
   getLalamoveOrder,
   cancelLalamoveOrder,
   addLalamovePriorityFee,
+  createLalamoveQuotation,
 } from '@/lib/lalamove-service'
 import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { toFiniteNumber } from '@/lib/lalamove-order-details'
+import { resolveLalamoveSender } from '@/lib/lalamove-sender'
+import { isLalamoveFinal } from '@/lib/lalamove-status'
 import type { Tenant } from '@/types/database'
 
 /**
@@ -31,18 +35,21 @@ import type { Tenant } from '@/types/database'
  * the service key and that read bypasses RLS entirely.
  */
 
-type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee'
+type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee' | 'requote'
 
-const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee']
-
-/** Statuses Lalamove reports for a delivery that is over, one way or another. */
-const FINAL_STATUSES = new Set(['DELIVERED', 'CANCELED', 'CANCELLED', 'COMPLETED', 'EXPIRED'])
+const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee', 'requote']
 
 interface OrderRow {
   id: string
   customer_name: string | null
   customer_contact: string | null
-  delivery_address: string | null
+  /** Platform orders keep the delivery details inside this JSON blob — there
+   * is no top-level delivery_address column on the orders table. */
+  customer_data: {
+    delivery_address?: string | null
+    delivery_lat?: number | string | null
+    delivery_lng?: number | string | null
+  } | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
@@ -50,23 +57,6 @@ interface OrderRow {
 
 function fail(error: string, status = 200): NextResponse {
   return NextResponse.json({ success: false, error }, { status })
-}
-
-/**
- * The store's pickup contact.
- *
- * The driver calls the SENDER to coordinate pickup, so it must be the store's
- * number and never the customer's — the same resolution the web server action
- * uses, kept identical here so a booking made from the app behaves exactly like
- * one made from the dashboard.
- */
-function resolveSender(tenant: Tenant): { name: string; phone: string | undefined } {
-  const phone =
-    tenant.lalamove_sender_phone || tenant.footer_phone || tenant.footer_whatsapp || undefined
-  return {
-    name: tenant.name || tenant.footer_business_name || 'Restaurant',
-    phone: normalizeLalamovePhone(phone, tenant.lalamove_market),
-  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -147,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: orderData } = await admin
     .from('orders')
     .select(
-      'id, customer_name, customer_contact, delivery_address, lalamove_quotation_id, lalamove_order_id, lalamove_status',
+      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status',
     )
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
@@ -171,11 +161,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!order.lalamove_quotation_id) {
         return fail('This order has no Lalamove quotation to book against')
       }
-      if (!order.delivery_address) {
+      const deliveryAddress = order.customer_data?.delivery_address
+      if (typeof deliveryAddress !== 'string' || deliveryAddress.trim() === '') {
         return fail('This order has no delivery address')
       }
 
-      const sender = resolveSender(tenant)
+      const sender = resolveLalamoveSender(tenant)
       if (!sender.phone) {
         return fail('Your store pickup phone is not set. Add it in delivery settings.')
       }
@@ -209,6 +200,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: true, lalamoveOrderId: placed.orderId })
     }
 
+    if (op === 'requote') {
+      // Quotations expire ~5 minutes after checkout. A fresh quote makes a
+      // stale order bookable again; the customer's delivery_fee is left
+      // untouched — the price was agreed at checkout and any fare difference
+      // is the merchant's call, never a silent rebill.
+      if (bookedId) {
+        return fail('A delivery is already booked for this order — cancel it before re-quoting')
+      }
+
+      const deliveryAddress = order.customer_data?.delivery_address
+      const deliveryLat = toFiniteNumber(order.customer_data?.delivery_lat)
+      const deliveryLng = toFiniteNumber(order.customer_data?.delivery_lng)
+      if (
+        typeof deliveryAddress !== 'string' ||
+        deliveryAddress.trim() === '' ||
+        deliveryLat === undefined ||
+        deliveryLng === undefined
+      ) {
+        return fail('This order has no delivery coordinates to quote against')
+      }
+
+      const pickupAddress = tenant.restaurant_address
+      const pickupLat = toFiniteNumber(tenant.restaurant_latitude)
+      const pickupLng = toFiniteNumber(tenant.restaurant_longitude)
+      if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+        return fail('Your store pickup address and map pin are not set. Add them in delivery settings.')
+      }
+
+      const quotation = await createLalamoveQuotation(
+        tenant,
+        pickupAddress,
+        { lat: pickupLat, lng: pickupLng },
+        deliveryAddress,
+        { lat: deliveryLat, lng: deliveryLng },
+      )
+
+      // Guarded on the booking still being absent so a booking racing this
+      // requote cannot end up referencing a quotation it was not made from.
+      await admin
+        .from('orders')
+        .update({ lalamove_quotation_id: quotation.quotationId })
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId)
+        .is('lalamove_order_id', null)
+
+      return NextResponse.json({
+        success: true,
+        quotationId: quotation.quotationId,
+        price: quotation.price,
+        currency: quotation.currency,
+      })
+    }
+
     if (!bookedId) {
       return fail('No delivery has been booked for this order yet')
     }
@@ -237,7 +281,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (op === 'cancel') {
-      if (order.lalamove_status && FINAL_STATUSES.has(order.lalamove_status.toUpperCase())) {
+      if (isLalamoveFinal(order.lalamove_status)) {
         return fail('This delivery has already finished and cannot be cancelled')
       }
 

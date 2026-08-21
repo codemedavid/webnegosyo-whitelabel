@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
@@ -40,6 +40,7 @@ import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
+import { freshTenderSession } from "../../lib/pos-tender-session";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -99,8 +100,26 @@ export default function PosTenderScreen() {
 
   // A fresh idempotency key per visit: a retry after a network blip reuses it,
   // so createOrder returns the existing order instead of charging twice.
-  const [clientOrderId] = useState(
-    () => `pos-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
+  const [clientOrderId, setClientOrderId] = useState(
+    () => freshTenderSession().clientOrderId,
+  );
+
+  // This is a hidden TAB screen: it mounts once and is never unmounted by
+  // navigation, so per-sale state initialized at mount is really per-launch.
+  // Without this reset, a completed sale left `isCompleting` true forever
+  // (the next checkout showed only the footer spinner — a frozen register)
+  // and every later sale reused the first sale's idempotency key, deduping
+  // it into the first order. Focus, not mount, is the start of a sale here.
+  useFocusEffect(
+    useCallback(() => {
+      const session = freshTenderSession();
+      setClientOrderId(session.clientOrderId);
+      setIsCompleting(session.isCompleting);
+      setTenderedText(session.tenderedText);
+      setReference(session.reference);
+      setProof(session.proof);
+      setEditReason(session.editReason);
+    }, []),
   );
 
   const totals = useMemo(

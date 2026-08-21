@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Truck, RefreshCw, X, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -10,10 +10,31 @@ import {
   cancelLalamoveOrderAction,
   syncLalamoveOrderAction,
   createLalamoveOrderAction,
-  addPriorityFeeAction
+  addPriorityFeeAction,
+  requoteLalamoveAction
 } from '@/app/actions/lalamove'
 import { toast } from 'sonner'
+import {
+  isActiveLalamoveDelivery,
+  isLalamoveFinal,
+  lalamoveStatusTone,
+  type LalamoveStatusTone,
+} from '@/lib/lalamove-status'
 import type { OrderWithItems } from '@/lib/orders-service'
+
+/**
+ * How often a live delivery is re-polled. Statuses used to update only when a
+ * human pressed "Sync Status" — driver assignment was invisible until then.
+ */
+const AUTO_SYNC_INTERVAL_MS = 45_000
+
+const STATUS_BADGE_CLASSES: Record<LalamoveStatusTone, string> = {
+  searching: 'bg-orange-100 text-orange-800 border-orange-300',
+  active: 'bg-blue-100 text-blue-800 border-blue-300',
+  done: 'bg-green-100 text-green-800 border-green-300',
+  cancelled: 'bg-red-100 text-red-800 border-red-300',
+  unknown: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+}
 
 interface LalamoveDeliveryPanelProps {
   order: OrderWithItems
@@ -26,6 +47,42 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
   const [syncingLalamove, setSyncingLalamove] = useState(false)
   const [creatingLalamove, setCreatingLalamove] = useState(false)
   const [addingPriorityFee, setAddingPriorityFee] = useState(false)
+  const [requoting, setRequoting] = useState(false)
+
+  const lalamoveOrderId = order.lalamove_order_id
+  const lalamoveStatus = order.lalamove_status
+
+  // Auto-refresh a live delivery so driver assignment and progress show up
+  // without anyone pressing Sync. Stops by itself once the status is final.
+  useEffect(() => {
+    if (!lalamoveOrderId || !isActiveLalamoveDelivery(lalamoveStatus)) return
+
+    let isCancelled = false
+    const tick = async () => {
+      const result = await syncLalamoveOrderAction(tenantId, order.id, lalamoveOrderId)
+      if (!isCancelled && result.success) {
+        router.refresh()
+      }
+    }
+
+    const intervalId = setInterval(tick, AUTO_SYNC_INTERVAL_MS)
+    return () => {
+      isCancelled = true
+      clearInterval(intervalId)
+    }
+  }, [order.id, lalamoveOrderId, lalamoveStatus, tenantId, router])
+
+  const handleRequote = async () => {
+    setRequoting(true)
+    const result = await requoteLalamoveAction(tenantId, order.id)
+    if (result.success) {
+      toast.success('New quotation created — you can book the delivery now')
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Failed to create a new quotation')
+    }
+    setRequoting(false)
+  }
 
   const handleAddPriorityFee = async () => {
     if (!order.lalamove_order_id) return
@@ -166,19 +223,9 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                 <div className="grid grid-cols-2 gap-1 sm:gap-2 items-center">
                   <span className="text-muted-foreground text-xs">Status:</span>
                   <div className="text-right">
-                    <Badge 
+                    <Badge
                       variant="outline"
-                      className={`text-[10px] sm:text-xs ${
-                        order.lalamove_status === 'ASSIGNING' || order.lalamove_status === 'ASSIGNED'
-                          ? 'bg-green-100 text-green-800 border-green-300'
-                          : order.lalamove_status === 'PICKED_UP' || order.lalamove_status === 'IN_TRANSIT'
-                          ? 'bg-blue-100 text-blue-800 border-blue-300'
-                          : order.lalamove_status === 'DELIVERED'
-                          ? 'bg-gray-100 text-gray-800 border-gray-300'
-                          : order.lalamove_status === 'CANCELLED'
-                          ? 'bg-red-100 text-red-800 border-red-300'
-                          : 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                      }`}
+                      className={`text-[10px] sm:text-xs ${STATUS_BADGE_CLASSES[lalamoveStatusTone(order.lalamove_status)]}`}
                     >
                       {order.lalamove_status}
                     </Badge>
@@ -198,7 +245,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     <span className="font-medium text-right text-xs sm:text-sm break-words">{order.lalamove_driver_name}</span>
                   </div>
                 </>
-              ) : order.lalamove_status === 'ASSIGNING' || order.lalamove_status === 'ASSIGNING_DRIVER' ? (
+              ) : lalamoveStatusTone(order.lalamove_status) === 'searching' ? (
                 <div className="grid grid-cols-2 gap-1 sm:gap-2 items-center">
                   <span className="text-muted-foreground text-xs">Driver:</span>
                   <span className="text-[10px] sm:text-xs italic text-orange-600 text-right">Searching...</span>
@@ -255,7 +302,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     </>
                   )}
                 </Button>
-                {order.lalamove_status !== 'CANCELLED' && order.lalamove_status !== 'DELIVERED' && (
+                {!isLalamoveFinal(order.lalamove_status) && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -273,7 +320,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     )}
                   </Button>
                 )}
-                {order.lalamove_status !== 'CANCELLED' && (
+                {!isLalamoveFinal(order.lalamove_status) && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -327,6 +374,26 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
               {!order.customer_contact && (
                 <p className="text-[10px] sm:text-xs text-red-600">Customer contact information is required</p>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRequote}
+                disabled={requoting}
+                className="w-full text-xs sm:text-sm h-8 sm:h-9"
+              >
+                {requoting ? (
+                  <>
+                    <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                    <span>Getting new quote…</span>
+                  </>
+                ) : (
+                  <span>Get New Quote</span>
+                )}
+              </Button>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                Quotations expire after ~5 minutes. If booking fails with an expired quotation,
+                get a new quote first.
+              </p>
             </div>
           )}
         </div>

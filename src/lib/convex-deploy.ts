@@ -76,7 +76,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // The register began sending this argument with voucher-enabled edits after
 // v18; without a version bump, bulk deploy considered every v18 tenant current
 // and left its validator rejecting the entire save as an extra field.
-const CURRENT_SCHEMA_VERSION = 19;
+// v20 adds lalamove:requoteLalamove (a fresh quotation for orders whose
+// checkout-time quotation expired before the merchant confirmed — previously
+// unbookable with no recovery path) and accepts lalamoveQuotationId on the
+// updateLalamoveDetails mutations. The app calls requote only against
+// deployments recorded at >= 20.
+const CURRENT_SCHEMA_VERSION = 20;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

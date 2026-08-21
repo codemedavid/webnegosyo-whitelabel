@@ -137,3 +137,25 @@ export async function togglePaymentMethodStatusAction(
   }
 }
 
+
+export async function syncLoyversePaymentMethodsAction(tenantId: string, tenantSlug: string) {
+  try {
+    const { syncPaymentMethodsFromLoyverse } = await import('@/lib/payment-methods-service')
+    const report = await syncPaymentMethodsFromLoyverse(tenantId)
+    if (report.success) {
+      revalidatePath(`/${tenantSlug}/admin/payment-methods`)
+      revalidatePath(`/${tenantSlug}/admin`)
+    }
+    return report
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync payment methods from Loyverse',
+      created: 0,
+      renamed: 0,
+      reactivated: 0,
+      deactivated: 0,
+      warnings: [] as string[],
+    }
+  }
+}
