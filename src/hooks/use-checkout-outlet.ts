@@ -116,10 +116,9 @@ export function useCheckoutOutlet({
   }, [isMultiBranch, tenantSlug])
 
   // Whether checkout itself must resolve the branch: always under `after`, and
-  // under `before` as soon as storage has been read — even a stored answer is
-  // only trusted provisionally, because the merchant may have deactivated that
-  // branch since the splash stored it. Validation happens in the background:
-  // the customer is never held waiting on it while a stored choice exists.
+  // under `before` as soon as storage has been read — a stored answer is not
+  // trusted on its own, because the merchant may have deactivated or deleted
+  // that branch since the splash stored it.
   const needsCheckoutResolution = isMultiBranch && (isAfterTiming || isStorageHydrated)
 
   useEffect(() => {
@@ -146,19 +145,27 @@ export function useCheckoutOutlet({
 
   /**
    * The branch to resolve from: what the customer tapped, or — while they have
-   * not answered — the one their link named.
+   * not answered — the one their link named, or the one they chose last time.
+   *
+   * A `/b/{slug}` arrival outranks the stored choice, because the menu already
+   * ruled it that way: "the URL wins over anything stored", and it pointedly
+   * does NOT overwrite the older stored selection when it does. Preferring the
+   * stored one here would price the customer's whole visit at the branch their
+   * link named and then place the order at a different one.
    *
    * Matched by slug against the live list rather than trusted outright, and then
    * handed to `resolveCheckoutOutletSelection` like any other candidate, so a
    * branch that has since been deactivated or that cannot serve the chosen order
    * type is dropped and the picker comes back. A printed link is a suggestion,
-   * not an instruction.
+   * not an instruction — and so is a selection from a previous visit.
    */
   const candidateOutletId = useMemo(() => {
     if (chosenOutletId !== undefined) return chosenOutletId
-    if (storedOutletId !== null) return storedOutletId
-    if (linkedSlug === null) return null
-    return matchOutletByLinkSlug(outlets, linkedSlug)?.id ?? null
+    if (linkedSlug !== null) {
+      const linked = matchOutletByLinkSlug(outlets, linkedSlug)
+      if (linked) return linked.id
+    }
+    return storedOutletId
   }, [chosenOutletId, storedOutletId, linkedSlug, outlets])
 
   const resolution = useMemo(
@@ -193,14 +200,17 @@ export function useCheckoutOutlet({
    * branchless checkout.
    */
   const isAwaitingStoredChoice = isMultiBranch && !isAfterTiming && !isStorageHydrated
-  // While the list is in flight, only a checkout with NO stored answer blocks —
-  // a stored choice is honored provisionally rather than making every returning
-  // customer watch the validation. Once the list is in hand, resolution rules.
+  // A branch that has not been checked against the live list is a claim, not an
+  // answer, so the order waits for the list whether or not something is stored.
+  // Honouring a stored choice "provisionally" here let a customer who tapped
+  // through faster than the network submit a branch the merchant had since
+  // deleted — the order then resolved to nothing server-side and surfaced as
+  // Unassigned, which is the exact failure this net exists to catch. The wait
+  // costs a returning customer the same "Loading branches…" beat the `after`
+  // timing has always shown, and only for as long as the fetch is in flight.
   const isMissingRequiredSelection =
     isAwaitingStoredChoice ||
-    (needsCheckoutResolution &&
-      ((isLoading && storedOutletId === null) ||
-        (outlets.length > 0 && resolvedOutletId === null)))
+    (needsCheckoutResolution && (isLoading || (outlets.length > 0 && resolvedOutletId === null)))
 
   // The customer tapped a branch and no longer has it — only ever because the
   // order type changed under them, since nothing else clears a live choice.
@@ -212,10 +222,10 @@ export function useCheckoutOutlet({
   return {
     isPickerVisible,
     choices: resolution.choices,
-    // Once the live list is in hand, only a branch that survived resolution can
-    // take the order. Before that, a stored splash choice stands in — trusted
-    // provisionally so a returning customer is never held for the validation.
-    selectedOutletId: isAfterTiming || hasLoadedOutlets ? resolvedOutletId : storedOutletId,
+    // Only a branch that survived resolution against the live list can take the
+    // order — never the raw stored or link-named claim. Until the list lands
+    // this is null, and `isMissingRequiredSelection` holds the order there.
+    selectedOutletId: resolvedOutletId,
     select: useCallback((outletId: string) => setChosenOutletId(outletId), []),
     clearSelection: useCallback(() => setChosenOutletId(null), []),
     mode,
