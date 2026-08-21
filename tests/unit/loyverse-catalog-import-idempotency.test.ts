@@ -32,6 +32,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
   private filters: Array<[string, unknown]> = []
   private inFilter: [string, unknown[]] | null = null
   private notNullColumns: string[] = []
+  private nullColumns: string[] = []
   private payload: Row | Row[] | null = null
   private wantsSingle = false
 
@@ -77,6 +78,11 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
     this.notNullColumns.push(column)
     return this
   }
+  /** Only `.is(col, null)` is used by catalog-import. */
+  is(column: string, value: unknown) {
+    if (value === null) this.nullColumns.push(column)
+    return this
+  }
   maybeSingle() {
     this.wantsSingle = true
     return this
@@ -93,6 +99,9 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
     if (this.inFilter && !this.inFilter[1].includes(row[this.inFilter[0]])) return false
     for (const column of this.notNullColumns) {
       if (row[column] === null || row[column] === undefined) return false
+    }
+    for (const column of this.nullColumns) {
+      if (row[column] !== null && row[column] !== undefined) return false
     }
     return true
   }

@@ -104,6 +104,14 @@ interface ExistingIdentityRow {
   image_url: string | null
 }
 
+/** A local dish with no Loyverse identity yet — adoptable by name. */
+interface UnclaimedRow {
+  id: string
+  name: string | null
+  category_id: string | null
+  image_url: string | null
+}
+
 export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyncReport> {
   const resolved = resolveLoyverseConfig(tenant)
   if (resolved.status === 'disabled') return emptyReport('Loyverse is not enabled for this tenant')
@@ -228,6 +236,41 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     .not('loyverse_item_id' as any, 'is', null)
   if (identityError) return emptyReport(`Failed to read menu items: ${identityError.message}`)
 
+  // --- Unclaimed local dishes, available for adoption by name.
+  //
+  // A tenant whose sync never completed has an empty map, so the identity
+  // backfill in 20260828130000 claimed nothing for it — every dish would be
+  // re-inserted here. Adopting by name is what migrates those tenants onto
+  // the identity column without duplicating their menu a second time.
+  const { data: unclaimedRows } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select('id, name, category_id, image_url' as any)
+    .eq('tenant_id', tenant.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .is('loyverse_item_id' as any, null)
+
+  const unclaimed = (unclaimedRows ?? []) as unknown as UnclaimedRow[]
+  const adoptedIds = new Set<string>()
+
+  /**
+   * Prefers a same-category match; falls back to a tenant-wide unique name so
+   * a dish whose category drifted is adopted rather than duplicated. Ambiguity
+   * is resolved deterministically (first match) because the alternative —
+   * inserting — is the duplication this whole change exists to stop.
+   */
+  const adoptUnclaimed = (name: string, categoryId: string | null): UnclaimedRow | null => {
+    const target = name.trim().toLowerCase()
+    const available = unclaimed.filter(
+      (row) => !adoptedIds.has(row.id) && (row.name ?? '').trim().toLowerCase() === target
+    )
+    if (available.length === 0) return null
+    const sameCategory = available.find((row) => row.category_id === categoryId)
+    const chosen = sameCategory ?? available[0]
+    adoptedIds.add(chosen.id)
+    return chosen
+  }
+
   const menuItemIdByLoyverseId: Record<string, string> = {}
   const imageByMenuItemId = new Map<string, string>()
   for (const row of (identifiedRows ?? []) as unknown as ExistingIdentityRow[]) {
@@ -245,6 +288,14 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       continue
     }
 
+    // Identity match first; then adoption of an unclaimed local dish by name.
+    const adopted = menuItemIdByLoyverseId[item.loyverseItemId]
+      ? null
+      : adoptUnclaimed(item.name, categoryId)
+    if (adopted) {
+      menuItemIdByLoyverseId[item.loyverseItemId] = adopted.id
+      imageByMenuItemId.set(adopted.id, adopted.image_url ?? '')
+    }
     const existingId = menuItemIdByLoyverseId[item.loyverseItemId]
 
     // Re-host the Loyverse photo on ImageKit; fall back to the hotlink (kept
@@ -273,7 +324,12 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     if (existingId) {
       const { error: updateError } = await supabase
         .from('menu_items')
-        .update(commonFields as never)
+        .update({
+          ...commonFields,
+          // Stamps identity onto a dish adopted by name; a no-op re-write for
+          // one that already matched by id.
+          loyverse_item_id: item.loyverseItemId,
+        } as never)
         .eq('id', existingId)
         .eq('tenant_id', tenant.id)
       if (updateError) {
