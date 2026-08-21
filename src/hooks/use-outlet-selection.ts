@@ -28,11 +28,21 @@ export function useOutletSelection({
   tenantSlug,
   outlets,
   hasCartItems = false,
+  hasLoadedOutlets = true,
 }: {
   isEnabled: boolean
   tenantSlug: string
   outlets: readonly SelectableOutlet[]
   hasCartItems?: boolean
+  /**
+   * Whether `outlets` is the tenant's real list rather than the empty array a
+   * surface that fetches its own branches starts with. The two are
+   * indistinguishable from the array alone, and the difference decides whether
+   * an empty list means "this merchant has no branches" — grounds to drop a
+   * stored selection — or "we have not looked yet", which is grounds for
+   * nothing. Defaults true for callers handed the list by the server.
+   */
+  hasLoadedOutlets?: boolean
 }) {
   const searchParams = useSearchParams()
   const urlSlug = searchParams?.get('outlet') ?? null
@@ -55,12 +65,19 @@ export function useOutletSelection({
     [isEnabled, outlets, stored, urlSlug, hasCartItems]
   )
 
+  // Discarding the customer's branch is only ever safe on evidence. While the
+  // list is still loading there is none — and clearing on the strength of an
+  // array that has not been filled in yet is what deleted the choice the splash
+  // had just recorded, one route later, and sent the order to no branch at all.
+  // The flag-off path still clears: it issues no query, so nothing is pending.
+  const mayClearStorage = hasLoadedOutlets || !isEnabled
+
   useEffect(() => {
     if (!isHydrated || typeof window === 'undefined') return
-    if (resolution.shouldClearStorage) {
+    if (mayClearStorage && resolution.shouldClearStorage) {
       clearOutletSelection(window.localStorage, tenantSlug)
     }
-  }, [isHydrated, resolution.shouldClearStorage, tenantSlug])
+  }, [isHydrated, mayClearStorage, resolution.shouldClearStorage, tenantSlug])
 
   /**
    * Remember the branch a `/b/{slug}` link named, so the walk from the menu to
