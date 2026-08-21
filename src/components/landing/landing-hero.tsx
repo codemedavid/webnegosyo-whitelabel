@@ -114,7 +114,10 @@ function ReceiptCard() {
 function ScatteredPlates() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 hidden lg:block">
-      <div className="photo-zoom absolute -left-10 bottom-[8%] h-44 w-56 -rotate-6 overflow-hidden rounded-xl border-4 border-white/90 shadow-2xl">
+      <div
+        className="photo-zoom absolute h-44 w-56 -rotate-6 overflow-hidden rounded-xl border-4 border-white/90 shadow-2xl"
+        style={{ bottom: '-3.5rem', left: '-4rem' }}
+      >
         <Photo photo={LANDING_PHOTOS.burger} decorative sizes="14rem" />
       </div>
       <div className="photo-zoom absolute right-[30%] top-[6%] h-28 w-36 rotate-3 overflow-hidden rounded-xl border-4 border-white/90 shadow-xl">
