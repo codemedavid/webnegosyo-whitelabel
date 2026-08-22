@@ -76,3 +76,29 @@ matched the just-made edit each time) and cleared on hard reload with zero conso
 
 RED `0468d62` → fix `0c46cf3` (pre-existing build blocker) → GREEN `05f75ed` → refactor
 `65ebdf8`. If squashed, this file preserves the RED/GREEN trail.
+
+## Round 3 — Two deliverables, app-first (Messenger dropped as a feature)
+
+Request: rewrite the copy around the 4 Mores, stop pushing Messenger (app-first now), and
+frame the offer as the two things a merchant gets — the SmartMenu ordering website and the App.
+
+New suite `tests/unit/landing-appfirst.test.tsx` (A1–A3), written RED-first (commit `ab730d6`,
+8/9 failed: `DELIVERABLES` missing, Messenger still in capabilities/pricing/ribbon, FAQ lacked
+the framing), implemented in `69e0950`:
+
+| # | What is guaranteed | Result |
+|---|---|---|
+| 1 | `DELIVERABLES` has exactly two entries — "Ang SmartMenu" then "Ang App" — and every capability belongs to one of them (`CAPABILITIES` is derived) | PASS |
+| 2 | `CapabilitiesSection` renders both deliverable headings with all their capability cards | PASS |
+| 3 | No Messenger anywhere the page sells: capabilities, `PRICING_FEATURES`, `SPONSOR_STRIP` | PASS |
+| 4 | The app is sold as where orders land (real-time + notifications) | PASS |
+| 5 | The "ano ba talaga ang binibili ko" FAQ names both the SmartMenu and the App | PASS |
+
+Deliberate keep: the problem card "Nasa Messenger pa rin ang orders mo" stays — it is the pain
+point the app solves, not a feature. `checkout-form.tsx` retains one contact-us Messenger string
+(checkout support copy, out of scope).
+
+Validation: `npm run test -- --testPathPatterns="landing"` → **118 passed, 10 suites**;
+`npx eslint` on the three changed files → clean.
+
+Merge evidence: RED `ab730d6` → GREEN `69e0950`. If squashed, this table preserves the trail.
