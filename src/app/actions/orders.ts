@@ -271,6 +271,49 @@ export async function createOrderAction(
       }
     }
 
+    // ── Live Loyverse stock verification (authoritative; every order backend) ──
+    // The synced mirror can always be stale — a webhook may be unregistered or
+    // disabled by Loyverse after 48h of failures. One live read here is the
+    // only check that cannot be stale, and it costs a single request against a
+    // 300 req / 300 s per-merchant budget.
+    //
+    // Deliberately a SEPARATE select: the loyverse_* columns are not in the
+    // tenantConfig projection above, and a column missing from a SELECT fails
+    // silently rather than loudly.
+    {
+      const { data: loyverseRow } = await supabaseAdmin
+        .from('tenants')
+        .select('loyverse_enabled, loyverse_access_token, loyverse_store_id')
+        .eq('id', tenantId)
+        .maybeSingle()
+
+      const loyverse = loyverseRow as {
+        loyverse_enabled?: boolean | null
+        loyverse_access_token?: string | null
+        loyverse_store_id?: string | null
+      } | null
+
+      if (loyverse?.loyverse_enabled && loyverse.loyverse_access_token && loyverse.loyverse_store_id) {
+        const { findLiveOutOfStockLines } = await import('@/lib/loyverse/stock-check')
+        const blocked = await findLiveOutOfStockLines(
+          tenantId,
+          loyverse.loyverse_access_token,
+          loyverse.loyverse_store_id,
+          items.map((item) => ({
+            menu_item_id: item.menu_item_id,
+            menu_item_name: item.menu_item_name,
+          }))
+        )
+        if (blocked.length > 0) {
+          const names = blocked.map((line) => line.menu_item_name).join(', ')
+          return {
+            success: false,
+            error: `Sorry, ${names} just went out of stock. Please remove ${blocked.length === 1 ? 'it' : 'them'} from your cart and try again.`,
+          }
+        }
+      }
+    }
+
     // ── Advance-order schedule validation (authoritative; covers BOTH Supabase + Convex) ──
     // The client sends scheduledForISO and may also stash scheduled_for/scheduled_for_label in
     // customerData. Re-validate the requested time against the order type's advance config and

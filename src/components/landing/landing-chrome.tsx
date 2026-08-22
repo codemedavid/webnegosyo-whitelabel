@@ -1,101 +1,83 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import { CourtButton } from './court'
-import { CHECKOUT_URL, COURT, NAV_LINKS, PRICE_LABEL, SPONSOR_STRIP, TARP } from './landing-theme'
+import { BrandButton } from './landing-ui'
+import { BRAND, CHECKOUT_URL, NAV_LINKS, SMARTMENU, SPONSOR_STRIP } from './landing-theme'
 
-/** The board's own header rail, pinned to the top of the court. */
 export function LandingNav() {
   return (
     <header
-      className="fixed inset-x-0 top-0 z-50"
+      className="sticky top-0 z-50 border-b"
       style={{
-        backgroundColor: 'rgba(7,10,8,0.93)',
-        borderBottom: '1px solid rgba(237,232,218,0.1)',
+        backgroundColor: `${SMARTMENU.cream}F2`,
+        borderColor: `${SMARTMENU.ink}14`,
         backdropFilter: 'blur(10px)',
       }}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3 md:px-8">
+      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 md:px-8">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <span
-            className="flex h-9 w-9 items-center justify-center overflow-hidden"
-            style={{ backgroundColor: TARP.vinyl }}
-          >
-            <Image
-              src="/webnegosyo-logo.png"
-              alt=""
-              width={36}
-              height={36}
-              className="scale-[1.7]"
-              priority
-            />
-          </span>
-          <span
-            className="font-display text-sm uppercase leading-none tracking-[0.06em]"
-            style={{ color: COURT.lane }}
-          >
-            WebNegosyo
+          <Image
+            src={BRAND.logoSrc}
+            alt="SmartMenu logo"
+            width={40}
+            height={40}
+            className="rounded-full"
+            priority
+          />
+          <span className="leading-tight">
+            <span className="font-display block text-[17px] font-bold" style={{ color: SMARTMENU.ink }}>
+              Smart<span style={{ color: SMARTMENU.red }}>Menu</span>
+            </span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: SMARTMENU.cocoa }}>
+              {BRAND.byline}
+            </span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-8 lg:flex" aria-label="Landing sections">
+        <ul className="hidden items-center gap-7 md:flex">
           {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="landing-navlink text-[11px] font-bold uppercase tracking-[0.16em]"
-            >
-              {link.label}
-            </a>
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="text-sm font-semibold transition-colors hover:opacity-70"
+                style={{ color: SMARTMENU.cocoa }}
+              >
+                {link.label}
+              </Link>
+            </li>
           ))}
-        </nav>
+        </ul>
 
-        <Link
-          href={CHECKOUT_URL}
-          className="shrink-0 px-4 py-2.5 font-display text-[11px] uppercase leading-none tracking-[0.06em] transition-[filter,transform] duration-150 hover:brightness-110 active:translate-y-[2px] md:px-5 md:text-xs"
-          style={{
-            backgroundColor: COURT.plateRed,
-            color: '#FFF6F3',
-            clipPath: 'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)',
-            boxShadow: `0 4px 0 0 ${COURT.plateRedDeep}`,
-          }}
-        >
-          Kunin — {PRICE_LABEL}
-        </Link>
-      </div>
+        <BrandButton href={CHECKOUT_URL}>Simulan</BrandButton>
+      </nav>
     </header>
   )
 }
 
-/**
- * The sponsor tarpaulin strung along the court fence. Printed vinyl, so it is
- * bright against the asphalt — the page's first hard tonal break.
- */
+/** The capability ribbon under the hero — an amber band that never stops moving. */
 export function SponsorStrip() {
-  const row = [...SPONSOR_STRIP, ...SPONSOR_STRIP]
-
   return (
     <div
-      className="relative z-10 overflow-hidden py-3.5"
-      style={{
-        backgroundColor: TARP.yellow,
-        borderTop: `3px solid ${TARP.ink}`,
-        borderBottom: `3px solid ${TARP.ink}`,
-      }}
+      className="relative overflow-hidden border-y py-3.5"
+      style={{ backgroundColor: SMARTMENU.amber, borderColor: `${SMARTMENU.ink}22` }}
+      aria-label="Mga kasamang feature"
     >
-      <div className="landing-strip flex w-max items-center">
-        {row.map((item, i) => (
-          <span
-            key={`${item}-${i}`}
-            className="flex items-center whitespace-nowrap font-display text-sm uppercase tracking-[0.04em] md:text-base"
-            style={{ color: TARP.ink }}
-          >
-            {item}
-            <span
-              aria-hidden
-              className="mx-6 inline-block h-2 w-2"
-              style={{ backgroundColor: TARP.red }}
-            />
-          </span>
+      <div className="marquee-track flex w-max items-center">
+        {/* Duplicated once so the loop is seamless. */}
+        {[0, 1].map((copy) => (
+          <ul key={copy} aria-hidden={copy === 1} className="flex items-center">
+            {SPONSOR_STRIP.map((item) => (
+              <li
+                key={item}
+                className="font-display flex items-center gap-6 whitespace-nowrap px-6 text-sm font-bold uppercase tracking-[0.08em]"
+                style={{ color: SMARTMENU.ink }}
+              >
+                {item}
+                <span aria-hidden className="text-base" style={{ color: SMARTMENU.red }}>
+                  ✺
+                </span>
+              </li>
+            ))}
+          </ul>
         ))}
       </div>
     </div>
@@ -103,63 +85,72 @@ export function SponsorStrip() {
 }
 
 const FOOTER_LINKS = [
-  ...NAV_LINKS,
-  { href: '/privacy', label: 'Privacy' },
+  { href: '/privacy', label: 'Privacy Policy' },
   { href: '/support', label: 'Support' },
 ] as const
 
 export function LandingFooter() {
   return (
-    <footer
-      className="relative z-10 pb-14 pt-12"
-      style={{ backgroundColor: '#070A08', borderTop: '3px solid rgba(237,232,218,0.14)' }}
-    >
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-7 px-5 text-center md:px-8">
-        <span
-          className="flex h-11 w-11 items-center justify-center overflow-hidden"
-          style={{ backgroundColor: TARP.vinyl }}
-        >
-          <Image
-            src="/webnegosyo-logo.png"
-            alt="WebNegosyo"
-            width={44}
-            height={44}
-            className="scale-[1.7]"
-          />
-        </span>
-
-        <nav
-          className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3"
-          aria-label="Footer"
-        >
-          {FOOTER_LINKS.map((link) =>
-            link.href.startsWith('#') ? (
-              <a
-                key={link.href}
-                href={link.href}
-                className="landing-navlink text-[11px] font-bold uppercase tracking-[0.16em]"
-              >
-                {link.label}
-              </a>
-            ) : (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="landing-navlink text-[11px] font-bold uppercase tracking-[0.16em]"
-              >
-                {link.label}
-              </Link>
-            ),
-          )}
-        </nav>
-
-        <div className="pt-1">
-          <CourtButton>Kunin ang Smart Menu — {PRICE_LABEL}</CourtButton>
+    <footer style={{ backgroundColor: SMARTMENU.ink, color: SMARTMENU.parchment }}>
+      <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 md:grid-cols-[1.4fr_1fr_1fr] md:px-8">
+        <div>
+          <div className="flex items-center gap-3">
+            <Image
+              src={BRAND.logoSrc}
+              alt="SmartMenu logo"
+              width={44}
+              height={44}
+              className="rounded-full"
+            />
+            <span className="font-display text-xl font-bold text-white">
+              Smart<span style={{ color: SMARTMENU.amber }}>Menu</span>
+            </span>
+          </div>
+          <p className="font-serif mt-4 max-w-[30ch] text-lg italic" style={{ color: SMARTMENU.parchment }}>
+            {BRAND.tagline}
+          </p>
+          <p className="mt-2 text-xs opacity-70">
+            {BRAND.name} {BRAND.byline} — para sa mga food business sa Pilipinas.
+          </p>
         </div>
 
-        <p className="text-xs" style={{ color: COURT.laneDim }}>
-          WebNegosyo • Smart Menu System para sa food business • © {new Date().getFullYear()}
-        </p>
+        <nav aria-label="Landing sections">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: SMARTMENU.amber }}>
+            Menu
+          </p>
+          <ul className="space-y-2.5">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className="text-sm transition-opacity hover:opacity-70">
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <nav aria-label="Legal at suporta">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: SMARTMENU.amber }}>
+            Tulong
+          </p>
+          <ul className="space-y-2.5">
+            {FOOTER_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className="text-sm transition-opacity hover:opacity-70">
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+            <li>
+              <Link href={CHECKOUT_URL} className="text-sm font-semibold" style={{ color: SMARTMENU.amber }}>
+                Kunin ang SmartMenu
+              </Link>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      <div className="border-t py-5 text-center text-xs opacity-60" style={{ borderColor: '#FFFFFF1A' }}>
+        © {new Date().getFullYear()} WebNegosyo. All rights reserved.
       </div>
     </footer>
   )

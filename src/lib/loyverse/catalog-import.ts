@@ -7,8 +7,11 @@
  * Writes use the service-role client: sync runs from superadmin actions and
  * webhooks where no tenant-admin session exists.
  *
- * The map table is derived data — each sync deletes the tenant's rows and
- * re-inserts, which keeps it exactly in step with the menu JSON it describes.
+ * Identity lives on menu_items.loyverse_item_id (migration 20260828130000),
+ * NOT in the map table. The map is derived data, rebuilt per item as the loop
+ * goes; identity has to outlive it, because a sync interrupted mid-loop used
+ * to leave dishes created with no map rows — and the next sync then inserted
+ * the whole catalog a second time.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -94,9 +97,19 @@ interface ExistingCategoryRow {
   name: string
 }
 
-interface ExistingMapRow {
-  menu_item_id: string | null
+/** A local dish that already carries its Loyverse identity. */
+interface ExistingIdentityRow {
+  id: string
   loyverse_item_id: string | null
+  image_url: string | null
+}
+
+/** A local dish with no Loyverse identity yet — adoptable by name. */
+interface UnclaimedRow {
+  id: string
+  name: string | null
+  category_id: string | null
+  image_url: string | null
 }
 
 export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyncReport> {
@@ -201,39 +214,69 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     return matched ?? (await ensureFallbackCategoryId())
   }
 
-  // --- Existing links: loyverse item -> local menu item (from the map table).
   // The generated Supabase types lag new migrations (loyverse_item_map is not
   // in src/types/supabase.ts yet), so these queries go through `any` the same
   // way bulk-menu-import does.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapTable = () => (supabase as any).from('loyverse_item_map')
-  const { data: existingMapRows, error: mapReadError } = await mapTable()
-    .select('menu_item_id, loyverse_item_id')
-    .eq('tenant_id', tenant.id)
-    .eq('kind', 'variant')
-  if (mapReadError) return emptyReport(`Failed to read item map: ${mapReadError.message}`)
 
-  const menuItemIdByLoyverseId: Record<string, string> = {}
-  for (const row of (existingMapRows ?? []) as ExistingMapRow[]) {
-    if (row.loyverse_item_id && row.menu_item_id) {
-      menuItemIdByLoyverseId[row.loyverse_item_id] = row.menu_item_id
-    }
+  // --- Existing links: loyverse item -> local menu item.
+  //
+  // Read from menu_items.loyverse_item_id, NOT from the map table. The map is
+  // derived data rebuilt on every sync; identity has to outlive it, or an
+  // interrupted sync (which leaves dishes created and the map unwritten)
+  // makes the next sync duplicate the entire catalog. See migration
+  // 20260828130000.
+  const { data: identifiedRows, error: identityError } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select('id, loyverse_item_id, image_url' as any)
+    .eq('tenant_id', tenant.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .not('loyverse_item_id' as any, 'is', null)
+  if (identityError) return emptyReport(`Failed to read menu items: ${identityError.message}`)
+
+  // --- Unclaimed local dishes, available for adoption by name.
+  //
+  // A tenant whose sync never completed has an empty map, so the identity
+  // backfill in 20260828130000 claimed nothing for it — every dish would be
+  // re-inserted here. Adopting by name is what migrates those tenants onto
+  // the identity column without duplicating their menu a second time.
+  const { data: unclaimedRows } = await supabase
+    .from('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select('id, name, category_id, image_url' as any)
+    .eq('tenant_id', tenant.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .is('loyverse_item_id' as any, null)
+
+  const unclaimed = (unclaimedRows ?? []) as unknown as UnclaimedRow[]
+  const adoptedIds = new Set<string>()
+
+  /**
+   * Prefers a same-category match; falls back to a tenant-wide unique name so
+   * a dish whose category drifted is adopted rather than duplicated. Ambiguity
+   * is resolved deterministically (first match) because the alternative —
+   * inserting — is the duplication this whole change exists to stop.
+   */
+  const adoptUnclaimed = (name: string, categoryId: string | null): UnclaimedRow | null => {
+    const target = name.trim().toLowerCase()
+    const available = unclaimed.filter(
+      (row) => !adoptedIds.has(row.id) && (row.name ?? '').trim().toLowerCase() === target
+    )
+    if (available.length === 0) return null
+    const sameCategory = available.find((row) => row.category_id === categoryId)
+    const chosen = sameCategory ?? available[0]
+    adoptedIds.add(chosen.id)
+    return chosen
   }
 
-  // Current images for mapped items: the mirror decision needs to know
-  // whether the local photo is a merchant upload (kept) or a Loyverse
-  // hotlink / nothing (replaced by an ImageKit mirror).
-  const existingMenuItemIds = Object.values(menuItemIdByLoyverseId)
+  const menuItemIdByLoyverseId: Record<string, string> = {}
   const imageByMenuItemId = new Map<string, string>()
-  if (existingMenuItemIds.length > 0) {
-    const { data: imageRows } = await supabase
-      .from('menu_items')
-      .select('id, image_url')
-      .eq('tenant_id', tenant.id)
-      .in('id', existingMenuItemIds)
-    for (const row of (imageRows ?? []) as Array<{ id: string; image_url: string | null }>) {
-      imageByMenuItemId.set(row.id, row.image_url ?? '')
-    }
+  for (const row of (identifiedRows ?? []) as unknown as ExistingIdentityRow[]) {
+    if (!row.loyverse_item_id || !row.id) continue
+    menuItemIdByLoyverseId[row.loyverse_item_id] = row.id
+    imageByMenuItemId.set(row.id, row.image_url ?? '')
   }
 
   // --- Upsert menu items.
@@ -245,6 +288,14 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       continue
     }
 
+    // Identity match first; then adoption of an unclaimed local dish by name.
+    const adopted = menuItemIdByLoyverseId[item.loyverseItemId]
+      ? null
+      : adoptUnclaimed(item.name, categoryId)
+    if (adopted) {
+      menuItemIdByLoyverseId[item.loyverseItemId] = adopted.id
+      imageByMenuItemId.set(adopted.id, adopted.image_url ?? '')
+    }
     const existingId = menuItemIdByLoyverseId[item.loyverseItemId]
 
     // Re-host the Loyverse photo on ImageKit; fall back to the hotlink (kept
@@ -273,7 +324,12 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     if (existingId) {
       const { error: updateError } = await supabase
         .from('menu_items')
-        .update(commonFields as never)
+        .update({
+          ...commonFields,
+          // Stamps identity onto a dish adopted by name; a no-op re-write for
+          // one that already matched by id.
+          loyverse_item_id: item.loyverseItemId,
+        } as never)
         .eq('id', existingId)
         .eq('tenant_id', tenant.id)
       if (updateError) {
@@ -289,6 +345,9 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
           tenant_id: tenant.id,
           image_url: '',
           ...commonFields,
+          // The match key, written in the same statement that creates the
+          // dish — so an interrupted sync leaves nothing unmatchable.
+          loyverse_item_id: item.loyverseItemId,
           variations: [],
           addons: [],
           order: 0,
@@ -303,17 +362,44 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       menuItemIdByLoyverseId[item.loyverseItemId] = (created as { id: string }).id
       report.itemsCreated++
     }
+
+    // --- Map rows for THIS item, written now rather than after every item.
+    // Scoped to the item's own variant rows, so an interrupted sync leaves a
+    // partial-but-correct map instead of an empty one.
+    const itemMapRows = buildMapRowInserts(tenant.id, [item], menuItemIdByLoyverseId).filter(
+      (row) => row.kind === 'variant'
+    )
+    const { error: clearItemMapError } = await mapTable()
+      .delete()
+      .eq('tenant_id', tenant.id)
+      .eq('kind', 'variant')
+      .eq('loyverse_item_id', item.loyverseItemId)
+    if (clearItemMapError) {
+      report.warnings.push(`Failed to clear item map for "${item.name}": ${clearItemMapError.message}`)
+    } else if (itemMapRows.length > 0) {
+      const { error: insertItemMapError } = await mapTable().insert(itemMapRows)
+      if (insertItemMapError) {
+        report.warnings.push(`Failed to write item map for "${item.name}": ${insertItemMapError.message}`)
+      }
+    }
   }
 
-  // --- Rebuild the map table for this tenant.
-  const mapRows = buildMapRowInserts(tenant.id, mapping.items, menuItemIdByLoyverseId)
-  const { error: deleteError } = await mapTable().delete().eq('tenant_id', tenant.id)
+  // --- Shared modifier-option rows: tenant-wide, not per item, so they are
+  // rebuilt once at the end. Losing these mid-run no longer costs identity —
+  // only receipt-line resolution for modifiers, which the next sync repairs.
+  const modifierMapRows = buildMapRowInserts(tenant.id, mapping.items, menuItemIdByLoyverseId).filter(
+    (row) => row.kind === 'modifier_option'
+  )
+  const { error: deleteError } = await mapTable()
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('kind', 'modifier_option')
   if (deleteError) {
-    report.warnings.push(`Failed to clear item map: ${deleteError.message}`)
-  } else if (mapRows.length > 0) {
-    const { error: insertMapError } = await mapTable().insert(mapRows)
+    report.warnings.push(`Failed to clear modifier map: ${deleteError.message}`)
+  } else if (modifierMapRows.length > 0) {
+    const { error: insertMapError } = await mapTable().insert(modifierMapRows)
     if (insertMapError) {
-      report.warnings.push(`Failed to write item map: ${insertMapError.message}`)
+      report.warnings.push(`Failed to write modifier map: ${insertMapError.message}`)
     }
   }
 

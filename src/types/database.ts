@@ -760,6 +760,8 @@ export interface OrderType {
   service_charge_value: number;
   /** Minimum cart subtotal required to check out with this order type. 0 means no minimum. */
   minimum_order_amount: number;
+  /** When true, checkout skips the payment-details step — the customer picks a method and pays after billing. */
+  after_billing_payment_enabled?: boolean;
   // Advance order (scheduled / pre-order) configuration
   advance_order_enabled: boolean;
   advance_order_allow_asap: boolean;

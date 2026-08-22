@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
+import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
@@ -706,6 +707,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
   const ctaLabel = resolveCheckoutCtaLabel({
     hasPaymentMethods: paymentMethods.length > 0,
     isMessengerEnabled: messengerEnabled,
+    isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
   })
 
   return (

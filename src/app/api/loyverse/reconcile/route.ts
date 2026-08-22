@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
 import { ensureLoyverseWebhooks } from '@/lib/loyverse/webhooks'
+import { isAuthorizedReconcileRequest } from '@/lib/loyverse/reconcile-auth'
 import type { Tenant } from '@/types/database'
 
 // Sequential full-catalog pulls across tenants; well beyond a lambda default.
@@ -20,9 +21,15 @@ export const maxDuration = 300
  * fetches share this deployment's CPU, and there is no hurry.
  */
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  const expected = process.env.LOYVERSE_WEBHOOK_SECRET
-  if (!expected || secret !== expected) {
+  const authorized = isAuthorizedReconcileRequest(
+    request.nextUrl.searchParams.get('secret'),
+    request.headers.get('authorization'),
+    {
+      webhookSecret: process.env.LOYVERSE_WEBHOOK_SECRET,
+      cronSecret: process.env.CRON_SECRET,
+    }
+  )
+  if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

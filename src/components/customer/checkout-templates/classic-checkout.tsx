@@ -18,6 +18,7 @@ import { getCheckoutPalette } from '@/lib/branding-utils'
 import { SmsOptInCheckbox, MinimumOrderNotice } from './checkout-primitives'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
+import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -43,7 +44,11 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   if (!tenant) return null
 
   const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
-  const ctaLabel = resolveCheckoutCtaLabel({ hasPaymentMethods: paymentMethods.length > 0, isMessengerEnabled: messengerEnabled })
+  const ctaLabel = resolveCheckoutCtaLabel({
+    hasPaymentMethods: paymentMethods.length > 0,
+    isMessengerEnabled: messengerEnabled,
+    isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
+  })
   const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
 
   return (
