@@ -33,16 +33,23 @@ export function useBranchPricing({
   const tenantId = tenant?.id ?? null
 
   const [outlets, setOutlets] = useState<SelectableOutlet[]>([])
+  // Until this is true, `outlets` is "not read yet", not "none" — and the
+  // difference decides whether the customer's stored branch survives this page.
+  const [hasLoadedOutlets, setHasLoadedOutlets] = useState(false)
 
   // Needed only to validate the stored branch: a selection naming a branch the
   // merchant has since switched off must not silently price the whole page.
   useEffect(() => {
     if (!isEnabled || !tenantId) {
       setOutlets([])
+      // Nothing to wait for: a tenant without the feature has no branch list,
+      // and holding the "unknown" state would strand any stale selection.
+      setHasLoadedOutlets(true)
       return
     }
 
     let isCurrent = true
+    setHasLoadedOutlets(false)
     createClient()
       .from('outlets')
       .select(OUTLET_SELECT)
@@ -51,10 +58,13 @@ export function useBranchPricing({
       .then(({ data, error }) => {
         if (!isCurrent) return
         if (error) {
+          // A failed read is not evidence the merchant has no branches, so the
+          // list stays "unread" and the stored selection is left alone.
           console.warn('[use-branch-pricing] Branch query failed:', error.message)
           return
         }
         setOutlets((data ?? []) as unknown as SelectableOutlet[])
+        setHasLoadedOutlets(true)
       })
 
     return () => {
@@ -62,7 +72,7 @@ export function useBranchPricing({
     }
   }, [tenantId, isEnabled])
 
-  const selection = useOutletSelection({ isEnabled, tenantSlug, outlets })
+  const selection = useOutletSelection({ isEnabled, tenantSlug, outlets, hasLoadedOutlets })
   const { overrides, didFail } = useBranchOverrides({ tenantId, isEnabled })
   const { resolveItem } = useBranchMenu({
     items: [] as OverridableMenuItem[],
