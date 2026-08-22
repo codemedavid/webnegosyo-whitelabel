@@ -1,5 +1,5 @@
 import { Eyebrow } from './landing-ui'
-import { CAPABILITIES, SMARTMENU, type CapabilityIcon } from './landing-theme'
+import { DELIVERABLES, SMARTMENU, type CapabilityIcon, type Deliverable } from './landing-theme'
 
 /** The brand icon set — two-tone strokes in the logo's red and amber. */
 function BrandIcon({ icon }: { icon: CapabilityIcon }) {
@@ -107,6 +107,53 @@ function BrandIcon({ icon }: { icon: CapabilityIcon }) {
   )
 }
 
+/** One deliverable: a numbered group header, then its capability cards. */
+function DeliverableGroup({ deliverable }: { deliverable: Deliverable }) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-4">
+        <span
+          className="font-display text-sm font-bold tracking-[0.18em]"
+          style={{ color: SMARTMENU.red }}
+        >
+          {deliverable.n}
+        </span>
+        <div>
+          <h3 className="font-display text-2xl font-bold leading-tight md:text-3xl" style={{ color: SMARTMENU.ink }}>
+            {deliverable.title}
+          </h3>
+          <p className="mt-2 max-w-[58ch] text-sm leading-relaxed md:text-base" style={{ color: SMARTMENU.cocoa }}>
+            {deliverable.body}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {deliverable.capabilities.map((capability) => (
+          <article
+            key={capability.title}
+            className="rounded-2xl bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+            style={{ border: `1px solid ${SMARTMENU.ink}12` }}
+          >
+            <span
+              className="inline-flex h-12 w-12 items-center justify-center rounded-xl"
+              style={{ backgroundColor: `${SMARTMENU.red}0F` }}
+            >
+              <BrandIcon icon={capability.icon} />
+            </span>
+            <h4 className="font-display mt-4 text-base font-bold leading-snug" style={{ color: SMARTMENU.ink }}>
+              {capability.title}
+            </h4>
+            <p className="mt-2 text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
+              {capability.body}
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** The "here is literally what you get" wall on clean cream and graph paper. */
 export function CapabilitiesSection() {
   return (
@@ -116,35 +163,22 @@ export function CapabilitiesSection() {
       style={{ backgroundColor: SMARTMENU.cream }}
     >
       <div className="rise mx-auto max-w-6xl">
-        <Eyebrow>Ano ang kasama</Eyebrow>
-        <h2 className="font-display t-display max-w-[24ch] leading-tight" style={{ color: SMARTMENU.ink }}>
-          Isang bayad,{' '}
+        <Eyebrow>Dalawang bagay ang makukuha mo</Eyebrow>
+        <h2 className="font-display t-display max-w-[26ch] leading-tight" style={{ color: SMARTMENU.ink }}>
+          Ang SmartMenu na{' '}
           <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
-            buong sistema
-          </span>{' '}
-          ng pagbebenta.
+            nagbebenta
+          </span>
+          , at ang App na{' '}
+          <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
+            nagpapatakbo
+          </span>
+          .
         </h2>
 
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {CAPABILITIES.map((capability) => (
-            <article
-              key={capability.title}
-              className="rounded-2xl bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-              style={{ border: `1px solid ${SMARTMENU.ink}12` }}
-            >
-              <span
-                className="inline-flex h-12 w-12 items-center justify-center rounded-xl"
-                style={{ backgroundColor: `${SMARTMENU.red}0F` }}
-              >
-                <BrandIcon icon={capability.icon} />
-              </span>
-              <h3 className="font-display mt-4 text-base font-bold leading-snug" style={{ color: SMARTMENU.ink }}>
-                {capability.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
-                {capability.body}
-              </p>
-            </article>
+        <div className="mt-14 space-y-16">
+          {DELIVERABLES.map((deliverable) => (
+            <DeliverableGroup key={deliverable.title} deliverable={deliverable} />
           ))}
         </div>
       </div>

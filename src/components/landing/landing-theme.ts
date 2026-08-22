@@ -100,7 +100,7 @@ export const MONTHLY_PRICE_LABEL = '₱649'
 
 /** One-sentence answer to "ano ba talaga ito?" — used in the hero and the meta description. */
 export const PRODUCT_ONE_LINER =
-  'Sarili mong online ordering website na kusang nag-uupsell — para tumaas ang bawat order mo kahit tulog ka.'
+  'Sarili mong online ordering website na kusang nag-uupsell, plus ang app kung saan mo pinapatakbo ang buong negosyo — orders, POS, inventory, marketing, at analytics.'
 
 /**
  * The hero receipt's demonstration run. Synthetic figures illustrating the
@@ -195,69 +195,99 @@ export interface Capability {
   body: string
 }
 
-/** The core "here is literally what you get" wall — the clarity centerpiece of the page. */
-export const CAPABILITIES: readonly Capability[] = [
+export interface Deliverable {
+  n: string
+  title: string
+  body: string
+  capabilities: readonly Capability[]
+}
+
+/**
+ * The offer, framed as the two things a merchant actually receives: the
+ * SmartMenu that sells to customers, and the App where they run everything
+ * else. The capability wall renders these two groups.
+ */
+export const DELIVERABLES: readonly Deliverable[] = [
   {
-    icon: 'store',
-    title: 'Sarili mong ordering website',
-    body: 'Sariling link (yourbrand.webnegosyo.com o custom domain) na may buong menu, photos, at checkout. Hindi ka nakikitira sa food app.',
+    n: '01',
+    title: 'Ang SmartMenu',
+    body: 'Ang sarili mong ordering website — ito ang humaharap sa customer at kusang nagpapalaki ng bawat order.',
+    capabilities: [
+      {
+        icon: 'store',
+        title: 'Sarili mong ordering website',
+        body: 'Sariling link (yourbrand.webnegosyo.com o custom domain) na may buong menu, photos, at checkout. Hindi ka nakikitira sa food app.',
+      },
+      {
+        icon: 'sparkles',
+        title: 'Upsell engine na automated',
+        body: '"Perfect with…" pairings, "Make it a meal" upgrades, at checkout suggestions na tumatakbo sa bawat order — walang kailangang tandaan ang staff.',
+      },
+      {
+        icon: 'layers',
+        title: 'Bundles at combo builder',
+        body: 'Gumawa ng combos na may savings badge. Fixed price o percentage off — ipapakita sa tamang bahagi ng order.',
+      },
+      {
+        icon: 'truck',
+        title: 'Dine-in, pick-up at delivery',
+        body: 'QR ordering sa mesa, pick-up scheduling, at delivery na may distance-based fee o Lalamove booking. Isang system, lahat ng order type.',
+      },
+      {
+        icon: 'palette',
+        title: 'Fully branded sa iyo',
+        body: 'Sariling logo, kulay, at menu design mula sa 12 card templates. Mukhang ikaw ang may-ari — kasi ikaw nga.',
+      },
+      {
+        icon: 'wallet',
+        title: 'Cash, GCash at bank transfer',
+        body: 'Payment methods na ikaw ang may set. Puwedeng humingi ng proof of payment bago ma-confirm ang order.',
+      },
+    ],
   },
   {
-    icon: 'sparkles',
-    title: 'Upsell engine na automated',
-    body: '"Perfect with…" pairings, "Make it a meal" upgrades, at checkout suggestions na tumatakbo sa bawat order — walang kailangang tandaan ang staff.',
-  },
-  {
-    icon: 'layers',
-    title: 'Bundles at combo builder',
-    body: 'Gumawa ng combos na may savings badge. Fixed price o percentage off — ipapakita sa tamang bahagi ng order.',
-  },
-  {
-    icon: 'truck',
-    title: 'Dine-in, pick-up at delivery',
-    body: 'QR ordering sa mesa, pick-up scheduling, at delivery na may distance-based fee o Lalamove booking. Isang system, lahat ng order type.',
-  },
-  {
-    icon: 'gauge',
-    title: 'Live order dashboard + app',
-    body: 'Real-time order queue na may tunog at notification, order status, at daily sales — sa web at sa merchant mobile app.',
-  },
-  {
-    icon: 'pos',
-    title: 'POS para sa counter',
-    body: 'I-ring ang walk-in at counter sales sa parehong system — isang menu, isang presyo, isang kita.',
-  },
-  {
-    icon: 'boxes',
-    title: 'Inventory at stock tracking',
-    body: 'Recipes, deductions, at daily reports. Kusang nagma-mark na out of stock ang item bago pa ma-disappoint ang customer.',
-  },
-  {
-    icon: 'message',
-    title: 'SMS marketing',
-    body: 'Text campaigns sa mga suki mo — promo, bagong menu, o balik-customer offers, diretso sa phone nila.',
-  },
-  {
-    icon: 'chart',
-    title: 'Analytics na may AI insights',
-    body: 'Bestsellers, trends, at AI growth coach na nagsasabi kung ano ang gawin next — hindi ka na manghuhula.',
-  },
-  {
-    icon: 'palette',
-    title: 'Fully branded sa iyo',
-    body: 'Sariling logo, kulay, at menu design mula sa 12 card templates. Mukhang ikaw ang may-ari — kasi ikaw nga.',
-  },
-  {
-    icon: 'wallet',
-    title: 'Cash, GCash at bank transfer',
-    body: 'Payment methods na ikaw ang may set. Puwedeng humingi ng proof of payment bago ma-confirm ang order.',
-  },
-  {
-    icon: 'phone',
-    title: 'Messenger auto-send',
-    body: 'Bawat order, dumidiretso sa Facebook Messenger mo na naka-format na — walang detalyeng nawawala.',
+    n: '02',
+    title: 'Ang App',
+    body: 'Ang merchant app kung saan mo pinapatakbo ang lahat — orders, counter sales, inventory, marketing, at numbers.',
+    capabilities: [
+      {
+        icon: 'phone',
+        title: 'Orders diretso sa app mo',
+        body: 'Bawat order, pumapasok nang real-time sa merchant app — may tunog at push notification para walang order na lumulusot.',
+      },
+      {
+        icon: 'gauge',
+        title: 'Live order dashboard',
+        body: 'Real-time order queue, order status, at daily sales — sa web dashboard at sa app, kahit nasaan ka.',
+      },
+      {
+        icon: 'pos',
+        title: 'POS para sa counter',
+        body: 'I-ring ang walk-in at counter sales sa parehong system — isang menu, isang presyo, isang kita.',
+      },
+      {
+        icon: 'boxes',
+        title: 'Inventory at stock tracking',
+        body: 'Recipes, deductions, at daily reports. Kusang nagma-mark na out of stock ang item bago pa ma-disappoint ang customer.',
+      },
+      {
+        icon: 'message',
+        title: 'SMS marketing',
+        body: 'Text campaigns sa mga suki mo — promo, bagong menu, o balik-customer offers, diretso sa phone nila.',
+      },
+      {
+        icon: 'chart',
+        title: 'Analytics na may AI insights',
+        body: 'Bestsellers, trends, at AI growth coach na nagsasabi kung ano ang gawin next — hindi ka na manghuhula.',
+      },
+    ],
   },
 ] as const
+
+/** Flat view of everything included, derived from the two deliverables. */
+export const CAPABILITIES: readonly Capability[] = DELIVERABLES.flatMap(
+  (deliverable) => deliverable.capabilities
+)
 
 export interface Step {
   n: string
@@ -299,7 +329,7 @@ export const PRICING_FEATURES = [
   'Analytics na may AI insights',
   'Menu at product management system',
   'Custom branding at 12 menu templates',
-  'Messenger order forwarding',
+  'Real-time order notifications sa app',
   'Done-for-you setup within 48 hours',
   'Lahat ng updates at bagong features, kasama na',
 ] as const
@@ -313,7 +343,7 @@ export const EXCLUSIONS = [
 export const FAQ_ITEMS = [
   {
     q: 'Ano ba talaga ang binibili ko?',
-    a: 'Isang buong sistema para sa food business mo — ordering website na kusang nag-uupsell, POS, inventory, SMS marketing, at analytics na may AI insights, plus ang admin dashboard at merchant app. ₱3,499 one-time setup, tapos ₱649 kada buwan para sa buong system.',
+    a: 'Dalawang bagay. Una, ang SmartMenu — sarili mong ordering website na kusang nag-uupsell sa bawat order. Pangalawa, ang App — dito pumapasok ang orders nang real-time, at dito mo pinapatakbo ang POS, inventory, SMS marketing, at analytics na may AI insights. ₱3,499 one-time setup, tapos ₱649 kada buwan para sa buong system.',
   },
   {
     q: 'Kailangan ko ba ng technical skills?',
@@ -325,7 +355,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: 'Gaano kabilis ma-setup?',
-    a: 'Within 48 hours after payment, live na ang Smart Menu mo. Basta naipadala mo na ang menu at logo, kami na ang bahala sa technical setup.',
+    a: 'Within 48 hours after payment, live na ang SmartMenu mo at naka-set up na ang app mo. Basta naipadala mo na ang menu at logo, kami na ang bahala sa technical setup.',
   },
   {
     q: 'Pang-dine-in lang ba ito?',
@@ -333,7 +363,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: 'Paano kung may sarili na akong page o food app account?',
-    a: 'Magkasama sila. Ang Smart Menu ang magiging sarili mong channel na walang commission — puwede mo pa ring gamitin ang Messenger at food apps habang unti-unting inililipat ang suki mo sa link mo.',
+    a: 'Magkasama sila. Ang SmartMenu ang magiging sarili mong channel na walang commission — puwede mo pa ring panatilihin ang ibang channels habang unti-unting inililipat ang suki mo sa sarili mong link.',
   },
   {
     q: 'Paano kung hindi gumana sa business ko?',
@@ -430,7 +460,7 @@ export const SPONSOR_STRIP = [
   'Inventory',
   'SMS Marketing',
   'AI Analytics',
-  'Messenger Orders',
+  'Merchant App',
   '48-Hour Setup',
 ] as const
 
