@@ -94,24 +94,23 @@ describe('R2 — real photography is on the page, not just described', () => {
     })
   })
 
+  /** next/image may route src through the optimizer URL, so match decoded. */
+  function countLandingPhotos(container: HTMLElement): number {
+    return [...container.querySelectorAll('img')].filter((img) =>
+      decodeURIComponent(img.getAttribute('src') ?? '').includes('/landing/photos/')
+    ).length
+  }
+
   it('opens the hero on a photograph', () => {
     const { container } = render(<LandingHero />)
 
-    const photos = [...container.querySelectorAll('img')].filter((img) =>
-      (img.getAttribute('src') ?? '').includes('/landing/photos/')
-    )
-
-    expect(photos.length).toBeGreaterThan(0)
+    expect(countLandingPhotos(container)).toBeGreaterThan(0)
   })
 
   it('closes the final call to action over a photograph', () => {
     const { container } = render(<FinalCTASection />)
 
-    expect(
-      [...container.querySelectorAll('img')].some((img) =>
-        (img.getAttribute('src') ?? '').includes('/landing/photos/')
-      )
-    ).toBe(true)
+    expect(countLandingPhotos(container)).toBeGreaterThan(0)
   })
 })
 
