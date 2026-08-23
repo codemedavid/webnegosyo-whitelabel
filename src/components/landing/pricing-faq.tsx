@@ -20,7 +20,7 @@ function MenuCard() {
       style={{ border: `1px solid ${SMARTMENU.ink}14` }}
     >
       <p className="font-display text-center text-xs font-bold uppercase tracking-[0.22em]" style={{ color: SMARTMENU.cocoa }}>
-        Smart Menu System
+        SmartMenu System
       </p>
       <div className="mt-4 flex items-center justify-center gap-6">
         <div className="text-center">
@@ -67,7 +67,7 @@ function MenuCard() {
 
       <div className="mt-8 flex flex-col items-stretch">
         <BrandButton size="large" href={CHECKOUT_URL}>
-          Kunin ang Smart Menu
+          Kunin ang SmartMenu
         </BrandButton>
       </div>
 
@@ -102,7 +102,7 @@ export function PricingSection() {
         </h2>
         <p className="mx-auto mt-4 max-w-[56ch] text-sm leading-relaxed" style={{ color: SMARTMENU.cocoa }}>
           Walang hidden charges, walang commission kada order. {PRICE_LABEL} one-time setup, tapos{' '}
-          {MONTHLY_PRICE_LABEL} kada buwan para sa buong Smart Menu system — website, POS, inventory,
+          {MONTHLY_PRICE_LABEL} kada buwan para sa buong SmartMenu system — website, POS, inventory,
           SMS marketing, at AI analytics.
         </p>
         <MenuCard />

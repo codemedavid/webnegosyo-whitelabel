@@ -33,7 +33,7 @@ export function FinalCTASection() {
         </p>
         <div className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
           <BrandButton size="large" href={CHECKOUT_URL}>
-            Kunin ang Smart Menu — {PRICE_LABEL}
+            Kunin ang SmartMenu — {PRICE_LABEL}
           </BrandButton>
           <BrandButton size="large" tone="ghost-dark" href="#faq">
             May tanong pa ako

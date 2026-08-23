@@ -40,7 +40,7 @@ describe('J5 — the page names the reader problem', () => {
   it('resolves the problems into the product promise', () => {
     render(<ProblemSection />)
 
-    expect(screen.getByText(/ang smart menu ang sumasagot sa tatlo/i)).toBeInTheDocument()
+    expect(screen.getByText(/ang smartmenu ang sumasagot sa tatlo/i)).toBeInTheDocument()
   })
 })
 

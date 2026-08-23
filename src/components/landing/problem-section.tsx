@@ -58,7 +58,7 @@ export function ProblemSection() {
         </div>
 
         <p className="font-serif mt-10 max-w-[46ch] text-xl italic leading-relaxed text-white md:text-2xl">
-          Ang Smart Menu ang sumasagot sa tatlo — isang link na ikaw ang may-ari, na kusang
+          Ang SmartMenu ang sumasagot sa tatlo — isang link na ikaw ang may-ari, na kusang
           nag-aalok, at walang kumukuha ng komisyon.
         </p>
       </div>

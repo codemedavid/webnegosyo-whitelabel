@@ -127,8 +127,8 @@ export interface ProblemCard {
 export const PROBLEMS: readonly ProblemCard[] = [
   {
     label: 'Manual',
-    title: 'Nasa Messenger pa rin ang orders mo',
-    body: 'Manual na pag-reply, screenshot ng menu, at "ma\'am available po ba?" — nauubos ang oras mo sa pag-encode imbes na sa pagluluto.',
+    title: 'Manual ka pa rin kumuha ng orders',
+    body: 'Chat replies, screenshot ng menu, at paulit-ulit na "available po ba?" — nauubos ang oras mo sa pag-encode imbes na sa pagluluto.',
   },
   {
     label: 'Nakalimutan',
@@ -312,7 +312,7 @@ export const STEPS: readonly Step[] = [
   {
     n: '03',
     title: 'Live ka within 48 hours',
-    body: 'I-share mo ang link, i-print ang QR sa mesa. Pumapasok na ang orders — at kusa nang nag-uupsell ang menu mo.',
+    body: 'I-share mo ang link, i-print ang QR sa mesa. Pumapasok na ang orders diretso sa app mo — at kusa nang nag-uupsell ang menu mo.',
     photo: LANDING_PHOTOS.cafe,
   },
 ] as const
@@ -391,7 +391,7 @@ export const JOURNEY_FEATURES: readonly JourneyFeature[] = [
   {
     when: 'Pagkatapos mag-add to cart',
     title: 'Bawat order, may kasamang suggestion.',
-    body: 'Pagka-add ng customer sa cart, ang Smart Menu na ang nagmumungkahi ng perfect pairing — fries sa burger, drink sa meal. Walang staff na kailangang mag-alala.',
+    body: 'Pagka-add ng customer sa cart, ang SmartMenu na ang nagmumungkahi ng perfect pairing — fries sa burger, drink sa meal. Walang staff na kailangang mag-alala.',
     points: [
       '"Perfect with…" pairings pagkatapos mag-add to cart',
       'Ranked ayon sa aling pares ang talagang bumebenta',

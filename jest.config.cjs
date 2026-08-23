@@ -35,6 +35,10 @@ const config = {
     '<rootDir>/webnegosyo-app/',
     '<rootDir>/sms/',
     '<rootDir>/e2e/',
+    // Worktrees under .claude/ mirror OTHER branches' test expectations but
+    // resolve `@/` against THIS tree's src, so they go permanently red the
+    // moment main's copy diverges from the worktree's snapshot.
+    '<rootDir>/.claude/worktrees/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

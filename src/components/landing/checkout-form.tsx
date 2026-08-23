@@ -163,7 +163,7 @@ export function CheckoutForm({
         trackMetaEvent(
           'Lead',
           {
-            content_name: 'Smart Menu System',
+            content_name: 'SmartMenu System',
             currency: 'PHP',
             value: result.data.amount ?? getCheckoutPayableAmount(selectedPaymentTerm),
           },
@@ -279,7 +279,7 @@ export function CheckoutForm({
           </div>
         ) : paymentMethods.length === 0 ? (
           <p className="py-3 text-sm text-white/40">
-            No payment methods available. Please contact us on Messenger.
+            No payment methods available. Please contact us and we will assist you right away.
           </p>
         ) : (
           <div className="grid gap-3">

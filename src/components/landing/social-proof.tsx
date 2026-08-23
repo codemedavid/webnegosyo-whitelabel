@@ -49,7 +49,7 @@ function DemoVideo() {
     >
       <iframe
         src="https://www.youtube.com/embed/q1GZEDwFLv8?rel=0"
-        title="Smart Menu System demo"
+        title="SmartMenu System demo"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
         loading="lazy"
@@ -167,7 +167,7 @@ export function SocialProofSection() {
             Panoorin ito
           </p>
           <h2 className="font-display t-display mx-auto max-w-[24ch] leading-tight" style={{ color: SMARTMENU.ink }}>
-            Panoorin ang Smart Menu{' '}
+            Panoorin ang SmartMenu{' '}
             <span className="font-serif italic" style={{ color: SMARTMENU.red }}>
               habang nagbebenta
             </span>
@@ -221,7 +221,7 @@ export function SocialProofSection() {
           <div className="px-6 pt-12">
             <Image
               src="/product.png"
-              alt="Smart Menu product preview"
+              alt="SmartMenu product preview"
               width={720}
               height={520}
               className="mx-auto h-auto w-full max-w-[680px]"
