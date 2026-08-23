@@ -102,3 +102,28 @@ Validation: `npm run test -- --testPathPatterns="landing"` → **118 passed, 10 
 `npx eslint` on the three changed files → clean.
 
 Merge evidence: RED `ab730d6` → GREEN `69e0950`. If squashed, this table preserves the trail.
+
+## Round 4 — Brand spelling, zero Messenger, app in step 3
+
+Request: use "SmartMenu" (one word) everywhere, remove the last Messenger copy and reframe it
+around the result delivered, and mention the app in How It Works.
+
+Extended `landing-appfirst.test.tsx` with A4–A5, written RED-first (commit `16d6ae0`, 4 failed:
+"Smart Menu" in 5 files, Messenger in problem card + checkout fallback, step 3 lacked the app),
+implemented in `184cff7`:
+
+| # | What is guaranteed | Result |
+|---|---|---|
+| 1 | No landing source contains "Smart Menu" (two words) — file-scan over `src/components/landing` | PASS |
+| 2 | No landing source contains "Messenger" at all — problem card reframed around lost encoding time (`oras`) | PASS |
+| 3 | `STEPS[2]` sells orders landing "diretso sa app mo" | PASS |
+
+Side changes: legacy J5 assertion updated to the new spelling; jest now ignores
+`.claude/worktrees/` mirrors (they pin other branches' copy against this tree's `src`, so they
+go permanently red on any copy change). Facebook pixel `content_name` also renamed to
+"SmartMenu System".
+
+Validation: `npx jest --config jest.config.cjs --testPathPatterns "tests/unit/landing"` →
+**74 passed, 6 suites** (worktree mirrors excluded); eslint on all 8 changed files → clean.
+
+Merge evidence: RED `16d6ae0` → GREEN `184cff7`. If squashed, this table preserves the trail.
