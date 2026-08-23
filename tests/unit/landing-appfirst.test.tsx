@@ -9,7 +9,13 @@
  *       live in the app now. Messenger must not appear anywhere the page is
  *       selling (capabilities, pricing inclusions, capability ribbon).
  *  A3 — As a visitor, the "what am I buying" FAQ must name both deliverables.
+ *  A4 — As the brand, the product is spelled "SmartMenu" (one word) everywhere,
+ *       and Messenger is gone from the whole landing surface — including the
+ *       problem cards, which now sell the result instead of naming Messenger.
+ *  A5 — As a buyer reading How It Works, step 3 tells me orders land in my app.
  */
+import fs from 'fs'
+import path from 'path'
 import { render, screen } from '@testing-library/react'
 import { CapabilitiesSection } from '@/components/landing/capabilities-section'
 import {
@@ -17,8 +23,22 @@ import {
   DELIVERABLES,
   FAQ_ITEMS,
   PRICING_FEATURES,
+  PROBLEMS,
   SPONSOR_STRIP,
+  STEPS,
 } from '@/components/landing/landing-theme'
+
+const LANDING_DIR = path.join(process.cwd(), 'src/components/landing')
+
+function readLandingSources(): ReadonlyArray<{ file: string; source: string }> {
+  return fs
+    .readdirSync(LANDING_DIR)
+    .filter((file) => /\.(ts|tsx)$/.test(file))
+    .map((file) => ({
+      file,
+      source: fs.readFileSync(path.join(LANDING_DIR, file), 'utf8'),
+    }))
+}
 
 describe('A1 — the offer is two deliverables: the SmartMenu and the App', () => {
   it('defines exactly two deliverables', () => {
@@ -77,6 +97,33 @@ describe('A2 — Messenger is no longer sold as a feature', () => {
 
     expect(corpus).toContain('app')
     expect(corpus).toContain('notification')
+  })
+})
+
+describe('A4 — one brand spelling, zero Messenger on the landing surface', () => {
+  it('spells the product "SmartMenu" (one word) in every landing source', () => {
+    readLandingSources().forEach(({ file, source }) => {
+      expect(`${file}: ${source}`).not.toMatch(/Smart Menu/)
+    })
+  })
+
+  it('keeps Messenger out of every landing source, problem cards included', () => {
+    readLandingSources().forEach(({ file, source }) => {
+      expect(`${file}: ${source}`).not.toMatch(/messenger/i)
+    })
+  })
+
+  it('frames the first problem card around lost time, not a channel', () => {
+    const corpus = `${PROBLEMS[0].title} ${PROBLEMS[0].body}`.toLowerCase()
+
+    expect(corpus).not.toMatch(/messenger/)
+    expect(corpus).toContain('oras')
+  })
+})
+
+describe('A5 — How It Works step 3 lands orders in the app', () => {
+  it('tells the merchant orders arrive in their app once live', () => {
+    expect(STEPS[2].body.toLowerCase()).toContain('app')
   })
 })
 
