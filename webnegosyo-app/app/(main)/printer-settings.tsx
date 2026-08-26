@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator,
+  TextInput, Alert, ActivityIndicator, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
@@ -64,12 +64,36 @@ export default function PrinterSettingsScreen() {
     }
 
     setScanning(true);
-    const printers = await discoverBluetoothPrinters();
+    const { printers, status } = await discoverBluetoothPrinters();
     setDiscovered(printers);
     setScanning(false);
-    if (printers.length === 0) {
-      Alert.alert("No Printers Found", "Make sure your printer is turned on and in pairing mode.");
+
+    if (printers.length > 0) return;
+
+    // Each dead end sends the merchant somewhere different, so never collapse
+    // them into one "no printers found".
+    if (status === "unavailable") {
+      Alert.alert(
+        "Printing Not Available",
+        "This build does not include the printer module. Update to the latest version of the app."
+      );
+      return;
     }
+
+    if (status === "timeout") {
+      Alert.alert(
+        "Bluetooth Not Responding",
+        "Bluetooth did not answer the scan. Check that Bluetooth is turned on and that this app is allowed to use it in Settings, then scan again."
+      );
+      return;
+    }
+
+    Alert.alert(
+      "No Printers Found",
+      Platform.OS === "ios"
+        ? "Make sure your printer is turned on and in pairing mode. Note that iPhone and iPad can only see Bluetooth LE printers — older Bluetooth Classic printers that work on Android are not visible to iOS."
+        : "Make sure your printer is turned on and in pairing mode."
+    );
   };
 
   const handleSelectBluetooth = async (device: DiscoveredPrinter) => {

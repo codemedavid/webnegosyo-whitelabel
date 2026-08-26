@@ -38,6 +38,42 @@ const NOT_AVAILABLE_MSG = "Printer requires a development build. Printing is not
 const DISCOVERY_TIMEOUT_MS = 12_000;
 const CONNECT_TIMEOUT_MS = 10_000;
 
+// CoreBluetooth is a state machine. RNBLEPrinter.m's `init` calls
+// scanPrintersWithCompletion the instant it is invoked, and the vendor source
+// documents the defect itself: "API MISUSE: <CBCentralManager> can only accept
+// this command while in the powered on state". A CBCentralManager takes
+// roughly 0.5-2s to reach CBManagerStatePoweredOn after it is instantiated,
+// and iOS SILENTLY DROPS any scan issued before then — no error, no callback,
+// no devices. Scanning milliseconds after init therefore never finds anything
+// on the first attempt after an app launch, which is why iOS "just kept
+// loading" while Android (bonded-device list, no state machine) worked.
+const IOS_BLE_WARMUP_MS = 2_000;
+
+// Each attempt is a scan window. Because a dropped window produces no callback
+// at all, a single long window is strictly worse than several short ones: the
+// retry is what recovers the launch-race, not extra patience.
+// Kept just above the native scan window (5s, see the patch to RNBLEPrinter.m)
+// so a patched build's real answer always arrives before we time it out. Older
+// installed builds carry the unpatched native module, which never answers on an
+// empty scan — for those the retry is the only thing that recovers the race.
+const IOS_SCAN_WINDOW_MS = 6_000;
+const IOS_SCAN_ATTEMPTS = 3;
+
+/** Why a scan ended, so callers can tell a dead radio from an empty room. */
+export type ScanStatus = "ok" | "timeout" | "unavailable";
+
+export interface DiscoveredPrinter {
+  name: string;
+  address: string;
+}
+
+export interface ScanResult {
+  printers: DiscoveredPrinter[];
+  status: ScanStatus;
+}
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /** Reject `promise` with a descriptive error if it hasn't settled within `ms`. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -157,27 +193,72 @@ export async function requestBluetoothPermissions(): Promise<PrinterResult> {
   return { success: true };
 }
 
-export async function discoverBluetoothPrinters(): Promise<Array<{ name: string; address: string }>> {
+/** Normalise the native device dictionaries into our own shape. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toDiscoveredPrinters(devices: any[] | null | undefined): DiscoveredPrinter[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (devices ?? []).map((d: any) => ({
+    name: d.device_name || d.name || "Unknown Printer",
+    address: d.inner_mac_address || d.address || d.macAddress,
+  }));
+}
+
+export async function discoverBluetoothPrinters(): Promise<ScanResult> {
   const mod = getPrinterModule();
-  if (!mod) return [];
+  // A pod missing from the build must never be reported as "no printers in
+  // range" — that sends the merchant to check the printer instead of the app.
+  if (!mod) return { printers: [], status: "unavailable" };
 
   try {
     await withTimeout(mod.BLEPrinter.init(), CONNECT_TIMEOUT_MS, "Bluetooth init");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const devices = await withTimeout<any[]>(
-      mod.BLEPrinter.getDeviceList(),
-      DISCOVERY_TIMEOUT_MS,
-      "Printer scan"
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (devices ?? []).map((d: any) => ({
-      name: d.device_name || d.name || "Unknown Printer",
-      address: d.inner_mac_address || d.address || d.macAddress,
-    }));
   } catch (err: unknown) {
-    console.warn("Bluetooth discovery failed:", err instanceof Error ? err.message : err);
-    return [];
+    console.warn("Bluetooth init failed:", err instanceof Error ? err.message : err);
+    return { printers: [], status: "timeout" };
   }
+
+  // Android resolves getDeviceList straight from the bonded-device list, so it
+  // needs neither the warm-up nor the retries and must not be slowed down.
+  if (Platform.OS !== "ios") {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const devices = await withTimeout<any[]>(
+        mod.BLEPrinter.getDeviceList(),
+        DISCOVERY_TIMEOUT_MS,
+        "Printer scan"
+      );
+      return { printers: toDiscoveredPrinters(devices), status: "ok" };
+    } catch (err: unknown) {
+      console.warn("Bluetooth discovery failed:", err instanceof Error ? err.message : err);
+      return { printers: [], status: "timeout" };
+    }
+  }
+
+  // Give CBCentralManager time to reach the powered-on state before the first
+  // scan, otherwise iOS discards it without telling us.
+  await delay(IOS_BLE_WARMUP_MS);
+
+  for (let attempt = 0; attempt < IOS_SCAN_ATTEMPTS; attempt += 1) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const devices = await withTimeout<any[]>(
+        mod.BLEPrinter.getDeviceList(),
+        IOS_SCAN_WINDOW_MS,
+        "Printer scan"
+      );
+      // The native side answered. An empty answer is a real answer: Bluetooth
+      // is alive and there is genuinely nothing paired/in range.
+      return { printers: toDiscoveredPrinters(devices), status: "ok" };
+    } catch (err: unknown) {
+      // No callback within the window — the scan was dropped or the radio was
+      // not up yet. Open a fresh window rather than giving up.
+      console.warn(
+        `Bluetooth scan window ${attempt + 1}/${IOS_SCAN_ATTEMPTS} produced no callback:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  return { printers: [], status: "timeout" };
 }
 
 /**

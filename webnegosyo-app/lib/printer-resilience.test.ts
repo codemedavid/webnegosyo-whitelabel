@@ -72,7 +72,7 @@ describe("lib/printer.ts — timeouts and reconnect resilience", () => {
     jest.useRealTimers();
   });
 
-  it("discoverBluetoothPrinters resolves to [] instead of hanging when no printer is ever discovered", async () => {
+  it("discoverBluetoothPrinters settles instead of hanging when no printer is ever discovered", async () => {
     mockBLEPrinter.init.mockResolvedValue(undefined);
     mockBLEPrinter.getDeviceList.mockImplementation(never);
 
@@ -80,8 +80,8 @@ describe("lib/printer.ts — timeouts and reconnect resilience", () => {
     const { discoverBluetoothPrinters } = require("./printer");
 
     const pending = discoverBluetoothPrinters();
-    await jest.advanceTimersByTimeAsync(60_000);
-    await expect(pending).resolves.toEqual([]);
+    await jest.advanceTimersByTimeAsync(300_000);
+    await expect(pending).resolves.toEqual({ printers: [], status: "timeout" });
   });
 
   it("connectPrinter returns a failure result instead of hanging when the native connect never calls back", async () => {
