@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
 import { ensureLoyverseWebhooks } from '@/lib/loyverse/webhooks'
+import { runLoyverseSync } from '@/lib/loyverse/sync-orchestrator'
 import { isAuthorizedReconcileRequest } from '@/lib/loyverse/reconcile-auth'
 import type { Tenant } from '@/types/database'
 
@@ -53,10 +54,15 @@ export async function GET(request: NextRequest) {
 
   for (const row of (tenants ?? []) as unknown as Tenant[]) {
     try {
-      const report = await importLoyverseCatalog(row)
-      if (report.success && row.loyverse_access_token) {
-        await ensureLoyverseWebhooks(row.loyverse_access_token, row.id)
-      }
+      // Webhooks first: registration is cheap and idempotent, and must not be
+      // hostage to a catalog import that can time out on large menus.
+      const report = await runLoyverseSync(row, undefined, {
+        importCatalog: importLoyverseCatalog,
+        ensureWebhooks: ensureLoyverseWebhooks,
+        recordWebhookStatus: async (id, update) => {
+          await admin.from('tenants').update(update as never).eq('id', id)
+        },
+      })
       results.push({
         tenantId: row.id,
         ok: report.success,

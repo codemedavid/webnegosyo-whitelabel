@@ -140,6 +140,8 @@ export interface Tenant {
   loyverse_payment_type_id?: string | null;
   loyverse_push_mode?: string | null; // 'on_create' | 'on_confirm'; unknown coerces to 'on_confirm'
   loyverse_last_synced_at?: string | null;
+  loyverse_webhooks_registered_at?: string | null; // NULL = webhooks never confirmed registered
+  loyverse_webhook_error?: string | null; // last registration failure; NULL = last attempt succeeded
   // Restaurant address for delivery pickup
   restaurant_address?: string;
   restaurant_latitude?: number;

@@ -88,26 +88,25 @@ export async function syncLoyverseCatalogAction(tenantId: string): Promise<Loyve
   }
 
   const tenantRow = tenant as unknown as Tenant
-  const report = await importLoyverseCatalog(tenantRow)
 
-  // Wire continuous sync while we are here: idempotent, and a failure is a
-  // warning on the report rather than a failed sync.
-  if (report.success && tenantRow.loyverse_access_token) {
-    const { ensureLoyverseWebhooks } = await import('@/lib/loyverse/webhooks')
-    const { headers } = await import('next/headers')
-    const headerList = await headers()
-    const host = headerList.get('host')
-    const proto = headerList.get('x-forwarded-proto') || 'https'
-    const origin = host && proto === 'https' ? `https://${host}` : undefined
-    report.webhooks = await ensureLoyverseWebhooks(
-      tenantRow.loyverse_access_token,
-      tenantId,
-      origin
-    )
-    if (report.webhooks.error) {
-      report.warnings.push(`Webhooks: ${report.webhooks.error}`)
-    }
-  }
+  // Webhooks are registered BEFORE the import: the import can outrun the
+  // function timeout on a big catalog, and registration dying with it is how
+  // merchants ended up with zero webhooks and no live sync.
+  const { ensureLoyverseWebhooks } = await import('@/lib/loyverse/webhooks')
+  const { runLoyverseSync } = await import('@/lib/loyverse/sync-orchestrator')
+  const { headers } = await import('next/headers')
+  const headerList = await headers()
+  const host = headerList.get('host')
+  const proto = headerList.get('x-forwarded-proto') || 'https'
+  const origin = host && proto === 'https' ? `https://${host}` : undefined
+
+  const report = await runLoyverseSync(tenantRow, origin, {
+    importCatalog: importLoyverseCatalog,
+    ensureWebhooks: ensureLoyverseWebhooks,
+    recordWebhookStatus: async (id, update) => {
+      await admin.from('tenants').update(update as never).eq('id', id)
+    },
+  })
 
   if (report.success && tenantRow.slug) {
     revalidatePath(`/${tenantRow.slug}/menu`)
