@@ -1,7 +1,9 @@
 import {
   renderReceipt,
+  renderReceiptSegments,
   resolveReceiptLayout,
   type ReceiptOrder,
+  type ReceiptSegment,
 } from "./receipt-layout";
 
 /**
@@ -16,4 +18,31 @@ export function buildReceiptText(
   savedLayout: unknown,
 ): string {
   return renderReceipt(order, { storeName }, resolveReceiptLayout(savedLayout));
+}
+
+/**
+ * Segment form of buildReceiptText for printers that can raster a QR. When no
+ * tracking URL was minted the qr block goes silent and the receipt prints as
+ * plain text — never a broken or placeholder QR.
+ */
+export function buildReceiptSegments(
+  order: ReceiptOrder,
+  storeName: string,
+  savedLayout: unknown,
+  trackingUrl: string | null,
+): ReceiptSegment[] {
+  return renderReceiptSegments(
+    order,
+    { storeName, ...(trackingUrl ? { trackingUrl } : {}) },
+    resolveReceiptLayout(savedLayout),
+  );
+}
+
+/**
+ * Whether this tenant's layout prints a QR at all — callers skip the
+ * tracking-URL round trip entirely when it doesn't (Classic tenants never pay
+ * a network hop at print time).
+ */
+export function layoutWantsQr(savedLayout: unknown): boolean {
+  return resolveReceiptLayout(savedLayout).blocks.some((b) => b.kind === "qr");
 }

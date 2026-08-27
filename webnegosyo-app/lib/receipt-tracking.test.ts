@@ -1,3 +1,8 @@
+jest.mock("expo-constants", () => ({
+  __esModule: true, // without this the mock is inert (see expo-constants-mock incident)
+  default: { expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } } },
+}));
+
 import { fetchTrackingUrl } from "./receipt-tracking";
 import { buildReceiptSegments, layoutWantsQr } from "./receipt-print";
 
@@ -24,7 +29,7 @@ describe("fetchTrackingUrl", () => {
     const url = await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
 
     expect(url).toBe("https://web.example.com/kape/order/order-1?t=beef");
-    const [calledUrl, init] = fetchImpl.mock.calls[0]! as [string, RequestInit];
+    const [calledUrl, init] = fetchImpl.mock.calls[0]! as unknown as [string, RequestInit];
     expect(calledUrl).toBe("https://web.example.com/api/orders/tracking-url");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
@@ -88,7 +93,7 @@ describe("buildReceiptSegments", () => {
       { version: 1, blocks: [{ kind: "businessName" }, { kind: "qr" }] },
       "https://web.example.com/kape/order/x?t=y",
     );
-    expect(segments.some((s) => s.type === "qr")).toBe(true);
+    expect(segments.some((s: { type: string }) => s.type === "qr")).toBe(true);
   });
 
   it("prints QR-free when no URL could be minted, whatever the layout says", () => {

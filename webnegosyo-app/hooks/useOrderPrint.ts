@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
-import { printReceipt } from "../lib/printer";
-import { buildReceiptText } from "../lib/receipt-print";
+import { printReceiptSegments } from "../lib/printer";
+import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
+import { fetchTrackingUrl } from "../lib/receipt-tracking";
+import { supabase } from "../lib/supabase";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 
 interface PrintableOrder {
@@ -36,6 +38,7 @@ interface PrintableOrder {
  */
 export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const receiptLayout = useAuthStore((s) => s.receiptLayout);
   const { printTrigger, printer } = usePrinterStore();
   const [isPrinting, setIsPrinting] = useState(false);
@@ -46,8 +49,25 @@ export function useOrderPrint() {
 
       setIsPrinting(true);
       try {
-        const receipt = buildReceiptText(order, tenantName ?? "Store", receiptLayout);
-        const result = await printReceipt(receipt);
+        // The QR needs a server-minted signed URL; skipped entirely for
+        // layouts without a qr block, and best-effort otherwise — a failed
+        // mint prints a QR-less receipt rather than no receipt.
+        let trackingUrl: string | null = null;
+        if (tenantId && layoutWantsQr(receiptLayout)) {
+          const { data } = await supabase.auth.getSession();
+          trackingUrl = await fetchTrackingUrl(
+            { orderId: order._id, tenantId },
+            { accessToken: data.session?.access_token ?? null },
+          );
+        }
+
+        const segments = buildReceiptSegments(
+          order,
+          tenantName ?? "Store",
+          receiptLayout,
+          trackingUrl,
+        );
+        const result = await printReceiptSegments(segments);
         if (!result.success) {
           console.warn("[useOrderPrint] Print failed:", result.error);
         }
@@ -59,7 +79,7 @@ export function useOrderPrint() {
         setIsPrinting(false);
       }
     },
-    [printer, tenantName, receiptLayout]
+    [printer, tenantName, tenantId, receiptLayout]
   );
 
   /**
