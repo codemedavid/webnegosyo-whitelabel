@@ -163,7 +163,13 @@ export default function OrdersScreen() {
       // would have nothing on it. Point at the screen that has them, but only
       // when the merchant actually expects paper.
       if (newStatus === "confirmed" && shouldPrint("confirmation")) {
-        Alert.alert("Order Confirmed", "Open order details to print receipt.");
+        Alert.alert("Order Confirmed", "Open the order to print its receipt.", [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Open & print",
+            onPress: () => router.push(`/(main)/order/${orderId}`),
+          },
+        ]);
       }
     } catch {
       Alert.alert("Error", "Failed to update order status");

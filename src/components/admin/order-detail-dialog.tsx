@@ -17,8 +17,14 @@ import {
   FileText,
   ShoppingBag,
   CalendarClock,
-  Store
+  Store,
+  Printer
 } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { getReceiptContext } from '@/app/actions/receipt'
+import { buildAdminReceiptText, openReceiptPrintWindow } from '@/lib/receipt-web'
 import {
   Dialog,
   DialogContent,
@@ -98,6 +104,30 @@ function getOrderTypeConfig(orderType: string | undefined | null) {
 }
 
 export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: OrderDetailDialogProps) {
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
+
+  // Browser print of the same block layout the thermal printer uses. The
+  // tenant's layout + name are fetched on click so the published layout, not
+  // a page-load snapshot, is what prints.
+  const handlePrintReceipt = async () => {
+    setIsPrintingReceipt(true)
+    try {
+      const context = await getReceiptContext(tenantId)
+      const text = buildAdminReceiptText(
+        order,
+        context?.storeName ?? tenantSlug,
+        context?.receiptLayout ?? null,
+      )
+      if (!openReceiptPrintWindow(text)) {
+        toast.error('Allow pop-ups to print the receipt')
+      }
+    } catch {
+      toast.error('Could not prepare the receipt')
+    } finally {
+      setIsPrintingReceipt(false)
+    }
+  }
+
   const orderTypeConfig = getOrderTypeConfig(order.order_type)
   const currentStatus = statusConfig[order.status]
   const StatusIcon = currentStatus.icon
@@ -134,6 +164,17 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                   </span>
                 </DialogDescription>
               </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={handlePrintReceipt}
+                disabled={isPrintingReceipt}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                {isPrintingReceipt ? 'Preparing…' : 'Print receipt'}
+              </Button>
 
               {/* Order Type Badge */}
               {orderTypeConfig && (

@@ -15,7 +15,12 @@ import {
   Loader2,
   CalendarClock,
   Store,
+  Printer,
 } from "lucide-react";
+import { useState } from "react";
+import { getReceiptContext } from "@/app/actions/receipt";
+import { renderReceipt, resolveReceiptLayout, type ReceiptOrder } from "@/lib/receipt-layout";
+import { openReceiptPrintWindow } from "@/lib/receipt-web";
 import {
   Sheet,
   SheetContent,
@@ -124,6 +129,26 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
     }
   }
 
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
+
+  // Browser print of the same block layout the thermal printer uses. Convex
+  // orders already carry the engine's field names, so no mapping is needed.
+  async function handlePrintReceipt() {
+    if (!order || !tenantId) return;
+    setIsPrintingReceipt(true);
+    try {
+      const context = await getReceiptContext(tenantId);
+      const text = renderReceipt(
+        order as unknown as ReceiptOrder,
+        { storeName: context?.storeName ?? "Store" },
+        resolveReceiptLayout(context?.receiptLayout ?? null),
+      );
+      openReceiptPrintWindow(text);
+    } finally {
+      setIsPrintingReceipt(false);
+    }
+  }
+
   async function handlePaymentStatusChange(newStatus: string) {
     if (!orderId) return;
     await updatePaymentStatus({ orderId, paymentStatus: newStatus });
@@ -168,6 +193,18 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                   </Button>
                 )}
               </div>
+            )}
+
+            {tenantId && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handlePrintReceipt}
+                disabled={isPrintingReceipt}
+              >
+                <Printer className="size-4" />
+                {isPrintingReceipt ? "Preparing…" : "Print receipt"}
+              </Button>
             )}
 
             <Separator />
