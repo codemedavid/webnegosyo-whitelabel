@@ -10,6 +10,7 @@
  */
 
 import { buildPosOrder } from "../lib/pos-order";
+import { enterEditMode } from "../lib/pos-edit-mode";
 import type { Voucher } from "../lib/vouchers/types";
 import { useAuthStore } from "./auth-store";
 import { usePosCartStore } from "./pos-cart-store";
@@ -134,5 +135,46 @@ describe("journey — delivery state cannot outlive its sale", () => {
     store().setDelivery({ address: "12 Mabini St" });
 
     expect(store().delivery).toEqual({ fee: 50, address: "12 Mabini St", phone: "" });
+  });
+});
+
+describe("journey — correcting the fee on a placed order", () => {
+  const CATALOG = {};
+  const placedOrder = {
+    _id: "order-1",
+    total: 260,
+    revisionNumber: 0,
+    deliveryFee: 50,
+    items: [
+      {
+        _id: "oi-1",
+        orderId: "order-1",
+        menuItemId: "m-latte",
+        menuItemName: "Latte",
+        quantity: 2,
+        price: 100,
+        subtotal: 200,
+        addons: [],
+      },
+    ],
+  };
+
+  it("re-prices the edit with the corrected fee and makes it saveable", () => {
+    store().beginEdit(enterEditMode(placedOrder, [], CATALOG));
+
+    store().setEditDeliveryFee(80);
+
+    const totals = store().editTotals();
+    // ₱200 items + ₱80 fee + ₱10 carried charge.
+    expect(totals?.newTotal).toBe(290);
+    expect(totals?.canSave).toBe(true);
+    store().endEdit();
+  });
+
+  it("is ignored on an ordinary counter sale — there is no edit to re-price", () => {
+    store().add(LATTE);
+    store().setEditDeliveryFee(80);
+    expect(store().editContext).toBeNull();
+    expect(store().totals().deliveryFee).toBe(0);
   });
 });
