@@ -534,6 +534,7 @@ export interface OrderInsert {
   payment_method_name: string | null;
   payment_method_details: string | null;
   delivery_fee: number | null;
+  delivery_address: string | null;
   scheduled_for: string | null;
   client_order_id: string | null;
   has_upsell_items: boolean;
@@ -570,6 +571,23 @@ export interface OrderItemInsert {
  * A blank or non-string value yields null rather than an empty string: an empty
  * string is not a valid uuid, and Postgres would reject the whole sale.
  */
+/**
+ * A trimmed text field out of the blob, or null. The register writes delivery
+ * details into `customerData` (the only carrier every backend shares); the
+ * platform also has real columns, promoted here for the same reason as
+ * `outlet_id` — a value left in the blob alone is invisible to every
+ * column-based reader.
+ */
+function textFromCustomerData(
+  customerData: Record<string, unknown> | undefined,
+  key: string
+): string | null {
+  const value = customerData?.[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 function outletIdFromCustomerData(
   customerData: Record<string, unknown> | undefined
 ): string | null {
@@ -604,6 +622,7 @@ export function buildCreateOrderRows(
     payment_method_name: args.paymentMethod ?? null,
     payment_method_details: args.paymentMethodDetails ?? null,
     delivery_fee: args.deliveryFee ?? null,
+    delivery_address: textFromCustomerData(args.customerData, "delivery_address"),
     scheduled_for: args.scheduledFor ?? null,
     client_order_id: args.clientOrderId ?? null,
     has_upsell_items: args.items.some((item) => item.isUpsellItem === true),
