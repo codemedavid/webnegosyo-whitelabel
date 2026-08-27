@@ -315,6 +315,10 @@ export interface Tenant {
   // Tenant-admin switch for scan-to-collect pickup. Column defaults to true, so
   // undefined/null must read as enabled. See src/lib/pickup-qr-gating.ts.
   pickup_scan_enabled?: boolean | null;
+  // Thermal receipt layout: a preset name (JSON string) or a custom
+  // {version:1,blocks:[...]} stack. NULL = Classic preset. Shape-checked by
+  // the receipt renderer; invalid values fall back to Classic.
+  receipt_layout?: unknown;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
