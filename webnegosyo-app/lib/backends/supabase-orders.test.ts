@@ -576,3 +576,34 @@ describe("buildCreateOrderRows branch attribution", () => {
     expect(wrongType.order.outlet_id).toBeNull();
   });
 });
+
+describe("buildCreateOrderRows — delivery details", () => {
+  const args = {
+    customerName: "Ana",
+    customerContact: "09171234567",
+    total: 290,
+    itemCount: 2,
+    source: "pos" as const,
+    deliveryFee: 50,
+    customerData: { delivery_address: "12 Mabini St", customer_phone: "0917 000 1234" },
+    items: [
+      { menuItemId: "menu-1", menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("stores the fee in the breakdown column", () => {
+    expect(buildCreateOrderRows("tenant-1", args).order.delivery_fee).toBe(50);
+  });
+
+  it("promotes the blob address into the delivery_address column", () => {
+    // Same rule as outlet_id: the register can only write the blob, but the
+    // platform reads the column — an address left in the blob alone would be
+    // invisible to every column-based reader.
+    expect(buildCreateOrderRows("tenant-1", args).order.delivery_address).toBe("12 Mabini St");
+  });
+
+  it("leaves the column null for a sale with no address", () => {
+    const bare = { ...args, customerData: {} };
+    expect(buildCreateOrderRows("tenant-1", bare).order.delivery_address).toBeNull();
+  });
+});
