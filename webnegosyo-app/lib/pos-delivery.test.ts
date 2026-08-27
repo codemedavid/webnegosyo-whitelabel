@@ -201,3 +201,25 @@ describe("buildPosOrder with delivery details", () => {
     ).toThrow(/insufficient cash/i);
   });
 });
+
+describe("buildPosOrder — deliveryAddress column parity", () => {
+  it("emits the address top-level for backends with a real column", () => {
+    const order = buildPosOrder({
+      cart: CART,
+      tender: CASH,
+      clientOrderId: "sale-del-3",
+      delivery: delivery({ fee: 50, address: "12 Mabini St" }),
+    });
+    expect(order.deliveryAddress).toBe("12 Mabini St");
+  });
+
+  it("omits the key entirely when no address was taken", () => {
+    const order = buildPosOrder({
+      cart: CART,
+      tender: CASH,
+      clientOrderId: "sale-del-4",
+      delivery: delivery({ fee: 50 }),
+    });
+    expect("deliveryAddress" in order).toBe(false);
+  });
+});
