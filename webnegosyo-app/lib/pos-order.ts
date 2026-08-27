@@ -18,6 +18,11 @@ import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
+import {
+  chargeableDeliveryFee,
+  deliveryCustomerData,
+  type PosDeliveryDetails,
+} from "./pos-delivery";
 
 /** Shown on the order card when the cashier did not take a name. */
 export const POS_WALK_IN_NAME = "Walk-in";
@@ -63,6 +68,11 @@ export interface PosOrderContext {
    * Null/absent for a single-location store, which stamps nothing.
    */
   outlet?: OrderOutletContext | null;
+  /**
+   * Manual delivery details the cashier attached — fee, address, phone, all
+   * optional. Absent on an ordinary counter sale.
+   */
+  delivery?: PosDeliveryDetails | null;
   /** Any non-POS customerData the caller already assembled. */
   customerData?: Record<string, unknown>;
   /**
@@ -95,6 +105,11 @@ export interface PosOrderArgs {
   customerContact: string;
   customerData: Record<string, unknown> & { pos: PosPaymentPayload };
   total: number;
+  /**
+   * Only present when a fee was charged, so a sale without one sends the exact
+   * argument shape every already-deployed backend has always accepted.
+   */
+  deliveryFee?: number;
   orderType?: string;
   orderTypeId?: string;
   source: "pos";
@@ -188,29 +203,38 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     throw new Error("Cannot complete a sale with an empty cart.");
   }
 
+  const deliveryFee = chargeableDeliveryFee(context.delivery);
   const { total, itemCount, discountTotal } = cartTotals(
     cart,
     serviceCharge,
     context.discounts,
+    deliveryFee,
   );
 
   if (tender.isCash && !computeChange(total, tender.cashTendered ?? 0).isSufficient) {
     throw new Error("Insufficient cash tendered for this sale.");
   }
 
+  const deliveryBlob = deliveryCustomerData(context.delivery);
+
   return {
     customerName: context.customerName?.trim() || POS_WALK_IN_NAME,
-    customerContact: context.customerContact ?? "",
+    // An attached guest's contact wins — identity resolution runs on it. The
+    // typed delivery phone fills in only for an otherwise-anonymous sale, so
+    // the order still lands on a customer profile.
+    customerContact: context.customerContact || deliveryBlob.customer_phone || "",
     customerData: {
       // The branch is stamped by the register, not accepted from the caller,
       // so a counter sale is always attributable to the till that rang it.
       ...withOrderOutlet(context.customerData, context.outlet),
+      ...deliveryBlob,
       // Spread before `pos` so a discount can never displace the payment
       // payload — both live in this blob and both are needed to settle a sale.
       ...discountBlob(context.discounts, discountTotal),
       pos: paymentPayload(tender, context.cashierId),
     },
     total,
+    ...(deliveryFee > 0 ? { deliveryFee } : {}),
     orderType: context.orderType,
     orderTypeId: context.orderTypeId,
     source: "pos",

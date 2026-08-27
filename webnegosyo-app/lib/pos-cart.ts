@@ -53,6 +53,8 @@ export interface ServiceCharge {
 export interface CartTotals {
   subtotal: number;
   serviceCharge: number;
+  /** Manually-attached delivery fee. Zero on an ordinary counter sale. */
+  deliveryFee: number;
   /**
    * What was actually taken off, which is not always what was asked for: a
    * voucher worth more than the sale is capped rather than paid out.
@@ -66,6 +68,7 @@ export interface CartTotals {
 const EMPTY_TOTALS: CartTotals = {
   subtotal: 0,
   serviceCharge: 0,
+  deliveryFee: 0,
   discountTotal: 0,
   total: 0,
   itemCount: 0,
@@ -175,6 +178,13 @@ export function cartTotals(
   cart: PosCartLine[],
   serviceCharge?: ServiceCharge,
   discounts?: readonly OrderDiscountLine[],
+  /**
+   * Manually-attached delivery fee, already validated by
+   * `chargeableDeliveryFee` — this function trusts but clamps it. Part of the
+   * chargeable amount so a free-delivery voucher has something to discount and
+   * an over-large voucher still caps at the WHOLE bill, fee included.
+   */
+  deliveryFee = 0,
 ): CartTotals {
   if (cart.length === 0) return EMPTY_TOTALS;
 
@@ -187,12 +197,14 @@ export function cartTotals(
       ? round2((subtotal * serviceCharge.value) / 100)
       : round2(serviceCharge.value);
 
-  const chargeable = round2(subtotal + charge);
+  const fee = Number.isFinite(deliveryFee) && deliveryFee > 0 ? round2(deliveryFee) : 0;
+  const chargeable = round2(subtotal + charge + fee);
   const discountTotal = Math.min(round2(sumDiscounts(discounts ?? [])), chargeable);
 
   return {
     subtotal,
     serviceCharge: charge,
+    deliveryFee: fee,
     discountTotal,
     total: round2(chargeable - discountTotal),
     itemCount,

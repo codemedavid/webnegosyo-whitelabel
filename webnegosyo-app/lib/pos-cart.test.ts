@@ -186,6 +186,7 @@ describe("cartTotals", () => {
     expect(cartTotals(cart)).toEqual({
       subtotal: 380,
       serviceCharge: 0,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 380,
       itemCount: 3,
@@ -196,6 +197,7 @@ describe("cartTotals", () => {
     expect(cartTotals([])).toEqual({
       subtotal: 0,
       serviceCharge: 0,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 0,
       itemCount: 0,
@@ -207,6 +209,7 @@ describe("cartTotals", () => {
     expect(cartTotals(cart, { type: "percentage", value: 10 })).toEqual({
       subtotal: 240,
       serviceCharge: 24,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 264,
       itemCount: 2,
@@ -218,6 +221,7 @@ describe("cartTotals", () => {
     expect(cartTotals(cart, { type: "fixed", value: 25 })).toEqual({
       subtotal: 360,
       serviceCharge: 25,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 385,
       itemCount: 3,
@@ -233,6 +237,7 @@ describe("cartTotals", () => {
     expect(cartTotals([], { type: "fixed", value: 25 })).toEqual({
       subtotal: 0,
       serviceCharge: 0,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 0,
       itemCount: 0,
@@ -420,6 +425,7 @@ describe("cartTotals with discounts", () => {
     expect(cartTotals([], undefined, [{ label: "X", amount: 50 }])).toEqual({
       subtotal: 0,
       serviceCharge: 0,
+      deliveryFee: 0,
       discountTotal: 0,
       total: 0,
       itemCount: 0,

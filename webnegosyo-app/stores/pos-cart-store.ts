@@ -14,6 +14,7 @@ import {
   cartTotals,
   clearCart,
   removeLine,
+  round2,
   updateQty,
   type CartTotals,
   type PosCartLine,
@@ -47,6 +48,11 @@ import {
   clearedSaleCustomer,
   type AttachedCustomer,
 } from "../lib/customers/pos-attachment";
+import {
+  chargeableDeliveryFee,
+  clearedSaleDelivery,
+  type PosDeliveryDetails,
+} from "../lib/pos-delivery";
 
 interface PosCartState {
   lines: PosCartLine[];
@@ -76,6 +82,12 @@ interface PosCartState {
    * guest's profile — see `lib/customers/pos-attachment.ts`.
    */
   attachedCustomer: AttachedCustomer | null;
+  /**
+   * Manual delivery details for this sale — fee, address, phone, all optional.
+   * Cleared with the sale for the same reason as the attached guest: a fee
+   * left behind would be billed to the next stranger at the counter.
+   */
+  delivery: PosDeliveryDetails;
 
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
@@ -89,6 +101,8 @@ interface PosCartState {
   setCustomerName: (name: string) => void;
   /** Attach a guest to this sale, or pass null to make it a walk-in again. */
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
+  /** Merge a partial update into this sale's delivery details. */
+  setDelivery: (patch: Partial<PosDeliveryDetails>) => void;
   totals: () => CartTotals;
 
   /** Vouchers presented and any open discount given for THIS sale. */
@@ -147,7 +161,14 @@ function discountBasis(state: PosCartState): { charge: number; deliveryFee: numb
     };
   }
 
-  return { charge: cartTotals(lines, serviceCharge).serviceCharge, deliveryFee: 0 };
+  // The fee is part of the charge (the chargeable cap) exactly as the edit
+  // branch treats it — the engine's `serviceCharge` argument is the cap, and a
+  // fee outside it would let a free-delivery discount exceed the bill.
+  const fee = chargeableDeliveryFee(state.delivery);
+  return {
+    charge: round2(cartTotals(lines, serviceCharge).serviceCharge + fee),
+    deliveryFee: fee,
+  };
 }
 
 export const usePosCartStore = create<PosCartState>((set, get) => ({
@@ -158,6 +179,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   orderTypeName: null,
   serviceCharge: undefined,
   ...clearedSaleCustomer(),
+  ...clearedSaleDelivery(),
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
   add: (input) => set((s) => ({ lines: addLine(s.lines, input) })),
@@ -186,6 +208,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     set({
       lines: clearCart(),
       ...clearedSaleCustomer(),
+      ...clearedSaleDelivery(),
       editContext: null,
       editWarnings: [],
       discount: EMPTY_POS_DISCOUNT_SESSION,
@@ -200,6 +223,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       editContext: entered.context,
       editWarnings: entered.warnings,
       ...clearedSaleCustomer(),
+      // An edit's fee lives on editContext; a counter fee would double-bill.
+      ...clearedSaleDelivery(),
       discount: EMPTY_POS_DISCOUNT_SESSION,
     }),
 
@@ -224,6 +249,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     set({
       lines: clearCart(),
       ...clearedSaleCustomer(),
+      ...clearedSaleDelivery(),
       editContext: null,
       editWarnings: [],
       discount: EMPTY_POS_DISCOUNT_SESSION,
@@ -279,6 +305,13 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
 
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),
 
+  setDelivery: (patch) => set((s) => ({ delivery: { ...s.delivery, ...patch } })),
+
   totals: () =>
-    cartTotals(get().lines, get().serviceCharge, get().sessionDiscount().lines),
+    cartTotals(
+      get().lines,
+      get().serviceCharge,
+      get().sessionDiscount().lines,
+      chargeableDeliveryFee(get().delivery),
+    ),
 }));
