@@ -55,6 +55,7 @@ function deliveryOrder() {
     total: 260,
     revisionNumber: 0,
     deliveryFee: 50,
+    originalDeliveryFee: 50,
     items: [orderItem()],
   };
 }
@@ -389,6 +390,7 @@ describe("editModeTotals", () => {
       expectedRevisionNumber: 0,
       originalTotal: 260,
       deliveryFee: 50,
+      originalDeliveryFee: 50,
       carriedCharges: 10,
       payments: [{ kind: "charge", amount: 260 }],
       // No recorded breakdown: these cases predate discounts, and an order
@@ -538,6 +540,7 @@ describe("editModeTotals with a discount added during the edit", () => {
       expectedRevisionNumber: 0,
       originalTotal: 200,
       deliveryFee: 0,
+      originalDeliveryFee: 0,
       carriedCharges: 0,
       payments: [{ kind: "charge", amount: 200 }],
       storedDiscount: null,
@@ -753,6 +756,7 @@ describe("the discount an edit settles on", () => {
       expectedRevisionNumber: 0,
       originalTotal: 200,
       deliveryFee: 0,
+      originalDeliveryFee: 0,
       carriedCharges: 0,
       payments: [{ kind: "charge", amount: 200 }],
       storedDiscount: null,

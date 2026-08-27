@@ -23,6 +23,7 @@ import {
 } from "../lib/pos-cart";
 import {
   editModeTotals,
+  withEditDeliveryFee,
   withEditVouchers,
   type EditModeTotals,
   type EnteredEditMode,
@@ -103,6 +104,11 @@ interface PosCartState {
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   /** Merge a partial update into this sale's delivery details. */
   setDelivery: (patch: Partial<PosDeliveryDetails>) => void;
+  /**
+   * Correct or attach the delivery fee on the order being EDITED. A no-op on
+   * an ordinary counter sale — that fee lives in {@link setDelivery}.
+   */
+  setEditDeliveryFee: (fee: number) => void;
   totals: () => CartTotals;
 
   /** Vouchers presented and any open discount given for THIS sale. */
@@ -306,6 +312,11 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),
 
   setDelivery: (patch) => set((s) => ({ delivery: { ...s.delivery, ...patch } })),
+
+  setEditDeliveryFee: (fee) =>
+    set((s) =>
+      s.editContext ? { editContext: withEditDeliveryFee(s.editContext, fee) } : {},
+    ),
 
   totals: () =>
     cartTotals(

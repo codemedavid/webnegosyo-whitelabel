@@ -802,9 +802,11 @@ export default function OrderDetailScreen() {
         ))}
       </Card>
 
-      {order.deliveryAddress && (
+      {/* A fee without an address is a real case now — a POS delivery the
+          rider already knows — and hiding the card made the fee invisible. */}
+      {(order.deliveryAddress || (order.deliveryFee ?? 0) > 0) && (
         <Card title="Delivery" style={styles.section}>
-          <Text style={styles.value}>{order.deliveryAddress}</Text>
+          {order.deliveryAddress ? <Text style={styles.value}>{order.deliveryAddress}</Text> : null}
           {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
         </Card>
       )}

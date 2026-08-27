@@ -95,6 +95,14 @@ const UNEDITABLE_STATUSES: Record<string, string> = {
 
 export interface OrderRevisionPatch {
   total: number;
+  /**
+   * The fee the new total was computed WITH. Written on every revision so the
+   * breakdown column can never disagree with the bill — the original defect
+   * here was a total built from `args.deliveryFee` beside a column still
+   * holding the old figure. Null (not 0) for a fee-less order, matching the
+   * create path.
+   */
+  delivery_fee: number | null;
   item_count: number;
   revision_number: number;
   edited_at: string | null;
@@ -219,9 +227,12 @@ export function buildRevisionRows(
 
   const revisionNumber = previous.revisionNumber + 1;
 
+  const deliveryFee = args.deliveryFee ?? 0;
+
   return {
     orderPatch: {
       total,
+      delivery_fee: deliveryFee > 0 ? round2(deliveryFee) : null,
       item_count: itemRows.reduce((sum, row) => sum + row.quantity, 0),
       revision_number: revisionNumber,
       edited_at: args.editedAt ?? null,

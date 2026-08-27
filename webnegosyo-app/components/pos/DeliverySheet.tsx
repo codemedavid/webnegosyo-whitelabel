@@ -21,6 +21,12 @@ interface DeliverySheetProps {
   /** The sale's current details, shown as the draft when the sheet opens. */
   delivery: PosDeliveryDetails;
   onSave: (details: PosDeliveryDetails) => void;
+  /**
+   * Fee input only. Editing a PLACED order can revise its fee, but its address
+   * and phone live on the order, not the register — showing dead inputs would
+   * let a cashier "save" changes nothing persists.
+   */
+  feeOnly?: boolean;
 }
 
 /**
@@ -32,7 +38,13 @@ interface DeliverySheetProps {
  * who already knows the block). Nothing here validates beyond the fee being a
  * positive number, because every field is optional by design.
  */
-export function DeliverySheet({ visible, onClose, delivery, onSave }: DeliverySheetProps) {
+export function DeliverySheet({
+  visible,
+  onClose,
+  delivery,
+  onSave,
+  feeOnly = false,
+}: DeliverySheetProps) {
   const [feeText, setFeeText] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
@@ -96,7 +108,9 @@ export function DeliverySheet({ visible, onClose, delivery, onSave }: DeliverySh
             />
             {feeError && <Text style={styles.error}>{feeError}</Text>}
 
-            <Text style={styles.sectionLabel}>Delivery address (optional)</Text>
+            {!feeOnly && (
+              <>
+                <Text style={styles.sectionLabel}>Delivery address (optional)</Text>
             <TextInput
               style={[styles.input, styles.addressInput]}
               value={address}
@@ -117,6 +131,8 @@ export function DeliverySheet({ visible, onClose, delivery, onSave }: DeliverySh
               keyboardType="phone-pad"
               accessibilityLabel="Contact number"
             />
+              </>
+            )}
 
             <TouchableOpacity style={styles.save} onPress={save} accessibilityRole="button">
               <Text style={styles.saveText}>Save delivery details</Text>

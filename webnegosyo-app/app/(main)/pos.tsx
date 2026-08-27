@@ -103,6 +103,7 @@ export default function PosScreen() {
   const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
   const delivery = usePosCartStore((s) => s.delivery);
   const setDelivery = usePosCartStore((s) => s.setDelivery);
+  const setEditDeliveryFee = usePosCartStore((s) => s.setEditDeliveryFee);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
 
@@ -140,8 +141,10 @@ export default function PosScreen() {
     // Recompute whenever the sale changes; `totals()` reads the live store.
     // `discount` belongs here too: applying a code changes the total without
     // touching a line, and leaving it out would show the undiscounted amount.
+    // `delivery` too: attaching a fee changes the total and what a
+    // free-delivery voucher is worth, without touching a line.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount],
+    [lines, serviceCharge, discount, delivery],
   );
 
   // Priced against the current cart, so a voucher that stops qualifying after
@@ -149,7 +152,7 @@ export default function PosScreen() {
   const discountLines = useMemo(
     () => usePosCartStore.getState().sessionDiscount().lines,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount],
+    [lines, serviceCharge, discount, delivery],
   );
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
@@ -495,7 +498,10 @@ export default function PosScreen() {
 
       <CartSheet
         lines={lines}
-        totals={totals}
+        // In edit mode the fee lives on the edit context, not the counter
+        // sale — shown here so the row the cashier taps reflects what the
+        // revision will actually charge.
+        totals={editContext ? { ...totals, deliveryFee: editContext.deliveryFee } : totals}
         // The order type is fixed for the life of a placed order: switching it
         // mid-edit would swap the service charge and invalidate the basis the
         // delivery fee was quoted under. Passing none renders no chips.
@@ -517,9 +523,7 @@ export default function PosScreen() {
         // who produces a voucher after ordering no longer needs the order
         // cancelled and re-rung.
         onAddDiscount={() => setIsDiscountOpen(true)}
-        // Hidden on an edit: a placed order's fee was carried from when it was
-        // placed and is revised on the order screen, not re-typed at the till.
-        onEditDelivery={edit ? undefined : () => setIsDeliveryOpen(true)}
+        onEditDelivery={() => setIsDeliveryOpen(true)}
         onRemoveDiscount={(line) => {
           if (line.code) removeVoucher(line.code);
           else clearManualDiscount();
@@ -573,8 +577,23 @@ export default function PosScreen() {
       <DeliverySheet
         visible={isDeliveryOpen}
         onClose={() => setIsDeliveryOpen(false)}
-        delivery={delivery}
-        onSave={setDelivery}
+        // Editing a placed order revises the fee it carries; address and phone
+        // belong to the order and are not editable at the till, so the sheet
+        // shows the fee alone there.
+        feeOnly={editContext !== null}
+        delivery={
+          editContext
+            ? {
+                fee: editContext.deliveryFee > 0 ? editContext.deliveryFee : null,
+                address: "",
+                phone: "",
+              }
+            : delivery
+        }
+        onSave={(details) => {
+          if (editContext) setEditDeliveryFee(details.fee ?? 0);
+          else setDelivery(details);
+        }}
       />
     </View>
   );

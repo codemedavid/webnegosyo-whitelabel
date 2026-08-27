@@ -88,8 +88,14 @@ export interface OrderEditContext {
    * no option ids, and an option's recipe is found by id.
    */
   originalStockItems: PosStockItem[];
-  /** Carried across untouched; the register cannot recompute it. */
+  /**
+   * Carried from the placed order, but EDITABLE via {@link withEditDeliveryFee}
+   * — the register cannot recompute a quoted fee, but the cashier can correct
+   * or attach one deliberately.
+   */
   deliveryFee: number;
+  /** The fee as placed, so a fee-only change registers as dirty. */
+  originalDeliveryFee: number;
   /**
    * Everything in the placed total that is neither a line item nor the
    * delivery fee — see {@link deriveCarriedCharges}.
@@ -291,6 +297,7 @@ function loadOrder(
       originalItems: posCartToOrderItems(lines, catalog),
       originalStockItems: buildPosStockItems(lines),
       deliveryFee,
+      originalDeliveryFee: deliveryFee,
       carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee, storedDiscount),
       payments: [...payments],
       storedDiscount,
@@ -485,6 +492,23 @@ export function withEditVouchers(
 }
 
 /**
+ * Change the delivery fee on an order being edited.
+ *
+ * Zero is a legitimate value — it is how a wrongly-charged fee is removed —
+ * so a corrupt or negative figure clamps there rather than being refused.
+ * `carriedCharges` is untouched: it is the residue of the PLACED bill, derived
+ * once at load, and re-deriving it against a changed fee would smuggle the
+ * change in twice.
+ */
+export function withEditDeliveryFee(
+  context: OrderEditContext,
+  fee: number,
+): OrderEditContext {
+  const next = Number.isFinite(fee) && fee > 0 ? round2(fee) : 0;
+  return { ...context, deliveryFee: next };
+}
+
+/**
  * What the edited order is worth, and what the cashier owes or is owed.
  *
  * The single place the carried fees are re-applied, so there is one answer to
@@ -557,7 +581,10 @@ export function editModeTotals(
   // disabled on an edit whose only point was the discount.
   const isDirty =
     diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0 ||
-    added > 0;
+    added > 0 ||
+    // A fee correction moves no line, and a Save button that stays dead is a
+    // correction that cannot be made.
+    context.deliveryFee !== context.originalDeliveryFee;
 
   // Two different empties. A revise with nothing left is a cashier deleting an
   // order through the back door; an append with nothing rung up has simply not
