@@ -14,6 +14,38 @@ interface ReceiptContext {
  * rather than threaded through every orders wrapper — the layout must always
  * be the currently-published one, not a page-load snapshot.
  */
+/**
+ * Publish a tenant's receipt layout (a preset name or a custom block stack).
+ * Refuses anything `sanitizeLayoutForSave` cannot vouch for — the printer
+ * silently falls back to Classic on invalid data, so a bad save would throw
+ * the merchant's design away without telling them.
+ */
+export async function saveReceiptLayoutAction(
+  tenantId: string,
+  layout: unknown,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await verifyTenantAdmin(tenantId)
+
+    const { sanitizeLayoutForSave } = await import('@/lib/receipt-editor')
+    const sanitized = sanitizeLayoutForSave(layout)
+    if (sanitized === null) {
+      return { success: false, error: 'Invalid receipt layout' }
+    }
+
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('tenants')
+      .update({ receipt_layout: sanitized })
+      .eq('id', tenantId)
+
+    if (error) return { success: false, error: 'Could not save' }
+    return { success: true }
+  } catch {
+    return { success: false, error: 'Not authorized' }
+  }
+}
+
 export async function getReceiptContext(tenantId: string): Promise<ReceiptContext | null> {
   try {
     await verifyTenantAdmin(tenantId)
