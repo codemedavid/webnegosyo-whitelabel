@@ -14,6 +14,11 @@ interface AuthState {
    * to pick the Convex client or the platform-Supabase adapter.
    */
   orderBackend: OrderBackend | null;
+  /**
+   * The tenant's saved receipt layout (preset name or custom block stack),
+   * passed through unvalidated; `lib/receipt-print.ts` shape-checks at print.
+   */
+  receiptLayout: unknown;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -55,6 +60,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   convexUrl: null,
   convexSchemaVersion: null,
   orderBackend: null,
+  receiptLayout: null,
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
@@ -75,6 +81,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       convexUrl: null,
   convexSchemaVersion: null,
       orderBackend: null,
+      receiptLayout: null,
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,

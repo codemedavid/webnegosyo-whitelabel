@@ -17,6 +17,9 @@ const SUPERADMIN_STATE = {
   // deployment is sent.
   convexSchemaVersion: null,
   orderBackend: null,
+  // The viewed tenant's receipt layout is tenant state too — cleared on exit
+  // so the next store's reprints don't come out styled like the last one's.
+  receiptLayout: null,
   isSuperadmin: true,
   isOwner: false,
   permissions: null,

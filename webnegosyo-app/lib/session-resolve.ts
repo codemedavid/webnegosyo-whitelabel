@@ -42,6 +42,8 @@ export interface TenantRow {
   /** The Convex bundle this tenant is running, when it has been recorded. */
   convex_schema_version?: number | null;
   order_backend?: OrderBackend | null;
+  /** Saved receipt layout: a preset name or a custom block stack. Untrusted. */
+  receipt_layout?: unknown;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -67,6 +69,11 @@ export interface SessionAuthPatch {
    * who holds no tenant until they impersonate one.
    */
   orderBackend: OrderBackend | null;
+  /**
+   * The tenant's saved receipt layout, passed through unvalidated — the print
+   * path (`lib/receipt-print.ts`) shape-checks it and falls back to Classic.
+   */
+  receiptLayout: unknown;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -153,6 +160,7 @@ export function resolveSession(
         // No tenant attached, so no deployment to have a version.
         convexSchemaVersion: null,
         orderBackend: null,
+        receiptLayout: null,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -187,6 +195,7 @@ export function resolveSession(
       convexUrl: tenant.convex_deployment_url ?? null,
       convexSchemaVersion: tenant.convex_schema_version ?? null,
       orderBackend: resolveOrderBackend(tenant),
+      receiptLayout: tenant.receipt_layout ?? null,
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,

@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
 import { printReceipt } from "../lib/printer";
-import { formatReceipt } from "../lib/receipt-formatter";
+import { buildReceiptText } from "../lib/receipt-print";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 
 interface PrintableOrder {
@@ -36,6 +36,7 @@ interface PrintableOrder {
  */
 export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
+  const receiptLayout = useAuthStore((s) => s.receiptLayout);
   const { printTrigger, printer } = usePrinterStore();
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -45,7 +46,7 @@ export function useOrderPrint() {
 
       setIsPrinting(true);
       try {
-        const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
+        const receipt = buildReceiptText(order, tenantName ?? "Store", receiptLayout);
         const result = await printReceipt(receipt);
         if (!result.success) {
           console.warn("[useOrderPrint] Print failed:", result.error);
@@ -58,7 +59,7 @@ export function useOrderPrint() {
         setIsPrinting(false);
       }
     },
-    [printer, tenantName]
+    [printer, tenantName, receiptLayout]
   );
 
   /**

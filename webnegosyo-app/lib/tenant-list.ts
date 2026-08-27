@@ -20,6 +20,8 @@ export interface TenantListRow {
   convex_deployment_url: string | null;
   /** Which database serves this tenant's orders; drives impersonation routing. */
   order_backend?: OrderBackend | null;
+  /** Saved receipt layout, carried into impersonation so reprints match. */
+  receipt_layout?: unknown;
   /** Optional: absent on rows selected before the logo column was added. */
   logo_url?: string | null;
   menu_engineering_enabled: boolean;

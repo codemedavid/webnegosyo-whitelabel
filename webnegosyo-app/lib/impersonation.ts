@@ -39,7 +39,11 @@ export interface ImpersonationState {
  * transition: a version left over from the previous tenant would decide which
  * arguments this app sends to a different store's deployment.
  */
-export type ImpersonationPatch = { convexSchemaVersion: number | null } & Pick<
+export type ImpersonationPatch = {
+  convexSchemaVersion: number | null;
+  /** The viewed tenant's saved receipt layout; cleared on exit like the rest. */
+  receiptLayout: unknown;
+} & Pick<
   ImpersonationState,
   | "userId"
   | "tenantId"
@@ -84,6 +88,7 @@ export function enterTenant(
     convexUrl: tenant.convex_deployment_url ?? null,
     convexSchemaVersion: tenant.convex_schema_version ?? null,
     orderBackend: resolveOrderBackend(tenant),
+    receiptLayout: tenant.receipt_layout ?? null,
     impersonatedTenantId: tenant.id,
   };
 }
@@ -105,6 +110,7 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     convexUrl: null,
     convexSchemaVersion: null,
     orderBackend: null,
+    receiptLayout: null,
     impersonatedTenantId: null,
   };
 }
