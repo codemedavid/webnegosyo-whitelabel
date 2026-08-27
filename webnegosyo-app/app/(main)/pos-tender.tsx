@@ -68,6 +68,7 @@ export default function PosTenderScreen() {
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
   const orderTypeName = usePosCartStore((s) => s.orderTypeName);
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
+  const delivery = usePosCartStore((s) => s.delivery);
   const customerName = usePosCartStore((s) => s.customerName);
   const setCustomerName = usePosCartStore((s) => s.setCustomerName);
   const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
@@ -124,8 +125,11 @@ export default function PosTenderScreen() {
 
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),
+    // `delivery` belongs here: backing out to attach a fee and returning moves
+    // no line, and a stale total would show an amount due the charge then
+    // refuses as insufficient.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge],
+    [lines, serviceCharge, delivery],
   );
 
   // Editing a placed order: what it is now worth, and what still has to move.
