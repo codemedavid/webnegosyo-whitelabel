@@ -370,14 +370,6 @@ function renderContact(order: ReceiptOrder, w: number): string[] {
   return [truncate(`Contact: ${contact}`, w)];
 }
 
-function renderQr(config: ReceiptConfig, w: number): string[] {
-  if (!config.trackingUrl) return [];
-  return [
-    truncate(center("Scan to track your order", w), w),
-    truncate(config.trackingUrl, w),
-  ];
-}
-
 function renderText(block: { text: string; align?: ReceiptTextAlign }, w: number): string[] {
   const text = truncate(block.text, w);
   if (block.align === "center") return [center(text, w)];
@@ -389,14 +381,30 @@ function renderText(block: { text: string; align?: ReceiptTextAlign }, w: number
 // The renderer
 // ---------------------------------------------------------------------------
 
-export function renderReceipt(
+/**
+ * A receipt split for the printer: text goes through printBill, each QR is a
+ * raster sent through printImageBase64. Contiguous text collapses into single
+ * segments so the printer gets the fewest possible writes.
+ */
+export type ReceiptSegment =
+  | { type: "text"; text: string }
+  | { type: "qr"; data: string };
+
+export function renderReceiptSegments(
   order: ReceiptOrder,
   config: ReceiptConfig,
   layout: ReceiptLayout,
-): string {
+): ReceiptSegment[] {
   const w = layout.width ?? config.width ?? 32;
   const ctx = buildContext(order);
-  const lines: string[] = [];
+  const segments: ReceiptSegment[] = [];
+  let lines: string[] = [];
+
+  const flushText = () => {
+    if (lines.length === 0) return;
+    segments.push({ type: "text", text: lines.join("\n") });
+    lines = [];
+  };
 
   for (const block of layout.blocks) {
     switch (block.kind) {
@@ -430,7 +438,11 @@ export function renderReceipt(
         lines.push(...renderContact(order, w));
         break;
       case "qr":
-        lines.push(...renderQr(config, w));
+        if (config.trackingUrl) {
+          lines.push(truncate(center("Scan to track your order", w), w));
+          flushText();
+          segments.push({ type: "qr", data: config.trackingUrl });
+        }
         break;
       case "feed":
         lines.push("");
@@ -438,7 +450,31 @@ export function renderReceipt(
     }
   }
 
-  return lines.join("\n");
+  flushText();
+  return segments;
+}
+
+/**
+ * Flat-text rendering — previews and printers with no raster support. The QR
+ * degrades to its URL printed as text, so a phone can still type it in.
+ */
+export function renderReceipt(
+  order: ReceiptOrder,
+  config: ReceiptConfig,
+  layout: ReceiptLayout,
+): string {
+  const w = layout.width ?? config.width ?? 32;
+  return renderReceiptSegments(order, config, layout)
+    .map((segment) => {
+      if (segment.type === "text") return segment.text;
+      // Wrap rather than truncate: a clipped URL cannot be typed into a phone.
+      const wrapped: string[] = [];
+      for (let i = 0; i < segment.data.length; i += w) {
+        wrapped.push(segment.data.slice(i, i + w));
+      }
+      return wrapped.join("\n");
+    })
+    .join("\n");
 }
 
 // ---------------------------------------------------------------------------

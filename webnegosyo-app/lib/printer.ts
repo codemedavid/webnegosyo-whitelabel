@@ -1,6 +1,7 @@
 import { Platform, PermissionsAndroid } from "react-native";
 import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
+import { buildQrBmpBase64 } from "./receipt-qr";
 
 // ESC/POS commands for text formatting.
 // Note: init/feed/cut are handled by the library's printBill (EPToolkit) so we
@@ -327,14 +328,15 @@ export async function disconnectPrinter(): Promise<void> {
 function printBillAsync(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   printerInstance: any,
-  text: string
+  text: string,
+  options: { cut: boolean } = { cut: true }
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     try {
       printerInstance.printBill(text, {
         beep: false,
-        cut: true,
+        cut: options.cut,
         tailingLine: true,
         encoding: "UTF8",
         onError: (err: Error) => {
@@ -359,7 +361,28 @@ function printBillAsync(
   });
 }
 
-export async function printReceipt(receiptText: string): Promise<PrinterResult> {
+/** One printable piece of a receipt; see renderReceiptSegments. */
+export type PrintSegment =
+  | { type: "text"; text: string }
+  | { type: "qr"; data: string };
+
+/**
+ * Give the printer's image buffer a moment to drain before more data follows.
+ * printImageBase64 is fire-and-forget with no completion callback, and a text
+ * write racing a half-transferred raster garbles both.
+ */
+const IMAGE_SETTLE_MS = 700;
+
+/**
+ * Print a receipt of text and QR segments. Text goes through printBill, QR
+ * segments are rasterized (lib/receipt-qr) and sent through printImageBase64.
+ * Exactly one cut happens, at the very end — never between segments. A QR that
+ * cannot be built (or a printer whose firmware ignores rasters) skips the
+ * image; the paper receipt itself always comes first.
+ */
+export async function printReceiptSegments(
+  segments: PrintSegment[]
+): Promise<PrinterResult> {
   const mod = getPrinterModule();
   if (!mod) return { success: false, error: NOT_AVAILABLE_MSG };
 
@@ -374,7 +397,29 @@ export async function printReceipt(receiptText: string): Promise<PrinterResult> 
 
   try {
     const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
-    await printBillAsync(instance, receiptText);
+    const lastIndex = segments.length - 1;
+    let hasCut = false;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i]!;
+      if (segment.type === "text") {
+        const isFinal = i === lastIndex;
+        await printBillAsync(instance, segment.text, { cut: isFinal });
+        hasCut = isFinal;
+        continue;
+      }
+
+      const qr = buildQrBmpBase64(segment.data);
+      if (!qr) continue; // unbuildable payload — the text receipt still prints
+      instance.printImageBase64(qr.base64, { imageWidth: qr.widthPx });
+      await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
+    }
+
+    if (!hasCut) {
+      // The receipt ended on a QR (or a skipped one) — feed and cut after it.
+      await printBillAsync(instance, "\n", { cut: true });
+    }
+
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -382,6 +427,10 @@ export async function printReceipt(receiptText: string): Promise<PrinterResult> 
     usePrinterStore.getState().setConnected(false);
     return { success: false, error: message || "Print failed" };
   }
+}
+
+export async function printReceipt(receiptText: string): Promise<PrinterResult> {
+  return printReceiptSegments([{ type: "text", text: receiptText }]);
 }
 
 export async function printTestPage(): Promise<PrinterResult> {

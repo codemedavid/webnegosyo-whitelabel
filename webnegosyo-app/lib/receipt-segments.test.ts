@@ -66,6 +66,11 @@ describe("renderReceiptSegments", () => {
       { ...config, trackingUrl: TRACK_URL },
       { version: 1, blocks: [{ kind: "qr" }] },
     );
-    expect(flat).toContain(TRACK_URL); // scanner-less phones can still type it
+    // Wrapped across paper-width lines, but every character survives — a
+    // scanner-less phone can still type it in.
+    expect(flat.replace(/\n/g, "")).toContain(TRACK_URL);
+    for (const line of flat.split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(32);
+    }
   });
 });
