@@ -110,6 +110,12 @@ export interface PosOrderArgs {
    * argument shape every already-deployed backend has always accepted.
    */
   deliveryFee?: number;
+  /**
+   * Also present only when taken. Convex and the platform DB both have a real
+   * column for it; the blob copy (`customerData.delivery_address`) covers
+   * everything else.
+   */
+  deliveryAddress?: string;
   orderType?: string;
   orderTypeId?: string;
   source: "pos";
@@ -235,6 +241,9 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     },
     total,
     ...(deliveryFee > 0 ? { deliveryFee } : {}),
+    ...(deliveryBlob.delivery_address
+      ? { deliveryAddress: deliveryBlob.delivery_address }
+      : {}),
     orderType: context.orderType,
     orderTypeId: context.orderTypeId,
     source: "pos",
