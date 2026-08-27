@@ -4002,6 +4002,7 @@ export type Database = {
           page_layout: string | null
           pairing_rules_enabled: boolean | null
           pickup_scan_enabled: boolean
+          receipt_layout: Json | null
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
@@ -4247,6 +4248,7 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
+          receipt_layout?: Json | null
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
@@ -4492,6 +4494,7 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
+          receipt_layout?: Json | null
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null

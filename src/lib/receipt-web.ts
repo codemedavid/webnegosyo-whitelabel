@@ -21,7 +21,7 @@ export function mapSupabaseOrderToReceipt(order: OrderWithItems): ReceiptOrder {
     orderType: order.order_type ?? undefined,
     total: order.total,
     deliveryFee: order.delivery_fee ?? undefined,
-    paymentMethod: order.payment_method ?? undefined,
+    paymentMethod: order.payment_method_name ?? undefined,
     customerData: order.customer_data,
     items: (order.order_items ?? []).map((item) => ({
       menuItemName: item.menu_item_name,

@@ -16,7 +16,7 @@ const order = {
   order_type: 'Pickup',
   total: 250,
   delivery_fee: 50,
-  payment_method: 'GCash',
+  payment_method_name: 'GCash',
   created_at: '2026-07-26T04:30:00.000Z',
   customer_data: {
     discount: {

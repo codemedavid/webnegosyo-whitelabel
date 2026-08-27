@@ -36,7 +36,9 @@ export async function saveReceiptLayoutAction(
     const admin = createAdminClient()
     const { error } = await admin
       .from('tenants')
-      .update({ receipt_layout: sanitized })
+      // Structured-clone through JSON: ReceiptLayout is a closed interface and
+      // the generated Json type wants an index signature.
+      .update({ receipt_layout: JSON.parse(JSON.stringify(sanitized)) })
       .eq('id', tenantId)
 
     if (error) return { success: false, error: 'Could not save' }
