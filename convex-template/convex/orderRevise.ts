@@ -159,6 +159,29 @@ export function computeRevisedTotal(
   return round2(itemsTotal + (deliveryFee ?? 0) + (serviceChargeAmount ?? 0));
 }
 
+/**
+ * The `deliveryFee` patch a revision writes beside its total.
+ *
+ * The total has always been computed FROM `deliveryFee` (see
+ * {@link computeRevisedTotal}) but the field itself was never patched, so a
+ * corrected fee changed the bill while the stored breakdown kept the old
+ * figure. Three states, kept distinct:
+ *   omitted (undefined) — an old app build that never sends the argument;
+ *                         the stored fee is left alone.
+ *   0                   — the edit removed the fee; the field is cleared
+ *                         (patching undefined deletes it in Convex).
+ *   a positive amount   — stored, rounded exactly as the total was.
+ */
+export function revisedDeliveryFeePatch(
+  deliveryFee?: number,
+): { deliveryFee?: number } {
+  if (deliveryFee === undefined) return {}
+  if (!Number.isFinite(deliveryFee) || deliveryFee <= 0) {
+    return { deliveryFee: undefined }
+  }
+  return { deliveryFee: round2(deliveryFee) }
+}
+
 /** Total units on the revised order, for the `itemCount` cache. */
 export function countRevisedItems(priced: readonly PricedItem[]): number {
   return priced.reduce((sum, item) => sum + item.quantity, 0);

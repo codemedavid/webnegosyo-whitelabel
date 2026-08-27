@@ -81,7 +81,7 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // unbookable with no recovery path) and accepts lalamoveQuotationId on the
 // updateLalamoveDetails mutations. The app calls requote only against
 // deployments recorded at >= 20.
-const CURRENT_SCHEMA_VERSION = 20;
+const CURRENT_SCHEMA_VERSION = 21;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

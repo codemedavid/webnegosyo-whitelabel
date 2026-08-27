@@ -15,6 +15,7 @@ import {
   normalizePaymentAmount,
   netAmountPaid,
   mergeOrderDiscount,
+  revisedDeliveryFeePatch,
 } from "./orderRevise";
 
 // --- MUTATIONS ---
@@ -243,6 +244,8 @@ export const reviseOrder = mutation({
 
     await ctx.db.patch(args.orderId, {
       total,
+      // The fee the total above was computed with — see revisedDeliveryFeePatch.
+      ...revisedDeliveryFeePatch(args.deliveryFee),
       itemCount: countRevisedItems(priced),
       revisionNumber,
       editedAt: args.editedAt,
