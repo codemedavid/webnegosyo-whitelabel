@@ -28,6 +28,10 @@ import type { Tenant } from '@/types/database'
 import { createTenantAction, updateTenantAction } from '@/actions/tenants'
 import { testLoyverseConnectionAction, syncLoyverseCatalogAction } from '@/app/actions/loyverse'
 import type { LoyverseConnectionTest } from '@/lib/loyverse/client'
+import {
+  describeLoyverseWebhookStatus,
+  type LoyverseWebhookStatusFields,
+} from '@/lib/loyverse/webhook-status'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
@@ -1355,12 +1359,14 @@ function LoyverseSection({
   formData,
   setFormData,
   isPending,
-  tenantId
+  tenantId,
+  webhookStatusFields
 }: {
   formData: TenantFormData
   setFormData: SetFormData
   isPending: boolean
   tenantId?: string
+  webhookStatusFields?: LoyverseWebhookStatusFields
 }) {
   const [isTesting, setIsTesting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -1570,6 +1576,27 @@ function LoyverseSection({
                   </Button>
                 </div>
               )}
+
+              {tenantId && (() => {
+                const status = describeLoyverseWebhookStatus(webhookStatusFields ?? {})
+                const toneClasses = {
+                  ok: 'border-emerald-400/20 bg-emerald-400/10',
+                  error: 'border-amber-400/20 bg-amber-400/10',
+                  pending: 'border-white/10 bg-white/5',
+                }[status.tone]
+                const labelClasses = {
+                  ok: 'text-emerald-400',
+                  error: 'text-amber-400',
+                  pending: 'text-white/50',
+                }[status.tone]
+                return (
+                  <div className={`rounded-xl border p-4 ${toneClasses}`}>
+                    <p className="text-sm text-white/70">
+                      <strong className={labelClasses}>Live updates:</strong> {status.message}
+                    </p>
+                  </div>
+                )
+              })()}
 
               {connection?.success && (
                 <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
@@ -2265,6 +2292,7 @@ export function TenantFormWrapper({
             setFormData={setFormData}
             isPending={isPending}
             tenantId={tenant?.id}
+            webhookStatusFields={tenant}
           />
         </TabsContent>
 
