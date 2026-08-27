@@ -391,6 +391,9 @@ export default function PosTenderScreen() {
         // Priced from the cart as it stands at the moment of tender, not from
         // whatever was showing when the code was typed.
         discounts: discountLines,
+        // Read at tender time for the same reason as the discount lines: the
+        // fee the customer is charged is whatever the sale holds NOW.
+        delivery: usePosCartStore.getState().delivery,
         // A counter sale belongs to the till that rang it, so the branch on
         // the session is stamped onto the order. Null for a single-location
         // register, which stamps nothing.

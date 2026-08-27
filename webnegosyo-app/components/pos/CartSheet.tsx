@@ -35,6 +35,8 @@ interface CartSheetProps {
   onAddDiscount?: () => void;
   /** Removes one applied discount by its label. */
   onRemoveDiscount?: (line: OrderDiscountLine) => void;
+  /** Opens delivery details entry. Absent (e.g. editing) hides it entirely. */
+  onEditDelivery?: () => void;
 }
 
 /**
@@ -62,9 +64,14 @@ export function CartSheet({
   discountLines = [],
   onAddDiscount,
   onRemoveDiscount,
+  onEditDelivery,
 }: CartSheetProps) {
   const hasItems = lines.length > 0;
   const activeType = orderTypes.find((type) => type.id === orderTypeId);
+  // Surfaced more prominently for a delivery-type sale, but never hidden for
+  // the rest: a dine-in order type does not stop a customer asking the shop
+  // to send the food over.
+  const isDeliveryType = activeType?.type === "delivery";
 
   return (
     <View style={styles.sheet}>
@@ -120,6 +127,21 @@ export function CartSheet({
             >
               <Text style={styles.collapsedDiscountAction}>
                 {discountLines.length > 0 ? "Change" : "+ Discount"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* A delivery-type sale gets the fee entry here in the collapsed
+              state too — that is the sale most likely to need it, and the
+              sheet opens collapsed. */}
+          {onEditDelivery && isDeliveryType && (
+            <TouchableOpacity
+              onPress={onEditDelivery}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Add delivery details"
+            >
+              <Text style={styles.collapsedDiscountAction}>
+                {totals.deliveryFee > 0 ? `Delivery ${formatPeso(totals.deliveryFee)}` : "+ Delivery"}
               </Text>
             </TouchableOpacity>
           )}
@@ -181,6 +203,20 @@ export function CartSheet({
                 <Text style={styles.totalValue}>{formatPeso(totals.serviceCharge)}</Text>
               </View>
             )}
+            {/* Tappable to correct: a mistyped fee must be fixable where it
+                shows, not by hunting for the sheet that set it. */}
+            {totals.deliveryFee > 0 && (
+              <TouchableOpacity
+                style={styles.totalRow}
+                onPress={onEditDelivery}
+                disabled={!onEditDelivery}
+                accessibilityRole="button"
+                accessibilityLabel="Edit delivery fee"
+              >
+                <Text style={styles.totalLabel}>Delivery</Text>
+                <Text style={styles.totalValue}>{formatPeso(totals.deliveryFee)}</Text>
+              </TouchableOpacity>
+            )}
 
             {/*
               One row per discount, each removable. Shown individually rather
@@ -212,6 +248,15 @@ export function CartSheet({
                 accessibilityRole="button"
               >
                 <Text style={styles.addDiscountText}>+ Add discount</Text>
+              </TouchableOpacity>
+            )}
+            {onEditDelivery && totals.deliveryFee <= 0 && (
+              <TouchableOpacity
+                style={styles.addDiscount}
+                onPress={onEditDelivery}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addDiscountText}>+ Add delivery fee</Text>
               </TouchableOpacity>
             )}
           </View>

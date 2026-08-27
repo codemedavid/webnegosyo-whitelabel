@@ -44,6 +44,7 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
 import { DiscountSheet } from "../../components/pos/DiscountSheet";
+import { DeliverySheet } from "../../components/pos/DeliverySheet";
 import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
@@ -100,7 +101,10 @@ export default function PosScreen() {
   const removeVoucher = usePosCartStore((s) => s.removeVoucher);
   const setManualDiscount = usePosCartStore((s) => s.setManualDiscount);
   const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
+  const delivery = usePosCartStore((s) => s.delivery);
+  const setDelivery = usePosCartStore((s) => s.setDelivery);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+  const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
 
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -513,6 +517,9 @@ export default function PosScreen() {
         // who produces a voucher after ordering no longer needs the order
         // cancelled and re-rung.
         onAddDiscount={() => setIsDiscountOpen(true)}
+        // Hidden on an edit: a placed order's fee was carried from when it was
+        // placed and is revised on the order screen, not re-typed at the till.
+        onEditDelivery={edit ? undefined : () => setIsDeliveryOpen(true)}
         onRemoveDiscount={(line) => {
           if (line.code) removeVoucher(line.code);
           else clearManualDiscount();
@@ -561,6 +568,13 @@ export default function PosScreen() {
         hasManualDiscount={discount.manual !== null}
         onRemoveVoucher={removeVoucher}
         onRemoveManual={clearManualDiscount}
+      />
+
+      <DeliverySheet
+        visible={isDeliveryOpen}
+        onClose={() => setIsDeliveryOpen(false)}
+        delivery={delivery}
+        onSave={setDelivery}
       />
     </View>
   );
