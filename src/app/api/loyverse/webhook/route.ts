@@ -18,6 +18,10 @@ import type { Tenant } from '@/types/database'
  * Loyverse retries for 48h and then disables the webhook on persistent
  * non-2xx, so config errors return 200 with an ignored marker.
  */
+// items.update re-imports the whole catalog; give it the reconcile route's
+// budget rather than the lambda default.
+export const maxDuration = 300
+
 export async function POST(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get('secret')
   const tenantId = request.nextUrl.searchParams.get('tenant_id')

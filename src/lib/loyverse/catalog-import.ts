@@ -112,7 +112,22 @@ interface UnclaimedRow {
   image_url: string | null
 }
 
-export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyncReport> {
+/**
+ * Mirrors per run are capped so image re-hosting can never starve the import
+ * of its timeout budget again. A stored Loyverse hotlink still reads as
+ * "mirror me" (see image-mirror.ts), so the 6-hourly reconcile finishes the
+ * remainder a batch at a time.
+ */
+export const DEFAULT_IMAGE_MIRROR_LIMIT = 25
+
+export interface ImportLoyverseCatalogOptions {
+  imageMirrorLimit?: number
+}
+
+export async function importLoyverseCatalog(
+  tenant: Tenant,
+  options: ImportLoyverseCatalogOptions = {}
+): Promise<LoyverseSyncReport> {
   const resolved = resolveLoyverseConfig(tenant)
   if (resolved.status === 'disabled') return emptyReport('Loyverse is not enabled for this tenant')
   if (resolved.status === 'incomplete') {
@@ -280,6 +295,7 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
   }
 
   // --- Upsert menu items.
+  const pendingMirrors: Array<{ menuItemId: string; itemName: string; imageUrl: string }> = []
   for (const item of mapping.items) {
     const categoryId = await resolveCategoryId(item)
     if (!categoryId) {
@@ -298,18 +314,16 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     }
     const existingId = menuItemIdByLoyverseId[item.loyverseItemId]
 
-    // Re-host the Loyverse photo on ImageKit; fall back to the hotlink (kept
-    // renderable via next.config remotePatterns) when the mirror fails. A
-    // merchant-hosted image is never touched.
+    // Images are NOT mirrored here. The mirror is a network fetch per item;
+    // awaiting it inside this loop is what let a 244-item catalog outrun the
+    // function timeout and never finish. The item is written with the
+    // Loyverse hotlink (renderable via next.config remotePatterns) and queued
+    // for a capped mirror pass after the whole catalog has landed.
     const currentImage = existingId ? (imageByMenuItemId.get(existingId) ?? '') : ''
-    let imageField: { image_url: string } | Record<string, never> = {}
-    if (shouldMirrorLoyverseImage(currentImage, item.imageUrl)) {
-      const mirrored = await mirrorLoyverseImage(tenant.id, item.imageUrl as string)
-      if (!mirrored) {
-        report.warnings.push(`Image for "${item.name}" could not be re-hosted; using the Loyverse link`)
-      }
-      imageField = { image_url: mirrored ?? (item.imageUrl as string) }
-    }
+    const wantsMirror = shouldMirrorLoyverseImage(currentImage, item.imageUrl)
+    const imageField: { image_url: string } | Record<string, never> = wantsMirror
+      ? { image_url: item.imageUrl as string }
+      : {}
 
     const commonFields = {
       name: item.name,
@@ -363,6 +377,14 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
       report.itemsCreated++
     }
 
+    if (wantsMirror) {
+      pendingMirrors.push({
+        menuItemId: menuItemIdByLoyverseId[item.loyverseItemId],
+        itemName: item.name,
+        imageUrl: item.imageUrl as string,
+      })
+    }
+
     // --- Map rows for THIS item, written now rather than after every item.
     // Scoped to the item's own variant rows, so an interrupted sync leaves a
     // partial-but-correct map instead of an empty one.
@@ -403,10 +425,39 @@ export async function importLoyverseCatalog(tenant: Tenant): Promise<LoyverseSyn
     }
   }
 
+  // The catalog is fully landed; the sync is complete regardless of images.
   await supabase
     .from('tenants')
     .update({ loyverse_last_synced_at: new Date().toISOString() } as never)
     .eq('id', tenant.id)
+
+  // --- Capped mirror pass: cosmetic, after the sync is already complete.
+  // Failures and the deferred tail both leave the hotlink in place, which the
+  // next sync/reconcile recognizes as still needing a mirror.
+  const mirrorLimit = options.imageMirrorLimit ?? DEFAULT_IMAGE_MIRROR_LIMIT
+  const mirrorsNow = pendingMirrors.slice(0, mirrorLimit)
+  for (const pending of mirrorsNow) {
+    const mirrored = await mirrorLoyverseImage(tenant.id, pending.imageUrl)
+    if (!mirrored) {
+      report.warnings.push(
+        `Image for "${pending.itemName}" could not be re-hosted; using the Loyverse link`
+      )
+      continue
+    }
+    const { error: imageError } = await supabase
+      .from('menu_items')
+      .update({ image_url: mirrored } as never)
+      .eq('id', pending.menuItemId)
+      .eq('tenant_id', tenant.id)
+    if (imageError) {
+      report.warnings.push(`Failed to save mirrored image for "${pending.itemName}": ${imageError.message}`)
+    }
+  }
+  if (pendingMirrors.length > mirrorsNow.length) {
+    report.warnings.push(
+      `${pendingMirrors.length - mirrorsNow.length} images deferred to the next sync`
+    )
+  }
 
   report.success = true
   return report
