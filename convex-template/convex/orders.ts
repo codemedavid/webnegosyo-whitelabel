@@ -159,6 +159,44 @@ export const updateOrderStatus = mutation({
   },
 });
 
+/**
+ * Attach a contact to an order after the fact (receipt-QR capture).
+ *
+ * Authorized upstream by the order's HMAC tracking token, which is printed on
+ * paper anyone can photograph — so this is strictly once-only: it fills a
+ * blank/placeholder contact and never overwrites a real one. The guard lives
+ * here as well as on the web server because Convex is the transaction
+ * boundary; two concurrent submissions cannot both land.
+ */
+export const updateCustomerContact = mutation({
+  args: {
+    orderId: v.id("orders"),
+    contact: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+
+    const existing = (order.customerContact ?? "").trim().toLowerCase();
+    const placeholders = ["", "n/a", "na", "-", "none", "walk-in"];
+    if (!placeholders.includes(existing)) {
+      throw new Error("Contact already set");
+    }
+
+    const contact = args.contact.trim();
+    if (contact.length < 3 || contact.length > 64) {
+      throw new Error("Invalid contact");
+    }
+
+    await ctx.db.patch(args.orderId, {
+      customerContact: contact,
+      ...(args.name ? { customerName: args.name.trim().slice(0, 64) } : {}),
+    });
+    return args.orderId;
+  },
+});
+
 export const updatePaymentStatus = mutation({
   args: {
     orderId: v.id("orders"),
