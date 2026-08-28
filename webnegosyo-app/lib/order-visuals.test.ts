@@ -2,6 +2,7 @@ import {
   getInitials,
   getAvatarColor,
   getUrgency,
+  getScheduleAwareUrgency,
   getUrgencyColor,
   getOrderTypeMeta,
   getStatusMeta,
@@ -64,6 +65,29 @@ describe("getUrgency", () => {
   it("treats a future/invalid timestamp as fresh", () => {
     expect(getUrgency(now + 60_000, now)).toBe("fresh");
     expect(getUrgency(NaN, now)).toBe("fresh");
+  });
+});
+
+describe("getScheduleAwareUrgency", () => {
+  const now = 1_700_000_000_000;
+  const placedLongAgo = now - 60 * 60_000;
+
+  it("falls back to age-based urgency for ASAP orders", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, null, now)).toBe("urgent");
+    expect(getScheduleAwareUrgency(now - 2 * 60_000, null, now)).toBe("fresh");
+  });
+
+  it("keeps a pre-order for later calm no matter how old the ticket is", () => {
+    // Placed an hour ago, wanted three hours from now: not late, just booked.
+    expect(getScheduleAwareUrgency(placedLongAgo, now + 3 * 60 * 60_000, now)).toBe("fresh");
+  });
+
+  it("warms up as the requested moment approaches", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, now + 30 * 60_000, now)).toBe("warning");
+  });
+
+  it("goes urgent once the requested moment has passed", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, now - 60_000, now)).toBe("urgent");
   });
 });
 

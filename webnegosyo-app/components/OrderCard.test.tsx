@@ -1,0 +1,52 @@
+/**
+ * The order card's scheduled chip.
+ *
+ * A pre-order for Saturday used to render identically to an ASAP order placed
+ * five minutes ago — same card, same "2h ago" age, and after fifteen minutes
+ * the same red urgency accent screaming that it was late. These tests pin the
+ * two fixes: the card names the requested moment (preferring the label the
+ * customer's own device captured at checkout), and a future pre-order is not
+ * painted late by the age of its ticket.
+ */
+import React from "react";
+import { render, screen } from "@testing-library/react-native";
+import { OrderCard, type OrderCardOrder } from "./OrderCard";
+
+const baseOrder: OrderCardOrder = {
+  _id: "o1",
+  _creationTime: Date.now() - 60 * 60_000,
+  customerName: "Maria Cruz",
+  total: 1240,
+  itemCount: 4,
+  status: "confirmed",
+};
+
+describe("OrderCard scheduled chip", () => {
+  it("shows the customer-captured schedule label on a pre-order", () => {
+    render(
+      <OrderCard
+        order={{
+          ...baseOrder,
+          customerData: { scheduled_for_label: "Thu, Jun 18 · 5:30 PM" },
+        }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Scheduled · Thu, Jun 18 · 5:30 PM")).toBeTruthy();
+  });
+
+  it("formats the ISO when only the column value survived", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, scheduledFor: new Date(2026, 5, 18, 17, 0).toISOString() }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Scheduled · Thu, Jun 18 · 5:00 PM")).toBeTruthy();
+  });
+
+  it("shows no chip on an ASAP order", () => {
+    render(<OrderCard order={baseOrder} onPress={jest.fn()} />);
+    expect(screen.queryByText(/^Scheduled ·/)).toBeNull();
+  });
+});
