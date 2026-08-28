@@ -100,6 +100,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // unmapped tab defaults to ALLOWED, which would put the board — and its
   // bump button — in front of every staffer with any grant at all.
   kitchen: "kitchen",
+  // The scheduled agenda is the order queue re-sorted by requested time, so it
+  // rides the orders grant. Mapped explicitly because an unmapped tab defaults
+  // to ALLOWED, which would show every pre-order to a pos-only cashier.
+  scheduled: "orders",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

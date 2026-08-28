@@ -6,6 +6,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { isTabInWorkspace } from "../../lib/workspaces";
 import { isTabAllowed } from "../../lib/staff-permissions";
+import { useAdvanceOrdering } from "../../lib/use-advance-ordering";
 import { activeWorkspace, isBusinessTabVisible } from "../../lib/portfolio-landing";
 import { usePortfolioAudience } from "../../lib/use-portfolio-audience";
 import { supabase } from "../../lib/supabase";
@@ -59,14 +60,19 @@ export default function MainLayout() {
   // what this account may actually see — otherwise a persisted "business"
   // leaves a branch manager with an empty tab bar.
   const workspace = activeWorkspace(storedWorkspace, caller, audience);
-  // Three gates: the active view owns the tab, the account's staff grants
-  // permit it, and — for the Business tabs — the account runs the store rather
-  // than one branch. A registered tab is reachable even when the switcher
-  // never named its view, so the branch rule has to be asked here too.
+  // The Scheduled tab exists only for stores that take pre-orders at all —
+  // gated on config rather than data so it never flickers with the order list.
+  const takesAdvanceOrders = useAdvanceOrdering();
+  // Four gates: the active view owns the tab, the account's staff grants
+  // permit it, the Business tabs need a store that runs several branches, and
+  // Scheduled needs a store that takes pre-orders. A registered tab is
+  // reachable even when the switcher never named its view, so every rule has
+  // to be asked here, not just in the switcher.
   const show = (tab: string) =>
     isTabInWorkspace(tab, workspace) &&
     isTabAllowed(caller, tab) &&
-    isBusinessTabVisible(tab, audience)
+    isBusinessTabVisible(tab, audience) &&
+    (tab !== "scheduled" || takesAdvanceOrders)
       ? undefined
       : null;
 
@@ -116,6 +122,14 @@ export default function MainLayout() {
           href: show("kitchen"),
           tabBarLabel: "Kitchen",
           tabBarIcon: ({ color }) => <TabIcon name="kitchen" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="scheduled"
+        options={{
+          href: show("scheduled"),
+          tabBarLabel: "Scheduled",
+          tabBarIcon: ({ color }) => <TabIcon name="calendar" color={color} />,
         }}
       />
       {/* Register view */}
