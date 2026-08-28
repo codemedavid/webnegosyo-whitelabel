@@ -54,6 +54,28 @@ asserted the wrong line index); the implementation was not changed for it.
   the new kinds and safely falls back to Classic. Ship the app-side
   `receipt-layout.ts` (OTA-able JS) before telling merchants to use the new blocks.
 
+## Round 2 — logo block + sidebar entry (2026-08-28)
+
+Journeys: print the store logo on the receipt; reach Receipt Studio from the
+admin sidebar.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 9 | `logo` block emits an image segment when config carries `logoUrl`; silent without one and in flat text; parses as a simple block | `receipt-layout.test.ts` "logo block" (both mirrors) | PASS |
+| 10 | `buildReceiptSegments` forwards the logo URL; logo-less prints stay text-only | `webnegosyo-app/lib/receipt-print.test.ts` | PASS |
+| 11 | Sign-in and impersonation carry `tenants.logo_url` into `authStore.receiptLogoUrl`; impersonation exit clears it | same file + `impersonation.test.ts` | PASS |
+| 12 | `fetchLogoBase64` returns downloaded bytes as base64; null on HTTP error / network throw / empty body / > 512 KB | `webnegosyo-app/lib/receipt-logo.test.ts` | PASS |
+| 13 | Palette offers a Store logo block in the Header group | `tests/unit/receipt-editor.test.ts` | PASS |
+
+RED evidence: web 3 failing + app 3 suites compile-time RED (commit with the
+reproducers); GREEN: web 86/86 relevant, app full suite 2986/2986, app tsc
+clean. Two test-side fixes during GREEN (impersonation round-trip fixture
+gained the new cleared field; an `as const` fixture made readonly) — no
+implementation was changed to satisfy a test.
+
+Untested by automation: `printer.ts` image branch (native module) and the
+hardware raster itself — same standing gap as the QR block.
+
 ## Merge evidence (survives squash)
 
 RED `fbce5e1` (test reproducers) → GREEN `7c1486a` (engine, both mirrors) →
