@@ -389,6 +389,35 @@ export async function createOrderAction(
     // object when no branch resolved — see withOrderOutlet.
     effectiveCustomerData = withOrderOutlet(effectiveCustomerData, resolvedOutlet)
 
+    // ── Producible-quantity stock guard (authoritative; every order backend) ──
+    // The Loyverse check above, and auto-86, both only ever ask "is this dish
+    // above zero?" — which stays true right up until the order that empties the
+    // shelf is accepted in full. This asks the question a quantity stepper
+    // actually poses: can the kitchen make the number in this cart? Flour for
+    // two burgers has always accepted a cart of fifty until now.
+    //
+    // Deliberately placed AFTER the branch is resolved: which shelf this is
+    // judged against is the branch fulfilling the order, and that is settled
+    // above from the tenant's own outlets — never from the customer's payload.
+    // Silent on every failure path (inventory off, failed read, no recipe), so
+    // a tenant without inventory issues exactly the queries they issue today.
+    {
+      const { findCheckoutStockShortfallMessage } = await import(
+        '@/lib/inventory/checkout-stock-guard'
+      )
+      const shortfallMessage = await findCheckoutStockShortfallMessage(
+        tenantId,
+        items.map((item) => ({
+          menuItemId: item.menu_item_id,
+          quantity: item.quantity,
+        })),
+        resolvedOutlet?.id ?? null,
+      )
+      if (shortfallMessage) {
+        return { success: false, error: shortfallMessage }
+      }
+    }
+
     // ── Server-side distance-based delivery fee (authoritative) ──
     // For tenants on the non-Lalamove distance path, recompute the fee from the
     // store↔customer straight-line distance + tenant config, and reject out-of-range
