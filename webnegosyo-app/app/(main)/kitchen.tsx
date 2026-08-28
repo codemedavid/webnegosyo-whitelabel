@@ -18,13 +18,13 @@ import {
   aggregateAllDay,
   bumpTargetStatus,
   recallTargetStatus,
+  scanNewTickets,
   type KitchenOrderLike,
   type KitchenItemLike,
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../../lib/kitchen-chit";
 import { printReceiptSegments } from "../../lib/printer";
-import { selectNewOrders } from "../../lib/order-alerts-utils";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
@@ -93,13 +93,20 @@ export default function KitchenScreen() {
 
   // Flash genuinely new tickets. The global order alert already rings the
   // chime app-wide; the board only needs the visual.
-  const prevIdsRef = useRef<Set<string> | null>(null);
-  const newIds = useMemo(() => {
-    const activeOrders = tickets.map((t) => t.order);
-    const fresh = selectNewOrders(prevIdsRef.current, activeOrders);
-    prevIdsRef.current = new Set(activeOrders.map((o) => o._id));
-    return new Set(fresh.map((o) => o._id));
-  }, [tickets]);
+  //
+  // This runs in an effect, not during render: the scan carries a ref across
+  // renders, and mutating that ref mid-render is what let a still-loading
+  // (empty) board seed the seen-set and flash every ticket on open.
+  const seenRef = useRef<ReadonlySet<string> | null>(null);
+  const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    // `undefined` while the query is in flight — never `[]`, which would read
+    // as "answered: nothing active" and re-flash the board on the next tick.
+    const ids = orders === undefined ? undefined : tickets.map((t) => t.order._id);
+    const scan = scanNewTickets(seenRef.current, ids);
+    seenRef.current = scan.seen;
+    setNewIds(scan.newIds);
+  }, [tickets, orders]);
 
   const handleBump = useCallback(
     async (orderId: string) => {

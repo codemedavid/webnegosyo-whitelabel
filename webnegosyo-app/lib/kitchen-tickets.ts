@@ -82,14 +82,63 @@ export function recallTargetStatus(): "preparing" {
 
 const MS_PER_MINUTE = 60_000;
 const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
 
-/** Elapsed cook time as "4m" / "1h 12m"; clock skew clamps to "0m". */
+/**
+ * Elapsed cook time as "4m" / "1h 12m" / "91d 5h"; clock skew clamps to "0m".
+ *
+ * The day rollover is not cosmetic. An order left confirmed for months (they
+ * exist on real stores) rendered "2189h 26m", which a cook cannot read as any
+ * span of time at all.
+ */
 export function formatTicketTimer(creationTimeMs: number, nowMs: number): string {
   const elapsed = Math.max(0, nowMs - creationTimeMs);
   const minutes = Math.floor(elapsed / MS_PER_MINUTE);
   if (minutes < MINUTES_PER_HOUR) return `${minutes}m`;
+
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  return `${hours}h ${minutes % MINUTES_PER_HOUR}m`;
+  if (hours < HOURS_PER_DAY) return `${hours}h ${minutes % MINUTES_PER_HOUR}m`;
+
+  return `${Math.floor(hours / HOURS_PER_DAY)}d ${hours % HOURS_PER_DAY}h`;
+}
+
+export interface NewTicketScan {
+  /** Tickets that arrived since the last scan — the ones worth flashing. */
+  newIds: ReadonlySet<string>;
+  /** The seen-set to carry into the next scan. */
+  seen: ReadonlySet<string> | null;
+}
+
+/**
+ * Which tickets are genuinely new since the last look.
+ *
+ * `undefined` means the orders query has not answered yet and MUST be
+ * distinguished from `[]` ("answered: nothing active"). The board originally
+ * conflated them: the screen always held an array, so the very first render
+ * seeded the seen-set as empty, and every ticket in the first real batch then
+ * counted as new. On a live store that flashed the whole board on open.
+ */
+export function scanNewTickets(
+  prevSeen: ReadonlySet<string> | null,
+  orderIds: readonly string[] | undefined,
+): NewTicketScan {
+  // Still loading — seeding now is the bug; keep whatever we already knew.
+  if (orderIds === undefined) {
+    return { newIds: new Set(), seen: prevSeen };
+  }
+
+  const seen = new Set(orderIds);
+
+  // First answered snapshot: adopt it wholesale. Tickets that were already on
+  // the board when the cook walked up did not just arrive.
+  if (prevSeen === null) {
+    return { newIds: new Set(), seen };
+  }
+
+  return {
+    newIds: new Set(orderIds.filter((id) => !prevSeen.has(id))),
+    seen,
+  };
 }
 
 export interface AllDayLine {
