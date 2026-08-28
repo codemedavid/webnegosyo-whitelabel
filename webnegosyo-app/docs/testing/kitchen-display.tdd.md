@@ -42,10 +42,51 @@
 - Web: `staff-permissions` pattern → 2 suites / 33 tests passed. Web lint has 88 pre-existing errors; the changed files lint clean.
 - App: `npx tsc --noEmit` clean; changed files ESLint clean.
 
+## Round 2 — iOS simulator run (2026-08-29)
+
+Cycle: RED `d6a41b9b` → GREEN `8c0f20d9`.
+
+Run on a Debug build (ExpoKeepAwake 15.0.8 was already linked, so no native
+rebuild) against Metro, driven with `idb ui tap`. Two devices:
+
+| Device | Session | What it showed |
+|---|---|---|
+| iPad Pro 11" (M4) | Demo store | Kitchen tab present with its icon; board mounts; `0 open`; "All caught up" empty state — which matched the data exactly (the public demo store has 2 pending + 1 cancelled and **no** confirmed/preparing orders) |
+| iPhone 17 | A real merchant session persisted on that simulator | 4 live tickets: oldest-first order, all-day roll-up, variations (`Mixed Seafoods (Java rice)`), add-ons (`+ Java rice`), `DELIVERY` chips, `PREPARING` marker, urgency bands |
+
+No order was bumped or confirmed on either device: the iPhone was pointed at a
+real store, and manufacturing a ticket would have mutated live data and rung
+push notifications on real handsets.
+
+### Defects the run found (neither was caught by the unit suite)
+
+| # | Defect | Evidence | Fix |
+|---|---|---|---|
+| 1 | **Every ticket flashed as new on open** — all four cards drew the green "new" outline. `selectNewOrders` was seeded from the empty array the screen holds *while orders are still loading*, so the first real batch all read as new. | screenshot `iphone-02` (all borders green) vs `iphone-04` (neutral) | `scanNewTickets` distinguishes `undefined` (in flight) from `[]` (answered, nothing active) and adopts the first answered snapshot without flashing; moved out of the render phase into an effect |
+| 2 | **Timer had no day rollover** — a months-old ticket rendered `2189h 26m` | screenshot `iphone-02` | `formatTicketTimer` rolls over to `77d 2h` (verified on device in `iphone-04`) |
+
+### Test-teeth check
+
+`components/kitchen/TicketCard.test.tsx` was written against already-shipped
+code, so passing proved nothing on its own. Three deliberate mutations were
+injected (drop the special-instructions line, bump the wrong order id, remove
+`textDecorationLine`); **exactly the 3 corresponding tests failed** and the
+other 10 stayed green. The component was then restored from git and re-verified
+clean (`git diff` empty, 13/13 passing).
+
+### Round 2 suite results
+
+- App: `npx jest` → **219 suites / 3108 tests passed**
+- Web: `npx jest` → **536 suites / 6337 tests passed**
+- Blast radius (`kitchen|staff-permissions|workspaces|tab-navigation|owner-surface|order-alerts`) → 9 suites / 140 passed
+- `npx tsc --noEmit` and ESLint clean on changed files
+
 ## Known gaps
 
 - No station routing (grill/fry per-item stations) — deferred, needs per-item config that doesn't exist.
 - Item strike-through is per-display local state, deliberately unsynced.
-- Screen is asserted by source-guardrail tests (Jest here runs pure-logic roots only), not rendered; no E2E.
+- The *screen* is asserted by source-guardrail tests plus the live simulator run; only the `TicketCard` is render-tested. No automated E2E.
+- Multi-column tablet grid was never seen populated: the only device with active tickets was a phone, and the iPad session (demo store) had an empty board. Column counts remain covered by code inspection only.
+- Bump and recall were not exercised end to end against a backend, for the data-safety reason above.
 - Both refs the board reads are platform-adapter supported (`orders:getOrders`, `orders:getAllOrderItems`, `orders:updateOrderStatus`), so platform-backend tenants work; per-tenant `supabase` track remains "unsupported" as designed.
 - Desktop POS registry got the key for parity only; no desktop kitchen UI.
