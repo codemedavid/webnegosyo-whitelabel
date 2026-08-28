@@ -69,7 +69,7 @@ export function occurrenceKey(campaignId: string, dueAt: Date): string {
 }
 
 function bodyFor(state: CampaignDueState): string {
-  return `${state.name} is ready to send. Open WebNegosyo and tap Send.`;
+  return `${state.name} is ready to send. Open SmartMenu and tap Send.`;
 }
 
 /**

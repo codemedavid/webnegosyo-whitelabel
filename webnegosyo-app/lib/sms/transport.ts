@@ -37,7 +37,7 @@ export class SmsPermissionDeniedError extends Error {
     super(
       canAskAgain
         ? "Permission to send SMS was denied."
-        : "Permission to send SMS was denied. Enable SMS for WebNegosyo in Android Settings to run campaigns."
+        : "Permission to send SMS was denied. Enable SMS for SmartMenu in Android Settings to run campaigns."
     );
     this.name = "SmsPermissionDeniedError";
   }

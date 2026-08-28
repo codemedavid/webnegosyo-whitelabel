@@ -2,7 +2,13 @@ import { ExpoConfig, ConfigContext } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "WebNegosyo",
+  // Home-screen name on both platforms. The store *listing* names are set in
+  // App Store Connect and Play Console, not here — keep all three in sync.
+  // `slug`, `scheme`, `bundleIdentifier` and `android.package` deliberately keep
+  // the webnegosyo identifiers: changing the bundle id starts a brand-new App
+  // Store app and changing the Android package starts a brand-new Play listing,
+  // losing every existing install and review. A rename is display-only.
+  name: "SmartMenu",
   slug: "webnegosyo-app",
   owner: "itscodemedavid",
   scheme: "webnegosyo-admin",
@@ -31,7 +37,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   splash: {
     image: "./assets/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#F2F2F7",
+    // White, to match the SmartMenu mark's own background — the old #F2F2F7
+    // left a visible square edge around the logo plate.
+    backgroundColor: "#FFFFFF",
   },
   ios: {
     supportsTablet: true,
@@ -50,7 +58,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/android-icon-foreground.png",
-      backgroundColor: "#111111",
+      // The SmartMenu mark is red/orange on white; the old #111111 plate put a
+      // black ring around it under every Android mask shape.
+      backgroundColor: "#FFFFFF",
     },
     package: "com.webnegosyo.admin",
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
@@ -88,7 +98,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "expo-image-picker",
       {
-        photosPermission: "Allow WebNegosyo to access your photos to add product images.",
+        photosPermission: "Allow SmartMenu to access your photos to add product images.",
       },
     ],
     "./plugins/withThermalPrinterSimulatorFix.js",

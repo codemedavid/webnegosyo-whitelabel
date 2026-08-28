@@ -124,7 +124,7 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Merchant Admin</Text>
-          <Text style={styles.title}>WebNegosyo</Text>
+          <Text style={styles.title}>SmartMenu</Text>
           <Text style={styles.subtitle}>
             Run your store from anywhere — for any food or retail business
           </Text>
