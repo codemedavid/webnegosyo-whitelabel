@@ -1,5 +1,4 @@
-import { getWebAppUrl } from "./web-app-url";
-import { supabase } from "./supabase";
+import { postAuthorized } from "./authorized-post";
 import type { PosStockItem } from "./pos-stock";
 
 
@@ -76,23 +75,14 @@ export async function notifyOrderStockRevision(
   });
 }
 
-/** The one authenticated call both directions share. Never throws. */
+/**
+ * The one authenticated call both directions share. Never throws, and — via
+ * `postAuthorized` — always returns: the tender screen awaits this before it
+ * clears its spinner, so an unbounded wait here is a frozen register.
+ *
+ * Best-effort by design. The order already succeeded; the ledger is
+ * reconcilable by stocktake, a failed sale or a stuck cancellation is not.
+ */
 async function postStockAction(body: Record<string, unknown>): Promise<void> {
-  try {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
-
-    await fetch(`${getWebAppUrl()}/api/inventory/order-stock`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    // Best-effort — the order already succeeded. The ledger is reconcilable by
-    // stocktake; a failed sale or a stuck cancellation is not.
-  }
+  await postAuthorized("/api/inventory/order-stock", body);
 }

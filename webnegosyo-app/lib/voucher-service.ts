@@ -1,4 +1,5 @@
 import { getWebAppUrl } from "./web-app-url";
+import { postAuthorized } from "./authorized-post";
 import { supabase } from "./supabase";
 import type { OrderDiscountLine } from "./order-totals";
 import type { Voucher } from "./vouchers/types";
@@ -184,25 +185,15 @@ export async function burnPosRedemptions(
 
   if (redemptions.length === 0) return;
 
-  try {
-    const token = await accessToken();
-    if (!token) return;
-
-    await fetch(`${getWebAppUrl()}/api/vouchers/redeem`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        tenantId,
-        orderId,
-        channel: "pos",
-        outletId: outletId ?? null,
-        redemptions,
-      }),
-    });
-  } catch {
-    // Best-effort — the customer has already paid. See the note above.
-  }
+  // Bounded, for the same reason the lookup is: the tender screen awaits this
+  // before it clears its spinner, and an unbounded session read behind a
+  // stalled token refresh would leave the register frozen after the customer
+  // has already paid. Never throws — see the note above.
+  await postAuthorized("/api/vouchers/redeem", {
+    tenantId,
+    orderId,
+    channel: "pos",
+    outletId: outletId ?? null,
+    redemptions,
+  });
 }
