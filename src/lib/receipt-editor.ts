@@ -14,30 +14,41 @@ import {
  * a bad save would silently discard the merchant's design).
  */
 
+export const BLOCK_GROUPS = ['Header', 'Order details', 'Items & totals', 'Extras'] as const
+
+export type BlockGroup = (typeof BLOCK_GROUPS)[number]
+
 export interface BlockPaletteEntry {
   kind: ReceiptBlockKind
   label: string
   description: string
+  group: BlockGroup
 }
 
 export const BLOCK_PALETTE: BlockPaletteEntry[] = [
-  { kind: 'businessName', label: 'Business name', description: 'Store name, centered and bold' },
-  { kind: 'storeAddress', label: 'Store address', description: 'Prints only when an address is set' },
-  { kind: 'text', label: 'Custom text', description: 'Subtitle, note, or any message' },
-  { kind: 'divider', label: 'Divider line', description: 'A full-width rule' },
-  { kind: 'orderMeta', label: 'Order details', description: 'Order #, date, customer, type' },
-  { kind: 'contact', label: 'Customer contact', description: 'Phone/handle when the order has one' },
-  { kind: 'items', label: 'Items', description: 'Full item list with prices' },
-  { kind: 'itemsSummary', label: 'Item count', description: 'Just "Items: N"' },
-  { kind: 'totals', label: 'Totals', description: 'Subtotal, discounts, TOTAL, payment' },
-  { kind: 'qr', label: 'Tracking QR', description: 'Scan to track the order live' },
-  { kind: 'feed', label: 'Blank line', description: 'Vertical spacing' },
+  { kind: 'businessName', label: 'Business name', description: 'Store name, centered and bold', group: 'Header' },
+  { kind: 'storeAddress', label: 'Store address', description: 'Prints only when an address is set', group: 'Header' },
+  { kind: 'text', label: 'Custom text', description: 'Subtitle, note, or any message', group: 'Header' },
+  { kind: 'divider', label: 'Divider line', description: 'A full-width rule', group: 'Header' },
+  { kind: 'orderMeta', label: 'All order details', description: 'Order #, date, customer, type in one block', group: 'Order details' },
+  { kind: 'orderNumber', label: 'Order number', description: 'Just the order # — label is editable', group: 'Order details' },
+  { kind: 'orderDate', label: 'Date & time', description: 'When the order was placed — label is editable', group: 'Order details' },
+  { kind: 'customerName', label: 'Customer name', description: 'Who ordered — label is editable', group: 'Order details' },
+  { kind: 'orderType', label: 'Order type', description: 'Dine-in / pickup / delivery, when set', group: 'Order details' },
+  { kind: 'contact', label: 'Customer contact', description: 'Phone/handle when the order has one', group: 'Order details' },
+  { kind: 'fillIn', label: 'Fill-in line', description: 'A label with a blank line to write on', group: 'Order details' },
+  { kind: 'items', label: 'Items', description: 'Full item list with prices', group: 'Items & totals' },
+  { kind: 'itemsSummary', label: 'Item count', description: 'Just "Items: N"', group: 'Items & totals' },
+  { kind: 'totals', label: 'Totals', description: 'Subtotal, discounts, TOTAL, payment', group: 'Items & totals' },
+  { kind: 'qr', label: 'Tracking QR', description: 'Scan to track the order live', group: 'Extras' },
+  { kind: 'feed', label: 'Blank line', description: 'Vertical spacing', group: 'Extras' },
 ]
 
 /** A new block of the given kind, seeded with editable defaults. */
 function seedBlock(kind: ReceiptBlockKind): ReceiptBlock {
   if (kind === 'text') return { kind: 'text', text: 'Your note here', align: 'center' }
   if (kind === 'divider') return { kind: 'divider', char: '=' }
+  if (kind === 'fillIn') return { kind: 'fillIn', label: 'Name' }
   return { kind } as ReceiptBlock
 }
 

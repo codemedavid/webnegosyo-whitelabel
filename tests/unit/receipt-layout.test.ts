@@ -137,7 +137,7 @@ describe('order detail blocks (web mirror)', () => {
       version: 1,
       blocks: [{ kind: 'orderType' }, { kind: 'text', text: 'after' }],
     })
-    expect(linesOf(receipt)[1]).toBe('Type: Dine-in')
+    expect(linesOf(receipt)).toEqual(['Type: Dine-in', 'after'])
     const noType = renderReceipt({ ...detailOrder, orderType: undefined }, config, {
       version: 1,
       blocks: [{ kind: 'orderType' }, { kind: 'text', text: 'after' }],

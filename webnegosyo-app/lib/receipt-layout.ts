@@ -76,6 +76,11 @@ export type ReceiptBlock =
   | { kind: "storeAddress" }
   | { kind: "text"; text: string; align?: ReceiptTextAlign }
   | { kind: "orderMeta" }
+  | { kind: "orderNumber"; label?: string }
+  | { kind: "orderDate"; label?: string }
+  | { kind: "customerName"; label?: string }
+  | { kind: "orderType"; label?: string }
+  | { kind: "fillIn"; label: string }
   | { kind: "items" }
   | { kind: "itemsSummary" }
   | { kind: "totals" }
@@ -266,20 +271,42 @@ function itemLines(item: ReceiptOrderItem, w: number, slotPrefix = ""): string[]
   return lines;
 }
 
-function renderOrderMeta(order: ReceiptOrder, w: number): string[] {
-  const lines: string[] = [];
-  const orderNum = order._id.slice(-8).toUpperCase();
+// The granular detail blocks and the composite `orderMeta` share these line
+// builders, so stacking the four details reproduces orderMeta byte-for-byte.
+
+function orderNumberLine(order: ReceiptOrder, label: string): string {
+  return `${label}: ${order._id.slice(-8).toUpperCase()}`;
+}
+
+function orderDateLine(order: ReceiptOrder, label: string): string {
   const date = new Date(order._creationTime);
   const dateStr = date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const timeStr = date.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+  return `${label}: ${dateStr}  ${timeStr}`;
+}
 
-  lines.push(`Order #: ${orderNum}`);
-  lines.push(`Date: ${dateStr}  ${timeStr}`);
-  lines.push(truncate(`Customer: ${order.customerName}`, w));
-  if (order.orderType) {
-    lines.push(truncate(`Type: ${order.orderType}`, w));
-  }
-  return lines;
+function customerNameLine(order: ReceiptOrder, label: string, w: number): string {
+  return truncate(`${label}: ${order.customerName}`, w);
+}
+
+/** Empty when the order carries no type — the block simply prints nothing. */
+function orderTypeLines(order: ReceiptOrder, label: string, w: number): string[] {
+  return order.orderType ? [truncate(`${label}: ${order.orderType}`, w)] : [];
+}
+
+/** "Label: ______" — a rule the customer writes on, out to the paper edge. */
+function fillInLine(label: string, w: number): string {
+  const prefix = truncate(`${label}: `, w);
+  return prefix + "_".repeat(Math.max(0, w - prefix.length));
+}
+
+function renderOrderMeta(order: ReceiptOrder, w: number): string[] {
+  return [
+    orderNumberLine(order, "Order #"),
+    orderDateLine(order, "Date"),
+    customerNameLine(order, "Customer", w),
+    ...orderTypeLines(order, "Type", w),
+  ];
 }
 
 function renderItems(ctx: RenderContext, w: number): string[] {
@@ -422,6 +449,21 @@ export function renderReceiptSegments(
       case "orderMeta":
         lines.push(...renderOrderMeta(order, w));
         break;
+      case "orderNumber":
+        lines.push(orderNumberLine(order, block.label ?? "Order #"));
+        break;
+      case "orderDate":
+        lines.push(orderDateLine(order, block.label ?? "Date"));
+        break;
+      case "customerName":
+        lines.push(customerNameLine(order, block.label ?? "Customer", w));
+        break;
+      case "orderType":
+        lines.push(...orderTypeLines(order, block.label ?? "Type", w));
+        break;
+      case "fillIn":
+        lines.push(fillInLine(block.label, w));
+        break;
       case "items":
         lines.push(...renderItems(ctx, w));
         break;
@@ -493,6 +535,14 @@ const SIMPLE_BLOCK_KINDS: readonly ReceiptBlockKind[] = [
   "feed",
 ];
 
+/** Detail blocks whose printed label the merchant may rename. */
+const LABELED_DETAIL_KINDS = ["orderNumber", "orderDate", "customerName", "orderType"] as const;
+const MAX_LABEL_LENGTH = 32;
+
+function isValidLabel(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= MAX_LABEL_LENGTH;
+}
+
 function parseBlock(value: unknown): ReceiptBlock | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
@@ -516,8 +566,26 @@ function parseBlock(value: unknown): ReceiptBlock | null {
     };
   }
 
+  if (LABELED_DETAIL_KINDS.includes(raw.kind as (typeof LABELED_DETAIL_KINDS)[number])) {
+    if (raw.label !== undefined && !isValidLabel(raw.label)) return null;
+    return {
+      kind: raw.kind as (typeof LABELED_DETAIL_KINDS)[number],
+      ...(raw.label !== undefined ? { label: raw.label as string } : {}),
+    };
+  }
+
+  if (raw.kind === "fillIn") {
+    if (!isValidLabel(raw.label)) return null;
+    return { kind: "fillIn", label: raw.label };
+  }
+
   if (SIMPLE_BLOCK_KINDS.includes(raw.kind as ReceiptBlockKind)) {
-    return { kind: raw.kind as Exclude<ReceiptBlockKind, "divider" | "text"> };
+    return {
+      kind: raw.kind as Exclude<
+        ReceiptBlockKind,
+        "divider" | "text" | "fillIn" | (typeof LABELED_DETAIL_KINDS)[number]
+      >,
+    };
   }
 
   return null;
