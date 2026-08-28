@@ -63,8 +63,15 @@ export function selectKitchenTickets<O extends KitchenOrderLike, I extends Kitch
     .map((order) => ({ order, items: itemsByOrder.get(order._id) ?? [] }));
 }
 
-/** Bumping means "done cooking" — any active ticket lands on ready. */
-export function bumpTargetStatus(_status: string): "ready" {
+/**
+ * Bumping means "done cooking" — any active ticket lands on ready. The current
+ * status is accepted (and deliberately ignored) so call sites read as a
+ * transition and the day a status-dependent bump is needed, no caller changes.
+ */
+export function bumpTargetStatus(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  status: string,
+): "ready" {
   return "ready";
 }
 
