@@ -289,3 +289,23 @@ export function getOrderScheduledLabel(order: ScheduledOrderLike | null | undefi
   const iso = getOrderScheduledISO(order)
   return iso ? formatScheduledFor(iso) : null
 }
+
+/** Convex schema version that introduced the top-level `scheduledFor` mutation arg. */
+export const CONVEX_SCHEDULED_FOR_MIN_VERSION = 9
+
+/**
+ * The top-level `scheduledFor` arg for a Convex createOrder call, or nothing.
+ *
+ * Convex rejects unknown mutation args, so a pre-v9 tenant deployment sent the
+ * field would fail the whole checkout. Unknown versions read as "too old" for
+ * the same reason. Omission is always safe: the same ISO also rides inside
+ * customerData, which every reader falls back to (getOrderScheduledISO).
+ */
+export function convexScheduledForArg(
+  scheduledForISO: string | null | undefined,
+  convexSchemaVersion: number | null | undefined
+): { scheduledFor: string } | Record<string, never> {
+  if (!scheduledForISO) return {}
+  if ((convexSchemaVersion ?? 0) < CONVEX_SCHEDULED_FOR_MIN_VERSION) return {}
+  return { scheduledFor: scheduledForISO }
+}
