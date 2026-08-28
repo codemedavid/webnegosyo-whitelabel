@@ -30,7 +30,7 @@ import {
   CLASSIC_RECEIPT_LAYOUT,
   COMPACT_RECEIPT_LAYOUT,
   DETAILED_RECEIPT_LAYOUT,
-  renderReceipt,
+  renderReceiptSegments,
   resolveReceiptLayout,
   type ReceiptBlock,
   type ReceiptLayout,
@@ -43,6 +43,8 @@ interface ReceiptEditorProps {
   tenantId: string
   tenantSlug: string
   storeName: string
+  /** The tenant's logo URL — the `logo` block previews and prints with it. */
+  logoUrl: string | null
   initialLayout: unknown
 }
 
@@ -113,7 +115,7 @@ function publishKey(mode: EditorMode, layout: ReceiptLayout): string {
   return mode === 'custom' ? JSON.stringify(layout) : mode
 }
 
-export function ReceiptEditor({ tenantId, tenantSlug, storeName, initialLayout }: ReceiptEditorProps) {
+export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initialLayout }: ReceiptEditorProps) {
   const idCounter = useRef(0)
   const nextId = () => `block-${++idCounter.current}`
 
@@ -143,15 +145,23 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, initialLayout }
   )
   const isDirty = publishKey(mode, activeLayout) !== savedKey
 
-  const preview = useMemo(
+  const previewSegments = useMemo(
     () =>
-      renderReceipt(
+      renderReceiptSegments(
         SAMPLE_ORDER,
-        { storeName, storeAddress: undefined, trackingUrl: SAMPLE_TRACKING_URL },
+        {
+          storeName,
+          storeAddress: undefined,
+          trackingUrl: SAMPLE_TRACKING_URL,
+          ...(logoUrl ? { logoUrl } : {}),
+        },
         activeLayout.blocks.length > 0 ? activeLayout : CLASSIC_RECEIPT_LAYOUT,
       ),
-    [storeName, activeLayout],
+    [storeName, logoUrl, activeLayout],
   )
+
+  const hasLogoBlockWithoutLogo =
+    !logoUrl && activeLayout.blocks.some((block) => block.kind === 'logo')
 
   const handlePresetSelect = (preset: ReceiptPresetName) => {
     setMode(preset)
@@ -290,6 +300,12 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, initialLayout }
                   <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">
                     Your receipt — drag to arrange
                   </div>
+                  {hasLogoBlockWithoutLogo && (
+                    <div className="mb-2 rounded-[10px] bg-amber-50 px-3 py-2 text-[11.5px] leading-snug text-amber-800">
+                      Your store has no logo yet, so the logo block prints
+                      nothing. Upload one in Settings first.
+                    </div>
+                  )}
                   {drafts.length === 0 && (
                     <div className="rounded-[10px] border border-dashed border-[#D8D2C6] px-3 py-4 text-center text-[12px] text-[#8B857B]">
                       Empty receipt — add blocks from the library below.
@@ -371,7 +387,7 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, initialLayout }
             <div className="mb-4 text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">
               Live preview — sample sale
             </div>
-            <PaperPreview receipt={preview} />
+            <PaperPreview segments={previewSegments} />
             <p className="mt-5 max-w-[280px] text-center text-[11px] leading-relaxed text-[#8B857B]">
               Rendered by the same engine your printer uses — what you see is
               what prints. The QR block prints as a scannable code on paper.

@@ -2,6 +2,7 @@ import { Platform, PermissionsAndroid } from "react-native";
 import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
 import { buildQrBmpBase64 } from "./receipt-qr";
+import { fetchLogoBase64 } from "./receipt-logo";
 
 // ESC/POS commands for text formatting.
 // Note: init/feed/cut are handled by the library's printBill (EPToolkit) so we
@@ -364,7 +365,14 @@ function printBillAsync(
 /** One printable piece of a receipt; see renderReceiptSegments. */
 export type PrintSegment =
   | { type: "text"; text: string }
-  | { type: "qr"; data: string };
+  | { type: "qr"; data: string }
+  | { type: "image"; url: string };
+
+/**
+ * Print width for the store logo, in dots. A 58mm head is 384 dots wide;
+ * printing narrower leaves a margin and keeps the raster transfer quick.
+ */
+const LOGO_PRINT_WIDTH = 320;
 
 /**
  * Give the printer's image buffer a moment to drain before more data follows.
@@ -406,6 +414,15 @@ export async function printReceiptSegments(
         const isFinal = i === lastIndex;
         await printBillAsync(instance, segment.text, { cut: isFinal });
         hasCut = isFinal;
+        continue;
+      }
+
+      if (segment.type === "image") {
+        // The store logo, downloaded as-is (PNG/JPEG decode on-device).
+        const logo = await fetchLogoBase64(segment.url);
+        if (!logo) continue; // unfetchable logo — the text receipt still prints
+        instance.printImageBase64(logo, { imageWidth: LOGO_PRINT_WIDTH });
+        await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
         continue;
       }
 

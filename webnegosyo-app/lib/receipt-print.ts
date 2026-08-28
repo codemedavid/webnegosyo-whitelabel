@@ -30,10 +30,15 @@ export function buildReceiptSegments(
   storeName: string,
   savedLayout: unknown,
   trackingUrl: string | null,
+  logoUrl: string | null = null,
 ): ReceiptSegment[] {
   return renderReceiptSegments(
     order,
-    { storeName, ...(trackingUrl ? { trackingUrl } : {}) },
+    {
+      storeName,
+      ...(trackingUrl ? { trackingUrl } : {}),
+      ...(logoUrl ? { logoUrl } : {}),
+    },
     resolveReceiptLayout(savedLayout),
   );
 }

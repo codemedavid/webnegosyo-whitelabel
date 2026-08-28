@@ -45,8 +45,12 @@ function writeU16le(bytes: Uint8Array, offset: number, value: number): void {
   bytes[offset + 1] = (value >>> 8) & 0xff;
 }
 
-/** Hermes ships no Buffer/btoa; encoding ~10 KB ourselves is the cheap fix. */
-function toBase64(bytes: Uint8Array): string {
+/**
+ * Hermes ships no Buffer/btoa; encoding ~10 KB ourselves is the cheap fix.
+ * Exported for lib/receipt-logo.ts, which encodes downloaded logo bytes the
+ * same way.
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
   let out = "";
   for (let i = 0; i < bytes.length; i += 3) {
     const a = bytes[i]!;
@@ -125,5 +129,5 @@ export function buildQrBmpBase64(
     }
   }
 
-  return { base64: toBase64(bytes), widthPx };
+  return { base64: bytesToBase64(bytes), widthPx };
 }

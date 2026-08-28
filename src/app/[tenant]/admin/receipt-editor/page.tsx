@@ -23,6 +23,7 @@ export default async function ReceiptEditorPage({
       tenantId={tenant.id}
       tenantSlug={tenantSlug}
       storeName={tenant.name}
+      logoUrl={tenant.logo_url ?? null}
       initialLayout={tenant.receipt_layout ?? null}
     />
   )

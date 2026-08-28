@@ -66,6 +66,8 @@ export interface ReceiptConfig {
   width?: number; // characters per line, default 32
   /** Customer-facing tracking URL; the `qr` block is silent without it. */
   trackingUrl?: string;
+  /** Store logo image URL; the `logo` block is silent without it. */
+  logoUrl?: string;
 }
 
 export type ReceiptTextAlign = "left" | "center" | "right";
@@ -74,6 +76,7 @@ export type ReceiptBlock =
   | { kind: "divider"; char?: string }
   | { kind: "businessName" }
   | { kind: "storeAddress" }
+  | { kind: "logo" }
   | { kind: "text"; text: string; align?: ReceiptTextAlign }
   | { kind: "orderMeta" }
   | { kind: "orderNumber"; label?: string }
@@ -414,7 +417,8 @@ function renderText(block: { text: string; align?: ReceiptTextAlign }, w: number
  */
 export type ReceiptSegment =
   | { type: "text"; text: string }
-  | { type: "qr"; data: string };
+  | { type: "qr"; data: string }
+  | { type: "image"; url: string };
 
 export function renderReceiptSegments(
   order: ReceiptOrder,
@@ -442,6 +446,12 @@ export function renderReceiptSegments(
         break;
       case "storeAddress":
         if (config.storeAddress) lines.push(center(truncate(config.storeAddress, w), w));
+        break;
+      case "logo":
+        if (config.logoUrl) {
+          flushText();
+          segments.push({ type: "image", url: config.logoUrl });
+        }
         break;
       case "text":
         lines.push(...renderText(block, w));
@@ -506,6 +516,9 @@ export function renderReceipt(
 ): string {
   const w = layout.width ?? config.width ?? 32;
   return renderReceiptSegments(order, config, layout)
+    // A logo cannot degrade to text the way a QR degrades to its URL — flat
+    // surfaces (previews, browser print) simply skip it.
+    .filter((segment) => segment.type !== "image")
     .map((segment) => {
       if (segment.type === "text") return segment.text;
       // Wrap rather than truncate: a clipped URL cannot be typed into a phone.
@@ -526,6 +539,7 @@ const TEXT_ALIGNS: readonly ReceiptTextAlign[] = ["left", "center", "right"];
 const SIMPLE_BLOCK_KINDS: readonly ReceiptBlockKind[] = [
   "businessName",
   "storeAddress",
+  "logo",
   "orderMeta",
   "items",
   "itemsSummary",

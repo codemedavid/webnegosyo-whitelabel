@@ -26,6 +26,7 @@ export interface BlockPaletteEntry {
 }
 
 export const BLOCK_PALETTE: BlockPaletteEntry[] = [
+  { kind: 'logo', label: 'Store logo', description: 'Your logo, printed at the top', group: 'Header' },
   { kind: 'businessName', label: 'Business name', description: 'Store name, centered and bold', group: 'Header' },
   { kind: 'storeAddress', label: 'Store address', description: 'Prints only when an address is set', group: 'Header' },
   { kind: 'text', label: 'Custom text', description: 'Subtitle, note, or any message', group: 'Header' },

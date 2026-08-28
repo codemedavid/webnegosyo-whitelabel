@@ -40,6 +40,7 @@ export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const tenantId = useAuthStore((s) => s.tenantId);
   const receiptLayout = useAuthStore((s) => s.receiptLayout);
+  const receiptLogoUrl = useAuthStore((s) => s.receiptLogoUrl);
   const { printTrigger, printer } = usePrinterStore();
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -66,6 +67,7 @@ export function useOrderPrint() {
           tenantName ?? "Store",
           receiptLayout,
           trackingUrl,
+          receiptLogoUrl,
         );
         const result = await printReceiptSegments(segments);
         if (!result.success) {
@@ -79,7 +81,7 @@ export function useOrderPrint() {
         setIsPrinting(false);
       }
     },
-    [printer, tenantName, tenantId, receiptLayout]
+    [printer, tenantName, tenantId, receiptLayout, receiptLogoUrl]
   );
 
   /**

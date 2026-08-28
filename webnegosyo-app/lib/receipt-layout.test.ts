@@ -308,9 +308,9 @@ describe("logo block — printed as a raster, silent everywhere else", () => {
 
   it("prints nothing without a configured logo, and nothing in flat text", () => {
     const layout = {
-      version: 1,
-      blocks: [{ kind: "logo" }, { kind: "text", text: "after" }],
-    } as const;
+      version: 1 as const,
+      blocks: [{ kind: "logo" as const }, { kind: "text" as const, text: "after" }],
+    };
     expect(linesOf(renderReceipt(baseOrder, config, layout))).toEqual(["after"]);
     expect(
       linesOf(renderReceipt(baseOrder, { ...config, logoUrl: "https://x/l.png" }, layout)),

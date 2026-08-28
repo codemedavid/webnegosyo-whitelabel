@@ -138,6 +138,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   outlets: 'store_setup',
   'payment-methods': 'store_setup',
   branding: 'store_setup',
+  'receipt-editor': 'store_setup',
   'hero-designer': 'store_setup',
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',

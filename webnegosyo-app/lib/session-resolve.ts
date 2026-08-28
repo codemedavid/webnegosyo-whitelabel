@@ -44,6 +44,8 @@ export interface TenantRow {
   order_backend?: OrderBackend | null;
   /** Saved receipt layout: a preset name or a custom block stack. Untrusted. */
   receipt_layout?: unknown;
+  /** Store logo image URL — printed by the receipt's logo block. */
+  logo_url?: string | null;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -74,6 +76,8 @@ export interface SessionAuthPatch {
    * path (`lib/receipt-print.ts`) shape-checks it and falls back to Classic.
    */
   receiptLayout: unknown;
+  /** Store logo URL for the receipt's logo block; null when the tenant has none. */
+  receiptLogoUrl: string | null;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -161,6 +165,7 @@ export function resolveSession(
         convexSchemaVersion: null,
         orderBackend: null,
         receiptLayout: null,
+        receiptLogoUrl: null,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -196,6 +201,7 @@ export function resolveSession(
       convexSchemaVersion: tenant.convex_schema_version ?? null,
       orderBackend: resolveOrderBackend(tenant),
       receiptLayout: tenant.receipt_layout ?? null,
+      receiptLogoUrl: tenant.logo_url ?? null,
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,

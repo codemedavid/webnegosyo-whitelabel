@@ -25,9 +25,12 @@ interface AdminLayoutClientProps {
 export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: AdminLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
-  // Branding Studio is a full-screen workspace with its own top bar — no
-  // sidebar/container chrome, which would otherwise stack over its layout.
-  const isFullBleedRoute = pathname?.startsWith(`/${tenantSlug}/admin/branding`) ?? false
+  // Branding Studio and Receipt Studio are full-screen workspaces with their
+  // own top bars — no sidebar/container chrome, which would stack over them.
+  const isFullBleedRoute =
+    (pathname?.startsWith(`/${tenantSlug}/admin/branding`) ||
+      pathname?.startsWith(`/${tenantSlug}/admin/receipt-editor`)) ??
+    false
 
   const handleLogout = async () => {
     try {

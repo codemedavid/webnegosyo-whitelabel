@@ -43,6 +43,7 @@ export type ImpersonationPatch = {
   convexSchemaVersion: number | null;
   /** The viewed tenant's saved receipt layout; cleared on exit like the rest. */
   receiptLayout: unknown;
+  receiptLogoUrl?: string | null;
 } & Pick<
   ImpersonationState,
   | "userId"
@@ -89,6 +90,7 @@ export function enterTenant(
     convexSchemaVersion: tenant.convex_schema_version ?? null,
     orderBackend: resolveOrderBackend(tenant),
     receiptLayout: tenant.receipt_layout ?? null,
+    receiptLogoUrl: tenant.logo_url ?? null,
     impersonatedTenantId: tenant.id,
   };
 }
@@ -111,6 +113,7 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     convexSchemaVersion: null,
     orderBackend: null,
     receiptLayout: null,
+    receiptLogoUrl: null,
     impersonatedTenantId: null,
   };
 }

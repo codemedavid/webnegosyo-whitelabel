@@ -19,6 +19,8 @@ interface AuthState {
    * passed through unvalidated; `lib/receipt-print.ts` shape-checks at print.
    */
   receiptLayout: unknown;
+  /** Store logo URL for receipt printing; null when the tenant has none. */
+  receiptLogoUrl: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -61,6 +63,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   convexSchemaVersion: null,
   orderBackend: null,
   receiptLayout: null,
+  receiptLogoUrl: null,
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
@@ -82,6 +85,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   convexSchemaVersion: null,
       orderBackend: null,
       receiptLayout: null,
+      receiptLogoUrl: null,
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,
