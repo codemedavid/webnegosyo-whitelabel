@@ -1,5 +1,6 @@
 import {
   addBlock,
+  BLOCK_GROUPS,
   BLOCK_PALETTE,
   moveBlock,
   removeBlock,
@@ -62,6 +63,33 @@ describe('BLOCK_PALETTE', () => {
     expect(kinds).toEqual(
       expect.arrayContaining(['businessName', 'text', 'items', 'totals', 'qr', 'contact']),
     )
+  })
+
+  it('offers the granular order-detail blocks', () => {
+    const kinds = BLOCK_PALETTE.map((entry) => entry.kind)
+    expect(kinds).toEqual(
+      expect.arrayContaining([
+        'orderNumber',
+        'orderDate',
+        'customerName',
+        'orderType',
+        'fillIn',
+      ]),
+    )
+  })
+
+  it('assigns every entry to a known palette group', () => {
+    for (const entry of BLOCK_PALETTE) {
+      expect(BLOCK_GROUPS).toContain(entry.group)
+    }
+    // Every group has at least one block, so the editor never shows an empty group.
+    for (const group of BLOCK_GROUPS) {
+      expect(BLOCK_PALETTE.some((entry) => entry.group === group)).toBe(true)
+    }
+  })
+
+  it('seeds a fill-in block with an editable label', () => {
+    expect(addBlock([], 'fillIn')[0]).toEqual({ kind: 'fillIn', label: 'Name' })
   })
 })
 

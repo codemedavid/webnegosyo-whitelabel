@@ -99,6 +99,113 @@ describe('custom layouts (web mirror)', () => {
   })
 })
 
+describe('order detail blocks (web mirror)', () => {
+  const detailOrder = { ...baseOrder, customerName: 'Maria', orderType: 'Dine-in' }
+
+  it('prints each order detail as its own block with default labels', () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [
+        { kind: 'orderNumber' },
+        { kind: 'orderDate' },
+        { kind: 'customerName' },
+        { kind: 'orderType' },
+      ],
+    })
+    const lines = linesOf(receipt)
+    expect(lines[0]).toBe('Order #: 34567890')
+    expect(lines[1]).toMatch(/^Date: /)
+    expect(lines[2]).toBe('Customer: Maria')
+    expect(lines[3]).toBe('Type: Dine-in')
+  })
+
+  it('prints merchant-authored labels instead of the defaults', () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [
+        { kind: 'orderNumber', label: 'Ref' },
+        { kind: 'customerName', label: 'Guest' },
+      ],
+    })
+    const lines = linesOf(receipt)
+    expect(lines[0]).toBe('Ref: 34567890')
+    expect(lines[1]).toBe('Guest: Maria')
+  })
+
+  it('stays silent for orderType when the order has none', () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: 'orderType' }, { kind: 'text', text: 'after' }],
+    })
+    expect(linesOf(receipt)[1]).toBe('Type: Dine-in')
+    const noType = renderReceipt({ ...detailOrder, orderType: undefined }, config, {
+      version: 1,
+      blocks: [{ kind: 'orderType' }, { kind: 'text', text: 'after' }],
+    })
+    expect(linesOf(noType)).toEqual(['after'])
+  })
+
+  it('stacked in the classic order, the granular blocks match orderMeta line-for-line', () => {
+    const granular = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [
+        { kind: 'orderNumber' },
+        { kind: 'orderDate' },
+        { kind: 'customerName' },
+        { kind: 'orderType' },
+      ],
+    })
+    const composite = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: 'orderMeta' }],
+    })
+    expect(granular).toBe(composite)
+  })
+
+  it('renders a fill-in line as a label plus a writable rule to the paper edge', () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: 'fillIn', label: 'Received by' }],
+    })
+    const [line] = linesOf(receipt)
+    expect(line).toHaveLength(32)
+    expect(line.startsWith('Received by: ')).toBe(true)
+    expect(line.endsWith('___')).toBe(true)
+  })
+
+  it('clips an over-long fill-in label to the paper width', () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: 'fillIn', label: 'X'.repeat(40) }],
+    })
+    expect(linesOf(receipt)[0]).toHaveLength(32)
+  })
+
+  it('parses the detail blocks and rejects malformed ones', () => {
+    expect(
+      parseReceiptLayout({
+        version: 1,
+        blocks: [
+          { kind: 'orderNumber' },
+          { kind: 'orderDate', label: 'Printed' },
+          { kind: 'customerName' },
+          { kind: 'orderType' },
+          { kind: 'fillIn', label: 'Name' },
+        ],
+      }),
+    ).not.toBeNull()
+    // fillIn is a writable line — a label is what the customer fills in.
+    expect(parseReceiptLayout({ version: 1, blocks: [{ kind: 'fillIn' }] })).toBeNull()
+    expect(parseReceiptLayout({ version: 1, blocks: [{ kind: 'fillIn', label: '' }] })).toBeNull()
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: 'orderNumber', label: 42 }] }),
+    ).toBeNull()
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: 'orderDate', label: 'Y'.repeat(33) }] }),
+    ).toBeNull()
+  })
+})
+
 describe('layout validation (web mirror)', () => {
   it('accepts valid layouts and rejects invalid ones', () => {
     expect(parseReceiptLayout({ version: 1, blocks: [{ kind: 'items' }] })).not.toBeNull()

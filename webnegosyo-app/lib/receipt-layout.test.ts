@@ -220,6 +220,78 @@ describe("built-in presets", () => {
   });
 });
 
+describe("order detail blocks — granular meta + fill-in lines", () => {
+  const detailOrder = { ...baseOrder, customerName: "Maria", orderType: "Dine-in" };
+
+  it("prints each order detail as its own block, honoring custom labels", () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [
+        { kind: "orderNumber" },
+        { kind: "orderDate" },
+        { kind: "customerName", label: "Guest" },
+        { kind: "orderType" },
+      ],
+    });
+    const lines = linesOf(receipt);
+    expect(lines[0]).toBe("Order #: 34567890");
+    expect(lines[1]).toMatch(/^Date: /);
+    expect(lines[2]).toBe("Guest: Maria");
+    expect(lines[3]).toBe("Type: Dine-in");
+  });
+
+  it("stacked in the classic order, the granular blocks match orderMeta exactly", () => {
+    const granular = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [
+        { kind: "orderNumber" },
+        { kind: "orderDate" },
+        { kind: "customerName" },
+        { kind: "orderType" },
+      ],
+    });
+    const composite = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: "orderMeta" }],
+    });
+    expect(granular).toBe(composite);
+  });
+
+  it("renders a fill-in line as a label plus a writable rule to the paper edge", () => {
+    const receipt = renderReceipt(detailOrder, config, {
+      version: 1,
+      blocks: [{ kind: "fillIn", label: "Received by" }],
+    });
+    const [line] = linesOf(receipt);
+    expect(line).toHaveLength(32);
+    expect(line!.startsWith("Received by: ")).toBe(true);
+    expect(line!.endsWith("___")).toBe(true);
+  });
+
+  it("parses the detail blocks and rejects malformed ones", () => {
+    expect(
+      parseReceiptLayout({
+        version: 1,
+        blocks: [
+          { kind: "orderNumber" },
+          { kind: "orderDate", label: "Printed" },
+          { kind: "customerName" },
+          { kind: "orderType" },
+          { kind: "fillIn", label: "Name" },
+        ],
+      }),
+    ).not.toBeNull();
+    expect(parseReceiptLayout({ version: 1, blocks: [{ kind: "fillIn" }] })).toBeNull();
+    expect(parseReceiptLayout({ version: 1, blocks: [{ kind: "fillIn", label: "" }] })).toBeNull();
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: "orderNumber", label: 42 }] }),
+    ).toBeNull();
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: "orderDate", label: "Y".repeat(33) }] }),
+    ).toBeNull();
+  });
+});
+
 describe("parseReceiptLayout — untrusted tenant JSON", () => {
   it("accepts a valid layout", () => {
     const parsed = parseReceiptLayout({
