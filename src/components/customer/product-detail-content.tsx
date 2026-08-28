@@ -23,6 +23,9 @@ import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 import { useBranchPricing } from '@/hooks/use-branch-pricing'
+import { useStockCeilings, selectCeiling } from '@/hooks/use-stock-ceilings'
+import { resolveAddableQuantity, describeRemainingStock } from '@/lib/inventory/stepper-cap'
+import { MAX_CART_ITEM_QUANTITY } from '@/lib/cart-utils'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -337,7 +340,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
         [previewDraft, tenant, brandingProp]
     )
-    const { addItem, setTenantContext } = useCart()
+    const { addItem, setTenantContext, items: cartItems } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
@@ -408,9 +411,32 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice
-    const effectiveIncreaseQuantity = useGroups ? mg.incrementQuantity : handleIncreaseQuantity
+    const rawIncreaseQuantity = useGroups ? mg.incrementQuantity : handleIncreaseQuantity
     const effectiveDecreaseQuantity = useGroups ? mg.decrementQuantity : handleDecreaseQuantity
     const showCustomizations = useGroups ? mg.groups.length > 0 : hasCustomizations
+
+    // ── Stock ceiling (how many of this dish the kitchen can actually make) ──
+    // Checkout refuses an uncoverable cart on every backend; this is the same
+    // ceiling surfaced where the number is chosen, so nobody walks through the
+    // whole checkout to be turned away on the last screen. Untracked dishes get
+    // `null` and behave exactly as they always have.
+    const ceilings = useStockCeilings(tenant.id, branchPricing.selectedOutletId)
+    const stockCeiling = selectCeiling(ceilings, item.id)
+    // What the cart already holds of this dish, across every configuration of
+    // it: five in the cart as three Large and two Small is still five pizzas'
+    // worth of flour.
+    const alreadyInCart = useMemo(
+        () => cartItems.reduce((sum, line) => (line.menu_item.id === item.id ? sum + line.quantity : sum), 0),
+        [cartItems, item.id],
+    )
+    const addableQuantity = resolveAddableQuantity(stockCeiling, alreadyInCart, MAX_CART_ITEM_QUANTITY)
+    const stockHint = describeRemainingStock(stockCeiling, alreadyInCart)
+    const canIncreaseQuantity = effectiveQuantity < addableQuantity
+
+    const effectiveIncreaseQuantity = useCallback(() => {
+        if (!canIncreaseQuantity) return
+        rawIncreaseQuantity()
+    }, [canIncreaseQuantity, rawIncreaseQuantity])
 
     // Merge customization settings with branding. The Branding Studio streams
     // product-detail edits under __productDetailDraft (kept separate from the
@@ -1345,7 +1371,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             <button
                                 type="button"
                                 onClick={effectiveIncreaseQuantity}
-                                className="h-9 w-9 rounded-full flex items-center justify-center active:scale-95 transition-all"
+                                disabled={!canIncreaseQuantity}
+                                className="h-9 w-9 rounded-full flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all"
                                 style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                                 aria-label="Increase quantity"
                             >
@@ -1353,6 +1380,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             </button>
                         </div>
                     </div>
+                    {/*
+                      A disabled + button with no explanation reads as a broken
+                      page — the same reasoning as the closed-store banner
+                      below. Only shown when stock is actually short; a
+                      storefront that cries shortage on every dish trains
+                      customers to ignore it on the one that matters.
+                    */}
+                    {stockHint && (
+                        <p className="pt-2 text-right text-xs font-medium text-muted-foreground">
+                            {stockHint}
+                        </p>
+                    )}
                 </div>
 
                 <StoreClosedBanner status={openStatus} />
