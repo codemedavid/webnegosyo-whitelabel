@@ -45,6 +45,9 @@ const PIECE: InventoryUnit = {
   id: 'unit-piece', name: 'Piece', abbreviation: 'pc', dimension: 'count', to_base_factor: 1,
 }
 
+/** The tenant's unit catalogue — component rows carry a unit id, not a unit. */
+const UNITS: InventoryUnit[] = [GRAM, KILO, PIECE]
+
 const recipe = (over: Partial<Recipe>): Recipe =>
   ({
     id: 'r1', tenant_id: 't1', target_type: 'menu_item', menu_item_id: 'm1',
@@ -77,7 +80,7 @@ describe('resolveProducibleUnits', () => {
     ]
 
     // Act
-    const units = resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)
+    const units = resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)
 
     // Assert
     expect(units).toBe(5)
@@ -89,7 +92,7 @@ describe('resolveProducibleUnits', () => {
       stock({ id: CHEESE, current_qty: 800 }),
     ]
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)).toBe(4)
+    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)).toBe(4)
   })
 
   it('is zero once an ingredient is exhausted', () => {
@@ -98,7 +101,7 @@ describe('resolveProducibleUnits', () => {
       stock({ id: CHEESE, current_qty: 800 }),
     ]
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)).toBe(0)
+    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)).toBe(0)
   })
 
   it('converts recipe units into the unit the ingredient is stocked in', () => {
@@ -108,7 +111,7 @@ describe('resolveProducibleUnits', () => {
       stock({ id: CHEESE, current_qty: 800 }),
     ]
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)).toBe(10)
+    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)).toBe(10)
   })
 
   it('does not lose a whole unit to floating-point dust', () => {
@@ -122,6 +125,7 @@ describe('resolveProducibleUnits', () => {
       [tiny],
       [leaves],
       [stock({ id: FLOUR, current_qty: 0.1 + 0.1 + 0.1 })],
+      UNITS,
     )
 
     expect(units).toBe(3)
@@ -129,14 +133,14 @@ describe('resolveProducibleUnits', () => {
 
   it('reports no ceiling for a dish with no base recipe', () => {
     expect(
-      resolveProducibleUnits({ menuItemId: 'm-uncosted' }, [PIZZA], PIZZA_COMPONENTS, [stock({})]),
+      resolveProducibleUnits({ menuItemId: 'm-uncosted' }, [PIZZA], PIZZA_COMPONENTS, [stock({})], UNITS),
     ).toBeNull()
   })
 
   it('reports no ceiling for a recipe shell that lists no ingredients', () => {
     const empty = recipe({ id: 'r-empty', menu_item_id: 'm-empty' })
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-empty' }, [empty], [], [stock({})])).toBeNull()
+    expect(resolveProducibleUnits({ menuItemId: 'm-empty' }, [empty], [], [stock({})], UNITS)).toBeNull()
   })
 
   it('passes over an ingredient the tenant does not stock rather than blocking', () => {
@@ -146,6 +150,7 @@ describe('resolveProducibleUnits', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       [stock({ id: FLOUR, current_qty: 1000 })],
+      UNITS,
     )
 
     expect(units).toBe(5)
@@ -157,7 +162,7 @@ describe('resolveProducibleUnits', () => {
       stock({ id: CHEESE, current_qty: 0, is_active: false }),
     ]
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)).toBe(5)
+    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)).toBe(5)
   })
 
   it('passes over a component whose unit cannot convert to the stock unit', () => {
@@ -168,14 +173,14 @@ describe('resolveProducibleUnits', () => {
       stock({ id: CHEESE, current_qty: 4, stockUnit: PIECE }),
     ]
 
-    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf)).toBe(5)
+    expect(resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], PIZZA_COMPONENTS, shelf, UNITS)).toBe(5)
   })
 
   it('passes over a component asking for nothing', () => {
     const zeroed = [component({ id: 'c1', inventory_item_id: FLOUR, quantity: 0 })]
 
     expect(
-      resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], zeroed, [stock({ current_qty: 0 })]),
+      resolveProducibleUnits({ menuItemId: 'm-pizza' }, [PIZZA], zeroed, [stock({ current_qty: 0 })], UNITS),
     ).toBeNull()
   })
 })
@@ -192,6 +197,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       shelfFor(1000, 800),
+      UNITS,
     )
 
     expect(shortfalls).toEqual([])
@@ -203,6 +209,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       shelfFor(1000, 800),
+      UNITS,
     )
 
     expect(shortfalls).toEqual([{ menuItemId: 'm-pizza', requested: 50, producible: 5 }])
@@ -224,6 +231,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA, calzone],
       [...PIZZA_COMPONENTS, ...calzoneComponents],
       shelfFor(1000, 800),
+      UNITS,
     )
 
     // The first line is served in full; the second gets what is left.
@@ -236,6 +244,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       shelfFor(0, 0),
+      UNITS,
     )
 
     expect(shortfalls).toEqual([])
@@ -247,6 +256,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       shelfFor(0, 0),
+      UNITS,
     )
 
     expect(shortfalls).toEqual([])
@@ -263,6 +273,7 @@ describe('findCartStockShortfalls', () => {
       [PIZZA],
       PIZZA_COMPONENTS,
       shelfFor(1000, 800),
+      UNITS,
     )
 
     expect(shortfalls).toEqual([{ menuItemId: 'm-pizza', requested: 6, producible: 5 }])
