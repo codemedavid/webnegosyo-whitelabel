@@ -9,6 +9,7 @@ import {
   recallTargetStatus,
   formatTicketTimer,
   aggregateAllDay,
+  scanNewTickets,
   type KitchenOrderLike,
   type KitchenItemLike,
 } from "./kitchen-tickets";
@@ -104,8 +105,53 @@ describe("formatTicketTimer", () => {
     expect(formatTicketTimer(0, 72 * MINUTE)).toBe("1h 12m");
   });
 
+  it("rolls over to days, so a stale ticket does not read '2189h 26m'", () => {
+    // Seen on a real board: orders left confirmed for months render a
+    // four-digit hour count, which tells a cook nothing.
+    expect(formatTicketTimer(0, 25 * 60 * MINUTE)).toBe("1d 1h");
+    expect(formatTicketTimer(0, 2189 * 60 * MINUTE + 26 * MINUTE)).toBe("91d 5h");
+  });
+
   it("never goes negative on clock skew", () => {
     expect(formatTicketTimer(5_000, 0)).toBe("0m");
+  });
+});
+
+describe("scanNewTickets", () => {
+  // The board flashes genuinely-new tickets. On a real device every ticket
+  // flashed on open, because the scan was seeded with the empty array the
+  // screen holds WHILE ORDERS ARE STILL LOADING — so the first real batch all
+  // looked new. `undefined` (not `[]`) is what "still loading" must look like.
+  it("does not seed while orders are still loading", () => {
+    const scan = scanNewTickets(null, undefined);
+    expect(scan.newIds.size).toBe(0);
+    expect(scan.seen).toBeNull();
+  });
+
+  it("treats the first loaded batch as already-seen, so nothing flashes on open", () => {
+    const scan = scanNewTickets(null, ["a", "b"]);
+    expect([...scan.newIds]).toEqual([]);
+    expect([...(scan.seen ?? [])].sort()).toEqual(["a", "b"]);
+  });
+
+  it("flashes only tickets that arrived after the first batch", () => {
+    const first = scanNewTickets(null, ["a"]);
+    const second = scanNewTickets(first.seen, ["a", "b"]);
+    expect([...second.newIds]).toEqual(["b"]);
+  });
+
+  it("forgets bumped tickets so a re-opened order flashes again", () => {
+    const first = scanNewTickets(null, ["a"]);
+    const bumped = scanNewTickets(first.seen, []);
+    const reopened = scanNewTickets(bumped.seen, ["a"]);
+    expect([...reopened.newIds]).toEqual(["a"]);
+  });
+
+  it("keeps the seen set across a loading blip rather than re-flashing everything", () => {
+    const first = scanNewTickets(null, ["a", "b"]);
+    const blip = scanNewTickets(first.seen, undefined);
+    const back = scanNewTickets(blip.seen, ["a", "b"]);
+    expect([...back.newIds]).toEqual([]);
   });
 });
 
