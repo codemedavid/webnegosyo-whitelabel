@@ -4,6 +4,7 @@ import {
   DETAILED_RECEIPT_LAYOUT,
   parseReceiptLayout,
   renderReceipt,
+  renderReceiptSegments,
   resolveReceiptLayout,
 } from '@/lib/receipt-layout'
 
@@ -203,6 +204,41 @@ describe('order detail blocks (web mirror)', () => {
     expect(
       parseReceiptLayout({ version: 1, blocks: [{ kind: 'orderDate', label: 'Y'.repeat(33) }] }),
     ).toBeNull()
+  })
+})
+
+describe('logo block (web mirror)', () => {
+  it('emits an image segment when the store has a logo', () => {
+    const segments = renderReceiptSegments(
+      baseOrder,
+      { ...config, logoUrl: 'https://ik.example/logo.png' },
+      { version: 1, blocks: [{ kind: 'logo' }, { kind: 'businessName' }] },
+    )
+    expect(segments).toEqual([
+      { type: 'image', url: 'https://ik.example/logo.png' },
+      { type: 'text', text: expect.stringContaining('KAPE CO') },
+    ])
+  })
+
+  it('prints nothing when the store has no logo configured', () => {
+    const receipt = renderReceipt(baseOrder, config, {
+      version: 1,
+      blocks: [{ kind: 'logo' }, { kind: 'text', text: 'after' }],
+    })
+    expect(linesOf(receipt)).toEqual(['after'])
+  })
+
+  it('degrades to nothing in flat text — a text-only surface cannot draw it', () => {
+    const receipt = renderReceipt(
+      baseOrder,
+      { ...config, logoUrl: 'https://ik.example/logo.png' },
+      { version: 1, blocks: [{ kind: 'logo' }, { kind: 'text', text: 'after' }] },
+    )
+    expect(linesOf(receipt)).toEqual(['after'])
+  })
+
+  it('parses as a simple block', () => {
+    expect(parseReceiptLayout({ version: 1, blocks: [{ kind: 'logo' }] })).not.toBeNull()
   })
 })
 

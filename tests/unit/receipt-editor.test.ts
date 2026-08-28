@@ -88,6 +88,12 @@ describe('BLOCK_PALETTE', () => {
     }
   })
 
+  it('offers a logo block in the Header group', () => {
+    const logo = BLOCK_PALETTE.find((entry) => entry.kind === 'logo')
+    expect(logo).toBeDefined()
+    expect(logo?.group).toBe('Header')
+  })
+
   it('seeds a fill-in block with an editable label', () => {
     expect(addBlock([], 'fillIn')[0]).toEqual({ kind: 'fillIn', label: 'Name' })
   })
