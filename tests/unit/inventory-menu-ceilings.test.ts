@@ -105,6 +105,27 @@ describe('getMenuStockCeilings', () => {
     expect(ceilings.size).toBe(0)
   })
 
+  it('does not let an addon or prep recipe put a ceiling on a dish', async () => {
+    // Only a base recipe constrains, matching auto-86: an ingredient used
+    // solely by an addon leaves the dish sellable in its other configurations.
+    wire({
+      recipes: [{ id: 'r-addon', target_type: 'addon', menu_item_id: 'm-pizza' }],
+      components: [{ ...PIZZA_COMPONENT, recipe_id: 'r-addon' }],
+    })
+
+    const ceilings = await getMenuStockCeilings('t1')
+
+    expect(ceilings.has('m-pizza')).toBe(false)
+  })
+
+  it('ignores a base recipe attached to no dish', async () => {
+    wire({ recipes: [{ id: 'r-orphan', target_type: 'menu_item', menu_item_id: null }] })
+
+    const ceilings = await getMenuStockCeilings('t1')
+
+    expect(ceilings.size).toBe(0)
+  })
+
   it('uses the branch’s own shelf when a branch is named', async () => {
     wire({
       branchStock: [

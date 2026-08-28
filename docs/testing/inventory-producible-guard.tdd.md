@@ -174,16 +174,118 @@ are pre-existing, in `tests/integration/inventory-live-e2e.test.ts`,
 `tests/product-detail-content.test.tsx`, and `tests/product-detail-theme.test.ts`, none of
 which this work touched. `npx eslint` on all five changed files is clean.
 
-## Known gaps (deliberately not done)
+---
 
-1. **The customer-facing quantity stepper is not yet capped.** Checkout — the authoritative
-   boundary that every backend (platform Supabase, Convex, tenant-owned Supabase) passes
-   through — now refuses an over-large cart. The menu and cart UI still let a customer *type*
-   a quantity they cannot have and learn about it at checkout. Capping the stepper needs a
-   public per-item ceiling read exposed to the menu page; the arithmetic
-   (`resolveProducibleUnits`) is already built and tested for exactly that caller.
-2. **The register (POS) and the merchant app** place orders through their own paths and do
-   not call this guard yet.
-3. **Option/addon ingredients do not constrain**, per the base-recipe rule above.
+# Round 2 — the stepper cap and the register
+
+Gaps 1 and 2 below were closed in a second TDD pass. Journeys added:
+
+5. As a customer, I want the quantity picker to stop where the kitchen does, so I do not
+   fill in a whole checkout only to be turned away on the last screen.
+6. As a cashier, I want to be *told* when a sale outruns the shelf — not *stopped* — so I
+   can use what I can see and they cannot.
+
+## Task report (round 2)
+
+**RED 3** — `tests/unit/inventory-stepper-cap.test.ts` (13) and
+`tests/unit/inventory-menu-ceilings.test.ts` (8).
+
+```
+npx jest --testPathPatterns="inventory-(stepper-cap|menu-ceilings)"
+Cannot find module '../../src/lib/inventory/stepper-cap'
+Cannot find module '../../src/lib/inventory/menu-ceilings'
+Test Suites: 2 failed, 2 total ·  Tests: 0 total
+```
+
+**GREEN 3** — `stepper-cap.ts` (pure), `menu-ceilings.ts`, and `stock-graph-read.ts`, which
+**extracts the read the checkout guard already did** so both callers share one graph. The
+guard's 8 tests stayed green through that refactor, which is what proves the extraction was
+behaviour-preserving. `npx jest …` → **49 passed**.
+
+**RED 4 / GREEN 4** — `tests/unit/inventory-ceilings-route.test.ts` (6) for
+`GET /api/inventory/ceilings`. RED: `Cannot find module '@/app/api/inventory/ceilings/route'`.
+The suite needed `@jest-environment node` — jsdom has no `Request`. → **6 passed**.
+
+**The stepper wiring caught a real bug.** Adding `useStockCeilings` to
+`product-detail-content.tsx` turned 9 existing tests red with *"No QueryClient set"*. The
+test harness had been rendering the storefront **without** the `QueryClientProvider` that
+`src/app/layout.tsx` actually supplies, and its `useCart` mock omitted `items`. Both were
+fixed to mirror production — the component was never wrong, the harness was.
+
+**RED 5 / GREEN 5 (register)** — `webnegosyo-app/lib/pos-stock-warning.test.ts` (8) and
+`pos-stock-ceilings.test.ts` (7). RED captured by moving the implementation aside:
+
+```
+lib/pos-stock-warning.test.ts:15:40 - error TS2307: Cannot find module './pos-stock-warning'
+Test Suites: 1 failed, 1 total ·  Tests: 0 total
+```
+
+→ **15 passed**, then wired into `app/(main)/pos.tsx` as an amber banner above the cart.
+
+## Why the register warns and the web refuses
+
+This divergence is the design, not an omission. Online, nobody is standing over the
+customer and they can fix the cart themselves in the seconds it takes to read the message.
+At the register a cashier is facing a paying customer with a queue behind them, can see the
+shelf with their own eyes, and routinely knows things the ledger does not — a delivery that
+arrived and was not keyed in, a stocktake nobody ran, a recipe overstating a portion.
+Turning a best-effort software estimate into a refused, in-person, cash-in-hand sale is a
+far worse trade than overselling by one. So the register is told, and the human decides.
+
+## Test specification (round 2)
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 25 | An untracked dish keeps the old unlimited stepper | `inventory-stepper-cap.test.ts:allows the hard maximum when the dish has no ceiling` | unit | PASS |
+| 26 | The stepper subtracts what the cart already holds of that dish | `…:subtracts what the cart already holds` | unit | PASS |
+| 27 | The stepper never offers more once the ceiling is reached | `…:allows nothing once the cart already holds the whole ceiling` | unit | PASS |
+| 28 | A cart that outran the shelf yields 0, never a negative | `…:never goes negative` | unit | PASS |
+| 29 | The hard 99-item cap still applies above any ceiling | `…:still respects the hard maximum` | unit | PASS |
+| 30 | No hint when there is plenty — a stepper must not nag | `…:says nothing when there is plenty left` | unit | PASS |
+| 31 | "Only N left" appears only under the threshold | `…:warns how many are left once stock is short` | unit | PASS |
+| 32 | Zero is never spelled "0 left" | `…:says the maximum is reached rather than "0 left"` | unit | PASS |
+| 33 | Each tracked dish gets its producible ceiling | `inventory-menu-ceilings.test.ts:reports how many of each tracked dish` | unit | PASS |
+| 34 | Untracked dishes are absent from the map, never zero | `…:leaves an untracked dish out of the map entirely` | unit | PASS |
+| 35 | An addon or prep recipe never puts a ceiling on a dish | `…:does not let an addon or prep recipe put a ceiling on a dish` | unit | PASS |
+| 36 | A branch sees its own shelf | `…:uses the branch's own shelf when a branch is named` | unit | PASS |
+| 37 | Inventory-off and failed reads yield no ceilings | `…:is empty when the tenant has not turned inventory on` / `…when the read fails` | unit | PASS |
+| 38 | The route returns one integer per dish and 400s without a tenant | `inventory-ceilings-route.test.ts` | integration | PASS |
+| 39 | The route never errors — a failed read answers `{}` | `…:answers with no ceilings rather than an error` | integration | PASS |
+| 40 | Ceilings are never cached | `…:is not cached` | integration | PASS |
+| 41 | The register warns, naming dish and number | `pos-stock-warning.test.ts:warns when a line outruns the shelf` | unit | PASS |
+| 42 | Separate lines of one dish are added up first | `…:adds up separate lines of the same dish before judging` | unit | PASS |
+| 43 | No ceilings known → the register says nothing | `…:says nothing when the register knows no ceilings` | unit | PASS |
+| 44 | The register's read never throws and never blocks the till | `pos-stock-ceilings.test.ts:knows no ceilings when the request fails` | unit | PASS |
+
+## Coverage (round 2)
+
+```
+File                     | % Stmts | % Branch | % Funcs | % Lines
+checkout-stock-guard.ts  |     100 |      100 |     100 |     100
+menu-ceilings.ts         |     100 |    81.81 |     100 |     100
+producible.ts            |     100 |    93.22 |     100 |     100
+stepper-cap.ts           |     100 |      100 |     100 |     100
+stock-graph-read.ts      |   96.82 |    69.69 |     100 |   96.82
+```
+
+Statements 100% on four of five. Uncovered branches are the `catch` arms and `?? []`
+null-guards on Supabase reads.
+
+**Platform suite:** `npx jest` → 536 passed of 537 (1 skipped), 6337 passed of 6345 tests
+(8 skipped). **Merchant app:** 215 suites / 3052 passed,
+`npx tsc --noEmit` clean (0 errors).
+
+## Known gaps (still deliberately not done)
+
+1. **Option/addon ingredients do not constrain a dish**, per the base-recipe rule — matching
+   auto-86. Per-option availability does not exist yet.
+2. **The register's warning is per-dish, not per-cart.** The shared-ingredient arithmetic
+   the online guard runs needs the whole recipe graph; for a warning, "you have more of this
+   than we can make" is the useful half.
+3. **The white-labeled customer app (`mobile/`)** has its own stepper and is not capped; its
+   orders are still guarded server-side at depletion time.
 4. **Tenants whose orders live in their own Supabase project** are guarded (the check runs
-   before the write, on platform-held recipes) but were not exercised end to end here.
+   before the write, on platform-held recipes) but were not exercised end to end.
+5. **A concurrent session** was editing `staff-permissions.ts` in this shared worktree
+   during round 2; one failure in `tests/unit/staff-permissions.test.ts` belongs to that work,
+   not this. No file of theirs was staged or modified here.
