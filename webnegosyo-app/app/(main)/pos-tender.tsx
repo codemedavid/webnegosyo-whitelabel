@@ -414,60 +414,60 @@ export default function PosTenderScreen() {
         console.warn("[pos] Could not mark the sale paid:", err);
       }
 
-      // Spend the sale's ingredients. The order lives in Convex, so it never
-      // passes through the web app's createOrderAction where depletion is
-      // wired — this is the register's way into that same path. Never throws.
+      // Everything the sale owes the platform, reported TOGETHER rather than
+      // one after another. None of them can throw and none depends on
+      // another's answer, so run in sequence they only add up their deadlines —
+      // and a cashier watching four of those in a row reads the spinner as the
+      // register having hung again.
       if (tenantId) {
-        await notifyPosStockDepletion(
-          tenantId,
-          String(orderId),
-          buildPosStockItems(lines),
-        );
+        await Promise.all([
+          // Spend the sale's ingredients. The order lives in Convex, so it
+          // never passes through the web app's createOrderAction where
+          // depletion is wired — this is the register's way into that path.
+          notifyPosStockDepletion(
+            tenantId,
+            String(orderId),
+            buildPosStockItems(lines),
+          ),
 
-        // Record the counter sale in Loyverse as a completed receipt. Fires
-        // once per tender; the server no-ops for non-Loyverse tenants. Never
-        // throws — a missing back-office receipt must not fail a paid sale.
-        await notifyLoyversePosSale(
-          tenantId,
-          String(orderId).slice(-6).toUpperCase(),
-          posLinesToLoyverseOrderLines(lines),
-        );
+          // Record the counter sale in Loyverse as a completed receipt. Fires
+          // once per tender; the server no-ops for non-Loyverse tenants. A
+          // missing back-office receipt must not fail a paid sale.
+          notifyLoyversePosSale(
+            tenantId,
+            String(orderId).slice(-6).toUpperCase(),
+            posLinesToLoyverseOrderLines(lines),
+          ),
 
-        // Burn what this sale used. The register cannot call redeem_voucher()
-        // itself — it is service_role only — so this goes through the web app
-        // on the cashier's own token. Never throws: the customer has already
-        // paid, and the burn is keyed on the order id so a retry is a no-op.
-        await burnPosRedemptions(
-          tenantId,
-          String(orderId),
-          discountLines,
-          outletId,
-        );
-      }
+          // Burn what this sale used. The register cannot call redeem_voucher()
+          // itself — it is service_role only — so this goes through the web app
+          // on the cashier's own token. The customer has already paid, and the
+          // burn is keyed on the order id so a retry is a no-op.
+          burnPosRedemptions(tenantId, String(orderId), discountLines, outletId),
 
-      // Roll the sale into its guest's profile. Same reasoning as depletion
-      // above: counter sales reach none of the web app's order actions, which
-      // are the only places customer capture is wired, so without this a POS
-      // sale is invisible to the Regulars list. Skips itself for an anonymous
-      // walk-in, and never throws.
-      if (tenantId) {
-        await notifyCustomerCapture(tenantId, {
-          backend: resolveOrderBackend({
-            order_backend: orderBackend,
-            convex_deployment_url: convexUrl,
+          // Roll the sale into its guest's profile. Same reasoning as depletion:
+          // counter sales reach none of the web app's order actions, which are
+          // the only places customer capture is wired, so without this a POS
+          // sale is invisible to the Regulars list. Skips itself for an
+          // anonymous walk-in.
+          notifyCustomerCapture(tenantId, {
+            backend: resolveOrderBackend({
+              order_backend: orderBackend,
+              convex_deployment_url: convexUrl,
+            }),
+            orderId: String(orderId),
+            name: args.customerName,
+            contact: args.customerContact,
+            customerData: args.customerData,
+            total: args.total,
+            createdAt: new Date().toISOString(),
+            channel: args.orderType ?? null,
+            items: lines.map((line) => ({
+              name: line.name,
+              quantity: line.quantity,
+            })),
           }),
-          orderId: String(orderId),
-          name: args.customerName,
-          contact: args.customerContact,
-          customerData: args.customerData,
-          total: args.total,
-          createdAt: new Date().toISOString(),
-          channel: args.orderType ?? null,
-          items: lines.map((line) => ({
-            name: line.name,
-            quantity: line.quantity,
-          })),
-        });
+        ]);
       }
 
       // A settled counter sale IS the bill-out moment, so it obeys the same
