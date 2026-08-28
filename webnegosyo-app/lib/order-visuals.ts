@@ -2,6 +2,7 @@
 // functions only (no React, no Convex) so they are unit-tested under the
 // lib/ Jest root and reused across the dashboard and orders screens.
 import { colors } from "../theme/colors";
+import { getScheduleBand } from "./scheduled-orders";
 
 export type OrderStatus =
   | "pending"
@@ -51,6 +52,27 @@ export function getUrgency(creationTimeMs: number, nowMs: number = Date.now()): 
   if (minutes < FRESH_MAX_MINUTES) return "fresh";
   if (minutes < WARNING_MAX_MINUTES) return "warning";
   return "urgent";
+}
+
+/**
+ * Urgency for an order that may be a pre-order. An ASAP order ages from the
+ * moment it was placed; a scheduled one is not late for being booked early —
+ * it warms up as the requested moment approaches and only goes red once that
+ * moment passes. Without this, every Saturday pre-order turned urgent fifteen
+ * minutes after it was placed.
+ */
+export function getScheduleAwareUrgency(
+  creationTimeMs: number,
+  scheduledAtMs: number | null,
+  nowMs: number = Date.now(),
+): Urgency {
+  if (scheduledAtMs == null || !Number.isFinite(scheduledAtMs)) {
+    return getUrgency(creationTimeMs, nowMs);
+  }
+  const band = getScheduleBand(scheduledAtMs, nowMs);
+  if (band === "overdue") return "urgent";
+  if (band === "due-soon") return "warning";
+  return "fresh";
 }
 
 export function getUrgencyColor(urgency: Urgency): string {

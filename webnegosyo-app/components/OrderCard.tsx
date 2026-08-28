@@ -6,12 +6,13 @@ import { lalamoveStatusLabel } from "../lib/lalamove-status";
 import {
   getInitials,
   getAvatarColor,
-  getUrgency,
+  getScheduleAwareUrgency,
   getUrgencyColor,
   getOrderTypeMeta,
   getStatusMeta,
   formatTimeAgo,
 } from "../lib/order-visuals";
+import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
 
 export interface OrderCardOrder {
   _id: string;
@@ -27,6 +28,13 @@ export interface OrderCardOrder {
   /** Raw Lalamove delivery status — shows a rider chip so deliveries needing
    * attention are visible without opening each order. */
   lalamoveStatus?: string;
+  /** Requested fulfillment time of a pre-order (UTC ISO) — shows a scheduled
+   * chip and keys the urgency accent off the requested moment, not the
+   * ticket's age. */
+  scheduledFor?: string | null;
+  /** Raw customer payload; carries the schedule for web-created Convex orders
+   * (`scheduled_for` / `scheduled_for_label`). */
+  customerData?: Record<string, unknown> | null;
 }
 
 interface OrderCardProps {
@@ -56,7 +64,12 @@ export function OrderCard({
   const status = getStatusMeta(order.status);
   const typeMeta = getOrderTypeMeta(order.orderType);
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
-  const urgencyColor = getUrgencyColor(getUrgency(order._creationTime));
+  const scheduledISO = getScheduledISO(order);
+  const scheduledLabel = getScheduledLabel(order);
+  const scheduledAtMs = scheduledISO ? new Date(scheduledISO).getTime() : null;
+  const urgencyColor = getUrgencyColor(
+    getScheduleAwareUrgency(order._creationTime, scheduledAtMs),
+  );
   const accentColor = isActive ? urgencyColor : colors.separator;
   const isUnpaid = order.paymentStatus != null && order.paymentStatus !== "paid";
 
@@ -104,6 +117,11 @@ export function OrderCard({
         {order.source ? <Text style={styles.meta}>{order.source}</Text> : null}
         <Text style={styles.metaDot}>·</Text>
         <Text style={styles.meta}>{formatTimeAgo(order._creationTime)}</Text>
+        {scheduledLabel ? (
+          <View style={styles.scheduledChip}>
+            <Text style={styles.scheduledText}>Scheduled · {scheduledLabel}</Text>
+          </View>
+        ) : null}
         {isUnpaid ? (
           <View style={styles.unpaidChip}>
             <Text style={styles.unpaidText}>Unpaid</Text>
@@ -209,6 +227,13 @@ const styles = StyleSheet.create({
   },
   meta: { ...typography.caption, color: colors.textSecondary },
   metaDot: { ...typography.caption, color: colors.textTertiary },
+  scheduledChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.warningLight,
+  },
+  scheduledText: { ...typography.small, color: colors.warning, fontWeight: "700" },
   unpaidChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
