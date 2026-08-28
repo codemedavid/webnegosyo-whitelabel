@@ -39,6 +39,11 @@ import {
   type ModifierSource,
 } from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
+import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
+import {
+  resolvePosStockWarning,
+  type PosStockCeilings,
+} from "../../lib/pos-stock-warning";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
@@ -68,6 +73,9 @@ const INITIAL_ROWS = 6;
 // TODO: Replace double assertion with a generated Convex function reference once
 // codegen is wired into the mobile app (same workaround used across the screens).
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+
+/** No stock read yet, or none possible. Read as "no opinion", never as empty shelves. */
+const EMPTY_CEILINGS: PosStockCeilings = new Map();
 
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
@@ -172,6 +180,27 @@ export default function PosScreen() {
   // owner, a single-location merchant) gets the store-wide menu, exactly as
   // before per-branch pricing existed.
   const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
+
+  // ── What the kitchen can actually make ──
+  // A WARNING, never a refusal: the cashier is facing a paying customer and can
+  // see the shelf, so the software says its piece and the human decides. The
+  // web checkout refuses instead, because nobody is standing over that customer.
+  // Refetched whenever the cart changes, since every sale moves the number.
+  const [stockCeilings, setStockCeilings] = useState<PosStockCeilings>(EMPTY_CEILINGS);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPosStockCeilings(tenantId, registerOutletId).then((ceilings) => {
+      if (!cancelled) setStockCeilings(ceilings);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, registerOutletId, lines]);
+
+  const stockWarning = useMemo(
+    () => resolvePosStockWarning(lines, stockCeilings),
+    [lines, stockCeilings],
+  );
 
   useEffect(() => {
     if (!tenantId) return;
@@ -496,6 +525,18 @@ export default function PosScreen() {
         />
       )}
 
+      {/*
+        Sits above the cart, where the cashier is already looking before they
+        charge. Deliberately not a modal and not a blocker — it informs the
+        person who can see the shelf, and they ring the sale anyway if they
+        have the stock.
+      */}
+      {stockWarning && (
+        <View style={styles.stockWarning}>
+          <Text style={styles.stockWarningText}>{stockWarning}</Text>
+        </View>
+      )}
+
       <CartSheet
         lines={lines}
         // In edit mode the fee lives on the edit context, not the counter
@@ -623,6 +664,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.accentLight,
   },
+  // Amber, not red: this is something to know, not something that went wrong.
+  stockWarning: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningLight,
+  },
+  stockWarningText: { ...typography.caption, color: colors.warning, fontWeight: "600" },
   editBannerMain: { flex: 1 },
   editBannerTitle: { ...typography.caption, fontWeight: "700", color: colors.accent },
   editBannerTotals: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
