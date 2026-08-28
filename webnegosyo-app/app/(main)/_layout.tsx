@@ -110,6 +110,14 @@ export default function MainLayout() {
           tabBarIcon: ({ color }) => <TabIcon name="orders" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="kitchen"
+        options={{
+          href: show("kitchen"),
+          tabBarLabel: "Kitchen",
+          tabBarIcon: ({ color }) => <TabIcon name="kitchen" color={color} />,
+        }}
+      />
       {/* Register view */}
       <Tabs.Screen
         name="pos"

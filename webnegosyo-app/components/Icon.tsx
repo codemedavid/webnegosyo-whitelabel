@@ -38,6 +38,7 @@ export type IconName =
   | "storefront"
   | "compare"
   | "list"
+  | "kitchen"
   // In-screen
   | "search"
   | "check"
@@ -229,6 +230,17 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Line x1={8} y1={7} x2={20} y2={7} />
       <Line x1={8} y1={12} x2={20} y2={12} />
       <Line x1={8} y1={17} x2={20} y2={17} />
+    </>
+  ),
+
+  // A serving cloche on its tray: the pass, where tickets become plates.
+  kitchen: (
+    <>
+      <Path d="M4 15a8 8 0 0 1 16 0" />
+      <Line x1={2.5} y1={15} x2={21.5} y2={15} />
+      <Line x1={12} y1={7} x2={12} y2={4.5} />
+      <Line x1={10.5} y1={4.5} x2={13.5} y2={4.5} />
+      <Line x1={6} y1={19} x2={18} y2={19} />
     </>
   ),
 

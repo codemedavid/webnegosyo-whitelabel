@@ -22,7 +22,9 @@ export const STAFF_PERMISSION_KEYS = [
   'order_refund',
   // A standing discount on the merchant's own revenue. Kept off 'menu' so
   // it is not handed to everyone who can rename a dish.
-  'vouchers'
+  'vouchers',
+  // The kitchen display — sees every active ticket and bumps orders to ready.
+  'kitchen'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]

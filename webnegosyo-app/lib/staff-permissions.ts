@@ -32,6 +32,10 @@ export const STAFF_PERMISSION_KEYS = [
   // A standing discount on the merchant's own revenue. Kept off "menu" so
   // it is not handed to everyone who can rename a dish.
   "vouchers",
+  // The kitchen display — sees every active ticket and bumps orders to ready.
+  // Its own key (not "orders") so a cook's tablet can show the board without
+  // also granting the full order queue, payments, and cancellations.
+  "kitchen",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
@@ -92,6 +96,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // unmapped tab defaults to allowed, which would let any cashier retire the
   // merchant's GCash account mid-service.
   payments: "store_setup",
+  // The kitchen board shows every active order and can advance them. An
+  // unmapped tab defaults to ALLOWED, which would put the board — and its
+  // bump button — in front of every staffer with any grant at all.
+  kitchen: "kitchen",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

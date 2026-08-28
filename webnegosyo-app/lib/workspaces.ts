@@ -31,7 +31,9 @@ export const WORKSPACES: readonly Workspace[] = [
     key: "operations",
     label: "Operations",
     description: "Live orders and the day-to-day queue",
-    tabs: ["dashboard", "orders"],
+    // The kitchen board sits beside the queue it serves: both are views of the
+    // same live orders, one for the counter, one for the pass.
+    tabs: ["dashboard", "orders", "kitchen"],
     defaultTab: "dashboard",
   },
   {
