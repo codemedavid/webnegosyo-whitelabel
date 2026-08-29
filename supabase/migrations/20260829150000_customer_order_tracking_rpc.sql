@@ -18,3 +18,7 @@ $$;
 
 revoke all on function public.get_customer_order(uuid) from public;
 grant execute on function public.get_customer_order(uuid) to anon;
+
+-- Applied live as `get_customer_order_anon_only`: staff read orders through
+-- the table's RLS policies; only anonymous customers need the capability RPC.
+revoke execute on function public.get_customer_order(uuid) from authenticated;
