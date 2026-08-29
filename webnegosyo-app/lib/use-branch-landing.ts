@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { router } from "expo-router";
 
-import { landingWorkspace } from "./portfolio-landing";
+import { resolveLanding } from "./default-landing";
 import { useAccountBranchScope } from "./use-branch-scope";
 import { useOutlets } from "./use-outlets";
 import { useAuthStore } from "../stores/auth-store";
@@ -25,6 +25,10 @@ import { goTo, type TabAwareRouter } from "./tab-navigation";
 export function useBranchLanding(): void {
   const accountScope = useAccountBranchScope();
   const isDemo = useAuthStore((s) => s.isDemo);
+  const defaultTab = useAuthStore((s) => s.defaultTab);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
   const { outlets, isLoading } = useOutlets();
 
   const workspace = useWorkspaceStore((s) => s.workspace);
@@ -42,18 +46,34 @@ export function useBranchLanding(): void {
       return;
     }
 
-    const target = landingWorkspace({
-      accountScope,
-      activeOutletCount: outlets.length,
+    const target = resolveLanding({
+      defaultTab,
+      user: { role, isOwner, permissions },
+      audience: {
+        accountScope,
+        activeOutletCount: outlets.length,
+        isDemo,
+      },
       isDemo,
     });
 
     hasRedirected.current = true;
-    if (target === "operations") return;
+    if (target.href === null) return;
 
-    setWorkspace(target);
+    setWorkspace(target.workspace);
     // navigate, not replace — replacing into a sibling tab remounts the tab
     // navigator mid-switch and crashes. See lib/tab-navigation.ts.
-    goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/portfolio");
-  }, [accountScope, isDemo, isLoading, outlets.length, workspace, setWorkspace]);
+    goTo(router as TabAwareRouter<`/(main)/${string}`>, target.href as `/(main)/${string}`);
+  }, [
+    accountScope,
+    defaultTab,
+    isDemo,
+    isLoading,
+    isOwner,
+    outlets.length,
+    permissions,
+    role,
+    setWorkspace,
+    workspace,
+  ]);
 }

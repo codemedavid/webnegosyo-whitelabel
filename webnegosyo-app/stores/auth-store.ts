@@ -50,6 +50,11 @@ interface AuthState {
   outletId: string | null;
   /** The branch's name at sign-in, snapshotted onto counter sales. */
   outletName: string | null;
+  /**
+   * Screen this account opens on, or null for the app's own choice. Read once
+   * per session by lib/use-branch-landing.ts.
+   */
+  defaultTab: string | null;
   setAuth: (data: Partial<AuthState>) => void;
   clear: () => void;
 }
@@ -74,6 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   role: null,
   outletId: null,
   outletName: null,
+  defaultTab: null,
   setAuth: (data) => set(data),
   clear: () =>
     set({
@@ -96,5 +102,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       role: null,
       outletId: null,
       outletName: null,
+      defaultTab: null,
     }),
 }));

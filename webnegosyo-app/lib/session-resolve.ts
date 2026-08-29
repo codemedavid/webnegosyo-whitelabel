@@ -25,6 +25,11 @@ export interface AppUserRow {
   permissions: string[] | null;
   /** Branch this account is confined to. NULL = the whole store. */
   outlet_id?: string | null;
+  /**
+   * Screen this account opens on, as an app/(main) route name. NULL means the
+   * app decides, which is what every account did before this was settable.
+   */
+  default_tab?: string | null;
 }
 
 /** Shape of the `outlets` row the app selects for a branch-scoped account. */
@@ -94,6 +99,12 @@ export interface SessionAuthPatch {
    * renaming a branch does not rewrite the tickets it already took.
    */
   outletName: string | null;
+  /**
+   * Screen this account is pinned to, or null for the app's own choice. Held
+   * as stored — see `lib/default-landing.ts`, which decides whether it is
+   * still usable at the moment the app lands.
+   */
+  defaultTab: string | null;
 }
 
 export interface SessionResult {
@@ -175,6 +186,8 @@ export function resolveSession(
         // A superadmin is never confined to a branch, impersonating or not.
         outletId: null,
         outletName: null,
+        // The platform surface has no merchant tabs to open on.
+        defaultTab: null,
       },
     };
   }
@@ -216,6 +229,10 @@ export function resolveSession(
       // A missing branch row now costs the *name*, never the confinement.
       outletId: confinedOutletId(appUser),
       outletName: outlet?.name ?? null,
+      // Passed through unvalidated: what counts as a usable screen depends on
+      // the branch count, which is not known yet at sign-in. lib/default-landing.ts
+      // makes that call once the branch list lands.
+      defaultTab: appUser.default_tab ?? null,
     },
   };
 }

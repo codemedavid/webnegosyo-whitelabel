@@ -99,7 +99,7 @@ function useAuthInit() {
       try {
         const { data: appUser } = await supabase
           .from("app_users")
-          .select("tenant_id, role, is_owner, permissions, outlet_id")
+          .select("tenant_id, role, is_owner, permissions, outlet_id, default_tab")
           .eq("user_id", data.session.user.id)
           .in("role", ["admin", "superadmin"])
           .single();
