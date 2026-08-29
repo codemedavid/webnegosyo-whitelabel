@@ -61,9 +61,10 @@ jest.mock("@haroldtran/react-native-thermal-printer", () => ({
 
 jest.mock("../stores/printer-store", () => {
   const state = {
-    printer: null as unknown,
+    printers: [] as unknown[],
+    connectedAddress: null as string | null,
     isConnected: false,
-    setConnected: jest.fn(),
+    setConnectedAddress: jest.fn(),
   };
   return { usePrinterStore: { getState: () => state } };
 });

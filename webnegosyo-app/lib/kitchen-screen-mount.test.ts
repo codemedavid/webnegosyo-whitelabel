@@ -85,9 +85,9 @@ describe("kitchen screen", () => {
     expect(screen()).toMatch(/useKeepAwake/);
   });
 
-  it("prints chits through the shared chit layout and printer stack", () => {
+  it("prints chits through the shared chit layout, on kitchen-role printers", () => {
     expect(screen()).toMatch(/buildKitchenChitSegments/);
-    expect(screen()).toMatch(/printReceiptSegments/);
+    expect(screen()).toMatch(/printForRole\(\s*\n?\s*"kitchen"/);
   });
 
   it("blocks the demo session from bumping a real store's orders", () => {

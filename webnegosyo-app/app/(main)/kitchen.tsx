@@ -30,7 +30,8 @@ import {
   promisedReadyAt,
   prepTimeTargetStatus,
 } from "../../lib/prep-time";
-import { printReceiptSegments } from "../../lib/printer";
+import { printForRole } from "../../lib/printer";
+import { printersForRole } from "../../lib/printer-registry";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
@@ -68,7 +69,8 @@ export default function KitchenScreen() {
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
   const outletName = useAuthStore((s) => s.outletName);
   const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
-  const { printer } = usePrinterStore();
+  const { printers } = usePrinterStore();
+  const hasKitchenPrinter = printersForRole(printers, "kitchen").length > 0;
 
   const { width } = useWindowDimensions();
   const numColumns = width >= THREE_COLUMN_MIN_WIDTH ? 3 : width >= TWO_COLUMN_MIN_WIDTH ? 2 : 1;
@@ -180,11 +182,13 @@ export default function KitchenScreen() {
   }, [lastBumped, updateStatus]);
 
   const handlePrint = useCallback(async (ticket: KitchenTicket) => {
-    const result = await printReceiptSegments(
+    const outcome = await printForRole(
+      "kitchen",
       buildKitchenChitSegments({ ...ticket.order, items: ticket.items }),
     );
-    if (!result.success) {
-      Alert.alert("Print failed", result.error ?? "Could not reach the printer.");
+    if (!outcome.anySuccess) {
+      const firstError = outcome.results[0]?.result.error;
+      Alert.alert("Print failed", firstError ?? "Could not reach the kitchen printer.");
     }
   }, []);
 
@@ -257,7 +261,7 @@ export default function KitchenScreen() {
               isNew={newIds.has(ticket.order._id)}
               onBump={handleBump}
               onPrint={handlePrint}
-              canPrint={Boolean(printer)}
+              canPrint={hasKitchenPrinter}
               canSetPrepTime={canSetPrepTime}
               onSetPrepTime={handleSetPrepTime}
             />
