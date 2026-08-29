@@ -49,6 +49,7 @@ function ticket(overrides: Partial<KitchenTicket> = {}): KitchenTicket {
 function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}) {
   const onBump = jest.fn();
   const onPrint = jest.fn();
+  const onSetPrepTime = jest.fn();
   render(
     <TicketCard
       ticket={ticket()}
@@ -57,10 +58,12 @@ function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}
       onBump={onBump}
       onPrint={onPrint}
       canPrint
+      canSetPrepTime
+      onSetPrepTime={onSetPrepTime}
       {...props}
     />,
   );
-  return { onBump, onPrint };
+  return { onBump, onPrint, onSetPrepTime };
 }
 
 describe("ticket content", () => {
@@ -159,3 +162,70 @@ function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown
   const parts = Array.isArray(style) ? style.flat(Infinity) : [style];
   return Object.assign({}, ...parts.filter(Boolean));
 }
+
+/**
+ * Prep time — the chef's promise to the customer.
+ *
+ * This is the only control on the board whose effect is visible OUTSIDE the
+ * kitchen: whatever is tapped here lands on a stranger's phone as "Ready by
+ * 7:21 PM". That makes wrong minutes a customer-facing defect, not a display
+ * bug, so what the chips send is pinned here.
+ */
+describe("prep time", () => {
+  it("offers the quick taps while no time has been promised", () => {
+    renderCard();
+    expect(screen.getByText("10")).toBeTruthy();
+    expect(screen.getByText("15")).toBeTruthy();
+    expect(screen.getByText("20")).toBeTruthy();
+    expect(screen.getByText("30")).toBeTruthy();
+  });
+
+  it("sends the tapped minutes for this order", () => {
+    const { onSetPrepTime } = renderCard();
+
+    fireEvent.press(screen.getByText("15"));
+
+    expect(onSetPrepTime).toHaveBeenCalledWith("j57abc123xyz789ef", 15);
+  });
+
+  it("shows the promised clock time once a time is set, not the raw minutes", () => {
+    // A cook glancing at the rail needs the same answer the customer has.
+    renderCard({
+      ticket: ticket({
+        order: {
+          ...ticket().order,
+          status: "preparing",
+          prepMinutes: 15,
+          promisedReadyAt: new Date(NOW + 15 * MINUTE).toISOString(),
+        },
+      }),
+    });
+
+    expect(screen.getByText(/Ready 12:15/)).toBeTruthy();
+  });
+
+  it("lets a cook running late push the promise back", () => {
+    const { onSetPrepTime } = renderCard({
+      ticket: ticket({
+        order: {
+          ...ticket().order,
+          status: "preparing",
+          prepMinutes: 15,
+          promisedReadyAt: new Date(NOW + 15 * MINUTE).toISOString(),
+        },
+      }),
+    });
+
+    fireEvent.press(screen.getByText("+5"));
+
+    expect(onSetPrepTime).toHaveBeenCalledWith("j57abc123xyz789ef", 20);
+  });
+
+  it("hides the control entirely when the backend cannot store a prep time", () => {
+    // A Convex deployment on an older bundle has no setPrepTime mutation. A
+    // chip that throws is worse than no chip.
+    renderCard({ canSetPrepTime: false });
+
+    expect(screen.queryByText("15")).toBeNull();
+  });
+});

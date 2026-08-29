@@ -93,6 +93,30 @@ describe("localDayStartMs", () => {
   });
 });
 
+describe("toOrderDto — prep time", () => {
+  it("carries the kitchen's prep promise onto the DTO", () => {
+    // `toOrderDto` is an explicit field-by-field projection: a column not named
+    // here vanishes on every platform-backend tenant with no error at all. The
+    // board would then show no promised time no matter what the chef tapped.
+    const row = orderRow({
+      prep_minutes: 15,
+      promised_ready_at: "2026-07-27T02:15:00.000Z",
+    });
+
+    const dto = toOrderDto(row);
+
+    expect(dto.prepMinutes).toBe(15);
+    expect(dto.promisedReadyAt).toBe("2026-07-27T02:15:00.000Z");
+  });
+
+  it("leaves both fields undefined for an order the kitchen never timed", () => {
+    const dto = toOrderDto(orderRow({ prep_minutes: null, promised_ready_at: null }));
+
+    expect(dto.prepMinutes).toBeUndefined();
+    expect(dto.promisedReadyAt).toBeUndefined();
+  });
+});
+
 describe("toOrderDto", () => {
   it("maps a SQL row onto the Convex DTO shape the screens consume", () => {
     // Arrange

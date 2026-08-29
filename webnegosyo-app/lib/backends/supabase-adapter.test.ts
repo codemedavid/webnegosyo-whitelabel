@@ -487,6 +487,57 @@ describe("runPlatformMutation — orders:createOrder", () => {
   });
 });
 
+describe("runPlatformMutation — prep time", () => {
+  it("is claimed by the allowlist AND served by the switch", async () => {
+    // Both halves matter. A ref in SUPPORTED_MUTATION_REFS with no case in the
+    // switch routes to the platform and then throws; a case with no allowlist
+    // entry never routes here at all.
+    expect(isPlatformRefSupported("orders:setPrepTime")).toBe(true);
+
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
+
+    await runPlatformMutation(client, TENANT, "orders:setPrepTime", {
+      orderId: "order-1",
+      prepMinutes: 15,
+      promisedReadyAt: "2026-07-27T02:15:00.000Z",
+      status: "preparing",
+    });
+
+    expect(opsOf(calls, "update")[0]).toEqual([
+      {
+        prep_minutes: 15,
+        promised_ready_at: "2026-07-27T02:15:00.000Z",
+        status: "preparing",
+      },
+    ]);
+    expect(opsOf(calls, "eq")).toContainEqual(["id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("refuses a prep time for an order outside the caller's branch", async () => {
+    // Same guard every other write here carries: a branch-scoped account must
+    // not be able to re-time another branch's ticket.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(
+        client,
+        TENANT,
+        "orders:setPrepTime",
+        {
+          orderId: "order-1",
+          prepMinutes: 15,
+          promisedReadyAt: "2026-07-27T02:15:00.000Z",
+          status: "preparing",
+        },
+        { kind: "branch", outletId: "outlet-9" }
+      )
+    ).rejects.toThrow();
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-9"]);
+  });
+});
+
 describe("runPlatformMutation — status updates", () => {
   it("advances an order's status within the caller's tenant", async () => {
     // Arrange
