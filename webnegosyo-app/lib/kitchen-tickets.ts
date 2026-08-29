@@ -19,6 +19,10 @@ export interface KitchenOrderLike {
   status: string;
   orderType?: string;
   outletId?: string;
+  /** Minutes the kitchen committed to, when a chef has set one. */
+  prepMinutes?: number;
+  /** Absolute instant promised (ISO). Absent = no promise made yet. */
+  promisedReadyAt?: string;
 }
 
 export interface KitchenItemLike {

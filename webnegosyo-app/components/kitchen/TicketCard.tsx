@@ -6,6 +6,13 @@ import {
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
 import { getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
+import {
+  PREP_MINUTE_PRESETS,
+  PREP_MINUTE_EXTENDED,
+  PREP_EXTEND_MINUTES,
+  formatClock,
+  prepPromiseState,
+} from "../../lib/prep-time";
 
 /**
  * One ticket on the kitchen board. Presentation only: the card renders what
@@ -44,9 +51,28 @@ interface TicketCardProps {
   onBump: (orderId: string) => void;
   onPrint: (ticket: KitchenTicket) => void;
   canPrint: boolean;
+  /**
+   * False when this store's backend cannot store a prep time (a Convex
+   * deployment on an older bundle). The control is hidden rather than offered
+   * and left to throw on tap.
+   */
+  canSetPrepTime: boolean;
+  onSetPrepTime: (orderId: string, minutes: number) => void;
 }
 
-export function TicketCard({ ticket, nowMs, isNew, onBump, onPrint, canPrint }: TicketCardProps) {
+export function TicketCard({
+  ticket,
+  nowMs,
+  isNew,
+  onBump,
+  onPrint,
+  canPrint,
+  canSetPrepTime,
+  onSetPrepTime,
+}: TicketCardProps) {
+  // The longer preset row, revealed on demand. Local to the card: which ticket
+  // needed an unusual time is not worth remembering past this render.
+  const [showMoreMinutes, setShowMoreMinutes] = useState(false);
   // Struck items are this display's working memory, not order state: a cook
   // crossing off the fries plates nothing and syncs nowhere.
   const [struck, setStruck] = useState<ReadonlySet<number>>(new Set());
@@ -55,6 +81,12 @@ export function TicketCard({ ticket, nowMs, isNew, onBump, onPrint, canPrint }: 
   const urgency = getUrgency(order._creationTime, nowMs);
   const accent = URGENCY_COLOR[urgency];
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
+
+  const promisedMs = order.promisedReadyAt ? Date.parse(order.promisedReadyAt) : null;
+  const promise = prepPromiseState(
+    promisedMs !== null && !Number.isNaN(promisedMs) ? promisedMs : null,
+    nowMs,
+  );
 
   const toggleStruck = (index: number) => {
     setStruck((prev) => {
@@ -123,6 +155,56 @@ export function TicketCard({ ticket, nowMs, isNew, onBump, onPrint, canPrint }: 
           })
         )}
       </View>
+
+      {canSetPrepTime ? (
+        promise.kind === "none" ? (
+          <View style={styles.prepRow}>
+            <Text style={styles.prepLabel}>Ready in</Text>
+            {(showMoreMinutes ? PREP_MINUTE_EXTENDED : PREP_MINUTE_PRESETS).map((minutes) => (
+              <TouchableOpacity
+                key={minutes}
+                style={styles.prepChip}
+                onPress={() => onSetPrepTime(order._id, minutes)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.prepChipText}>{minutes}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.prepMore}
+              onPress={() => setShowMoreMinutes((open) => !open)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.prepMoreText}>{showMoreMinutes ? "Less" : "More"}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.prepRow}>
+            <Text
+              style={[
+                styles.prepPromise,
+                promise.kind === "late" && styles.prepPromiseLate,
+              ]}
+            >
+              {promise.kind === "late"
+                ? `Late by ${promise.minutesLate}m`
+                : `Ready ${formatClock(promisedMs as number)}`}
+            </Text>
+            <TouchableOpacity
+              style={styles.prepChip}
+              onPress={() =>
+                onSetPrepTime(
+                  order._id,
+                  (order.prepMinutes ?? 0) + PREP_EXTEND_MINUTES,
+                )
+              }
+              activeOpacity={0.8}
+            >
+              <Text style={styles.prepChipText}>+{PREP_EXTEND_MINUTES}</Text>
+            </TouchableOpacity>
+          </View>
+        )
+      ) : null}
 
       <View style={styles.actions}>
         {canPrint ? (
@@ -243,6 +325,52 @@ const styles = StyleSheet.create({
   itemStruck: {
     textDecorationLine: "line-through",
     color: kds.struck,
+  },
+  prepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
+  prepLabel: {
+    color: kds.inkSoft,
+    fontSize: 12,
+    fontWeight: "700",
+    marginRight: 2,
+  },
+  prepChip: {
+    borderWidth: 1,
+    borderColor: kds.cardBorder,
+    borderRadius: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    minWidth: 40,
+    alignItems: "center",
+  },
+  prepChipText: {
+    color: kds.ink,
+    fontSize: 14,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+  },
+  prepMore: {
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  prepMoreText: {
+    color: kds.inkSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  prepPromise: {
+    color: kds.fresh,
+    fontSize: 14,
+    fontWeight: "800",
+    flex: 1,
+  },
+  prepPromiseLate: {
+    color: kds.urgent,
   },
   actions: {
     flexDirection: "row",

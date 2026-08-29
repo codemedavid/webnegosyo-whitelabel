@@ -15,6 +15,7 @@ import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 import { ContactCaptureCard } from '@/components/customer/contact-capture-card'
 import { shouldRingForTransition } from '@/lib/order-ready-alert'
+import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
 
 interface OrderTrackingClientProps {
@@ -153,6 +154,18 @@ export function OrderTrackingClient({
     return () => clearInterval(interval)
   }, [fetchStatus, alertsEnabled])
 
+  // The kitchen's promise, counted from the SERVER's clock: a device set
+  // twenty minutes fast would otherwise show a nonsense estimate for an order
+  // that is perfectly on time. Falls back to the device clock only when an
+  // older deployment sends no server time.
+  const serverNowMs = trackingData.serverNowMs ?? Date.now()
+  const prepPromise = describePrepPromise({
+    promisedReadyAt: trackingData.promisedReadyAt,
+    status: trackingData.status,
+    nowMs: serverNowMs,
+    orderTypeKind: trackingData.orderTypeKind,
+  })
+
   const currentIndex = getStatusIndex(trackingData.status)
   const isCancelled = trackingData.status === 'cancelled'
   const shortId = orderId.slice(0, 8).toUpperCase()
@@ -201,6 +214,34 @@ export function OrderTrackingClient({
               </div>
             )}
           </div>
+
+          {/* The kitchen's ready-by promise. Absent until a chef commits to a
+              time, and dropped again once the food is actually ready. */}
+          {prepPromise && (
+            <div
+              aria-live="polite"
+              className={`rounded-2xl border p-4 text-center ${
+                prepPromise.tone === 'late'
+                  ? 'border-amber-200 bg-amber-50'
+                  : 'border-green-200 bg-green-50'
+              }`}
+            >
+              <p
+                className={`text-lg font-bold ${
+                  prepPromise.tone === 'late' ? 'text-amber-800' : 'text-green-800'
+                }`}
+              >
+                {prepPromise.headline}
+              </p>
+              <p
+                className={`text-sm mt-0.5 ${
+                  prepPromise.tone === 'late' ? 'text-amber-700' : 'text-green-700'
+                }`}
+              >
+                {prepPromise.detail}
+              </p>
+            </div>
+          )}
 
           {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
           {!trackingData.isTerminal && trackingData.status !== 'ready' && !isCancelled && (

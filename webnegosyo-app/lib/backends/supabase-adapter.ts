@@ -110,6 +110,7 @@ const SUPPORTED_MUTATION_REFS = [
   "orders:updatePaymentStatus",
   "orders:reviseOrder",
   "orders:recordPayment",
+  "orders:setPrepTime",
 ] as const;
 
 const SUPPORTED_REFS: readonly string[] = [
@@ -601,6 +602,20 @@ export async function runPlatformMutation(
         tenant,
         params.orderId,
         { payment_status: params.paymentStatus },
+        scope
+      );
+    case "orders:setPrepTime":
+      // Written as one patch, with the status, so a ticket can never carry a
+      // promise while still reading as not-yet-started.
+      return patchOrder(
+        client,
+        tenant,
+        params.orderId,
+        {
+          prep_minutes: params.prepMinutes,
+          promised_ready_at: params.promisedReadyAt,
+          status: params.status,
+        },
         scope
       );
     case "orders:reviseOrder":

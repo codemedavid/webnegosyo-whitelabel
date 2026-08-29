@@ -24,6 +24,12 @@ import {
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../../lib/kitchen-chit";
+import {
+  isPrepTimeSupported,
+  normalizePrepMinutes,
+  promisedReadyAt,
+  prepTimeTargetStatus,
+} from "../../lib/prep-time";
 import { printReceiptSegments } from "../../lib/printer";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useAuthStore } from "../../stores/auth-store";
@@ -37,6 +43,7 @@ import { TicketCard, kds } from "../../components/kitchen/TicketCard";
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const setPrepTimeRef = "orders:setPrepTime" as unknown as FunctionReference<"mutation">;
 
 /** Same bounded recent-orders page the queue reads (adapter QUEUE_LIMIT). */
 const ORDERS_FETCH_LIMIT = 200;
@@ -58,6 +65,7 @@ export default function KitchenScreen() {
 
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
   const outletName = useAuthStore((s) => s.outletName);
   const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
   const { printer } = usePrinterStore();
@@ -70,6 +78,10 @@ export default function KitchenScreen() {
   });
   const { data: allItems } = useSafeQuery<KitchenItemLike[]>(getAllOrderItemsRef, {});
   const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const setPrepTime = useSafeMutation(setPrepTimeRef);
+  // A deployment without the prep-time bundle has no mutation to call, so the
+  // chips are hidden rather than offered and left to throw.
+  const canSetPrepTime = isPrepTimeSupported({ orderBackend, convexSchemaVersion });
   const scope = useBranchScope();
 
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -123,6 +135,34 @@ export default function KitchenScreen() {
       }
     },
     [tickets, updateStatus],
+  );
+
+  const handleSetPrepTime = useCallback(
+    async (orderId: string, minutes: number) => {
+      if (useAuthStore.getState().isDemo) {
+        Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+        return;
+      }
+      const normalized = normalizePrepMinutes(minutes);
+      if (normalized === null) {
+        Alert.alert("Prep time", "Enter a whole number of minutes, up to 4 hours.");
+        return;
+      }
+      const ticket = tickets.find((t) => t.order._id === orderId);
+      try {
+        await setPrepTime({
+          orderId,
+          prepMinutes: normalized,
+          // Stamped from NOW, not from when the order was placed: this is the
+          // moment the kitchen is committing to.
+          promisedReadyAt: new Date(promisedReadyAt(Date.now(), normalized)).toISOString(),
+          status: prepTimeTargetStatus(ticket?.order.status ?? ""),
+        });
+      } catch {
+        Alert.alert("Error", "Could not save the prep time. Check your connection and try again.");
+      }
+    },
+    [tickets, setPrepTime],
   );
 
   const handleRecall = useCallback(async () => {
@@ -218,6 +258,8 @@ export default function KitchenScreen() {
               onBump={handleBump}
               onPrint={handlePrint}
               canPrint={Boolean(printer)}
+              canSetPrepTime={canSetPrepTime}
+              onSetPrepTime={handleSetPrepTime}
             />
           )}
         />

@@ -19,11 +19,21 @@ describe('order tracking service carries the prep promise', () => {
     expect(source).toMatch(/serverNowMs/)
   })
 
-  it('reads the columns on the Supabase path', () => {
-    // The Supabase branch selects an explicit column list.
+  it('reads the columns on the Supabase path through the isolated helper', () => {
+    // Deliberately NOT added to the order's own explicit column list: naming an
+    // unmigrated column there fails the whole query and takes the order page
+    // down. The read is isolated so the worst case is a missing estimate.
     const supabasePath = source.slice(source.indexOf('async function fetchFromSupabase'))
-    expect(supabasePath).toMatch(/prep_minutes/)
-    expect(supabasePath).toMatch(/promised_ready_at/)
+    expect(supabasePath).toMatch(/fetchPrepPromise\(supabase, orderId, tenantId\)/)
+    expect(supabasePath).not.toMatch(/prep_minutes,/)
+
+    // And the helper itself reads both columns.
+    const helper = source.slice(
+      source.indexOf('const PREP_TIME_COLUMNS'),
+      source.indexOf('async function fetchOrderTypeKind')
+    )
+    expect(helper).toMatch(/prep_minutes/)
+    expect(helper).toMatch(/promised_ready_at/)
   })
 
   it('reads the fields on the Convex path', () => {
