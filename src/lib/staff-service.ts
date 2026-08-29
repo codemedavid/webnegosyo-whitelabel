@@ -4,6 +4,7 @@
 // server action layer, which is the only place with service-role access.
 
 import { resolveStaffLimit } from '@/lib/billing/subscription-status'
+import { validateDefaultTab } from '@/lib/staff-default-screen'
 import {
   validatePermissionKeys,
   type StaffPermissionKey,
@@ -28,6 +29,12 @@ export interface StaffRecord {
   permissions: string[] | null
   display_name: string | null
   email: string | null
+  /**
+   * Screen the merchant app opens this account on; null means the app decides
+   * as it always has. Stored as the app's route name — see
+   * `lib/staff-default-screen.ts` for the screens on offer.
+   */
+  default_tab?: string | null
   created_at: string
 }
 
@@ -69,6 +76,11 @@ export interface CreateStaffInput {
   permissions: string[]
   /** Branch to confine the account to. Absent/empty = the whole store. */
   outletId?: string | null
+  /**
+   * Screen the app should open this account on. Absent, unknown, or not
+   * covered by the granted permissions all mean "let the app decide".
+   */
+  defaultTab?: string | null
 }
 
 const MIN_PASSWORD_LENGTH = 8
@@ -201,6 +213,10 @@ export async function createStaff(
     permissions,
     display_name: displayName,
     email,
+    // Validated against the grants being handed out in this same call, not
+    // against what the form offered: the two are separate fields on one
+    // submission and nothing stops them disagreeing.
+    default_tab: validateDefaultTab(input.defaultTab, permissions),
     created_at: new Date().toISOString(),
   }
   await store.insertStaffRow(row)
@@ -219,7 +235,41 @@ export async function updateStaffPermissions(
   assertNotOwner(record)
   assertCanManage(record, context)
   const validated = validatePermissionKeys(permissions)
-  await store.updateStaffRow(userId, { permissions: validated })
+
+  // A pinned screen can outlive the grant that opened it — unticking Analytics
+  // from someone pinned to the Analytics screen is an ordinary edit. The app
+  // survives it (it falls back at launch), but leaving the stale value behind
+  // means the dialog reports a setting that no longer does anything.
+  const keptScreen = validateDefaultTab(record.default_tab, validated)
+  const patch: Partial<StaffRecord> =
+    keptScreen === (record.default_tab ?? null)
+      ? { permissions: validated }
+      : { permissions: validated, default_tab: keptScreen }
+
+  await store.updateStaffRow(userId, patch)
+}
+
+/**
+ * Pins a staff account to the screen the app should open on, or unpins it.
+ *
+ * Validated against the permissions the account holds right now rather than
+ * against whatever the form displayed: the two requests are separate, and the
+ * grants can have changed between them.
+ */
+export async function updateStaffDefaultScreen(
+  store: StaffStore,
+  tenantId: string,
+  userId: string,
+  defaultTab: string | null,
+  context: StaffBranchContext = {}
+): Promise<void> {
+  const record = await findTenantStaff(store, tenantId, userId)
+  assertNotOwner(record)
+  assertCanManage(record, context)
+
+  await store.updateStaffRow(userId, {
+    default_tab: validateDefaultTab(defaultTab, record.permissions),
+  })
 }
 
 /**
