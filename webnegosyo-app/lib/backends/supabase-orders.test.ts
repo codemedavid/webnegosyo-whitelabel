@@ -625,7 +625,7 @@ describe("branch attribution on the order DTO", () => {
 
   it("still attributes blob-only rows through customer_data", () => {
     const dto = toOrderDto(
-      orderRow({ outlet_id: null, customer_data: { order_outlet_id: "outlet-south" } })
+      orderRow({ outlet_id: null, customer_data: { outlet_id: "outlet-south" } })
     );
 
     expect(getOrderOutletId(dto)).toBe("outlet-south");

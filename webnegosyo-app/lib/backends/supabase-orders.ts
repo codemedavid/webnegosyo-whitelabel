@@ -98,6 +98,13 @@ export interface PlatformOrderRow {
   payment_method_name: string | null;
   payment_method_details: string | null;
   delivery_fee: number | null;
+  /**
+   * What the shop levied for service, already inside `total`. Long present on
+   * the platform table and written by web checkout; the app never projected it,
+   * so a serviced order reached the order screen and the printer as an
+   * unexplained gap between the items and the bill.
+   */
+  service_charge_amount?: number | null;
   delivery_address?: string | null;
   /**
    * Lalamove's booking trail. `lalamove_quotation_id` is written at checkout
@@ -177,6 +184,14 @@ export interface OrderItemDto {
 export interface OrderDto {
   _id: string;
   _creationTime: number;
+  /**
+   * Branch that took the order, kept in the ROW's spelling deliberately:
+   * `branch-scope.ts:getOrderOutletId` reads `outlet_id` structurally, and the
+   * server narrows branch reads on this column — a DTO that dropped it made
+   * column-only rows invisible to the very branch that rang them up, while the
+   * realtime chime (which sees the raw row) still fired for them.
+   */
+  outlet_id?: string | null;
   customerName: string;
   customerContact: string;
   customerData?: Record<string, unknown>;
@@ -190,6 +205,14 @@ export interface OrderDto {
   paymentMethod?: string;
   paymentMethodDetails?: string;
   deliveryFee?: number;
+  /**
+   * The service charge already inside {@link total}, when one was levied.
+   *
+   * Undefined for an unserviced order, and for every order placed before the
+   * figure was stored — a reader must treat absent as "nothing to say", never
+   * as zero, or a legacy bill would claim it carried no charge.
+   */
+  serviceCharge?: number;
   /** Where the driver is taking it. Also the address Lalamove books against. */
   deliveryAddress?: string;
   lalamoveQuotationId?: string;
@@ -352,6 +375,7 @@ export function toOrderDto(
   return {
     _id: row.id,
     _creationTime: Date.parse(row.created_at),
+    outlet_id: optional(row.outlet_id),
     customerName: row.customer_name ?? "",
     customerContact: row.customer_contact ?? "",
     customerData: optional(row.customer_data),
@@ -365,6 +389,11 @@ export function toOrderDto(
     paymentMethod: optional(row.payment_method_name),
     paymentMethodDetails: optional(row.payment_method_details),
     deliveryFee: row.delivery_fee === null ? undefined : toNumber(row.delivery_fee),
+    // Undefined (not 0) for an unserviced order, so no reader draws a zero row.
+    serviceCharge:
+      row.service_charge_amount === null || row.service_charge_amount === undefined
+        ? undefined
+        : toNumber(row.service_charge_amount),
     deliveryAddress: optional(row.delivery_address),
     lalamoveQuotationId: optional(row.lalamove_quotation_id),
     lalamoveOrderId: optional(row.lalamove_order_id),
@@ -511,6 +540,8 @@ export interface CreateOrderArgs {
   paymentMethod?: string;
   paymentMethodDetails?: string;
   deliveryFee?: number;
+  /** The service charge already inside `total`, when one was levied. */
+  serviceCharge?: number;
   items: CreateOrderItemArgs[];
 }
 
@@ -534,6 +565,7 @@ export interface OrderInsert {
   payment_method_name: string | null;
   payment_method_details: string | null;
   delivery_fee: number | null;
+  service_charge_amount: number | null;
   delivery_address: string | null;
   scheduled_for: string | null;
   client_order_id: string | null;
@@ -622,6 +654,9 @@ export function buildCreateOrderRows(
     payment_method_name: args.paymentMethod ?? null,
     payment_method_details: args.paymentMethodDetails ?? null,
     delivery_fee: args.deliveryFee ?? null,
+    // NULL, not 0, for an unserviced sale — matching delivery_fee and what the
+    // web checkout path already writes.
+    service_charge_amount: args.serviceCharge ? args.serviceCharge : null,
     delivery_address: textFromCustomerData(args.customerData, "delivery_address"),
     scheduled_for: args.scheduledFor ?? null,
     client_order_id: args.clientOrderId ?? null,

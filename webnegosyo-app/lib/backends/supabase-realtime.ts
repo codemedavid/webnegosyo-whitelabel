@@ -62,6 +62,11 @@ export interface OrderChangePayload {
 const REALTIME_BACKED_REFS: readonly string[] = [
   "orders:getOrders",
   "orders:getOrderById",
+  // Line items are written in the same breath as their order, so an order
+  // change is their freshness signal too. Off this list, the kitchen board
+  // polls a 10k-row join every 15s forever and a new ticket renders itemless
+  // for up to a full poll interval.
+  "orders:getAllOrderItems",
   "orders:getRealtimeQueue",
   "orders:getDashboardStats",
   "orders:getDashboardStatsByPeriod",

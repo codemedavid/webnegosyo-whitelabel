@@ -24,7 +24,12 @@
 
 import type { ModifierGroup } from "./modifier-groups";
 import type { OrderAddon, OrderItemDto, OrderVariationSelection } from "./backends/supabase-orders";
-import { addLine, type PosCartLine, type PosCartSelection } from "./pos-cart";
+import {
+  addLine,
+  type OrderLineCarryover,
+  type PosCartLine,
+  type PosCartSelection,
+} from "./pos-cart";
 
 /** Live modifier groups per menu item, as the register already loads them. */
 export type ModifierCatalog = Record<string, ModifierGroup[]>;
@@ -58,6 +63,14 @@ export interface RevisedOrderItem {
   specialInstructions?: string;
   variationSelections?: OrderVariationSelection[];
   addons?: OrderAddon[];
+  /** Legacy variation string and bundle/upsell markers, carried through an
+   * edit untouched — see {@link OrderLineCarryover}. */
+  variation?: string;
+  isUpsellItem?: boolean;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
 }
 
 /**
@@ -177,9 +190,31 @@ export type HydratableOrderItem = Pick<
   Partial<
     Pick<
       OrderItemDto,
-      "menuItemId" | "specialInstructions" | "variationSelections" | "addons"
+      | "menuItemId"
+      | "specialInstructions"
+      | "variationSelections"
+      | "addons"
+      | "variation"
+      | "isUpsellItem"
+      | "isBundleItem"
+      | "bundleId"
+      | "bundleName"
+      | "slotName"
     >
   >;
+
+/** The metadata a hydrated line must hand back on serialization, if any. */
+function carryoverOf(item: HydratableOrderItem): OrderLineCarryover | undefined {
+  const carryover: OrderLineCarryover = {
+    ...(item.variation !== undefined ? { variation: item.variation } : {}),
+    ...(item.isUpsellItem !== undefined ? { isUpsellItem: item.isUpsellItem } : {}),
+    ...(item.isBundleItem !== undefined ? { isBundleItem: item.isBundleItem } : {}),
+    ...(item.bundleId !== undefined ? { bundleId: item.bundleId } : {}),
+    ...(item.bundleName !== undefined ? { bundleName: item.bundleName } : {}),
+    ...(item.slotName !== undefined ? { slotName: item.slotName } : {}),
+  };
+  return Object.keys(carryover).length > 0 ? carryover : undefined;
+}
 
 export function hydratePosCart(
   items: readonly HydratableOrderItem[],
@@ -204,6 +239,8 @@ export function hydratePosCart(
     const unitPrice = round2(item.subtotal / item.quantity);
     const modifierTotal = selections.reduce((sum, s) => sum + s.priceModifier, 0);
 
+    const carryover = carryoverOf(item);
+
     return addLine(cart, {
       menuItemId: item.menuItemId ?? "",
       name: item.menuItemName,
@@ -211,6 +248,7 @@ export function hydratePosCart(
       quantity: item.quantity,
       selections,
       ...(item.specialInstructions ? { note: item.specialInstructions } : {}),
+      ...(carryover ? { carryover } : {}),
     });
   }, []);
 
@@ -285,5 +323,6 @@ export function posCartToOrderItems(
     subtotal: line.subtotal,
     ...(line.note ? { specialInstructions: line.note } : {}),
     ...partitionSelections(line, catalog),
+    ...(line.carryover ?? {}),
   }));
 }

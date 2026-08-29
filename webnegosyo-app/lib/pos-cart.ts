@@ -24,6 +24,24 @@ export interface PosCartSelection {
 }
 
 /** What a screen hands to {@link addLine}. */
+/**
+ * Order-item metadata the register cannot re-derive but must not destroy.
+ *
+ * Rows written by web/mobile checkout carry a legacy `variation` string and
+ * bundle/upsell markers. Editing an order rewrites its items wholesale, so a
+ * quantity change that dropped these would strip "(Large)" off the chit and
+ * unlink bundle lines. Hydration stamps this on the line; serialization hands
+ * it back verbatim. A line rung up fresh at the counter has none.
+ */
+export interface OrderLineCarryover {
+  variation?: string;
+  isUpsellItem?: boolean;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
+}
+
 export interface PosLineInput {
   menuItemId: string;
   name: string;
@@ -32,6 +50,9 @@ export interface PosLineInput {
   selections: PosCartSelection[];
   /** Free-text kitchen note; part of line identity so notes never merge. */
   note?: string;
+  /** Metadata carried through an edit untouched; part of line identity so a
+   * bundle line never merges into an identical standalone line. */
+  carryover?: OrderLineCarryover;
 }
 
 /** A priced, stackable line in the register cart. */
@@ -102,13 +123,24 @@ export function lineKey(
   menuItemId: string,
   selections: PosCartSelection[],
   note?: string,
+  carryover?: OrderLineCarryover,
 ): string {
   const options = selections
     .map((s) => s.optionId)
     .slice()
     .sort()
     .join(",");
-  return `${menuItemId}|${options}|${note ?? ""}`;
+  // Serialized in sorted-key order so identical carryovers built in different
+  // field orders still merge. Absent carryover keeps the historical key shape.
+  const carried = carryover
+    ? "|" +
+      Object.entries(carryover)
+        .filter(([, value]) => value !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([key, value]) => `${key}=${String(value)}`)
+        .join(",")
+    : "";
+  return `${menuItemId}|${options}|${note ?? ""}${carried}`;
 }
 
 /** Per-unit price of an item with its options applied. Never negative. */
@@ -122,7 +154,7 @@ function priceLine(input: PosLineInput, quantity: number): PosCartLine {
   return {
     ...input,
     quantity,
-    key: lineKey(input.menuItemId, input.selections, input.note),
+    key: lineKey(input.menuItemId, input.selections, input.note, input.carryover),
     unitPrice: price,
     subtotal: round2(price * quantity),
   };
@@ -135,7 +167,7 @@ function priceLine(input: PosLineInput, quantity: number): PosCartLine {
 export function addLine(cart: PosCartLine[], input: PosLineInput): PosCartLine[] {
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) return cart;
 
-  const key = lineKey(input.menuItemId, input.selections, input.note);
+  const key = lineKey(input.menuItemId, input.selections, input.note, input.carryover);
   const existing = cart.find((line) => line.key === key);
 
   if (!existing) return [...cart, priceLine(input, input.quantity)];

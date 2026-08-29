@@ -5,6 +5,7 @@ import { useAuthStore } from "../stores/auth-store";
 import { isStaleBundleError } from "./stale-backend";
 import { resolveRefRoute } from "./backends/route";
 import { runPlatformMutation } from "./backends/supabase-adapter";
+import { withPlatformTimeout } from "./backends/platform-call";
 import {
   platformClient,
   usePlatformQuery,
@@ -184,12 +185,11 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
   const platformMutate = useCallback<SafeMutation>(
     async (args) => {
       if (!tenantId) throw new Error("No store selected");
-      return runPlatformMutation(
-        platformClient,
-        tenantId,
-        refName,
-        args ?? {},
-        accountScope
+      // Bounded like every other auth-adjacent call: a mutation that awaits a
+      // stalled GoTrue refresh forever is a frozen register mid-tender.
+      return withPlatformTimeout(
+        runPlatformMutation(platformClient, tenantId, refName, args ?? {}, accountScope),
+        refName
       );
     },
     [refName, tenantId, accountScope]

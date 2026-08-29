@@ -745,7 +745,7 @@ describe("branch-scoped writes", () => {
 
   it("narrows a status patch to the account's branch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act
     await runPlatformMutation(
@@ -762,7 +762,7 @@ describe("branch-scoped writes", () => {
 
   it("narrows a payment-status patch to the account's branch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act
     await runPlatformMutation(
@@ -780,7 +780,7 @@ describe("branch-scoped writes", () => {
   it("refuses to revise an order outside the account's branch", async () => {
     // Arrange: the revise path reads the order first, so an out-of-branch order
     // comes back as absent under the same filter the reads use.
-    const { client } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act + Assert
     await expect(
@@ -796,7 +796,9 @@ describe("branch-scoped writes", () => {
 
   it("adds no branch filter to a store-wide account's patch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({
+      orders: [{ data: [{ id: "order-9" }], error: null }],
+    });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {

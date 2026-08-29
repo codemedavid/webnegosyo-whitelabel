@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
+import { withPlatformTimeout } from "./platform-call";
 import { runPlatformQuery, type PlatformClient } from "./supabase-adapter";
 import {
   buildOrderSubscription,
@@ -73,6 +74,14 @@ export function usePlatformQuery<T>(
   // keep showing the unscoped result until the next poll.
   const scopeKey = scope.kind === "all" ? "all" : `branch:${scope.outletId}`;
 
+  // What the query is ABOUT. When this changes the previous data answers a
+  // different question, so `isLoading` must re-arm — without it, switching
+  // store or period silently presents the old tenant/period's numbers until
+  // the new fetch lands. Deliberately excludes `realtimeStatus`, whose changes
+  // restart the poll timer but do not change the question.
+  const identityKey = `${refName}|${argsKey}|${tenantId ?? ""}|${scopeKey}`;
+  const lastIdentityRef = useRef(identityKey);
+
   // Lets the realtime subscription trigger a re-read without depending on the
   // fetch effect's identity, so an incoming order does not resubscribe.
   const reloadRef = useRef<() => void>(() => {});
@@ -90,16 +99,24 @@ export function usePlatformQuery<T>(
       return;
     }
 
+    if (lastIdentityRef.current !== identityKey) {
+      lastIdentityRef.current = identityKey;
+      setIsLoading(true);
+    }
+
     let isCurrent = true;
 
     const load = async () => {
       try {
-        const result = await runPlatformQuery(
-          platformClient,
-          tenantId,
-          refName,
-          JSON.parse(argsKey),
-          scope
+        const result = await withPlatformTimeout(
+          runPlatformQuery(
+            platformClient,
+            tenantId,
+            refName,
+            JSON.parse(argsKey),
+            scope
+          ),
+          refName
         );
         if (!isCurrent) return;
         setData(result as T);
@@ -130,7 +147,7 @@ export function usePlatformQuery<T>(
     // `scopeKey` rather than `scope` alone: the hook memoises the object, but a
     // value-identity key means a re-resolved-but-equal scope cannot restart the
     // poll timer.
-  }, [refName, argsKey, tenantId, isSkipped, realtimeStatus, scopeKey, scope]);
+  }, [refName, argsKey, tenantId, isSkipped, realtimeStatus, scopeKey, scope, identityKey]);
 
   // Subscribe to this tenant's order changes so a new order lands immediately
   // instead of on the next poll. Deliberately does NOT depend on `argsKey` —

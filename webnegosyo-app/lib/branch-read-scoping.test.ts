@@ -13,6 +13,11 @@ import { join } from "path";
 
 const HOOKS = () => readFileSync(join(__dirname, "hooks.ts"), "utf8");
 
+// The platform read path itself lives in a leaf module so it can be exercised
+// with renderHook; the scope-threading guarantees moved with it.
+const PLATFORM_QUERY = () =>
+  readFileSync(join(__dirname, "backends", "use-platform-query.ts"), "utf8");
+
 describe("platform read scoping", () => {
   it("resolves the account's branch scope in the dispatch hook", () => {
     // The account scope — not the branch an owner has drilled into. See below.
@@ -33,20 +38,20 @@ describe("platform read scoping", () => {
   });
 
   it("passes the scope into the platform query", () => {
-    expect(HOOKS()).toMatch(/runPlatformQuery\([\s\S]{0,200}scope/);
+    expect(PLATFORM_QUERY()).toMatch(/runPlatformQuery\([\s\S]{0,200}scope/);
   });
 
   it("re-checks the branch on an incoming realtime payload", () => {
     // One filter clause per binding is all Realtime allows, and it is spent on
     // the tenant. Without this check a manager's screen refetches — and the
     // new-order chime fires — for a sale at another branch.
-    expect(HOOKS()).toMatch(/isOrderChangeInScope/);
+    expect(PLATFORM_QUERY()).toMatch(/isOrderChangeInScope/);
   });
 
   it("re-reads when the account's branch changes", () => {
     // The scope is part of what the query asked for. Left out of the effect's
     // dependencies, a session that resolves its branch after the first fetch
     // would keep showing the unscoped result until the next poll.
-    expect(HOOKS()).toMatch(/\[[^\]]*scopeKey[^\]]*\]/);
+    expect(PLATFORM_QUERY()).toMatch(/\[[^\]]*scopeKey[^\]]*\]/);
   });
 });
