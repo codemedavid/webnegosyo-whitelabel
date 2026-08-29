@@ -57,6 +57,7 @@ import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
+import { resolveActiveOrderType } from '@/lib/checkout-order-type'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
@@ -397,12 +398,14 @@ export function useCheckout(tenantSlug: string) {
         setOrderTypes(enabledOrderTypes)
         setAreOrderTypesReady(true)
 
-        // Determine the active order type for form fields fetch
+        // Determine the active order type for form fields fetch. The stored
+        // selection is shared across tenants, so it must be validated against
+        // this tenant's order types before it drives any fetch.
         let activeOrderType = orderType
-        if (!hasInitializedOrderType.current && enabledOrderTypes.length > 0) {
-          if (!orderType) {
-            activeOrderType = enabledOrderTypes[0].id
-            setOrderType(enabledOrderTypes[0].id)
+        if (!hasInitializedOrderType.current) {
+          activeOrderType = resolveActiveOrderType(orderType, enabledOrderTypes)
+          if (activeOrderType !== orderType) {
+            setOrderType(activeOrderType)
           }
           hasInitializedOrderType.current = true
         }
