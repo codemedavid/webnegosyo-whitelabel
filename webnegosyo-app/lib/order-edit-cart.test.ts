@@ -303,6 +303,10 @@ describe("posCartToOrderItems", () => {
         { typeName: "Size", optionName: "Large", priceAdjustment: 20 },
       ],
       addons: [{ name: "Pearls", price: 15 }],
+      // The legacy chit string is regenerated from the variation selections
+      // (the format mobile checkout writes) so string-only readers agree
+      // with the structured data after an edit.
+      variation: "Large",
     });
   });
 
