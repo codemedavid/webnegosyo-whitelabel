@@ -42,6 +42,8 @@ export interface RosterStaff {
   display_name: string | null
   email: string | null
   permissions: string[] | null
+  /** Merchant-app screen this account opens on; null/absent = the app decides. */
+  default_tab?: string | null
 }
 
 /** A branch, its people and its takings. */

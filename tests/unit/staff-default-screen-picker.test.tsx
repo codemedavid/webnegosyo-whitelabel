@@ -83,7 +83,7 @@ describe('picking a default screen for a new account', () => {
     renderCard()
     openAddForm()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /pos/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /take orders at the counter/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /^register$/i })).toBeInTheDocument()
@@ -96,10 +96,10 @@ describe('picking a default screen for a new account', () => {
     renderCard()
     openAddForm()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /pos/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /take orders at the counter/i }))
     await waitFor(() => screen.getByRole('radio', { name: /^register$/i }))
     fireEvent.click(screen.getByRole('radio', { name: /^register$/i }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /pos/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /take orders at the counter/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /no preference/i })).toBeChecked()
@@ -110,14 +110,17 @@ describe('picking a default screen for a new account', () => {
     renderCard()
     openAddForm()
 
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'Ben Cruz' } })
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Ben Cruz' } })
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ben@example.com' } })
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'supersecret1' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /pos/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /take orders at the counter/i }))
     await waitFor(() => screen.getByRole('radio', { name: /^register$/i }))
     fireEvent.click(screen.getByRole('radio', { name: /^register$/i }))
 
-    fireEvent.click(screen.getByRole('button', { name: /create staff/i }))
+    // The trigger and the dialog's submit share a label; the submit is the one
+    // rendered last, inside the open dialog.
+    const submits = screen.getAllByRole('button', { name: /add staff/i })
+    fireEvent.click(submits[submits.length - 1])
 
     await waitFor(() => {
       expect(createStaffAction).toHaveBeenCalledWith(
