@@ -11,6 +11,7 @@ import {
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
+import { canOpenTeam } from "../../lib/staff-service";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 
@@ -20,6 +21,12 @@ export default function AccountScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const isDemo = useAuthStore((s) => s.isDemo);
   const clear = useAuthStore((s) => s.clear);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const outletId = useAuthStore((s) => s.outletId);
+
+  const showTeamEntry = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
 
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -122,6 +129,22 @@ export default function AccountScreen() {
         <Text style={styles.sub}>{isDemo ? "Demo session — no account" : email ?? "—"}</Text>
       </Card>
 
+      {showTeamEntry && (
+        <TouchableOpacity
+          style={styles.teamButton}
+          onPress={() => router.push("/(main)/team")}
+          activeOpacity={0.8}
+        >
+          <View style={styles.teamCopy}>
+            <Text style={styles.teamTitle}>Team</Text>
+            <Text style={styles.teamSub}>
+              Add staff accounts and choose what each one can do
+            </Text>
+          </View>
+          <Text style={styles.teamChevron}>›</Text>
+        </TouchableOpacity>
+      )}
+
       {isDemo && (
         <View style={styles.demoNote}>
           <Text style={styles.demoNoteText}>
@@ -179,6 +202,21 @@ const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
   value: { ...typography.heading, color: colors.textPrimary },
   sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  teamButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    ...shadow.sm,
+  },
+  teamCopy: { flex: 1 },
+  teamTitle: { ...typography.heading, color: colors.textPrimary },
+  teamSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  teamChevron: { ...typography.title, color: colors.textSecondary },
   demoNote: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,

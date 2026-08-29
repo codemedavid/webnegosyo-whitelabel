@@ -11,6 +11,7 @@ import { activeWorkspace, isBusinessTabVisible } from "../../lib/portfolio-landi
 import { usePortfolioAudience } from "../../lib/use-portfolio-audience";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
+import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { useBranchLanding } from "../../lib/use-branch-landing";
@@ -80,6 +81,8 @@ export default function MainLayout() {
     <>
       {/* App-wide new-order ringtone — active on every tab, not just Dashboard. */}
       <GlobalOrderAlerts />
+      {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
+      <GlobalKitchenAutoPrint />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}
@@ -293,6 +296,10 @@ export default function MainLayout() {
       <Tabs.Screen
         name="account"
         options={{ href: null, title: "Account" }}
+      />
+      <Tabs.Screen
+        name="team"
+        options={{ href: null, title: "Team" }}
       />
       </Tabs>
     </>
