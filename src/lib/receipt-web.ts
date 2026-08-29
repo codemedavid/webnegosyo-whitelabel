@@ -21,6 +21,10 @@ export function mapSupabaseOrderToReceipt(order: OrderWithItems): ReceiptOrder {
     orderType: order.order_type ?? undefined,
     total: order.total,
     deliveryFee: order.delivery_fee ?? undefined,
+    // Populated by web checkout since order types gained a service-charge rate,
+    // and already read by the order detail dialog. Dropping it here printed a
+    // browser receipt whose items did not add up to its own total.
+    serviceCharge: order.service_charge_amount ?? undefined,
     paymentMethod: order.payment_method_name ?? undefined,
     customerData: order.customer_data,
     items: (order.order_items ?? []).map((item) => ({

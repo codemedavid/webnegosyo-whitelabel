@@ -121,6 +121,14 @@ export interface PlatformOrderRow {
   lalamove_tracking_url?: string | null;
   scheduled_for: string | null;
   client_order_id: string | null;
+  /**
+   * The kitchen's ready-by promise. `prep_minutes` is what the chef tapped;
+   * `promised_ready_at` is the absolute instant it landed on. Dropping these
+   * from the projection leaves a platform-backed store with a prep-time control
+   * that writes successfully and then displays nothing.
+   */
+  prep_minutes?: number | null;
+  promised_ready_at?: string | null;
   /** Bumped by every saved edit; the optimistic lock is checked against it. */
   revision_number?: number | null;
   /** Trigger-maintained cache of the `order_payments` ledger. */
@@ -222,6 +230,10 @@ export interface OrderDto {
   lalamoveDriverPhone?: string;
   lalamoveTrackingUrl?: string;
   scheduledFor?: string;
+  /** Minutes the kitchen committed to; the merchant's record of the choice. */
+  prepMinutes?: number;
+  /** Absolute instant promised — the only thing a countdown may be built on. */
+  promisedReadyAt?: string;
   clientOrderId?: string;
   /**
    * How many times this order has been edited. Always a number: the edit
@@ -402,6 +414,10 @@ export function toOrderDto(
     lalamoveDriverPhone: optional(row.lalamove_driver_phone),
     lalamoveTrackingUrl: optional(row.lalamove_tracking_url),
     scheduledFor: optional(row.scheduled_for),
+    prepMinutes: row.prep_minutes === null || row.prep_minutes === undefined
+      ? undefined
+      : toNumber(row.prep_minutes),
+    promisedReadyAt: optional(row.promised_ready_at),
     clientOrderId: optional(row.client_order_id),
     revisionNumber: toNumber(row.revision_number),
     amountPaid: toNumber(row.amount_paid),

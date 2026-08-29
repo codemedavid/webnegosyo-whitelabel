@@ -539,10 +539,23 @@ export default function PosScreen() {
 
       <CartSheet
         lines={lines}
-        // In edit mode the fee lives on the edit context, not the counter
-        // sale — shown here so the row the cashier taps reflects what the
-        // revision will actually charge.
-        totals={editContext ? { ...totals, deliveryFee: editContext.deliveryFee } : totals}
+        // In edit mode the fees live on the edit context, not the counter sale
+        // — shown here so the rows the cashier reads reflect what the revision
+        // will actually charge. The service charge is the figure the order was
+        // PLACED with; the register cannot recompute it (the order type's rate
+        // may have moved since) and must not try.
+        totals={
+          editContext
+            ? {
+                ...totals,
+                deliveryFee: editContext.deliveryFee,
+                serviceCharge: editContext.serviceCharge,
+              }
+            : totals
+        }
+        // Whatever the placed bill held beyond items, service and delivery.
+        // Named `Adjustment` rather than left invisible — see CartSheet.
+        adjustment={editContext ? editContext.carriedCharges : 0}
         // The order type is fixed for the life of a placed order: switching it
         // mid-edit would swap the service charge and invalidate the basis the
         // delivery fee was quoted under. Passing none renders no chips.

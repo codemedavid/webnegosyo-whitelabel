@@ -46,6 +46,12 @@ export interface ReceiptOrder {
   orderType?: string;
   total: number;
   deliveryFee?: number;
+  /**
+   * The service charge already inside `total`. Absent for an unserviced order
+   * AND for every order placed before the figure was stored, so the row is
+   * drawn only when there is something true to say.
+   */
+  serviceCharge?: number;
   paymentMethod?: string;
   items?: ReceiptOrderItem[];
   /** Cash handed over by the customer. Printed only alongside changeDue. */
@@ -341,7 +347,15 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
   // Validate the computed subtotal against order.total. The discount must be
   // part of this sum — otherwise every discounted sale trips the warning and
   // trains merchants to ignore the one signal meant to catch real corruption.
-  const expectedTotal = ctx.subtotal + (order.deliveryFee ?? 0) - (ctx.discount?.total ?? 0);
+  // The service charge belongs in this sum for the same reason the discount
+  // does: omit it and every serviced order cries corruption at a merchant who
+  // has none, training them to ignore the one signal meant to catch the real
+  // thing.
+  const expectedTotal =
+    ctx.subtotal +
+    (order.deliveryFee ?? 0) +
+    (order.serviceCharge ?? 0) -
+    (ctx.discount?.total ?? 0);
   if (Math.abs(expectedTotal - order.total) > 0.01) {
     console.warn(
       `[Receipt] Subtotal mismatch: computed=${expectedTotal.toFixed(2)} vs order.total=${order.total.toFixed(2)} (order ${order._id})`
@@ -355,6 +369,7 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
   const summaryRows = orderSummaryRows({
     subtotal: ctx.subtotal,
     deliveryFee: order.deliveryFee,
+    serviceCharge: order.serviceCharge,
     discount: ctx.discount,
     total: order.total,
   });

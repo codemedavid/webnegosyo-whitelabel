@@ -30,6 +30,7 @@ import {
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
 import { staleBackendMessage } from "../../lib/stale-backend";
+import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
@@ -62,6 +63,23 @@ export default function PosTenderScreen() {
   const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
+
+  /**
+   * The `serviceCharge` argument to send with an order write, if any.
+   *
+   * The platform backend has a real column and takes it whatever the version;
+   * only Convex validates its arguments strictly, so only Convex is gated.
+   */
+  const serviceChargeArg = useCallback(
+    (amount: number | undefined) =>
+      orderBackend === "supabase"
+        ? amount && amount > 0
+          ? { serviceCharge: amount }
+          : {}
+        : convexServiceChargeArg(amount, convexSchemaVersion),
+    [orderBackend, convexSchemaVersion],
+  );
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
 
   const lines = usePosCartStore((s) => s.lines);
@@ -265,6 +283,14 @@ export default function PosTenderScreen() {
         deliveryFee: editContext.deliveryFee,
         // The only channel the mutation offers for the rest of the bill.
         serviceChargeAmount: saved.carriedChargesForSave,
+        // The NAMED charge, so the next reader can caption the row instead of
+        // finding an unexplained gap. A record only — the money above already
+        // includes it, and sending it as a second addend would bill twice.
+        //
+        // Version-gated on Convex: a deployment below v23 rejects the whole
+        // mutation over the unknown field, so an ungated send would stop every
+        // un-redeployed store from saving an edit at all.
+        ...serviceChargeArg(editContext.serviceCharge),
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),
@@ -404,7 +430,10 @@ export default function PosTenderScreen() {
         outlet: posOutletContext(outletId, outletName),
       });
 
-      const orderId = await createOrder(args);
+      // `buildPosOrder` reports the charge unconditionally; the gate decides
+      // whether this particular deployment can be told about it.
+      const { serviceCharge: builtCharge, ...rest } = args;
+      const orderId = await createOrder({ ...rest, ...serviceChargeArg(builtCharge) });
 
       // Counter sales are settled at the drawer, so they are paid on creation.
       // A failure here must not lose the sale — the order already exists.

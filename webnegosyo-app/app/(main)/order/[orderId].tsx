@@ -99,6 +99,12 @@ interface OrderDetail {
   total: number;
   deliveryAddress?: string;
   deliveryFee?: number;
+  /**
+   * The service charge already inside `total`, when the backend stored one.
+   * Absent on unserviced orders and on every order placed before the figure
+   * was kept — `orderSummaryRows` draws the row only when it is present.
+   */
+  serviceCharge?: number;
   lalamoveQuotationId?: string;
   lalamoveOrderId?: string;
   lalamoveStatus?: string;
@@ -774,6 +780,7 @@ export default function OrderDetailScreen() {
         {orderSummaryRows({
           subtotal: (order.items ?? []).reduce((sum, item) => sum + item.subtotal, 0),
           deliveryFee: order.deliveryFee,
+          serviceCharge: order.serviceCharge,
           discount: readOrderDiscount(order),
           total: order.total,
         }).map((row, index) => (

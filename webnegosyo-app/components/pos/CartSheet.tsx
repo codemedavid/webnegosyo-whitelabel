@@ -37,6 +37,20 @@ interface CartSheetProps {
   onRemoveDiscount?: (line: OrderDiscountLine) => void;
   /** Opens delivery details entry. Absent (e.g. editing) hides it entirely. */
   onEditDelivery?: () => void;
+  /**
+   * The part of an edited order's total that nothing can account for.
+   *
+   * Editing a placed order prices it from the bill as placed. Items, the
+   * stored service charge and the delivery fee are all known and get their own
+   * captioned rows; this is whatever is left — rounding, or a discount from
+   * before breakdowns were recorded. May be negative, which is a deduction the
+   * customer was already given.
+   *
+   * Shown rather than folded silently into the total: a cashier who can see
+   * money they cannot explain is exactly the complaint this row answers.
+   * Absent (a counter sale) or zero renders nothing.
+   */
+  adjustment?: number;
 }
 
 /**
@@ -65,6 +79,7 @@ export function CartSheet({
   onAddDiscount,
   onRemoveDiscount,
   onEditDelivery,
+  adjustment = 0,
 }: CartSheetProps) {
   const hasItems = lines.length > 0;
   const activeType = orderTypes.find((type) => type.id === orderTypeId);
@@ -216,6 +231,18 @@ export function CartSheet({
                 <Text style={styles.totalLabel}>Delivery</Text>
                 <Text style={styles.totalValue}>{formatPeso(totals.deliveryFee)}</Text>
               </TouchableOpacity>
+            )}
+
+            {/* Sign carried by the row, not by the number: an unsigned
+                negative would read as the shop charging extra. */}
+            {adjustment !== 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Adjustment</Text>
+                <Text style={styles.totalValue}>
+                  {adjustment < 0 ? "−" : ""}
+                  {formatPeso(Math.abs(adjustment))}
+                </Text>
+              </View>
             )}
 
             {/*

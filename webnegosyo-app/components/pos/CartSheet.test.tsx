@@ -214,3 +214,60 @@ describe("finding the discount entry", () => {
     expect(screen.getByText(/SAVE20/)).toBeTruthy();
   });
 });
+
+describe("editing a placed order — every peso on the sheet is named", () => {
+  /**
+   * The complaint this exists to answer: editing an order and attaching a
+   * delivery fee showed the cashier the bill had gone up, with nothing saying
+   * what the extra money was.
+   *
+   * A placed order's total holds more than its lines. Some of it is now known
+   * — the stored service charge, the delivery fee — and gets its own captioned
+   * row. Whatever is left is genuinely unattributable: rounding, or a discount
+   * from before breakdowns were recorded. That gets a row too, called
+   * `Adjustment`, because money the cashier can see but cannot explain is
+   * worse than money labelled honestly as unexplained.
+   */
+  const editTotals = () => ({
+    ...cartTotals(counterSale()),
+    serviceCharge: 24,
+    deliveryFee: 50,
+  });
+
+  it("names the service charge carried from the placed order", () => {
+    renderSheet({ totals: editTotals() });
+
+    expect(screen.getByText("Service charge")).toBeTruthy();
+    expect(screen.getByText("₱24.00")).toBeTruthy();
+  });
+
+  it("names the delivery fee the cashier just attached", () => {
+    renderSheet({ totals: editTotals() });
+
+    expect(screen.getByText("Delivery")).toBeTruthy();
+    expect(screen.getByText("₱50.00")).toBeTruthy();
+  });
+
+  it("labels an unattributable remainder rather than hiding it", () => {
+    renderSheet({ totals: editTotals(), adjustment: 5 });
+
+    expect(screen.getByText("Adjustment")).toBeTruthy();
+    expect(screen.getByText("₱5.00")).toBeTruthy();
+  });
+
+  it("shows no adjustment row when the bill is fully accounted for", () => {
+    // The common case once the charge is stored: nothing left over, so no row.
+    renderSheet({ totals: editTotals(), adjustment: 0 });
+
+    expect(screen.queryByText("Adjustment")).toBeNull();
+  });
+
+  it("shows a negative remainder as a deduction, not a charge", () => {
+    // A residue below zero is a discount the customer was given. Printing it
+    // unsigned beside the other rows would read as the shop charging extra.
+    renderSheet({ totals: editTotals(), adjustment: -12 });
+
+    expect(screen.getByText("Adjustment")).toBeTruthy();
+    expect(screen.getByText("−₱12.00")).toBeTruthy();
+  });
+});

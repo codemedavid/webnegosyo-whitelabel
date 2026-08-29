@@ -88,10 +88,16 @@ const SAMPLE_ORDER = {
   customerName: 'Maria',
   customerContact: '09171234567',
   orderType: 'Dine-in',
-  total: 372.5,
+  // Both fees are on the sample deliberately. A merchant arranging their
+  // totals block has to SEE where a service charge and a delivery fee land;
+  // without them the preview jumped from the items straight to TOTAL and the
+  // rows were first discovered on a live chit.
+  serviceCharge: 37.25,
+  deliveryFee: 50,
+  total: 459.75,
   paymentMethod: 'Cash',
   cashTendered: 500,
-  changeDue: 127.5,
+  changeDue: 40.25,
   items: [
     { menuItemName: 'Iced Latte', quantity: 2, subtotal: 240, variation: 'Large' },
     { menuItemName: 'Ham & Cheese Croissant', quantity: 1, subtotal: 132.5 },

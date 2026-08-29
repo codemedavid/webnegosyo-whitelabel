@@ -116,6 +116,17 @@ export interface PosOrderArgs {
    * everything else.
    */
   deliveryAddress?: string;
+  /**
+   * What the order type levied for service, already inside {@link total}.
+   *
+   * Present only when actually charged, on the same rule as `deliveryFee` — a
+   * sale with no charge sends no key, so no reader draws a zero row.
+   *
+   * Sent so the figure can be NAMED downstream. It was always spent and never
+   * recorded, which left the order screen and the receipt showing items that
+   * did not sum to the bill with nothing to caption the difference.
+   */
+  serviceCharge?: number;
   orderType?: string;
   orderTypeId?: string;
   source: "pos";
@@ -210,7 +221,11 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
   }
 
   const deliveryFee = chargeableDeliveryFee(context.delivery);
-  const { total, itemCount, discountTotal } = cartTotals(
+  // `chargeAmount` is the charge as LEVIED — computed from the cart before any
+  // discount, because a discount comes off after service is charged. Reporting
+  // the net would understate what the shop actually took for service, and the
+  // discount is already recorded on its own rows.
+  const { total, itemCount, discountTotal, serviceCharge: chargeAmount } = cartTotals(
     cart,
     serviceCharge,
     context.discounts,
@@ -241,6 +256,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     },
     total,
     ...(deliveryFee > 0 ? { deliveryFee } : {}),
+    ...(chargeAmount > 0 ? { serviceCharge: chargeAmount } : {}),
     ...(deliveryBlob.delivery_address
       ? { deliveryAddress: deliveryBlob.delivery_address }
       : {}),

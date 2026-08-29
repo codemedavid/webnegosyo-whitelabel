@@ -182,6 +182,38 @@ export function revisedDeliveryFeePatch(
   return { deliveryFee: round2(deliveryFee) }
 }
 
+/**
+ * The `serviceCharge` patch a revision writes beside its total.
+ *
+ * Deliberately NOT the same figure as `serviceChargeAmount`. That argument is
+ * the mutation's single money channel: it carries the service charge, the
+ * re-priced discount and any rounding residue rolled into one signed number,
+ * and the total is built from it alone. This is the NAMED charge — a record of
+ * what the shop actually levied for service, stored so the order screen and
+ * the printer can caption the row instead of showing an unexplained gap.
+ *
+ * Adding it to the total as well would bill the service twice, which is why it
+ * never reaches `computeRevisedTotal`. The same arrangement `discount` already
+ * uses: stored beside a total it does not contribute to.
+ *
+ * States mirror {@link revisedDeliveryFeePatch} exactly:
+ *   omitted (undefined) — an old app build; the stored charge is left alone.
+ *   0 or negative       — no charge; the field is cleared (patching undefined
+ *                         deletes it in Convex). A negative residue is
+ *                         legitimate, but a negative SERVICE CHARGE is not —
+ *                         it would print as a credit on a customer's receipt.
+ *   a positive amount   — stored, rounded exactly as the total was.
+ */
+export function revisedServiceChargePatch(
+  serviceCharge?: number,
+): { serviceCharge?: number } {
+  if (serviceCharge === undefined) return {}
+  if (!Number.isFinite(serviceCharge) || serviceCharge <= 0) {
+    return { serviceCharge: undefined }
+  }
+  return { serviceCharge: round2(serviceCharge) }
+}
+
 /** Total units on the revised order, for the `itemCount` cache. */
 export function countRevisedItems(priced: readonly PricedItem[]): number {
   return priced.reduce((sum, item) => sum + item.quantity, 0);
