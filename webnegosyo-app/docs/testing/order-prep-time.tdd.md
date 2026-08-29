@@ -87,14 +87,23 @@ commits contain.
 
 | Backend | Requirement | Status |
 |---|---|---|
-| Platform Supabase | `20260829130000_order_prep_time.sql` | **NOT applied** |
-| Convex tenants | Deploy Schema to v24 per tenant | **NOT deployed** |
+| Platform Supabase | `20260829130000_order_prep_time.sql` | **APPLIED 2026-08-29** (both columns + CHECK verified present) |
+| Convex tenants | Deploy Schema to v24 per tenant | **NOT deployed — no tenant is above v20** |
 | Merchant app | JS-only change, OTA-able; no native build needed | not shipped |
 
 `CURRENT_SCHEMA_VERSION` went 23 → 24. **v23 was claimed by the concurrent
 session's service-charge work**, and per project memory v21 and v22 were already
-pending deployment before either of these. Any tenant deploy now carries four
-versions' worth of change at once.
+pending deployment before either of these. A census of `tenants` on 2026-08-29
+found the highest deployed version anywhere is **20**, so a Convex tenant deploy
+now carries four versions' worth of change at once.
+
+Tenant census at the time of the migration (`order_backend`, `convex_schema_version`):
+
+- `platform` — 119 tenants. Prep time is **live for these now**.
+- `convex` — 49 tenants, at v5/v18/v19/v20. Chips stay hidden until a v24 deploy.
+- `auto` — 55 tenants at v18/v19/v20. **`auto` is not a member of `OrderBackend`**,
+  so `resolveOrderBackend` falls through to the historical rule and these behave
+  as Convex. They are also gated on a v24 deploy.
 
 ## Known gaps
 
