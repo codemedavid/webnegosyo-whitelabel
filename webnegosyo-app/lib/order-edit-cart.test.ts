@@ -388,3 +388,88 @@ describe("legacy and bundle metadata carry-through", () => {
     expect(items[0]).not.toHaveProperty("isBundleItem");
   });
 });
+
+describe("legacy variation surfacing", () => {
+  /**
+   * Items written by mobile/web checkout may carry their variation ONLY as the
+   * legacy joined string ("Large" / "Large, Spicy"). Carrying it through as an
+   * opaque blob kept it on the chit but left the edit screen blind: the cashier
+   * saw a bare "Latte" and the modifier sheet showed nothing selected. The
+   * string must hydrate into real selections — priced at 0, since the legacy
+   * format never carried per-option prices and the money already lives in the
+   * subtotal — and the serialized string must follow the EDITED selections, not
+   * resurrect the stale blob.
+   */
+  it("hydrates a legacy-string variation into a visible selection", () => {
+    const { lines, unresolved } = hydratePosCart(
+      [orderItem({ subtotal: 120, variation: "Large" })],
+      CATALOG,
+    );
+
+    expect(lines[0].selections).toEqual([
+      {
+        groupId: "grp-size",
+        groupName: "Size",
+        optionId: "opt-large",
+        optionName: "Large",
+        priceModifier: 0,
+      },
+    ]);
+    expect(unresolved).toEqual([]);
+  });
+
+  it("splits a comma-joined legacy string into one selection per option", () => {
+    const { lines } = hydratePosCart(
+      [orderItem({ subtotal: 150, variation: "Large, Extra Shot" })],
+      CATALOG,
+    );
+
+    expect(lines[0].selections.map((s) => s.optionName)).toEqual(["Large", "Extra Shot"]);
+  });
+
+  it("keeps an unmatched legacy variation a variation, never an add-on", () => {
+    const { lines, unresolved } = hydratePosCart(
+      [orderItem({ subtotal: 120, variation: "Mega" })],
+      CATALOG,
+    );
+    const items = posCartToOrderItems(lines, CATALOG);
+
+    expect(items[0].variationSelections).toEqual([
+      { typeName: "Variation", optionName: "Mega", priceAdjustment: 0 },
+    ]);
+    expect(items[0]).not.toHaveProperty("addons");
+    expect(unresolved).toContainEqual({
+      menuItemName: "Latte",
+      groupName: "Variation",
+      optionName: "Mega",
+    });
+  });
+
+  it("regenerates the chit string from the edited selections instead of resurrecting the stale one", () => {
+    const { lines } = hydratePosCart(
+      [orderItem({ subtotal: 120, variation: "Large" })],
+      CATALOG,
+    );
+    const withoutVariation = lines.map((line) => ({ ...line, selections: [] }));
+
+    const items = posCartToOrderItems(withoutVariation, CATALOG);
+
+    expect(items[0]).not.toHaveProperty("variation");
+  });
+
+  it("does not double-hydrate when structured selections exist alongside the string", () => {
+    const { lines } = hydratePosCart(
+      [
+        orderItem({
+          subtotal: 120,
+          variation: "Large",
+          variationSelections: [{ typeName: "Size", optionName: "Large", priceAdjustment: 20 }],
+        }),
+      ],
+      CATALOG,
+    );
+
+    expect(lines[0].selections).toHaveLength(1);
+    expect(lines[0].selections[0].priceModifier).toBe(20);
+  });
+});
