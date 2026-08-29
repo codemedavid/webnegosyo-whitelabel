@@ -490,7 +490,7 @@ describe("runPlatformMutation — orders:createOrder", () => {
 describe("runPlatformMutation — status updates", () => {
   it("advances an order's status within the caller's tenant", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
@@ -506,7 +506,7 @@ describe("runPlatformMutation — status updates", () => {
 
   it("records a payment status change", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
@@ -819,5 +819,77 @@ describe("tenant guard", () => {
     await expect(runPlatformQuery(client, "", "orders:getOrders", {})).rejects.toThrow(
       /tenant/i
     );
+  });
+});
+
+describe("runPlatformQuery — getAllOrderItems ordering", () => {
+  /**
+   * The read is capped at STATS_LIMIT rows. Without an explicit ordering the
+   * database chooses which rows survive the cap — and past 10,000 line items it
+   * is the NEWEST orders' items that silently vanish from the kitchen board and
+   * product analytics. Newest-parent-first makes the cap drop history instead.
+   */
+  it("orders items newest-parent-first before applying the cap", async () => {
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    expect(opsOf(calls, "order")).toContainEqual([
+      "orders(created_at)",
+      { ascending: false },
+    ]);
+    expect(opsOf(calls, "limit").length).toBeGreaterThan(0);
+  });
+});
+
+describe("runPlatformMutation — silent no-op writes", () => {
+  /**
+   * An UPDATE that matches no row (RLS refusal, out-of-branch order, deleted
+   * order) used to resolve as success — the cashier saw the tap "work" while
+   * nothing was written. The write must read back what it touched and refuse
+   * loudly when that is nothing.
+   */
+  it("throws when a status update matched no row instead of claiming success", async () => {
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+        orderId: "order-gone",
+        status: "preparing",
+      })
+    ).rejects.toThrow(/no longer|not found|matched no/i);
+  });
+
+  it("throws when a payment-status update matched no row", async () => {
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
+        orderId: "order-gone",
+        paymentStatus: "paid",
+      })
+    ).rejects.toThrow(/no longer|not found|matched no/i);
+  });
+});
+
+describe("runPlatformQuery — period stats input validation", () => {
+  /**
+   * `Number(undefined)` is NaN, and `new Date(NaN).toISOString()` throws a bare
+   * RangeError("Invalid time value") — a crash with no clue which screen sent
+   * it. A malformed period must be refused with a message a human can act on.
+   */
+  it("rejects a period query with a missing or malformed date range", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getDashboardStatsByPeriod", {})
+    ).rejects.toThrow(/date range/i);
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getDashboardStatsByPeriod", {
+        startDate: "yesterday-ish",
+        endDate: 2,
+      })
+    ).rejects.toThrow(/date range/i);
   });
 });

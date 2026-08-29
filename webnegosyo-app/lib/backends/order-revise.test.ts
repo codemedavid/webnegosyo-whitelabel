@@ -413,3 +413,58 @@ describe("buildRevisionRows discount payload", () => {
     expect(orderPatch.total).toBe(140);
   });
 });
+
+describe("buildRevisionRows — legacy and bundle field carry-through", () => {
+  /**
+   * The platform edit path rewrites an order's items by delete-and-reinsert.
+   * Rows written by web/mobile checkout carry a legacy `variation` string and
+   * bundle/upsell markers that the edit screen does not re-derive — so a
+   * quantity change must not strip "(Large)" off the chit or unlink a bundle
+   * line. These fields pass through verbatim when the caller supplies them.
+   */
+  it("passes variation and bundle metadata through to the rewritten rows", () => {
+    const { itemRows } = buildRevisionRows(
+      TENANT,
+      reviseArgs({
+        items: [
+          {
+            menuItemId: "item-latte",
+            menuItemName: "Latte",
+            quantity: 2,
+            price: 100,
+            subtotal: 200,
+            variation: "Large",
+            isUpsellItem: true,
+            isBundleItem: true,
+            bundleId: "bundle-1",
+            bundleName: "Breakfast Combo",
+            slotName: "Drink",
+          },
+        ],
+      }),
+      previous(),
+    );
+
+    expect(itemRows[0]).toMatchObject({
+      variation: "Large",
+      is_upsell_item: true,
+      is_bundle_item: true,
+      bundle_id: "bundle-1",
+      bundle_name: "Breakfast Combo",
+      slot_name: "Drink",
+    });
+  });
+
+  it("writes clean defaults when the metadata is absent", () => {
+    const { itemRows } = buildRevisionRows(TENANT, reviseArgs(), previous());
+
+    expect(itemRows[0]).toMatchObject({
+      variation: null,
+      is_upsell_item: false,
+      is_bundle_item: false,
+      bundle_id: null,
+      bundle_name: null,
+      slot_name: null,
+    });
+  });
+});

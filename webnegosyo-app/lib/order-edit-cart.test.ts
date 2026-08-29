@@ -318,3 +318,73 @@ describe("posCartToOrderItems", () => {
     });
   });
 });
+
+describe("legacy and bundle metadata carry-through", () => {
+  /**
+   * Order rows written by web/mobile checkout carry a legacy `variation` string
+   * and bundle/upsell markers the register cannot re-derive. An edit that
+   * changes a quantity must hand them back to the revise mutation untouched —
+   * losing them strips "(Large)" off the chit and unlinks bundle lines.
+   */
+  it("round-trips variation and bundle metadata through hydrate -> serialize", () => {
+    const { lines } = hydratePosCart(
+      [
+        {
+          menuItemId: "m1",
+          menuItemName: "Latte",
+          quantity: 2,
+          subtotal: 240,
+          variation: "Large",
+          isUpsellItem: true,
+          isBundleItem: true,
+          bundleId: "bundle-1",
+          bundleName: "Breakfast Combo",
+          slotName: "Drink",
+        },
+      ],
+      {},
+    );
+
+    const items = posCartToOrderItems(lines);
+
+    expect(items[0]).toMatchObject({
+      variation: "Large",
+      isUpsellItem: true,
+      isBundleItem: true,
+      bundleId: "bundle-1",
+      bundleName: "Breakfast Combo",
+      slotName: "Drink",
+    });
+  });
+
+  it("does not merge a bundle line into an identical standalone line", () => {
+    const { lines } = hydratePosCart(
+      [
+        {
+          menuItemId: "m1",
+          menuItemName: "Latte",
+          quantity: 1,
+          subtotal: 120,
+          isBundleItem: true,
+          bundleId: "bundle-1",
+        },
+        { menuItemId: "m1", menuItemName: "Latte", quantity: 1, subtotal: 120 },
+      ],
+      {},
+    );
+
+    expect(lines).toHaveLength(2);
+  });
+
+  it("leaves a plain line's serialization untouched", () => {
+    const { lines } = hydratePosCart(
+      [{ menuItemId: "m1", menuItemName: "Latte", quantity: 2, subtotal: 240 }],
+      {},
+    );
+
+    const items = posCartToOrderItems(lines);
+
+    expect(items[0]).not.toHaveProperty("variation");
+    expect(items[0]).not.toHaveProperty("isBundleItem");
+  });
+});

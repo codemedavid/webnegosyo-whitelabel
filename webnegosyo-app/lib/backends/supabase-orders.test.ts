@@ -607,3 +607,31 @@ describe("buildCreateOrderRows — delivery details", () => {
     expect(buildCreateOrderRows("tenant-1", bare).order.delivery_address).toBeNull();
   });
 });
+
+import { getOrderOutletId } from "../branch-scope";
+
+describe("branch attribution on the order DTO", () => {
+  /**
+   * The server narrows branch reads on the `outlet_id` COLUMN, but the DTO the
+   * client re-filters (and the chime gate reads) used to drop it — so an order
+   * whose branch lived only in the column rang the alert yet never appeared in
+   * a branch account's queue. The DTO must carry the column through.
+   */
+  it("carries outlet_id through toOrderDto so client-side scoping sees it", () => {
+    const dto = toOrderDto(orderRow({ outlet_id: "outlet-north" }));
+
+    expect(getOrderOutletId(dto)).toBe("outlet-north");
+  });
+
+  it("still attributes blob-only rows through customer_data", () => {
+    const dto = toOrderDto(
+      orderRow({ outlet_id: null, customer_data: { order_outlet_id: "outlet-south" } })
+    );
+
+    expect(getOrderOutletId(dto)).toBe("outlet-south");
+  });
+
+  it("leaves a single-location order unattributed", () => {
+    expect(getOrderOutletId(toOrderDto(orderRow()))).toBeNull();
+  });
+});
