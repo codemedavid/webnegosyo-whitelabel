@@ -858,3 +858,97 @@ describe("the discount an edit settles on", () => {
     expect(editModeTotals([], context, []).settledDiscount).toBeNull();
   });
 });
+
+describe("a stored service charge is named, not left in the residue", () => {
+  /**
+   * `carriedCharges` is what the placed total held beyond items and delivery,
+   * recovered by subtraction because no backend stored the figure. It works,
+   * but it cannot be labelled: a service charge, a rounding adjustment and an
+   * untracked discount all land in the same anonymous number, which is why an
+   * edited order showed the cashier a fee with no name attached.
+   *
+   * With the charge stored, the known part is subtracted out and only the
+   * genuinely unattributable remainder stays anonymous.
+   */
+
+  /** ₱200 of food, ₱50 delivery, ₱24 service charge — all three recorded. */
+  function servicedOrder() {
+    return {
+      _id: "order-1",
+      total: 274,
+      revisionNumber: 0,
+      deliveryFee: 50,
+      serviceCharge: 24,
+      items: [orderItem()],
+    };
+  }
+
+  it("carries the stored charge onto the edit context", () => {
+    const { context } = enterEditMode(servicedOrder(), [], EMPTY_CATALOG);
+
+    expect(context.serviceCharge).toBe(24);
+  });
+
+  it("leaves nothing anonymous when the bill is fully accounted for", () => {
+    // 274 = 200 items + 50 delivery + 24 service. Every centavo is now named,
+    // so the residue that used to swallow the charge is empty.
+    const { context } = enterEditMode(servicedOrder(), [], EMPTY_CATALOG);
+
+    expect(context.carriedCharges).toBe(0);
+  });
+
+  it("keeps a genuine remainder anonymous rather than mislabelling it", () => {
+    // A bill 5 pesos above what items, delivery and service explain. That 5 is
+    // real money the customer was charged and it must survive the edit — but
+    // calling it a service charge would be a lie about what the shop levied.
+    const { context } = enterEditMode(
+      { ...servicedOrder(), total: 279 },
+      [],
+      EMPTY_CATALOG,
+    );
+
+    expect(context.serviceCharge).toBe(24);
+    expect(context.carriedCharges).toBe(5);
+  });
+
+  it("bills the same total as before the charge was ever named", () => {
+    // The whole point: naming the money must not move it. An unchanged cart
+    // re-totals to exactly what the customer already paid.
+    const { context, cart } = enterEditMode(servicedOrder(), [], EMPTY_CATALOG);
+
+    expect(editModeTotals(cart, context).newTotal).toBe(274);
+  });
+
+  it("still recovers the charge as residue on an order that stored none", () => {
+    // Every order placed before the field existed. The old subtraction is the
+    // only evidence available, and it must keep working unchanged.
+    const { context, cart } = enterEditMode(
+      { _id: "order-1", total: 274, revisionNumber: 0, deliveryFee: 50, items: [orderItem()] },
+      [],
+      EMPTY_CATALOG,
+    );
+
+    expect(context.serviceCharge).toBe(0);
+    expect(context.carriedCharges).toBe(24);
+    expect(editModeTotals(cart, context).newTotal).toBe(274);
+  });
+
+  it("sends the charge and the residue as one figure to the mutation", () => {
+    // `serviceChargeAmount` is the mutation's single money channel. Splitting
+    // the display must not split the arithmetic — sending only the residue
+    // would drop ₱24 off a real customer's bill.
+    const { context, cart } = enterEditMode(servicedOrder(), [], EMPTY_CATALOG);
+
+    expect(editModeTotals(cart, context).carriedChargesForSave).toBe(24);
+  });
+
+  it("keeps the charge whole when the cashier corrects the delivery fee", () => {
+    // Editing delivery must touch delivery alone. The service charge was
+    // levied on the food and has nothing to do with carriage.
+    const { context, cart } = enterEditMode(servicedOrder(), [], EMPTY_CATALOG);
+    const totals = editModeTotals(cart, { ...context, deliveryFee: 80 });
+
+    expect(totals.newTotal).toBe(304);
+    expect(totals.carriedChargesForSave).toBe(24);
+  });
+});

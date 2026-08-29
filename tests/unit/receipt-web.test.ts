@@ -86,3 +86,41 @@ describe('buildAdminReceiptText', () => {
     expect(text).not.toContain('Latte')
   })
 })
+
+describe('mapSupabaseOrderToReceipt — the service charge column', () => {
+  /**
+   * `orders.service_charge_amount` has been populated by web checkout since
+   * the order-types migration, and the admin's order detail dialog already
+   * reads it. The receipt mapper dropped it, so the browser's printed copy of
+   * an order showed items that did not add up to its own total.
+   */
+  it('maps the stored charge onto the engine shape', () => {
+    const mapped = mapSupabaseOrderToReceipt({
+      ...(order as object),
+      service_charge_amount: 24,
+    } as never)
+
+    expect(mapped.serviceCharge).toBe(24)
+  })
+
+  it('leaves it undefined when the column is NULL', () => {
+    // An unserviced order must not print a P0.00 row.
+    const mapped = mapSupabaseOrderToReceipt({
+      ...(order as object),
+      service_charge_amount: null,
+    } as never)
+
+    expect(mapped.serviceCharge).toBeUndefined()
+  })
+
+  it('prints the charge on the rendered receipt', () => {
+    // The mapping is only worth having if it reaches paper.
+    const text = buildAdminReceiptText(
+      { ...(order as object), total: 274, service_charge_amount: 24 } as never,
+      'Kape Co',
+      null,
+    )
+
+    expect(text).toContain('Service Charge:')
+  })
+})

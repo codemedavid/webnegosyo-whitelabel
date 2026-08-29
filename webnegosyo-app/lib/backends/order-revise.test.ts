@@ -468,3 +468,61 @@ describe("buildRevisionRows — legacy and bundle field carry-through", () => {
     });
   });
 });
+
+describe("buildRevisionRows — the named service charge", () => {
+  /**
+   * `serviceChargeAmount` is the TOTAL channel: it carries the service charge,
+   * the re-priced discount and any rounding residue rolled into one signed
+   * figure, and it must stay that way or the bill would be built from two
+   * addends that can disagree.
+   *
+   * What it cannot do is say what the money WAS. `serviceCharge` is the named
+   * figure, written to the breakdown column so the order screen and the
+   * printer can label it — a record, never a second addend. The pairing
+   * mirrors `discount_data`, which is likewise stored beside a total it does
+   * not contribute to.
+   */
+  it("stores the named charge in the breakdown column", () => {
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 24, serviceChargeAmount: 24 }),
+      previous(),
+    );
+
+    expect(orderPatch.service_charge_amount).toBe(24);
+  });
+
+  it("never totals from the named charge", () => {
+    // Both fields present and DIFFERENT: the total must follow
+    // `serviceChargeAmount` alone. Adding them would bill the charge twice —
+    // the exact defect that keeping one money channel exists to prevent.
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 24, serviceChargeAmount: -6 }),
+      previous(),
+    );
+
+    expect(orderPatch.total).toBe(194);
+  });
+
+  it("clears the column when the edit left no charge", () => {
+    // Matching `delivery_fee`: removing a wrongly-applied charge must blank
+    // the column, not leave the old figure contradicting the new total.
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 0 }),
+      previous(),
+    );
+
+    expect(orderPatch.service_charge_amount).toBeNull();
+  });
+
+  it("leaves the stored charge alone when the caller sent none", () => {
+    // An app build that predates this field omits it entirely. Writing a
+    // blanking for those edits would strip the charge off every legacy order
+    // the moment its quantity changed.
+    const { orderPatch } = buildRevisionRows("tenant-1", reviseArgs({}), previous());
+
+    expect(orderPatch).not.toHaveProperty("service_charge_amount");
+  });
+});

@@ -372,3 +372,59 @@ describe("resolveReceiptLayout — what the printer actually uses", () => {
     expect(resolved.blocks[0]?.kind).toBe("businessName");
   });
 });
+
+describe("service charge on the printed receipt", () => {
+  /**
+   * `orderSummaryRows` has always been willing to emit a service-charge row,
+   * and `RECEIPT_LABELS` has always had a caption for it. The renderer simply
+   * never passed the figure, so a serviced order printed items that did not
+   * add up to its own TOTAL with nothing accounting for the gap.
+   */
+  const servicedOrder = {
+    ...baseOrder,
+    serviceCharge: 32.75,
+    total: 360.25,
+  };
+
+  it("prints the charge, captioned, between the items and the total", () => {
+    const lines = linesOf(renderReceipt(servicedOrder, config, CLASSIC_RECEIPT_LAYOUT));
+    const charge = lines.find((line) => line.startsWith("Service Charge:"));
+
+    expect(charge).toContain("P32.75");
+  });
+
+  it("earns a subtotal line, so the charge has a stated starting point", () => {
+    const lines = linesOf(renderReceipt(servicedOrder, config, CLASSIC_RECEIPT_LAYOUT));
+
+    expect(lines.some((line) => line.startsWith("Subtotal:"))).toBe(true);
+  });
+
+  it("reconciles, so the mismatch warning stays silent", () => {
+    // The renderer warns when its own arithmetic disagrees with `order.total`.
+    // That check omitted the service charge, so every serviced order would
+    // have cried corruption at a merchant who had none — and trained them to
+    // ignore the one signal meant to catch the real thing.
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    renderReceipt(servicedOrder, config, CLASSIC_RECEIPT_LAYOUT);
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("prints nothing for an order that was never serviced", () => {
+    // A P0.00 row on every pickup chit is noise, and wastes a line of paper
+    // on a 32-column roll.
+    const lines = linesOf(renderReceipt(baseOrder, config, CLASSIC_RECEIPT_LAYOUT));
+
+    expect(lines.some((line) => line.startsWith("Service Charge:"))).toBe(false);
+  });
+
+  it("still prints Classic byte-for-byte when there is no charge", () => {
+    // The regression lock every live tenant depends on: adding a field must
+    // not shift a single column on the receipts already in use.
+    expect(renderReceipt(baseOrder, config, CLASSIC_RECEIPT_LAYOUT)).toBe(
+      formatReceipt(baseOrder, config),
+    );
+  });
+});

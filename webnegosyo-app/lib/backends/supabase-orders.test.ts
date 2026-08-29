@@ -635,3 +635,56 @@ describe("branch attribution on the order DTO", () => {
     expect(getOrderOutletId(toOrderDto(orderRow()))).toBeNull();
   });
 });
+
+describe("service charge — stored, projected, and readable", () => {
+  /**
+   * The platform `orders` table has carried a `service_charge_amount` column
+   * since the order-types migration, and the web admin has always written and
+   * read it. The merchant app did neither: the register folded the charge into
+   * `total` and threw the figure away, so every serviced order arrived at the
+   * order screen and the printer as an unexplained gap between the items and
+   * the bill. These lock both halves of the round trip.
+   */
+  const args = {
+    customerName: "Ana",
+    customerContact: "09171234567",
+    total: 264,
+    itemCount: 2,
+    source: "pos" as const,
+    serviceCharge: 24,
+    items: [
+      { menuItemId: "menu-1", menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("writes the charge the total was computed with", () => {
+    expect(buildCreateOrderRows("tenant-1", args).order.service_charge_amount).toBe(24);
+  });
+
+  it("writes NULL rather than zero for an unserviced sale", () => {
+    // Matching `delivery_fee`: a stored 0 and an absent charge are the same
+    // bill, and NULL is what the web checkout path already writes.
+    const { order } = buildCreateOrderRows("tenant-1", { ...args, serviceCharge: 0 });
+
+    expect(order.service_charge_amount).toBeNull();
+  });
+
+  it("projects the stored charge onto the DTO", () => {
+    const dto = toOrderDto(orderRow({ service_charge_amount: 24 }));
+
+    expect(dto.serviceCharge).toBe(24);
+  });
+
+  it("leaves the charge undefined when the column is NULL", () => {
+    // An unserviced order must not surface a zero row on the receipt.
+    expect(toOrderDto(orderRow({ service_charge_amount: null })).serviceCharge).toBeUndefined();
+  });
+
+  it("reads a numeric string, as the driver returns numerics", () => {
+    // `delivery_fee` needed the same coercion — Postgres numerics arrive as
+    // strings, and a string amount would print as "P[object]" on the chit.
+    const dto = toOrderDto(orderRow({ service_charge_amount: "24.50" as unknown as number }));
+
+    expect(dto.serviceCharge).toBe(24.5);
+  });
+});

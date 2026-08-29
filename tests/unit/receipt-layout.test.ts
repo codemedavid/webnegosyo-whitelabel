@@ -257,3 +257,33 @@ describe('layout validation (web mirror)', () => {
     expect(resolveReceiptLayout({ bad: true })).toBe(CLASSIC_RECEIPT_LAYOUT)
   })
 })
+
+describe('service charge on the printed receipt (web mirror)', () => {
+  /**
+   * Mirrors the app-side suite. The admin's receipt editor previews with this
+   * renderer, so a service charge the printer emits and the preview omits
+   * would have merchants designing around a row they never see.
+   */
+  const servicedOrder = { ...baseOrder, serviceCharge: 32.75, total: 360.25 }
+
+  it('prints the charge, captioned, between the items and the total', () => {
+    const lines = linesOf(renderReceipt(servicedOrder, config, CLASSIC_RECEIPT_LAYOUT))
+
+    expect(lines.find((line) => line.startsWith('Service Charge:'))).toContain('P32.75')
+  })
+
+  it('reconciles, so the mismatch warning stays silent', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    renderReceipt(servicedOrder, config, CLASSIC_RECEIPT_LAYOUT)
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('prints nothing for an order that was never serviced', () => {
+    const lines = linesOf(renderReceipt(baseOrder, config, CLASSIC_RECEIPT_LAYOUT))
+
+    expect(lines.some((line) => line.startsWith('Service Charge:'))).toBe(false)
+  })
+})
