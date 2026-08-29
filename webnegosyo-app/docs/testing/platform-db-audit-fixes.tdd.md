@@ -67,6 +67,34 @@ the customer mobile app's `.insert().select().single()` platform path has never
 succeeded; its code already treats that as a soft failure and proceeds to
 Messenger.
 
+## Follow-up round (same day): remaining findings closed
+
+| Stage | Commit | Evidence |
+|---|---|---|
+| RED | `537efebb` | `tests/unit/mobile-checkout-platform-order.test.ts` — 4/5 failed for the intended defects |
+| GREEN | `a5b54f47` | customer-app platform order path works; full web suite 549 suites / 6466 tests pass; mobile `tsc` clean |
+| RED | `4929b080` | `lib/order-edit-cart.test.ts` "legacy variation surfacing" — 4 new tests failed |
+| GREEN | `e4791da0` | full webnegosyo-app suite 236 suites / 3315 tests pass |
+| DB | migration `20260829150000_customer_order_tracking_rpc` | applied live, probed as anon |
+
+- **Customer app platform orders now work**: checkout generates the order id
+  client-side (native crypto `uuid.v4` from expo-modules-core — in every
+  shipped binary, OTA-able) and inserts without RETURNING; order tracking
+  reads through SECURITY DEFINER `get_customer_order(uuid)` (EXECUTE → anon
+  only; the uuid is the capability) and polls every 10s — realtime events can
+  never reach a role with no SELECT policy. Live anon probe: blind insert
+  allowed, capability read returns exactly the held id's row with its status,
+  unknown id returns nothing, direct table select still sees zero rows.
+- **Legacy variation surfacing (previous "known gap") fixed**: the legacy
+  joined string hydrates into real selections (matched to the live catalog;
+  unmatched names orphan under a "Variation" group that partitions back as a
+  variation, never an add-on) priced at 0, and serialization regenerates the
+  chit string from the CURRENT variation selections instead of resurrecting
+  the stale blob.
+- **Leaked password protection**: attempted via the dashboard; it required a
+  fresh sign-in, which the operator must do. Toggle lives at
+  Authentication → Attack Protection for project `tjcmkstsuhqdwkfdrxan`.
+
 ## Coverage and known gaps
 
 - Full suite at GREEN: 219 suites passing; the only failing suites belong to a
