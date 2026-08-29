@@ -453,7 +453,14 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      // SECURITY DEFINER read path for anonymous customers: the order's
+      // uuid is the capability; anon has no SELECT policy on the table.
+      get_customer_order: {
+        Args: { p_order_id: string };
+        Returns: Record<string, unknown>[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

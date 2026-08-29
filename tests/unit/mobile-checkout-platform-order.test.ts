@@ -46,7 +46,8 @@ describe('mobile checkout — platform order insert works for the anon role', ()
 
   it('generates the order id client-side with the native crypto uuid', () => {
     expect(checkoutSource()).toContain("from 'expo-modules-core'")
-    expect(supabaseBranch()).toContain('id: uuid.v4()')
+    expect(supabaseBranch()).toContain('uuid.v4()')
+    expect(supabaseBranch()).toContain('id: newOrderId')
   })
 
   it('still writes the line items and spends stock against the generated id', () => {
@@ -61,7 +62,8 @@ describe('mobile order status — reads through the id-capability RPC', () => {
   it('fetches via get_customer_order instead of selecting the table', () => {
     const source = orderRealtimeSource()
 
-    expect(source).toContain("rpc('get_customer_order'")
+    expect(source).toContain('.rpc')
+    expect(source).toContain("'get_customer_order'")
     expect(source).not.toContain(".from('orders')")
   })
 

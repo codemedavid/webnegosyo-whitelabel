@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Order } from '@/types/database'
 
+// How often the status screen re-asks the platform for the order. The anon
+// role has no SELECT policy on orders, so a realtime channel would never
+// deliver an event — polling the RPC is the only read path that exists.
+const ORDER_POLL_INTERVAL_MS = 10_000
+
 export function useOrderRealtime(orderId: string | undefined) {
   const [order, setOrder] = useState<Order | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -9,41 +14,30 @@ export function useOrderRealtime(orderId: string | undefined) {
   useEffect(() => {
     if (!orderId) return
 
-    // Initial fetch
-    const fetchOrder = async () => {
-      const { data, error } = await supabase()
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single()
+    let isActive = true
 
-      if (!error && data) {
-        setOrder(data as unknown as Order)
+    // Reads go through the SECURITY DEFINER RPC get_customer_order: the
+    // order's uuid is the capability, and anon stays blind to the table.
+    const fetchOrder = async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase generic DB types resolve to never due to index signature on Tenant (same cast as checkout's table calls)
+      const { data, error } = await (supabase().rpc as any)('get_customer_order', {
+        p_order_id: orderId,
+      })
+
+      if (!isActive) return
+      const row = Array.isArray(data) ? data[0] : data
+      if (!error && row) {
+        setOrder(row as unknown as Order)
       }
       setIsLoading(false)
     }
 
     fetchOrder()
-
-    // Realtime subscription
-    const channel = supabase()
-      .channel(`order-${orderId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `id=eq.${orderId}`,
-        },
-        (payload) => {
-          setOrder(payload.new as unknown as Order)
-        }
-      )
-      .subscribe()
+    const intervalId = setInterval(fetchOrder, ORDER_POLL_INTERVAL_MS)
 
     return () => {
-      supabase().removeChannel(channel)
+      isActive = false
+      clearInterval(intervalId)
     }
   }, [orderId])
 
